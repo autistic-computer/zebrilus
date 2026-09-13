@@ -14,6 +14,9 @@ ok    self-check a one-sided -2 on zz only, silent terminal: caught
 ok    self-check autowrap turned off on zz side before it attaches: caught
 ok    self-check control, focus-follows-mouse on both sides: no difference reported
 ok    self-check focus-follows-mouse on the pin only: caught
+ok    self-check control, the plain menu on both sides: no difference reported
+ok    self-check the -M menu on zz only: caught
+ok    self-check the -M menu on zz only, mouse off: caught
 ok    self-check zz detached while the pin stays attached: caught
 ok    self-check a theme reply the pin alone can get: caught
 ok    self-check a named cell spelled as its RGB colour on the pin only: caught
