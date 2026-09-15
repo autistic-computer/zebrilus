@@ -53,5 +53,19 @@ ok    self-check the lock target on one side only
         0a1
         > yes
 ok    self-check the after-lock-server hook armed on one side only
+      case capture-line-numbers-sabotage
+      stdout differs
+        3c3
+        < 2 $
+        ---
+        > 2 $ zzq
+      screen differs
+        3c3
+        < $
+        ---
+        > $ zzq
+        cursor tmux: 2,2 flag=1 pane=80x24 shape=default
+        cursor zz:   5,2 flag=1 pane=80x24 shape=default
+ok    self-check a numbered capture of three columns on one side only
 ok    self-check equivalence: every sabotage withdrawn
 self-check complete: every sabotage was caught in its own channel and both equivalences passed
