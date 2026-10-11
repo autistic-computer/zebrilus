@@ -177,6 +177,7 @@ const FLOATING: &[&str] = &[
     "phone/hud",
     "phone/keys",
     "panes/floating",
+    "panes/display-panes",
     "browser/omnibox",
     "browser/action-menu",
     "browser/site-menu",

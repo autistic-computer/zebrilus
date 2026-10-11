@@ -1917,29 +1917,25 @@ impl AppShell {
                         .into_any_element(),
                 );
             }
-            if let Some(indicator) =
-                self.connection
-                    .read(cx)
-                    .core
-                    .display_panes()
-                    .and_then(|display| {
-                        display
-                            .indicators
-                            .iter()
-                            .find(|indicator| indicator.pane == pane_id)
-                    })
+            if let Some((display, indicator)) = self
+                .connection
+                .read(cx)
+                .core
+                .display_panes()
+                .and_then(|display| {
+                    display
+                        .indicators
+                        .iter()
+                        .find(|indicator| indicator.pane == pane_id)
+                        .map(|indicator| (display, indicator))
+                })
             {
                 let connection = self.connection.clone();
                 let pane = indicator.pane;
-                let key = indicator
-                    .selection_key()
-                    .and_then(|key| zz_gpui::Keystroke::parse(&key.to_string()).ok());
-                let card = zz_ui::pane::pane_indicator_card(
+                let chip = zz_ui::pane::pane_indicator(
                     ("web-pane-indicator", pane.0),
-                    indicator.index.to_string(),
-                    key,
-                    indicator.active(),
-                    cx.theme().mono_font_family.clone(),
+                    display,
+                    indicator,
                     cx,
                 )
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1954,37 +1950,7 @@ impl AppShell {
                     });
                     cx.stop_propagation();
                 });
-                let label = (!indicator.label.is_empty()).then(|| {
-                    let foreground = cx.theme().foreground;
-                    let background = cx.theme().background;
-                    let bucket = |segments: &[zz_protocol::StyledSegment]| {
-                        zz_ui::tmux_style::tmux_styled_segments_text(
-                            segments, foreground, background, cx,
-                        )
-                        .into_styled_text()
-                    };
-                    let [left, centre, right] =
-                        zz_ui::tmux_style::split_tmux_alignment(&indicator.label);
-                    div()
-                        .absolute()
-                        .top(px(8.0))
-                        .left(px(8.0))
-                        .right(px(8.0))
-                        .overflow_hidden()
-                        .flex()
-                        .justify_between()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_xs()
-                        .text_color(foreground)
-                        .child(bucket(&left))
-                        .child(bucket(&centre))
-                        .child(bucket(&right))
-                });
-                status_overlays.push(
-                    zz_ui::pane::pane_indicator_overlay(card)
-                        .children(label)
-                        .into_any_element(),
-                );
+                status_overlays.push(zz_ui::pane::pane_indicator_overlay(chip).into_any_element());
             }
             let measured = Rc::clone(&self.pane_bounds);
             panes.insert(

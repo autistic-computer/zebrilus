@@ -1,13 +1,14 @@
 use zz_gpui::{
-    AnyElement, App, IntoElement, Keystroke, ParentElement as _, Styled as _, Window, div,
-    prelude::*, px, relative,
+    AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div, prelude::*, px,
+    relative,
 };
+use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     pane::{
         FloatingSurface, PaneDragOverlayState, PaneOverlayCorner, PaneSplitAxis,
         PaneSplitHighlight, PaneSplitSide, TERMINAL_HEADER_HEIGHT, pane_drag_chip,
-        pane_drag_overlay, pane_drop_preview, pane_indicator_card, pane_indicator_overlay,
+        pane_drag_overlay, pane_drop_preview, pane_indicator, pane_indicator_overlay,
         pane_overlay_stack, pane_picker_choices, pane_picker_row, pane_split_surface,
         pane_status_badge, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
         terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
@@ -49,7 +50,7 @@ pub const STORY: Story = Story {
         Section {
             id: "display-panes",
             name: "Display panes",
-            summary: "pane_indicator_card for tmux display-panes. The active pane takes danger colors; the others the neutral wash.",
+            summary: "pane_indicator for tmux display-panes: the key on a popover chip, glass with the glass knob; the active pane ringed in the accent or display-panes-active-colour.",
             build: |_, cx| stateless(display_panes, cx),
         },
         Section {
@@ -288,33 +289,73 @@ fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn indicator_key(key: &str) -> Option<Keystroke> {
-    Some(Keystroke::parse(key).expect("static display-panes key"))
+fn display_panes_state(
+    indicators: Vec<PaneIndicator>,
+    active_colour: TmuxColour,
+) -> DisplayPanesState {
+    DisplayPanesState {
+        window: WindowId(1),
+        duration_ms: 1000,
+        indicators,
+        colour: Some(TmuxColour::Theme(7)),
+        active_colour: Some(active_colour),
+    }
+}
+
+fn display_pane(index: u32, active: bool, label: &str) -> PaneIndicator {
+    PaneIndicator {
+        pane: PaneId(u64::from(index) + 1),
+        index,
+        select_key: match index {
+            0..=9 => b'0' + index as u8,
+            10..=35 => b'a' + (index - 10) as u8,
+            _ => 0,
+        },
+        flags: if active { PaneIndicator::ACTIVE } else { 0 },
+        label: label.to_owned(),
+    }
 }
 
 fn display_panes(_: &mut Window, cx: &mut App) -> AnyElement {
-    let mono = cx.theme().mono_font_family.clone();
-    let card = |id: &'static str, index: &'static str, key: Option<Keystroke>, active: bool| {
-        pane_indicator_card(id, index, key, active, mono.clone(), cx)
+    let chips = |id: &'static str, state: &DisplayPanesState, cx: &App| {
+        state.indicators.iter().fold(row(), |row, indicator| {
+            row.child(pane_indicator((id, indicator.index), state, indicator, cx))
+        })
     };
-    let pane = |index: usize, active: bool, cx: &App| {
-        let key = index.to_string();
-        let overlay = pane_indicator_overlay(pane_indicator_card(
-            ("indicator", index),
-            key.clone(),
-            indicator_key(&key),
-            active,
-            cx.theme().mono_font_family.clone(),
-            cx,
-        ))
-        .into_any_element();
+    let keys = display_panes_state(
+        vec![
+            display_pane(0, true, ""),
+            display_pane(1, false, ""),
+            display_pane(2, false, ""),
+            display_pane(12, false, "#[align=right]80x24"),
+            display_pane(40, false, ""),
+        ],
+        TmuxColour::Theme(6),
+    );
+    let recoloured = display_panes_state(
+        vec![display_pane(0, true, ""), display_pane(1, false, "")],
+        TmuxColour::Basic(2),
+    );
+    let window = display_panes_state(
+        vec![
+            display_pane(0, true, "#[align=right]64x20"),
+            display_pane(1, false, "#[align=right]63x9"),
+            display_pane(2, false, "#[align=right]63x10"),
+        ],
+        TmuxColour::Theme(6),
+    );
+    let pane = |index: usize, cx: &App| {
+        let indicator = &window.indicators[index];
+        let overlay =
+            pane_indicator_overlay(pane_indicator(("indicator", index), &window, indicator, cx))
+                .into_any_element();
         let (title, lines) = [
             ("cargo test", BUILD),
             ("daemon.log", LOGS),
             ("just site", SERVER),
         ][index];
         TerminalPane::new(index as u64 + 1, title, lines)
-            .active(active)
+            .active(indicator.active())
             .render(("display-pane", index), vec![overlay], cx)
     };
     let layout = pane_split_surface(
@@ -331,7 +372,7 @@ fn display_panes(_: &mut Window, cx: &mut App) -> AnyElement {
             PaneSplitSide::First,
             cx.theme().accent,
         )),
-        pane(0, true, cx),
+        pane(0, cx),
         pane_split_surface(
             "display-split-right",
             PaneSplitAxis::Vertical,
@@ -341,8 +382,8 @@ fn display_panes(_: &mut Window, cx: &mut App) -> AnyElement {
             px(0.0),
             None,
             None,
-            pane(1, false, cx),
-            pane(2, false, cx),
+            pane(1, cx),
+            pane(2, cx),
             div().absolute(),
             cx,
         ),
@@ -351,12 +392,12 @@ fn display_panes(_: &mut Window, cx: &mut App) -> AnyElement {
     );
     states()
         .state(
-            "cards",
-            row()
-                .child(card("card-active", "0", indicator_key("0"), true))
-                .child(card("card-1", "1", indicator_key("1"), false))
-                .child(card("card-2", "2", indicator_key("2"), false))
-                .child(card("card-click", "12", None, false)),
+            "keys: the active pane, digits, a letter key with its index and size, past 35 click only",
+            chips("chip-keys", &keys, cx),
+        )
+        .state(
+            "display-panes-active-colour green",
+            chips("chip-recoloured", &recoloured, cx),
         )
         .state("over a window", sized("display-layout", 300.0, layout))
         .into_any_element()
