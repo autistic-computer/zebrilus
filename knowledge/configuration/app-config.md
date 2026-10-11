@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-09-22T00:00:00Z
+timestamp: 2026-10-10T00:00:00Z
 ---
 
 # Overview
@@ -118,7 +118,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
 | `pane-corner-radius` | `13.5` | `0..=32` | All four corners of every pane, on every platform; applies only with `pane-gaps` |
 | `pane-border-width` | `0.5` | `0..=8` | Border width while pane gaps are enabled; `0` disables the border |
-| `interface-style` | `modern` | `flat`, `modern`, or `full` | The look of the chrome, set together: `flat` is square, unoutlined and shadowless with rows that touch; `modern` is 24px corners over an opaque surface with a lit glass edge; `full` is pill controls over frosted glass. It decides the two keys below unless they are set; picking a style in Settings removes them |
+| `interface-style` | `modern` | `flat`, `modern`, `full`, or a saved look's name | The look of the chrome, set together: `flat` is square, unoutlined and shadowless with rows that touch; `modern` is 24px corners over an opaque surface with a lit glass edge; `full` is pill controls over frosted glass. Any other name selects `looks/<name>.json` beside this file (see Saved looks). It decides the two keys below unless they are set; picking a style in Settings removes them |
 | `widget-corner-radius` | from the style (`0`, `24`, `25`) | `0..=25` | Widget corners in pixels through 24; values above 24 enable Full mode for buttons, fields, navigation chips, and picker rows. At 0, menu and tree rows become full-width bands with no gaps |
 | `shadow-strength` | from the style (`0`, `1`, `1`) | `0..=1` | Multiplier for shadows around controls and gapped panes; `0` turns them and the control rings off |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
@@ -195,6 +195,20 @@ at full opacity and then disappears without a fade. iOS also honors UIKit Reduce
 the file enables animations. Cursor blinking and Chromium page animation are content behavior and
 keep their own controls. Desktop GPUI does not currently publish the operating system's motion
 preference, so macOS, Linux, and Windows follow this key directly.
+
+## Saved looks
+
+A look is the JSON the storybook's style creator copies (Copy JSON): a
+`zz_ui::interface_style::Look` in kebab-case, where any key left out takes the `modern` value.
+Looks live one per file in a `looks` folder beside the configuration file
+(`~/.config/zz/looks/<name>.json`; zz Dev keeps its own), named by letters, digits, `-` and `_`.
+`interface-style = <name>` selects one. The config poll stamps the folder, so adding, editing or
+removing a look applies within half a second. A missing or unparsable look logs a warning and
+falls back to `modern`.
+
+Settings > Appearance > Style shows the saved looks as tiles after the built-in styles. Its Import
+tile reads a look from the clipboard, saves it as the first free `look-N.json`, and selects it.
+Thin clients (web, iOS) still offer only the built-in styles.
 
 ## Chrome theming
 
