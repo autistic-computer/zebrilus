@@ -74,7 +74,9 @@ fn strip(radius: Radius, size: f32) -> impl IntoElement {
     h_flex()
         .flex_wrap()
         .gap(px((size * 0.8).max(12.0)))
-        .children(glyphs::names().map(move |name| radius.icon(name).with_size(Size::Size(px(size)))))
+        .children(
+            glyphs::names().map(move |name| radius.icon(name).with_size(Size::Size(px(size)))),
+        )
 }
 
 fn follows_the_theme(_: &mut Window, cx: &mut App) -> AnyElement {
