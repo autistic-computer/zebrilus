@@ -162,7 +162,7 @@ stored page favicons, with a globe fallback.
 Menus, select dropdowns, command palettes, and file/history/tree pickers share
 `StyledExt::popover_style`: an opaque `theme.surface(Elevation::Popover)` fill, the shared half-pixel edge,
 and a soft outer shadow in the theme's `shadow_color`, scaled by the shadow-strength setting and `Theme.elevation`. Menus use
-`Theme.row_inset` gutters (4px by default), 26px rows (20px for Small menus), 12px text, and
+`Theme.row_inset` gutters (4px by default), 26px rows, 12px text, and
 half-pixel separators inset from the surface edge. At a 0 row inset (`Theme::inset_rows` is false)
 the gutters, the gaps between rows, and the separator inset go away, and rows become full-width
 bands; the workspace tree and command palette follow the same rule. `Theme.outline` scales the
@@ -198,6 +198,16 @@ Controls come in two sizes, set with `Sizable`: Medium, the default, is 28px tal
 8px at Small; fields by 8px and 6px. Anything else takes an explicit `Size::Size(px)` or a
 `.size(...)` override. `Size::control_h` is the one height table, and the touch hit slop derives
 from it. Icons keep the ambient font size unless sized: `.small()` is 12px, `Icon::medium()` 14px.
+tmux `display-menu` draws as one of these menus (`zz_ui::command::floating::display_menu`): the
+title is the small muted label row with its `#[align]` honoured, key annotations are plain text on
+the right, and disabled rows never highlight. zz's default menu styles are theme slots and leave the
+look's own surface and selection; only literal colours from the options or `-s`, `-S` and `-H`
+(last field wins) tint the surface, the outline and separators, or the highlight. The tmux
+`display-panes` indicator is one popover chip per pane with the key to press, the pane's
+`display-panes-format` line as a muted caption, and a 2px accent ring on the active pane (or
+`display-panes-active-colour` when it differs from zz's default). A browser page that fails to
+load shows an inline alert on the popover surface: the dialog's icon, title and description layout
+with a Medium Try again on the right.
 Settings rows use 13px labels, so a Medium field's value matches them. The shared dialog surface
 is similarly compact: 400px default width, 12px gutters, 13px title, 12px description, and Medium
 action buttons. Explicitly sized content dialogs such as the attachment

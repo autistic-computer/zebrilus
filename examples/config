@@ -43,6 +43,10 @@ pane-corner-radius = 13.5
 pane-margin = 6
 pane-border-width = 0.5
 
+# Draw gapped panes in the interface theme's glass: a lit edge on tiled panes,
+# frost behind floating ones. Needs pane-gaps and a theme with glass.
+pane-glass = false
+
 # The interface theme: a look (corners, outlines, shadows, glass, how rows and
 # primary buttons are filled) bundled with its colors for light and for dark.
 # Built in: default (zz's look on the macOS system colors), macos (flat
