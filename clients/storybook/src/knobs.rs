@@ -1,6 +1,6 @@
 use zz_gpui::{App, GlassMaterial, WindowAppearance, px};
 use zz_ui::{
-    SelectionStyle, Theme, ThemeMode, UiZoom,
+    PrimaryStyle, SelectionStyle, Theme, ThemeMode, UiZoom,
     chrome_palette::{ChromePresetId, inherited_chrome_colors},
     interface_style::{self, InterfaceStyle, Look},
 };
@@ -179,6 +179,17 @@ impl Knobs {
                         _ => return Err(format!("selection must be accent or wash, not {value}")),
                     }
                 }
+                "primary" => {
+                    knobs.look.primary = match value {
+                        "foreground" => PrimaryStyle::Foreground,
+                        "accent" => PrimaryStyle::Accent,
+                        _ => {
+                            return Err(format!(
+                                "primary must be foreground or accent, not {value}"
+                            ));
+                        }
+                    }
+                }
                 "font" => {
                     let family = decode(value);
                     knobs.look.font = (!family.is_empty()).then(|| family.into());
@@ -269,6 +280,7 @@ pub fn look_knobs(look: &Look) -> serde_json::Map<String, serde_json::Value> {
         .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(look))))
         .collect::<serde_json::Map<_, _>>();
     knobs.insert("selection".to_owned(), serde_json::json!(look.selection));
+    knobs.insert("primary".to_owned(), serde_json::json!(look.primary));
     knobs.insert(
         "font".to_owned(),
         serde_json::json!(look.font.as_ref().map_or("", |font| font.as_ref())),

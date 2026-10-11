@@ -63,6 +63,8 @@ const EDGE_WEIGHT: f32 = 0.14;
 const HOVER: f32 = 0.06;
 const ACTIVE: f32 = 0.12;
 const MUTED: f32 = 0.35;
+const FAINT: f32 = 0.55;
+const READABLE_ON_LIGHTNESS: f32 = 0.7;
 const FILL_ALPHA: f32 = 0.12;
 const OUTLINE_ALPHA: f32 = 0.55;
 const SUBTLE_ALPHA: f32 = 0.75;
@@ -90,8 +92,24 @@ fn scaled(value: f32) -> f32 {
     (value * contrast()).clamp(0.0, 1.0)
 }
 
-fn muted_weight() -> f32 {
+pub(super) fn muted_weight() -> f32 {
     (MUTED / contrast()).clamp(0.0, 1.0)
+}
+
+fn faint_weight() -> f32 {
+    (FAINT / contrast()).clamp(0.0, 1.0)
+}
+
+/// The ink that reads on a solid `fill`, judged by perceptual lightness, so a
+/// yellow or green fill gets dark text where [`Colorize::on`], which goes by
+/// HSL lightness, would pick white.
+pub(super) fn readable_on(fill: Hsla) -> Hsla {
+    let pole = if oklab_lightness(fill.opaque()) > READABLE_ON_LIGHTNESS {
+        hsla(0., 0., 0., 1.)
+    } else {
+        hsla(0., 0., 1., 1.)
+    };
+    pole.mix_oklab(pole.invert_l(), 0.94)
 }
 
 pub(super) fn edge_weight() -> f32 {
@@ -121,6 +139,10 @@ pub trait Colorize: Sized {
     /// De-emphasized text: this color pulled most of the way toward its
     /// contrast pole. On `foreground`, the muted body color.
     fn muted(&self) -> Self;
+
+    /// Text quieter than [`Colorize::muted`]: placeholders, hints and
+    /// disabled labels.
+    fn faint(&self) -> Self;
 
     /// Text that stays legible *on* this color: near-black on a light color,
     /// near-white on a dark one.
@@ -293,6 +315,10 @@ impl Colorize for Hsla {
 
     fn muted(&self) -> Self {
         toward_contrast(*self, muted_weight())
+    }
+
+    fn faint(&self) -> Self {
+        toward_contrast(*self, faint_weight())
     }
 
     fn on(&self) -> Self {

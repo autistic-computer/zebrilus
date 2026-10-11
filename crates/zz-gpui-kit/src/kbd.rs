@@ -2,12 +2,16 @@
 //! string, ⌘⇧A on Apple platforms and Ctrl+Shift+A elsewhere.
 
 use zz_gpui::{
-    Action, AsKeystroke as _, FocusHandle, IntoElement, KeyContext, Keystroke, ParentElement as _,
-    RenderOnce, StyleRefinement, Styled, Window, div, relative,
+    Action, App, AsKeystroke as _, FocusHandle, FontWeight, IntoElement, KeyContext, Keystroke,
+    ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, div, px,
+    relative,
 };
 
 use crate::Colorize as _;
-use crate::{ActiveTheme as _, StyledExt as _};
+use crate::{
+    ActiveTheme as _, Emphasis, Ground, PaintExt as _, PaintState, Sizable, Size, StyledExt as _,
+    Tone, h_flex, rems_from_px,
+};
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 const SEPARATOR: &str = "";
@@ -165,6 +169,92 @@ impl RenderOnce for Kbd {
             .flex_shrink_0()
             .refine_style(&self.style)
             .child(Self::format_key(&self.stroke, self.lowercase))
+    }
+}
+
+/// One key drawn as a cap: a shortcut digit on a row, the Enter mark inside a
+/// button. Neutral, in an emphasis; outline by default.
+#[derive(IntoElement)]
+pub struct Keycap {
+    label: SharedString,
+    emphasis: Emphasis,
+    on: Option<Ground>,
+    size: Size,
+    style: StyleRefinement,
+}
+
+impl Keycap {
+    #[must_use]
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            emphasis: Emphasis::Outline,
+            on: None,
+            size: Size::default(),
+            style: StyleRefinement::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
+        self.emphasis = emphasis;
+        self
+    }
+
+    /// Draw the cap on `ground`, the paint it sits inside (see
+    /// [`crate::Paint::ground_at`]), instead of the window.
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.on = Some(ground);
+        self
+    }
+}
+
+impl Sizable for Keycap {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
+impl Styled for Keycap {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+impl RenderOnce for Keycap {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let (height, text) = match self.size {
+            Size::XSmall | Size::Small => (16.0, 10.0),
+            Size::Large => (22.0, 12.0),
+            Size::Medium | Size::Size(_) => (18.0, 11.0),
+        };
+        let theme = cx.theme();
+        let paint = theme.paint_on(
+            self.on.unwrap_or_else(|| theme.ground()),
+            Tone::Neutral,
+            self.emphasis,
+        );
+        let ink = if self.emphasis == Emphasis::Solid {
+            paint.text
+        } else {
+            paint.muted_at(PaintState::Rest)
+        };
+        h_flex()
+            .flex_none()
+            .justify_center()
+            .h(px(height))
+            .min_w(px(height))
+            .px(px(4.0))
+            .rounded(theme.control_radius())
+            .painted(paint, PaintState::Rest)
+            .text_color(ink)
+            .text_size(rems_from_px(text))
+            .line_height(px(height - 2.0))
+            .font_weight(FontWeight::NORMAL)
+            .refine_style(&self.style)
+            .child(self.label)
     }
 }
 
