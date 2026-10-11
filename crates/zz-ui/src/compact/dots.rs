@@ -1,12 +1,11 @@
 use zz_gpui::{App, Div, ParentElement as _, Styled as _, div, prelude::*};
 
-use crate::{ActiveTheme as _, rems_from_px};
+use crate::{ActiveTheme as _, Colorize as _, rems_from_px};
 
 const DOT: f32 = 5.0;
 const ACTIVE_DOT: f32 = 12.0;
 const DOT_GAP: f32 = 3.0;
 const GROUP_GAP: f32 = 6.0;
-const DIM: f32 = 0.3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PageDot {
@@ -34,7 +33,7 @@ pub fn page_dots(groups: &[Vec<PageDot>], cx: &App) -> Div {
                     } else if dot.attention {
                         theme.warning
                     } else {
-                        theme.foreground.opacity(DIM)
+                        theme.foreground.faint()
                     };
                     div()
                         .debug_selector(move || selector)

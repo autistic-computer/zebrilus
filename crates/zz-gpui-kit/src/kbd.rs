@@ -3,11 +3,9 @@
 
 use zz_gpui::{
     Action, App, AsKeystroke as _, FocusHandle, FontWeight, IntoElement, KeyContext, Keystroke,
-    ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, div, px,
-    relative,
+    ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, px,
 };
 
-use crate::Colorize as _;
 use crate::{
     ActiveTheme as _, Emphasis, Ground, PaintExt as _, PaintState, Sizable, Size, StyledExt as _,
     Tone, h_flex, rems_from_px,
@@ -23,11 +21,15 @@ const MODIFIERS: [&str; 4] = ["⌃", "⌥", "⇧", "⌘"];
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 const MODIFIERS: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
 
+/// A keystroke drawn as a [`Keycap`]. Neutral soft by default.
 #[derive(IntoElement, Clone, Debug)]
 pub struct Kbd {
     style: StyleRefinement,
     stroke: Keystroke,
     lowercase: bool,
+    emphasis: Emphasis,
+    on: Option<Ground>,
+    size: Size,
 }
 
 impl Kbd {
@@ -37,6 +39,9 @@ impl Kbd {
             style: StyleRefinement::default(),
             stroke,
             lowercase: false,
+            emphasis: Emphasis::Soft,
+            on: None,
+            size: Size::default(),
         }
     }
 
@@ -45,6 +50,26 @@ impl Kbd {
     pub fn lowercase(mut self) -> Self {
         self.lowercase = true;
         self
+    }
+
+    #[must_use]
+    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
+        self.emphasis = emphasis;
+        self
+    }
+
+    /// Draw the cap on `ground`, the paint it sits inside, instead of the
+    /// window.
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.on = Some(ground);
+        self
+    }
+
+    /// The keystroke as text, for a binding shown without a cap.
+    #[must_use]
+    pub fn text(&self) -> String {
+        Self::format_key(&self.stroke, self.lowercase)
     }
 
     /// The highest-precedence binding for `action` as a pill, optionally scoped
@@ -153,22 +178,23 @@ impl Styled for Kbd {
     }
 }
 
+impl Sizable for Kbd {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
 impl RenderOnce for Kbd {
-    fn render(self, _window: &mut Window, cx: &mut zz_gpui::App) -> impl IntoElement {
-        div()
-            .text_color(cx.theme().foreground.muted())
-            .bg(cx.theme().background.raised(2))
-            .py_0p5()
-            .px_1()
-            .min_w_5()
-            .text_center()
-            .rounded(cx.theme().radius)
-            .line_height(relative(1.))
-            .text_xs()
-            .whitespace_normal()
-            .flex_shrink_0()
-            .refine_style(&self.style)
-            .child(Self::format_key(&self.stroke, self.lowercase))
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let cap = Keycap::new(self.text())
+            .emphasis(self.emphasis)
+            .with_size(self.size)
+            .refine_style(&self.style);
+        match self.on {
+            Some(ground) => cap.on(ground),
+            None => cap,
+        }
     }
 }
 

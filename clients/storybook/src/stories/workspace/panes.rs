@@ -4,7 +4,6 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName,
-    kbd::Kbd,
     pane::{
         FloatingSurface, PaneDragOverlayState, PaneOverlayCorner, PaneSplitAxis,
         PaneSplitHighlight, PaneSplitSide, TERMINAL_HEADER_HEIGHT, pane_drag_chip,
@@ -289,13 +288,13 @@ fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn indicator_key(key: &str) -> AnyElement {
-    Kbd::new(Keystroke::parse(key).expect("static display-panes key")).into_any_element()
+fn indicator_key(key: &str) -> Option<Keystroke> {
+    Some(Keystroke::parse(key).expect("static display-panes key"))
 }
 
 fn display_panes(_: &mut Window, cx: &mut App) -> AnyElement {
     let mono = cx.theme().mono_font_family.clone();
-    let card = |id: &'static str, index: &'static str, key: AnyElement, active: bool| {
+    let card = |id: &'static str, index: &'static str, key: Option<Keystroke>, active: bool| {
         pane_indicator_card(id, index, key, active, mono.clone(), cx)
     };
     let pane = |index: usize, active: bool, cx: &App| {
@@ -357,16 +356,7 @@ fn display_panes(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(card("card-active", "0", indicator_key("0"), true))
                 .child(card("card-1", "1", indicator_key("1"), false))
                 .child(card("card-2", "2", indicator_key("2"), false))
-                .child(card(
-                    "card-click",
-                    "12",
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().foreground.muted())
-                        .child("click")
-                        .into_any_element(),
-                    false,
-                )),
+                .child(card("card-click", "12", None, false)),
         )
         .state("over a window", sized("display-layout", 300.0, layout))
         .into_any_element()

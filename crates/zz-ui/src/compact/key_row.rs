@@ -11,7 +11,10 @@ use super::{
     popover_key::{PopoverKey, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords},
     sticky::{StickyModifier, StickyModifiers},
 };
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, rems_from_px};
+use crate::{
+    ActiveTheme as _, Emphasis, Icon, IconName, Paint, PaintExt as _, PaintState, StyledExt as _,
+    Tone, rems_from_px,
+};
 
 pub const KEY_ROW_HEIGHT: f32 = 44.0;
 pub(super) const KEY_HEIGHT: f32 = 32.0;
@@ -21,8 +24,6 @@ const ROW_PADDING_X: f32 = 6.0;
 const KEY_GAP: f32 = 3.0;
 const KEY_GROUP: &str = "key-row-key";
 pub(super) const KEY_SLOP: (f32, f32) = (KEY_GAP / 2.0, (KEY_ROW_HEIGHT - KEY_HEIGHT) / 2.0);
-const LATCHED_WASH: u8 = 6;
-const PRESSED_WASH: u8 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum KeyLook {
@@ -31,23 +32,32 @@ pub(super) enum KeyLook {
     Inverted,
 }
 
-pub(super) fn key_surface<E: Styled>(element: E, look: KeyLook, cx: &App) -> E {
+/// A key's paint and state: a resting key is a neutral soft button, a latched
+/// modifier is selected, and a held or open key inverts to neutral solid.
+pub(super) fn key_paint(look: KeyLook, cx: &App) -> (Paint, PaintState) {
     let theme = cx.theme();
+    let soft = theme.paint(Tone::Neutral, Emphasis::Soft).opaque();
+    match look {
+        KeyLook::Rest => (soft, PaintState::Rest),
+        KeyLook::Latched => (soft, PaintState::Selected),
+        KeyLook::Inverted => (
+            theme.paint(Tone::Neutral, Emphasis::Solid),
+            PaintState::Rest,
+        ),
+    }
+}
+
+pub(super) fn key_surface<E: Styled>(element: E, look: KeyLook, cx: &App) -> E {
+    let (paint, state) = key_paint(look, cx);
     let element = element
         .h(rems_from_px(KEY_HEIGHT))
-        .rounded(theme.control_radius())
-        .control_surface(cx);
-    match look {
-        KeyLook::Rest => element
-            .bg(theme.background.raised(2))
-            .text_color(theme.foreground),
-        KeyLook::Latched => element
-            .bg(theme.background.washed(LATCHED_WASH))
-            .text_color(theme.foreground),
-        KeyLook::Inverted => element
-            .bg(theme.foreground)
-            .text_color(theme.background.opaque())
-            .font_semibold(),
+        .rounded(cx.theme().control_radius())
+        .control_surface(cx)
+        .painted(paint, state);
+    if look == KeyLook::Inverted {
+        element.font_semibold()
+    } else {
+        element
     }
 }
 
@@ -214,7 +224,7 @@ impl KeyRow {
                     .relative()
                     .child(crate::touch::instant_press_highlight(
                         ElementId::named_usize("key-row-press", index),
-                        cx.theme().background.washed(PRESSED_WASH),
+                        key_paint(look, cx).0.active,
                         cx.theme().control_radius(),
                     ))
                     .child(content),

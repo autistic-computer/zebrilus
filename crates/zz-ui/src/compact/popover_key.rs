@@ -11,11 +11,14 @@ use zz_gpui::{
 };
 
 use super::{
-    key_row::{KEY_HEIGHT, KEY_WIDTH, KeyLook, key_surface},
+    key_row::{KEY_HEIGHT, KEY_WIDTH, KeyLook, key_paint, key_surface},
     press::{Grip, Press, key_slop, press_listeners},
     sticky::{StickyModifier, StickyModifiers},
 };
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, rems_from_px};
+use crate::{
+    ActiveTheme as _, Emphasis, Icon, IconName, PaintExt as _, PaintState, StyledExt as _, Tone,
+    rems_from_px,
+};
 
 const HOLD: Duration = Duration::from_millis(280);
 const SLIDE: f32 = 12.0;
@@ -234,19 +237,21 @@ impl PopoverKey {
     fn item(&self, index: usize, item: &PopoverKeyItem, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let hovered = self.hover == Some(index);
-        let pressed = theme.background.washed(4);
-        let color = if hovered {
-            theme.background.opaque()
-        } else if item.danger {
-            theme.danger
+        let paint = theme.paint(
+            if item.danger {
+                Tone::Danger
+            } else {
+                Tone::Neutral
+            },
+            Emphasis::Ghost,
+        );
+        let state = if hovered {
+            PaintState::Selected
         } else {
-            theme.foreground
+            PaintState::Rest
         };
-        let muted = if hovered {
-            color
-        } else {
-            theme.foreground.muted()
-        };
+        let pressed = paint.active;
+        let muted = paint.muted_at(state);
         let cap = |cap: SharedString| {
             div()
                 .flex_none()
@@ -280,8 +285,7 @@ impl PopoverKey {
             .h(rems_from_px(ITEM_HEIGHT))
             .px(rems_from_px(8.0))
             .rounded(theme.menu_radius())
-            .text_color(color)
-            .when(hovered, |row| row.bg(theme.foreground))
+            .painted(paint, state)
             .when(!hovered, |row| row.active(move |style| style.bg(pressed)))
             .children(leading)
             .child(
@@ -480,12 +484,8 @@ impl Render for PopoverKey {
         } else {
             KeyLook::Rest
         };
-        let theme = cx.theme();
-        let hint = if look == KeyLook::Inverted {
-            theme.background.opaque().opacity(0.5)
-        } else {
-            theme.foreground.opacity(0.35)
-        };
+        let (paint, state) = key_paint(look, cx);
+        let hint = paint.faint_at(state);
         let key = Rc::clone(&self.key);
         let selector = format!("popover-key-{}", self.label);
         let open = self.open.is_some();

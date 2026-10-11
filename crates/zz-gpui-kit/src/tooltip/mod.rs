@@ -77,7 +77,7 @@ impl Render for Tooltip {
                             .flex_shrink_0()
                             .text_xs()
                             .text_color(cx.theme().foreground.muted())
-                            .child(kbd.p_0().border_0().min_w_0().bg(cx.theme().transparent)),
+                            .child(kbd.text()),
                     )
                 }),
         )

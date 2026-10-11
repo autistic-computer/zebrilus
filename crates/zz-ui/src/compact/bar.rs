@@ -4,7 +4,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintExt as _, PaintState,
+    StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
     rems_from_px,
 };
@@ -18,12 +19,8 @@ const PADDING_TOP: f32 = 12.0;
 const GRABBER_TOP: f32 = 5.0;
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 4.0;
-const GRABBER: f32 = 0.22;
-const GRABBER_HELD: f32 = 0.6;
 const TILE: f32 = 28.0;
 const TILE_RADIUS: f32 = 4.0;
-const TILE_WARNING: f32 = 0.14;
-const PRESS_WASH: f32 = 0.08;
 
 pub fn compact_bar(
     pill: impl IntoElement,
@@ -58,9 +55,11 @@ pub fn compact_bar(
                         .w(rems_from_px(GRABBER_WIDTH))
                         .h(rems_from_px(GRABBER_HEIGHT))
                         .rounded_full()
-                        .bg(theme
-                            .foreground
-                            .opacity(if held { GRABBER_HELD } else { GRABBER })),
+                        .bg(if held {
+                            theme.foreground.muted()
+                        } else {
+                            theme.foreground.faint()
+                        }),
                 ),
         )
         .child(div().flex().flex_1().min_w_0().child(pill))
@@ -86,15 +85,20 @@ pub fn compact_bar_pill(
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let muted = theme.foreground.muted();
-    let (badge, glyph, meta_color) = if warning {
-        (
-            theme.warning.opacity(TILE_WARNING),
-            theme.warning,
-            theme.warning,
-        )
+    let pill = theme.paint(Tone::Neutral, Emphasis::Soft).opaque();
+    let badge = theme.paint_on(
+        pill.ground_at(PaintState::Rest),
+        if warning {
+            Tone::Warning
+        } else {
+            Tone::Neutral
+        },
+        Emphasis::Soft,
+    );
+    let meta_color = if warning {
+        badge.text
     } else {
-        (theme.background.raised(2), muted, muted)
+        pill.muted_at(PaintState::Rest)
     };
     div()
         .id(id)
@@ -110,7 +114,8 @@ pub fn compact_bar_pill(
         .gap(rems_from_px(10.0))
         .rounded(theme.radius)
         .control_surface(cx)
-        .surface_fill(theme.background.raised(1), cx)
+        .painted(pill, PaintState::Rest)
+        .surface_fill(pill.fill, cx)
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .child(
             div()
@@ -120,8 +125,12 @@ pub fn compact_bar_pill(
                 .justify_center()
                 .size(rems_from_px(TILE))
                 .rounded(rems_from_px(TILE_RADIUS))
-                .bg(badge)
-                .text_color(glyph)
+                .bg(badge.fill)
+                .text_color(if warning {
+                    badge.text
+                } else {
+                    badge.muted_at(PaintState::Rest)
+                })
                 .child(Icon::new(icon).size(rems_from_px(16.0))),
         )
         .child(
@@ -164,7 +173,7 @@ pub fn compact_bar_pill(
         )
         .child(crate::touch::press_highlight(
             "compact-bar-pill-press",
-            theme.foreground.opacity(PRESS_WASH),
+            pill.active,
             theme.radius,
         ))
 }

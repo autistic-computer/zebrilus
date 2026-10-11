@@ -6,7 +6,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, StyledExt as _, rems_from_px,
+    ActiveTheme as _, Colorize as _, Emphasis, StyledExt as _, Tone, rems_from_px,
     which_key::{WhichKeyCap, WhichKeyRow, cap_text, groups},
 };
 
@@ -51,19 +51,16 @@ impl WhichKeyList {
             .child(cap_text(cap))
     }
 
-    fn row(
-        &self,
-        index: usize,
-        row: &WhichKeyRow,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> AnyElement {
+    fn row(&self, index: usize, row: &WhichKeyRow, cx: &mut App) -> AnyElement {
         let selector = format!("which-key-list-row-{}", row.id);
         let id = row.id.clone();
         let on_pick = self.on_pick.clone();
         let element_id = ElementId::named_usize("which-key-list-row", index);
-        let press = crate::touch::press_feedback(element_id.clone(), window, cx);
-        let pressed = press.amount;
+        let press = crate::touch::press_highlight(
+            element_id.clone(),
+            cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active,
+            cx.theme().menu_radius(),
+        );
         div()
             .id(element_id)
             .relative()
@@ -77,10 +74,7 @@ impl WhichKeyList {
             .px(rems_from_px(INSET))
             .rounded(cx.theme().menu_radius())
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-            .when(pressed > 0.0, |this| {
-                this.bg(cx.theme().foreground.opacity(0.1 * pressed))
-            })
-            .child(press.listener())
+            .child(press)
             .child(
                 div()
                     .flex()
@@ -108,7 +102,7 @@ impl WhichKeyList {
 }
 
 impl RenderOnce for WhichKeyList {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut children = Vec::new();
         let mut index = 0;
         for group in groups(&self.rows) {
@@ -129,7 +123,7 @@ impl RenderOnce for WhichKeyList {
                 );
             }
             for row in group.rows {
-                children.push(self.row(index, row, window, cx));
+                children.push(self.row(index, row, cx));
                 index += 1;
             }
         }

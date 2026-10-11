@@ -767,30 +767,31 @@ pub fn pane_overlay_stack(
 }
 
 /// The pane-selection card for tmux `display-panes`: the pane index over the
-/// caller's [`crate::kbd::Kbd`] pill for `key`. The active pane takes danger
-/// semantics, the rest the neutral list surface.
+/// key that picks it, or "click" when it has none. The active pane is danger
+/// soft, the rest neutral soft, both opaque over the pane.
 pub fn pane_indicator_card(
     id: impl Into<ElementId>,
     index: impl Into<SharedString>,
-    key: impl IntoElement,
+    key: Option<zz_gpui::Keystroke>,
     active: bool,
     font_family: impl Into<SharedString>,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let background = if active {
-        cx.theme().danger.fill()
-    } else {
-        cx.theme().foreground.wash()
-    };
-    let hover_background = if active {
-        cx.theme().danger.fill().hover()
-    } else {
-        cx.theme().background.washed(2)
-    };
-    let index_color = if active {
-        cx.theme().danger
-    } else {
-        cx.theme().foreground
+    let paint = cx
+        .theme()
+        .paint(
+            if active { Tone::Danger } else { Tone::Neutral },
+            Emphasis::Soft,
+        )
+        .opaque();
+    let ground = paint.ground_at(PaintState::Rest);
+    let key = match key {
+        Some(key) => crate::kbd::Kbd::new(key).on(ground).into_any_element(),
+        None => div()
+            .text_xs()
+            .text_color(paint.muted_at(PaintState::Rest))
+            .child("click")
+            .into_any_element(),
     };
 
     div()
@@ -804,7 +805,7 @@ pub fn pane_indicator_card(
         .justify_center()
         .gap(px(4.0))
         .rounded(cx.theme().radius)
-        .bg(background)
+        .bg(paint.fill)
         .shadow(vec![
             BoxShadow {
                 color: cx.theme().border().subtle(),
@@ -822,14 +823,14 @@ pub fn pane_indicator_card(
             },
         ])
         .cursor(zz_gpui::CursorStyle::PointingHand)
-        .hover(move |style| style.bg(hover_background))
+        .hover(move |style| style.bg(paint.hover))
         .child(
             div()
                 .font_family(font_family.into())
                 .font_weight(FontWeight::BOLD)
                 .text_size(crate::rems_from_px(18.0))
                 .line_height(crate::rems_from_px(20.0))
-                .text_color(index_color)
+                .text_color(paint.text)
                 .child(index.into()),
         )
         .child(key)
@@ -946,6 +947,12 @@ pub fn pane_picker_row(
     enabled: bool,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
+    let state = match (enabled, selected) {
+        (false, _) => PaintState::Disabled,
+        (true, true) => PaintState::Selected,
+        (true, false) => PaintState::Rest,
+    };
     div()
         .id(id)
         .flex()
@@ -956,17 +963,12 @@ pub fn pane_picker_row(
         .gap(px(10.0))
         .px(px(12.0))
         .rounded(cx.theme().menu_radius())
-        .bg(if selected && enabled {
-            crate::navigation::workspace_row_highlight(cx)
-        } else {
-            cx.theme().background.washed(1)
-        })
+        .painted(paint, state)
         .when(enabled, zz_gpui::Styled::cursor_pointer)
-        .when(!enabled, |row| row.opacity(0.4))
         .child(
             crate::Icon::new(icon)
                 .with_size(px(16.0))
-                .text_color(cx.theme().foreground.muted()),
+                .text_color(paint.muted_at(state)),
         )
         .child(
             div()
@@ -984,7 +986,7 @@ pub fn pane_picker_row(
                 zz_gpui::Keystroke::parse(shortcut).expect("static pane picker shortcut"),
             )
             .lowercase()
-            .bg(cx.theme().background.raised(4)),
+            .on(paint.ground_at(state)),
         )
 }
 

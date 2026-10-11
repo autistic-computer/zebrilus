@@ -8,7 +8,8 @@ use zz_gpui::{
 use zz_protocol::{PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::{Glyph, TerminalViewport};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintExt as _, PaintState,
+    StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
     compact::{
         COMPACT_PANE_HEADER_HEIGHT, Instant, bottom_sheet, sheet_action, sheet_close, sheet_option,
@@ -33,7 +34,6 @@ const PREVIEW_TEXT: f32 = 4.0;
 const PREVIEW_LINE: f32 = 4.8;
 const PREVIEW_ROWS: u16 = 40;
 const PREVIEW_COLUMNS: usize = 56;
-const PRESS_WASH: f32 = 0.08;
 const OVERVIEW_FADE: f32 = 1.5;
 const LIVE_FADE: f32 = 3.0;
 const CARD_FADE: f32 = 0.15;
@@ -179,7 +179,7 @@ impl AppShell {
         }
         let theme = cx.theme();
         let muted = theme.foreground.muted();
-        let wash = theme.foreground.opacity(PRESS_WASH);
+        let wash = theme.paint(Tone::Neutral, Emphasis::Ghost).active;
         let radius = theme.radius;
         let new_window = div()
             .id("overview-new-window")
@@ -451,7 +451,7 @@ impl AppShell {
             .px(px(8.0))
             .child(press_highlight(
                 "overview-session-press",
-                theme.foreground.opacity(PRESS_WASH),
+                theme.paint(Tone::Neutral, Emphasis::Ghost).active,
                 theme.radius,
             ))
             .child(Icon::new(IconName::Layers).size(px(16.0)).text_color(muted))
@@ -521,6 +521,7 @@ impl AppShell {
         let scroll = self.compact.overview_rows.entry(id).or_default().clone();
         let theme = cx.theme();
         let muted = theme.foreground.muted();
+        let tile = theme.paint(Tone::Neutral, Emphasis::Soft);
         let add = div()
             .id(("overview-add", id.0))
             .relative()
@@ -533,15 +534,15 @@ impl AppShell {
             .w(px(ADD_WIDTH))
             .h(px(CARD_HEIGHT))
             .rounded(px(CARD_RADIUS))
-            .bg(theme.background.raised(1))
             .control_surface(cx)
+            .painted(tile, PaintState::Rest)
             .text_size(px(12.0))
-            .text_color(muted)
+            .text_color(tile.muted_at(PaintState::Rest))
             .child(Icon::new(IconName::Plus).size(px(16.0)))
             .child("New pane")
             .child(press_highlight(
                 ("overview-add-press", id.0),
-                theme.foreground.opacity(PRESS_WASH),
+                tile.active,
                 px(CARD_RADIUS),
             ))
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -706,7 +707,7 @@ impl AppShell {
             })
             .child(press_highlight(
                 ("overview-card-press", pane_id.0),
-                theme.foreground.opacity(PRESS_WASH),
+                theme.paint(Tone::Neutral, Emphasis::Ghost).active,
                 px(CARD_RADIUS),
             ))
             .child(

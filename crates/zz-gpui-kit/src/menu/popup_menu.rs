@@ -10,7 +10,7 @@ use zz_gpui::{
     ParentElement, Pixels, Render, Role, ScrollHandle, SharedString, StatefulInteractiveElement,
     Styled, WeakEntity, Window, anchored, div, prelude::FluentBuilder, px, rems,
 };
-use zz_gpui::{ClickEvent, Hsla, MouseDownEvent, Point, Subscription};
+use zz_gpui::{ClickEvent, Div, Hsla, MouseDownEvent, Point, Subscription};
 
 use crate::Colorize as _;
 use std::rc::Rc;
@@ -791,7 +791,7 @@ impl PopupMenu {
         ink: Hsla,
         opacity: f32,
         window: &mut Window,
-    ) -> Option<Kbd> {
+    ) -> Option<Div> {
         let action = action?;
 
         match self
@@ -803,13 +803,14 @@ impl PopupMenu {
             Some(kbd) => Some(kbd),
             None => Kbd::binding_for_action(action.as_ref(), None, window),
         }
-        .map(|this| {
-            this.p_0()
-                .flex_nowrap()
-                .border_0()
-                .bg(zz_gpui::transparent_white())
+        .map(|kbd| {
+            div()
+                .flex_none()
+                .whitespace_nowrap()
+                .text_xs()
                 .text_color(ink)
                 .opacity(opacity)
+                .child(kbd.text())
         })
     }
 
