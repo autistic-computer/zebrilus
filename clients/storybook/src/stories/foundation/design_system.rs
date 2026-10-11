@@ -1,6 +1,7 @@
 use zz_gpui::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
-    Styled as _, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, Styled as _, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName,
@@ -9,7 +10,11 @@ use zz_ui::{
     button::{Button, ButtonVariants as _},
     check::Check,
     h_flex,
+    input::{Input, InputState, NumberInput},
     kbd::Keycap,
+    select::{Select, SelectState},
+    slider::DiscreteSlider,
+    switch::Switch,
     v_flex,
 };
 
@@ -62,6 +67,12 @@ pub const STORY: Story = Story {
             name: "Tiles and rows",
             summary: "Selectable surfaces. Tiles are neutral soft, rows are neutral ghost; both select with the look's selection fill.",
             build: |_, cx| stateless(tiles_and_rows, cx),
+        },
+        Section {
+            id: "fields",
+            name: "Fields",
+            summary: "Text, number and select fields are neutral at the look's field emphasis (the Fields knob), ghost when they should show their edge only on hover or focus, danger when invalid. Focus turns the border to the primary tone. A field inside a tile sits on the tile's ground.",
+            build: |window, cx| cx.new(|cx| Fields::new(window, cx)).into(),
         },
         Section {
             id: "text",
@@ -619,4 +630,172 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(ground_samples(cx)),
         )
         .into_any_element()
+}
+
+const FIELD_ROWS: [(&str, Option<Emphasis>); 4] = [
+    ("the look's", None),
+    ("soft", Some(Emphasis::Soft)),
+    ("outline", Some(Emphasis::Outline)),
+    ("ghost", Some(Emphasis::Ghost)),
+];
+
+struct Fields {
+    grid: Vec<[Entity<InputState>; 4]>,
+    focused: Entity<InputState>,
+    number: Entity<InputState>,
+    select: Entity<SelectState<Vec<&'static str>>>,
+    empty_select: Entity<SelectState<Vec<&'static str>>>,
+    in_tile: Entity<InputState>,
+    in_selected_tile: Entity<InputState>,
+}
+
+impl Fields {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut field = |value: &str| {
+            let value = value.to_owned();
+            cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("Placeholder")
+                    .default_value(value)
+            })
+        };
+        let grid = FIELD_ROWS
+            .iter()
+            .map(|_| {
+                [
+                    field(""),
+                    field("main"),
+                    field("not a branch name"),
+                    field("main"),
+                ]
+            })
+            .collect();
+        let focused = field("release/0.16");
+        let number = field("12");
+        let in_tile = field("");
+        let in_selected_tile = field("release/0.15");
+        let languages = vec!["Rust", "Go", "Zig"];
+        let select = cx.new(|cx| {
+            SelectState::new(
+                languages.clone(),
+                Some(zz_ui::IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let empty_select = cx.new(|cx| SelectState::new(languages, None, window, cx));
+        let target = focused.clone();
+        window.on_next_frame(move |window, _| {
+            window.on_next_frame(move |window, cx| {
+                target.update(cx, |state, cx| state.focus(window, cx));
+            });
+        });
+        Self {
+            grid,
+            focused,
+            number,
+            select,
+            empty_select,
+            in_tile,
+            in_selected_tile,
+        }
+    }
+}
+
+impl Render for Fields {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let columns = ["empty", "filled", "invalid", "disabled"];
+        let rows = FIELD_ROWS
+            .iter()
+            .zip(&self.grid)
+            .map(|((name, emphasis), states)| {
+                let cell = |index: usize| {
+                    Input::new(&states[index])
+                        .when_some(*emphasis, Input::emphasis)
+                        .when(index == 2, |input| input.tone(Tone::Danger))
+                        .disabled(index == 3)
+                        .into_any_element()
+                };
+                (
+                    SharedString::from(*name),
+                    vec![cell(0), cell(1), cell(2), cell(3)],
+                )
+            })
+            .collect();
+        let tile_paint = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
+        let tile = |selected: bool, input: AnyElement| {
+            let state = if selected {
+                PaintState::Selected
+            } else {
+                PaintState::Rest
+            };
+            v_flex()
+                .w(px(280.0))
+                .gap_2()
+                .px_3()
+                .py(px(9.0))
+                .rounded(px(8.0))
+                .painted(tile_paint, state)
+                .text_size(px(13.0))
+                .child("Other")
+                .child(input)
+        };
+        let selected_ground = tile_paint.ground_at(PaintState::Selected);
+        states()
+            .state("text fields", matrix(&columns, rows, cx))
+            .state(
+                "focused",
+                h_flex().w(px(280.0)).child(Input::new(&self.focused)),
+            )
+            .state(
+                "number, select",
+                row()
+                    .child(div().w(px(160.0)).child(NumberInput::new(&self.number)))
+                    .child(Select::new(&self.select))
+                    .child(Select::new(&self.empty_select).placeholder("Language"))
+                    .child(Select::new(&self.select).disabled(true)),
+            )
+            .state(
+                "switch, slider",
+                row()
+                    .child(Switch::new("ds-switch-off"))
+                    .child(Switch::new("ds-switch-on").checked(true))
+                    .child(
+                        Switch::new("ds-switch-disabled")
+                            .checked(true)
+                            .disabled(true),
+                    )
+                    .child(
+                        div().w(px(280.0)).child(DiscreteSlider::new(
+                            "ds-slider",
+                            "Scrollback",
+                            ["1k", "10k", "50k", "100k"]
+                                .map(SharedString::from)
+                                .to_vec(),
+                            1,
+                            |_, _, _| {},
+                        )),
+                    ),
+            )
+            .state(
+                "on a tile: rest, selected",
+                h_flex()
+                    .items_start()
+                    .gap_4()
+                    .child(tile(
+                        false,
+                        Input::new(&self.in_tile)
+                            .small()
+                            .on(tile_paint.ground_at(PaintState::Rest))
+                            .into_any_element(),
+                    ))
+                    .child(tile(
+                        true,
+                        Input::new(&self.in_selected_tile)
+                            .small()
+                            .on(selected_ground)
+                            .into_any_element(),
+                    )),
+            )
+    }
 }

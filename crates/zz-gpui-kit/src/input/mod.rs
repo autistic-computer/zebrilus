@@ -26,6 +26,7 @@ pub use actions::{
     ShowCharacterPalette, Undo,
 };
 pub use field::{Input, InputContentType};
+pub(crate) use field::{field_chrome, field_paint, field_text};
 pub use number::NumberInput;
 pub use state::{InputEvent, InputState};
 pub use zz_gpui::TextAlign;

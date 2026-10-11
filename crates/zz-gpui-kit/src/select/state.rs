@@ -9,11 +9,9 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Selectable as _,
-    Sizable as _, Size, StyledExt as _,
-    button::Button,
-    h_flex,
-    input::{Input, InputEvent, InputState},
+    ActiveTheme as _, Colorize as _, Icon, IconName, IndexPath, PaintState, Sizable as _, Size,
+    StyledExt as _, Tone, h_flex,
+    input::{Input, InputEvent, InputState, field_chrome, field_paint, field_text},
     menu::{PopupMenu, PopupMenuItem},
     sheet::{bottom_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option},
 };
@@ -286,15 +284,22 @@ impl<D: SelectDelegate> SelectState<D> {
 }
 
 impl<D: SelectDelegate> SelectState<D> {
-    fn render_trigger(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_trigger(&self, focused: bool, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
-        let title = self
-            .selected
-            .as_ref()
-            .map(SelectItem::title)
+        let chosen = self.selected.as_ref().map(SelectItem::title);
+        let placeholder = chosen.is_none();
+        let title = chosen
             .or_else(|| self.options.placeholder.clone())
             .unwrap_or_else(|| SharedString::new_static("Select"));
         let open = self.menu.is_some() || self.sheet;
+        let disabled = self.options.disabled;
+        let size = self.options.size;
+        let paint = field_paint(Tone::Neutral, None, None, cx);
+        let state = match (disabled, open || focused) {
+            (true, _) => PaintState::Disabled,
+            (false, true) => PaintState::Focused,
+            (false, false) => PaintState::Rest,
+        };
         let slop = crate::touch::control_slop(self.options.size);
         let toggle = move |this: &mut Self,
                            _: &zz_gpui::MouseDownEvent,
@@ -307,15 +312,40 @@ impl<D: SelectDelegate> SelectState<D> {
                 this.open_menu(window, cx);
             }
         };
-        let button = Button::new("select-trigger")
-            .tab_stop(false)
-            .with_size(self.options.size)
-            .label(title)
-            .dropdown_caret(true)
-            .disabled(self.options.disabled)
-            .selected(open)
-            .refine_style(&self.options.style)
-            .on_mouse_down(MouseButton::Left, cx.listener(toggle));
+        let button = field_chrome(
+            field_text(
+                h_flex()
+                    .id("select-trigger")
+                    .flex_none()
+                    .h(size.control_h(cx.theme().density))
+                    .px(size.input_px())
+                    .gap(px(6.0))
+                    .justify_between()
+                    .rounded(cx.theme().control_radius())
+                    .when(!disabled, zz_gpui::Styled::cursor_pointer),
+                size,
+            ),
+            paint,
+            state,
+            true,
+            true,
+        )
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .when(placeholder, |this| this.text_color(paint.faint_at(state)))
+                .child(title),
+        )
+        .child(
+            Icon::new(IconName::ChevronDown)
+                .xsmall()
+                .text_color(paint.muted_at(state)),
+        )
+        .refine_style(&self.options.style)
+        .when(!disabled, |this| {
+            this.on_mouse_down(MouseButton::Left, cx.listener(toggle))
+        });
         div()
             .relative()
             .child(button)
@@ -436,7 +466,7 @@ impl<D: SelectDelegate> SelectState<D> {
 
 impl<D: SelectDelegate> Render for SelectState<D> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let trigger = self.render_trigger(cx);
+        let trigger = self.render_trigger(self.focus_handle.is_focused(window), cx);
         let menu = self.render_menu(window, cx);
 
         div().relative().child(trigger).children(menu)

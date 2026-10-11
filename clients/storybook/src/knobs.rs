@@ -1,6 +1,6 @@
 use zz_gpui::{App, GlassMaterial, WindowAppearance, px};
 use zz_ui::{
-    PrimaryStyle, SelectionStyle, Theme, ThemeMode, UiZoom,
+    FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeMode, UiZoom,
     chrome_palette::{ChromePresetId, inherited_chrome_colors},
     interface_style::{self, InterfaceStyle, Look},
 };
@@ -190,6 +190,13 @@ impl Knobs {
                         }
                     }
                 }
+                "field" => {
+                    knobs.look.field = match value {
+                        "soft" => FieldStyle::Soft,
+                        "outline" => FieldStyle::Outline,
+                        _ => return Err(format!("field must be soft or outline, not {value}")),
+                    }
+                }
                 "font" => {
                     let family = decode(value);
                     knobs.look.font = (!family.is_empty()).then(|| family.into());
@@ -281,6 +288,7 @@ pub fn look_knobs(look: &Look) -> serde_json::Map<String, serde_json::Value> {
         .collect::<serde_json::Map<_, _>>();
     knobs.insert("selection".to_owned(), serde_json::json!(look.selection));
     knobs.insert("primary".to_owned(), serde_json::json!(look.primary));
+    knobs.insert("field".to_owned(), serde_json::json!(look.field));
     knobs.insert(
         "font".to_owned(),
         serde_json::json!(look.font.as_ref().map_or("", |font| font.as_ref())),

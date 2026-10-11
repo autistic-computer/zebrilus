@@ -96,7 +96,7 @@ pub(super) fn muted_weight() -> f32 {
     (MUTED / contrast()).clamp(0.0, 1.0)
 }
 
-fn faint_weight() -> f32 {
+pub(super) fn faint_weight() -> f32 {
     (FAINT / contrast()).clamp(0.0, 1.0)
 }
 

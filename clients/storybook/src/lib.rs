@@ -133,6 +133,7 @@ pub fn interface_styles_json() -> String {
                     .collect::<serde_json::Map<_, _>>();
                 values.insert("selection".to_owned(), json!(look.selection));
                 values.insert("primary".to_owned(), json!(look.primary));
+                values.insert("field".to_owned(), json!(look.field));
                 values.insert("font".to_owned(), json!(look.font));
                 values.insert(
                     "glass".to_owned(),
