@@ -9,7 +9,10 @@ use super::{
     popover_key::popover_above,
     press::{Grip, Press, press_listeners},
 };
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, rems_from_px};
+use crate::{
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintExt as _, PaintState,
+    StyledExt as _, Tone, rems_from_px,
+};
 
 const THRESHOLD: f32 = 10.0;
 const REPEAT_DELAY: Duration = Duration::from_millis(300);
@@ -116,6 +119,7 @@ impl ArrowPad {
 
     fn bubble(&self, cx: &App) -> AnyElement {
         let theme = cx.theme();
+        let paint = theme.paint(Tone::Neutral, Emphasis::Ghost);
         let cell = |slot: Option<ArrowDirection>, hub: bool| {
             let active = slot.is_some() && slot == self.direction;
             div()
@@ -127,12 +131,10 @@ impl ArrowPad {
                 .when_some(slot, |cell, direction| {
                     let selector = format!("arrow-pad-cell-{}", direction.key());
                     cell.debug_selector(move || selector)
-                        .text_color(if active {
-                            theme.background.opaque()
-                        } else {
-                            theme.foreground.muted()
+                        .when(active, |cell| cell.painted(paint, PaintState::Selected))
+                        .when(!active, |cell| {
+                            cell.text_color(paint.muted_at(PaintState::Rest))
                         })
-                        .when(active, |cell| cell.bg(theme.foreground))
                         .child(Icon::new(direction.icon()).size(rems_from_px(18.0)))
                 })
                 .when(hub, |cell| {

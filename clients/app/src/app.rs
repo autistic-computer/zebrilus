@@ -1936,17 +1936,7 @@ impl AppShell {
                 let pane = indicator.pane;
                 let key = indicator
                     .selection_key()
-                    .and_then(|key| zz_gpui::Keystroke::parse(&key.to_string()).ok())
-                    .map_or_else(
-                        || {
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().foreground.muted())
-                                .child("click")
-                                .into_any_element()
-                        },
-                        |key| zz_ui::kbd::Kbd::new(key).into_any_element(),
-                    );
+                    .and_then(|key| zz_gpui::Keystroke::parse(&key.to_string()).ok());
                 let card = zz_ui::pane::pane_indicator_card(
                     ("web-pane-indicator", pane.0),
                     indicator.index.to_string(),

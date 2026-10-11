@@ -45,7 +45,7 @@ use zz_ui::path_picker::{
     PATH_PICKER_VISIBLE_ROWS, PathPickerBackend, PathPickerEvent, PathPickerView,
 };
 use zz_ui::{
-    ActiveTheme as _, ElementExt as _, WindowExt as _, draws_window_controls, kbd::Kbd,
+    ActiveTheme as _, ElementExt as _, WindowExt as _, draws_window_controls,
     notification::Notification,
 };
 use zz_ui::{
@@ -3568,17 +3568,9 @@ impl AppView {
 
     fn pane_indicator(&self, indicator: &PaneIndicator, cx: &Context<Self>) -> impl IntoElement {
         let active = indicator.active();
-        let key: AnyElement = match indicator
+        let key = indicator
             .selection_key()
-            .and_then(|key| Keystroke::parse(&key.to_string()).ok())
-        {
-            Some(stroke) => Kbd::new(stroke).into_any_element(),
-            None => div()
-                .text_xs()
-                .text_color(cx.theme().foreground.muted())
-                .child("click")
-                .into_any_element(),
-        };
+            .and_then(|key| Keystroke::parse(&key.to_string()).ok());
         let mux = self.mux.clone();
         let pane = indicator.pane;
         let card = pane_indicator_card(

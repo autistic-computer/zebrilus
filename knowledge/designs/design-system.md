@@ -122,7 +122,8 @@ The shared chrome, `field_chrome` in `input/field.rs`, does three things:
 
 Kit widgets on the model:
 - **`Badge`**: tone, emphasis, size, optional icon, any children after the label. `.opaque()` for a badge floating over content. One widget for chips, pills, status and counts.
-- **`Keycap`**: a key as a cap. Neutral, outline by default, `.on(ground)` inside another paint. `Kbd` still formats keystrokes; it moves onto `Keycap` during migration.
+- **`Keycap`**: a key as a cap. Neutral, outline by default, `.on(ground)` inside another paint.
+- **`Kbd`**: a `Keystroke` formatted for the platform and drawn as a `Keycap`, neutral soft by default, with the same `.emphasis()` and `.on(ground)`. Menus and tooltips show a binding as text (`Kbd::text`) in the row's ink instead of a cap.
 - **`Check`**: `Check::checkbox(checked)` and `Check::radio(checked)`.
   - Off: a neutral outline.
   - On: the tone solid (primary by default), with `.on(ground)`.
@@ -150,7 +151,9 @@ Kit widgets on the model:
 | A secondary action beside the main one | neutral · soft |
 | Option tile in a question or permission card | neutral · soft, selectable |
 | Menu, list and chooser rows | neutral · ghost, selectable |
-| Shortcut keycap | neutral · outline (ghost inside rows) |
+| Digit keycap on a tile | neutral · outline, on the tile's ground |
+| Shortcut hint (`Kbd`) | neutral · soft; text in menus and tooltips |
+| Phone key | neutral · soft opaque; selected when latched; neutral · solid when held |
 | Count or kind chip (`2/3`, `Base`) | neutral · soft |
 | Reject, delete | danger · soft, or danger · solid when it is the main action |
 | Failing or blocked status | danger · soft |
