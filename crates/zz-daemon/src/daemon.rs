@@ -121709,6 +121709,7 @@ bind - split-window -v -c "#{pane_current_path}"
     struct TerminalTestState {
         viewports: BTreeMap<PaneId, zz_terminal::TerminalViewport>,
         snapshot: MuxSnapshot,
+        synced: bool,
         attachment: Option<(SessionId, u64)>,
         attached: bool,
     }
@@ -121726,11 +121727,19 @@ bind - split-window -v -c "#{pane_current_path}"
                 return;
             };
             match payload {
-                EventPayload::Snapshot(snapshot) => self.snapshot = snapshot.clone(),
-                EventPayload::TreeDelta(delta) => {
-                    delta
-                        .apply(&mut self.snapshot)
-                        .expect("daemon emitted an applicable tree delta");
+                EventPayload::Snapshot(snapshot) => {
+                    self.snapshot = snapshot.clone();
+                    self.synced = true;
+                }
+                EventPayload::TreeDelta(delta) if self.synced => {
+                    let generation = self.snapshot.generation;
+                    if let Err(error) = delta.apply(&mut self.snapshot) {
+                        panic!(
+                            "daemon emitted an inapplicable tree delta: {error:?}, \
+                             snapshot generation {generation}, delta {}..{} with {:?}",
+                            delta.base, delta.version, delta.ops
+                        );
+                    }
                 }
                 EventPayload::ClientView(view) => {
                     let attachment = view

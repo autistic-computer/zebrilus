@@ -582,6 +582,14 @@ fn an_inserted_command_holds_its_notifications_until_its_own_guard_closes() {
             ClientId(u64::MAX),
             ClientKind::Command,
             &mut ExecutionContext::default(),
+            &CommandInvocation::new("set-option", ["-wg", "automatic-rename", "off"]),
+        )
+        .unwrap();
+    shared
+        .execute(
+            ClientId(u64::MAX),
+            ClientKind::Command,
+            &mut ExecutionContext::default(),
             &CommandInvocation::new("new-session", ["-d", "-s", "inserted-order"]),
         )
         .unwrap();

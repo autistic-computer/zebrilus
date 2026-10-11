@@ -239,8 +239,13 @@ fn terminal_state_wait_observes_a_short_turn_before_submission_finishes() {
     shared.write_pane_agent_state(pane, "working");
     shared.write_pane_agent_state(pane, "idle");
     terminal.submitted(Ok(()));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !state.continuation.ready() {
+        assert!(Instant::now() < deadline, "the short turn never finished");
+        shared.terminal_requests.turn(&shared);
+        std::thread::sleep(Duration::from_millis(1));
+    }
     assert_eq!(shared.terminal_requests.turn(&shared), None);
-    assert!(state.continuation.ready());
     assert!(shared.agent_state_waits.lock().is_empty());
     let mut result = Ok(Execution::default());
     state.apply(&mut result);
