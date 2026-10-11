@@ -522,9 +522,10 @@ impl RenderOnce for Button {
         let paint = style.paint(on, cx);
         let neutral_surface = !self.flat && style.neutral();
         let resting_surface = neutral_surface && normal_style.shadow;
-        let highlight_ring = cx.theme().shadow && neutral_surface && !normal_style.shadow;
+        let highlight_ring =
+            cx.theme().control_shadows() && neutral_surface && !normal_style.shadow;
         let casts_shadow = (highlight_ring || resting_surface)
-            && cx.theme().shadow
+            && cx.theme().control_shadows()
             && ground.elevation == Elevation::Window;
         let lifted = move |fill: Hsla| {
             if casts_shadow {
@@ -605,7 +606,7 @@ impl RenderOnce for Button {
             .cursor_default()
             .when(self.variant.is_link(), |this| this.cursor_pointer())
             .when(
-                cx.theme().shadow
+                cx.theme().control_shadows()
                     && normal_style.shadow
                     && !self.flat
                     && !resting_surface

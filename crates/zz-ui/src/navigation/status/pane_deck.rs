@@ -252,7 +252,7 @@ fn pane_card(active: bool, hovered: bool, cx: &App) -> zz_gpui::Div {
         })
         .when(cx.theme().shadow, |card| {
             card.shadow(
-                crate::control_shadow(cx)
+                crate::contact_shadow(cx)
                     .into_iter()
                     .map(|mut shadow| {
                         shadow.offset.x = px(-1.5);

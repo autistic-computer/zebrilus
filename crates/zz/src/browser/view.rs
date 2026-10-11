@@ -481,7 +481,7 @@ fn element_picker_appearance(theme: &zz_ui::Theme, page_zoom: f64) -> ElementPic
         preview_background: to_hex(theme.surface(Elevation::Panel).fill.opaque()),
         preview_foreground: to_hex(theme.foreground),
         preview_border: to_hex(theme.border()),
-        shadow: theme.shadow.then(|| to_hex(theme.scrim)),
+        shadow: theme.shadow.then(|| to_hex(theme.shadow_color)),
         radius: f32::from(theme.radius),
         font_family: theme.mono_font_family.to_string(),
         page_zoom,
@@ -4215,7 +4215,7 @@ mod tests {
         let mut theme = zz_ui::Theme::default();
         theme.colors.background = zz_ui::parse_hex("#102030").unwrap();
         theme.colors.foreground = zz_ui::parse_hex("#abcdef").unwrap();
-        theme.colors.scrim = zz_ui::parse_hex("#01020366").unwrap();
+        theme.colors.shadow_color = zz_ui::parse_hex("#01020366").unwrap();
         theme.radius = px(17.0);
         theme.shadow = true;
         theme.mono_font_family = "Iosevka".into();

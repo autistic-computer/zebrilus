@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use zz_gpui::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
 use super::{
-    Colorize as _, Theme,
+    Colorize as _, SelectionStyle, Theme,
     color::{faint_weight, muted_weight, readable_on},
 };
 
@@ -359,8 +359,14 @@ impl Theme {
         } else {
             soft(2)
         };
+        let on_accent = self
+            .on_accent
+            .unwrap_or_else(|| readable_on(self.accent.opaque()));
+        let accent_selection = neutral && window && self.selection == SelectionStyle::Accent;
         let readable = |fill: Hsla, text: Hsla| {
-            if fill.a > OPAQUE_ENOUGH {
+            if accent_selection {
+                on_accent
+            } else if fill.a > OPAQUE_ENOUGH {
                 readable_on(fill)
             } else {
                 text
@@ -376,6 +382,11 @@ impl Theme {
         } else {
             color.opacity(TONE_OUTLINE_ALPHA)
         };
+        let solid_text = if tone == Tone::Primary && self.primary == PrimaryStyle::Accent {
+            on_accent
+        } else {
+            readable_on(color)
+        };
         match emphasis {
             Emphasis::Solid => Paint {
                 fill: color,
@@ -386,8 +397,8 @@ impl Theme {
                 border: clear,
                 border_width: px(0.0),
                 focus,
-                text: readable_on(color),
-                selected_text: readable_on(color),
+                text: solid_text,
+                selected_text: solid_text,
                 ground,
             },
             Emphasis::Soft => {
@@ -476,3 +487,41 @@ pub trait InteractivePaintExt: StatefulInteractiveElement + Styled + Sized {
 }
 
 impl<E: StatefulInteractiveElement + Styled> InteractivePaintExt for E {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{SelectionStyle, ThemeColor};
+    use zz_gpui::hsla;
+
+    fn accent_theme(on_accent: Option<Hsla>) -> Theme {
+        let mut theme = Theme::from(&*ThemeColor::dark());
+        theme.primary = PrimaryStyle::Accent;
+        theme.selection = SelectionStyle::Accent;
+        theme.colors.on_accent = on_accent;
+        theme
+    }
+
+    #[test]
+    fn accent_fills_take_the_themes_accent_text() {
+        let ink = hsla(0.5, 0.5, 0.5, 1.0);
+        let theme = accent_theme(Some(ink));
+        assert_eq!(theme.paint(Tone::Primary, Emphasis::Solid).text, ink);
+        assert_eq!(
+            theme.paint(Tone::Neutral, Emphasis::Ghost).selected_text,
+            ink
+        );
+        assert_ne!(theme.paint(Tone::Danger, Emphasis::Solid).text, ink);
+    }
+
+    #[test]
+    fn accent_text_reads_on_the_accent_when_the_theme_names_none() {
+        let theme = accent_theme(None);
+        let expected = readable_on(theme.accent.opaque());
+        assert_eq!(theme.paint(Tone::Primary, Emphasis::Solid).text, expected);
+        assert_eq!(
+            theme.paint(Tone::Neutral, Emphasis::Ghost).selected_text,
+            expected
+        );
+    }
+}

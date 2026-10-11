@@ -162,7 +162,7 @@ impl BrowserPane {
                 preview_background: zz_ui::to_hex(theme.surface(Elevation::Panel).fill.opaque()),
                 preview_foreground: zz_ui::to_hex(theme.foreground),
                 preview_border: zz_ui::to_hex(theme.border()),
-                shadow: theme.shadow.then(|| zz_ui::to_hex(theme.scrim)),
+                shadow: theme.shadow.then(|| zz_ui::to_hex(theme.shadow_color)),
                 radius: f32::from(theme.radius),
                 font_family: theme.mono_font_family.to_string(),
                 page_zoom: 1.0,

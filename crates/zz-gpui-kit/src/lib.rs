@@ -61,8 +61,8 @@ pub use foundation::{
     Emphasis, FieldStyle, Ground, IndexPath, InteractiveElementExt, InteractivePaintExt, Paint,
     PaintExt, PaintState, PrimaryStyle, SURFACE_RING_OUTSET, ScrollbarShow, Selectable,
     SelectionStyle, Side, Sizable, Size, StyledExt, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
-    control_shadow, cubic_ease, h_flex, oklab_lightness, parse_hex, rems_from_px, stacked_ring,
-    surface_ring, to_hex, v_flex, window_border, window_paddings,
+    contact_shadow, control_shadow, cubic_ease, h_flex, lifted_shadow, oklab_lightness, parse_hex,
+    rems_from_px, stacked_ring, surface_ring, to_hex, v_flex, window_border, window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};

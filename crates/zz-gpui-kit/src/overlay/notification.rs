@@ -209,7 +209,9 @@ impl Render for Notification {
                 cx,
             )
             .rounded(cx.theme().radius)
-            .when(cx.theme().shadow, |this| this.shadow_md())
+            .when(cx.theme().shadow, |this| {
+                this.shadow(crate::lifted_shadow(cx))
+            })
             .p(CONTENT_PADDING)
             .gap_2()
             .child(

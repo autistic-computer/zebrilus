@@ -62,6 +62,8 @@ fn palette(mode: ThemeMode) -> ThemeColor {
         warning: per_mode!(yellow_500, yellow_400),
         danger: per_mode!(red_500, red_400),
         scrim: per_mode!(scrim(0.05), scrim(0.2)),
+        shadow_color: per_mode!(scrim(0.05), scrim(0.2)),
+        on_accent: None,
     }
 }
 

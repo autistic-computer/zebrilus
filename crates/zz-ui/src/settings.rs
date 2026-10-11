@@ -11,7 +11,7 @@ use crate::{
     Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    control_shadow,
+    contact_shadow,
     icon::Icon,
     scroll::ScrollableElement as _,
     select::SelectItem,
@@ -1386,7 +1386,7 @@ impl RenderOnce for SettingEntry {
                                 .when(position.rounds_bottom(), |this| {
                                     this.rounded_b(cx.theme().radius)
                                 })
-                                .shadow(control_shadow(cx)),
+                                .shadow(contact_shadow(cx)),
                         ),
                 )
             })

@@ -172,13 +172,15 @@ pub fn workspace_status_window(
         .px(px(9.0))
         .rounded(cx.theme().control_radius())
         .overflow_hidden()
-        .when(cx.theme().shadow, |item| {
+        .when(cx.theme().control_shadows(), |item| {
             item.border(px(0.5))
                 .border_color(zz_gpui::transparent_white())
         })
         .when(state.active, |item| {
             item.bg(highlight)
-                .when(cx.theme().shadow, |item| item.control_highlight(cx))
+                .when(cx.theme().control_shadows(), |item| {
+                    item.control_highlight(cx)
+                })
         })
         .text_color(text_color)
         .text_size(rems_from_px(13.0))
@@ -186,7 +188,7 @@ pub fn workspace_status_window(
         .when(state.connected, |item| {
             item.cursor_pointer().hover(move |item| {
                 let item = item.bg(highlight).text_color(foreground);
-                if cx.theme().shadow {
+                if cx.theme().control_shadows() {
                     item.control_highlight(cx)
                 } else {
                     item

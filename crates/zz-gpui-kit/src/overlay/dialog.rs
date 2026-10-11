@@ -501,7 +501,7 @@ impl RenderOnce for Dialog {
 /// A dialog's floating surface: its outline, fill, corners, vertical padding
 /// and shadow. Content sits in [`dialog_gutter`]s inside it.
 pub fn dialog_surface(cx: &App) -> Div {
-    let shadow_color = cx.theme().scrim;
+    let shadow_color = cx.theme().shadow_color;
     v_flex()
         .surface_outline(cx.theme().border(), cx)
         .surface_fill(cx.theme().background.opaque(), cx)
