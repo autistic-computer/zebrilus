@@ -10,8 +10,8 @@ use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, Icon, IconName,
     browser::{
-        BrowserHeader, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_address,
-        browser_toolbar_button,
+        BrowserErrorPanel, BrowserHeader, BrowserTabInfo, BrowserTabStrip, BrowserToolbar,
+        browser_address, browser_start_surface, browser_toolbar_button,
     },
     button::{Button, ButtonVariants as _},
     input::{InputEvent, InputState},
@@ -639,11 +639,15 @@ impl Render for BrowserPane {
         let view = tab.view.clone();
         let visible = self.visible && self.profile.available();
         let radius = self.radii.bottom_left.min(self.radii.bottom_right);
-        let error = if self.profile.available() {
-            tab.error.clone()
-        } else {
-            Some("Waiting for the host connection…".to_owned())
-        };
+        let waiting = !self.profile.available();
+        let error = tab.error.clone().filter(|_| !waiting);
+        let failed = error.is_some();
+        let retry = self.writable(cx).then(|| {
+            Button::new("ios-browser-retry")
+                .primary()
+                .label("Try again")
+                .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
+        });
         let picking = tab.picking;
         let pick_status = if picking {
             Some("Tap an element to copy its context and screenshot".to_owned())
@@ -691,26 +695,37 @@ impl Render for BrowserPane {
                         }),
                 )
             })
-            .when_some(error, |pane, error| {
+            .when(waiting, |pane| {
                 pane.child(
                     div()
                         .px_2()
                         .py_1()
                         .text_sm()
-                        .text_color(cx.theme().danger)
-                        .child(error),
+                        .text_color(cx.theme().foreground.muted())
+                        .child("Waiting for the host connection…"),
                 )
             })
             .child(
                 div()
+                    .relative()
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
                     .on_prepaint(move |bounds, window, _| {
                         view.mount(bounds, radius, window);
                         view.set_visible(
-                            visible && bounds.size.width > px(0.0) && bounds.size.height > px(0.0),
+                            visible
+                                && !failed
+                                && bounds.size.width > px(0.0)
+                                && bounds.size.height > px(0.0),
                         );
+                    })
+                    .when_some(error, |page, error| {
+                        let mut panel = BrowserErrorPanel::new(error);
+                        if let Some(retry) = retry {
+                            panel = panel.retry(retry);
+                        }
+                        page.child(browser_start_surface(panel))
                     }),
             )
     }
