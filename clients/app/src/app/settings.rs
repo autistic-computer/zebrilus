@@ -5,8 +5,8 @@ use zz_gpui::{
     TextInputMode, Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _, Theme, ThemeMode,
-    UiZoom,
+    ActiveTheme as _, Colorize as _, Emphasis, IconName, Sizable as _, StyledExt as _, Theme,
+    ThemeMode, Tone, UiZoom,
     button::Button,
     chrome_palette::{
         ChromeColor, ChromePresetId, InterfaceStyle, ThemeModeSetting, chrome_presets,
@@ -665,7 +665,7 @@ impl AppShell {
                             .size(px(NAV_BACK))
                             .child(zz_ui::touch::press_highlight(
                                 "settings-back-press",
-                                cx.theme().foreground.opacity(0.08),
+                                cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active,
                                 cx.theme().radius,
                             ))
                             .child(zz_ui::Icon::new(IconName::ArrowLeft).size(px(18.0)))

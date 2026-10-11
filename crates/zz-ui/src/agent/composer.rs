@@ -1,6 +1,6 @@
 use super::AGENT_CONTENT_MAX_WIDTH;
 use crate::input::{Input, InputState};
-use crate::{ActiveTheme as _, CHROME_GAP, Colorize as _, h_flex, v_flex};
+use crate::{ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, h_flex, v_flex};
 use zz_gpui::{
     AnyElement, App, Entity, IntoElement, RenderOnce, SharedString, Window, div, prelude::*, px,
 };
@@ -52,7 +52,7 @@ impl RenderOnce for AgentComposer {
                                     .rounded(cx.theme().radius)
                                     .border_1()
                                     .border_color(cx.theme().border())
-                                    .bg(cx.theme().background.raised(1).opaque())
+                                    .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
                                     .when(cx.theme().shadow, zz_gpui::Styled::shadow_xs)
                                     .children(self.attachments)
                                     .child(

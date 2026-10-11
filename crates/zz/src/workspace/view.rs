@@ -45,7 +45,7 @@ use zz_ui::path_picker::{
     PATH_PICKER_VISIBLE_ROWS, PathPickerBackend, PathPickerEvent, PathPickerView,
 };
 use zz_ui::{
-    ActiveTheme as _, ElementExt as _, WindowExt as _, draws_window_controls,
+    ActiveTheme as _, ElementExt as _, Elevation, WindowExt as _, draws_window_controls,
     notification::Notification,
 };
 use zz_ui::{
@@ -3747,7 +3747,7 @@ impl AppView {
                         .title_right(title.right)
                         .content_inset(inset.width, inset.height)
                         .colors(
-                            cx.theme().background.raised(1).opaque(),
+                            cx.theme().surface(Elevation::Panel).fill.opaque(),
                             cx.theme().foreground,
                             pane_border_color(active, cx),
                         )
@@ -3893,7 +3893,7 @@ impl AppView {
         let background = crate::theme::tmux_style_colour(
             &state.style,
             "bg",
-            cx.theme().background.raised(1).opaque(),
+            cx.theme().surface(Elevation::Panel).fill.opaque(),
             cx,
         );
         let foreground =

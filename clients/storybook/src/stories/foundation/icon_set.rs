@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_ui::{
+use zz_ui::{Elevation, 
     ActiveTheme as _, Colorize as _, Icon, Sizable as _, Size,
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -146,7 +146,7 @@ fn sidebar(cx: &App) -> impl IntoElement {
         .rounded(theme.radius * 1.5)
         .border_1()
         .border_color(theme.border())
-        .bg(theme.background.raised(1))
+        .bg(theme.surface(Elevation::Panel).fill)
         .child(
             h_flex()
                 .justify_between()

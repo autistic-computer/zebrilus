@@ -13,7 +13,7 @@ use zz_protocol::{
     FloatingPaneSnapshot, InputMessage, MenuState, PaneBorderLines, PopupBorderLines,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, ElementExt as _,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation,
     command::floating::{
         RELEASE_BUTTONS, WHEEL_BUTTONS, confirm_prompt, floating_frame, menu_grid_cell,
         menu_press_buttons, menu_row, menu_separator,
@@ -72,7 +72,7 @@ impl AppShell {
             let background = style_color(
                 &state.style,
                 "bg",
-                cx.theme().background.raised(1).opaque(),
+                cx.theme().surface(Elevation::Panel).fill.opaque(),
                 cx,
             );
             let foreground = style_color(&state.style, "fg", cx.theme().foreground, cx);
@@ -80,7 +80,7 @@ impl AppShell {
             let selected_background = style_color(
                 &state.selected_style,
                 "bg",
-                cx.theme().background.raised(2).opaque(),
+                cx.theme().surface(Elevation::Popover).fill.opaque(),
                 cx,
             );
             let selected_foreground =
@@ -317,7 +317,7 @@ impl AppShell {
                         .absolute()
                         .inset_0()
                         .occlude()
-                        .bg(cx.theme().background.opacity(0.4))
+                        .bg(cx.theme().scrim)
                         .on_mouse_down(
                             zz_gpui::MouseButton::Left,
                             cx.listener(move |this, _: &MouseDownEvent, _, cx| {
@@ -362,7 +362,7 @@ impl AppShell {
                             .title(title)
                             .content_inset(inset.x, inset.y)
                             .colors(
-                                cx.theme().background.raised(1).opaque(),
+                                cx.theme().surface(Elevation::Panel).fill.opaque(),
                                 cx.theme().foreground,
                                 border_color,
                             )

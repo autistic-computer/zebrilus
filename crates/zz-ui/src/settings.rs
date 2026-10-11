@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable as _, Emphasis, Selectable as _, Sizable as _,
+    ActiveTheme as _, Disableable as _, Elevation, Emphasis, Selectable as _, Sizable as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     control_shadow,
@@ -1323,8 +1323,8 @@ impl RenderOnce for SettingEntry {
             .flex()
             .flex_col()
             .w_full()
-            .bg(cx.theme().background.raised(1).opaque())
-            .border_color(cx.theme().foreground.opacity(0.1))
+            .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
+            .border_color(cx.theme().border())
             .border_l(px(0.5))
             .border_r(px(0.5))
             .when(position.rounds_top(), |this| {
@@ -1474,7 +1474,7 @@ impl RenderOnce for SettingCopy {
 /// dissolve into the card behind it.
 #[must_use]
 pub fn settings_control_fill(cx: &App) -> zz_gpui::Hsla {
-    cx.theme().background.raised(2)
+    cx.theme().surface(Elevation::Popover).fill
 }
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {

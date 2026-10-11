@@ -24,8 +24,8 @@ use zz_terminal::{
     TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
-    ActiveTheme, Colorize as _, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
-    StyledExt as _,
+    ActiveTheme, Colorize as _, Disableable as _, Elevation, Icon, IconName, Selectable as _,
+    Sizable as _, StyledExt as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
     pane::{
@@ -490,7 +490,7 @@ impl TerminalPane {
                         div()
                             .size(px(300.0))
                             .p_1()
-                            .bg(cx.theme().background.raised(1).opaque())
+                            .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
                             .text_color(cx.theme().foreground)
                             .border_1()
                             .border_color(cx.theme().border())
@@ -835,7 +835,7 @@ impl TerminalPane {
             .w(px(460.0))
             .max_w_full()
             .p(px(4.0))
-            .bg(cx.theme().background.raised(1))
+            .bg(cx.theme().surface(Elevation::Panel).fill)
             .rounded(cx.theme().radius)
             .control_surface(cx)
             .occlude()

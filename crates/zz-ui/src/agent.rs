@@ -17,8 +17,8 @@ use std::{
 use web_time::{Duration, Instant};
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Emphasis, Icon, IconName, PaintExt as _,
-    PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName,
+    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -2114,7 +2114,7 @@ pub fn agent_attachment_thumbnail(
         .rounded(cx.theme().radius)
         .border_1()
         .border_color(cx.theme().border())
-        .bg(cx.theme().background.raised(2))
+        .bg(cx.theme().surface(Elevation::Popover).fill)
         .cursor_pointer()
         .child(
             img(ImageSource::Image(image))
@@ -2310,7 +2310,7 @@ fn activity_row_marked(
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .text_color(timeline_affordance_color(cx).opacity(0.7))
+                    .text_color(cx.theme().foreground.faint())
                     .child(detail),
             )
         })
@@ -2352,7 +2352,7 @@ fn activity_row_marked(
                     .debug_selector(|| "agent-activity-trailing".to_owned())
                     .flex_none()
                     .text_size(crate::rems_from_px(11.0))
-                    .text_color(timeline_affordance_color(cx).opacity(0.7))
+                    .text_color(cx.theme().foreground.faint())
                     .child(trailing),
             )
         })
@@ -2425,7 +2425,7 @@ fn render_user_entry(
         .rounded(cx.theme().radius)
         .border_1()
         .border_color(cx.theme().border())
-        .bg(cx.theme().background.raised(1))
+        .bg(cx.theme().surface(Elevation::Panel).fill)
         .text_size(crate::rems_from_px(13.0))
         .when(!images.is_empty(), |this| {
             this.child(
@@ -3087,7 +3087,7 @@ impl MermaidTheme {
         Self::new(
             MermaidThemeColors {
                 background: cx.theme().background,
-                surface: cx.theme().background.raised(1),
+                surface: cx.theme().surface(Elevation::Panel).fill,
                 muted: cx.theme().background.hover(),
                 foreground: cx.theme().foreground,
                 muted_foreground: cx.theme().foreground.muted(),
@@ -3415,7 +3415,7 @@ fn mermaid_theme_key(cx: &App) -> u64 {
     let mut hasher = DefaultHasher::new();
     for color in [
         cx.theme().background,
-        cx.theme().background.raised(1),
+        cx.theme().surface(Elevation::Panel).fill,
         cx.theme().background.hover(),
         cx.theme().foreground,
         cx.theme().foreground.muted(),

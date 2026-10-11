@@ -1,7 +1,7 @@
 use zz_gpui::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px,
 };
-use zz_ui::{
+use zz_ui::{Elevation, 
     ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
     compact::{bottom_sheet, sheet_action, sheet_close, sheet_option},
     h_flex, v_flex,
@@ -34,7 +34,7 @@ fn phone(content: impl IntoElement, sheet: impl IntoElement, cx: &App) -> impl I
         .rounded(px(28.0))
         .border_1()
         .border_color(theme.border())
-        .bg(theme.background.raised(1))
+        .bg(theme.surface(Elevation::Panel).fill)
         .child(content)
         .child(sheet)
 }

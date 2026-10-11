@@ -29,7 +29,7 @@ impl PaletteStatus {
             Self::Online => cx.theme().success,
             Self::Running => cx.theme().accent,
             Self::Waiting => cx.theme().warning,
-            Self::Offline => cx.theme().foreground.muted().opacity(0.5),
+            Self::Offline => cx.theme().foreground.faint(),
         }
     }
 }
@@ -234,9 +234,8 @@ pub(super) fn palette_entry(
                     )
                 })
                 .children(row.status.map(|status| {
-                    status_dot(status, cx).when(selected, |dot| {
-                        dot.border_1().border_color(foreground.opacity(0.65))
-                    })
+                    status_dot(status, cx)
+                        .when(selected, |dot| dot.border_1().border_color(secondary))
                 }))
                 .child(
                     div()
@@ -339,7 +338,7 @@ pub fn command_palette_empty(cx: &App) -> Div {
 mod tests {
     use super::*;
     use crate::{
-        Root, Theme, ThemeMode,
+        Elevation, Root, Theme, ThemeMode,
         command::{CommandPaletteSurface, PaletteHint},
     };
     use zz_gpui::{Context, Focusable as _, Render, TestAppContext, Window};
@@ -451,7 +450,9 @@ mod tests {
                     .iter()
                     .find(|quad| {
                         quad.background
-                            == zz_gpui::solid_background(cx.theme().background.raised(2).opaque())
+                            == zz_gpui::solid_background(
+                                cx.theme().surface(Elevation::Popover).fill.opaque(),
+                            )
                             && quad.bounds.size.width.0 > 300.0 * window.scale_factor()
                     })
                     .expect("palette surface");
@@ -476,8 +477,7 @@ mod tests {
                             == cx
                                 .theme()
                                 .paint(Tone::Neutral, Emphasis::Ghost)
-                                .selected_text
-                                .opacity(0.65)
+                                .muted_at(PaintState::Selected)
                             && quad.bounds.size.width.0 == 8.0 * window.scale_factor()
                             && quad.border_widths.top.0 > 0.0
                     }),

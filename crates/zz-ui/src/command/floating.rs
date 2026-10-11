@@ -3,7 +3,7 @@ use zz_gpui::{
     point, prelude::*, px, size,
 };
 
-use crate::{ActiveTheme as _, Colorize as _};
+use crate::{ActiveTheme as _, Colorize as _, Emphasis, Tone};
 
 pub fn menu_row(
     id: impl Into<ElementId>,
@@ -36,7 +36,7 @@ pub fn menu_row(
             row.text_color(cx.theme().foreground.muted())
         })
         .when(!selected && enabled, |row| {
-            row.hover(|row| row.bg(cx.theme().background.washed(2)))
+            row.hover(|row| row.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover))
         })
         .child(name.into())
         .when_some(annotation, |row, key| row.child(format!("({key})")))

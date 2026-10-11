@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Styled as _,
     Window, div, px,
 };
-use zz_ui::{
+use zz_ui::{Elevation, 
     ActiveTheme as _, Colorize as _,
     command::floating::{confirm_prompt, menu_row, menu_separator},
     pane::FloatingSurface,
@@ -67,10 +67,10 @@ struct MenuColors {
 impl MenuColors {
     fn theme(cx: &App) -> Self {
         Self {
-            background: cx.theme().background.raised(1).opaque(),
+            background: cx.theme().surface(Elevation::Panel).fill.opaque(),
             foreground: cx.theme().foreground,
             border: cx.theme().border(),
-            selected_background: cx.theme().background.raised(2).opaque(),
+            selected_background: cx.theme().surface(Elevation::Popover).fill.opaque(),
             selected_foreground: cx.theme().foreground,
         }
     }

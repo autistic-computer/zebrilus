@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, IntoElement, Keystroke,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
-use zz_ui::{
+use zz_ui::{Elevation, 
     ActiveTheme as _, Colorize as _, Emphasis, IconName, IndexPath, Sizable as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
@@ -494,7 +494,7 @@ fn plate(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
         .rounded(cx.theme().radius)
         .border_1()
         .border_color(cx.theme().divider_color())
-        .bg(cx.theme().background.raised(1))
+        .bg(cx.theme().surface(Elevation::Panel).fill)
         .children(backdrop)
         .child(
             h_flex()

@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Icon, IconName,
-    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Elevation, Emphasis, Icon,
+    IconName, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
     control_shadow, surface_ring,
 };
@@ -26,7 +26,7 @@ pub fn pane_header_icon_button(
         .flat()
         .disabled(!enabled)
         .when(enabled, |button| {
-            button.text_color(cx.theme().foreground.muted().opacity(0.45))
+            button.text_color(cx.theme().foreground.faint())
         })
 }
 
@@ -180,7 +180,7 @@ pub fn pane_border_color(active: bool, cx: &App) -> Hsla {
     if active {
         cx.theme().accent
     } else {
-        cx.theme().foreground.opacity(0.1)
+        cx.theme().divider_color()
     }
 }
 
@@ -298,7 +298,7 @@ impl FloatingSurface {
             content: content.into_any_element(),
             inset_x: Pixels::ZERO,
             inset_y: Pixels::ZERO,
-            background: cx.theme().background.raised(1).opaque(),
+            background: cx.theme().surface(Elevation::Panel).fill.opaque(),
             foreground: cx.theme().foreground,
             border_color: cx.theme().border(),
             bordered: true,

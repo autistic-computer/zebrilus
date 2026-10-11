@@ -3,8 +3,8 @@ pub mod status;
 pub mod tree;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, StyledExt as _,
-    TITLE_BAR_HEIGHT,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
+    TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     rems_from_px,
     tooltip::Tooltip,
@@ -259,11 +259,6 @@ pub fn workspace_sidebar_titlebar_with_inset(
         .child(controls)
 }
 
-/// Ink for the seam between the sidebar and the content column.
-pub fn workspace_sidebar_divider(cx: &App) -> Hsla {
-    cx.theme().border().raised(2).opacity(cx.theme().divider)
-}
-
 /// The fill that says "this one" in the workspace tree: a row under the
 /// pointer, the keyboard cursor, or the mux.
 #[must_use]
@@ -295,7 +290,7 @@ pub fn workspace_sidebar_surface(
         .relative()
         .text_color(cx.theme().foreground)
         .border_r_1()
-        .border_color(workspace_sidebar_divider(cx))
+        .border_color(cx.theme().divider_color())
         .child(titlebar)
         .child(
             div()
@@ -366,7 +361,7 @@ pub fn workspace_tree_row(
     let press = CoarsePointer::get(cx).then(|| {
         crate::touch::press_highlight(
             id.clone(),
-            cx.theme().foreground.opacity(0.1),
+            cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active,
             cx.theme().control_radius(),
         )
         .top(fill_vertical_inset)

@@ -45,8 +45,8 @@ use zz_ui::agent::{
 };
 use zz_ui::command::palette_shortcut_hint;
 use zz_ui::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Disableable as _, ElementExt as _, IconName,
-    Sizable as _, StyledExt as _,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Disableable as _, ElementExt as _, Emphasis,
+    IconName, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
@@ -2267,8 +2267,8 @@ impl AgentView {
                 .flex_wrap()
                 .gap(px(CHROME_GAP))
                 .border_t_1()
-                .border_color(cx.theme().danger.outline())
-                .bg(cx.theme().danger.fill())
+                .border_color(cx.theme().paint(Tone::Danger, Emphasis::Outline).border)
+                .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
                 .py(px(CHROME_GAP))
                 .pl_4()
                 .pr(px(CHROME_GAP))

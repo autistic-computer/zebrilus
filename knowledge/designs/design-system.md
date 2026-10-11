@@ -78,6 +78,21 @@ Keycap::new("↵").on(theme.paint(Tone::Primary, Emphasis::Solid).ground_at(Pain
 
 Without it, the keycap would compute muted gray against the window.
 
+## Surfaces
+
+`theme.surface(elevation)` is the ground of a plane at an `Elevation`:
+- `Window`: the window itself, the same as `theme.ground()`;
+- `Panel`: the window's fill raised one step, for a bar, a card or an inset box;
+- `Popover`: two steps, for a menu, a popover or a sheet.
+
+A surface floating over content takes its fill `.opaque()`. `popover_style`, tooltips, sheets and notifications fill from it.
+
+## Lines and backdrops
+
+- A rule between sections is `theme.divider_color()`, the border root at the look's `divider` strength. It replaces the separate rule recipes the audit found.
+- The edge of a card or panel is `theme.border()`.
+- Anything that dims the window behind a modal, a sheet or a slide-over fills with `theme.scrim`.
+
 ## Text
 
 | Level | Use | From |

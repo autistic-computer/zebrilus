@@ -30,8 +30,8 @@ use zz_protocol::{
     agent_stream::{AgentQuestion, AgentSessionSummary},
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, IconName, Sizable as _,
-    StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, IconName,
+    Sizable as _, StyledExt as _, Tone,
     agent::{
         AgentEntry, AgentMarkdown, AgentPaneStatus, AgentTimeline, AgentTimelineStore,
         AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText,
@@ -1410,8 +1410,8 @@ impl AgentPane {
             picker_footer(cx)
                 .min_h(px(52.0))
                 .flex_wrap()
-                .border_color(cx.theme().danger.outline())
-                .bg(cx.theme().danger.fill())
+                .border_color(cx.theme().paint(Tone::Danger, Emphasis::Outline).border)
+                .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
                 .child(
                     div()
                         .min_w_0()

@@ -4,7 +4,7 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
     Styled as _, Window, div, prelude::*, px,
 };
-use zz_ui::{
+use zz_ui::{Elevation, 
     ActiveTheme as _, Colorize as _, IconName,
     compact::{
         ArrowPad, KeyRow, PageDot, PopoverKey, PopoverKeyItem, PopoverKeyTap, ToolKeys,
@@ -376,7 +376,7 @@ impl Render for Keys {
                 .id(id)
                 .p(px(8.0))
                 .rounded(cx.theme().radius)
-                .bg(cx.theme().background.raised(1))
+                .bg(cx.theme().surface(Elevation::Panel).fill)
                 .child(child)
         };
         states()

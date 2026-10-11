@@ -6,8 +6,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, Sizable as _,
-    StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
+    Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
@@ -676,7 +676,7 @@ pub fn agent_thread_button(id: impl Into<ElementId>, title: &str, cx: &App) -> B
     agent_chrome_button(id)
         .text()
         .flat()
-        .text_color(cx.theme().foreground.muted().opacity(0.45))
+        .text_color(cx.theme().foreground.faint())
         .flex_shrink_1()
         .min_w_0()
         .overflow_hidden()
@@ -789,7 +789,10 @@ pub fn context_usage_meter(
 ) -> AnyElement {
     let progress = context_usage_fraction(used, size) as f32;
     let tooltip = context_usage_tooltip(used, size);
-    let track_color = cx.theme().foreground.muted().opacity(0.22);
+    let track_color = cx
+        .theme()
+        .paint(Tone::Neutral, Emphasis::Soft)
+        .fill_at(PaintState::Active);
     let progress_color = cx.theme().foreground.muted();
     let ring = canvas(
         |_, _, _| (),
@@ -1008,10 +1011,11 @@ mod tests {
         cx.update(|window, cx| {
             let scale = window.scale_factor();
             let quads = window.painted_quads();
+            let ghost = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
             for (bounds, color) in [
-                (provider, cx.theme().background.washed(2)),
-                (model, cx.theme().selection_background()),
-                (hovered, cx.theme().background.washed(2)),
+                (provider, ghost.hover),
+                (model, ghost.selected),
+                (hovered, ghost.hover),
             ] {
                 let quad = quads
                     .iter()
