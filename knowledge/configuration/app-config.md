@@ -114,6 +114,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `experimental-editor-pane` | `false` | `true` or `false` | Whether new Editor panes can be created at all . picker row, palette completion, and the daemon's `select-pane-kind editor` |
 | `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped border, radius, surface ring, and divider treatment |
 | `pane-background-opacity` | `0.5` | `0..=1` | Pane and Agent composer background strength; Panes settings display 0–100%. Browser panes apply it only to the toolbar |
+| `pane-glass` | `false` | `true` or `false` | Draw panes in the interface theme's glass. Takes effect only with `pane-gaps` and a theme whose glass draws an effect (`default`, `macos`; not `linear`) |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
 | `pane-corner-radius` | `13.5` | `0..=32` | All four corners of every pane, on every platform; applies only with `pane-gaps` |
@@ -315,6 +316,16 @@ with or without pane gaps. The value reaches paints through `Theme::pane_backgro
 pane frame paints borders, shadows, and focus effects above the continuous app background.
 Terminal, Agent, Editor, picker, and waiting surfaces use this factor. Browser panes apply
 it only to the toolbar; page, blank, loading, and error backgrounds stay opaque.
+
+Panes → Appearance → Glass controls `pane-glass`. It needs pane gaps and a theme whose glass
+draws more than a plain fill, and the toggle is disabled otherwise. Under pane glass the pane frame
+owns the single fill: `Theme::pane_background` returns zero alpha, so content roots paint nothing
+under it, and the frame draws the theme's material tinted with the pane's own color. Tiled panes sit
+on the flat app background, so they take the material's lit edge with blur and refraction off (on an
+opaque window it draws in place, with no backdrop copy). Floating panes take the full material and
+frost what is behind them. The inactive hairline gives way to the glass edge; the active pane keeps
+its accent border. Settings previews that are not inside a glass frame use `Theme::pane_color`. It is
+off by default until its cost on weak GPUs is measured.
 
 The Agent main surface uses the chosen opacity; the raised composer card stays opaque.
 The footer inherits the main pane background and adds no fill of its own.
@@ -581,7 +592,7 @@ always-live inactive-opacity factor.
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-show-session`, `status-badges`, `status-agents`, `status-host`, `status-update`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
-| Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`) · **Focus** (`pane-inactive-opacity`) · **Frame** (`pane-margin`, `pane-corner-radius`, `pane-border-width` . all disabled without gaps) |
+| Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`, `pane-glass`) · **Focus** (`pane-inactive-opacity`) · **Frame** (`pane-margin`, `pane-corner-radius`, `pane-border-width` . all disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
 | System | **Tray** (`tray`, only where the profile has one) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, `experimental-agent-pane`, each row present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |

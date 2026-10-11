@@ -193,6 +193,9 @@ Kit widgets on the model:
 | Browser tab | neutral · soft when active, ghost otherwise |
 | Settings control | its own recipe, on `settings_card_ground` |
 | Switch, slider | primary · solid when on, neutral soft when off |
+| tmux display-menu | a popover menu; neutral · ghost rows; literal tmux colours override |
+| Display-panes chip | popover surface; accent ring and ink when active |
+| Failed page (browser) | popover surface in the alert layout; primary · solid Try again |
 
 # Where to look
 
