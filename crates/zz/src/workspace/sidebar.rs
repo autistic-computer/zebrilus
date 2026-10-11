@@ -1127,7 +1127,7 @@ fn render_expanded_navigation(
         px(TREE_CONTENT_INSET + TREE_INDENT_GUIDE_OFFSET),
         px(TREE_INDENT_GUIDE_PADDING),
         IndentGuideColors {
-            default: guide_color.wash(),
+            default: cx.theme().divider_color(),
             active: guide_color,
         },
     );

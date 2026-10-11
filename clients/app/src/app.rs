@@ -3103,15 +3103,11 @@ fn unsupported_pane(
                 .rounded_tl(radii.top_left)
                 .rounded_tr(radii.top_right)
         })
-        .bg(cx
-            .theme()
-            .background
-            .opaque()
-            .opacity(if title == "Browser" {
-                1.0
-            } else {
-                cx.theme().pane_background_opacity
-            }))
+        .bg(if title == "Browser" {
+            cx.theme().background.opaque()
+        } else {
+            cx.theme().pane_background(cx.theme().background)
+        })
         .child(Icon::new(icon).size(px(26.0)))
         .child(title.to_owned())
         .child(
@@ -3137,11 +3133,7 @@ fn unsupported_pane(
                 .flex_none()
                 .rounded_tl(radii.top_left)
                 .rounded_tr(radii.top_right)
-                .bg(cx
-                    .theme()
-                    .background
-                    .opaque()
-                    .opacity(cx.theme().pane_background_opacity))
+                .bg(cx.theme().pane_background(cx.theme().background))
                 .child(toolbar)
         }))
         .child(message)

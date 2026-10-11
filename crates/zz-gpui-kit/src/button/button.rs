@@ -10,9 +10,9 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Emphasis, Icon, IconName, Paint, PaintState,
-    Selectable, Sizable, Size, StyledExt as _, Tone, control_shadow, h_flex, rems_from_px,
-    tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Disableable, Emphasis, Ground, Icon, IconName, Paint,
+    PaintState, Selectable, Sizable, Size, StyledExt as _, Tone, control_shadow, h_flex,
+    rems_from_px, tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -126,10 +126,11 @@ impl ButtonVariant {
     /// The paint, filled over the window when the button rests on the
     /// control surface, so the surface's drop shadow does not show through
     /// a translucent fill.
-    fn paint(&self, cx: &App) -> Option<Paint> {
+    fn paint(&self, on: Option<Ground>, cx: &App) -> Option<Paint> {
         match self {
             Self::Paint(tone, emphasis) => {
-                let paint = cx.theme().paint(*tone, *emphasis);
+                let theme = cx.theme();
+                let paint = theme.paint_on(on.unwrap_or_else(|| theme.ground()), *tone, *emphasis);
                 Some(if self.rests_on_surface() {
                     paint.opaque()
                 } else {
@@ -140,8 +141,8 @@ impl ButtonVariant {
         }
     }
 
-    fn style_at(&self, state: PaintState, cx: &App) -> ButtonVariantStyle {
-        if let Some(paint) = self.paint(cx) {
+    fn style_at(&self, state: PaintState, on: Option<Ground>, cx: &App) -> ButtonVariantStyle {
+        if let Some(paint) = self.paint(on, cx) {
             return ButtonVariantStyle {
                 bg: paint.fill_at(state),
                 border: paint.border_at(state),
@@ -176,6 +177,7 @@ pub struct Button {
     disabled: bool,
     selected: bool,
     variant: ButtonVariant,
+    on: Option<Ground>,
     hover_bg: Option<Hsla>,
     rounded: ButtonRounded,
     flat: bool,
@@ -211,6 +213,7 @@ impl Button {
             disabled: false,
             selected: false,
             variant: ButtonVariant::default(),
+            on: None,
             hover_bg: None,
             rounded: ButtonRounded::Medium,
             size: Size::Medium,
@@ -352,6 +355,14 @@ impl Button {
             _ => Tone::default(),
         };
         self.variant = ButtonVariant::Paint(tone, emphasis);
+        self
+    }
+
+    /// Paint the button on `ground`, the surface it sits on, instead of the
+    /// window.
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.on = Some(ground);
         self
     }
 }
@@ -502,11 +513,12 @@ fn focus_ring<T: ParentElement + Styled + Sized>(
 impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let style: ButtonVariant = self.variant;
+        let on = self.on;
         let clickable = self.clickable();
         let is_disabled = self.disabled;
         let hoverable = self.hoverable();
-        let normal_style = style.style_at(PaintState::Rest, cx);
-        let paint = style.paint(cx);
+        let normal_style = style.style_at(PaintState::Rest, on, cx);
+        let paint = style.paint(on, cx);
         let neutral_surface = !self.flat && style.neutral();
         let resting_surface = neutral_surface && normal_style.shadow;
         let highlight_ring = cx.theme().shadow && neutral_surface && !normal_style.shadow;
@@ -531,7 +543,7 @@ impl RenderOnce for Button {
             .then(|| crate::touch::press_feedback(self.id.clone(), window, cx));
         let pressed = press.as_ref().map_or(0.0, |press| press.amount);
         let press_listener = press.map(crate::touch::PressFeedback::listener);
-        let press_fill = style.style_at(PaintState::Active, cx).bg;
+        let press_fill = style.style_at(PaintState::Active, on, cx).bg;
         let on_mouse_down =
             move |_: &zz_gpui::MouseDownEvent, window: &mut Window, cx: &mut App| {
                 if is_disabled {
@@ -611,7 +623,7 @@ impl RenderOnce for Button {
             )
             .text_color(normal_style.fg)
             .when(self.selected, |this| {
-                let selected_style = style.style_at(PaintState::Selected, cx);
+                let selected_style = style.style_at(PaintState::Selected, on, cx);
                 this.bg(selected_style.bg)
                     .border_color(selected_style.border)
                     .text_color(selected_style.fg)
@@ -629,7 +641,7 @@ impl RenderOnce for Button {
                 .when(normal_style.underline, |this| this.text_decoration_1())
                 .when(!coarse, |this| {
                     this.hover(|this| {
-                        let hover_style = style.style_at(PaintState::Hover, cx);
+                        let hover_style = style.style_at(PaintState::Hover, on, cx);
                         let this = this
                             .bg(self.hover_bg.unwrap_or(hover_style.bg))
                             .border_color(hover_style.border)
@@ -643,7 +655,7 @@ impl RenderOnce for Button {
                 })
                 .when(!coarse, |this| {
                     this.active(|this| {
-                        let active_style = style.style_at(PaintState::Active, cx);
+                        let active_style = style.style_at(PaintState::Active, on, cx);
                         let this = this
                             .bg(active_style.bg)
                             .border_color(active_style.border)
@@ -658,7 +670,7 @@ impl RenderOnce for Button {
             })
             .when(resting_surface, |this| this.control_surface(cx))
             .when(self.disabled, |this| {
-                let disabled_style = style.style_at(PaintState::Disabled, cx);
+                let disabled_style = style.style_at(PaintState::Disabled, on, cx);
                 this.bg(disabled_style.bg)
                     .text_color(disabled_style.fg)
                     .border_color(if highlight_ring {

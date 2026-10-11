@@ -140,11 +140,7 @@ fn sample_surface(cx: &App) -> zz_gpui::Div {
         .min_w_0()
         .min_h_0()
         .overflow_hidden()
-        .bg(cx
-            .theme()
-            .background
-            .opaque()
-            .opacity(cx.theme().pane_background_opacity))
+        .bg(cx.theme().pane_background(cx.theme().background))
 }
 
 fn sample_header(icon: IconName, title: &'static str, cx: &App) -> zz_gpui::Div {

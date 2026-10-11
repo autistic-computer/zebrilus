@@ -3,7 +3,7 @@ use zz_gpui::{
 };
 
 use super::{
-    SettingEntry, SettingsSection, SettingsStack, settings_control_fill, settings_provenance_badge,
+    SettingEntry, SettingsSection, SettingsStack, settings_card_ground, settings_provenance_badge,
 };
 use crate::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _,
@@ -72,7 +72,7 @@ pub fn about_link_button(
         .small()
         .icon(IconName::ExternalLink)
         .label(label)
-        .bg(settings_control_fill(cx))
+        .on(settings_card_ground(cx))
         .on_click(move |_, _, cx| cx.open_url(url))
 }
 

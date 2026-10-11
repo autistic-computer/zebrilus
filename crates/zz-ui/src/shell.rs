@@ -5,6 +5,10 @@ use zz_gpui::{
     Pixels, Stateful, Styled as _, WindowControlArea, div, prelude::FluentBuilder as _, px,
 };
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "blurred chrome lets the window material show through"
+)]
 pub fn chrome_background(background: Hsla, blur: bool) -> Hsla {
     if blur {
         background.opacity(0.93)

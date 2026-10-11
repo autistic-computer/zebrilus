@@ -37,6 +37,12 @@ pub fn thumb_radius(thumb_width: Pixels, cx: &App) -> Pixels {
     cx.theme().radius.min(thumb_width / 2.)
 }
 
+/// The fill of a resting or hovered scrollbar thumb.
+#[must_use]
+pub fn thumb_color(cx: &App) -> Hsla {
+    cx.theme().foreground.wash()
+}
+
 const FADE_OUT_DURATION: f32 = 3.0;
 const FADE_OUT_DELAY: f32 = 2.0;
 const FADE_TICK: Duration = Duration::from_millis(33);
@@ -403,7 +409,7 @@ impl Scrollbar {
 
     fn style_for_hovered_bar(cx: &App) -> BarStyle {
         BarStyle {
-            thumb_bg: cx.theme().foreground.wash().into(),
+            thumb_bg: thumb_color(cx).into(),
             bar_bg: cx.theme().transparent,
             thumb_width: THUMB_ACTIVE_WIDTH,
             inset: THUMB_ACTIVE_INSET,
@@ -414,7 +420,7 @@ impl Scrollbar {
     fn style_for_normal(&self, cx: &App) -> BarStyle {
         let (thumb_width, inset) = resting_metrics(self.show_mode(cx));
         BarStyle {
-            thumb_bg: cx.theme().foreground.wash().into(),
+            thumb_bg: thumb_color(cx).into(),
             bar_bg: cx.theme().transparent,
             thumb_width,
             inset,
@@ -601,7 +607,7 @@ impl Element for Scrollbar {
                     } else if let Some((opacity, next_wake)) =
                         fade_frame(elapsed, cx.reduce_motion())
                     {
-                        idle.thumb_bg = cx.theme().foreground.wash().opacity(opacity);
+                        idle.thumb_bg = thumb_color(cx).opacity(opacity);
                         schedule_fade_wake(&state, next_wake, window.current_view(), window, cx);
                     }
                 }

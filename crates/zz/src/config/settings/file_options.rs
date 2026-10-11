@@ -387,7 +387,7 @@ impl SettingsView {
                         matches!(row.key, FileKey::Mux(MuxOptionKey::Prefix)),
                         |this| this.w(px(KEY_INPUT_WIDTH)),
                     )
-                    .child(Input::new(&row.input).small().bg(settings_control_fill(cx)))
+                    .child(Input::new(&row.input).small().on(settings_card_ground(cx)))
                     .into_any_element()
             };
             stack = stack.child(entry.control(control));

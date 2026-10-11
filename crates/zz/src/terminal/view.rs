@@ -1177,11 +1177,7 @@ impl TerminalView {
             self.retained.read().viewport.background,
             self.render_appearance.source.background_opacity,
         );
-        cx.theme()
-            .background
-            .opaque()
-            .blend(background)
-            .opacity(cx.theme().pane_background_opacity)
+        cx.theme().pane_background(background)
     }
 
     pub(crate) fn local_scroll_target(&self) -> Option<u32> {

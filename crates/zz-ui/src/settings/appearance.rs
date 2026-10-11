@@ -385,6 +385,10 @@ impl RenderOnce for PickerStrip {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "previews draw another theme's colors, not the live one's"
+)]
 pub fn theme_preview(
     mode: Option<ThemeMode>,
     light: &ThemeColor,
@@ -431,6 +435,10 @@ pub fn theme_preview(
 }
 
 /// A small menu drawn the way `look` draws one, for the style tiles.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "previews draw another look's surfaces, not the live one's"
+)]
 pub fn interface_style_preview(look: &crate::interface_style::Look, cx: &App) -> zz_gpui::Div {
     let theme = cx.theme();
     let surface_radius = (look.radius / 3.0).min(10.0);
@@ -498,6 +506,10 @@ pub fn interface_style_preview(look: &crate::interface_style::Look, cx: &App) ->
 }
 
 /// The window mockup the theme and palette tiles share, painted from `colors`.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "previews draw another palette's colors, not the live one's"
+)]
 pub fn palette_preview(colors: &ThemeColor, cx: &App) -> zz_gpui::Div {
     let sidebar_fraction = THEME_PREVIEW_SIDEBAR_WIDTH / THEME_PREVIEW_WIDTH;
     div()

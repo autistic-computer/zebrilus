@@ -9,8 +9,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, IndexPath, PaintState, Sizable as _, Size,
-    StyledExt as _, Tone, h_flex,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, IndexPath, PaintState, Sizable as _,
+    Size, StyledExt as _, Tone, h_flex,
     input::{Input, InputEvent, InputState, field_chrome, field_paint, field_text},
     menu::{PopupMenu, PopupMenuItem},
     sheet::{bottom_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option},
@@ -34,6 +34,7 @@ pub(super) struct SelectOptions {
     pub(super) title: Option<SharedString>,
     pub(super) menu_max_h: Option<Length>,
     pub(super) disabled: bool,
+    pub(super) on: Option<Ground>,
 }
 
 /// What a [`SelectState`] reports to its subscribers.
@@ -294,7 +295,7 @@ impl<D: SelectDelegate> SelectState<D> {
         let open = self.menu.is_some() || self.sheet;
         let disabled = self.options.disabled;
         let size = self.options.size;
-        let paint = field_paint(Tone::Neutral, None, None, cx);
+        let paint = field_paint(Tone::Neutral, None, self.options.on, cx);
         let state = match (disabled, open || focused) {
             (true, _) => PaintState::Disabled,
             (false, true) => PaintState::Focused,

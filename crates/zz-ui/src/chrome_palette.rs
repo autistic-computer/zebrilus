@@ -82,6 +82,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the check measures each preset's own raised surface, not the live theme"
+    )]
     fn preset_catalog_has_valid_ids_colors_and_contrast() {
         let mut ids = HashSet::new();
         for preset in &CHROME_PRESETS {
