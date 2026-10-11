@@ -1311,7 +1311,9 @@ impl AgentPane {
                         let delete = view.clone();
                         let session_id = session.session_id.clone();
                         let detail = if selected == index {
-                            cx.theme().foreground
+                            cx.theme()
+                                .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
+                                .selected_text
                         } else {
                             cx.theme().foreground.muted()
                         };
@@ -1483,7 +1485,6 @@ impl AgentPane {
                 .child(
                     agent_chrome_button("agent-project-new")
                         .primary()
-                        .text_color(cx.theme().foreground)
                         .min_w_0()
                         .max_w_full()
                         .child(
@@ -1687,7 +1688,9 @@ impl AgentPane {
                                     .flex_none()
                                     .text_size(zz_ui::rems_from_px(11.0))
                                     .text_color(if highlighted {
-                                        cx.theme().foreground
+                                        cx.theme()
+                                            .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
+                                            .selected_text
                                     } else {
                                         cx.theme().foreground.muted()
                                     })

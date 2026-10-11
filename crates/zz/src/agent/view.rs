@@ -2147,7 +2147,9 @@ impl AgentView {
                             let is_current =
                                 current_session.as_deref() == Some(session.session_id.as_str());
                             let detail_color = if is_selected {
-                                cx.theme().foreground
+                                cx.theme()
+                                    .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
+                                    .selected_text
                             } else {
                                 cx.theme().foreground.muted()
                             };
@@ -2379,7 +2381,6 @@ impl AgentView {
                 .child(
                     agent_chrome_button(("agent-project-new", pane.0))
                         .primary()
-                        .text_color(cx.theme().foreground)
                         .debug_selector(|| "agent-project-new".into())
                         .min_w_0()
                         .max_w_full()
@@ -2592,7 +2593,9 @@ impl AgentView {
                                     .flex_none()
                                     .text_size(zz_ui::rems_from_px(11.0))
                                     .text_color(if highlighted {
-                                        cx.theme().foreground
+                                        cx.theme()
+                                            .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
+                                            .selected_text
                                     } else {
                                         cx.theme().foreground.muted()
                                     })

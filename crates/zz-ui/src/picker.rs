@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Emphasis, Icon, IconName, Sizable as _,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName, Sizable as _,
     StyledExt as _, Tone,
     badge::Badge,
     h_flex,
@@ -60,6 +60,9 @@ pub fn picker_header(cx: &App) -> Div {
 pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
     div().w_full().child(
         Input::new(input)
+            .on(cx.theme().surface(Elevation::Popover).opaque())
+            .emphasis(Emphasis::Soft)
+            .bordered(false)
             .small()
             .h(px(32.0))
             .w_full()
