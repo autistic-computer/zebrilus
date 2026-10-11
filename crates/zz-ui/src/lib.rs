@@ -7,7 +7,7 @@ pub mod tmux_style;
 
 pub use zz_gpui_kit::{
     badge, button, check, color_picker, dialog, highlighter, icon, input, kbd, list, menu,
-    notification, overlay, popover, pulse, scroll, select, separator, slider, spinner, switch, tag,
+    notification, overlay, popover, pulse, scroll, select, separator, slider, spinner, switch,
     text, theme, title_bar, tooltip, touch,
 };
 

@@ -3,10 +3,10 @@ use std::{rc::Rc, sync::Arc};
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Selectable as _,
     Sizable as _, StyledExt as _,
+    badge::Badge,
     button::{Button, ButtonVariants as _},
     input::{Input, InputContentType, InputState},
     menu::{PopupMenu, PopupMenuItem},
-    tag::Tag,
     tooltip::Tooltip,
 };
 use zz_gpui::{
@@ -1195,14 +1195,13 @@ impl RenderOnce for BrowserPickStatus {
             .flex()
             .justify_center()
             .child(
-                Tag::secondary()
-                    .small()
-                    .rounded_full()
-                    .bg(cx.theme().background.raised(1).opaque())
+                Badge::empty()
+                    .opaque()
+                    .font_weight(zz_gpui::FontWeight::NORMAL)
                     .control_surface(cx)
                     .max_w_full()
+                    .h(px(28.0))
                     .px(px(10.0))
-                    .py(px(6.0))
                     .text_size(px(12.0))
                     .line_height(px(16.0))
                     .gap(px(6.0))

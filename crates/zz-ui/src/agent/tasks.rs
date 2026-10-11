@@ -4,8 +4,8 @@ use zz_gpui::{App, Div, SharedString, Window, div, prelude::*, px};
 use zz_protocol::AgentTaskWire;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
-    StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName,
+    InteractivePaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -136,6 +136,12 @@ pub fn task_tray(
     };
     let plan_chip = plan.map(|(_, (label, current))| {
         let open = open == Some(TrayPanel::Plan);
+        let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+        let state = if open {
+            PaintState::Selected
+        } else {
+            PaintState::Rest
+        };
         h_flex()
             .id(SharedString::from(format!("{id}-plan")))
             .debug_selector(|| "agent-plan-chip".to_owned())
@@ -147,9 +153,7 @@ pub fn task_tray(
             .cursor_pointer()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
-            .text_color(cx.theme().foreground)
-            .hover(|chip| chip.bg(cx.theme().background.washed(2)))
-            .when(open, |chip| chip.bg(cx.theme().background.washed(2)))
+            .painted_interactive(paint, open, true)
             .child(
                 div()
                     .flex_none()
@@ -165,7 +169,7 @@ pub fn task_tray(
                         .overflow_hidden()
                         .text_ellipsis()
                         .whitespace_nowrap()
-                        .text_color(cx.theme().foreground.muted())
+                        .text_color(paint.muted_at(state))
                         .child(current),
                 )
             })
@@ -174,7 +178,7 @@ pub fn task_tray(
                     .flex_none()
                     .relative()
                     .top(px(TASK_ICON_OPTICAL_DROP))
-                    .text_color(cx.theme().foreground.muted())
+                    .text_color(paint.muted_at(state))
                     .child(
                         Icon::new(if open {
                             IconName::ChevronDown

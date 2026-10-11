@@ -2,8 +2,8 @@
 //! status, a kind.
 
 use zz_gpui::{
-    App, FontWeight, IntoElement, ParentElement as _, RenderOnce, SharedString, StyleRefinement,
-    Styled, Window, px,
+    AnyElement, App, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString,
+    StyleRefinement, Styled, Window, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -17,8 +17,10 @@ pub struct Badge {
     icon: Option<Icon>,
     tone: Tone,
     emphasis: Emphasis,
+    opaque: bool,
     size: Size,
     style: StyleRefinement,
+    children: Vec<AnyElement>,
 }
 
 impl Badge {
@@ -30,9 +32,25 @@ impl Badge {
             icon: None,
             tone: Tone::default(),
             emphasis: Emphasis::default(),
+            opaque: false,
             size: Size::default(),
             style: StyleRefinement::default(),
+            children: Vec::new(),
         }
+    }
+
+    /// A badge whose content is its children alone.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::new(SharedString::default())
+    }
+
+    /// Fill the badge over the window instead of tinting what is under it,
+    /// for a badge that floats over content.
+    #[must_use]
+    pub fn opaque(mut self) -> Self {
+        self.opaque = true;
+        self
     }
 
     #[must_use]
@@ -62,6 +80,12 @@ impl Sizable for Badge {
     }
 }
 
+impl ParentElement for Badge {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
 impl Styled for Badge {
     fn style(&mut self) -> &mut StyleRefinement {
         &mut self.style
@@ -77,6 +101,7 @@ impl RenderOnce for Badge {
             Size::Medium | Size::Size(_) => (20.0, 12.0, 7.0),
         };
         let paint = cx.theme().paint(self.tone, self.emphasis);
+        let paint = if self.opaque { paint.opaque() } else { paint };
         h_flex()
             .flex_none()
             .h(px(height))
@@ -90,6 +115,7 @@ impl RenderOnce for Badge {
             .whitespace_nowrap()
             .refine_style(&self.style)
             .children(self.icon.map(|icon| icon.size(px(text + 1.0))))
-            .child(self.label)
+            .when(!self.label.is_empty(), |badge| badge.child(self.label))
+            .children(self.children)
     }
 }

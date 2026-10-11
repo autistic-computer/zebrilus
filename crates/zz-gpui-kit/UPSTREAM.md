@@ -105,7 +105,7 @@ keep `radius`.
 
 `StyledExt::popover_style` shares an opaque raised surface, half-pixel edge, and scaled soft outer
 shadow across menus and picker containers. The shared command palette uses a 560px surface, a 40px bare Input, 12px search text,
-12px inline Tag pills and medium labels, 10px details and footer hints, and 8px list gutters.
+12px inline Badge pills and medium labels, 10px details and footer hints, and 8px list gutters.
 Rows use 16px line heights and occupy 26px with 2px gaps, matching dropdown typography. `command/palette.rs` supplies sections, fuzzy text highlights,
 breadcrumbs, shortcut tags, host status dots, and session/window running-agent summary dots for
 the unified desktop palette. Agent pane rows use shared vendor icons and text status.

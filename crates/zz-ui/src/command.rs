@@ -15,10 +15,10 @@ pub use palette_view::{CommandPaletteEvent, CommandPaletteView, PaletteBackend};
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Sizable as _, StyledExt as _,
+    badge::Badge,
     input::{Input, InputState},
     kbd::Kbd,
     list::ListItem,
-    tag::Tag,
 };
 use zz_gpui::{
     AnyElement, App, ElementId, Entity, IntoElement, Keystroke, ParentElement as _, Pixels,
@@ -99,12 +99,11 @@ pub fn command_palette_row(
 pub fn command_kind_badge(
     label: impl Into<SharedString>,
     font_family: impl Into<SharedString>,
-) -> Tag {
-    Tag::secondary()
-        .small()
+) -> Badge {
+    Badge::new(label)
+        .xsmall()
         .font_family(font_family.into())
         .text_size(crate::rems_from_px(9.0))
-        .child(label.into())
 }
 
 /// The palette surface. Input and virtualized rows are caller-supplied slots.

@@ -3,7 +3,8 @@ use zz_gpui::{
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, IndexPath, Sizable as _,
+    ActiveTheme as _, Colorize as _, Emphasis, IconName, IndexPath, Sizable as _, Tone,
+    badge::Badge,
     button::{Button, ButtonVariants as _},
     command::{
         CommandPaletteSurface, PaletteHint, PalettePill, PaletteRow, PaletteStatus,
@@ -19,7 +20,6 @@ use zz_ui::{
     select::{Select, SelectState},
     slider::DiscreteSlider,
     switch::Switch,
-    tag::Tag,
     tooltip::Tooltip,
     v_flex,
 };
@@ -292,9 +292,13 @@ impl Showcase {
                     .flex_wrap()
                     .items_center()
                     .gap_2()
-                    .child(Tag::success().child("connected"))
-                    .child(Tag::primary().child("main"))
-                    .child(Tag::secondary().child("3 panes"))
+                    .child(Badge::new("connected").tone(Tone::Success))
+                    .child(
+                        Badge::new("main")
+                            .tone(Tone::Primary)
+                            .emphasis(Emphasis::Solid),
+                    )
+                    .child(Badge::new("3 panes"))
                     .children(
                         keys.into_iter()
                             .map(|key| Kbd::new(Keystroke::parse(key).unwrap_or_default())),

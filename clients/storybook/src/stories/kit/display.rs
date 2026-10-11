@@ -4,7 +4,7 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, Size, h_flex,
-    kbd::Kbd, list::ListItem, separator::Separator, spinner::Spinner, tag::Tag, v_flex,
+    kbd::Kbd, list::ListItem, separator::Separator, spinner::Spinner, v_flex,
 };
 
 use super::support::{Probe, hover, when_visible};
@@ -14,14 +14,8 @@ pub const STORY: Story = Story {
     id: "display",
     name: "Display",
     group: "Kit",
-    summary: "Small read-only pieces: tags, key caps, spinners, separators and list rows.",
+    summary: "Small read-only pieces: key caps, spinners, separators and list rows. Badges live in the Design system story.",
     sections: &[
-        Section {
-            id: "tag",
-            name: "Tag",
-            summary: "Three color roles, filled or outlined. Small and xsmall share one compact form.",
-            build: |_, cx| stateless(tags, cx),
-        },
         Section {
             id: "kbd",
             name: "Kbd",
@@ -48,47 +42,6 @@ pub const STORY: Story = Story {
         },
     ],
 };
-
-fn tags(_: &mut Window, _: &mut App) -> AnyElement {
-    let set = |outline: bool, size: Size| {
-        row()
-            .child(styled_tag(Tag::primary(), outline, size).child("primary"))
-            .child(styled_tag(Tag::secondary(), outline, size).child("secondary"))
-            .child(styled_tag(Tag::success(), outline, size).child("success"))
-    };
-    states()
-        .columns(2)
-        .state("filled", set(false, Size::Medium))
-        .state("outline", set(true, Size::Medium))
-        .state("filled, small", set(false, Size::Small))
-        .state("outline, small", set(true, Size::Small))
-        .state(
-            "with an icon",
-            row()
-                .child(
-                    Tag::secondary().child(
-                        h_flex()
-                            .gap_1()
-                            .child(Icon::new(IconName::GitBranch).xsmall())
-                            .child("main"),
-                    ),
-                )
-                .child(
-                    Tag::success().outline().child(
-                        h_flex()
-                            .gap_1()
-                            .child(Icon::new(IconName::Check).xsmall())
-                            .child("passing"),
-                    ),
-                ),
-        )
-        .into_any_element()
-}
-
-fn styled_tag(tag: Tag, outline: bool, size: Size) -> Tag {
-    let tag = if outline { tag.outline() } else { tag };
-    tag.with_size(size)
-}
 
 fn key(source: &str) -> Kbd {
     Kbd::new(Keystroke::parse(source).unwrap_or_default())

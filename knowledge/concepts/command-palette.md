@@ -39,8 +39,8 @@ breadcrumbs. The default search keeps Navigation, Commands, and Hosts in separat
 Navigate search stays within navigation targets. Agent panes carry their activity state in the tree
 and search results.
 
-Typing a prefix into an empty default search replaces it with a mode Tag. A host scope adds a
-Tag before the mode. Choosing a target command adds its name as another Tag. Backspace on an
+Typing a prefix into an empty default search replaces it with a mode Badge. A host scope adds a
+Badge before the mode. Choosing a target command adds its name as another Badge. Backspace on an
 empty field removes one layer: command, mode, then host. Escape and clicking outside close the
 palette; reopening resets the mode, query, and scope. Up/Down wrap across selectable rows and
 skip headers. Moving beyond the visible rows scrolls only far enough to reveal the selected row,
@@ -133,7 +133,7 @@ rejected by the daemon's existing target validation rather than trusted client-s
 # How it is rendered in GPUI
 
 `zz-ui::command::CommandPaletteSurface` owns the shared panel, usage line, and shortcut footer.
-`command/palette.rs` builds its Input, Tag pills, ListItem rows, section headers, status dots,
+`command/palette.rs` builds its Input, Badge pills, ListItem rows, section headers, status dots,
 and matched-label spans. `PaletteRow::icon` and `PaletteRow::expanded` carry the tree icon and
 disclosure state. `command_palette_tree_entry` gives the disclosure its own toggle handler while
 the row keeps its activation handler. One `CommandPaletteView` in

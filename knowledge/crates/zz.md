@@ -685,7 +685,7 @@ imports reload the page.
   and relies on the existing poller to apply `zz/config` control changes.
 - The browser toolbar composes zz-ui widgets directly: `InputState`/`Input` provide native
   selection, IME, clipboard, loading, and submission behavior; `Button`, `PopupMenuItem`,
-  `AlertDialog`, `Separator`, `Tag`, and themed icons provide the surrounding chrome and
+  `AlertDialog`, `Separator`, `Badge`, and themed icons provide the surrounding chrome and
   recovery/status surfaces.
 
 # Diagnostics (`diagnostics/mod.rs`)

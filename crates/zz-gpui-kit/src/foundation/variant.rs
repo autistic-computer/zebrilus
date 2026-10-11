@@ -210,6 +210,20 @@ impl Paint {
             .mix_oklab(self.ground_at(state).fill, 1.0 - faint_weight())
     }
 
+    /// This paint with its fills composited over its ground, for something
+    /// that floats over content (a badge over an editor, a hint over a web
+    /// page) and must not let it show through.
+    pub fn opaque(self) -> Self {
+        let ground = self.ground.fill;
+        Self {
+            fill: ground.blend(self.fill),
+            hover: ground.blend(self.hover),
+            active: ground.blend(self.active),
+            selected: ground.blend(self.selected),
+            ..self
+        }
+    }
+
     /// The ground this paint makes for what sits inside it in `state`.
     pub fn ground_at(&self, state: PaintState) -> Ground {
         Ground {

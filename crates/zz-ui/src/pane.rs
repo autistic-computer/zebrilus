@@ -1,9 +1,8 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Icon, IconName,
-    Sizable as _, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Icon, IconName,
+    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
     control_shadow, surface_ring,
-    tag::Tag,
 };
 use zz_gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, Corners, CursorStyle,
@@ -473,12 +472,11 @@ pub fn pane_drag_chip(
         .py(px(6.0))
         .overflow_hidden()
         .rounded(cx.theme().radius)
+        .painted(overlay_paint(cx), PaintState::Rest)
         .border_1()
         .border_color(cx.theme().border())
-        .bg(cx.theme().background.opaque().raised(1))
         .shadow(floating_surface_shadow(cx))
         .text_size(crate::rems_from_px(12.0))
-        .text_color(cx.theme().foreground)
         .child(
             div()
                 .flex_none()
@@ -492,7 +490,7 @@ pub fn pane_drag_chip(
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .text_color(cx.theme().foreground.muted())
+                .text_color(overlay_paint(cx).muted_at(PaintState::Rest))
                 .child(title.into()),
         )
 }
@@ -716,12 +714,11 @@ pub fn pane_status_badge(icon: IconName, label: impl IntoElement, cx: &App) -> z
         .px(px(10.0))
         .py(px(5.0))
         .rounded(cx.theme().radius)
-        .bg(cx.theme().background.raised(1))
+        .painted(overlay_paint(cx), PaintState::Rest)
         .control_surface(cx)
         .font_family(cx.theme().font_family.clone())
         .text_size(crate::rems_from_px(13.0))
         .line_height(px(16.0))
-        .text_color(cx.theme().foreground)
         .child(
             div()
                 .relative()
@@ -884,14 +881,10 @@ pub fn terminal_search_prompt(
     caret: usize,
     on_caret: impl FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> Tag {
+) -> zz_gpui::Div {
     let text = StyledText::new(message);
     let layout = text.layout().clone();
-    Tag::secondary()
-        .max_w(px(560.0))
-        .border_color(cx.theme().foreground)
-        .text_color(cx.theme().foreground)
-        .text_size(crate::rems_from_px(11.0))
+    overlay_line(PaintState::Focused, cx)
         .child(text)
         .on_prepaint(move |_, window, cx| {
             if let Some(position) = layout.position_for_index(caret) {
@@ -909,23 +902,39 @@ pub fn terminal_search_prompt(
 
 /// A transient status line (copy confirmations, search errors) for the pane's
 /// bottom-right overlay stack.
-pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> Tag {
-    Tag::secondary()
-        .max_w(px(560.0))
-        .text_color(cx.theme().foreground.muted())
-        .text_size(crate::rems_from_px(11.0))
+pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> zz_gpui::Div {
+    let quiet = overlay_paint(cx).muted_at(PaintState::Rest);
+    overlay_line(PaintState::Rest, cx)
+        .text_color(quiet)
         .child(message)
 }
 
 /// A preview of the URI under the pointer, shown in the pane's bottom-right
 /// overlay stack.
-pub fn terminal_link_popup(uri: impl IntoElement, cx: &App) -> Tag {
-    Tag::secondary()
-        .max_w(px(560.0))
+pub fn terminal_link_popup(uri: impl IntoElement, cx: &App) -> zz_gpui::Div {
+    overlay_line(PaintState::Rest, cx)
         .overflow_hidden()
-        .text_color(cx.theme().foreground)
-        .text_size(crate::rems_from_px(11.0))
         .child(uri)
+}
+
+fn overlay_paint(cx: &App) -> crate::Paint {
+    cx.theme().paint(Tone::Neutral, Emphasis::Soft).opaque()
+}
+
+/// A line in the pane's bottom-right overlay stack: an opaque soft paint, so
+/// the terminal does not show through, focused when it is a prompt.
+fn overlay_line(state: PaintState, cx: &App) -> zz_gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .max_w(px(560.0))
+        .px(px(10.0))
+        .py(px(4.0))
+        .rounded(cx.theme().radius)
+        .painted(overlay_paint(cx), state)
+        .border(px(1.0))
+        .line_height(relative(1.))
+        .text_size(crate::rems_from_px(11.0))
 }
 
 pub fn pane_picker_row(
