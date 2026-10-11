@@ -1,4 +1,4 @@
-use std::{cell::Cell, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use zz_client::{
     MenuBox, MenuKeyResult, MenuPointerKind,
@@ -6,17 +6,18 @@ use zz_client::{
     resolve_menu_mouse,
 };
 use zz_gpui::{
-    AnyElement, Bounds, Context, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
-    ScrollWheelEvent, Window, div, point, prelude::*, px, size,
+    AnchoredPositionMode, AnyElement, Bounds, Context, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, ScrollWheelEvent, Window, anchored, div, point, prelude::*, px,
+    size,
 };
 use zz_protocol::{
     FloatingPaneSnapshot, InputMessage, MenuState, PaneBorderLines, PopupBorderLines,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation,
+    ActiveTheme as _, Colorize as _, Elevation,
     command::floating::{
-        RELEASE_BUTTONS, WHEEL_BUTTONS, confirm_prompt, floating_frame, menu_grid_cell,
-        menu_press_buttons, menu_row, menu_separator,
+        MenuHits, RELEASE_BUTTONS, WHEEL_BUTTONS, confirm_prompt, display_menu, floating_frame,
+        menu_enter, menu_hit_cell, menu_press_buttons,
     },
     pane::FloatingSurface,
 };
@@ -53,8 +54,6 @@ impl AppShell {
         let core = &self.connection.read(cx).core;
         let canvas = self.floating_canvas_size(window);
         if let Some(state) = core.menu().cloned() {
-            let bordered = state.border_lines != PopupBorderLines::None;
-            let scale = window.scale_factor();
             let frame = floating_frame(
                 state.left,
                 state.top,
@@ -64,140 +63,85 @@ impl AppShell {
                 state.client_rows,
                 state.cell_width_px,
                 state.cell_height_px,
-                bordered,
+                state.border_lines != PopupBorderLines::None,
                 point(px(0.0), px(0.0)),
                 canvas,
-                scale,
+                window.scale_factor(),
             );
-            let background = style_color(
-                &state.style,
-                "bg",
-                cx.theme().surface(Elevation::Panel).fill.opaque(),
+            let hits = Rc::new(RefCell::new(MenuHits::default()));
+            let surface = menu_enter(
+                display_menu(
+                    &state,
+                    self.menu_selection,
+                    window.viewport_size(),
+                    &hits,
+                    cx,
+                ),
                 cx,
             );
-            let foreground = style_color(&state.style, "fg", cx.theme().foreground, cx);
-            let border_color = style_color(&state.border_style, "fg", cx.theme().border(), cx);
-            let selected_background = style_color(
-                &state.selected_style,
-                "bg",
-                cx.theme().surface(Elevation::Popover).fill.opaque(),
-                cx,
-            );
-            let selected_foreground =
-                style_color(&state.selected_style, "fg", cx.theme().foreground, cx);
-            let selected = self.menu_selection;
-            let row_height =
-                px(f32::from(u16::try_from(state.cell_height_px).unwrap_or(u16::MAX)) / scale);
-            let rows = state
-                .items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| match item {
-                    Some(item) => menu_row(
-                        ("web-display-menu-row", index),
-                        item.name.clone(),
-                        item.annotation.clone().map(Into::into),
-                        item.enabled,
-                        selected == Some(index),
-                        row_height,
-                        selected_background,
-                        selected_foreground,
-                        cx.theme().mono_font_family.clone(),
-                        cx,
-                    )
-                    .into_any_element(),
-                    None => menu_separator(("web-display-menu-separator", index), row_height, cx)
-                        .into_any_element(),
-                });
-            let content_bounds = Rc::new(Cell::new(Bounds::default()));
-            let measured = content_bounds.clone();
-            let content = div()
-                .relative()
-                .size_full()
-                .flex()
-                .flex_col()
-                .on_prepaint(move |bounds, _, _| measured.set(bounds))
-                .children(rows);
-            let surface = div()
-                .absolute()
-                .left(frame.bounds.origin.x)
-                .top(frame.bounds.origin.y)
-                .w(frame.bounds.size.width)
-                .h(frame.bounds.size.height)
-                .child(
-                    FloatingSurface::new("web-display-menu-surface", content, cx)
-                        .title(state.title.clone())
-                        .content_inset(frame.inset_x, frame.inset_y)
-                        .colors(background, foreground, border_color)
-                        .bordered(bordered),
-                );
             let state = Rc::new(state);
-            let (press_state, press_bounds) = (state.clone(), content_bounds.clone());
-            let (release_state, release_bounds) = (state.clone(), content_bounds.clone());
-            let (move_state, move_bounds) = (state.clone(), content_bounds.clone());
+            let (press_state, press_hits) = (state.clone(), hits.clone());
+            let (release_state, release_hits) = (state.clone(), hits.clone());
+            let (move_state, move_hits) = (state.clone(), hits.clone());
             return Some(
                 div()
                     .absolute()
                     .inset_0()
                     .occlude()
                     .capture_any_mouse_down(cx.listener(
-                        move |this, event: &MouseDownEvent, window, cx| {
+                        move |this, event: &MouseDownEvent, _, cx| {
                             this.menu_pointer(
                                 &press_state,
-                                press_bounds.get(),
+                                &press_hits.borrow(),
                                 (MenuPointerKind::Press, menu_press_buttons(event.button)),
                                 event.position,
-                                window,
                                 cx,
                             );
                             cx.stop_propagation();
                         },
                     ))
-                    .capture_any_mouse_up(cx.listener(
-                        move |this, event: &MouseUpEvent, window, cx| {
-                            this.menu_pointer(
-                                &release_state,
-                                release_bounds.get(),
-                                (MenuPointerKind::Release, RELEASE_BUTTONS),
-                                event.position,
-                                window,
-                                cx,
-                            );
-                            cx.stop_propagation();
-                        },
-                    ))
-                    .on_mouse_move(
-                        cx.listener(move |this, event: &MouseMoveEvent, window, cx| {
-                            let (kind, buttons) = event
-                                .pressed_button
-                                .map_or((MenuPointerKind::Motion, RELEASE_BUTTONS), |button| {
-                                    (MenuPointerKind::Drag, menu_press_buttons(button))
-                                });
-                            this.menu_pointer(
-                                &move_state,
-                                move_bounds.get(),
-                                (kind, buttons),
-                                event.position,
-                                window,
-                                cx,
-                            );
-                            cx.stop_propagation();
-                        }),
+                    .capture_any_mouse_up(cx.listener(move |this, event: &MouseUpEvent, _, cx| {
+                        this.menu_pointer(
+                            &release_state,
+                            &release_hits.borrow(),
+                            (MenuPointerKind::Release, RELEASE_BUTTONS),
+                            event.position,
+                            cx,
+                        );
+                        cx.stop_propagation();
+                    }))
+                    .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
+                        let (kind, buttons) = event
+                            .pressed_button
+                            .map_or((MenuPointerKind::Motion, RELEASE_BUTTONS), |button| {
+                                (MenuPointerKind::Drag, menu_press_buttons(button))
+                            });
+                        this.menu_pointer(
+                            &move_state,
+                            &move_hits.borrow(),
+                            (kind, buttons),
+                            event.position,
+                            cx,
+                        );
+                        cx.stop_propagation();
+                    }))
+                    .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _, cx| {
+                        this.menu_pointer(
+                            &state,
+                            &hits.borrow(),
+                            (MenuPointerKind::Wheel, WHEEL_BUTTONS),
+                            event.position,
+                            cx,
+                        );
+                        cx.stop_propagation();
+                    }))
+                    .child(
+                        anchored()
+                            .position_mode(AnchoredPositionMode::Local)
+                            .position(frame.bounds.origin)
+                            .snap_to_window_with_margin(px(8.0))
+                            .child(surface),
                     )
-                    .on_scroll_wheel(cx.listener(
-                        move |this, event: &ScrollWheelEvent, window, cx| {
-                            this.menu_pointer(
-                                &state,
-                                content_bounds.get(),
-                                (MenuPointerKind::Wheel, WHEEL_BUTTONS),
-                                event.position,
-                                window,
-                                cx,
-                            );
-                            cx.stop_propagation();
-                        },
-                    ))
-                    .child(surface)
                     .into_any_element(),
             );
         }
@@ -231,27 +175,15 @@ impl AppShell {
     fn menu_pointer(
         &mut self,
         state: &MenuState,
-        content_bounds: Bounds<Pixels>,
+        hits: &MenuHits,
         (kind, buttons): (MenuPointerKind, u8),
         position: Point<Pixels>,
-        window: &Window,
         cx: &mut Context<Self>,
     ) {
-        let inset = u16::from(state.border_lines != PopupBorderLines::None);
-        let column = menu_grid_cell(
-            position.x - content_bounds.origin.x,
-            state.cell_width_px,
-            window.scale_factor(),
-            state.left.saturating_add(inset),
-            u16::MAX,
-        );
-        let row = menu_grid_cell(
-            position.y - content_bounds.origin.y,
-            state.cell_height_px,
-            window.scale_factor(),
-            state.top.saturating_add(inset),
-            0,
-        );
+        if !state.mouse_keys && kind == MenuPointerKind::Motion {
+            return;
+        }
+        let (column, row) = menu_hit_cell(state, hits, position);
         match resolve_menu_mouse(
             state,
             self.menu_selection,
@@ -277,8 +209,6 @@ impl AppShell {
         }
     }
 }
-
-pub(super) use zz_ui::tmux_style::tmux_style_colour as style_color;
 
 impl AppShell {
     pub(super) fn cell_size(

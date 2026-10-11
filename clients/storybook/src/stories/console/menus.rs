@@ -1,12 +1,14 @@
+use std::rc::Rc;
+
 use zz_gpui::{
-    AnyElement, App, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Styled as _,
-    Window, div, px,
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window,
+    div, px, size,
 };
+use zz_protocol::{MenuItem, MenuState, PopupBorderLines};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation,
-    command::floating::{confirm_prompt, menu_row, menu_separator},
+    ActiveTheme as _,
+    command::floating::{confirm_prompt, display_menu},
     pane::FloatingSurface,
-    tmux_style::tmux_style_colour,
 };
 
 use crate::story::{Section, Story, row, stateless, states};
@@ -15,18 +17,18 @@ pub const STORY: Story = Story {
     id: "floating-menus",
     name: "Floating menus",
     group: "Commands",
-    summary: "display-menu and confirm-before, drawn as floating surfaces on the terminal grid: rows are one cell tall and a border takes one cell on each side.",
+    summary: "display-menu drawn as the kit's popup menu from the daemon's MenuState, and the confirm-before question on a floating surface.",
     sections: &[
         Section {
             id: "display-menu",
             name: "display-menu",
-            summary: "A titled menu with separators, key annotations, disabled items and the selected row.",
-            build: |_, cx| stateless(display_menu, cx),
+            summary: "The pane menu: a centred title, key hints, separators, a disabled item and the highlighted row. A disabled row under the pointer stays unhighlighted.",
+            build: |_, cx| stateless(menus, cx),
         },
         Section {
             id: "menu-styles",
             name: "Menu styles",
-            summary: "-b none drops the border and its inset. -s, -S and -H color the menu, the border and the selected row the tmux way.",
+            summary: "-b none drops the outline and the title. Literal colours from -s, -S and -H tint the surface, the outline and the highlight; theme slots leave the look's own.",
             build: |_, cx| stateless(menu_styles, cx),
         },
         Section {
@@ -38,171 +40,154 @@ pub const STORY: Story = Story {
     ],
 };
 
-const CELL_WIDTH: f32 = 8.0;
-const CELL_HEIGHT: f32 = 19.0;
-const MENU_COLUMNS: f32 = 26.0;
-
 const PANE_MENU: &[Option<(&str, Option<&str>, bool)>] = &[
+    Some(("Search For #[underscore]config", Some("C-r"), true)),
+    Some(("Copy #[underscore]config", Some("c"), true)),
+    None,
     Some(("Horizontal Split", Some("h"), true)),
     Some(("Vertical Split", Some("v"), true)),
     None,
     Some(("Swap Up", Some("u"), true)),
     Some(("Swap Down", Some("d"), true)),
-    Some(("Swap Marked", Some("s"), false)),
+    Some(("Swap Marked", None, false)),
     None,
     Some(("Kill", Some("X"), true)),
     Some(("Respawn", Some("R"), true)),
     Some(("Mark", Some("m"), true)),
-    Some(("Rename", Some("r"), true)),
+    Some(("Zoom", Some("z"), true)),
 ];
 
-struct MenuColors {
-    background: Hsla,
-    foreground: Hsla,
-    border: Hsla,
-    selected_background: Hsla,
-    selected_foreground: Hsla,
+const DISABLED_ROW: usize = 8;
+
+struct Styles {
+    style: &'static str,
+    border_style: &'static str,
+    selected_style: &'static str,
 }
 
-impl MenuColors {
-    fn theme(cx: &App) -> Self {
-        Self {
-            background: cx.theme().surface(Elevation::Panel).fill.opaque(),
-            foreground: cx.theme().foreground,
-            border: cx.theme().border(),
-            selected_background: cx.theme().surface(Elevation::Popover).fill.opaque(),
-            selected_foreground: cx.theme().foreground,
-        }
-    }
+const DEFAULT_STYLES: Styles = Styles {
+    style: "bg=themedarkgrey,fg=themewhite",
+    border_style: "bg=themedarkgrey,fg=themelightgrey",
+    selected_style: "bg=themeyellow,fg=themeblack",
+};
 
-    fn styled(style: &str, border_style: &str, selected_style: &str, cx: &App) -> Self {
-        let theme = Self::theme(cx);
-        Self {
-            background: tmux_style_colour(style, "bg", theme.background, cx),
-            foreground: tmux_style_colour(style, "fg", theme.foreground, cx),
-            border: tmux_style_colour(border_style, "fg", theme.border, cx),
-            selected_background: tmux_style_colour(
-                selected_style,
-                "bg",
-                theme.selected_background,
-                cx,
-            ),
-            selected_foreground: tmux_style_colour(
-                selected_style,
-                "fg",
-                theme.selected_foreground,
-                cx,
-            ),
-        }
-    }
-}
-
-fn menu(
-    id: &'static str,
-    title: &str,
+fn pane_menu(
     selected: Option<usize>,
-    bordered: bool,
-    colors: &MenuColors,
-    cx: &App,
-) -> AnyElement {
-    let row_height = px(CELL_HEIGHT);
-    let font = cx.theme().mono_font_family.clone();
-    let rows = PANE_MENU
+    border_lines: PopupBorderLines,
+    styles: &Styles,
+) -> MenuState {
+    let items: Vec<Option<MenuItem>> = PANE_MENU
         .iter()
-        .enumerate()
-        .map(|(index, item)| match item {
-            Some((name, key, enabled)) => menu_row(
-                (id, index),
-                *name,
-                key.map(SharedString::from),
-                *enabled,
-                selected == Some(index),
-                row_height,
-                colors.selected_background,
-                colors.selected_foreground,
-                font.clone(),
-                cx,
-            )
-            .into_any_element(),
-            None => menu_separator((id, index), row_height, cx).into_any_element(),
-        });
-    let inset: (Pixels, Pixels) = if bordered {
-        (px(CELL_WIDTH), px(CELL_HEIGHT))
-    } else {
-        (px(0.0), px(0.0))
-    };
-    let lines = PANE_MENU.len() as f32 + if bordered { 2.0 } else { 0.0 };
-    let columns = MENU_COLUMNS + if bordered { 2.0 } else { 0.0 };
+        .map(|item| {
+            item.map(|(name, key, enabled)| MenuItem {
+                name: name.to_owned(),
+                key: key.map(str::to_owned),
+                annotation: key.map(str::to_owned),
+                enabled,
+            })
+        })
+        .collect();
+    MenuState {
+        left: 0,
+        top: 0,
+        width: 26,
+        height: items.len() as u16 + 2,
+        client_columns: 80,
+        client_rows: 24,
+        cell_width_px: 16,
+        cell_height_px: 38,
+        title: "#[align=centre]0 (%3)".to_owned(),
+        style: styles.style.to_owned(),
+        selected_style: styles.selected_style.to_owned(),
+        border_style: styles.border_style.to_owned(),
+        border_lines,
+        items,
+        selected: selected.map(|index| index as u32),
+        stay_open: false,
+        mouse_keys: true,
+    }
+}
+
+fn menu(id: &'static str, state: &MenuState, cx: &App) -> AnyElement {
+    let selected = state.selected.map(|index| index as usize);
     div()
-        .w(px(columns * CELL_WIDTH))
-        .h(px(lines * CELL_HEIGHT))
-        .child(
-            FloatingSurface::new(
-                id,
-                div()
-                    .relative()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .children(rows),
-                cx,
-            )
-            .title(title.to_owned())
-            .content_inset(inset.0, inset.1)
-            .colors(colors.background, colors.foreground, colors.border)
-            .bordered(bordered),
-        )
+        .id(id)
+        .flex()
+        .child(display_menu(
+            state,
+            selected,
+            size(px(800.0), px(600.0)),
+            &Rc::default(),
+            cx,
+        ))
         .into_any_element()
 }
 
-fn display_menu(_: &mut Window, cx: &mut App) -> AnyElement {
+fn menus(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let colors = MenuColors::theme(cx);
+    let single = PopupBorderLines::Single;
     states()
         .columns(3)
         .state(
             "nothing selected",
-            menu("menu-rest", "Pane %3", None, true, &colors, cx),
+            menu("menu-rest", &pane_menu(None, single, &DEFAULT_STYLES), cx),
         )
         .state(
             "row selected",
-            menu("menu-selected", "Pane %3", Some(1), true, &colors, cx),
+            menu(
+                "menu-selected",
+                &pane_menu(Some(3), single, &DEFAULT_STYLES),
+                cx,
+            ),
         )
         .state(
-            "disabled row selected",
-            menu("menu-disabled", "Pane %3", Some(5), true, &colors, cx),
+            "disabled row under the pointer",
+            menu(
+                "menu-disabled",
+                &pane_menu(Some(DISABLED_ROW), single, &DEFAULT_STYLES),
+                cx,
+            ),
         )
         .into_any_element()
 }
 
 fn menu_styles(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let theme = MenuColors::theme(cx);
-    let tmux = MenuColors::styled(
-        "bg=colour236,fg=colour252",
-        "fg=colour39",
-        "bg=colour39,fg=colour16",
-        cx,
-    );
-    let themed = MenuColors::styled(
-        "bg=themedarkgrey,fg=themewhite",
-        "fg=themegreen",
-        "bg=themeyellow,fg=themeblack",
-        cx,
-    );
+    let tmux = Styles {
+        style: "bg=themedarkgrey,fg=themewhite,bg=colour236,fg=colour252",
+        border_style: "bg=themedarkgrey,fg=themelightgrey,fg=colour39",
+        selected_style: "bg=themeyellow,fg=themeblack,bg=colour39,fg=colour16",
+    };
+    let themed = Styles {
+        style: "bg=themedarkgrey,fg=themewhite,bg=themeblue",
+        border_style: "bg=themedarkgrey,fg=themelightgrey,fg=themegreen",
+        selected_style: "bg=themeyellow,fg=themeblack,bg=themered",
+    };
     states()
         .columns(3)
         .state(
             "-b none",
-            menu("menu-borderless", "Pane %3", Some(1), false, &theme, cx),
+            menu(
+                "menu-borderless",
+                &pane_menu(Some(3), PopupBorderLines::None, &DEFAULT_STYLES),
+                cx,
+            ),
         )
         .state(
             "colour256 styles",
-            menu("menu-tmux", "Pane %3", Some(1), true, &tmux, cx),
+            menu(
+                "menu-tmux",
+                &pane_menu(Some(3), PopupBorderLines::Single, &tmux),
+                cx,
+            ),
         )
         .state(
-            "theme colours",
-            menu("menu-theme", "Pane %3", Some(1), true, &themed, cx),
+            "theme slots follow the look",
+            menu(
+                "menu-theme",
+                &pane_menu(Some(3), PopupBorderLines::Single, &themed),
+                cx,
+            ),
         )
         .into_any_element()
 }

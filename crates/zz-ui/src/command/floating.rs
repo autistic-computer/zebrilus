@@ -1,56 +1,263 @@
+use std::{cell::RefCell, rc::Rc};
+
 use zz_gpui::{
-    App, Bounds, Div, ElementId, Hsla, Keystroke, Pixels, Point, SharedString, Size, Stateful, div,
-    point, prelude::*, px, size,
+    AnimationElement, App, Bounds, Div, ElementId, Hsla, Keystroke, Pixels, Point, Role,
+    SharedString, Size, Stateful, div, point, prelude::*, px, rems, size,
+};
+use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
+
+use crate::{
+    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, Emphasis, StyledExt as _, Tone,
+    h_flex, rems_from_px,
+    tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
+    touch::{CoarsePointer, TOUCH_TARGET},
+    v_flex,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, Emphasis, Tone};
+const LIST_PADDING: Pixels = px(4.0);
+const ROW_PADDING: Pixels = px(8.0);
+const LINE_HEIGHT: Pixels = px(16.0);
+const TITLE_HEIGHT: Pixels = px(21.0);
+const SEPARATOR_HEIGHT: Pixels = px(4.5);
+const WINDOW_MARGIN: Pixels = px(8.0);
 
-pub fn menu_row(
-    id: impl Into<ElementId>,
-    name: impl Into<SharedString>,
-    annotation: Option<SharedString>,
-    enabled: bool,
-    selected: bool,
-    row_height: Pixels,
-    selected_background: Hsla,
-    selected_foreground: Hsla,
-    font_family: impl Into<SharedString>,
-    cx: &App,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(row_height)
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_between()
-        .px(px(12.0))
-        .rounded(cx.theme().menu_radius())
-        .font_family(font_family.into())
-        .text_size(px(13.0))
-        .line_height(px(16.0))
-        .when(selected, |row| {
-            row.bg(selected_background).text_color(selected_foreground)
-        })
-        .when(!selected && !enabled, |row| {
-            row.text_color(cx.theme().foreground.muted())
-        })
-        .when(!selected && enabled, |row| {
-            row.hover(|row| row.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover))
-        })
-        .child(name.into())
-        .when_some(annotation, |row, key| row.child(format!("({key})")))
+#[derive(Debug, Default)]
+pub struct MenuHits {
+    pub surface: Bounds<Pixels>,
+    pub rows: Bounds<Pixels>,
+    pub tops: Vec<Pixels>,
 }
 
-pub fn menu_separator(id: impl Into<ElementId>, row_height: Pixels, cx: &App) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(row_height)
+struct MenuInks {
+    rest: Hsla,
+    selected: Option<(Hsla, Hsla)>,
+    selected_text: Option<Hsla>,
+    ground: Hsla,
+    rule: Hsla,
+}
+
+pub fn display_menu(
+    state: &MenuState,
+    selected: Option<usize>,
+    room: Size<Pixels>,
+    hits: &Rc<RefCell<MenuHits>>,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let coarse = CoarsePointer::get(cx);
+    let titled = state.border_lines != PopupBorderLines::None && !state.title.is_empty();
+    let outlined = !matches!(
+        state.border_lines,
+        PopupBorderLines::None | PopupBorderLines::Padded
+    );
+    let fill = tmux_literal_colour(&state.style, "bg", cx);
+    let text = tmux_literal_colour(&state.style, "fg", cx);
+    let outline = tmux_literal_colour(&state.border_style, "fg", cx);
+    let selected_text = tmux_literal_colour(&state.selected_style, "fg", cx);
+    let rest = text.unwrap_or(theme.foreground);
+    let inks = MenuInks {
+        rest,
+        selected: tmux_literal_colour(&state.selected_style, "bg", cx)
+            .map(|fill| (fill, selected_text.unwrap_or(rest))),
+        selected_text,
+        ground: fill.unwrap_or(theme.surface(Elevation::Popover).fill.opaque()),
+        rule: outline.unwrap_or(theme.divider_color()),
+    };
+    let row_height = menu_row_height(state, titled, room, cx);
+    hits.borrow_mut()
+        .tops
+        .resize(state.items.len(), Pixels::ZERO);
+    let surface_hits = hits.clone();
+    let rows_hits = hits.clone();
+    let rows = state.items.iter().enumerate().map(|(index, item)| {
+        let tops = hits.clone();
+        let record = move |bounds: Bounds<Pixels>, _: &mut zz_gpui::Window, _: &mut App| {
+            if let Some(top) = tops.borrow_mut().tops.get_mut(index) {
+                *top = bounds.top();
+            }
+        };
+        match item {
+            Some(item) => menu_row(index, item, selected == Some(index), row_height, &inks, cx)
+                .on_prepaint(record)
+                .into_any_element(),
+            None => div()
+                .flex_none()
+                .my(px(2.0))
+                .mx(theme.row_inset)
+                .border_b(px(0.5))
+                .border_color(inks.rule)
+                .on_prepaint(record)
+                .into_any_element(),
+        }
+    });
+    let list = v_flex()
+        .pt(if !titled {
+            LIST_PADDING
+        } else if theme.inset_rows() {
+            px(2.0)
+        } else {
+            Pixels::ZERO
+        })
+        .pb(LIST_PADDING)
+        .px(theme.row_inset)
+        .when(theme.inset_rows(), Styled::gap_y_0p5)
+        .on_prepaint(move |bounds, _, _| rows_hits.borrow_mut().rows = bounds)
+        .children(rows);
+    v_flex()
+        .id("display-menu")
+        .debug_selector(|| "display-menu".to_owned())
+        .role(Role::Menu)
+        .relative()
+        .occlude()
+        .popover_style(cx)
+        .when_some(fill, |surface, fill| surface.surface_fill(fill, cx))
+        .when_some(text, Styled::text_color)
+        .when_some(outline.filter(|_| outlined), |surface, outline| {
+            surface
+                .border(theme.outline_width.max(px(1.0)))
+                .border_color(outline)
+        })
+        .when(!outlined, Styled::border_0)
+        .min_w(rems(8.0))
+        .max_w(
+            px(500.0)
+                .min(room.width - WINDOW_MARGIN * 2.0)
+                .max(px(128.0)),
+        )
+        .font_family(theme.font_family.clone())
+        .text_size(rems_from_px(if coarse { 13.0 } else { 12.0 }))
+        .line_height(LINE_HEIGHT)
+        .on_prepaint(move |bounds, _, _| surface_hits.borrow_mut().surface = bounds)
+        .when(titled, |surface| {
+            surface.child(menu_title(&state.title, &inks, cx))
+        })
+        .child(list)
+}
+
+pub fn menu_enter(surface: Stateful<Div>, cx: &App) -> AnimationElement<Stateful<Div>> {
+    zz_gpui_kit::foundation::surface_enter(surface, "display-menu-open", Pixels::ZERO, cx)
+}
+
+fn menu_row(
+    index: usize,
+    item: &MenuItem,
+    selected: bool,
+    row_height: Pixels,
+    inks: &MenuInks,
+    cx: &App,
+) -> Stateful<Div> {
+    let highlighted = selected && item.enabled;
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+    let (ink, ground) = match (highlighted, inks.selected) {
+        (true, Some((fill, text))) => (text, fill),
+        (true, None) => (
+            inks.selected_text.unwrap_or(paint.selected_text),
+            paint.selected,
+        ),
+        (false, _) if item.enabled => (inks.rest, inks.ground),
+        (false, _) => (inks.rest.muted(), inks.ground),
+    };
+    let name = tmux_styled_segments_text(&parse_styled_segments(&item.name), ink, ground, cx);
+    h_flex()
+        .id(("display-menu-row", index))
+        .debug_selector(move || format!("display-menu-row-{index}"))
+        .role(Role::MenuItem)
+        .aria_selected(highlighted)
         .flex_none()
-        .flex()
-        .items_center()
-        .px(px(8.0))
-        .child(div().h(px(1.0)).w_full().bg(cx.theme().divider_color()))
+        .h(row_height)
+        .px(ROW_PADDING)
+        .gap_3()
+        .justify_between()
+        .border(px(0.5))
+        .border_color(cx.theme().transparent)
+        .menu_item_corners(row_height, cx)
+        .when(highlighted, |row| match inks.selected {
+            Some((fill, _)) => row.bg(fill).border_color(fill),
+            None => row.selection_highlight(cx),
+        })
+        .text_color(ink)
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(name.into_styled_text()),
+        )
+        .when_some(item.annotation.clone(), |row, key| {
+            row.child(
+                div()
+                    .flex_none()
+                    .whitespace_nowrap()
+                    .text_xs()
+                    .text_color(ink)
+                    .opacity(if highlighted { 1.0 } else { 0.8 })
+                    .child(key),
+            )
+        })
+}
+
+fn menu_title(title: &str, inks: &MenuInks, cx: &App) -> Div {
+    let ink = inks.rest.muted();
+    let [left, centre, right] = split_tmux_alignment(title).map(|segments| {
+        (!segments.is_empty())
+            .then(|| tmux_styled_segments_text(&segments, ink, inks.ground, cx).into_styled_text())
+    });
+    h_flex()
+        .flex_none()
+        .h(TITLE_HEIGHT)
+        .pt(LIST_PADDING)
+        .px(cx.theme().row_inset + ROW_PADDING)
+        .text_size(rems_from_px(11.0))
+        .text_color(ink)
+        .whitespace_nowrap()
+        .overflow_hidden()
+        .child(h_flex().flex_grow_1().children(left))
+        .children(centre)
+        .child(h_flex().flex_grow_1().justify_end().children(right))
+}
+
+fn menu_row_height(state: &MenuState, titled: bool, room: Size<Pixels>, cx: &App) -> Pixels {
+    let theme = cx.theme();
+    let natural = if CoarsePointer::get(cx) {
+        px(TOUCH_TARGET)
+    } else {
+        theme.dense(px(26.0))
+    };
+    let rows = state.items.iter().flatten().count();
+    if rows == 0 {
+        return natural;
+    }
+    let gaps = if theme.inset_rows() {
+        px(2.0) * state.items.len().saturating_sub(1)
+    } else {
+        Pixels::ZERO
+    };
+    let fixed = WINDOW_MARGIN * 2.0
+        + LIST_PADDING * 2.0
+        + if titled { TITLE_HEIGHT } else { Pixels::ZERO }
+        + SEPARATOR_HEIGHT * (state.items.len() - rows)
+        + gaps;
+    let fit = (room.height - fixed) / f32::from(u16::try_from(rows).unwrap_or(u16::MAX));
+    natural.min(fit.floor()).max(LINE_HEIGHT)
+}
+
+#[must_use]
+pub fn menu_hit_cell(state: &MenuState, hits: &MenuHits, at: Point<Pixels>) -> (u16, u16) {
+    let column = state.left.saturating_add(1);
+    if hits.rows.contains(&at) {
+        let index = hits
+            .tops
+            .iter()
+            .rposition(|top| *top <= at.y)
+            .unwrap_or_default();
+        let index = u16::try_from(index).unwrap_or(u16::MAX);
+        return (column, state.top.saturating_add(1).saturating_add(index));
+    }
+    if hits.surface.contains(&at) {
+        return (column, state.top);
+    }
+    (u16::MAX, 0)
 }
 
 pub fn confirm_prompt(
@@ -125,20 +332,6 @@ pub fn floating_frame(
     }
 }
 
-pub fn menu_grid_cell(offset: Pixels, cell_px: u32, scale: f32, origin: u16, outside: u16) -> u16 {
-    let cell = f32::from(u16::try_from(cell_px).unwrap_or(u16::MAX)) / scale;
-    let offset = f32::from(offset);
-    if cell <= 0.0 || offset < 0.0 {
-        return outside;
-    }
-    let steps = (offset / cell).floor();
-    if steps < 0.0 || steps > f32::from(u16::MAX) {
-        return outside;
-    }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    origin.saturating_add(steps as u16)
-}
-
 pub const RELEASE_BUTTONS: u8 = 3;
 pub const WHEEL_BUTTONS: u8 = 64;
 
@@ -148,5 +341,71 @@ pub const fn menu_press_buttons(button: zz_gpui::MouseButton) -> u8 {
         zz_gpui::MouseButton::Middle => 1,
         zz_gpui::MouseButton::Right => 2,
         zz_gpui::MouseButton::Navigate(_) => 128,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use zz_client::MenuBox;
+    use zz_gpui::{Bounds, point, px, size};
+    use zz_protocol::{MenuItem, MenuState, PopupBorderLines};
+
+    use super::{MenuHits, menu_hit_cell};
+
+    #[test]
+    fn a_pointer_lands_on_the_cell_of_the_row_above_it_and_the_title_is_the_border() {
+        let item = |name: &str| {
+            Some(MenuItem {
+                name: name.to_owned(),
+                key: None,
+                annotation: None,
+                enabled: true,
+            })
+        };
+        let state = MenuState {
+            left: 10,
+            top: 4,
+            width: 12,
+            height: 5,
+            client_columns: 80,
+            client_rows: 24,
+            cell_width_px: 8,
+            cell_height_px: 18,
+            title: "Pane".to_owned(),
+            style: String::new(),
+            selected_style: String::new(),
+            border_style: String::new(),
+            border_lines: PopupBorderLines::Single,
+            items: vec![item("Split"), None, item("Kill")],
+            selected: None,
+            stay_open: false,
+            mouse_keys: true,
+        };
+        let hits = MenuHits {
+            surface: Bounds::new(point(px(100.0), px(50.0)), size(px(160.0), px(90.0))),
+            rows: Bounds::new(point(px(100.0), px(71.0)), size(px(160.0), px(69.0))),
+            tops: vec![px(75.0), px(103.0), px(108.0)],
+        };
+        let frame = MenuBox {
+            left: state.left,
+            top: state.top,
+            width: state.width,
+            items: state.items.len(),
+        };
+        let at = |x: f32, y: f32| menu_hit_cell(&state, &hits, point(px(x), px(y)));
+
+        assert_eq!(at(120.0, 80.0), (11, 5));
+        assert_eq!(at(120.0, 72.0), (11, 5));
+        assert_eq!(at(120.0, 102.0), (11, 5));
+        assert_eq!(at(120.0, 104.0), (11, 6));
+        assert_eq!(at(120.0, 120.0), (11, 7));
+        assert_eq!(at(120.0, 60.0), (11, 4));
+        let (column, row) = at(120.0, 60.0);
+        assert!(!frame.contains(column, row));
+        let (column, row) = at(120.0, 139.0);
+        assert!(frame.contains(column, row));
+        assert_eq!(at(90.0, 80.0), (u16::MAX, 0));
+        let (column, row) = at(90.0, 80.0);
+        assert!(!frame.contains(column, row));
     }
 }

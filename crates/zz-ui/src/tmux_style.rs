@@ -13,16 +13,25 @@ use crate::{ActiveTheme as _, Colorize as _, Elevation};
 
 #[must_use]
 pub fn tmux_style_colour(style: &str, key: &str, fallback: Hsla, cx: &App) -> Hsla {
-    let Some(value) = style.split(',').find_map(|part| {
+    style_field(style, key)
+        .and_then(parse_tmux_colour)
+        .and_then(|colour| resolve_tmux_colour(colour, cx))
+        .unwrap_or(fallback)
+}
+
+#[must_use]
+pub fn tmux_literal_colour(style: &str, key: &str, cx: &App) -> Option<Hsla> {
+    match parse_tmux_colour(style_field(style, key)?)? {
+        TmuxColour::Theme(_) | TmuxColour::Default | TmuxColour::Terminal => None,
+        colour => resolve_tmux_colour(colour, cx),
+    }
+}
+
+fn style_field<'a>(style: &'a str, key: &str) -> Option<&'a str> {
+    style.rsplit([',', ' ']).find_map(|part| {
         let (name, value) = part.split_once('=')?;
         name.eq_ignore_ascii_case(key).then_some(value)
-    }) else {
-        return fallback;
-    };
-    let Some(colour) = parse_tmux_colour(value) else {
-        return fallback;
-    };
-    resolve_tmux_colour(colour, cx).unwrap_or(fallback)
+    })
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -167,7 +176,32 @@ fn packed_tmux_colour(colour: u32) -> Hsla {
 
 #[cfg(test)]
 mod tests {
+    use zz_gpui::TestAppContext;
+
     use super::*;
+
+    #[zz_gpui::test]
+    fn the_last_colour_field_wins_and_theme_slots_are_not_literal(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            let appended = "bold,bg=colour17,fg=default,bg=colour52";
+            let colour52 = packed_tmux_colour(indexed_colour_rgb(52));
+            assert_eq!(
+                tmux_style_colour(appended, "bg", cx.theme().background, cx),
+                colour52
+            );
+            assert_eq!(tmux_literal_colour(appended, "bg", cx), Some(colour52));
+            assert_eq!(tmux_literal_colour(appended, "fg", cx), None);
+            assert_eq!(
+                tmux_literal_colour("bg=themedarkgrey bg=themeyellow", "bg", cx),
+                None
+            );
+            assert_eq!(
+                tmux_literal_colour("bg=themeyellow,bg=#102030", "bg", cx),
+                Some(packed_tmux_colour(0x0010_2030))
+            );
+        });
+    }
 
     #[test]
     fn indicator_labels_split_into_alignment_buckets() {

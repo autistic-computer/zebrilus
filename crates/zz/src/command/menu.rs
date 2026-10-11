@@ -1,23 +1,17 @@
-use std::{cell::Cell, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use zz_client::{MenuBox, MenuKeyResult, MenuPointerKind, resolve_menu_key, resolve_menu_mouse};
 use zz_gpui::{
-    App, Bounds, Context, Entity, FocusHandle, Focusable, IntoElement, KeyDownEvent, Keystroke,
+    App, Context, Entity, FocusHandle, Focusable, IntoElement, KeyDownEvent, Keystroke,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, ScrollWheelEvent, Window,
-    div, prelude::*, px,
+    prelude::*,
 };
-use zz_protocol::{InputMessage, MenuAction, MenuState, PopupBorderLines};
+use zz_protocol::{InputMessage, MenuAction, MenuState};
 use zz_terminal::KeyAction;
 
-use crate::{
-    mux::{client::MuxClient, prefix::terminal_key_input},
-    terminal::view::TERMINAL_FONT,
-    theme::tmux_style_colour,
-};
-use zz_ui::command::floating::{menu_row, menu_separator};
-use zz_ui::{ActiveTheme as _, Colorize as _, ElementExt as _, Elevation};
+use crate::mux::{client::MuxClient, prefix::terminal_key_input};
+use zz_ui::command::floating::{MenuHits, display_menu, menu_enter, menu_hit_cell};
 
-use zz_ui::command::floating::menu_grid_cell as grid_cell;
 pub(crate) use zz_ui::command::floating::{
     RELEASE_BUTTONS, WHEEL_BUTTONS, menu_press_buttons as press_buttons,
 };
@@ -27,7 +21,7 @@ pub(crate) struct MenuView {
     mux: Entity<MuxClient>,
     state: MenuState,
     selected: Option<usize>,
-    content_bounds: Rc<Cell<Bounds<Pixels>>>,
+    hits: Rc<RefCell<MenuHits>>,
 }
 
 impl MenuView {
@@ -38,7 +32,7 @@ impl MenuView {
             mux,
             state,
             selected,
-            content_bounds: Rc::new(Cell::new(Bounds::default())),
+            hits: Rc::default(),
         }
     }
 
@@ -64,21 +58,24 @@ impl MenuView {
     }
 
     /// One pointer report, answered by `menu_key_cb`'s whole mouse arm rather
-    /// than by the desktop. A `MENU_NOMOUSE` menu swallows a button-1 press and
-    /// leaves on anything else, wherever the pointer is. A menu that took the
-    /// mouse moves its highlight under a press or a motion, chooses the
-    /// highlighted row when a release lands inside the box, closes when a
-    /// release lands outside it, and, when it is stay-open, closes instead on
-    /// any report that is neither a release, a wheel nor a drag.
+    /// than by the desktop. A `MENU_NOMOUSE` menu never hears a bare motion,
+    /// because the pin leaves motion reporting off for it; it swallows a
+    /// button-1 press and leaves on anything else, wherever the pointer is. A
+    /// menu that took the mouse moves its highlight under a press or a motion,
+    /// chooses the highlighted row when a release lands inside the box, closes
+    /// when a release lands outside it, and, when it is stay-open, closes
+    /// instead on any report that is neither a release, a wheel nor a drag.
     pub(crate) fn pointer(
         &mut self,
         kind: MenuPointerKind,
         buttons: u8,
         position: Point<Pixels>,
-        window: &Window,
         cx: &mut Context<Self>,
     ) {
-        let (column, row) = self.cell_at(position, window.scale_factor());
+        if !self.state.mouse_keys && kind == MenuPointerKind::Motion {
+            return;
+        }
+        let (column, row) = menu_hit_cell(&self.state, &self.hits.borrow(), position);
         let frame = MenuBox {
             left: self.state.left,
             top: self.state.top,
@@ -105,42 +102,6 @@ impl MenuView {
         }
     }
 
-    /// The client-grid cell the pointer sits on, in the coordinates
-    /// `MenuState`'s `left` and `top` use. This view's own box is the menu's
-    /// content, which `FloatingSurface::content_inset` insets by the one cell
-    /// of border `menu_frame` measures, so its top-left corner is the cell one
-    /// right and one down from the menu's origin. A pointer left of or above
-    /// that box is reported at a cell outside the menu, never clamped onto its
-    /// edge.
-    fn cell_at(&self, position: Point<Pixels>, scale: f32) -> (u16, u16) {
-        let bounds = self.content_bounds.get();
-        let inset = u16::from(self.state.border_lines != PopupBorderLines::None);
-        let column = grid_cell(
-            position.x - bounds.origin.x,
-            self.state.cell_width_px,
-            scale,
-            self.state.left.saturating_add(inset),
-            u16::MAX,
-        );
-        let row = grid_cell(
-            position.y - bounds.origin.y,
-            self.state.cell_height_px,
-            scale,
-            self.state.top.saturating_add(inset),
-            0,
-        );
-        (column, row)
-    }
-
-    /// One drawn row is one cell of the box `menu_frame` measures, because
-    /// `menu.c` sizes a menu as `count + 2` rows and hands the client that
-    /// height. Letting the rows take their text height instead overflows the
-    /// box whenever the terminal cell is shorter than the row's line height,
-    /// and `FloatingSurface` clips what overflows.
-    fn row_height(&self, scale: f32) -> Pixels {
-        px(f32::from(u16::try_from(self.state.cell_height_px).unwrap_or(u16::MAX)) / scale)
-    }
-
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         match resolve_keystroke(&self.state, self.selected, &event.keystroke) {
             MenuKeyResult::Action(action) => self.send(action, cx),
@@ -162,89 +123,48 @@ impl Focusable for MenuView {
 
 impl Render for MenuView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let row_height = self.row_height(window.scale_factor());
-        let selected_background = tmux_style_colour(
-            &self.state.selected_style,
-            "bg",
-            cx.theme().surface(Elevation::Popover).fill.opaque(),
+        let surface = display_menu(
+            &self.state,
+            self.selected,
+            window.viewport_size(),
+            &self.hits,
             cx,
-        );
-        let selected_foreground =
-            tmux_style_colour(&self.state.selected_style, "fg", cx.theme().foreground, cx);
-        let rows = self
-            .state
-            .items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| match item {
-                None => menu_separator(("display-menu-separator", index), row_height, cx)
-                    .into_any_element(),
-                Some(item) => menu_row(
-                    ("display-menu-row", index),
-                    item.name.clone(),
-                    item.annotation.clone().map(Into::into),
-                    item.enabled,
-                    self.selected == Some(index),
-                    row_height,
-                    selected_background,
-                    selected_foreground,
-                    TERMINAL_FONT,
-                    cx,
-                )
-                .debug_selector(move || format!("display-menu-row-{index}"))
-                .into_any_element(),
-            });
-        let measured = Rc::clone(&self.content_bounds);
-        div()
-            .id("display-menu-input")
-            .relative()
-            .size_full()
-            .flex()
-            .flex_col()
-            .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(Self::on_key_down))
-            .on_key_up(|_, _, cx| cx.stop_propagation())
-            .on_prepaint(move |bounds, _, _| measured.set(bounds))
-            .capture_any_mouse_down(cx.listener(|menu, event: &MouseDownEvent, window, cx| {
-                menu.pointer(
-                    MenuPointerKind::Press,
-                    press_buttons(event.button),
-                    event.position,
-                    window,
-                    cx,
-                );
-                cx.stop_propagation();
-            }))
-            .capture_any_mouse_up(cx.listener(|menu, event: &MouseUpEvent, window, cx| {
-                menu.pointer(
-                    MenuPointerKind::Release,
-                    RELEASE_BUTTONS,
-                    event.position,
-                    window,
-                    cx,
-                );
-                cx.stop_propagation();
-            }))
-            .on_mouse_move(cx.listener(|menu, event: &MouseMoveEvent, window, cx| {
-                let (kind, buttons) = event
-                    .pressed_button
-                    .map_or((MenuPointerKind::Motion, RELEASE_BUTTONS), |button| {
-                        (MenuPointerKind::Drag, press_buttons(button))
-                    });
-                menu.pointer(kind, buttons, event.position, window, cx);
-                cx.stop_propagation();
-            }))
-            .on_scroll_wheel(cx.listener(|menu, event: &ScrollWheelEvent, window, cx| {
-                menu.pointer(
-                    MenuPointerKind::Wheel,
-                    WHEEL_BUTTONS,
-                    event.position,
-                    window,
-                    cx,
-                );
-                cx.stop_propagation();
-            }))
-            .children(rows)
+        )
+        .track_focus(&self.focus_handle)
+        .on_key_down(cx.listener(Self::on_key_down))
+        .on_key_up(|_, _, cx| cx.stop_propagation())
+        .capture_any_mouse_down(cx.listener(|menu, event: &MouseDownEvent, _, cx| {
+            menu.pointer(
+                MenuPointerKind::Press,
+                press_buttons(event.button),
+                event.position,
+                cx,
+            );
+            cx.stop_propagation();
+        }))
+        .capture_any_mouse_up(cx.listener(|menu, event: &MouseUpEvent, _, cx| {
+            menu.pointer(
+                MenuPointerKind::Release,
+                RELEASE_BUTTONS,
+                event.position,
+                cx,
+            );
+            cx.stop_propagation();
+        }))
+        .on_mouse_move(cx.listener(|menu, event: &MouseMoveEvent, _, cx| {
+            let (kind, buttons) = event
+                .pressed_button
+                .map_or((MenuPointerKind::Motion, RELEASE_BUTTONS), |button| {
+                    (MenuPointerKind::Drag, press_buttons(button))
+                });
+            menu.pointer(kind, buttons, event.position, cx);
+            cx.stop_propagation();
+        }))
+        .on_scroll_wheel(cx.listener(|menu, event: &ScrollWheelEvent, _, cx| {
+            menu.pointer(MenuPointerKind::Wheel, WHEEL_BUTTONS, event.position, cx);
+            cx.stop_propagation();
+        }));
+        menu_enter(surface, cx)
     }
 }
 
