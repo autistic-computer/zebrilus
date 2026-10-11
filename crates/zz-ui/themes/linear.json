@@ -1,0 +1,41 @@
+{
+  "name": "Linear",
+  "look": {
+    "radius": 8,
+    "corner-smoothing": 0,
+    "shadow": 1,
+    "control-shadow": 1,
+    "elevation": 0.8,
+    "outline": 1,
+    "outline-width": 0.5,
+    "row-inset": 4,
+    "selection": "wash",
+    "primary": "accent",
+    "field": "soft",
+    "density": 1,
+    "control-fill": 1,
+    "divider": 1,
+    "animation-speed": 1,
+    "glass": null
+  },
+  "light": {
+    "background": "#fcfcfd",
+    "foreground": "#1f2023",
+    "accent": "#5e6ad2",
+    "success": "#2f8f5b",
+    "warning": "#b85f00",
+    "danger": "#d23f3f",
+    "on-accent": "#ffffff",
+    "shadow-color": "#1b1c3a14"
+  },
+  "dark": {
+    "background": "#19191a",
+    "foreground": "#ededef",
+    "accent": "#5e6ad2",
+    "success": "#4cb782",
+    "warning": "#f2994a",
+    "danger": "#eb5757",
+    "on-accent": "#ffffff",
+    "shadow-color": "#00000080"
+  }
+}

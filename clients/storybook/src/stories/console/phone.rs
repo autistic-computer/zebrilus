@@ -4,8 +4,8 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
     Styled as _, Window, div, prelude::*, px,
 };
-use zz_ui::{Elevation, 
-    ActiveTheme as _, Colorize as _, IconName,
+use zz_ui::{
+    ActiveTheme as _, Colorize as _, Elevation, IconName,
     compact::{
         ArrowPad, KeyRow, PageDot, PopoverKey, PopoverKeyItem, PopoverKeyTap, ToolKeys,
         WhichKeyList, compact_bar, compact_bar_button, compact_bar_pill, compact_hud,

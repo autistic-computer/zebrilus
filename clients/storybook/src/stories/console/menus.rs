@@ -2,8 +2,8 @@ use zz_gpui::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Styled as _,
     Window, div, px,
 };
-use zz_ui::{Elevation, 
-    ActiveTheme as _, Colorize as _,
+use zz_ui::{
+    ActiveTheme as _, Colorize as _, Elevation,
     command::floating::{confirm_prompt, menu_row, menu_separator},
     pane::FloatingSurface,
     tmux_style::tmux_style_colour,

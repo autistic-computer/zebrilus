@@ -1,0 +1,54 @@
+{
+  "name": "macOS",
+  "look": {
+    "radius": 10,
+    "corner-smoothing": 4,
+    "shadow": 1,
+    "control-shadow": 0,
+    "elevation": 1,
+    "outline": 1,
+    "outline-width": 0.5,
+    "row-inset": 5,
+    "selection": "accent",
+    "primary": "accent",
+    "field": "soft",
+    "density": 1,
+    "control-fill": 1,
+    "divider": 1,
+    "animation-speed": 1,
+    "glass": {
+      "preset": "regular",
+      "blur": 19.7,
+      "tint": "#ffffff87",
+      "refraction": 40,
+      "bezel": 11,
+      "dispersion": 0.06,
+      "saturation": 0.9,
+      "brightness": 0.04,
+      "specular": 0.3,
+      "fresnel": 0.03,
+      "edge_shadow": 0.45,
+      "noise": 0
+    }
+  },
+  "light": {
+    "background": "#ffffff",
+    "foreground": "#272727",
+    "accent": "#007aff",
+    "success": "#248a3d",
+    "warning": "#c93400",
+    "danger": "#d70015",
+    "on-accent": "#ffffff",
+    "shadow-color": "#00000026"
+  },
+  "dark": {
+    "background": "#1e1e1e",
+    "foreground": "#dddddd",
+    "accent": "#007aff",
+    "success": "#30d158",
+    "warning": "#ff9230",
+    "danger": "#ff4245",
+    "on-accent": "#ffffff",
+    "shadow-color": "#00000066"
+  }
+}

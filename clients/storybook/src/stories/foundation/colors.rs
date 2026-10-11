@@ -10,7 +10,7 @@ pub const STORY: Story = Story {
     id: "colors",
     name: "Colors",
     group: "Foundation",
-    summary: "Six roots and a scrim. Every other color is derived from them at paint time, so a palette swap or a contrast change moves the whole UI at once.",
+    summary: "Six roots, the scrim and the shadow ink a theme names for each mode. Every other color is derived from them at paint time, so a theme swap or a contrast change moves the whole UI at once.",
     sections: &[
         Section {
             id: "roots",
@@ -39,6 +39,14 @@ fn roots(_: &mut Window, cx: &mut App) -> AnyElement {
         .child(swatch("warning", theme.warning, cx))
         .child(swatch("danger", theme.danger, cx))
         .child(swatch("scrim", theme.scrim, cx))
+        .child(swatch("shadow color", theme.shadow_color, cx))
+        .child(swatch(
+            "text on accent",
+            theme
+                .paint(zz_ui::Tone::Primary, zz_ui::Emphasis::Solid)
+                .text,
+            cx,
+        ))
         .child(swatch("border()", theme.border(), cx))
         .into_any_element()
 }

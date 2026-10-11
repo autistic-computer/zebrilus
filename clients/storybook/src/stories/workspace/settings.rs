@@ -5,15 +5,12 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _, Window,
     div, prelude::*, px,
 };
-use zz_ui::{Emphasis, Tone, 
-    ActiveTheme as _, Colorize as _, Icon, IconName, IndexPath, SelectionStyle, Sizable as _,
-    ThemeMode,
+use zz_ui::{
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, IndexPath, SelectionStyle,
+    Sizable as _, ThemeMode, Tone,
     button::{Button, ButtonVariants as _},
-    chrome_palette::{
-        ThemeModeSetting, chrome_presets, inherited_chrome_colors, pinned_theme_mode,
-    },
     input::{InputState, NumberInput},
-    interface_style::{InterfaceStyle, Look, look},
+    interface_theme::{InterfaceTheme, Look, ThemeModeSetting, builtin_themes, pinned_theme_mode},
     select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsNavigationGroup, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -21,8 +18,7 @@ use zz_ui::{Emphasis, Tone,
             ABOUT_LOGO_SIZE, about_build_stack, about_copy_button, about_hero, about_project_stack,
         },
         appearance::{
-            PickerStrip, interface_style_preview, palette_preview, picker_tile, theme_preview,
-            ui_font_select,
+            PickerStrip, interface_theme_preview, picker_tile, theme_preview, ui_font_select,
         },
         panes_page,
         panes_preview::PanesPreview,
@@ -62,14 +58,14 @@ pub const STORY: Story = Story {
         Section {
             id: "appearance",
             name: "Appearance pickers",
-            summary: "Theme and style tiles, the per-mode palette strips that scroll sideways, the UI font select and the Advanced heading from the Interface page.",
+            summary: "The mode tiles, the interface theme strip with a saved theme beside the built-ins, the UI font select and the Advanced heading from the Interface page.",
             build: |window, cx| stateful(window, cx, Controls::new, appearance),
         },
         Section {
-            id: "palettes",
-            name: "Palettes",
-            summary: "palette_preview for every built-in chroma preset, as the palette strips draw them.",
-            build: |_, cx| stateless(palettes, cx),
+            id: "themes",
+            name: "Themes",
+            summary: "interface_theme_preview for every built-in theme in both modes, as the theme tiles draw them.",
+            build: |_, cx| stateless(themes, cx),
         },
         Section {
             id: "panes-page",
@@ -315,8 +311,9 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
-    let light = inherited_chrome_colors(None, ThemeMode::Light);
-    let dark = inherited_chrome_colors(None, ThemeMode::Dark);
+    let active = crate::knobs().interface_theme();
+    let light = active.colors(ThemeMode::Light);
+    let dark = active.colors(ThemeMode::Dark);
     let tiles =
         div()
             .flex()
@@ -332,20 +329,19 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     cx,
                 )
             }));
-    let strip = |id: &'static str, mode: ThemeMode, selected: usize| {
-        let presets = std::iter::once(None)
-            .chain(chrome_presets(mode.is_dark()).map(|preset| Some(preset.id)))
-            .collect::<Vec<_>>();
-        PickerStrip::new(id, selected).tiles(presets.into_iter().map(|preset| {
-            (
-                preset.map_or("Default", |id| id.preset().name),
-                palette_preview(&inherited_chrome_colors(preset, mode), cx),
-            )
-        }))
+    let mode = cx.theme().mode;
+    let saved = InterfaceTheme {
+        name: "theme-1".to_owned(),
+        look: Look {
+            radius: 4.0,
+            selection: SelectionStyle::Wash,
+            ..builtin_themes()[1].1.look.clone()
+        },
+        ..builtin_themes()[1].1.clone()
     };
     states()
         .state(
-            "theme and font",
+            "mode, theme and font",
             SettingsStack::titled("Interface")
                 .child(
                     SettingEntry::new("Theme", "Follow the system light/dark setting, or pin one.")
@@ -358,25 +354,29 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 )
                 .child(
                     SettingEntry::new(
-                        "Style",
-                        "Corners, outlines, shadows, and how menus and dialogs float.",
+                        "Interface theme",
+                        "The look of the whole interface and its colors in light and dark.",
                     )
-                    .title_actions(Button::new("style-import").ghost().xsmall().label("Import"))
+                    .title_actions(
+                        div()
+                            .flex()
+                            .gap(px(4.0))
+                            .child(
+                                Button::new("theme-duplicate")
+                                    .ghost()
+                                    .xsmall()
+                                    .label("Duplicate"),
+                            )
+                            .child(Button::new("theme-import").ghost().xsmall().label("Import")),
+                    )
                     .child(
-                        PickerStrip::new("settings-story-style", 3)
-                            .tiles(InterfaceStyle::ALL.map(|style| {
-                                (style.title(), interface_style_preview(&look(style), cx))
+                        PickerStrip::new("settings-story-theme", 0)
+                            .tiles(builtin_themes().iter().map(|(_, theme)| {
+                                (theme.name.clone(), interface_theme_preview(theme, mode, cx))
                             }))
                             .tile(
-                                "look-1",
-                                interface_style_preview(
-                                    &Look {
-                                        radius: 10.0,
-                                        selection: SelectionStyle::Wash,
-                                        ..look(InterfaceStyle::Flat)
-                                    },
-                                    cx,
-                                ),
+                                saved.name.clone(),
+                                interface_theme_preview(&saved, mode, cx),
                             ),
                     ),
                 )
@@ -394,24 +394,6 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 ),
         )
         .state(
-            "palette strips",
-            SettingsStack::titled("Chroma Colors")
-                .description("Pick a palette for each appearance, or set the base colors yourself.")
-                .child(
-                    SettingEntry::new("Light palette", "Used while the interface is light.")
-                        .child(strip("strip-light", ThemeMode::Light, 0)),
-                )
-                .child(
-                    SettingEntry::new("Dark palette", "Used while the interface is dark.")
-                        .title_actions(settings_reset_button(
-                            "dark-reset",
-                            "Reset to default",
-                            true,
-                        ))
-                        .child(strip("strip-dark", ThemeMode::Dark, 3)),
-                ),
-        )
-        .state(
             "advanced heading, collapsed and expanded",
             div()
                 .flex()
@@ -425,9 +407,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         "advanced-collapsed"
                     },
                     "Advanced",
-                    Some(
-                        "Fonts, zoom, base colors, and the corner and shadow sizes the style sets.",
-                    ),
+                    Some("Fonts, zoom, contrast, and the corner and shadow sizes the theme sets."),
                     expanded,
                     cx,
                 )
@@ -436,24 +416,17 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn palettes(_: &mut Window, cx: &mut App) -> AnyElement {
+fn themes(_: &mut Window, cx: &mut App) -> AnyElement {
     let group = |mode: ThemeMode| {
         div()
             .flex()
             .flex_wrap()
             .gap(px(8.0))
-            .child(picker_tile(
-                format!("palette-default-{}", mode.name()).into(),
-                "Default",
-                palette_preview(&inherited_chrome_colors(None, mode), cx),
-                false,
-                cx,
-            ))
-            .children(chrome_presets(mode.is_dark()).map(|preset| {
+            .children(builtin_themes().iter().map(|(id, theme)| {
                 picker_tile(
-                    format!("palette-{}", preset.id.as_str()).into(),
-                    preset.name,
-                    palette_preview(&inherited_chrome_colors(Some(preset.id), mode), cx),
+                    format!("theme-{id}-{}", mode.name()).into(),
+                    theme.name.clone(),
+                    interface_theme_preview(theme, mode, cx),
                     false,
                     cx,
                 )

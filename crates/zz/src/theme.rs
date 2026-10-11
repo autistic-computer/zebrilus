@@ -10,10 +10,7 @@ use crate::config;
 
 pub(crate) use zz_ui::tmux_style::{tmux_style_colour, tmux_styled_segments_text};
 
-pub use zz_ui::chrome_palette::{
-    ChromeColor, ChromePresetId, ThemeModeSetting, chrome_presets, inherited_chrome_colors,
-    resolved_chrome_colors,
-};
+pub use zz_ui::interface_theme::ThemeModeSetting;
 
 #[derive(Clone, Copy)]
 struct SystemThemeMode(ThemeMode);
@@ -56,7 +53,7 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
         return;
     }
     let mode =
-        zz_ui::chrome_palette::pinned_theme_mode(config::theme_mode(cx)).unwrap_or_else(|| {
+        zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)).unwrap_or_else(|| {
             cx.try_global::<SystemThemeMode>()
                 .map_or_else(|| Theme::global(cx).mode, |mode| mode.0)
         });
@@ -84,12 +81,12 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
         .into();
     cx.set_global(SystemThemeMode(system_mode));
     if let Some(window) = window.as_deref_mut() {
-        window.set_default_corner_smoothing(config::looks(cx).active.corner_smoothing);
+        window.set_default_corner_smoothing(config::themes(cx).active.look.corner_smoothing);
         window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
     }
     Theme::sync_system_appearance(window, cx);
     crate::app_icon::apply(cx);
-    if let Some(mode) = zz_ui::chrome_palette::pinned_theme_mode(config::theme_mode(cx)) {
+    if let Some(mode) = zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)) {
         Theme::change(mode, None, cx);
     }
     apply_zz_overrides(cx);
@@ -103,23 +100,20 @@ fn apply_zz_overrides(cx: &mut App) {
         .as_deref()
         .map(crate::terminal::view::terminal_font)
         .map(|font| font.family);
-    let look = config::looks(cx).active.clone();
+    let active = config::themes(cx).active.clone();
     let ui_font_family = config::ui_font_family(cx)
         .value
         .map(SharedString::from)
-        .or_else(|| look.font.clone())
+        .or_else(|| active.look.font.clone())
         .unwrap_or_else(|| zz_gpui::Font::default().family);
     let widget_corner_radius = config::widget_corner_radius(cx);
     let chrome_contrast = config::chrome_contrast(cx);
     let shadow_strength = config::shadow_strength(cx);
     let pane_background_opacity = config::pane_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
-    let chrome_preset = config::chrome_preset(Theme::global(cx).mode.is_dark(), cx);
-    let chrome = config::chrome_colors(cx);
     let theme = Theme::global_mut(cx);
 
-    theme.colors = resolved_chrome_colors(chrome_preset, theme.mode, chrome);
-    look.apply(theme);
+    active.apply(theme);
     theme.font_family = ui_font_family;
     if let Some(font_family) = terminal_mono_font_family {
         theme.mono_font_family = font_family;
@@ -136,52 +130,7 @@ fn apply_zz_overrides(cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_ui::{ThemeColor, chrome_palette::CHROME_PRESETS};
-
-    #[test]
-    fn each_root_reads_back_exactly_what_it_wrote() {
-        let base = *ThemeColor::dark();
-        for color in ChromeColor::ALL {
-            let marker = zz_ui::parse_hex("#808080").expect("test marker parses");
-            let mut colors = base;
-            zz_ui::chrome_palette::write_chrome_color(color, &mut colors, marker);
-
-            assert_eq!(
-                zz_ui::chrome_palette::read_chrome_color(color, &colors),
-                marker,
-                "{color:?} did not round-trip"
-            );
-            for other in ChromeColor::ALL.into_iter().filter(|it| *it != color) {
-                assert_eq!(
-                    zz_ui::chrome_palette::read_chrome_color(other, &colors),
-                    zz_ui::chrome_palette::read_chrome_color(other, &base),
-                    "writing {color:?} also changed {other:?}"
-                );
-            }
-            assert_eq!(
-                colors.scrim, base.scrim,
-                "writing {color:?} moved the scrim"
-            );
-        }
-    }
-
-    #[test]
-    fn presets_land_on_the_named_roots() {
-        for preset in &CHROME_PRESETS {
-            let mode = if preset.dark {
-                ThemeMode::Dark
-            } else {
-                ThemeMode::Light
-            };
-            let colors = inherited_chrome_colors(Some(preset.id), mode);
-            assert_eq!(zz_ui::to_hex(colors.background), preset.background);
-            assert_eq!(zz_ui::to_hex(colors.foreground), preset.foreground);
-            assert_eq!(zz_ui::to_hex(colors.accent), preset.accent);
-            assert_eq!(zz_ui::to_hex(colors.success), preset.success);
-            assert_eq!(zz_ui::to_hex(colors.warning), preset.warning);
-            assert_eq!(zz_ui::to_hex(colors.danger), preset.danger);
-        }
-    }
+    use zz_ui::interface_theme::builtin_themes;
 
     const SEPARATOR_DELTA_FLOOR_LIGHT: f32 = 0.045;
     const SEPARATOR_DELTA_FLOOR_DARK: f32 = 0.060;
@@ -189,58 +138,70 @@ mod tests {
 
     #[test]
     fn separators_stay_legible_without_reading_as_rules() {
-        for preset in &CHROME_PRESETS {
-            let mode = if preset.dark {
-                ThemeMode::Dark
-            } else {
-                ThemeMode::Light
-            };
-            let floor = if mode.is_dark() {
-                SEPARATOR_DELTA_FLOOR_DARK
-            } else {
-                SEPARATOR_DELTA_FLOOR_LIGHT
-            };
-            let plane = zz_ui::parse_hex(preset.background).expect("preset background parses");
-            let hairline = inherited_chrome_colors(Some(preset.id), mode).border();
-            let delta = (zz_ui::oklab_lightness(hairline) - zz_ui::oklab_lightness(plane)).abs();
+        for (id, theme) in builtin_themes() {
+            for mode in [ThemeMode::Light, ThemeMode::Dark] {
+                let floor = if mode.is_dark() {
+                    SEPARATOR_DELTA_FLOOR_DARK
+                } else {
+                    SEPARATOR_DELTA_FLOOR_LIGHT
+                };
+                let colors = theme.colors(mode);
+                let hairline = colors.border();
+                let delta = (zz_ui::oklab_lightness(hairline)
+                    - zz_ui::oklab_lightness(colors.background))
+                .abs();
 
-            assert!(
-                (floor..=SEPARATOR_DELTA_CEILING).contains(&delta),
-                "{} {mode:?}: border {} is {:.1}% from background {}, outside {:.1}%..={:.1}%",
-                preset.name,
-                zz_ui::to_hex(hairline),
-                delta * 100.0,
-                preset.background,
-                floor * 100.0,
-                SEPARATOR_DELTA_CEILING * 100.0,
-            );
+                assert!(
+                    (floor..=SEPARATOR_DELTA_CEILING).contains(&delta),
+                    "{id} {mode:?}: border {} is {:.1}% from background {}, outside {:.1}%..={:.1}%",
+                    zz_ui::to_hex(hairline),
+                    delta * 100.0,
+                    zz_ui::to_hex(colors.background),
+                    floor * 100.0,
+                    SEPARATOR_DELTA_CEILING * 100.0,
+                );
+            }
         }
     }
 
-    #[test]
-    fn explicit_chrome_color_wins_over_the_active_preset() {
-        let marker = zz_ui::parse_hex("#808080").expect("test marker parses");
-        let mut overrides = [None; ChromeColor::ALL.len()];
-        overrides[0] = Some(marker);
-        let preset = ChromePresetId::parse("tokyo-night-day").expect("Tokyo Night Day exists");
-        let colors = resolved_chrome_colors(Some(preset), ThemeMode::Light, overrides);
-
-        assert_eq!(colors.background, marker);
-        assert_eq!(zz_ui::to_hex(colors.foreground), preset.preset().foreground);
+    #[zz_gpui::test]
+    fn the_selected_theme_paints_the_mode_it_is_in(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(zz_ui::init);
+        cx.update(|cx| {
+            let linear =
+                zz_ui::interface_theme::builtin_theme("linear").expect("Linear is built in");
+            cx.set_global(config::Themes {
+                active: linear.clone(),
+                selected: "linear".into(),
+                saved: Vec::new(),
+            });
+            for (setting, mode) in [
+                (ThemeModeSetting::Light, ThemeMode::Light),
+                (ThemeModeSetting::Dark, ThemeMode::Dark),
+            ] {
+                let mut config = config::AppConfig::default();
+                config.theme_mode.value = setting;
+                cx.set_global(config);
+                refresh_current_theme(cx);
+                let theme = Theme::global(cx);
+                assert_eq!(theme.colors, linear.colors(mode));
+                assert!(theme.glass.is_none());
+            }
+        });
     }
 
     #[test]
-    fn only_an_explicit_mode_pins_the_palette() {
+    fn only_an_explicit_mode_pins_the_colors() {
         assert_eq!(
-            zz_ui::chrome_palette::pinned_theme_mode(ThemeModeSetting::System),
+            zz_ui::interface_theme::pinned_theme_mode(ThemeModeSetting::System),
             None
         );
         assert_eq!(
-            zz_ui::chrome_palette::pinned_theme_mode(ThemeModeSetting::Light),
+            zz_ui::interface_theme::pinned_theme_mode(ThemeModeSetting::Light),
             Some(ThemeMode::Light)
         );
         assert_eq!(
-            zz_ui::chrome_palette::pinned_theme_mode(ThemeModeSetting::Dark),
+            zz_ui::interface_theme::pinned_theme_mode(ThemeModeSetting::Dark),
             Some(ThemeMode::Dark)
         );
     }

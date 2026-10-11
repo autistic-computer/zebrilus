@@ -1,8 +1,7 @@
-use zz_gpui::{App, GlassMaterial, WindowAppearance, px};
+use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
-    FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeMode, UiZoom,
-    chrome_palette::{ChromePresetId, inherited_chrome_colors},
-    interface_style::{self, InterfaceStyle, Look},
+    Emphasis, FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
+    interface_theme::{self, InterfaceTheme, Look, ThemeColors},
 };
 
 const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
@@ -12,12 +11,15 @@ pub const UI_FONT: &str = "Inter Variable";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Knobs {
+    /// Light, dark, or `None` to follow the browser.
     pub theme: Option<ThemeMode>,
-    pub style: InterfaceStyle,
+    /// The built-in theme the knobs start from.
+    pub interface: &'static str,
     pub look: Look,
+    pub light: ThemeColors,
+    pub dark: ThemeColors,
     pub contrast: f32,
     pub zoom: f32,
-    pub preset: Option<ChromePresetId>,
     pub pane_opacity: f32,
     pub pane_glow: f32,
     pub motion: bool,
@@ -43,6 +45,11 @@ pub const LOOK_KNOBS: &[Knob<Look>] = &[
         |l, v| l.corner_smoothing = v,
     ),
     ("shadow", |l| l.shadow, |l, v| l.shadow = v),
+    (
+        "control-shadow",
+        |l| l.control_shadow,
+        |l, v| l.control_shadow = v,
+    ),
     ("elevation", |l| l.elevation, |l, v| l.elevation = v),
     ("outline", |l| l.outline, |l, v| l.outline = v),
     (
@@ -62,6 +69,37 @@ pub const LOOK_KNOBS: &[Knob<Look>] = &[
         "animation-speed",
         |l| l.animation_speed,
         |l, v| l.animation_speed = v,
+    ),
+];
+
+type ColorKnob = (
+    &'static str,
+    fn(&ThemeColors) -> Option<Hsla>,
+    fn(&mut ThemeColors, Hsla),
+);
+
+/// One mode's colors by knob name. The panel prefixes each with `light-` or
+/// `dark-`.
+pub const COLOR_KNOBS: &[ColorKnob] = &[
+    (
+        "background",
+        |c| c.background,
+        |c, v| c.background = Some(v),
+    ),
+    (
+        "foreground",
+        |c| c.foreground,
+        |c, v| c.foreground = Some(v),
+    ),
+    ("accent", |c| c.accent, |c, v| c.accent = Some(v)),
+    ("success", |c| c.success, |c, v| c.success = Some(v)),
+    ("warning", |c| c.warning, |c, v| c.warning = Some(v)),
+    ("danger", |c| c.danger, |c, v| c.danger = Some(v)),
+    ("on-accent", |c| c.on_accent, |c, v| c.on_accent = Some(v)),
+    (
+        "shadow-color",
+        |c| c.shadow_color,
+        |c, v| c.shadow_color = Some(v),
     ),
 ];
 
@@ -113,24 +151,32 @@ pub const GLASS_KNOBS: &[Knob<GlassMaterial>] = &[
 
 impl Default for Knobs {
     fn default() -> Self {
+        Self::from_theme(
+            interface_theme::DEFAULT_THEME,
+            interface_theme::default_theme(),
+        )
+    }
+}
+
+impl Knobs {
+    fn from_theme(id: &'static str, theme: &InterfaceTheme) -> Self {
         Self {
             theme: None,
-            style: InterfaceStyle::DEFAULT,
-            look: Look::default(),
+            interface: id,
+            look: theme.look.clone(),
+            light: theme.light.clone(),
+            dark: theme.dark.clone(),
             contrast: 1.0,
             zoom: 1.0,
-            preset: None,
             pane_opacity: 0.5,
             pane_glow: 1.0,
             motion: true,
             backdrop: Backdrop::Plain,
         }
     }
-}
 
-impl Knobs {
-    /// Reads a knob query. The style comes first, wherever it sits in the
-    /// query, and every look knob then overrides what the style set.
+    /// Reads a knob query. The interface theme comes first, wherever it sits
+    /// in the query, and every look and color knob then overrides it.
     pub fn parse(query: &str) -> Result<Self, String> {
         let pairs = query
             .trim_start_matches('?')
@@ -141,15 +187,24 @@ impl Knobs {
                     .ok_or_else(|| format!("expected key=value, not {pair}"))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut knobs = Self::default();
-        if let Some((_, value)) = pairs.iter().find(|(key, _)| *key == "style") {
-            knobs.style = InterfaceStyle::parse(value)
-                .ok_or_else(|| format!("style must be flat, modern or full, not {value}"))?;
-        }
-        knobs.look = interface_style::look(knobs.style);
+        let mut knobs = match pairs.iter().find(|(key, _)| *key == "interface-theme") {
+            Some((_, value)) => {
+                let (id, theme) = interface_theme::builtin_themes()
+                    .iter()
+                    .find(|(id, _)| id == value)
+                    .ok_or_else(|| {
+                        format!(
+                            "interface-theme must be one of {}, not {value}",
+                            interface_theme::BUILTIN_THEMES.join(", ")
+                        )
+                    })?;
+                Self::from_theme(id, theme)
+            }
+            None => Self::default(),
+        };
         if let Some((_, value)) = pairs.iter().find(|(key, _)| *key == "glass") {
             knobs.look.glass = match *value {
-                "" | "style" => knobs.look.glass,
+                "" | "theme" => knobs.look.glass,
                 "off" => None,
                 name => Some(
                     GlassMaterial::preset(name)
@@ -159,7 +214,7 @@ impl Knobs {
         }
         for (key, value) in pairs {
             match key {
-                "style" | "glass" => {}
+                "interface-theme" | "glass" => {}
                 "theme" => {
                     knobs.theme = match value {
                         "light" => Some(ThemeMode::Light),
@@ -203,15 +258,6 @@ impl Knobs {
                 }
                 "contrast" => knobs.contrast = number(key, value)?,
                 "zoom" => knobs.zoom = number(key, value)?,
-                "preset" => {
-                    knobs.preset = match value {
-                        "" | "default" => None,
-                        id => Some(
-                            ChromePresetId::parse(id)
-                                .ok_or_else(|| format!("no chroma preset named {id}"))?,
-                        ),
-                    }
-                }
                 "pane-opacity" => knobs.pane_opacity = number(key, value)?,
                 "pane-glow" => knobs.pane_glow = number(key, value)?,
                 "motion" => knobs.motion = value != "0" && value != "off" && value != "false",
@@ -237,6 +283,17 @@ impl Knobs {
                         if let Some(material) = knobs.look.glass.as_mut() {
                             set(material, value);
                         }
+                    } else if let Some((colors, name)) = key
+                        .strip_prefix("light-")
+                        .map(|name| (&mut knobs.light, name))
+                        .or_else(|| {
+                            key.strip_prefix("dark-")
+                                .map(|name| (&mut knobs.dark, name))
+                        })
+                        && let Some((_, get, set)) =
+                            COLOR_KNOBS.iter().find(|(color, ..)| *color == name)
+                    {
+                        set(colors, color(key, value, get(colors))?);
                     }
                 }
             }
@@ -244,23 +301,30 @@ impl Knobs {
         Ok(knobs)
     }
 
+    /// The theme the knobs describe, as a theme file would hold it.
+    pub fn interface_theme(&self) -> InterfaceTheme {
+        InterfaceTheme {
+            name: interface_theme::builtin_theme(self.interface)
+                .map(|theme| theme.name.clone())
+                .unwrap_or_default(),
+            look: self.look.clone(),
+            light: self.light.clone(),
+            dark: self.dark.clone(),
+        }
+    }
+
     pub fn apply(&self, cx: &mut App) {
-        let mode = match self.preset {
-            Some(preset) if preset.preset().dark => ThemeMode::Dark,
-            Some(_) => ThemeMode::Light,
-            None => self.theme.unwrap_or_else(|| match cx.window_appearance() {
-                WindowAppearance::Dark | WindowAppearance::VibrantDark => ThemeMode::Dark,
-                WindowAppearance::Light | WindowAppearance::VibrantLight => ThemeMode::Light,
-            }),
-        };
+        let mode = self.theme.unwrap_or_else(|| match cx.window_appearance() {
+            WindowAppearance::Dark | WindowAppearance::VibrantDark => ThemeMode::Dark,
+            WindowAppearance::Light | WindowAppearance::VibrantLight => ThemeMode::Light,
+        });
         Theme::change(mode, None, cx);
         cx.set_reduce_motion(!self.motion);
         let theme = Theme::global_mut(cx);
-        self.look.apply(theme);
+        self.interface_theme().apply(theme);
         if self.look.font.is_none() {
             theme.font_family = UI_FONT.into();
         }
-        theme.colors = inherited_chrome_colors(self.preset, mode);
         theme.pane_background_opacity = self.pane_opacity;
         theme.pane_glow_strength = self.pane_glow;
         theme.set_contrast(self.contrast);
@@ -307,6 +371,55 @@ pub fn look_knobs(look: &Look) -> serde_json::Map<String, serde_json::Value> {
     knobs
 }
 
+/// The knob values that reproduce `theme`: its look and both modes' colors,
+/// each color as the `#rrggbb` a color input takes. A color the theme leaves
+/// to the palette comes out as what the palette resolves it to.
+pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json::Value> {
+    let mut knobs = look_knobs(&theme.look);
+    for (mode, prefix) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
+        for (name, value) in resolved_colors(theme, mode) {
+            knobs.insert(format!("{prefix}-{name}"), serde_json::json!(value));
+        }
+    }
+    knobs
+}
+
+/// Each color knob's value in `mode`, as `#rrggbb`.
+pub fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static str, String)> {
+    let colors = theme.colors(mode);
+    let ink = accent_ink(colors);
+    let rgb = |color: Hsla| zz_ui::to_hex(color.alpha(1.0));
+    vec![
+        ("background", rgb(colors.background)),
+        ("foreground", rgb(colors.foreground)),
+        ("accent", rgb(colors.accent)),
+        ("success", rgb(colors.success)),
+        ("warning", rgb(colors.warning)),
+        ("danger", rgb(colors.danger)),
+        ("on-accent", rgb(ink)),
+        ("shadow-color", rgb(colors.shadow_color)),
+    ]
+}
+
+fn accent_ink(colors: ThemeColor) -> Hsla {
+    let mut theme = Theme::from(&colors);
+    theme.primary = PrimaryStyle::Accent;
+    theme.paint(Tone::Primary, Emphasis::Solid).text
+}
+
+/// A color knob's value: `#rrggbb` keeps `previous`'s alpha, so a color
+/// input can set a translucent shadow's hue.
+fn color(key: &str, value: &str, previous: Option<Hsla>) -> Result<Hsla, String> {
+    let value = decode(value);
+    let parsed =
+        zz_ui::parse_hex(&value).map_err(|error| format!("{key} must be a hex color: {error}"))?;
+    let digits = value.trim().trim_start_matches('#').len();
+    Ok(match previous {
+        Some(previous) if digits != 8 && digits != 4 => parsed.alpha(previous.a),
+        _ => parsed,
+    })
+}
+
 fn decode(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
@@ -345,16 +458,17 @@ mod tests {
 
     #[test]
     fn parses_known_keys_and_ignores_the_rest() {
-        let knobs =
-            Knobs::parse("?theme=dark&radius=12&zoom=1.25&story=agent&preset=nord&motion=0")
-                .unwrap();
+        let knobs = Knobs::parse(
+            "?theme=dark&radius=12&zoom=1.25&story=agent&interface-theme=linear&motion=0",
+        )
+        .unwrap();
         assert_eq!(knobs.theme, Some(ThemeMode::Dark));
         assert_eq!(knobs.look.radius, 12.0);
         assert_eq!(knobs.zoom, 1.25);
-        assert_eq!(knobs.preset, ChromePresetId::parse("nord"));
+        assert_eq!(knobs.interface, "linear");
         assert!(!knobs.motion);
         assert!(Knobs::parse("radius=wide").is_err());
-        assert!(Knobs::parse("preset=sepia").is_err());
+        assert!(Knobs::parse("interface-theme=sepia").is_err());
     }
 
     #[test]
@@ -376,59 +490,67 @@ mod tests {
     }
 
     #[test]
-    fn the_style_sets_the_look_until_a_knob_says_otherwise() {
-        let flat = Knobs::parse("style=flat").unwrap();
-        assert_eq!(flat.look, interface_style::look(InterfaceStyle::Flat));
-        let full = Knobs::parse("radius=12&outline=0.3&selection=wash&style=full").unwrap();
-        assert_eq!(full.look.radius, 12.0);
-        assert_eq!(full.look.outline, 0.3);
-        assert_eq!(full.look.selection, SelectionStyle::Wash);
-        assert_eq!(
-            full.look.glass,
-            interface_style::look(InterfaceStyle::Full).glass
-        );
-        let blurred = Knobs::parse("glass-blur=30").unwrap().look.glass.unwrap();
-        assert_eq!(blurred.blur, px(30.0));
-        assert!(Knobs::parse("style=round").is_err());
+    fn the_interface_theme_sets_the_knobs_until_one_says_otherwise() {
+        let linear = interface_theme::builtin_theme("linear").unwrap();
+        let knobs = Knobs::parse("interface-theme=linear").unwrap();
+        assert_eq!(knobs.interface_theme(), *linear);
+        let tuned = Knobs::parse(
+            "radius=12&selection=accent&dark-on-accent=%23112233&interface-theme=linear",
+        )
+        .unwrap();
+        assert_eq!(tuned.look.radius, 12.0);
+        assert_eq!(tuned.look.selection, SelectionStyle::Accent);
+        assert_eq!(tuned.dark.on_accent, zz_ui::parse_hex("#112233").ok());
+        assert_eq!(tuned.light, linear.light);
         assert!(Knobs::parse("selection=loud").is_err());
+        assert!(Knobs::parse("light-accent=blue").is_err());
     }
 
     #[test]
-    fn a_look_survives_the_trip_through_its_knobs() {
-        for style in InterfaceStyle::ALL {
-            let look = Look {
-                density: 0.85,
-                divider: 0.4,
-                font: Some("Inter Display".into()),
-                ..interface_style::look(style)
-            };
-            let query = look_knobs(&look)
+    fn a_shadow_color_knob_keeps_the_themes_alpha() {
+        let macos = interface_theme::builtin_theme("macos").unwrap();
+        let knobs = Knobs::parse("interface-theme=macos&dark-shadow-color=%23102030").unwrap();
+        let shadow = knobs.dark.shadow_color.unwrap();
+        assert_eq!(shadow.a, macos.dark.shadow_color.unwrap().a);
+        assert_eq!(zz_ui::to_hex(shadow.alpha(1.0)), "#102030");
+    }
+
+    #[test]
+    fn a_theme_survives_the_trip_through_its_knobs() {
+        for (id, theme) in interface_theme::builtin_themes() {
+            let query = theme_knobs(theme)
                 .iter()
                 .map(|(name, value)| {
-                    let value = value
-                        .as_str()
-                        .map_or_else(|| value.to_string(), |text| text.replace(' ', "+"));
+                    let value = value.as_str().map_or_else(
+                        || value.to_string(),
+                        |text| text.replace(' ', "+").replace('#', "%23"),
+                    );
                     format!("{name}={value}")
                 })
                 .collect::<Vec<_>>()
                 .join("&");
-            let parsed = Knobs::parse(&format!("style={}&{query}", style.as_str()))
-                .unwrap()
-                .look;
+            let parsed = Knobs::parse(&format!("interface-theme={id}&{query}")).unwrap();
             assert_eq!(
                 Look {
                     glass: None,
-                    ..parsed.clone()
+                    ..parsed.look.clone()
                 },
                 Look {
                     glass: None,
-                    ..look.clone()
-                }
+                    ..theme.look.clone()
+                },
+                "{id}"
             );
-            assert_eq!(parsed.glass.is_some(), look.glass.is_some());
-            if let (Some(parsed), Some(look)) = (parsed.glass, look.glass) {
+            for mode in [ThemeMode::Light, ThemeMode::Dark] {
+                assert_eq!(
+                    resolved_colors(&parsed.interface_theme(), mode),
+                    resolved_colors(theme, mode),
+                    "{id} {mode:?}"
+                );
+            }
+            if let (Some(parsed), Some(look)) = (parsed.look.glass, theme.look.glass) {
                 for (name, get, _) in GLASS_KNOBS {
-                    assert!((get(&parsed) - get(&look)).abs() < 1e-3, "{name}");
+                    assert!((get(&parsed) - get(&look)).abs() < 1e-3, "{id} {name}");
                 }
             }
         }

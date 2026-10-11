@@ -1,8 +1,8 @@
 use zz_gpui::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px,
 };
-use zz_ui::{Elevation, 
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
+use zz_ui::{
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, Sizable as _,
     compact::{bottom_sheet, sheet_action, sheet_close, sheet_option},
     h_flex, v_flex,
 };

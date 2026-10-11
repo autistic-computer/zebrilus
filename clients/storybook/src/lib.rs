@@ -90,20 +90,6 @@ pub fn stories_json() -> String {
     .to_string()
 }
 
-pub fn presets_json() -> String {
-    json!(
-        zz_ui::chrome_palette::CHROME_PRESETS
-            .iter()
-            .map(|preset| json!({
-                "id": preset.id.as_str(),
-                "name": preset.name,
-                "dark": preset.dark,
-            }))
-            .collect::<Vec<_>>()
-    )
-    .to_string()
-}
-
 pub fn glass_presets_json() -> String {
     json!(
         zz_gpui::GlassMaterial::PRESETS
@@ -121,60 +107,40 @@ pub fn glass_presets_json() -> String {
     .to_string()
 }
 
-pub fn interface_styles_json() -> String {
+/// Every built-in theme's knob values by id, with its name, for the page to
+/// load: what each knob resets to while that theme is picked.
+pub fn interface_themes_json() -> String {
     json!(
-        zz_ui::interface_style::InterfaceStyle::ALL
-            .into_iter()
-            .map(|style| {
-                let look = zz_ui::interface_style::look(style);
-                let mut values = knobs::LOOK_KNOBS
-                    .iter()
-                    .map(|(name, get, _)| ((*name).to_owned(), json!(get(&look))))
-                    .collect::<serde_json::Map<_, _>>();
-                values.insert("selection".to_owned(), json!(look.selection));
-                values.insert("primary".to_owned(), json!(look.primary));
-                values.insert("field".to_owned(), json!(look.field));
-                values.insert("font".to_owned(), json!(look.font));
+        zz_ui::interface_theme::builtin_themes()
+            .iter()
+            .map(|(id, theme)| {
+                let mut values = knobs::theme_knobs(theme);
+                values.insert("name".to_owned(), json!(theme.name));
                 values.insert(
                     "glass".to_owned(),
-                    json!(look.glass.map(|material| {
+                    json!(theme.look.glass.map(|material| {
                         knobs::GLASS_KNOBS
                             .iter()
                             .map(|(name, get, _)| ((*name).to_owned(), json!(get(&material))))
                             .collect::<serde_json::Map<_, _>>()
                     })),
                 );
-                (style.as_str().to_owned(), serde_json::Value::Object(values))
+                ((*id).to_owned(), serde_json::Value::Object(values))
             })
             .collect::<serde_json::Map<_, _>>()
     )
     .to_string()
 }
 
-/// The look the knobs describe, as JSON a style preset can be built from.
-pub fn look_json() -> String {
-    serde_json::to_string_pretty(&knobs().look).unwrap_or_default()
+/// The theme the knobs describe, as a theme file.
+pub fn theme_file_json() -> String {
+    knobs().interface_theme().to_json()
 }
 
-/// The knob values a look JSON describes; see [`knobs::look_knobs`].
-/// Keys the JSON leaves out keep `style`'s value.
-pub fn import_look(json: &str, style: &str) -> Result<String, String> {
-    use zz_ui::interface_style::{InterfaceStyle, Look, look};
-    let style = InterfaceStyle::parse(style).unwrap_or(InterfaceStyle::DEFAULT);
-    let serde_json::Value::Object(changes) =
-        serde_json::from_str(json).map_err(|error| format!("not JSON: {error}"))?
-    else {
-        return Err("a look is a JSON object".to_owned());
-    };
-    let serde_json::Value::Object(mut merged) =
-        serde_json::to_value(look(style)).map_err(|error| error.to_string())?
-    else {
-        return Err("a look is a JSON object".to_owned());
-    };
-    merged.extend(changes);
-    let look = serde_json::from_value::<Look>(serde_json::Value::Object(merged))
-        .map_err(|error| format!("not a look: {error}"))?;
-    Ok(serde_json::Value::Object(knobs::look_knobs(&look)).to_string())
+/// The knob values a theme file describes; see [`knobs::theme_knobs`].
+pub fn import_theme(json: &str) -> Result<String, String> {
+    let theme = zz_ui::interface_theme::parse_theme(json)?;
+    Ok(serde_json::Value::Object(knobs::theme_knobs(&theme)).to_string())
 }
 
 /// Loads a font file and names the families it added.
@@ -306,23 +272,18 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn presets() -> String {
-        super::presets_json()
-    }
-
-    #[wasm_bindgen]
     pub fn glass_presets() -> String {
         super::glass_presets_json()
     }
 
     #[wasm_bindgen]
-    pub fn interface_styles() -> String {
-        super::interface_styles_json()
+    pub fn interface_themes() -> String {
+        super::interface_themes_json()
     }
 
     #[wasm_bindgen]
-    pub fn look() -> String {
-        super::look_json()
+    pub fn theme_file() -> String {
+        super::theme_file_json()
     }
 
     #[wasm_bindgen]
@@ -337,8 +298,8 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn import_look(json: &str, style: &str) -> Result<String, JsValue> {
-        super::import_look(json, style).map_err(|error| JsValue::from_str(&error))
+    pub fn import_theme(json: &str) -> Result<String, JsValue> {
+        super::import_theme(json).map_err(|error| JsValue::from_str(&error))
     }
 
     #[wasm_bindgen]

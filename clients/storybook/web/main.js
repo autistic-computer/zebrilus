@@ -1,6 +1,6 @@
 import init, * as zz from "./wasm/zz_storybook.js";
 
-const CREATOR = "style-creator";
+const CREATOR = "theme-creator";
 const GLASS_KNOBS = [
     "glass-blur",
     "glass-tint",
@@ -25,6 +25,7 @@ const LOOK_KNOBS = [
     "outline-width",
     "divider",
     "shadow",
+    "control-shadow",
     "elevation",
     "density",
     "row-inset",
@@ -35,6 +36,18 @@ const LOOK_KNOBS = [
     "font",
     "animation-speed",
 ];
+const COLORS = [
+    ["background", "Background"],
+    ["foreground", "Foreground"],
+    ["accent", "Accent"],
+    ["success", "Success"],
+    ["warning", "Warning"],
+    ["danger", "Danger"],
+    ["on-accent", "Text on accent"],
+    ["shadow-color", "Shadow"],
+];
+const MODES = ["light", "dark"];
+const COLOR_KNOBS = MODES.flatMap((mode) => COLORS.map(([name]) => `${mode}-${name}`));
 const SHUFFLED = [
     "radius",
     "smoothing",
@@ -49,29 +62,28 @@ const SHUFFLED = [
 ];
 const KNOBS = [
     "theme",
-    "preset",
     "contrast",
     "zoom",
     "pane-opacity",
     "pane-glow",
     "motion",
     "backdrop",
-    "style",
+    "interface-theme",
     ...LOOK_KNOBS,
+    ...COLOR_KNOBS,
     "glass",
     ...GLASS_KNOBS,
 ];
 const DEFAULTS = {
     theme: "system",
-    preset: "default",
-    style: "modern",
+    "interface-theme": "default",
     contrast: "1",
     zoom: "1",
     "pane-opacity": "0.5",
     "pane-glow": "1",
     motion: "1",
     backdrop: "plain",
-    glass: "style",
+    glass: "theme",
 };
 
 const nav = document.getElementById("nav");
@@ -81,7 +93,7 @@ const importDialog = document.getElementById("import-dialog");
 
 let stories = [];
 let glassPresets = {};
-let styles = {};
+let themes = {};
 let current = null;
 const timeline = { past: [], future: [], last: null };
 
@@ -110,20 +122,23 @@ function isRange(name) {
     return field(name).type === "range";
 }
 
-function glassMaterial(glass = knobValue("glass"), style = knobValue("style")) {
-    return (glass === "style" ? styles[style]?.glass : glassPresets[glass]) ?? null;
+function glassMaterial(glass = knobValue("glass"), theme = knobValue("interface-theme")) {
+    return (glass === "theme" ? themes[theme]?.glass : glassPresets[glass]) ?? null;
 }
 
-function knobDefault(name, glass = knobValue("glass"), style = knobValue("style")) {
-    if (LOOK_KNOBS.includes(name)) return String(styles[style]?.[name] ?? "");
+function knobDefault(name, glass = knobValue("glass"), theme = knobValue("interface-theme")) {
+    if (LOOK_KNOBS.includes(name) || COLOR_KNOBS.includes(name)) {
+        return String(themes[theme]?.[name] ?? "");
+    }
     if (!GLASS_KNOBS.includes(name)) return DEFAULTS[name];
-    const value = glassMaterial(glass, style)?.[name];
+    const value = glassMaterial(glass, theme)?.[name];
     return value === undefined ? undefined : String(value);
 }
 
 function isDefault(name) {
     const value = knobValue(name);
     const fallback = knobDefault(name);
+    if (COLOR_KNOBS.includes(name)) return value.toLowerCase() === fallback.toLowerCase();
     if (GLASS_KNOBS.includes(name) && glassMaterial() === null) return true;
     if (!isRange(name)) return value === fallback;
     const step = Number(field(name).step) || 0.01;
@@ -145,10 +160,16 @@ function resetGlassSliders() {
     }
 }
 
-function resetStyleKnobs() {
-    for (const name of LOOK_KNOBS) setKnobValue(name, knobDefault(name));
-    setKnobValue("glass", "style");
+function resetThemeKnobs() {
+    for (const name of [...LOOK_KNOBS, ...COLOR_KNOBS]) setKnobValue(name, knobDefault(name));
+    setKnobValue("glass", "theme");
     resetGlassSliders();
+}
+
+function shownMode() {
+    const mode = knobValue("theme");
+    if (mode !== "system") return mode;
+    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function writeHash(story, section) {
@@ -237,7 +258,7 @@ function show(storyId, sectionId) {
         zz.show(story.id);
         current = story.id;
         markCurrent(story.id);
-        document.title = creator ? "Style creator · zz" : `${story.name} · zz storybook`;
+        document.title = creator ? "Theme creator · zz" : `${story.name} · zz storybook`;
     }
     if (sectionId && !creator) {
         document.getElementById(`${story.id}-${sectionId}`)?.scrollIntoView({ block: "start" });
@@ -258,6 +279,8 @@ function paintSliders() {
 
 function applyKnobs() {
     form.querySelector("#glass-knobs").hidden = glassMaterial() === null;
+    const mode = shownMode();
+    for (const each of MODES) form.querySelector(`#colors-${each}`).hidden = each !== mode;
     for (const name of KNOBS) {
         const output = form.elements[`${name}-value`];
         if (output) output.value = knobValue(name);
@@ -305,23 +328,38 @@ function paintChrome() {
 
 function loadKnobs(params) {
     const glass = params.get("glass") ?? DEFAULTS.glass;
-    const style = params.get("style") ?? DEFAULTS.style;
-    setKnobValue("style", style);
+    const theme = params.get("interface-theme") ?? DEFAULTS["interface-theme"];
+    setKnobValue("interface-theme", theme);
     for (const name of KNOBS) {
-        const value = params.get(name) ?? knobDefault(name, glass, style);
+        const value = params.get(name) ?? knobDefault(name, glass, theme);
         if (value !== undefined) setKnobValue(name, value);
     }
 }
 
-function renderPresets() {
-    const select = field("preset");
-    const presets = JSON.parse(zz.presets());
-    for (const [label, dark] of [["Dark", true], ["Light", false]]) {
-        const group = element("optgroup", { label });
-        for (const preset of presets.filter((preset) => preset.dark === dark)) {
-            group.append(element("option", { value: preset.id, text: preset.name }));
+function renderThemes() {
+    const choices = document.getElementById("theme-choices");
+    for (const [id, theme] of Object.entries(themes)) {
+        choices.append(
+            element(
+                "label",
+                {},
+                element("input", { type: "radio", name: "interface-theme", value: id }),
+                element("span", { text: theme.name }),
+            ),
+        );
+    }
+    for (const mode of MODES) {
+        const fieldset = document.getElementById(`colors-${mode}`);
+        for (const [name, label] of COLORS) {
+            fieldset.append(
+                element(
+                    "label",
+                    { class: "row color" },
+                    element("span", { text: label }),
+                    element("input", { type: "color", name: `${mode}-${name}` }),
+                ),
+            );
         }
-        select.append(group);
     }
 }
 
@@ -353,13 +391,13 @@ function shuffle() {
     setKnobValue("selection", Math.random() < 0.5 ? "accent" : "wash");
     setKnobValue("primary", Math.random() < 0.5 ? "foreground" : "accent");
     setKnobValue("field", Math.random() < 0.5 ? "soft" : "outline");
-    const glasses = ["style", "off", ...Object.keys(glassPresets)];
+    const glasses = ["theme", "off", ...Object.keys(glassPresets)];
     setKnobValue("glass", glasses[Math.floor(Math.random() * glasses.length)]);
     resetGlassSliders();
 }
 
-function importLook(json) {
-    const knobs = JSON.parse(zz.import_look(json, knobValue("style")));
+function importTheme(json) {
+    const knobs = JSON.parse(zz.import_theme(json));
     if ("glass" in knobs) {
         setKnobValue("glass", knobs.glass);
         resetGlassSliders();
@@ -370,11 +408,11 @@ function importLook(json) {
     }
 }
 
-async function copyLook() {
-    const json = zz.look();
+async function copyTheme() {
+    const json = zz.theme_file();
     try {
         await navigator.clipboard.writeText(json);
-        toast("Look copied as JSON");
+        toast("Theme copied as JSON");
     } catch {
         document.getElementById("import-json").value = json;
         importDialog.showModal();
@@ -385,7 +423,7 @@ const actions = {
     undo: () => travel(timeline.past, timeline.future),
     redo: () => travel(timeline.future, timeline.past),
     reset: () => {
-        resetStyleKnobs();
+        resetThemeKnobs();
         applyKnobs();
         remember();
     },
@@ -397,7 +435,6 @@ const actions = {
     mode: () => {
         const dark = document.documentElement.dataset.mode === "dark";
         setKnobValue("theme", dark ? "light" : "dark");
-        setKnobValue("preset", "default");
         applyKnobs();
         remember();
     },
@@ -405,7 +442,7 @@ const actions = {
         document.getElementById("import-error").value = "";
         importDialog.showModal();
     },
-    copy: copyLook,
+    copy: copyTheme,
 };
 
 function waitFor(predicate) {
@@ -420,9 +457,9 @@ zz.run();
 await waitFor(zz.is_ready);
 stories = JSON.parse(zz.stories());
 glassPresets = JSON.parse(zz.glass_presets());
-styles = JSON.parse(zz.interface_styles());
+themes = JSON.parse(zz.interface_themes());
 renderNav();
-renderPresets();
+renderThemes();
 const initial = parseHash();
 const font = initial.params.get("font");
 if (font) addFontOption(font);
@@ -432,7 +469,7 @@ remember();
 show(initial.story, initial.section);
 
 form.addEventListener("input", (event) => {
-    if (event.target.name === "style") resetStyleKnobs();
+    if (event.target.name === "interface-theme") resetThemeKnobs();
     else if (event.target.name === "glass") resetGlassSliders();
     applyKnobs();
 });
@@ -460,10 +497,10 @@ document.addEventListener("keydown", (event) => {
 importDialog.addEventListener("close", () => {
     if (importDialog.returnValue !== "apply") return;
     try {
-        importLook(document.getElementById("import-json").value);
+        importTheme(document.getElementById("import-json").value);
         applyKnobs();
         remember();
-        toast("Look imported");
+        toast("Theme imported");
     } catch (error) {
         document.getElementById("import-error").value = String(error);
         importDialog.showModal();
@@ -505,9 +542,9 @@ window.storybook = {
         return globalThis.zzGpui?.idle();
     },
     setKnobs: (knobs) => {
-        if ("style" in knobs) {
-            setKnobValue("style", String(knobs.style));
-            resetStyleKnobs();
+        if ("interface-theme" in knobs) {
+            setKnobValue("interface-theme", String(knobs["interface-theme"]));
+            resetThemeKnobs();
         }
         if ("glass" in knobs) {
             setKnobValue("glass", String(knobs.glass));
@@ -521,13 +558,13 @@ window.storybook = {
         return globalThis.zzGpui?.idle();
     },
     knobs: () => Object.fromEntries(KNOBS.map((name) => [name, knobValue(name)])),
-    look: () => JSON.parse(zz.look()),
-    importLook: (look) => {
-        importLook(typeof look === "string" ? look : JSON.stringify(look));
+    theme: () => JSON.parse(zz.theme_file()),
+    importTheme: (theme) => {
+        importTheme(typeof theme === "string" ? theme : JSON.stringify(theme));
         applyKnobs();
         remember();
         return globalThis.zzGpui?.idle();
     },
-    presets: () => JSON.parse(zz.presets()),
+    themes: () => themes,
     glassPresets: () => glassPresets,
 };

@@ -1,13 +1,11 @@
 use zz_app::preferences::Preferences;
-use zz_ui::chrome_palette::ThemeModeSetting;
+use zz_ui::interface_theme::ThemeModeSetting;
 
 #[test]
-fn preferences_reject_invalid_colors_modes_and_numeric_values() {
+fn preferences_reject_invalid_themes_modes_and_numeric_values() {
     let preferences = Preferences {
         mode: Some("unknown".into()),
-        preset_light: Some("unknown".into()),
-        preset_dark: Some("unknown".into()),
-        colors: [Some("invalid".into()), Some("#112233".into()), None],
+        theme: Some("unknown".into()),
         zoom: f32::NAN,
         contrast: f32::INFINITY,
         radius: Some(-20.0),
@@ -18,11 +16,7 @@ fn preferences_reject_invalid_colors_modes_and_numeric_values() {
     }
     .sanitized();
     assert_eq!(preferences.theme_mode(), ThemeModeSetting::System);
-    assert_eq!(
-        (preferences.preset_light, preferences.preset_dark),
-        (None, None)
-    );
-    assert_eq!(preferences.colors, [None, Some("#112233".into()), None]);
+    assert_eq!(preferences.theme, None);
     assert_eq!(
         (
             preferences.zoom,

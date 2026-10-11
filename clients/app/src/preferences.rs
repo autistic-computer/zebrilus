@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
-use zz_ui::{
-    ThemeMode,
-    chrome_palette::{ChromeColor, ChromePresetId, InterfaceStyle, ThemeModeSetting},
-};
+use zz_ui::interface_theme::{self, InterfaceTheme, ThemeModeSetting};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -13,22 +10,20 @@ pub struct Preferences {
     pub status_badges: bool,
     pub status_agents: bool,
     pub animations: bool,
-    /// Overrides the style's shadow strength.
+    /// Overrides the theme's shadow strength.
     pub shadow_strength: Option<f32>,
     pub gaps: bool,
     pub agent_enabled: bool,
     pub dark: bool,
     #[serde(default)]
     pub mode: Option<String>,
-    pub style: Option<String>,
-    pub preset_light: Option<String>,
-    pub preset_dark: Option<String>,
-    pub colors: [Option<String>; ChromeColor::ALL.len()],
+    /// The built-in theme by id; `None` is the default theme.
+    pub theme: Option<String>,
     pub ui_font_family: String,
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
     pub zoom: f32,
-    /// Overrides the style's widget corner radius.
+    /// Overrides the theme's widget corner radius.
     pub radius: Option<f32>,
     pub contrast: f32,
     pub pane_background_opacity: f32,
@@ -59,10 +54,7 @@ impl Default for Preferences {
             agent_enabled: true,
             dark: true,
             mode: Some("system".into()),
-            style: None,
-            preset_light: None,
-            preset_dark: None,
-            colors: Default::default(),
+            theme: None,
             ui_font_family: String::new(),
             terminal_font_family: None,
             terminal_font_scale: 1.0,
@@ -94,18 +86,18 @@ impl Preferences {
             640.0,
             zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
         );
-        self.style = self
-            .style
-            .filter(|style| InterfaceStyle::parse(style).is_some());
-        let style = self.interface_style();
+        self.theme = self
+            .theme
+            .filter(|theme| interface_theme::is_builtin_theme(theme));
+        let look = &self.interface_theme().look;
         self.shadow_strength = self
             .shadow_strength
-            .map(|strength| bounded(strength, 0.0, 1.0, style.shadow_strength()));
+            .map(|strength| bounded(strength, 0.0, 1.0, look.shadow));
         self.zoom = bounded(self.zoom, 0.5, 3.0, 1.0);
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         self.radius = self
             .radius
-            .map(|radius| bounded(radius, 0.0, 25.0, style.widget_corner_radius()));
+            .map(|radius| bounded(radius, 0.0, 25.0, look.radius));
         self.contrast = bounded(self.contrast, 0.5, 2.0, 1.0);
         for (value, min, max, fallback) in [
             (&mut self.pane_background_opacity, 0., 1., 0.5),
@@ -118,17 +110,6 @@ impl Preferences {
             *value = bounded(*value, min, max, fallback);
         }
         self.mode = Some(self.theme_mode().as_str().into());
-        self.preset_light = self
-            .preset(ThemeMode::Light)
-            .filter(|id| !id.dark())
-            .map(|id| id.as_str().into());
-        self.preset_dark = self
-            .preset(ThemeMode::Dark)
-            .filter(|id| id.dark())
-            .map(|id| id.as_str().into());
-        self.colors = self
-            .colors
-            .map(|value| value.filter(|value| zz_ui::parse_hex(value).is_ok()));
         if self.palette_host_prefix != "#" {
             self.palette_host_prefix = "~".into();
         }
@@ -170,28 +151,26 @@ impl Preferences {
             .clamp(160.0, (available_width * 0.5).clamp(160.0, 640.0))
     }
 
-    pub fn preset(&self, mode: ThemeMode) -> Option<ChromePresetId> {
-        if mode.is_dark() {
-            &self.preset_dark
-        } else {
-            &self.preset_light
-        }
-        .as_deref()
-        .and_then(ChromePresetId::parse)
+    #[must_use]
+    pub fn interface_theme(&self) -> &'static InterfaceTheme {
+        self.theme
+            .as_deref()
+            .and_then(interface_theme::builtin_theme)
+            .unwrap_or_else(|| interface_theme::default_theme())
     }
 
     #[must_use]
-    pub fn interface_style(&self) -> InterfaceStyle {
-        self.style
+    pub fn theme_id(&self) -> &str {
+        self.theme
             .as_deref()
-            .and_then(InterfaceStyle::parse)
-            .unwrap_or_default()
+            .filter(|theme| interface_theme::is_builtin_theme(theme))
+            .unwrap_or(interface_theme::DEFAULT_THEME)
     }
 
-    /// Selects `style` and drops the radius and shadow overrides, so the
-    /// style shows as designed.
-    pub fn set_interface_style(&mut self, style: InterfaceStyle) {
-        self.style = Some(style.as_str().into());
+    /// Selects the built-in theme `id` and drops the radius and shadow
+    /// overrides, so the theme shows as designed.
+    pub fn set_interface_theme(&mut self, id: &str) {
+        self.theme = interface_theme::is_builtin_theme(id).then(|| id.to_owned());
         self.radius = None;
         self.shadow_strength = None;
     }
@@ -199,13 +178,13 @@ impl Preferences {
     #[must_use]
     pub fn widget_corner_radius(&self) -> f32 {
         self.radius
-            .unwrap_or_else(|| self.interface_style().widget_corner_radius())
+            .unwrap_or_else(|| self.interface_theme().look.radius)
     }
 
     #[must_use]
     pub fn shadow(&self) -> f32 {
         self.shadow_strength
-            .unwrap_or_else(|| self.interface_style().shadow_strength())
+            .unwrap_or_else(|| self.interface_theme().look.shadow)
     }
 
     #[must_use]
@@ -226,11 +205,9 @@ impl Preferences {
         if source.get("mode").is_none() && source.get("dark").is_none() {
             preferences.mode = Some("system".into());
         }
-        if source.get("style").is_none() {
-            preferences.radius = preferences.radius.filter(|radius| *radius != 6.0);
-            preferences.shadow_strength = preferences
-                .shadow_strength
-                .filter(|strength| *strength != 1.0);
+        if source.get("theme").is_none() {
+            preferences.radius = None;
+            preferences.shadow_strength = None;
         }
         Ok(preferences.sanitized())
     }
@@ -313,7 +290,7 @@ fn bounded(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::Preferences;
-    use zz_ui::chrome_palette::{InterfaceStyle, ThemeModeSetting};
+    use zz_ui::interface_theme::ThemeModeSetting;
 
     #[test]
     fn preferences_persist_and_missing_fields_keep_defaults() {
@@ -492,21 +469,30 @@ mod tests {
     }
 
     #[test]
-    fn the_style_decides_radius_and_shadow_until_they_are_set() {
-        let older = Preferences::decode(r#"{"radius":6,"shadow_strength":1}"#).unwrap();
-        assert_eq!(older.interface_style(), InterfaceStyle::Modern);
+    fn the_theme_decides_radius_and_shadow_until_they_are_set() {
+        let older =
+            Preferences::decode(r#"{"radius":12,"shadow_strength":0.3,"style":"flat"}"#).unwrap();
+        assert_eq!(older.theme_id(), "default");
         assert_eq!((older.radius, older.shadow_strength), (None, None));
         assert_eq!(older.widget_corner_radius(), 24.0);
 
-        let mut tuned = Preferences::decode(r#"{"radius":12}"#).unwrap();
+        let mut tuned = Preferences::decode(r#"{"theme":null,"radius":12}"#).unwrap();
         assert_eq!(tuned.widget_corner_radius(), 12.0);
         let saved = serde_json::to_string(&tuned).unwrap();
         assert_eq!(Preferences::decode(&saved).unwrap().radius, Some(12.0));
 
-        tuned.set_interface_style(InterfaceStyle::Flat);
-        let flat = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
-        assert_eq!(flat.interface_style(), InterfaceStyle::Flat);
-        assert_eq!((flat.widget_corner_radius(), flat.shadow()), (0.0, 0.0));
+        tuned.set_interface_theme("linear");
+        let linear = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
+        assert_eq!(linear.theme_id(), "linear");
+        let look = &zz_ui::interface_theme::builtin_theme("linear")
+            .unwrap()
+            .look;
+        assert_eq!(
+            (linear.widget_corner_radius(), linear.shadow()),
+            (look.radius, look.shadow)
+        );
+        tuned.set_interface_theme("vaporwave");
+        assert_eq!(tuned.theme_id(), "default");
     }
 
     #[test]

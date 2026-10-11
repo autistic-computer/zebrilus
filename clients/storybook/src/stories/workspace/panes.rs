@@ -2,8 +2,8 @@ use zz_gpui::{
     AnyElement, App, IntoElement, Keystroke, ParentElement as _, Styled as _, Window, div,
     prelude::*, px, relative,
 };
-use zz_ui::{Elevation, 
-    ActiveTheme as _, Colorize as _, IconName,
+use zz_ui::{
+    ActiveTheme as _, Colorize as _, Elevation, IconName,
     pane::{
         FloatingSurface, PaneDragOverlayState, PaneOverlayCorner, PaneSplitAxis,
         PaneSplitHighlight, PaneSplitSide, TERMINAL_HEADER_HEIGHT, pane_drag_chip,

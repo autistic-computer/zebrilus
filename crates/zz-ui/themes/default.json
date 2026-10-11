@@ -1,0 +1,50 @@
+{
+  "name": "Default",
+  "look": {
+    "radius": 24,
+    "corner-smoothing": 4,
+    "shadow": 1,
+    "control-shadow": 1,
+    "elevation": 1,
+    "outline": 1,
+    "outline-width": 0.5,
+    "row-inset": 4,
+    "selection": "accent",
+    "primary": "foreground",
+    "field": "soft",
+    "density": 1,
+    "control-fill": 1,
+    "divider": 1,
+    "animation-speed": 1,
+    "glass": {
+      "preset": "regular",
+      "blur": 0,
+      "tint": "#ffffff",
+      "refraction": 0,
+      "bezel": 2,
+      "dispersion": 0,
+      "saturation": 0.5,
+      "brightness": 0,
+      "specular": 0.25,
+      "fresnel": 0,
+      "edge_shadow": 0.3,
+      "noise": 0
+    }
+  },
+  "light": {
+    "background": "#ffffff",
+    "foreground": "#272727",
+    "accent": "#007aff",
+    "success": "#248a3d",
+    "warning": "#c93400",
+    "danger": "#d70015"
+  },
+  "dark": {
+    "background": "#1e1e1e",
+    "foreground": "#dddddd",
+    "accent": "#007aff",
+    "success": "#30d158",
+    "warning": "#ff9230",
+    "danger": "#ff4245"
+  }
+}

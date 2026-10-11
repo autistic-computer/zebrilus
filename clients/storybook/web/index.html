@@ -8,12 +8,12 @@
         <script type="module" src="main.js"></script>
     </head>
     <body>
-        <header id="bar" aria-label="Style creator">
+        <header id="bar" aria-label="Theme creator">
             <a class="back" href="#/colors" title="Back to the storybook">
                 <svg viewBox="0 0 24 24"><path d="M15 6l-6 6l6 6" /></svg>
                 <span>Storybook</span>
             </a>
-            <strong>Style creator</strong>
+            <strong>Theme creator</strong>
             <div class="spacer"></div>
             <div class="tools">
                 <button type="button" data-action="undo" title="Undo">
@@ -46,31 +46,27 @@
         <aside id="knobs" aria-label="Knobs">
             <form id="knob-form">
                 <section>
-                    <h3>Style</h3>
-                    <div class="segmented" role="radiogroup" aria-label="Start from">
-                        <label><input type="radio" name="style" value="flat" /><span>Flat</span></label>
-                        <label><input type="radio" name="style" value="modern" checked /><span>Modern</span></label>
-                        <label><input type="radio" name="style" value="full" /><span>Full</span></label>
-                    </div>
+                    <h3>Theme</h3>
+                    <div class="segmented" role="radiogroup" aria-label="Start from" id="theme-choices"></div>
                 </section>
 
                 <section>
-                    <h3>Theme</h3>
-                    <div class="segmented" role="radiogroup" aria-label="Theme">
+                    <h3>Mode</h3>
+                    <div class="segmented" role="radiogroup" aria-label="Mode">
                         <label><input type="radio" name="theme" value="system" checked /><span>System</span></label>
                         <label><input type="radio" name="theme" value="light" /><span>Light</span></label>
                         <label><input type="radio" name="theme" value="dark" /><span>Dark</span></label>
                     </div>
-                    <label class="row">
-                        <span>Palette</span>
-                        <select name="preset">
-                            <option value="default">zz default</option>
-                        </select>
-                    </label>
                     <label class="row slider">
                         <span>Contrast</span><output name="contrast-value"></output>
                         <input type="range" name="contrast" min="0.5" max="2" step="0.05" value="1" />
                     </label>
+                </section>
+
+                <section>
+                    <h3>Colors</h3>
+                    <fieldset id="colors-light" class="colors"></fieldset>
+                    <fieldset id="colors-dark" class="colors" hidden></fieldset>
                 </section>
 
                 <section>
@@ -106,6 +102,10 @@
                     <label class="row slider">
                         <span>Shadow</span><output name="shadow-value"></output>
                         <input type="range" name="shadow" min="0" max="1" step="0.05" value="1" />
+                    </label>
+                    <label class="row slider">
+                        <span>Control shadow</span><output name="control-shadow-value"></output>
+                        <input type="range" name="control-shadow" min="0" max="1" step="0.05" value="1" />
                     </label>
                     <label class="row slider">
                         <span>Elevation</span><output name="elevation-value"></output>
@@ -178,7 +178,7 @@
                     <label class="row">
                         <span>Material</span>
                         <select name="glass">
-                            <option value="style">The style's</option>
+                            <option value="theme">The theme's</option>
                             <option value="off">Off</option>
                             <option value="regular">Regular</option>
                             <option value="clear">Clear</option>
@@ -269,8 +269,8 @@
                 </section>
 
                 <section class="export">
-                    <button type="button" data-action="copy">Copy look as JSON</button>
-                    <button type="button" data-action="import">Import a look</button>
+                    <button type="button" data-action="copy">Copy theme as JSON</button>
+                    <button type="button" data-action="import">Import a theme</button>
                     <button type="reset">Reset</button>
                 </section>
             </form>
@@ -281,9 +281,9 @@
         </aside>
         <dialog id="import-dialog">
             <form method="dialog">
-                <h2>Import a look</h2>
-                <p>Paste a look's JSON. Keys it leaves out keep the style's value.</p>
-                <textarea id="import-json" rows="14" spellcheck="false" aria-label="Look JSON"></textarea>
+                <h2>Import a theme</h2>
+                <p>Paste a theme's JSON. Keys it leaves out keep the default theme's value.</p>
+                <textarea id="import-json" rows="14" spellcheck="false" aria-label="Theme JSON"></textarea>
                 <output id="import-error"></output>
                 <menu>
                     <button value="cancel">Cancel</button>

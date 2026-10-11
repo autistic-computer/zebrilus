@@ -17,11 +17,10 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Sizable as _,
-    ThemeColor, ThemeMode, WindowExt as _,
+    ThemeMode, WindowExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
-    color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
     h_flex,
     input::{Input, InputEvent, InputState, NumberInput},
     menu::{DropdownMenu as _, PopupMenuItem},
@@ -34,16 +33,14 @@ use crate::{
     app_icon::AppIconSetting,
     config::{
         self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue,
-        remove_config_key, set_chrome_preset, set_config_key, set_interface_style, set_saved_look,
+        remove_config_key, set_config_key, set_interface_theme,
     },
     diagnostics,
     mux::{
         client::MuxClient,
         hosts::{HostId, HostState},
     },
-    theme::{
-        ChromeColor, ChromePresetId, ThemeModeSetting, chrome_presets, inherited_chrome_colors,
-    },
+    theme::ThemeModeSetting,
     window::{drag::window_drag_handle, toast},
     workspace::add_host,
 };
@@ -51,9 +48,9 @@ use zz_browser::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
 use zz_ui::feedback::import_configuration_file_alert;
-use zz_ui::interface_style::InterfaceStyle;
+use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::appearance::{
-    PickerStrip, interface_style_preview, palette_preview, picker_tile, ui_font_select,
+    PickerStrip, interface_theme_preview, picker_tile, ui_font_select,
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -97,11 +94,10 @@ struct HostsSectionState {
     error: Option<SharedString>,
 }
 
-type AppearancePageItem = zz_ui::settings::appearance::AppearancePageItem<ChromeColor>;
+use zz_ui::settings::appearance::AppearancePageItem;
 
 fn appearance_page_items(has_window_blur: bool, advanced: bool) -> Vec<AppearancePageItem> {
     zz_ui::settings::appearance::appearance_page_items(
-        ChromeColor::ALL,
         cfg!(target_os = "macos"),
         has_window_blur,
         advanced,
@@ -130,7 +126,6 @@ pub(crate) struct SettingsView {
     chrome_contrast: Entity<InputState>,
     shadow_strength: Entity<InputState>,
     window_corner_radius: Entity<InputState>,
-    chrome_pickers: BTreeMap<ChromeColor, Entity<ColorPickerState>>,
     mux_config_editor: Option<ConfigFileEditor>,
     mux_split_controls: Option<multiplexer::SplitControls>,
     file_options: BTreeMap<ConfigFileKind, file_options::FileOptions>,
@@ -243,8 +238,7 @@ impl SettingsView {
             window,
             cx,
         );
-        let chrome_pickers = chrome_pickers(&observed, window, cx);
-        let mut subscriptions = vec![
+        let subscriptions = vec![
             cx.observe(&mux, |_, _, cx| cx.notify()),
             cx.observe_global::<config::FleetHosts>(|_, cx| cx.notify()),
             cx.observe_global::<crate::update::UpdateState>(|_, cx| cx.notify()),
@@ -294,7 +288,6 @@ impl SettingsView {
                 cx,
             ),
         ];
-        subscriptions.extend(chrome_picker_subscriptions(&chrome_pickers, window, cx));
         let observed_appearance_overrides = config::daemon_config_overrides(cx);
         let settings = Self {
             mux,
@@ -318,7 +311,6 @@ impl SettingsView {
             chrome_contrast,
             shadow_strength,
             window_corner_radius,
-            chrome_pickers,
             mux_config_editor: None,
             mux_split_controls: None,
             file_options: BTreeMap::new(),
@@ -600,10 +592,6 @@ impl SettingsView {
                 window,
                 cx,
             );
-            for (color, picker) in &self.chrome_pickers {
-                let value = resolved.chrome(*color).value;
-                picker.update(cx, |picker, cx| picker.set_color(value, window, cx));
-            }
         }
         resolved
     }
@@ -848,13 +836,11 @@ impl SettingsView {
             crate::profile::profile(cx).has_window_blur,
             self.appearance_advanced,
         );
-        let mode = cx.theme().mode;
-        let inherited = inherited_chrome_colors(resolved.chrome_preset(mode.is_dark()).value, mode);
         let view = cx.entity();
         let resolved = *resolved;
         zz_ui::settings::appearance::appearance_page(items, move |item, position, _, cx| {
             view.update(cx, |this, cx| {
-                this.appearance_item(item, &resolved, &inherited, position, cx)
+                this.appearance_item(item, &resolved, position, cx)
             })
         })
         .into_any_element()
@@ -864,7 +850,6 @@ impl SettingsView {
         &self,
         item: AppearancePageItem,
         resolved: &AppConfig,
-        inherited: &ThemeColor,
         position: StackPosition,
         cx: &Context<Self>,
     ) -> AnyElement {
@@ -880,9 +865,7 @@ impl SettingsView {
                 return settings_list_disclosure_header(
                     "settings-appearance-advanced",
                     "Advanced",
-                    Some(
-                        "Fonts, zoom, base colors, and the corner and shadow sizes the style sets.",
-                    ),
+                    Some("Fonts, zoom, contrast, and the corner and shadow sizes the theme sets."),
                     expanded,
                     cx,
                 )
@@ -902,18 +885,10 @@ impl SettingsView {
                 unreachable!("returned above")
             }
             AppearancePageItem::ThemeMode => Self::theme_mode_setting(resolved, cx),
-            AppearancePageItem::InterfaceStyle => Self::interface_style_setting(resolved, cx),
+            AppearancePageItem::InterfaceTheme => Self::interface_theme_setting(resolved, cx),
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
             AppearancePageItem::UiZoom => self.ui_zoom_setting(cx),
             AppearancePageItem::AppIcon => Self::app_icon_setting(resolved, cx),
-            AppearancePageItem::Preset(mode) => Self::preset_setting(mode, resolved, cx),
-            AppearancePageItem::ChromeColor(color) => {
-                let preset_active = resolved
-                    .chrome_preset(cx.theme().mode.is_dark())
-                    .value
-                    .is_some();
-                self.chrome_color_setting(color, resolved, inherited, preset_active)
-            }
             AppearancePageItem::ChromeContrast => Self::numeric_setting(
                 ConfigKey::ChromeContrast,
                 "Contrast",
@@ -1012,12 +987,7 @@ impl SettingsView {
                     picker_tile(
                         format!("settings-theme-mode-{}", mode.as_str()).into(),
                         mode.title(),
-                        theme_preview(
-                            mode,
-                            resolved.chrome_preset(false).value,
-                            resolved.chrome_preset(true).value,
-                            cx,
-                        ),
+                        theme_preview(mode, &config::themes(cx).active, cx),
                         mode == setting.value,
                         cx,
                     )
@@ -1030,61 +1000,61 @@ impl SettingsView {
             ))
     }
 
-    fn interface_style_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let setting = resolved.interface_style;
-        let looks = config::looks(cx);
-        let choices =
-            InterfaceStyle::ALL
-                .into_iter()
-                .map(|style| {
-                    (
-                        SharedString::from(style.title()),
-                        zz_ui::interface_style::look(style),
-                        StyleChoice::Builtin(style),
-                    )
-                })
-                .chain(looks.saved.iter().map(|(name, look)| {
-                    (name.clone(), look.clone(), StyleChoice::Saved(name.clone()))
-                }))
-                .collect::<Vec<_>>();
+    fn interface_theme_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
+        let setting = resolved.interface_theme;
+        let themes = config::themes(cx);
+        let mode = cx.theme().mode;
+        let choices = interface_theme::builtin_themes()
+            .iter()
+            .map(|(id, theme)| (SharedString::from(*id), theme.clone()))
+            .chain(themes.saved.iter().cloned())
+            .collect::<Vec<(SharedString, InterfaceTheme)>>();
         let selected = choices
             .iter()
-            .position(|(_, _, choice)| match (choice, &looks.selected) {
-                (StyleChoice::Builtin(style), None) => *style == setting.value,
-                (StyleChoice::Saved(name), Some(selected)) => name == selected,
-                _ => false,
-            })
+            .position(|(id, _)| *id == themes.selected)
             .unwrap_or(0);
-        let strip = PickerStrip::new("settings-interface-style", selected)
-            .tiles(
-                choices
-                    .iter()
-                    .map(|(label, look, _)| (label.clone(), interface_style_preview(look, cx))),
-            )
-            .on_select(move |index, _, cx| {
-                let written = match &choices[index].2 {
-                    StyleChoice::Builtin(style) => set_interface_style(*style),
-                    StyleChoice::Saved(name) => set_saved_look(name),
+        let ids = choices.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+        let strip = PickerStrip::new("settings-interface-theme", selected)
+            .tiles(choices.iter().map(|(id, theme)| {
+                let label = if theme.name.is_empty() {
+                    id.clone()
+                } else {
+                    SharedString::from(theme.name.clone())
                 };
-                if let Err(error) = written {
-                    report_write_error("set", ConfigKey::InterfaceStyle.as_str(), &error, cx);
+                (label, interface_theme_preview(theme, mode, cx))
+            }))
+            .on_select(move |index, _, cx| {
+                if let Err(error) = set_interface_theme(&ids[index]) {
+                    report_write_error("set", ConfigKey::InterfaceTheme.as_str(), &error, cx);
                     return;
                 }
-                refresh_settings_preview(ConfigKey::InterfaceStyle, cx);
+                refresh_settings_preview(ConfigKey::InterfaceTheme, cx);
             });
         SettingEntry::new(
-            "Style",
-            "Corners, outlines, shadows, and how menus and dialogs float. Import adds a look copied from the style creator.",
+            "Interface theme",
+            "The look of the whole interface and its colors in light and dark. Duplicate saves a copy to edit in the themes folder; Import adds one from the clipboard.",
         )
         .title_actions(
-            key_annotations(ConfigKey::InterfaceStyle, setting.provenance).child(
-                Button::new("settings-interface-style-import")
-                    .ghost()
-                    .xsmall()
-                    .label("Import")
-                    .tooltip("Save the look on the clipboard and use it")
-                    .on_click(|_, _, cx| import_look_from_clipboard(cx)),
-            ),
+            key_annotations(ConfigKey::InterfaceTheme, setting.provenance)
+                .child(
+                    Button::new("settings-interface-theme-duplicate")
+                        .ghost()
+                        .xsmall()
+                        .label("Duplicate")
+                        .tooltip("Save a copy of this theme to edit and use it")
+                        .on_click(|_, _, cx| {
+                            let theme = config::themes(cx).active.clone();
+                            save_and_select_theme(&theme, cx);
+                        }),
+                )
+                .child(
+                    Button::new("settings-interface-theme-import")
+                        .ghost()
+                        .xsmall()
+                        .label("Import")
+                        .tooltip("Save the theme on the clipboard and use it")
+                        .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
+                ),
         )
         .child(strip)
     }
@@ -1113,78 +1083,6 @@ impl SettingsView {
                     })
                 }),
             ))
-    }
-
-    fn preset_setting(mode: ThemeMode, resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let dark = mode.is_dark();
-        let setting = resolved.chrome_preset(dark);
-        let (title, description, strip) = if dark {
-            (
-                "Dark palette",
-                "Used while the interface is dark.",
-                "settings-presets-dark",
-            )
-        } else {
-            (
-                "Light palette",
-                "Used while the interface is light.",
-                "settings-presets-light",
-            )
-        };
-        let presets: Vec<Option<ChromePresetId>> = std::iter::once(None)
-            .chain(chrome_presets(dark).map(|preset| Some(preset.id)))
-            .collect();
-        let selected = presets
-            .iter()
-            .position(|preset| *preset == setting.value)
-            .unwrap_or(0);
-        let tiles = PickerStrip::new(strip, selected)
-            .tiles(presets.iter().map(|preset| {
-                (
-                    preset.map_or("Default", |id| id.preset().name),
-                    palette_preview(&inherited_chrome_colors(*preset, mode), cx),
-                )
-            }))
-            .on_select(move |index, _, cx| apply_preset(dark, presets[index], cx));
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(
-                ConfigKey::ChromePreset { dark },
-                setting.provenance,
-            ))
-            .child(tiles)
-    }
-
-    fn chrome_color_setting(
-        &self,
-        color: ChromeColor,
-        resolved: &AppConfig,
-        inherited: &ThemeColor,
-        preset_active: bool,
-    ) -> SettingEntry {
-        let setting = resolved.chrome(color);
-        let key = ConfigKey::Chrome(color);
-        let badge = if setting.provenance == ConfigProvenance::Default && preset_active {
-            settings_provenance_badge("Preset")
-        } else {
-            provenance_badge(setting.provenance)
-        };
-        SettingEntry::new(color.title(), color.description())
-            .title_actions(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(8.0))
-                    .child(config_reset_button(key, setting.provenance))
-                    .child(badge),
-            )
-            .control(
-                ColorPicker::new(
-                    &self.chrome_pickers[&color],
-                    zz_ui::chrome_palette::read_chrome_color(color, inherited),
-                )
-                .label(color.title()),
-            )
     }
 
     fn ui_font_setting(&self, cx: &Context<Self>) -> SettingEntry {
@@ -2436,7 +2334,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
         && !matches!(
             key,
             ConfigKey::WidgetCornerRadius
-                | ConfigKey::InterfaceStyle
+                | ConfigKey::InterfaceTheme
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteHostPrefix
                 | ConfigKey::PaletteShowKeys
@@ -2580,83 +2478,23 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> f32 {
         | ConfigKey::BrowserSearchProvider
         | ConfigKey::BrowserEgress
         | ConfigKey::ThemeMode
-        | ConfigKey::InterfaceStyle
+        | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
-        | ConfigKey::AppIcon
-        | ConfigKey::ChromePreset { .. }
-        | ConfigKey::Chrome(_) => {
+        | ConfigKey::AppIcon => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }
 }
 
-fn chrome_pickers(
-    observed: &AppConfig,
-    window: &mut Window,
-    cx: &mut Context<SettingsView>,
-) -> BTreeMap<ChromeColor, Entity<ColorPickerState>> {
-    ChromeColor::ALL
-        .into_iter()
-        .map(|color| {
-            let value = observed.chrome(color).value;
-            (color, cx.new(|cx| ColorPickerState::new(value, window, cx)))
-        })
-        .collect()
-}
-
-fn chrome_picker_subscriptions(
-    pickers: &BTreeMap<ChromeColor, Entity<ColorPickerState>>,
-    window: &mut Window,
-    cx: &mut Context<SettingsView>,
-) -> Vec<Subscription> {
-    pickers
-        .iter()
-        .map(|(color, picker)| {
-            let color = *color;
-            cx.subscribe_in(
-                picker,
-                window,
-                move |_, _, event: &ColorPickerEvent, _, cx| {
-                    let ColorPickerEvent::Change(value) = event;
-                    write_chrome_color(color, *value, cx);
-                },
-            )
-        })
-        .collect()
-}
-
-fn write_chrome_color(color: ChromeColor, value: Option<zz_gpui::Hsla>, cx: &mut App) {
-    let key = ConfigKey::Chrome(color);
-    let result = match value {
-        Some(value) => set_config_key(key, &zz_ui::to_hex(value)),
-        None => remove_config_key(key),
-    };
-    if let Err(error) = result {
-        let action = if value.is_some() { "set" } else { "reset" };
-        report_write_error(action, key.as_str(), &error, cx);
-    }
-}
-
-fn apply_preset(dark: bool, preset: Option<ChromePresetId>, cx: &mut App) {
-    if let Err(error) = set_chrome_preset(dark, preset) {
-        report_write_error("set", ConfigKey::ChromePreset { dark }.as_str(), &error, cx);
-    }
-}
-
-fn theme_preview(
-    mode: ThemeModeSetting,
-    light: Option<ChromePresetId>,
-    dark: Option<ChromePresetId>,
-    cx: &App,
-) -> zz_gpui::Div {
+fn theme_preview(mode: ThemeModeSetting, theme: &InterfaceTheme, cx: &App) -> zz_gpui::Div {
     zz_ui::settings::appearance::theme_preview(
         match mode {
             ThemeModeSetting::System => None,
             ThemeModeSetting::Light => Some(ThemeMode::Light),
             ThemeModeSetting::Dark => Some(ThemeMode::Dark),
         },
-        &inherited_chrome_colors(light, ThemeMode::Light),
-        &inherited_chrome_colors(dark, ThemeMode::Dark),
+        &theme.colors(ThemeMode::Light),
+        &theme.colors(ThemeMode::Dark),
         cx,
     )
 }
@@ -2744,40 +2582,39 @@ pub(crate) fn run_import(cx: &mut App) {
     }
 }
 
-enum StyleChoice {
-    Builtin(InterfaceStyle),
-    Saved(SharedString),
-}
-
-fn import_look_from_clipboard(cx: &mut App) {
+fn import_theme_from_clipboard(cx: &mut App) {
     let source = cx
         .read_from_clipboard()
         .and_then(|item| item.text())
         .unwrap_or_default();
-    if let Err(error) = config::parse_look(&source) {
-        toast::push(
+    match interface_theme::parse_theme(&source) {
+        Ok(theme) => save_and_select_theme(&theme, cx),
+        Err(error) => toast::push(
             Notification::error(format!(
-                "The clipboard holds no look: {error}. Copy one with Copy JSON in the style creator."
+                "The clipboard holds no theme: {error}. Copy one with Copy JSON in the storybook."
             )),
             cx,
-        );
-        return;
+        ),
     }
-    let saved = config::looks::looks_directory().and_then(|directory| {
-        let name = config::looks::next_look_name(&directory);
-        let path = config::looks::save_look(&directory, &name, &source)?;
-        set_saved_look(&name)?;
+}
+
+/// Writes `theme` to the next free `themes/theme-N.json` and selects it.
+fn save_and_select_theme(theme: &InterfaceTheme, cx: &mut App) {
+    let saved = config::themes::themes_directory().and_then(|directory| {
+        let name = config::themes::next_theme_name(&directory);
+        let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
+        set_interface_theme(&name)?;
         Ok(path)
     });
     match saved {
         Ok(path) => {
-            refresh_settings_preview(ConfigKey::InterfaceStyle, cx);
+            refresh_settings_preview(ConfigKey::InterfaceTheme, cx);
             toast::push(
-                Notification::success(format!("Saved the look as {}", path.display())),
+                Notification::success(format!("Saved the theme as {}", path.display())),
                 cx,
             );
         }
-        Err(error) => report_write_error("import", "look", &error, cx),
+        Err(error) => report_write_error("save", "theme", &error, cx),
     }
 }
 
@@ -2797,7 +2634,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contrast_input_uses_50_to_200_percent_after_the_color_rows() {
+    fn contrast_input_uses_50_to_200_percent_under_advanced() {
         let key = ConfigKey::ChromeContrast;
         assert_eq!(numeric_range(key), (50.0, 200.0));
         for (factor, text) in [(0.5, "50"), (1.0, "100"), (1.05, "105"), (2.0, "200")] {
@@ -2812,14 +2649,11 @@ mod tests {
             "100"
         );
         let items = appearance_page_items(true, true);
-        let last_color = items
-            .iter()
-            .rposition(|item| matches!(item, AppearancePageItem::ChromeColor(_)))
-            .unwrap();
-        assert!(matches!(
-            items.get(last_color + 1),
-            Some(AppearancePageItem::ChromeContrast)
-        ));
+        assert!(
+            items
+                .iter()
+                .any(|item| matches!(item, AppearancePageItem::ChromeContrast))
+        );
     }
 
     #[test]
@@ -2878,7 +2712,7 @@ mod tests {
         assert!(
             expanded[..advanced]
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::InterfaceStyle))
+                .any(|item| matches!(item, AppearancePageItem::InterfaceTheme))
         );
         assert!(
             expanded[advanced..]
