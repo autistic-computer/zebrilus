@@ -1,16 +1,14 @@
 use std::time::Duration;
 
 use zz_gpui::{
-    AnyElement, App, Div, ElementId, EntityId, FontWeight, Hsla, Pixels, SharedString, Stateful,
+    AnyElement, App, Div, ElementId, EntityId, FontWeight, Pixels, SharedString, Stateful,
     Transformation, div, ease_in_out, percentage, prelude::*, px,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    pulse::pulse_phase,
-    v_flex,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractivePaintExt as _,
+    Paint, PaintState, Sizable as _, StyledExt as _, Tone, badge::Badge, button::Button, h_flex,
+    kbd::Keycap, pulse::pulse_phase, v_flex,
 };
 
 pub use zz_client::agent_config::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -115,29 +113,16 @@ pub fn permission_option(
     enabled: bool,
     cx: &App,
 ) -> Stateful<Div> {
-    let selected = highlighted && enabled;
-    card_tile(id, enabled, selected, cx)
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .when(danger && enabled, |label| {
-                    label.text_color(cx.theme().danger)
-                })
-                .child(label.into()),
-        )
+    let tone = if danger { Tone::Danger } else { Tone::Neutral };
+    let tile = CardTile::new(tone, enabled, highlighted && enabled, cx);
+    tile.render(id, cx)
+        .child(div().min_w_0().flex_1().child(label.into()))
         .child(
             card_trailing()
                 .gap(px(4.0))
-                .when(selected, |trailing| {
-                    trailing.child(card_keycap("↵", cx.theme().foreground, cx))
-                })
+                .when(tile.selected(), |trailing| trailing.child(tile.keycap("↵")))
                 .when(index < 9, |trailing| {
-                    trailing.child(card_keycap(
-                        format!("{}", index + 1),
-                        cx.theme().foreground,
-                        cx,
-                    ))
+                    trailing.child(tile.keycap(format!("{}", index + 1)))
                 }),
         )
 }
@@ -157,7 +142,7 @@ pub fn permission_card(
                     CARD_TITLE_LINE,
                 ))
                 .child(div().min_w_0().flex_1().child(title.into()))
-                .when_some(counter, |row, counter| row.child(card_chip(counter, cx)))
+                .when_some(counter, |row, counter| row.child(card_chip(counter)))
                 .child(card_close(cancel)),
         )
         .child(card_tiles().pb(px(CARD_GUTTER)).children(options))
@@ -172,7 +157,7 @@ pub fn card_close(button: Button) -> Div {
         .child(
             button
                 .icon(IconName::Xmark)
-                .ghost()
+                .emphasis(Emphasis::Ghost)
                 .compact()
                 .size(px(CARD_CLOSE)),
         )
@@ -195,7 +180,6 @@ const CARD_TILE_PADDING_X: f32 = 12.0;
 const CARD_TILE_PADDING_Y: f32 = 9.0;
 const CARD_LABEL_LINE: f32 = 18.0;
 const CARD_DETAIL_LINE: f32 = 16.0;
-const CARD_KEYCAP: f32 = 18.0;
 const CARD_CLOSE: f32 = 24.0;
 
 pub(crate) fn card_surface(cx: &App) -> Div {
@@ -224,18 +208,8 @@ pub(crate) fn card_glyph(icon: Icon, line: f32) -> Div {
     )
 }
 
-pub(crate) fn card_chip(text: impl Into<SharedString>, cx: &App) -> Div {
-    h_flex().flex_none().h(px(CARD_TITLE_LINE)).child(
-        div()
-            .rounded(cx.theme().menu_radius())
-            .bg(cx.theme().background.washed(2))
-            .px(px(6.0))
-            .text_size(crate::rems_from_px(10.0))
-            .line_height(px(14.0))
-            .font_weight(FontWeight::NORMAL)
-            .text_color(cx.theme().foreground.muted())
-            .child(text.into()),
-    )
+pub(crate) fn card_chip(text: impl Into<SharedString>) -> Badge {
+    Badge::new(text).small().flex_none()
 }
 
 pub(crate) fn card_divider(cx: &App) -> Div {
@@ -243,7 +217,7 @@ pub(crate) fn card_divider(cx: &App) -> Div {
         .mx(px(CARD_GUTTER))
         .my(px(CARD_GAP))
         .h(px(0.5))
-        .bg(cx.theme().foreground.opacity(0.1 * cx.theme().divider))
+        .bg(cx.theme().divider_color())
 }
 
 pub(crate) fn card_tiles() -> Div {
@@ -255,62 +229,66 @@ fn card_tile_radius(cx: &App) -> Pixels {
     (radius - px(CARD_GUTTER)).max(radius.min(px(6.0)))
 }
 
-pub(crate) fn card_tile(
-    id: impl Into<ElementId>,
-    enabled: bool,
-    selected: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    let theme = cx.theme();
-    let rest = theme.control_background(theme.background.washed(1));
-    let hover = theme.control_background(theme.background.washed(2));
-    let chosen = theme.control_background(theme.background.washed(3));
-    let fill = if selected { chosen } else { rest };
-    h_flex()
-        .id(id)
-        .w_full()
-        .items_start()
-        .gap(px(CARD_GAP))
-        .px(px(CARD_TILE_PADDING_X))
-        .py(cx.theme().dense(px(CARD_TILE_PADDING_Y)))
-        .rounded(card_tile_radius(cx))
-        .bg(fill)
-        .text_size(crate::rems_from_px(13.0))
-        .line_height(px(CARD_LABEL_LINE))
-        .when(enabled, |tile| {
-            tile.cursor_pointer()
-                .hover(move |style| style.bg(if selected { chosen } else { hover }))
-        })
-        .when(!enabled, |tile| tile.text_color(theme.foreground.muted()))
+/// An option tile in a card: neutral soft, or danger soft for a
+/// destructive choice, selectable. What sits inside it (its description,
+/// keycaps, checks) paints on the tile's ground.
+#[derive(Clone, Copy)]
+pub(crate) struct CardTile {
+    paint: Paint,
+    state: PaintState,
 }
 
-pub(crate) fn card_detail(text: impl Into<SharedString>, cx: &App) -> Div {
-    div()
-        .text_size(crate::rems_from_px(12.0))
-        .line_height(px(CARD_DETAIL_LINE))
-        .text_color(cx.theme().foreground.muted())
-        .child(text.into())
+impl CardTile {
+    pub(crate) fn new(tone: Tone, enabled: bool, selected: bool, cx: &App) -> Self {
+        Self {
+            paint: cx.theme().paint(tone, Emphasis::Soft),
+            state: match (enabled, selected) {
+                (false, _) => PaintState::Disabled,
+                (true, true) => PaintState::Selected,
+                (true, false) => PaintState::Rest,
+            },
+        }
+    }
+
+    pub(crate) fn selected(self) -> bool {
+        self.state == PaintState::Selected
+    }
+
+    pub(crate) fn ground(self) -> Ground {
+        self.paint.ground_at(self.state)
+    }
+
+    pub(crate) fn render(self, id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
+        let enabled = self.state != PaintState::Disabled;
+        h_flex()
+            .id(id)
+            .w_full()
+            .items_start()
+            .gap(px(CARD_GAP))
+            .px(px(CARD_TILE_PADDING_X))
+            .py(cx.theme().dense(px(CARD_TILE_PADDING_Y)))
+            .rounded(card_tile_radius(cx))
+            .painted_interactive(self.paint, self.selected(), enabled)
+            .text_size(crate::rems_from_px(13.0))
+            .line_height(px(CARD_LABEL_LINE))
+            .when(enabled, zz_gpui::Styled::cursor_pointer)
+    }
+
+    pub(crate) fn detail(self, text: impl Into<SharedString>) -> Div {
+        div()
+            .text_size(crate::rems_from_px(12.0))
+            .line_height(px(CARD_DETAIL_LINE))
+            .text_color(self.paint.muted_at(self.state))
+            .child(text.into())
+    }
+
+    pub(crate) fn keycap(self, text: impl Into<SharedString>) -> Keycap {
+        Keycap::new(text).on(self.ground())
+    }
 }
 
 pub(crate) fn card_trailing() -> Div {
     h_flex().flex_none().h(px(CARD_LABEL_LINE))
-}
-
-pub(crate) fn card_keycap(text: impl Into<SharedString>, ink: Hsla, cx: &App) -> Div {
-    h_flex()
-        .flex_none()
-        .justify_center()
-        .h(px(CARD_KEYCAP))
-        .min_w(px(CARD_KEYCAP))
-        .px(px(4.0))
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(ink.opacity(0.25))
-        .text_size(crate::rems_from_px(11.0))
-        .line_height(px(CARD_KEYCAP - 2.0))
-        .font_weight(FontWeight::NORMAL)
-        .text_color(ink.opacity(0.7))
-        .child(text.into())
 }
 
 pub(crate) fn card_footer() -> Div {

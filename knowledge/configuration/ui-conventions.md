@@ -210,9 +210,9 @@ already receive the workspace `Window` can call `window.push_notification` direc
 
 Spacing comes from a 4px grid (2px half steps inside small controls) and four rules. The agent
 pane's cards (permission, question, error, task tray) follow them through one set of builders in
-`crates/zz-ui/src/agent/presentation.rs` (`card_surface`, `card_header`, `card_tiles`, `card_tile`,
-`card_keycap`, `card_close`, `card_footer`, `card_button`), so a new card inherits the spacing
-instead of restating it.
+`crates/zz-ui/src/agent/presentation.rs` (`card_surface`, `card_header`, `card_tiles`, `CardTile`,
+`card_close`, `card_footer`, `card_button`), so a new card inherits the spacing instead of
+restating it.
 
 1. **One gutter, measured to ink.** A floating card keeps 12px (`CARD_GUTTER`, the dialog's
    `CONTENT_PADDING`) between its edge and what the eye sees: the cap top of the title, the tiles,
@@ -229,14 +229,15 @@ instead of restating it.
    their radius is the theme radius minus 12 (never below 6, or square when the theme is square);
    the 28px (`Small`) footer pills fit a 24px corner at the 12px gutter.
 
-Options are tiles (`card_tile`): a soft `washed(1)` fill that brightens on hover and when picked,
-so the label and its muted description stay legible in every state. Hover only changes the fill,
-which GPUI repaints; text color cannot follow a hover style. The key that picks an option is an
-outlined keycap (`card_keycap`) on the tile's right, a multi-select tile shows a checkbox there
-instead, and the free-text answer is a field inside an "Other" tile. The keycap rounds at
-`theme.radius` like the kit's `Kbd` and the checkbox at half of it like a markdown task box, so
-both go round in modern and full and square in flat. Glyphs beside a line of text
-sit in a box as tall as the line and drop 0.5px (`CARD_OPTICAL_DROP`).
+Options are tiles (`CardTile`): neutral soft paints, danger soft for a destructive choice, that
+brighten on hover and take the look's selection fill when picked (see
+[Design system](/designs/design-system.md)). Hover only changes the fill, which GPUI repaints;
+text color cannot follow a hover style. What sits on a tile paints on the tile's ground, so it
+stays legible on an accent selection: the description (`CardTile::detail`, the tile's
+`muted_at`), the keycap that picks the option (`CardTile::keycap`), and the `Check` a
+multi-select tile shows, or the radio a picked single-select tile shows. The free-text answer is
+a field inside an "Other" tile. Glyphs beside a line of text sit in a box as tall as the line and
+drop 0.5px (`CARD_OPTICAL_DROP`).
 
 # UI font
 
