@@ -78,28 +78,11 @@ The desktop clients ship no fonts; they render with the system text stack.
 | [Tabler Icons](https://tabler.io/icons) | The Chrome brand mark, `crates/zz-gpui-kit/assets/icons/brand-chrome.svg`. Every other glyph in the app and the site is zz's own. | MIT, © 2020–2026 Paweł Kuna. Retained as `LICENSE-TABLER` beside it. |
 | [Simple Icons](https://simpleicons.org) | The vendor brand marks `openai.svg` and `claude.svg`. | CC0-1.0 |
 
-## Color schemes
+## Interface themes
 
-**Chrome presets.** The 34 window-chrome presets in `crates/zz-client/src/chrome_palette.rs`
-take their names and starting colors from published community palettes, then nudge each one in
-Oklab to clear zz's 7:1 text and 3:1 edge contrast floors. The values are re-derived rather than
-copied, but the palettes are recognizably theirs and the names are used as they were published:
-
-[Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) ·
-[Catppuccin](https://github.com/catppuccin/catppuccin) ·
-[Gruvbox](https://github.com/morhetz/gruvbox) ·
-[Nord](https://github.com/nordtheme/nord) ·
-[Dracula](https://github.com/dracula/dracula-theme) and its light Alucard ·
-[One Dark / One Light](https://github.com/atom/one-dark-syntax) ·
-[GitHub](https://github.com/primer/primitives) ·
-[Everforest](https://github.com/sainnhe/everforest) ·
-[Rosé Pine](https://github.com/rose-pine/rose-pine-theme) ·
-[Solarized](https://github.com/altercation/solarized) ·
-[Ayu](https://github.com/ayu-theme/ayu-colors) ·
-Breeze (KDE) ·
-Adwaita (GNOME) ·
-Ubuntu (Canonical) ·
-macOS Classic (Apple Terminal)
+The `macos` and `linear` interface themes in `crates/zz-ui/themes` are named for the apps whose
+feel they imitate. zz is not affiliated with Apple or Linear. Their colors are the macOS system
+colors as `NSColor` reports them and zz's own picks; no artwork or code comes from either app.
 
 ## Protocols and formats
 

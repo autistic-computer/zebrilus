@@ -206,7 +206,7 @@ Browser, Terminal, Hosts, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Theme (`theme-mode`, system UI font picker, transient UI zoom, and macOS app-icon pickers), Chroma Colors (a light and a dark palette strip, `chrome-*` colors, contrast), Tweaks (`animations`, `widget-corner-radius`, window blur, and Linux `use-system-titlebar`) |
+| Interface | Theme (`theme-mode` and the `interface-theme` strip with Duplicate and Import), Advanced (system UI font picker, transient UI zoom, macOS app-icon pickers, contrast, `animations`, `widget-corner-radius`, `shadow-strength`, window blur, and Linux `use-system-titlebar`) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`), Frame (`pane-margin`, `pane-corner-radius`, `pane-border-width`); gapped panes carry subtle inset surface rings |
@@ -265,9 +265,11 @@ verbatim from tmux after confirming that a dirty buffer may be discarded.
 
 # Application chrome (`theme.rs`)
 
-**App chrome does not derive from terminal colors.** Colors come from zz-ui's own
-`ThemeColor::light()` / `ThemeColor::dark()` palettes, following the OS appearance unless
-`theme-mode` pins System, Light, or Dark. A Ghostty palette cannot repaint the window.
+**App chrome does not derive from terminal colors.** Colors come from the interface theme
+(`interface-theme`: a built-in from `crates/zz-ui/themes/` or a saved `themes/<name>.json`), whose
+light or dark color set applies by the OS appearance unless `theme-mode` pins System, Light, or
+Dark. A Ghostty palette cannot repaint the window. `config::Themes` holds the active theme, the
+selected id and the saved themes; `install_config` loads them with the configuration.
 
 `theme.rs` keeps the latest immutable `TerminalAppearance` and `AppearanceProvenance` as GPUI
 globals for chrome crossovers and Terminal Settings badges, and owns the two entry points that
@@ -279,13 +281,15 @@ effect without a restart.
 
 `apply_zz_overrides` writes, in this order:
 
-- the three `chrome-*` palette roots (`ChromeColor::ALL`) that are set. Only the roots are written;
-  every elevation, hover state, muted text, and focus ring derives from them at paint time, so
-  recoloring reaches the whole UI with no per-component plumbing. `CHROME_PRESETS` ships single-mode
-  palettes, one selected per mode by `chrome-preset-light` and `chrome-preset-dark`;
+- the active theme through `InterfaceTheme::apply`: its colors for the mode (the six roots, the
+  shadow color and the text on the accent) and its look. Only the roots are written; every
+  elevation, hover state, muted text, and focus ring derives from them at paint time, so a theme
+  reaches the whole UI with no per-component plumbing;
+- `font_family` from `ui-font-family`, else the theme's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown, tool previews,
   and code blocks match the terminal typeface;
-- `radius` from `widget-corner-radius`, which reaches every widget through the theme;
+- `radius` from `widget-corner-radius` and `shadow_strength` from `shadow-strength`, which reach
+  every widget through the theme;
 - `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes.
 
 The font is the sole terminal→chrome crossover: a typeface, never chroma. Terminal alpha is resolved

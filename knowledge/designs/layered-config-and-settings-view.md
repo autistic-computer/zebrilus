@@ -55,7 +55,7 @@ place that already owns each grammar.
 
 | Group | Owner | Where the grammar lives |
 |-------|-------|-------------------------|
-| Window chrome, pane geometry, widget radius, theme mode, per-mode `chrome-preset-light` / `chrome-preset-dark`, three optional `chrome-*` roots | GUI client | `crates/zz/src/config/mod.rs` |
+| Window chrome, pane geometry, widget radius, theme mode, `interface-theme` (with saved themes in the `themes` folder) | GUI client | `crates/zz/src/config/mod.rs` |
 | Browser-local element-selector hotkey | GUI client | `crates/zz/src/config/mod.rs` |
 | Repeatable `chrome-keybind` / `chrome-unbind` overrides for `ui`, `sidebar`, `browser`, and `terminal` actions | GUI client | `crates/zz/src/config/mod.rs` + `crates/zz-client/src/chrome.rs` |
 | Three ACP launch keys (`agent-command`, `agent-claude-code-command`, `agent-working-directory`) | GUI client | `crates/zz/src/config/mod.rs`; file-only, no settings row |
@@ -170,12 +170,13 @@ shown, and then retained so edits and focus survive navigation.
 | Multi-client fights | Two attached clients with different `zz/config` files both push overrides | Last-writer-wins; per-client overrides become real under [scene-streaming remote attach](/designs/scene-streaming-remote.md) |
 | Comment-preserving writer | Repeated keys, inline comments, and `key=value` spacing variants make in-place editing fiddly | Edit the last occurrence, keep unknown lines byte-identical, cover with fixture tests |
 | Schema creep | A settings GUI invites unbounded knob growth | Every knob keeps the bounded contract: validated range, warn-and-keep, documented; no key ships without a consumer |
-| A preset must survive both palettes | The light and dark built-ins run their elevations in opposite directions, so one fixed preset cannot follow System correctly | Persist one preset per mode (paired families were tried first and produced invented light halves); resolve base < that mode's preset < explicit roots, and keep the last actual OS mode separate from any pin |
+| A theme must survive both modes | The light and dark built-ins run their elevations in opposite directions, so one fixed palette cannot follow System correctly | Each interface theme carries a light and a dark color set and the mode picks one (paired preset families, then one preset per mode, came before and were removed with the palettes); keep the last actual OS mode separate from any pin |
 
 # Non-goals
 
 - **Writing to** the user's Ghostty or tmux files, ever.
-- **A new theme format**: no Zed-theme loading; Ghostty theme files remain the palette source.
+- **Foreign theme formats**: no Zed-theme loading; Ghostty theme files remain the terminal's palette
+  source, and chrome themes are zz's own JSON ([interface themes](/designs/interface-themes.md)).
 - **A general keybinding editor** in the settings view; the single browser-local selector shortcut
   remains a scalar setting.
 - **Live donor adoption**: donors are snapshotted by import, not tracked.

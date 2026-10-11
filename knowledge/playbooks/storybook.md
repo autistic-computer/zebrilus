@@ -30,10 +30,14 @@ just storybook build    # build into clients/storybook/dist; --release for an op
 just storybook serve    # serve the last build
 ```
 
-The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&preset=nord`.
-Knobs: `theme`, `preset` (the 34 chroma presets), `radius`, `smoothing`, `shadow`, `contrast`,
-`zoom`, `pane-opacity`, `pane-glow`, `motion` (`motion=0` turns animations off and freezes
-spinners).
+The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&interface-theme=macos`.
+Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`, `macos`,
+`linear`), every look value (`radius`, `smoothing`, `shadow`, `control-shadow`, `elevation`,
+`outline`, `selection`, `primary`, `field`, the glass sliders, ...), each mode's colors
+(`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
+theme's alpha), `contrast`, `zoom`, `pane-opacity`, `pane-glow`, `motion` (`motion=0` turns
+animations off and freezes spinners). The Theme creator story is every surface on one canvas;
+its Copy JSON copies a theme file Settings can Import, and Import loads one back into the knobs.
 
 # Add a story
 
@@ -50,7 +54,7 @@ authoring rules; the short version:
 # Check a change
 
 Edit the component in `crates/zz-ui` or `crates/zz-gpui-kit`, let `just storybook run` rebuild,
-reload, and walk the knobs: light and dark, a few presets, radius 0 and full, contrast extremes,
+reload, and walk the knobs: light and dark, each interface theme, radius 0 and full, contrast extremes,
 zoom. The sections re-render live as knobs move.
 
 # For agents
@@ -59,7 +63,8 @@ zoom. The sections re-render live as knobs move.
   `just storybook shot`) opens the story in headless Chrome over CDP, waits for `zzGpui.idle()` and
   saves a PNG clipped to the section. Its JSON output lists wasm panics and console errors under
   `problems`.
-- In a browser tab: `storybook.show(id, section)`, `storybook.setKnobs({ theme: "dark" })`, and
+- In a browser tab: `storybook.show(id, section)`, `storybook.setKnobs({ theme: "dark" })`,
+  `storybook.theme()` (the theme file the knobs describe), `storybook.importTheme(json)`, and
   the `zzGpui` API from [zz-gpui web windows for agents](/references/zz-gpui-web-agents.md) for the live
   UI (`zzGpui.find`, `zzGpui.click`, `zzGpui.capture`).
 

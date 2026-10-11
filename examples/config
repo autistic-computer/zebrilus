@@ -43,10 +43,19 @@ pane-corner-radius = 13.5
 pane-margin = 6
 pane-border-width = 0.5
 
+# The interface theme: a look (corners, outlines, shadows, glass, how rows and
+# primary buttons are filled) bundled with its colors for light and for dark.
+# Built in: default (zz's look on the macOS system colors), macos (flat
+# controls, frosted popovers, blue accent) and linear (opaque surfaces with
+# ring outlines, indigo accent). Any other name selects themes/<name>.json next
+# to this file; Settings -> Interface -> Duplicate saves a copy to edit there.
+interface-theme = default
+
 # The corner every widget turns (buttons, inputs, tags, menus, dialogs) in
-# logical pixels (0..=24). One value for the whole chrome: 0 squares it off,
-# larger values round it (a control never exceeds half its own height).
-widget-corner-radius = 6
+# logical pixels (0..=24; 25 rounds controls into pills). The theme decides it;
+# set it to override. 0 squares the chrome off.
+#
+# widget-corner-radius = 6
 
 # Animate interface transitions, loading indicators, scrollbars, and image
 # frames. Turning this off settles each interface state immediately.
@@ -58,36 +67,6 @@ theme-mode = system
 # The dock/taskbar icon variant: automatic follows the OS appearance,
 # light or dark pins one.
 app-icon = automatic
-
-# Recolor the whole chrome with a built-in palette. A preset belongs to one
-# mode, so naming both keys composes with theme-mode = system: 14 light
-# palettes and 20 dark ones ship in the catalog. Unset means zz's own palette.
-# Pick them in Settings -> Interface, which shows every tile, or write the ids
-# here: tokyo-night, tokyo-night-storm, catppuccin-mocha, catppuccin-macchiato,
-# catppuccin-frappe, gruvbox-dark, nord, dracula, one-dark, github-dark,
-# everforest-dark, rose-pine, rose-pine-moon, solarized-dark, ayu-dark,
-# breeze-dark, adwaita-dark, ubuntu-dark, ubuntu-terminal, macos-classic-dark;
-# tokyo-night-day, catppuccin-latte, gruvbox-light, alucard, one-light,
-# github-light, everforest-light, rose-pine-dawn, solarized-light, ayu-light,
-# breeze-light, adwaita-light, ubuntu-light, macos-classic-light.
-#
-# chrome-preset-light = catppuccin-latte
-# chrome-preset-dark = tokyo-night
-
-# Recolor the application chrome. These three are the palette *roots* you can
-# set: every panel, hover state, muted label and focus ring is derived from
-# them, so setting a root reaches everything built on it. Status colors follow
-# the preset. Accepts #rgb, #rrggbb or #rrggbbaa. Leave a key out to inherit
-# that root from the active preset (if any) or the built-in palette for the
-# active mode.
-#
-# An explicit color is one value and cannot suit both built-in palettes, so pin
-# theme-mode above to whichever mode you tuned these for. Commented out here
-# because unset means inherit, which is not the same as any particular color.
-#
-# chrome-background = #1a1b26   # the window's base plane
-# chrome-foreground = #c0caf5   # default text, muted text, rings, links
-# chrome-accent     = #7aa2f7   # checked switches, the selected tile, the active pane border
 
 # Corner radius of the window frame zz draws with client-side decorations on
 # Linux, in logical pixels (0..=32). Desktops agree on no radius and expose no
