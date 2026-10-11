@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Design system: tone, emphasis and ground"
 description: "How zz chrome picks colors: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, and the old hand-picked washes, opacities and per-widget variant enums move onto it one component family at a time."
-status: Draft (foundation built, call sites not migrated)
+status: In progress (foundation, fields and agent cards built)
 resource: crates/zz-gpui-kit/src/foundation/variant.rs
 tags:
 - ui
@@ -42,7 +42,7 @@ A widget picks two things and the theme does the rest.
   - text and selected text;
   - the `Ground` it sits on.
 
-  `fill_at`, `border_at`, `text_at` and `muted_at` read any `PaintState`: rest, hover, active (pressed), selected, disabled.
+  `fill_at`, `border_at`, `text_at`, `muted_at` and `faint_at` read any `PaintState`: rest, hover, active (pressed), selected, focused, disabled.
 - **`painted(paint, state)`** draws a paint on any element.
 - **`painted_interactive(paint, selected, enabled)`** draws one on an element with an id and adds live hover and press. Hover only changes the fill, which GPUI can repaint; text color cannot follow a hover style.
 
@@ -58,6 +58,8 @@ A widget picks two things and the theme does the rest.
 **Selected:**
 - Neutral soft, outline and ghost on the window follow the look's `selection`: accent fill or a wash. On any other ground, and for coloured tones, selected is the pressed fill.
 - Text on an opaque selected fill is picked by perceptual lightness (`readable_on`), so a light accent gets dark text and a dark accent gets white.
+
+**Focused:** the border turns to the focus color. A neutral or primary paint focuses in the primary tone (the ground's ink when primary is the foreground, the accent otherwise); danger, warning and success focus in their own tone.
 
 **Disabled:** fill, border and text all at half strength.
 
@@ -86,6 +88,35 @@ Without it, the keycap would compute muted gray against the window.
 | on a fill | text on a solid or selected fill | `paint.text_at(state)` |
 
 `muted_at` pulls the text toward the fill it actually sits on, so it reads on the window, a solid fill and an accent selection alike.
+
+# Fields
+
+Text, number and select fields are neutral paints at the look's field emphasis, `field = soft | outline` (`FieldStyle`, soft by default). Call sites never pick it.
+- `Input::tone(Tone::Danger)` marks an invalid value: a danger fill or border, and a danger focus ring.
+- `Input::emphasis(Emphasis::Ghost)` is for a field that shows its edge only on hover or focus.
+- `Input::on(ground)` puts a field inside a tile or card on that surface's ground.
+- `NumberInput` takes the same three.
+
+The shared chrome, `field_chrome` in `input/field.rs`, does three things:
+- it always draws at least a 1px border, clear when the paint has none, so focusing never moves the text;
+- it hovers to the soft hover fill;
+- it focuses to the focus color.
+
+**Text inside a field:**
+- placeholders are `faint_at`;
+- the caret is the field's text color;
+- the selection is a wash of it.
+
+**Select** draws its trigger as the same field with a caret. Open or focused counts as focused, and a missing value shows its placeholder faint.
+
+**Switch:**
+- track: the primary solid fill when on, the neutral soft pressed fill when off;
+- thumb: when on, the text color that reads on the track; when off, the lighter of background and foreground, so it stays a light knob in both modes.
+
+**Discrete slider:**
+- filled pills: the primary solid fill;
+- the rest: the neutral soft pressed fill;
+- focus: the paint's focus color.
 
 # Widgets
 
@@ -127,6 +158,10 @@ Kit widgets on the model:
 | Done or healthy status | success · soft |
 | Multi-select mark | `Check::checkbox`, primary |
 | Single-select mark | `Check::radio`, primary |
+| Text, number, select field | neutral at the look's field emphasis |
+| Invalid field | danger at the look's field emphasis |
+| Inline field (rename in place) | neutral · ghost |
+| Switch, slider | primary · solid when on, neutral soft when off |
 
 # Where to look
 
@@ -147,11 +182,12 @@ Kit widgets on the model:
 
 One component family at a time, each checked in the storybook and in the app:
 
-1. **Agent cards:** `card_tile`, `card_keycap`, the checkbox, `card_chip`, and Skip and Submit.
-2. **Badges:** `Badge` replaces `Tag` and the hand-built chips, pills and status badges; `Tag` is deleted.
-3. **Buttons:** the old `ButtonVariant` values map onto tone and emphasis and are deleted.
-4. **Rows and selection:** `ListItem`, menus and the chooser move onto `Paint`, collapsing the selected-row recipes.
-5. **Clean-up:**
+1. **Agent cards** (done): `CardTile` paints tiles, keycaps and checks on its ground; `card_chip` is a `Badge`; Skip is neutral ghost and Submit primary solid. The retry and auth buttons in the zz and thin-client error cards wait for the button step.
+2. **Fields** (done): `Input`, `NumberInput`, the `Select` trigger, `Switch` and `DiscreteSlider` draw from paints. The zz-ui fields that wrap a bare `Input` in their own chrome (the composer, the palette, the browser address bar, the agent title) still pick their colors and move with the clean-up.
+3. **Badges:** `Badge` replaces `Tag` and the hand-built chips, pills and status badges; `Tag` is deleted.
+4. **Buttons:** the old `ButtonVariant` values map onto tone and emphasis and are deleted.
+5. **Rows and selection:** `ListItem`, menus and the chooser move onto `Paint`, collapsing the selected-row recipes.
+6. **Clean-up:**
    - the remaining keycaps;
    - one divider recipe;
    - faint text in place of opacity text;

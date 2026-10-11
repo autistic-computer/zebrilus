@@ -10,20 +10,19 @@ use zz_protocol::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, PaintState, Sizable as _, Tone,
+    button::Button,
+    check::Check,
     h_flex,
     input::{Input, InputContentType, InputEvent, InputState},
+    kbd::Keycap,
     v_flex,
 };
 
 use super::presentation::{
-    CARD_GAP, CARD_GLYPH, CARD_TITLE_LINE, card_button, card_chip, card_close, card_detail,
-    card_divider, card_footer, card_header, card_keycap, card_surface, card_tile, card_tiles,
-    card_trailing,
+    CARD_GAP, CARD_TITLE_LINE, CardTile, card_button, card_chip, card_close, card_divider,
+    card_footer, card_header, card_surface, card_tiles, card_trailing,
 };
-
-const CHECKBOX: f32 = 16.0;
 const OTHER_LABEL: &str = "Other";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -417,7 +416,7 @@ impl QuestionCardState {
         let submit = Rc::clone(&on_action);
         let mut trailing = Some(
             counter
-                .map(|counter| card_chip(counter, cx).into_any_element())
+                .map(|counter| card_chip(counter).into_any_element())
                 .into_iter()
                 .chain(std::iter::once(
                     card_close(
@@ -433,7 +432,15 @@ impl QuestionCardState {
                 ))
                 .collect::<Vec<_>>(),
         );
-        let ink = cx.theme().foreground.on();
+        let submittable = enabled && card.is_complete() && problem.is_none();
+        let submit_ground =
+            cx.theme()
+                .paint(Tone::Primary, Emphasis::Solid)
+                .ground_at(if submittable {
+                    PaintState::Rest
+                } else {
+                    PaintState::Disabled
+                });
         card_surface(cx)
             .children(
                 card.questions()
@@ -466,7 +473,8 @@ impl QuestionCardState {
                     })
                     .child(
                         card_button(
-                            Button::new(SharedString::from(format!("{id}-skip"))).secondary(),
+                            Button::new(SharedString::from(format!("{id}-skip")))
+                                .emphasis(Emphasis::Ghost),
                         )
                         .label("Skip")
                         .disabled(!enabled)
@@ -477,11 +485,13 @@ impl QuestionCardState {
                     )
                     .child(
                         card_button(
-                            Button::new(SharedString::from(format!("{id}-submit"))).primary(),
+                            Button::new(SharedString::from(format!("{id}-submit")))
+                                .tone(Tone::Primary)
+                                .emphasis(Emphasis::Solid),
                         )
                         .label("Submit")
-                        .child(card_keycap("↵", ink, cx))
-                        .disabled(!enabled || !card.is_complete() || problem.is_some())
+                        .child(Keycap::new("↵").on(submit_ground))
+                        .disabled(!submittable)
                         .on_click(move |_, window, cx| {
                             submit(QuestionCardAction::Submit, window, cx);
                             cx.stop_propagation();
@@ -505,16 +515,13 @@ impl QuestionCardState {
         let card = &self.card;
         let focused = card.focused() == index;
         let keys = enabled && (focused || !several);
-        let marker = |option: usize, picked: bool| {
+        let marker = |option: usize, picked: bool, tile: CardTile| {
             card_trailing().child(if question.multi_select {
-                checkbox(picked, cx).into_any_element()
+                Check::checkbox(picked).on(tile.ground()).into_any_element()
             } else if picked {
-                Icon::new(IconName::Check)
-                    .size(px(CARD_GLYPH))
-                    .text_color(cx.theme().accent)
-                    .into_any_element()
+                Check::radio(true).on(tile.ground()).into_any_element()
             } else if keys && option < 9 {
-                card_keycap(format!("{}", option + 1), cx.theme().foreground, cx).into_any_element()
+                tile.keycap(format!("{}", option + 1)).into_any_element()
             } else {
                 div().into_any_element()
             })
@@ -522,53 +529,50 @@ impl QuestionCardState {
         let options = question.options.iter().enumerate().map(|(option, choice)| {
             let on_action = Rc::clone(on_action);
             let picked = card.is_picked(index, option);
-            card_tile(
-                (SharedString::from(format!("{id}-{index}")), option),
-                enabled,
-                picked,
-                cx,
-            )
-            .on_click(move |_, window, cx| {
-                on_action(
-                    QuestionCardAction::Pick {
-                        question: index,
-                        option,
-                    },
-                    window,
-                    cx,
-                );
-                cx.stop_propagation();
-            })
-            .child(
-                v_flex()
-                    .min_w_0()
-                    .flex_1()
-                    .child(choice.label.clone())
-                    .when_some(choice.description.clone(), |column, description| {
-                        column.child(card_detail(description, cx))
-                    }),
-            )
-            .child(marker(option, picked))
-            .into_any_element()
+            let tile = CardTile::new(Tone::Neutral, enabled, picked, cx);
+            tile.render((SharedString::from(format!("{id}-{index}")), option), cx)
+                .on_click(move |_, window, cx| {
+                    on_action(
+                        QuestionCardAction::Pick {
+                            question: index,
+                            option,
+                        },
+                        window,
+                        cx,
+                    );
+                    cx.stop_propagation();
+                })
+                .child(
+                    v_flex()
+                        .min_w_0()
+                        .flex_1()
+                        .child(choice.label.clone())
+                        .when_some(choice.description.clone(), |column, description| {
+                            column.child(tile.detail(description))
+                        }),
+                )
+                .child(marker(option, picked, tile))
+                .into_any_element()
         });
         let other = self.other_input(index).map(|input| {
+            let picked = card.other_selected(index);
+            let tile = (!question.options.is_empty())
+                .then(|| CardTile::new(Tone::Neutral, enabled, picked, cx));
             let field = Input::new(input)
                 .small()
                 .w_full()
                 .disabled(!enabled)
+                .when_some(tile, |field, tile| field.on(tile.ground()))
                 .when(question.secret, |field| {
                     field.content_type(InputContentType::Password)
                 });
-            if question.options.is_empty() {
+            let Some(tile) = tile else {
                 return field.into_any_element();
-            }
+            };
             let on_action = Rc::clone(on_action);
             let choice = question.options.len();
-            let picked = card.other_selected(index);
-            card_tile(
+            tile.render(
                 (SharedString::from(format!("{id}-{index}-other")), choice),
-                enabled,
-                picked,
                 cx,
             )
             .on_click(move |_, window, cx| {
@@ -585,7 +589,7 @@ impl QuestionCardState {
                             .w_full()
                             .gap(px(CARD_GAP))
                             .child(div().min_w_0().flex_1().child(OTHER_LABEL))
-                            .child(marker(choice, picked)),
+                            .child(marker(choice, picked, tile)),
                     )
                     .child(field),
             )
@@ -601,7 +605,7 @@ impl QuestionCardState {
                         header.text_color(cx.theme().foreground.muted())
                     })
                     .when_some(question.header.clone(), |row, header| {
-                        row.child(card_chip(header, cx))
+                        row.child(card_chip(header))
                     })
                     .child(div().min_w_0().flex_1().child(question.question.clone()))
                     .when(question.multi_select, |row| {
@@ -620,29 +624,6 @@ impl QuestionCardState {
             .child(card_tiles().children(options).children(other))
             .into_any_element()
     }
-}
-
-fn checkbox(checked: bool, cx: &App) -> Div {
-    let accent = cx.theme().accent;
-    div()
-        .size(px(CHECKBOX))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(cx.theme().radius / 2.0)
-        .border_1()
-        .border_color(if checked {
-            accent
-        } else {
-            cx.theme().foreground.opacity(0.35)
-        })
-        .when(checked, |marker| {
-            marker.bg(accent).child(
-                Icon::new(IconName::Check)
-                    .size(px(11.0))
-                    .text_color(accent.on()),
-            )
-        })
 }
 
 #[cfg(test)]
