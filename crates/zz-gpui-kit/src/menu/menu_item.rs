@@ -1,5 +1,5 @@
 use crate::Colorize as _;
-use crate::{ActiveTheme, Disableable, StyledExt, h_flex};
+use crate::{ActiveTheme, Disableable, Emphasis, StyledExt, Tone, h_flex};
 use smallvec::SmallVec;
 use zz_gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
@@ -97,10 +97,11 @@ impl ParentElement for MenuItemElement {
 impl RenderOnce for MenuItemElement {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let highlight = if self.submenu_open {
+            let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
             StyleRefinement::default()
-                .bg(cx.theme().background.washed(2))
+                .bg(paint.hover)
                 .border_color(zz_gpui::transparent_white())
-                .text_color(cx.theme().foreground)
+                .text_color(paint.text)
                 .shadow_none()
         } else {
             StyleRefinement::default().selection_highlight(cx)

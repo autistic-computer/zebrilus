@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use zz_gpui::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
 use super::{
-    Colorize as _, SelectionStyle, Theme,
+    Colorize as _, Theme,
     color::{faint_weight, muted_weight, readable_on},
 };
 
@@ -299,7 +299,7 @@ impl Theme {
                 color.opacity(SOFT_ALPHA[usize::from(step)])
             }
         };
-        let selected = if neutral && window && self.selection == SelectionStyle::Accent {
+        let selected = if neutral && window {
             self.selection_background()
         } else {
             soft(2)

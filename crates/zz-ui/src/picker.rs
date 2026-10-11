@@ -1,5 +1,6 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Emphasis, Icon, IconName, Sizable as _,
+    StyledExt as _, Tone,
     badge::Badge,
     h_flex,
     input::{Input, InputState},
@@ -121,7 +122,8 @@ pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Statefu
         .cursor_pointer()
         .when(selected, |row| row.selection_highlight(cx))
         .when(!selected, |row| {
-            row.hover(|row| row.selection_highlight(cx))
+            let hover = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover;
+            row.hover(move |row| row.bg(hover))
         })
 }
 

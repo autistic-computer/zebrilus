@@ -20,8 +20,8 @@ use crate::{
 };
 
 use super::presentation::{
-    CARD_GAP, CARD_TITLE_LINE, CardTile, card_button, card_chip, card_close, card_divider,
-    card_footer, card_header, card_surface, card_tiles, card_trailing,
+    CARD_GAP, CARD_GUTTER, CARD_TITLE_LINE, CardTile, card_button, card_chip, card_close,
+    card_divider, card_footer, card_header, card_surface, card_tiles, card_trailing,
 };
 const OTHER_LABEL: &str = "Other";
 
@@ -459,18 +459,19 @@ impl QuestionCardState {
                         )
                     }),
             )
+            .when_some(problem.clone(), |card, problem| {
+                card.child(
+                    div()
+                        .px(px(CARD_GUTTER))
+                        .pt(px(CARD_GUTTER))
+                        .text_size(crate::rems_from_px(12.0))
+                        .line_height(px(16.0))
+                        .text_color(cx.theme().tone(Tone::Danger))
+                        .child(problem),
+                )
+            })
             .child(
                 card_footer()
-                    .when_some(problem.clone(), |footer, problem| {
-                        footer.child(
-                            div()
-                                .min_w_0()
-                                .flex_1()
-                                .text_size(crate::rems_from_px(12.0))
-                                .text_color(cx.theme().danger)
-                                .child(problem),
-                        )
-                    })
                     .child(
                         card_button(
                             Button::new(SharedString::from(format!("{id}-skip")))
