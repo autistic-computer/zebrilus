@@ -7,7 +7,7 @@ use zz_gpui::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
 use super::{
     Colorize as _, SelectionStyle, Theme,
-    color::{muted_weight, readable_on},
+    color::{faint_weight, muted_weight, readable_on},
 };
 
 /// What a widget means, which picks its color.
@@ -85,6 +85,26 @@ pub enum PrimaryStyle {
     Accent,
 }
 
+/// What fields (text inputs, select triggers) are drawn as at rest.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FieldStyle {
+    /// A tinted fill.
+    #[default]
+    Soft,
+    /// A border and no fill.
+    Outline,
+}
+
+impl FieldStyle {
+    pub fn emphasis(self) -> Emphasis {
+        match self {
+            Self::Soft => Emphasis::Soft,
+            Self::Outline => Emphasis::Outline,
+        }
+    }
+}
+
 /// The state a painted widget is drawn in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PaintState {
@@ -93,15 +113,18 @@ pub enum PaintState {
     Hover,
     Active,
     Selected,
+    /// Keyboard focus: the border takes the focus color.
+    Focused,
     Disabled,
 }
 
 impl PaintState {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Rest,
         Self::Hover,
         Self::Active,
         Self::Selected,
+        Self::Focused,
         Self::Disabled,
     ];
 
@@ -111,6 +134,7 @@ impl PaintState {
             Self::Hover => "hover",
             Self::Active => "pressed",
             Self::Selected => "selected",
+            Self::Focused => "focused",
             Self::Disabled => "disabled",
         }
     }
@@ -126,6 +150,9 @@ pub struct Paint {
     pub border: Hsla,
     /// Zero when the emphasis draws no border.
     pub border_width: Pixels,
+    /// The border of a focused field or control: the primary tone, or this
+    /// paint's tone when it has a meaning of its own.
+    pub focus: Hsla,
     pub text: Hsla,
     pub selected_text: Hsla,
     /// What this paint sits on.
@@ -145,7 +172,7 @@ pub struct Ground {
 impl Paint {
     pub fn fill_at(&self, state: PaintState) -> Hsla {
         match state {
-            PaintState::Rest => self.fill,
+            PaintState::Rest | PaintState::Focused => self.fill,
             PaintState::Hover => self.hover,
             PaintState::Active => self.active,
             PaintState::Selected => self.selected,
@@ -155,6 +182,7 @@ impl Paint {
 
     pub fn border_at(&self, state: PaintState) -> Hsla {
         match state {
+            PaintState::Focused => self.focus,
             PaintState::Disabled => self.border.opacity(DISABLED),
             _ => self.border,
         }
@@ -176,6 +204,12 @@ impl Paint {
             .mix_oklab(self.ground_at(state).fill, 1.0 - muted_weight())
     }
 
+    /// Text quieter than [`Self::muted_at`]: a placeholder or a hint.
+    pub fn faint_at(&self, state: PaintState) -> Hsla {
+        self.text_at(state)
+            .mix_oklab(self.ground_at(state).fill, 1.0 - faint_weight())
+    }
+
     /// The ground this paint makes for what sits inside it in `state`.
     pub fn ground_at(&self, state: PaintState) -> Ground {
         Ground {
@@ -187,6 +221,7 @@ impl Paint {
 
 const DISABLED: f32 = 0.5;
 const OPAQUE_ENOUGH: f32 = 0.5;
+const FOCUS_ALPHA: f32 = 0.8;
 const SOFT_ALPHA: [f32; 3] = [0.12, 0.18, 0.24];
 const NEUTRAL_OUTLINE_ALPHA: f32 = 0.3;
 const TONE_OUTLINE_ALPHA: f32 = 0.55;
@@ -205,6 +240,11 @@ impl Theme {
             Tone::Warning => self.warning,
             Tone::Success => self.success,
         }
+    }
+
+    /// What a field is drawn as at rest, as the look decides.
+    pub fn field_emphasis(&self) -> Emphasis {
+        self.field.emphasis()
     }
 
     /// The window: the ground everything sits on unless it is nested in
@@ -230,6 +270,14 @@ impl Theme {
         let color = if neutral { ink } else { self.tone(tone) };
         let window = ground == self.ground();
         let clear = self.transparent;
+        let focus = match tone {
+            Tone::Danger | Tone::Warning | Tone::Success => color,
+            Tone::Neutral | Tone::Primary => match self.primary {
+                PrimaryStyle::Foreground => ink,
+                PrimaryStyle::Accent => self.accent,
+            },
+        }
+        .opacity(FOCUS_ALPHA);
         let soft = |step: u8| {
             if neutral {
                 self.control_background(ground.fill.washed(step + 1))
@@ -267,6 +315,7 @@ impl Theme {
                 selected: color.active(),
                 border: clear,
                 border_width: px(0.0),
+                focus,
                 text: readable_on(color),
                 selected_text: readable_on(color),
                 ground,
@@ -288,6 +337,7 @@ impl Theme {
                     } else {
                         px(0.0)
                     },
+                    focus,
                     text,
                     selected_text: readable(selected, text),
                     ground,
@@ -300,6 +350,7 @@ impl Theme {
                 selected,
                 border: outline,
                 border_width: px(1.0),
+                focus,
                 text,
                 selected_text: readable(selected, text),
                 ground,
@@ -311,6 +362,7 @@ impl Theme {
                 selected,
                 border: clear,
                 border_width: px(0.0),
+                focus,
                 text,
                 selected_text: readable(selected, text),
                 ground,

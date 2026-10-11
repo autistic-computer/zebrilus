@@ -3,14 +3,16 @@
 use std::{rc::Rc, time::Duration};
 
 use zz_gpui::{
-    Animation, AnimationExt as _, App, Background, ElementId, Entity, InteractiveElement as _,
-    IntoElement, MouseButton, ParentElement as _, Pixels, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    Animation, AnimationExt as _, App, Background, ElementId, Entity, Hsla,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, RenderOnce,
+    SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
 
-use crate::Colorize as _;
-use crate::{ActiveTheme as _, Disableable, Sizable, Size, StyledExt as _, h_flex};
+use crate::{
+    ActiveTheme as _, Disableable, Emphasis, PaintState, Sizable, Size, StyledExt as _, Tone,
+    h_flex, oklab_lightness,
+};
 
 const TOGGLE_ANIMATION: Duration = Duration::from_millis(150);
 
@@ -169,6 +171,16 @@ fn thumb(
         })
 }
 
+/// The lighter of two colors: an unchecked thumb is light in both modes,
+/// like a physical switch.
+fn lighter(a: Hsla, b: Hsla) -> Hsla {
+    if oklab_lightness(a) >= oklab_lightness(b) {
+        a
+    } else {
+        b
+    }
+}
+
 impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
@@ -177,24 +189,36 @@ impl RenderOnce for Switch {
 
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
 
-        let base_track: Background = if checked {
-            cx.theme().accent.into()
+        let theme = cx.theme();
+        let paint = if checked {
+            theme.paint(Tone::Primary, Emphasis::Solid)
         } else {
-            cx.theme()
-                .control_background(cx.theme().background.raised(3))
-                .into()
+            theme.paint(Tone::Neutral, Emphasis::Soft)
         };
-        let base_thumb: Background = cx.theme().foreground.into();
-        let (track, thumb_fill) = if self.disabled {
-            let track = if checked {
-                base_track.opacity(0.5)
-            } else {
-                base_track
-            };
-            (track, base_thumb.opacity(0.35))
+        let state = if self.disabled {
+            PaintState::Disabled
         } else {
-            (base_track, base_thumb)
+            PaintState::Rest
         };
+        let track: Background = if checked {
+            paint.fill_at(state)
+        } else {
+            paint
+                .fill_at(PaintState::Active)
+                .opacity(if self.disabled { 0.5 } else { 1.0 })
+        }
+        .into();
+        let knob = if checked {
+            paint.text_at(state)
+        } else {
+            lighter(theme.background, theme.foreground)
+        };
+        let thumb_fill: Background = if self.disabled {
+            knob.opacity(0.5)
+        } else {
+            knob
+        }
+        .into();
 
         div().refine_style(&self.style).child(
             h_flex()

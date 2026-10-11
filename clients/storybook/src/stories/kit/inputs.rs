@@ -15,7 +15,7 @@ pub const STORY: Story = Story {
     id: "inputs",
     name: "Inputs",
     group: "Kit",
-    summary: "Text fields bound to an InputState: single line, auto-growing multi-line and the stepped number field. There is no error state; validation only rejects edits.",
+    summary: "Text fields bound to an InputState: single line, auto-growing multi-line and the stepped number field. Input::tone(Tone::Danger) marks an invalid value; validation itself only rejects edits.",
     sections: &[
         Section {
             id: "field-states",
@@ -32,7 +32,7 @@ pub const STORY: Story = Story {
         Section {
             id: "field-focused",
             name: "Focused field",
-            summary: "Focus swaps the border to the accent. The caret only paints while the window is active, so a background tab shows the ring alone.",
+            summary: "Focus turns the border to the primary tone. The caret only paints while the window is active, so a background tab shows the ring alone.",
             build: |window, cx| Focused::view(window, cx),
         },
         Section {

@@ -1,14 +1,15 @@
 //! [`Input`]: the chrome around a text field, rebuilt every frame.
 
 use zz_gpui::{
-    AnyElement, App, DefiniteLength, Entity, Hsla, InteractiveElement as _, IntoElement,
-    MouseButton, ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, TextAlign, Window, div, prelude::FluentBuilder as _, px,
+    AnyElement, App, DefiniteLength, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    TextAlign, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, Disableable, Sizable, Size, StyledExt as _,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Disableable, Emphasis, Ground, Paint, PaintExt as _, PaintState, Sizable,
+    Size, StyledExt as _, Tone,
+    button::Button,
     h_flex,
     icon::{Icon, IconName},
     spinner::Spinner,
@@ -60,6 +61,65 @@ pub struct Input {
     tab_index: isize,
     content_type: Option<InputContentType>,
     align: TextAlign,
+    tone: Tone,
+    emphasis: Option<Emphasis>,
+    on: Option<Ground>,
+}
+
+/// The paint of a field: `tone` at `emphasis`, or at the look's field
+/// emphasis, on `on` or the window.
+pub(crate) fn field_paint(
+    tone: Tone,
+    emphasis: Option<Emphasis>,
+    on: Option<Ground>,
+    cx: &App,
+) -> Paint {
+    let theme = cx.theme();
+    theme.paint_on(
+        on.unwrap_or_else(|| theme.ground()),
+        tone,
+        emphasis.unwrap_or_else(|| theme.field_emphasis()),
+    )
+}
+
+/// A field's fill, border and text in `state`, with the hover fill while it
+/// rests. The border is always at least a pixel wide, clear when the paint
+/// has none, so focusing a field never moves its text.
+pub(crate) fn field_chrome<E: Styled + InteractiveElement>(
+    element: E,
+    paint: Paint,
+    state: PaintState,
+    bordered: bool,
+    focus_bordered: bool,
+) -> E {
+    let border = match state {
+        PaintState::Focused if !focus_bordered => paint.border_at(PaintState::Rest),
+        _ => paint.border_at(state),
+    };
+    let element = element.painted(paint, state);
+    let element = if bordered {
+        element
+            .border(paint.border_width.max(px(1.0)))
+            .border_color(border)
+    } else {
+        element.border(px(0.0))
+    };
+    if state == PaintState::Rest {
+        element.hover(move |style| style.bg(paint.hover))
+    } else {
+        element
+    }
+}
+
+/// The text size of a field at `size`.
+pub(crate) fn field_text<E: Styled>(element: E, size: Size) -> E {
+    match size {
+        Size::XSmall => element.text_xs(),
+        Size::Small => element.text_size(crate::rems_from_px(SMALL_TEXT_SIZE)),
+        Size::Medium => element.text_sm(),
+        Size::Large => element.text_base(),
+        Size::Size(value) => element.text_size(value * 0.875),
+    }
 }
 
 impl Input {
@@ -78,7 +138,33 @@ impl Input {
             tab_index: 0,
             content_type: None,
             align: TextAlign::Left,
+            tone: Tone::Neutral,
+            emphasis: None,
+            on: None,
         }
+    }
+
+    /// Draw the field in `tone`: danger for an invalid value.
+    #[must_use]
+    pub fn tone(mut self, tone: Tone) -> Self {
+        self.tone = tone;
+        self
+    }
+
+    /// Draw the field at `emphasis` instead of the look's field emphasis:
+    /// ghost for a field that shows its edge only when hovered or focused.
+    #[must_use]
+    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
+        self.emphasis = Some(emphasis);
+        self
+    }
+
+    /// Draw the field on `ground`, the paint it sits inside, instead of the
+    /// window.
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.on = Some(ground);
+        self
     }
 
     /// Place the text horizontally within the field. Hit-testing, the caret and
@@ -144,42 +230,18 @@ impl Input {
     }
 
     fn sized<E: Styled>(element: E, size: Size, density: f32) -> E {
-        let element = element.px(size.input_px()).py(size.input_py(density));
-        match size {
-            Size::XSmall => element.text_xs(),
-            Size::Small => element.text_size(crate::rems_from_px(SMALL_TEXT_SIZE)),
-            Size::Medium => element.text_sm(),
-            Size::Large => element.text_base(),
-            Size::Size(value) => element.text_size(value * 0.875),
-        }
+        field_text(element.px(size.input_px()).py(size.input_py(density)), size)
     }
 
     fn height<E: Styled>(element: E, size: Size, density: f32) -> E {
         element.h(size.control_h(density))
     }
 
-    fn colors(disabled: bool, cx: &App) -> (Hsla, Hsla) {
-        if disabled {
-            (
-                cx.theme()
-                    .control_background(cx.theme().background.raised(1).opacity(0.5)),
-                cx.theme().foreground.muted(),
-            )
-        } else {
-            (
-                cx.theme()
-                    .control_background(cx.theme().background.raised(1)),
-                cx.theme().foreground,
-            )
-        }
-    }
-
     fn clear_button(state: &Entity<InputState>, cx: &App) -> Button {
         let state = state.clone();
         Button::new("zz-input-clear")
             .icon(Icon::new(IconName::CircleX))
-            .ghost()
-            .flat()
+            .emphasis(Emphasis::Ghost)
             .xsmall()
             .tab_stop(false)
             .text_color(cx.theme().foreground.muted())
@@ -214,7 +276,14 @@ impl Styled for Input {
 
 impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let paint = field_paint(self.tone, self.emphasis, self.on, cx);
+        let resting = if self.disabled {
+            PaintState::Disabled
+        } else {
+            PaintState::Rest
+        };
         self.state.update(cx, |state, _| {
+            state.placeholder_color = Some(paint.faint_at(resting));
             state.disabled = self.disabled;
             state.size = self.size;
             state.align = self.align;
@@ -244,7 +313,11 @@ impl RenderOnce for Input {
             Size::Large => px(8.),
             Size::Medium | Size::Size(_) => px(6.),
         };
-        let (background, foreground) = Self::colors(self.disabled, cx);
+        let paint_state = if focused {
+            PaintState::Focused
+        } else {
+            resting
+        };
         let show_clear = self.cleanable && !self.disabled && !loading && !empty && !multi_line;
         let clear_button = show_clear.then(|| Self::clear_button(&self.state, cx));
         let editable = !self.disabled;
@@ -266,7 +339,7 @@ impl RenderOnce for Input {
             .gap(gap)
             .w_full()
             .line_height(LINE_HEIGHT)
-            .text_color(foreground)
+            .text_color(paint.text_at(paint_state))
             .when(editable, zz_gpui::Styled::cursor_text);
 
         element = Self::sized(element, self.size, cx.theme().density);
@@ -276,23 +349,13 @@ impl RenderOnce for Input {
 
         element
             .when(self.appearance, |this| {
-                this.bg(background)
-                    .rounded(if multi_line {
+                field_chrome(this, paint, paint_state, self.bordered, self.focus_bordered).rounded(
+                    if multi_line {
                         cx.theme().radius
                     } else {
                         cx.theme().control_radius()
-                    })
-                    .when(self.bordered, |this| {
-                        this.control_surface(cx)
-                            .border_1()
-                            .when(self.disabled, |this| {
-                                this.border_color(cx.theme().foreground.opacity(0.05))
-                                    .shadow_none()
-                            })
-                            .when(focused && self.focus_bordered, |this| {
-                                this.border_color(cx.theme().accent)
-                            })
-                    })
+                    },
+                )
             })
             .refine_style(&self.style)
             .when(editable, |this| {

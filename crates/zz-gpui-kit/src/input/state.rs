@@ -9,10 +9,10 @@ use std::{borrow::Cow, ops::Range, rc::Rc, sync::Arc};
 use unicode_segmentation::UnicodeSegmentation as _;
 use zz_gpui::{
     App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, DismissEvent, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, Image, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render, ScrollWheelEvent,
-    SharedString, Styled as _, Subscription, Task, TextAlign, TextInputConfiguration,
-    TextInputMode, UTF16Selection, Window, anchored, deferred, div, point,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, Hsla, Image, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
+    ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, TextAlign,
+    TextInputConfiguration, TextInputMode, UTF16Selection, Window, anchored, deferred, div, point,
     prelude::FluentBuilder as _, px,
 };
 
@@ -109,6 +109,7 @@ pub struct InputState {
     pub(super) size: Size,
     pub(super) align: TextAlign,
     pub(super) masked: bool,
+    pub(super) placeholder_color: Option<Hsla>,
 
     validate: Option<ValidateFn>,
     numeric: bool,
@@ -180,6 +181,7 @@ impl InputState {
             size: Size::default(),
             align: TextAlign::Left,
             masked: false,
+            placeholder_color: None,
             validate: None,
             numeric: false,
             step: None,

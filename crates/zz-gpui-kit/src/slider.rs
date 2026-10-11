@@ -4,7 +4,9 @@ use zz_gpui::{
     App, ElementId, IntoElement, RenderOnce, Role, SharedString, Window, div, prelude::*, px,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, h_flex, tooltip::Tooltip};
+use crate::{
+    ActiveTheme as _, Colorize as _, Emphasis, PaintState, Tone, h_flex, tooltip::Tooltip,
+};
 
 type ChangeHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
@@ -43,10 +45,11 @@ impl RenderOnce for DiscreteSlider {
         let focus = state.read(cx).clone();
         let focused = focus.is_focused(window);
         let foreground = cx.theme().foreground;
-        let accent = cx.theme().accent;
+        let filled = cx.theme().paint(Tone::Primary, Emphasis::Solid);
         let track = cx
             .theme()
-            .control_background(cx.theme().background.raised(3));
+            .paint(Tone::Neutral, Emphasis::Soft)
+            .fill_at(PaintState::Active);
         let value = self.labels.get(selected).cloned().unwrap_or_default();
         let mut pills = h_flex()
             .flex_1()
@@ -77,9 +80,13 @@ impl RenderOnce for DiscreteSlider {
                             .w_full()
                             .h(px(6.0))
                             .rounded(cx.theme().control_radius())
-                            .bg(if index <= selected { accent } else { track })
+                            .bg(if index <= selected {
+                                filled.fill
+                            } else {
+                                track
+                            })
                             .when(focused && index == selected, |this| {
-                                this.border_1().border_color(foreground)
+                                this.border_1().border_color(filled.focus)
                             }),
                     )
                     .on_click(move |_, window, cx| {

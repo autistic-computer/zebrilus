@@ -337,7 +337,9 @@ impl Element for TextElement {
         };
 
         let color = if is_placeholder {
-            cx.theme().foreground.muted()
+            state
+                .placeholder_color
+                .unwrap_or_else(|| cx.theme().foreground.faint())
         } else {
             text_style.color
         };
@@ -449,8 +451,8 @@ impl Element for TextElement {
             cx,
         );
 
-        let selection_color = cx.theme().foreground.wash();
-        let caret_color = cx.theme().foreground;
+        let caret_color = window.text_style().color;
+        let selection_color = caret_color.wash();
 
         window.with_content_mask(
             Some(ContentMask {

@@ -30,7 +30,8 @@ pub use theme::{ActiveTheme, CHROME_GAP, ScrollbarShow, SelectionStyle, Theme, T
 pub use theme_color::ThemeColor;
 pub use units::{BASE_UI_FONT_SIZE, UiZoom, rems_from_px};
 pub use variant::{
-    Emphasis, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, PrimaryStyle, Tone,
+    Emphasis, FieldStyle, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, PrimaryStyle,
+    Tone,
 };
 pub use window_border::{window_border, window_paddings};
 

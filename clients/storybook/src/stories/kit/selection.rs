@@ -45,7 +45,7 @@ pub const STORY: Story = Story {
         Section {
             id: "slider-focused",
             name: "Discrete slider, focused",
-            summary: "A press on the slider focuses it; the picked pill then carries a foreground border and the arrow keys step it.",
+            summary: "A press on the slider focuses it; the picked pill then carries a border in the focus color and the arrow keys step it.",
             build: |window, cx| FocusedSlider::view(window, cx),
         },
     ],

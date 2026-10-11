@@ -31,6 +31,7 @@ const LOOK_KNOBS = [
     "control-fill",
     "selection",
     "primary",
+    "field",
     "font",
     "animation-speed",
 ];
@@ -351,6 +352,7 @@ function shuffle() {
     for (const name of SHUFFLED) pick(name);
     setKnobValue("selection", Math.random() < 0.5 ? "accent" : "wash");
     setKnobValue("primary", Math.random() < 0.5 ? "foreground" : "accent");
+    setKnobValue("field", Math.random() < 0.5 ? "soft" : "outline");
     const glasses = ["style", "off", ...Object.keys(glassPresets)];
     setKnobValue("glass", glasses[Math.floor(Math.random() * glasses.length)]);
     resetGlassSliders();

@@ -7,17 +7,14 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Disableable, Sizable, Size, StyledExt as _,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    icon::IconName,
+    ActiveTheme as _, Disableable, Emphasis, Ground, PaintState, Sizable, Size, StyledExt as _,
+    Tone, button::Button, h_flex, icon::IconName,
 };
 
 use super::{
-    field::Input,
+    field::{Input, field_chrome, field_paint},
     state::{InputState, StepDirection},
 };
-use crate::Colorize as _;
 use zz_gpui::TextAlign;
 
 actions!(zz_number_input, [Increment, Decrement]);
@@ -113,6 +110,9 @@ pub struct NumberInput {
     size: Size,
     appearance: bool,
     disabled: bool,
+    tone: Tone,
+    emphasis: Option<Emphasis>,
+    on: Option<Ground>,
 }
 
 impl NumberInput {
@@ -122,6 +122,9 @@ impl NumberInput {
             style: StyleRefinement::default(),
             size: Size::default(),
             appearance: true,
+            tone: Tone::Neutral,
+            emphasis: None,
+            on: None,
             disabled: false,
         }
     }
@@ -144,8 +147,7 @@ impl NumberInput {
         let state = state.clone();
         let slop = crate::touch::control_slop(size);
         Button::new(id)
-            .ghost()
-            .flat()
+            .emphasis(Emphasis::Ghost)
             .hit_slop(slop, slop)
             .with_size(size)
             .icon(icon)
@@ -158,6 +160,29 @@ impl NumberInput {
                     this.step_value(direction, cx);
                 });
             })
+    }
+}
+
+impl NumberInput {
+    /// Draw the field in `tone`: danger for an invalid value.
+    #[must_use]
+    pub fn tone(mut self, tone: Tone) -> Self {
+        self.tone = tone;
+        self
+    }
+
+    /// Draw the field at `emphasis` instead of the look's field emphasis.
+    #[must_use]
+    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
+        self.emphasis = Some(emphasis);
+        self
+    }
+
+    /// Draw the field on `ground`, the paint it sits inside.
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.on = Some(ground);
+        self
     }
 }
 
@@ -186,6 +211,12 @@ impl RenderOnce for NumberInput {
         self.state.update(cx, InputState::mark_numeric);
 
         let focused = self.state.read(cx).focus_handle_ref().is_focused(window) && !self.disabled;
+        let paint = field_paint(self.tone, self.emphasis, self.on, cx);
+        let state = match (self.disabled, focused) {
+            (true, _) => PaintState::Disabled,
+            (false, true) => PaintState::Focused,
+            (false, false) => PaintState::Rest,
+        };
 
         h_flex()
             .id(("zz-number-input", self.state.entity_id()))
@@ -197,15 +228,8 @@ impl RenderOnce for NumberInput {
             .w_full()
             .items_center()
             .when(self.appearance, |this| {
-                this.bg(cx
-                    .theme()
-                    .control_background(cx.theme().background.raised(1)))
-                    .rounded(cx.theme().control_radius())
-                    .control_surface(cx)
-                    .border_1()
-                    .when(focused, |this| this.border_color(cx.theme().accent))
+                field_chrome(this, paint, state, true, true).rounded(cx.theme().control_radius())
             })
-            .when(self.disabled, |this| this.opacity(0.5))
             .refine_style(&self.style)
             .child(Self::stepper(
                 &self.state,
@@ -219,6 +243,9 @@ impl RenderOnce for NumberInput {
                 Input::new(&self.state)
                     .with_size(self.size)
                     .disabled(self.disabled)
+                    .tone(self.tone)
+                    .when_some(self.emphasis, Input::emphasis)
+                    .when_some(self.on, Input::on)
                     .appearance(false)
                     .text_align(TextAlign::Center)
                     .flex_1()
