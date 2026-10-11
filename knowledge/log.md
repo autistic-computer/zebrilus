@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-10-11
+* **Fix**: Three tests that failed in turn on the macOS CI runner wait for what they depend on instead of racing it. `copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence` drops the peer probe that the pane's own worker arms when `sleep` starts, so `pop_due` reaches the copy refresh. `client_focus_updates_activity_and_focus_in_owns_latest_geometry` waits for the terminal's title to reach the pane before it opens the chooser: the watcher delivers its first frame before it syncs the title, so a late sync changed the pane row after the drain and the deduped chooser was rightly re-sent. `foreground_work_excludes_setup_before_trace_scope_starts` keeps its setup poll at 500 ms against a 250 ms bound, since a 10 ms sleep woke 52 ms late on a loaded runner.
 * **Fix**: `compat/results/summary.md` is current again: 282 scenarios and 3,966 steps against tmux 3.8 with the attached-client `PASS` at `b40f19cf2`, from a Nightly compat corpus run dispatched on `main`. It had not been regenerated since the catch-up campaign and the floating-pane work added and changed scenarios, so CI's summary check failed on every push on 2026-10-10. The compat harness playbook says how to regenerate it and why a macOS run cannot. See [compat harness](/playbooks/compat-harness.md).
 
 ## 2026-10-10
