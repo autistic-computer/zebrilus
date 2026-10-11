@@ -64,8 +64,23 @@ fn probe(shared: &Shared, pane: PaneId) -> Probe {
     }
 }
 
+#[track_caller]
 fn assert_tapped(shared: &Shared, pane: PaneId) {
-    assert!(output_routed(&shared.inner.lock(), pane));
+    let inner = shared.inner.lock();
+    assert!(
+        output_routed(&inner, pane),
+        "{pane} takes no output: sink {:?}, routes {:?}, attached {:?}",
+        inner
+            .terminals
+            .get(&pane)
+            .map(|terminal| shard_sink::PaneSink::of(terminal).is_some()),
+        inner
+            .control_routes
+            .iter()
+            .map(|(client, route)| (client, route.mailbox.is_open(), &route.panes))
+            .collect::<Vec<_>>(),
+        inner.attached,
+    );
 }
 
 fn created(shared: &Shared, before: &BTreeSet<PaneId>) -> (PaneId, Probe) {
