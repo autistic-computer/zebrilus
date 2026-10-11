@@ -1738,17 +1738,20 @@ impl AppShell {
                     picker.into_any_element()
                 }
             };
+            let background = output
+                .filter(|(_, pane)| *pane == pane_id)
+                .and(self.output_terminal.as_ref())
+                .map(|(_, terminal)| terminal)
+                .or_else(|| self.terminals.get(&pane_id))
+                .map_or_else(
+                    || cx.theme().pane_background(cx.theme().background),
+                    |terminal| terminal.read(cx).pane_background(cx),
+                );
             let content = if frame.header {
                 let title = zz_client::navigation::pane_label(pane);
                 let view = cx.entity();
                 let touch_view = cx.weak_entity();
                 let connection = self.connection.clone();
-                let background = output
-                    .filter(|(_, pane)| *pane == pane_id)
-                    .and(self.output_terminal.as_ref())
-                    .map_or(&self.terminals[&pane_id], |(_, terminal)| terminal)
-                    .read(cx)
-                    .pane_background(cx);
                 let header = terminal_pane_header(
                     active_window.active_pane == pane_id,
                     title.clone(),
@@ -1831,7 +1834,13 @@ impl AppShell {
                 active_window.active_pane != pane_id
                     && !matches!(pane.kind, PaneKindSnapshot::Terminal),
                 self.preferences.pane_inactive_opacity,
-            );
+            )
+            .glass(if is_float {
+                None
+            } else {
+                cx.theme()
+                    .pane_glass(background.opaque(), cx.theme().background)
+            });
             let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal);
             let mut status_tags = Vec::new();
             if !terminal_pane && let Some(label) = dead_label {

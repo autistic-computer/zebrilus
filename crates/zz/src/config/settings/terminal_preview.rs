@@ -122,7 +122,7 @@ impl Render for TerminalPreview {
         let cursor_visible = self.cursor_visible;
         #[cfg(test)]
         let painted_geometry = Rc::clone(&self.painted_geometry);
-        let background = cx.theme().pane_background(terminal_background(
+        let background = cx.theme().pane_color(terminal_background(
             appearance.background,
             appearance.background_opacity,
         ));

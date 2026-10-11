@@ -1692,7 +1692,7 @@ impl SettingsView {
                 resolved.pane_gaps,
                 cx,
             )],
-Self::numeric_setting(
+[Self::numeric_setting(
                 ConfigKey::PaneBackgroundOpacity,
                 "Background opacity",
                 "Pane and Agent composer backgrounds (0–100%). Browser panes apply this to the toolbar only.",
@@ -1700,6 +1700,14 @@ Self::numeric_setting(
                 &self.pane_background_opacity,
                 cx,
             ),
+Self::boolean_setting(
+                ConfigKey::PaneGlass,
+                "Glass",
+                "Draw panes in the theme's glass. Needs pane gaps and a theme with glass.",
+                resolved.pane_glass,
+                cx,
+            )
+            .disabled(!gaps || cx.theme().glass_effect().is_none())],
 [Self::numeric_setting(
                 ConfigKey::PaneInactiveOpacity,
                 "Inactive pane opacity",
@@ -2308,6 +2316,7 @@ fn is_pane_setting(key: ConfigKey) -> bool {
     matches!(
         key,
         ConfigKey::PaneGaps
+            | ConfigKey::PaneGlass
             | ConfigKey::PaneBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
@@ -2457,6 +2466,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> f32 {
         | ConfigKey::ExperimentalAgentPane
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps
+        | ConfigKey::PaneGlass
         | ConfigKey::EditorLineNumbers
         | ConfigKey::EditorRelativeLineNumbers
         | ConfigKey::EditorSoftWrap

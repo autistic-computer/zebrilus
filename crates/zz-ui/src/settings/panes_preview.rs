@@ -28,6 +28,11 @@ impl RenderOnce for PanesPreview {
         let height = (f32::from(window.viewport_size().height) * 0.32)
             .clamp(180.0, 280.0)
             .max(f32::from(margin) * 3.0 + f32::from(border) * 4.0 + 112.0);
+        let backdrop = cx.theme().surface(Elevation::Popover).fill;
+        let glass = cx
+            .theme()
+            .pane_glass(cx.theme().background, backdrop)
+            .filter(|_| self.gaps);
         let pane = |index: usize, content: zz_gpui::Div| {
             let active = selected == index;
             pane_surface(
@@ -43,7 +48,8 @@ impl RenderOnce for PanesPreview {
                     self.gaps,
                 )
                 .active(active)
-                .dimmed(!active, self.inactive_opacity),
+                .dimmed(!active, self.inactive_opacity)
+                .glass(glass),
                 cx,
             )
             .min_w_0()
@@ -110,7 +116,7 @@ impl RenderOnce for PanesPreview {
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border())
-            .bg(cx.theme().surface(Elevation::Popover).fill)
+            .bg(backdrop)
             .text_color(cx.theme().foreground)
             .text_size(px(11.0))
             .line_height(px(16.0))

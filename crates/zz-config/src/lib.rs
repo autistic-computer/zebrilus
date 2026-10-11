@@ -41,6 +41,7 @@ pub const MAX_WINDOW_CORNER_RADIUS: f32 = 32.0;
 pub const DEFAULT_WINDOW_CORNER_RADIUS: f32 = 13.5;
 
 pub const DEFAULT_PANE_GAPS: bool = false;
+pub const DEFAULT_PANE_GLASS: bool = false;
 pub const DEFAULT_PANE_GLOW_STRENGTH: f32 = 1.0;
 pub const DEFAULT_PANE_BACKGROUND_OPACITY: f32 = 0.5;
 pub const DEFAULT_PANE_INACTIVE_OPACITY: f32 = 0.7;
@@ -129,6 +130,7 @@ pub enum ConfigKey {
     ExperimentalAgentPane,
     ExperimentalEditorPane,
     PaneGaps,
+    PaneGlass,
     PaneBackgroundOpacity,
     PaneGlowStrength,
     PaneInactiveOpacity,
@@ -177,6 +179,7 @@ impl ConfigKey {
             Self::ExperimentalAgentPane => "experimental-agent-pane",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
+            Self::PaneGlass => "pane-glass",
             Self::PaneBackgroundOpacity => "pane-background-opacity",
             Self::PaneGlowStrength => "pane-glow-strength",
             Self::PaneInactiveOpacity => "pane-inactive-opacity",
@@ -225,6 +228,7 @@ impl ConfigKey {
             "experimental-agent-pane" => Some(Self::ExperimentalAgentPane),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
+            "pane-glass" => Some(Self::PaneGlass),
             "pane-background-opacity" => Some(Self::PaneBackgroundOpacity),
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
             "pane-inactive-opacity" => Some(Self::PaneInactiveOpacity),
@@ -287,6 +291,7 @@ impl ConfigKey {
             | Self::ExperimentalAgentPane
             | Self::ExperimentalEditorPane
             | Self::PaneGaps
+            | Self::PaneGlass
             | Self::EditorLineNumbers
             | Self::EditorRelativeLineNumbers
             | Self::EditorSoftWrap
@@ -435,6 +440,7 @@ pub struct AppConfig {
     pub experimental_agent_pane: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
+    pub pane_glass: ConfigValue<bool>,
     pub pane_background_opacity: ConfigValue<f32>,
     pub pane_glow_strength: ConfigValue<f32>,
     pub pane_inactive_opacity: ConfigValue<f32>,
@@ -482,6 +488,7 @@ impl Default for AppConfig {
             experimental_agent_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_AGENT_PANE),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
+            pane_glass: ConfigValue::from_default(DEFAULT_PANE_GLASS),
             pane_background_opacity: ConfigValue::from_default(DEFAULT_PANE_BACKGROUND_OPACITY),
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
             pane_inactive_opacity: ConfigValue::from_default(DEFAULT_PANE_INACTIVE_OPACITY),
@@ -535,6 +542,7 @@ impl AppConfig {
             ConfigKey::ExperimentalAgentPane => Some(&mut self.experimental_agent_pane),
             ConfigKey::ExperimentalEditorPane => Some(&mut self.experimental_editor_pane),
             ConfigKey::PaneGaps => Some(&mut self.pane_gaps),
+            ConfigKey::PaneGlass => Some(&mut self.pane_glass),
             ConfigKey::EditorLineNumbers => Some(&mut self.editor_line_numbers),
             ConfigKey::EditorRelativeLineNumbers => Some(&mut self.editor_relative_line_numbers),
             ConfigKey::EditorSoftWrap => Some(&mut self.editor_soft_wrap),
@@ -1097,6 +1105,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ExperimentalAgentPane
             | ConfigKey::ExperimentalEditorPane
             | ConfigKey::PaneGaps
+            | ConfigKey::PaneGlass
             | ConfigKey::EditorLineNumbers
             | ConfigKey::EditorRelativeLineNumbers
             | ConfigKey::EditorSoftWrap

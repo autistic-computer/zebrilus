@@ -457,12 +457,18 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 pane_entry("Agent panes", "Allow creating agent panes on this client.")
                     .control(Switch::new("agents").checked(true)),
             ],
-            pane_entry(
-                "Pane background opacity",
-                "Background strength from 0% to 100%. Browser panes apply this to the toolbar only.",
-            )
-            .title_actions(reset("background-reset"))
-            .control(controls.number(0, cx)),
+            [
+                pane_entry(
+                    "Pane background opacity",
+                    "Background strength from 0% to 100%. Browser panes apply this to the toolbar only.",
+                )
+                .title_actions(reset("background-reset"))
+                .control(controls.number(0, cx)),
+                pane_entry("Glass", "Draw panes in the theme's glass. Needs pane gaps.")
+                    .title_actions(reset("glass-reset"))
+                    .control(Switch::new("glass").checked(cx.theme().pane_glass))
+                    .disabled(!gaps || cx.theme().glass_effect().is_none()),
+            ],
             [
                 pane_entry(
                     "Inactive pane opacity",

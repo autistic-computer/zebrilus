@@ -27,6 +27,7 @@ pub struct Preferences {
     pub radius: Option<f32>,
     pub contrast: f32,
     pub pane_background_opacity: f32,
+    pub pane_glass: bool,
     pub pane_inactive_opacity: f32,
     pub pane_glow_strength: f32,
     pub pane_margin: f32,
@@ -62,6 +63,7 @@ impl Default for Preferences {
             radius: None,
             contrast: 1.0,
             pane_background_opacity: 0.5,
+            pane_glass: false,
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
             pane_margin: 6.0,
@@ -506,6 +508,7 @@ mod tests {
         assert_eq!(preferences.pane_radius, 13.5);
         assert_eq!(preferences.pane_background_opacity, 0.5);
         assert_eq!(preferences.pane_glow_strength, 1.0);
+        assert!(!preferences.pane_glass);
         let preferences = Preferences {
             pane_margin: -1.0,
             pane_radius: 200.0,

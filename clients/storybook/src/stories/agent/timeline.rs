@@ -6,7 +6,7 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _,
+    ActiveTheme as _,
     agent::{
         AgentEntry, AgentTimeline, AgentTimelineStore, DisclosureKind, TimelineRow,
         fold_timeline_rows,
@@ -29,10 +29,7 @@ pub fn pane_frame(cx: &App) -> Div {
         .rounded(theme.radius)
         .border_1()
         .border_color(theme.border())
-        .bg(theme
-            .background
-            .opaque()
-            .opacity(theme.pane_background_opacity))
+        .bg(theme.pane_color(theme.background))
 }
 
 pub struct Case {

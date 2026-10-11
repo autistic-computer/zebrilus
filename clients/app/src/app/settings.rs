@@ -151,6 +151,7 @@ impl Preferences {
         Theme::global_mut(cx).shadow_strength = self.shadow();
         Theme::global_mut(cx).pane_background_opacity = self.pane_background_opacity;
         Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
+        Theme::global_mut(cx).pane_glass = self.pane_glass && self.gaps;
         let available_fonts = cx.text_system().all_font_names();
         let ui_font = if available_fonts
             .iter()
@@ -697,12 +698,34 @@ impl AppShell {
                         .control(
                             Switch::new("settings-pane-gaps")
                                 .checked(self.preferences.gaps)
-                                .on_click(cx.listener(|this, _, _, cx| {
+                                .on_click(cx.listener(|this, _, window, cx| {
                                     this.preferences.gaps = !this.preferences.gaps;
                                     this.preferences.save();
+                                    this.preferences.apply(&this.connection, window, cx);
                                     cx.notify();
                                 })),
                         );
+                let glass = SettingEntry::new(
+                    "Glass",
+                    "Draw panes in the theme's glass. Needs pane gaps and a theme with glass.",
+                )
+                .disabled(!self.preferences.gaps || cx.theme().glass_effect().is_none())
+                .title_actions(reset_button(
+                    "settings-pane-glass-reset",
+                    self.preferences.pane_glass != Preferences::default().pane_glass,
+                    |this, _, _| this.preferences.pane_glass = Preferences::default().pane_glass,
+                    cx,
+                ))
+                .control(
+                    Switch::new("settings-pane-glass")
+                        .checked(self.preferences.pane_glass)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.preferences.pane_glass = !this.preferences.pane_glass;
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                            cx.notify();
+                        })),
+                );
                 let agent = self.agent_panes_setting(cx);
                 return zz_ui::settings::panes_page(
                     zz_ui::settings::panes_preview::PanesPreview {
@@ -713,7 +736,7 @@ impl AppShell {
                         inactive_opacity: self.preferences.pane_inactive_opacity,
                     },
                     [gaps, agent],
-                    background,
+                    [background, glass],
                     [inactive, glow],
                     [margin, radius, border],
                     cx,
@@ -1492,7 +1515,7 @@ impl zz_gpui::RenderOnce for TerminalPreview {
         let viewport = Arc::new(sample_terminal_viewport(&appearance));
         let cache = Rc::new(RefCell::new(RowRenderCache::default()));
         let paint_cache = Rc::clone(&cache);
-        let background = cx.theme().pane_background(terminal_background(
+        let background = cx.theme().pane_color(terminal_background(
             appearance.background,
             appearance.background_opacity,
         ));

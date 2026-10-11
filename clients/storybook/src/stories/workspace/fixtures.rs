@@ -75,13 +75,15 @@ pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
     )
     .active(active)
     .dimmed(!active && scrim, INACTIVE_OPACITY)
+    .glass(
+        cx.theme()
+            .pane_glass(cx.theme().background, cx.theme().background)
+            .filter(|_| gaps),
+    )
 }
 
 pub fn pane_background(cx: &App) -> Hsla {
-    cx.theme()
-        .background
-        .opaque()
-        .opacity(cx.theme().pane_background_opacity)
+    cx.theme().pane_background(cx.theme().background)
 }
 
 pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> zz_gpui::Div {

@@ -109,6 +109,7 @@ fn apply_zz_overrides(cx: &mut App) {
     let shadow_strength = config::shadow_strength(cx);
     let pane_background_opacity = config::pane_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
+    let pane_glass = config::resolved_config(cx).pane_glass.value && config::pane_gaps(cx);
     let theme = Theme::global_mut(cx);
 
     active.apply(theme);
@@ -123,6 +124,7 @@ fn apply_zz_overrides(cx: &mut App) {
     theme.shadow_strength = shadow_strength;
     theme.pane_background_opacity = pane_background_opacity;
     theme.pane_glow_strength = pane_glow_strength;
+    theme.pane_glass = pane_glass;
 }
 
 #[cfg(test)]
@@ -254,6 +256,36 @@ mod tests {
             assert_alpha(Theme::global(cx).background, 1.0);
             assert_alpha(chrome_background(cx), 0.93);
             assert_alpha(app_pane_background(cx), 0.5);
+        });
+    }
+
+    #[zz_gpui::test]
+    fn pane_glass_needs_gaps_and_a_theme_whose_glass_draws(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(zz_ui::init);
+        cx.update(|cx| {
+            for (id, gaps, glass) in [
+                ("macos", true, true),
+                ("macos", false, false),
+                ("linear", true, false),
+            ] {
+                let theme = zz_ui::interface_theme::builtin_theme(id).expect("theme is built in");
+                cx.set_global(config::Themes {
+                    active: theme.clone(),
+                    selected: id.into(),
+                    saved: Vec::new(),
+                });
+                let mut config = config::AppConfig::default();
+                config.pane_glass.value = true;
+                config.pane_gaps.value = gaps;
+                cx.set_global(config);
+                refresh_current_theme(cx);
+                assert_eq!(
+                    Theme::global(cx).pane_glass_active(),
+                    glass,
+                    "{id} with gaps {gaps}"
+                );
+                assert_alpha(app_pane_background(cx), if glass { 0.0 } else { 0.5 });
+            }
         });
     }
 

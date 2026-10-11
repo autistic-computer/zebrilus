@@ -3069,6 +3069,7 @@ mod tests {
             "experimental-agent-pane",
             "experimental-editor-pane",
             "pane-gaps",
+            "pane-glass",
             "pane-background-opacity",
             "pane-glow-strength",
             "pane-inactive-opacity",

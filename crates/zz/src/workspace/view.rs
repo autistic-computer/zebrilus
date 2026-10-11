@@ -3257,22 +3257,21 @@ impl AppView {
                     },
                     PaneContent::element,
                 );
+                let background = self
+                    .command_output
+                    .as_ref()
+                    .filter(|(output_pane, _)| output_pane == pane)
+                    .map(|(_, terminal)| terminal)
+                    .or_else(|| self.terminals.get(pane))
+                    .map_or_else(
+                        || crate::theme::app_pane_background(cx),
+                        |terminal| terminal.read(cx).pane_background(cx),
+                    );
                 let terminal_header =
                     pane_snapshot.filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal));
                 let header_view = terminal_header
                     .and_then(|snapshot| Some((snapshot, self.terminal_headers.get(pane)?)));
                 let content = if let Some((snapshot, header_view)) = header_view {
-                    let pane = *pane;
-                    let background = self
-                        .command_output
-                        .as_ref()
-                        .filter(|(output_pane, _)| *output_pane == pane)
-                        .map(|(_, terminal)| terminal)
-                        .or_else(|| self.terminals.get(&pane))
-                        .map_or_else(
-                            || crate::theme::app_pane_background(cx),
-                            |terminal| terminal.read(cx).pane_background(cx),
-                        );
                     let state = TerminalHeaderState {
                         active,
                         title: zz_client::navigation::pane_label(snapshot),
@@ -3376,7 +3375,11 @@ impl AppView {
                         config::pane_gaps(cx),
                     )
                     .active(active)
-                    .dimmed(surface_dimmed, inactive_opacity),
+                    .dimmed(surface_dimmed, inactive_opacity)
+                    .glass(
+                        cx.theme()
+                            .pane_glass(background.opaque(), crate::theme::chrome_background(cx)),
+                    ),
                     cx,
                 )
                 .key_context(pane_key_context(*pane))
