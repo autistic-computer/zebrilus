@@ -147,7 +147,9 @@ pub fn agent_config_picker(
                                         .max_w(px(300.0))
                                         .text_size(crate::rems_from_px(10.0))
                                         .text_color(if highlighted {
-                                            cx.theme().foreground
+                                            cx.theme()
+                                                .paint(Tone::Neutral, Emphasis::Ghost)
+                                                .selected_text
                                         } else {
                                             cx.theme().foreground.muted()
                                         })
