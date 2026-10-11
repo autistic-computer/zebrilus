@@ -12,12 +12,11 @@ use zz_gpui::{
 };
 use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Emphasis, IconName, Sizable as _, Tone,
+    badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
-    h_flex,
-    tag::Tag,
-    v_flex,
+    h_flex, v_flex,
 };
 
 use crate::{
@@ -556,7 +555,7 @@ impl Render for EditorView {
                         .child(OPEN_HINT),
                 )
             })
-            .when_some(vim_mode, |this, mode| this.child(vim_mode_badge(mode, cx)))
+            .when_some(vim_mode, |this, mode| this.child(vim_mode_badge(mode)))
             .when_some(error, |this, error| {
                 this.child(self.render_error(error, cx))
             })
@@ -565,18 +564,14 @@ impl Render for EditorView {
     }
 }
 
-fn vim_mode_badge(mode: VimMode, cx: &App) -> Tag {
+fn vim_mode_badge(mode: VimMode) -> Badge {
+    let badge = Badge::new(mode.label()).small().opaque();
     let badge = if matches!(mode, VimMode::Normal) {
-        Tag::secondary().text_color(cx.theme().foreground.muted())
+        badge
     } else {
-        Tag::primary()
+        badge.tone(Tone::Primary).emphasis(Emphasis::Solid)
     };
-    badge
-        .absolute()
-        .right(px(8.0))
-        .bottom(px(8.0))
-        .text_size(zz_ui::rems_from_px(11.0))
-        .child(mode.label())
+    badge.absolute().right(px(8.0)).bottom(px(8.0))
 }
 
 fn validated_descriptor_path(path: &Path, cwd: &Path) -> Result<String, String> {

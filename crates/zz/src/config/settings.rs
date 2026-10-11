@@ -18,6 +18,7 @@ use zz_gpui::{
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Sizable as _,
     ThemeColor, ThemeMode, WindowExt as _,
+    badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
     color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
@@ -27,7 +28,6 @@ use zz_ui::{
     notification::Notification,
     select::{Select, SelectEvent, SelectState},
     switch::Switch,
-    tag::Tag,
 };
 
 use crate::{
@@ -2666,7 +2666,7 @@ fn platform() -> String {
     format!("{} · {}", std::env::consts::OS, std::env::consts::ARCH)
 }
 
-fn provenance_badge(provenance: ConfigProvenance) -> Tag {
+fn provenance_badge(provenance: ConfigProvenance) -> Badge {
     settings_provenance_badge(match provenance {
         ConfigProvenance::Default => "Default",
         ConfigProvenance::Override => "Overridden",

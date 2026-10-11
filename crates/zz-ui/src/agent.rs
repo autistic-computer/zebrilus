@@ -17,7 +17,8 @@ use std::{
 use web_time::{Duration, Instant};
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Emphasis, Icon, IconName, PaintExt as _,
+    PaintState, Sizable as _, StyledExt as _, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -2367,9 +2368,11 @@ const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 fn trace_count_glyph(slot: usize, count: TraceCount, cx: &App) -> Stateful<Div> {
     let theme = cx.theme();
     let (badge, number) = if count.failed {
-        (theme.danger, theme.background)
+        let solid = theme.paint(Tone::Danger, Emphasis::Solid);
+        (solid.fill, solid.text)
     } else {
-        (theme.background.raised(3), theme.foreground)
+        let soft = theme.paint(Tone::Neutral, Emphasis::Soft).opaque();
+        (soft.fill_at(PaintState::Active), soft.text)
     };
     let tooltip = SharedString::from(count.describe());
     div()
@@ -3635,41 +3638,26 @@ pub fn agent_status_pill(
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let (icon, label, color, fill) = match status {
-        AgentPaneStatus::Running => (
-            None,
-            "Running",
-            theme.foreground,
-            theme.background.washed(2),
-        ),
-        AgentPaneStatus::Stopping => (
-            None,
-            "Stopping",
-            theme.foreground.muted(),
-            theme.background.washed(2),
-        ),
+    let (icon, label, tone, quiet) = match status {
+        AgentPaneStatus::Running => (None, "Running", Tone::Neutral, false),
+        AgentPaneStatus::Stopping => (None, "Stopping", Tone::Neutral, true),
         AgentPaneStatus::Waiting => (
             Some(IconName::TriangleAlert),
             "Waiting for you",
-            theme.warning,
-            theme.warning.opacity(0.12),
+            Tone::Warning,
+            false,
         ),
-        AgentPaneStatus::Exited => (
-            Some(IconName::CircleX),
-            "Exited",
-            theme.danger,
-            theme.danger.opacity(0.12),
-        ),
-        AgentPaneStatus::Offline => (
-            None,
-            "Offline",
-            theme.foreground.muted(),
-            theme.background.washed(2),
-        ),
+        AgentPaneStatus::Exited => (Some(IconName::CircleX), "Exited", Tone::Danger, false),
+        AgentPaneStatus::Offline => (None, "Offline", Tone::Neutral, true),
+    };
+    let paint = theme.paint(tone, Emphasis::Soft);
+    let color = if quiet {
+        paint.muted_at(PaintState::Rest)
+    } else {
+        paint.text
     };
     let spinning = matches!(status, AgentPaneStatus::Running | AgentPaneStatus::Stopping);
-    let foreground = theme.foreground;
-    let divider = theme.foreground.opacity(0.1);
+    let divider = theme.divider_color();
     h_flex()
         .id(id)
         .debug_selector(|| "agent-status-pill".to_owned())
@@ -3677,8 +3665,8 @@ pub fn agent_status_pill(
         .h(px(22.0))
         .px_2()
         .gap_1()
-        .rounded(px(11.0))
-        .bg(fill)
+        .rounded(theme.control_radius())
+        .painted(paint, PaintState::Rest)
         .text_size(crate::rems_from_px(11.0))
         .line_height(px(14.0))
         .text_color(color)
@@ -3696,7 +3684,7 @@ pub fn agent_status_pill(
                     .ml_0p5()
                     .border_l_1()
                     .border_color(divider)
-                    .text_color(foreground)
+                    .text_color(paint.text)
                     .cursor_pointer()
                     .hover(zz_gpui::Styled::underline)
                     .child("Restart")

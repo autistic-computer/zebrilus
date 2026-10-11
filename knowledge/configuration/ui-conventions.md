@@ -20,7 +20,7 @@ that path does not resolve) and read colors from `cx.theme()` at the point where
 is rendered.
 
 The house-style reference is `crates/zz-ui/src/command/palette_view.rs`. It demonstrates `cx.theme()`
-derivations alongside the `Input`/`InputState`, `ListItem`, `Kbd`, and `Tag` widgets.
+derivations alongside the `Input`/`InputState`, `ListItem`, `Kbd`, `Keycap`, `Badge` and `Check` widgets.
 The browser client in `clients/web` (`just web run`) uses the shared GPUI components outside the desktop app.
 
 # Rules
@@ -58,7 +58,7 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    them short of full pills. Menu containers keep the window's adaptive squircle shape. Open submenu parent rows use a dim neutral highlight; leaf selections keep the
    accent. Selected shortcut labels and icons brighten to the full foreground. The command palette matches dropdown typography with 12px medium labels, 10px descriptions, 16px line heights,
    26px selectable rows, and 2px gaps. It is at most 560px wide, with 8px list gutters,
-   a 40px bare Input, 12px search text and inline Tag pills, and a 10px footer. Matched characters
+   a 40px bare Input, 12px search text and inline Badge pills, and a 10px footer. Matched characters
    use semibold foreground; breadcrumb prefixes stay muted until selected. Host status dots
    use success, warning, or muted foreground; session/window running-agent summaries use accent dots.
    Agent pane rows use shared vendor icons and text status without a duplicate dot. All palette
@@ -163,7 +163,7 @@ density too), `control_background(color)` for the fill of a field, stepper, slid
 default button, `divider_color()` (or `divider` as an alpha factor) for rules between things, and
 `duration(base)` for transitions, timers that wait for one included.
 Picker search fields use the shared Input surface. Command palettes embed a bare shared Input
-inside their raised container, with inline mode, host, and command Tag pills. They use 8px list
+inside their raised container, with inline mode, host, and command Badge pills. They use 8px list
 gutters; the container radius adds that inset to the theme radius. Rows retain the inset menu
 radius, so the configured corner setting reaches both the surface and its contents.
 

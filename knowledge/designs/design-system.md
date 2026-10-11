@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Design system: tone, emphasis and ground"
 description: "How zz chrome picks colors: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, and the old hand-picked washes, opacities and per-widget variant enums move onto it one component family at a time."
-status: In progress (foundation, fields and agent cards built)
+status: In progress (foundation, fields, agent cards and badges built)
 resource: crates/zz-gpui-kit/src/foundation/variant.rs
 tags:
 - ui
@@ -121,7 +121,7 @@ The shared chrome, `field_chrome` in `input/field.rs`, does three things:
 # Widgets
 
 Kit widgets on the model:
-- **`Badge`**: tone, emphasis, size, optional icon. One widget for chips, pills, status and counts.
+- **`Badge`**: tone, emphasis, size, optional icon, any children after the label. `.opaque()` for a badge floating over content. One widget for chips, pills, status and counts.
 - **`Keycap`**: a key as a cap. Neutral, outline by default, `.on(ground)` inside another paint. `Kbd` still formats keystrokes; it moves onto `Keycap` during migration.
 - **`Check`**: `Check::checkbox(checked)` and `Check::radio(checked)`.
   - Off: a neutral outline.
@@ -184,7 +184,7 @@ One component family at a time, each checked in the storybook and in the app:
 
 1. **Agent cards** (done): `CardTile` paints tiles, keycaps and checks on its ground; `card_chip` is a `Badge`; Skip is neutral ghost and Submit primary solid. The retry and auth buttons in the zz and thin-client error cards wait for the button step.
 2. **Fields** (done): `Input`, `NumberInput`, the `Select` trigger, `Switch` and `DiscreteSlider` draw from paints. The zz-ui fields that wrap a bare `Input` in their own chrome (the composer, the palette, the browser address bar, the agent title) still pick their colors and move with the clean-up.
-3. **Badges:** `Badge` replaces `Tag` and the hand-built chips, pills and status badges; `Tag` is deleted.
+3. **Badges** (done): `Tag` is deleted. `Badge` carries the editor's vim mode, settings provenance, the palette's mode, host and command pills, chooser and picker chips and the command kind; the palette shortcut is a `Keycap`. The agent status pill, the trace count, the plan chip and the pane's status badge, drag chip and overlay lines paint from tones too. `Badge::opaque()` and `Paint::opaque()` fill over the window for anything floating over content. The compact bar pill, browser tab pill and queue chip are controls and move with buttons and rows.
 4. **Buttons:** the old `ButtonVariant` values map onto tone and emphasis and are deleted.
 5. **Rows and selection:** `ListItem`, menus and the chooser move onto `Paint`, collapsing the selected-row recipes.
 6. **Clean-up:**

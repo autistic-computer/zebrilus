@@ -6,10 +6,11 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Sizable as _, Tone,
+    badge::Badge,
     input::{Input, InputState},
+    kbd::Keycap,
     list::ListItem,
-    tag::Tag,
 };
 
 use super::command_palette_row_height;
@@ -68,24 +69,14 @@ fn status_dot(status: PaletteStatus, cx: &App) -> Div {
         .bg(status.color(cx))
 }
 
-fn pill(pill: PalettePill, cx: &App) -> Tag {
-    let tag = Tag::secondary()
-        .flex_none()
-        .gap(px(6.0))
-        .px(px(8.0))
-        .py(px(2.0))
-        .border_0()
-        .rounded(cx.theme().menu_radius())
-        .bg(cx.theme().background.raised(3))
-        .text_size(crate::rems_from_px(12.0))
-        .line_height(px(16.0));
+fn pill(pill: PalettePill, cx: &App) -> Badge {
+    let tag = Badge::empty().flex_none().gap(px(6.0)).px(px(8.0));
     match pill {
         PalettePill::Mode { prefix, label } => tag
             .child(
                 div()
                     .font_family(cx.theme().mono_font_family.clone())
-                    .text_size(crate::rems_from_px(12.0))
-                    .text_color(cx.theme().accent)
+                    .text_color(cx.theme().paint(Tone::Primary, Emphasis::Ghost).text)
                     .child(prefix),
             )
             .child(label),
@@ -285,23 +276,16 @@ pub(super) fn palette_entry(
                 })
                 .when_some(row.shortcut.clone(), |element, shortcut| {
                     element.child(
-                        Tag::secondary()
-                            .flex_none()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_size(crate::rems_from_px(10.0))
-                            .font_weight(FontWeight::NORMAL)
-                            .line_height(px(16.0))
-                            .px(px(5.0))
-                            .py_0()
-                            .border_0()
-                            .rounded(cx.theme().menu_radius())
-                            .bg(if selected {
-                                foreground.opacity(0.12)
-                            } else {
-                                cx.theme().background.raised(3)
+                        Keycap::new(shortcut)
+                            .small()
+                            .emphasis(Emphasis::Soft)
+                            .when(selected, |cap| {
+                                cap.on(Ground {
+                                    fill: cx.theme().selection_background(),
+                                    ink: foreground,
+                                })
                             })
-                            .text_color(secondary)
-                            .child(shortcut),
+                            .font_family(cx.theme().mono_font_family.clone()),
                     )
                 })
                 .children(badge)

@@ -1,8 +1,8 @@
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _,
+    badge::Badge,
     h_flex,
     input::{Input, InputState},
-    tag::Tag,
     v_flex,
 };
 use zz_gpui::{
@@ -192,15 +192,12 @@ pub fn history_row(
                     .text_size(crate::rems_from_px(9.0))
                     .opacity(if selected { 1.0 } else { 0.8 })
                     .child(
-                        Tag::secondary()
+                        Badge::new(directory)
                             .xsmall()
                             .min_w_0()
                             .overflow_hidden()
                             .text_ellipsis()
-                            .whitespace_nowrap()
-                            .text_size(crate::rems_from_px(9.0))
-                            .text_color(cx.theme().foreground.muted())
-                            .child(directory.into()),
+                            .text_size(crate::rems_from_px(9.0)),
                     )
                     .when(current, |row| {
                         row.child(

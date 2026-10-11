@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _, kbd::Kbd,
-    list::ListItem, tag::Tag,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Sizable as _, StyledExt as _, Tone,
+    badge::Badge, kbd::Kbd, list::ListItem,
 };
 use zz_gpui::{
     AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
@@ -437,11 +437,10 @@ pub fn tree_chooser_row(
                 )
                 .when(tagged, |row| {
                     row.child(
-                        Tag::secondary()
-                            .small()
+                        Badge::new("Tagged")
+                            .xsmall()
                             .ml(px(8.0))
-                            .text_size(crate::rems_from_px(9.0))
-                            .child("Tagged"),
+                            .text_size(crate::rems_from_px(9.0)),
                     )
                 })
                 .child(
@@ -529,12 +528,13 @@ pub fn buffer_chooser_row(
                 )
                 .when(tagged, |row| {
                     row.child(
-                        Tag::primary()
-                            .small()
+                        Badge::new("TAGGED")
+                            .xsmall()
+                            .tone(Tone::Primary)
+                            .emphasis(Emphasis::Solid)
                             .ml(px(8.0))
                             .font_family(font_family)
-                            .text_size(crate::rems_from_px(9.0))
-                            .child("TAGGED"),
+                            .text_size(crate::rems_from_px(9.0)),
                     )
                 }),
         )

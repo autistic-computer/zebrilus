@@ -7,13 +7,13 @@ use std::rc::Rc;
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _,
+    ActiveTheme as _, Disableable as _, Emphasis, Selectable as _, Sizable as _,
+    badge::Badge,
     button::{Button, ButtonVariants as _},
     control_shadow,
     icon::Icon,
     scroll::ScrollableElement as _,
     select::SelectItem,
-    tag::Tag,
 };
 use zz_gpui::{
     AnyElement, App, Bounds, ElementId, FocusHandle, IntoElement, ListAlignment,
@@ -1477,8 +1477,8 @@ pub fn settings_control_fill(cx: &App) -> zz_gpui::Hsla {
     cx.theme().background.raised(2)
 }
 
-pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Tag {
-    Tag::secondary().small().outline().child(label.into())
+pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {
+    Badge::new(label).small().emphasis(Emphasis::Outline)
 }
 
 pub fn settings_reset_button(
