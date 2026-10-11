@@ -48,7 +48,7 @@ use zz_ui::browser::{
 use zz_ui::feedback::browser_clear_site_data_alert;
 use zz_ui::pane::{PaneDrag, pane_drag_button, pane_header_icon_button};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Elevation, IconName, Sizable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
     input::{InputEvent, InputState},
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
@@ -474,7 +474,7 @@ fn element_picker_appearance(theme: &zz_ui::Theme, page_zoom: f64) -> ElementPic
         highlight_outline: to_hex(theme.foreground),
         highlight_fill: to_hex(theme.foreground.fill()),
         highlight_contrast: to_hex(theme.background.opaque()),
-        preview_background: to_hex(theme.background.raised(1).opaque()),
+        preview_background: to_hex(theme.surface(Elevation::Panel).fill.opaque()),
         preview_foreground: to_hex(theme.foreground),
         preview_border: to_hex(theme.border()),
         shadow: theme.shadow.then(|| to_hex(theme.scrim)),
@@ -4223,7 +4223,7 @@ mod tests {
         assert_eq!(appearance.highlight_contrast, "#102030");
         assert_eq!(
             appearance.preview_background,
-            to_hex(theme.background.raised(1).opaque())
+            to_hex(theme.surface(Elevation::Panel).fill.opaque())
         );
         assert_eq!(appearance.preview_foreground, "#abcdef");
         assert_eq!(appearance.preview_border, to_hex(theme.border()));

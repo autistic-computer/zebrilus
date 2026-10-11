@@ -159,6 +159,19 @@ pub struct Paint {
     pub ground: Ground,
 }
 
+/// How far a surface stands off the window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Elevation {
+    /// The window itself.
+    #[default]
+    Window,
+    /// A panel set into the window: a bar, a card, an inset box.
+    Panel,
+    /// A surface floating over the window: a menu, a popover, a sheet. Take
+    /// its fill `.opaque()` so what it covers does not read through.
+    Popover,
+}
+
 /// What a painted widget sits on: a fill, and the ink that reads on it. A
 /// widget nested inside another paints on the outer one's
 /// [`Paint::ground_at`], so a keycap in a red button or on a selected row
@@ -266,6 +279,20 @@ impl Theme {
     pub fn ground(&self) -> Ground {
         Ground {
             fill: self.background,
+            ink: self.foreground,
+        }
+    }
+
+    /// The ground of a surface at `elevation`: the window, or the window's
+    /// fill raised one step for a panel and two for a popover.
+    pub fn surface(&self, elevation: Elevation) -> Ground {
+        let fill = match elevation {
+            Elevation::Window => return self.ground(),
+            Elevation::Panel => self.background.raised(1),
+            Elevation::Popover => self.background.raised(2),
+        };
+        Ground {
+            fill,
             ink: self.foreground,
         }
     }

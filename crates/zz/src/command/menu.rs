@@ -15,7 +15,7 @@ use crate::{
     theme::tmux_style_colour,
 };
 use zz_ui::command::floating::{menu_row, menu_separator};
-use zz_ui::{ActiveTheme as _, Colorize as _, ElementExt as _};
+use zz_ui::{ActiveTheme as _, Colorize as _, ElementExt as _, Elevation};
 
 use zz_ui::command::floating::menu_grid_cell as grid_cell;
 pub(crate) use zz_ui::command::floating::{
@@ -166,7 +166,7 @@ impl Render for MenuView {
         let selected_background = tmux_style_colour(
             &self.state.selected_style,
             "bg",
-            cx.theme().background.raised(2).opaque(),
+            cx.theme().surface(Elevation::Popover).fill.opaque(),
             cx,
         );
         let selected_foreground =

@@ -33,7 +33,7 @@ use zz_terminal::{
     TerminalMousePhase, TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Selectable as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Icon, IconName, Selectable as _,
     Sizable as _, StyledExt as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
@@ -511,7 +511,7 @@ impl TerminalView {
         let content = div()
             .size(px(IMAGE_POPOVER_SIDE))
             .p_1()
-            .bg(cx.theme().background.raised(1).opaque())
+            .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
             .text_color(cx.theme().foreground)
             .border_1()
             .border_color(cx.theme().border())
@@ -672,7 +672,7 @@ impl TerminalView {
             .w(px(460.0))
             .max_w_full()
             .p(px(4.0))
-            .bg(cx.theme().background.raised(1))
+            .bg(cx.theme().surface(Elevation::Panel).fill)
             .rounded(cx.theme().radius)
             .control_surface(cx)
             .font_family(cx.theme().font_family.clone())

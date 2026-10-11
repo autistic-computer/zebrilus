@@ -151,7 +151,10 @@ pub trait StyledExt: Styled + Sized {
         let surface = self
             .text_color(cx.theme().foreground)
             .control_surface(cx)
-            .surface_fill(cx.theme().background.raised(2).opaque(), cx)
+            .surface_fill(
+                cx.theme().surface(crate::Elevation::Popover).fill.opaque(),
+                cx,
+            )
             .rounded(cx.theme().radius);
         if cx.theme().shadow && cx.theme().shadow_strength > 0.0 {
             let elevation = cx.theme().elevation;

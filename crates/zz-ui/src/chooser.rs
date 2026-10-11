@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Sizable as _, StyledExt as _, Tone,
-    badge::Badge, kbd::Kbd, list::ListItem,
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Icon, IconName, Sizable as _,
+    StyledExt as _, Tone, badge::Badge, kbd::Kbd, list::ListItem,
 };
 use zz_gpui::{
     AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
@@ -188,7 +188,7 @@ impl RenderOnce for ChooserModal {
                         .py(px(9.0))
                         .border_b_1()
                         .border_color(cx.theme().border())
-                        .bg(cx.theme().background.raised(2))
+                        .bg(cx.theme().surface(Elevation::Popover).fill)
                         .font_family(self.font_family.clone())
                         .text_size(crate::rems_from_px(11.0))
                         .text_color(cx.theme().foreground)
@@ -202,7 +202,7 @@ impl RenderOnce for ChooserModal {
                     .py(px(9.0))
                     .border_b_1()
                     .border_color(cx.theme().border())
-                    .bg(cx.theme().background.raised(2))
+                    .bg(cx.theme().surface(Elevation::Popover).fill)
                     .font_family(self.font_family.clone())
                     .text_size(crate::rems_from_px(11.0))
                     .text_color(cx.theme().foreground)
@@ -266,7 +266,7 @@ pub fn chooser_footer(
         .gap(px(12.0))
         .px(px(12.0))
         .border_t(px(0.5))
-        .border_color(cx.theme().foreground.opacity(0.1))
+        .border_color(cx.theme().divider_color())
         .children(search)
         .child(div().flex_1())
         .child(

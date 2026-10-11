@@ -5,7 +5,7 @@ use zz_protocol::{ChooseTreeItem, ChooseTreeKind, SessionId, WindowId};
 
 use super::*;
 use crate::{
-    ActiveTheme as _, Colorize as _, IconName, Root,
+    ActiveTheme as _, Colorize as _, Elevation, IconName, Root,
     command::{
         PaletteStatus, PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
     },
@@ -306,7 +306,9 @@ fn daemon_tree_navigation_and_search_preserve_pane_activation(cx: &mut TestAppCo
                 .into_iter()
                 .find(|quad| {
                     quad.background
-                        == zz_gpui::solid_background(cx.theme().background.raised(2).opaque())
+                        == zz_gpui::solid_background(
+                            cx.theme().surface(Elevation::Popover).fill.opaque(),
+                        )
                         && quad.bounds.size.width.0 > 300.0 * window.scale_factor()
                 })
                 .expect("palette stays fully opaque after chooser updates")

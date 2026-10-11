@@ -12,7 +12,7 @@ use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Sizable as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Sizable as _, Tone,
     button::{Button, ButtonVariants as _},
     kbd::Kbd,
 };
@@ -326,7 +326,9 @@ impl Render for NewSessionView {
                         .px(px(12.0))
                         .cursor_pointer()
                         .rounded(cx.theme().radius)
-                        .hover(|style| style.bg(cx.theme().background.washed(2)))
+                        .hover(|style| {
+                            style.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover)
+                        })
                         .on_mouse_down(
                             MouseButton::Left,
                             move |_, _, cx| {
@@ -348,7 +350,9 @@ impl Render for NewSessionView {
                         .px(px(12.0))
                         .cursor_pointer()
                         .rounded(cx.theme().radius)
-                        .hover(|style| style.bg(cx.theme().background.washed(2)))
+                        .hover(|style| {
+                            style.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover)
+                        })
                         .on_click(|_, window, cx| {
                             window.dispatch_action(Box::new(OpenSettings), cx);
                         }),

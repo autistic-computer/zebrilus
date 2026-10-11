@@ -53,7 +53,7 @@ pub fn picker_header(cx: &App) -> Div {
         .flex_none()
         .gap(px(CHROME_GAP))
         .border_b(px(0.5))
-        .border_color(cx.theme().foreground.opacity(0.1))
+        .border_color(cx.theme().divider_color())
         .p(px(8.0))
 }
 
@@ -101,7 +101,7 @@ pub fn picker_footer(cx: &App) -> Div {
         .flex_none()
         .gap(px(CHROME_GAP))
         .border_t(px(0.5))
-        .border_color(cx.theme().foreground.opacity(0.1))
+        .border_color(cx.theme().divider_color())
         .py(px(CHROME_GAP))
         .pl_4()
         .pr(px(CHROME_GAP))

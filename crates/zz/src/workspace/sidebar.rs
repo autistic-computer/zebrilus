@@ -27,9 +27,8 @@ use zz_ui::navigation::{
         tree_node_marker, tree_row_menu, tree_window_layout_button,
     },
     workspace_chrome_controls, workspace_layout_button, workspace_settings_button,
-    workspace_sidebar_divider, workspace_sidebar_surface, workspace_sidebar_titlebar,
-    workspace_tree_action_button, workspace_tree_action_row, workspace_tree_disclosure,
-    workspace_tree_row,
+    workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_tree_action_button,
+    workspace_tree_action_row, workspace_tree_disclosure, workspace_tree_row,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
@@ -841,10 +840,7 @@ impl Render for WorkspaceSidebar {
                 .cursor(CursorStyle::ResizeLeftRight)
                 .occlude()
                 .when(divider_hidden, |this| {
-                    this.hover(|this| {
-                        this.border_r_1()
-                            .border_color(workspace_sidebar_divider(cx))
-                    })
+                    this.hover(|this| this.border_r_1().border_color(cx.theme().divider_color()))
                 })
                 .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
                     cx.new(|_| SidebarResizePreview)

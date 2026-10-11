@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, App, IntoElement, Keystroke, ParentElement as _, Styled as _, Window, div,
     prelude::*, px, relative,
 };
-use zz_ui::{
+use zz_ui::{Elevation, 
     ActiveTheme as _, Colorize as _, IconName,
     pane::{
         FloatingSurface, PaneDragOverlayState, PaneOverlayCorner, PaneSplitAxis,
@@ -705,7 +705,7 @@ fn floating(_: &mut Window, cx: &mut App) -> AnyElement {
                     .title("lazygit")
                     .content_inset(px(8.0), px(14.0))
                     .colors(
-                        cx.theme().background.raised(2).opaque(),
+                        cx.theme().surface(Elevation::Popover).fill.opaque(),
                         cx.theme().foreground,
                         cx.theme().accent,
                     ),

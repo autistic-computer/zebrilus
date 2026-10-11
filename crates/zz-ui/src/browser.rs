@@ -1,8 +1,8 @@
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Selectable as _,
-    Sizable as _, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, Selectable as _,
+    Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     input::{Input, InputContentType, InputState},
@@ -205,7 +205,7 @@ pub fn browser_address(
         .items_center()
         .rounded(cx.theme().control_radius())
         .border(px(0.5))
-        .border_color(cx.theme().foreground.opacity(0.0))
+        .border_color(cx.theme().transparent)
         .focus(|style| style.bg(focused_background).control_highlight(cx))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             focus_handle.focus(window, cx);
@@ -477,7 +477,7 @@ fn browser_tab_shell(
         .min_w(px(BROWSER_TAB_MIN_WIDTH))
         .rounded(cx.theme().control_radius())
         .border(px(0.5))
-        .border_color(foreground.opacity(0.0))
+        .border_color(cx.theme().transparent)
         .text_color(if active {
             foreground
         } else {
@@ -1145,7 +1145,7 @@ impl RenderOnce for BrowserErrorPanel {
                     .items_center()
                     .justify_center()
                     .rounded_full()
-                    .bg(cx.theme().danger.fill())
+                    .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
                     .child(
                         Icon::new(IconName::TriangleAlert)
                             .xsmall()

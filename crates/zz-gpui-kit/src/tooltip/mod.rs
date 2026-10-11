@@ -66,7 +66,10 @@ impl Render for Tooltip {
                 .text_xs()
                 .text_color(cx.theme().foreground)
                 .surface_outline(cx.theme().border(), cx)
-                .surface_fill(cx.theme().background.raised(1).opaque(), cx)
+                .surface_fill(
+                    cx.theme().surface(crate::Elevation::Panel).fill.opaque(),
+                    cx,
+                )
                 .rounded(cx.theme().radius)
                 .when(cx.theme().shadow, zz_gpui::Styled::shadow_md)
                 .refine_style(&self.style)

@@ -9,7 +9,7 @@ use zz_protocol::{
     parse_styled_segments, parse_tmux_colour,
 };
 
-use crate::{ActiveTheme as _, Colorize as _};
+use crate::{ActiveTheme as _, Colorize as _, Elevation};
 
 #[must_use]
 pub fn tmux_style_colour(style: &str, key: &str, fallback: Hsla, cx: &App) -> Hsla {
@@ -143,7 +143,7 @@ fn resolve_tmux_colour(colour: TmuxColour, cx: &App) -> Option<Hsla> {
             0 => cx.theme().background,
             1 | 7..=9 => cx.theme().foreground,
             2 => cx.theme().border(),
-            3 => cx.theme().background.raised(1).opaque(),
+            3 => cx.theme().surface(Elevation::Panel).fill.opaque(),
             4 => cx.theme().success,
             5 => cx.theme().warning,
             6 => cx.theme().danger,

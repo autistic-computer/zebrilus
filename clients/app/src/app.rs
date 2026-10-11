@@ -34,8 +34,8 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Icon, IconName, Root,
-    Selectable as _, Sizable as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Elevation, Icon, IconName,
+    Root, Selectable as _, Sizable as _,
     button::{Button, ButtonVariants as _},
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserRowTheme,
@@ -495,7 +495,7 @@ impl AppShell {
             .inset_0()
             .flex()
             .items_start()
-            .bg(cx.theme().scrim.opacity(0.25))
+            .bg(cx.theme().scrim)
             .occlude()
             .on_mouse_down(
                 MouseButton::Left,
@@ -1022,9 +1022,7 @@ impl AppShell {
                 .occlude()
                 .when(divider_hidden, |handle| {
                     handle.hover(|handle| {
-                        handle
-                            .border_r_1()
-                            .border_color(zz_ui::navigation::workspace_sidebar_divider(cx))
+                        handle.border_r_1().border_color(cx.theme().divider_color())
                     })
                 })
                 .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
@@ -2048,7 +2046,7 @@ impl AppShell {
                     .right_0()
                     .top_0()
                     .p(px(8.0))
-                    .bg(cx.theme().background.raised(2))
+                    .bg(cx.theme().surface(Elevation::Popover).fill)
                     .text_size(px(12.0))
                     .text_color(cx.theme().warning)
                     .child(self.connection.read(cx).status.clone())

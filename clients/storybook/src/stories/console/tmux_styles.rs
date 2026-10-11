@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, Window, div, px,
 };
 use zz_protocol::parse_styled_segments;
-use zz_ui::{
+use zz_ui::{Elevation, 
     ActiveTheme as _, Colorize as _, h_flex,
     tmux_style::{split_tmux_alignment, tmux_style_colour, tmux_styled_segments_text},
     v_flex,
@@ -175,7 +175,7 @@ fn bar(source: &str, foreground: Hsla, background: Hsla, cx: &App) -> impl IntoE
 fn alignment(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     let theme = cx.theme();
-    let raised = theme.background.raised(1).opaque();
+    let raised = theme.surface(Elevation::Panel).fill.opaque();
     states()
         .state(
             "status line on the chrome background",

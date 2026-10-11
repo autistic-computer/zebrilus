@@ -155,7 +155,7 @@ impl BrowserPane {
                 highlight_outline: zz_ui::to_hex(theme.foreground),
                 highlight_fill: zz_ui::to_hex(theme.foreground.fill()),
                 highlight_contrast: zz_ui::to_hex(theme.background.opaque()),
-                preview_background: zz_ui::to_hex(theme.background.raised(1).opaque()),
+                preview_background: zz_ui::to_hex(theme.surface(Elevation::Panel).fill.opaque()),
                 preview_foreground: zz_ui::to_hex(theme.foreground),
                 preview_border: zz_ui::to_hex(theme.border()),
                 shadow: theme.shadow.then(|| zz_ui::to_hex(theme.scrim)),

@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName,
     pane::{
         PaneChrome, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_border_color,
         pane_split_surface, pane_surface,
@@ -110,7 +110,7 @@ impl RenderOnce for PanesPreview {
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border())
-            .bg(cx.theme().background.raised(2))
+            .bg(cx.theme().surface(Elevation::Popover).fill)
             .text_color(cx.theme().foreground)
             .text_size(px(11.0))
             .line_height(px(16.0))

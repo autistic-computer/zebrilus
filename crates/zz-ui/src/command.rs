@@ -198,7 +198,7 @@ impl RenderOnce for CommandPaletteSurface {
                     .px(px(18.0))
                     .py(px(8.0))
                     .border_t(px(0.5))
-                    .border_color(cx.theme().foreground.opacity(0.1 * cx.theme().divider))
+                    .border_color(cx.theme().divider_color())
                     .text_size(crate::rems_from_px(10.0))
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())

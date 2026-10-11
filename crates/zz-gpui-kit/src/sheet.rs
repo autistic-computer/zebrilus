@@ -360,7 +360,7 @@ impl RenderOnce for BottomSheet {
             .occlude()
             .rounded_tl(corner)
             .rounded_tr(corner)
-            .surface_fill(theme.background.raised(1).opaque(), cx)
+            .surface_fill(theme.surface(crate::Elevation::Panel).fill.opaque(), cx)
             .text_color(theme.foreground)
             .font_family(theme.font_family.clone())
             .pb(self.bottom_inset)
