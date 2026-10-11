@@ -31,7 +31,9 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    focus rings are derived at paint time by `Colorize` in
    `crates/zz-gpui-kit/src/foundation/color.rs`. Choose the nearest derivation, such as
    `background.raised(1)`, `background.hover()`, or `foreground.muted()`; do not color-match an old
-   literal.
+   literal. A filled, tinted or outlined widget names a tone and an emphasis instead and draws
+   `theme.paint(tone, emphasis)` (see [Design system](/designs/design-system.md)); the derivations
+   are for what the paints do not cover yet.
 2. Check the zz-ui widget set before hand-rolling a control. A custom GPUI
    element is appropriate only when a component cannot preserve required input routing,
    rendering, or interaction behavior. When a fork-local widget must diverge from upstream, record
@@ -391,3 +393,4 @@ theme base before applying the factor. Browser pages remain opaque.
 - [GPUI revision pin](/references/zz-gpui.md) . the pinned GPUI sources
 - [`app` crate](/crates/zz.md) . the GPUI client governed by these conventions
 - [Terminal appearance](/terminal/appearance.md) . the independent terminal color model
+- [Design system](/designs/design-system.md) . tone, emphasis and ground: how widgets pick their colors

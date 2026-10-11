@@ -7,7 +7,7 @@ use zz_gpui::{GlassMaterial, SharedString, px};
 
 pub use zz_client::chrome_palette::InterfaceStyle;
 
-use crate::{SelectionStyle, Theme};
+use crate::{PrimaryStyle, SelectionStyle, Theme};
 
 /// Every theme value a style decides, in logical pixels where it is a
 /// length. The storybook's style creator edits one and exports it as JSON.
@@ -22,6 +22,7 @@ pub struct Look {
     pub outline_width: f32,
     pub row_inset: f32,
     pub selection: SelectionStyle,
+    pub primary: PrimaryStyle,
     pub density: f32,
     pub control_fill: f32,
     pub divider: f32,
@@ -49,6 +50,7 @@ impl Look {
         theme.outline_width = px(self.outline_width);
         theme.row_inset = px(self.row_inset);
         theme.selection = self.selection;
+        theme.primary = self.primary;
         theme.density = self.density;
         theme.control_fill = self.control_fill;
         theme.divider = self.divider;
@@ -71,6 +73,7 @@ pub fn look(style: InterfaceStyle) -> Look {
         outline_width: 0.5,
         row_inset: 4.0,
         selection: SelectionStyle::Accent,
+        primary: PrimaryStyle::Foreground,
         density: 1.0,
         control_fill: 1.0,
         divider: 1.0,

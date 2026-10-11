@@ -13,6 +13,7 @@ mod styled;
 mod theme;
 mod theme_color;
 mod units;
+mod variant;
 mod window_border;
 
 pub use animation::cubic_ease;
@@ -28,6 +29,9 @@ pub use styled::{
 pub use theme::{ActiveTheme, CHROME_GAP, ScrollbarShow, SelectionStyle, Theme, ThemeMode};
 pub use theme_color::ThemeColor;
 pub use units::{BASE_UI_FONT_SIZE, UiZoom, rems_from_px};
+pub use variant::{
+    Emphasis, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, PrimaryStyle, Tone,
+};
 pub use window_border::{window_border, window_paddings};
 
 /// Install the [`Theme`] global. Must run once, before any window opens;

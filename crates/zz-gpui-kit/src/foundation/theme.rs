@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
 
-use super::{Colorize as _, ThemeColor, color};
+use super::{Colorize as _, PrimaryStyle, ThemeColor, color};
 
 /// The one gap in chrome: how far a control sits from the edge of the bar it
 /// lives in, and from its neighbours. A bar pads by this and spaces its
@@ -109,6 +109,8 @@ pub struct Theme {
     pub row_inset: Pixels,
     /// What fills selected menu and list rows.
     pub selection: SelectionStyle,
+    /// What the primary tone is drawn in.
+    pub primary: PrimaryStyle,
     /// The default corner smoothing windows draw with.
     pub corner_smoothing: f32,
     /// Scales the height of controls and list rows: 1 is the usual size,
@@ -327,6 +329,7 @@ impl From<&ThemeColor> for Theme {
             outline_width: px(0.5),
             row_inset: px(4.0),
             selection: SelectionStyle::Accent,
+            primary: PrimaryStyle::Foreground,
             corner_smoothing: 4.0,
             density: 1.0,
             control_fill: 1.0,

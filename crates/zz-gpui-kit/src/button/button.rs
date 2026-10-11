@@ -10,8 +10,9 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Icon, IconName, Selectable, Sizable, Size,
-    StyledExt as _, control_shadow, h_flex, rems_from_px, tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Disableable, Emphasis, Icon, IconName, Paint, PaintState,
+    Selectable, Sizable, Size, StyledExt as _, Tone, control_shadow, h_flex, rems_from_px,
+    tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -129,6 +130,8 @@ pub enum ButtonVariant {
     Link,
     Text,
     Custom(ButtonCustomVariant),
+    /// A tone at an emphasis, drawn from the theme's [`Paint`].
+    Paint(Tone, Emphasis),
 }
 
 impl ButtonVariant {
@@ -150,6 +153,23 @@ impl ButtonVariant {
     #[inline]
     fn is_default(&self) -> bool {
         matches!(self, Self::Default)
+    }
+
+    fn paint(&self, cx: &App) -> Option<Paint> {
+        match self {
+            Self::Paint(tone, emphasis) => Some(cx.theme().paint(*tone, *emphasis)),
+            _ => None,
+        }
+    }
+
+    fn painted(&self, state: PaintState, cx: &App) -> Option<ButtonVariantStyle> {
+        self.paint(cx).map(|paint| ButtonVariantStyle {
+            bg: paint.fill_at(state),
+            border: paint.border_at(state),
+            fg: paint.text_at(state),
+            underline: false,
+            shadow: false,
+        })
     }
 }
 
@@ -325,6 +345,32 @@ impl Button {
     }
 }
 
+impl Button {
+    /// Draw the button in `tone`, keeping its emphasis if it has one and
+    /// soft otherwise.
+    #[must_use]
+    pub fn tone(mut self, tone: Tone) -> Self {
+        let emphasis = match self.variant {
+            ButtonVariant::Paint(_, emphasis) => emphasis,
+            _ => Emphasis::default(),
+        };
+        self.variant = ButtonVariant::Paint(tone, emphasis);
+        self
+    }
+
+    /// Draw the button at `emphasis`, keeping its tone if it has one and
+    /// neutral otherwise.
+    #[must_use]
+    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
+        let tone = match self.variant {
+            ButtonVariant::Paint(tone, _) => tone,
+            _ => Tone::default(),
+        };
+        self.variant = ButtonVariant::Paint(tone, emphasis);
+        self
+    }
+}
+
 impl Disableable for Button {
     fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
@@ -475,6 +521,7 @@ impl RenderOnce for Button {
         let is_disabled = self.disabled;
         let hoverable = self.hoverable();
         let normal_style = style.normal(self.outline, cx);
+        let paint = style.paint(cx);
         let neutral_surface = !self.flat
             && matches!(
                 style,
@@ -581,6 +628,10 @@ impl RenderOnce for Button {
                 |this| this.border_1(),
             )
             .when(highlight_ring, |this| this.border(px(0.5)))
+            .when_some(
+                paint.filter(|paint| paint.border_width > px(0.0)),
+                |this, paint| this.border(paint.border_width),
+            )
             .text_color(normal_style.fg)
             .when(self.selected, |this| {
                 let selected_style = style.selected(self.outline, cx);
@@ -786,6 +837,7 @@ impl ButtonVariant {
             (Self::Success, ButtonStyleState::Active) => cx.theme().success.active().opacity(0.4),
             (Self::Ghost | Self::Link | Self::Text, _) => cx.theme().transparent.into(),
             (Self::Custom(colors), _) => colors.color.mix_oklab(cx.theme().transparent, 0.2).into(),
+            (Self::Paint(tone, emphasis), _) => cx.theme().paint(*tone, *emphasis).fill,
         }
     }
 
@@ -807,6 +859,7 @@ impl ButtonVariant {
             Self::Success => cx.theme().success.fill().into(),
             Self::Ghost | Self::Link | Self::Text => cx.theme().transparent.into(),
             Self::Custom(colors) => colors.color.mix_oklab(cx.theme().transparent, 0.2).into(),
+            Self::Paint(tone, emphasis) => cx.theme().paint(*tone, *emphasis).fill,
         }
     }
 
@@ -852,6 +905,7 @@ impl ButtonVariant {
             Self::Link => cx.theme().foreground,
             Self::Text => cx.theme().foreground,
             Self::Custom(colors) => colors.color,
+            Self::Paint(tone, emphasis) => cx.theme().paint(*tone, *emphasis).text,
         }
     }
 
@@ -889,6 +943,7 @@ impl ButtonVariant {
                     colors.color
                 }
             }
+            Self::Paint(tone, emphasis) => cx.theme().paint(*tone, *emphasis).border,
         }
     }
 
@@ -909,6 +964,9 @@ impl ButtonVariant {
     }
 
     fn normal(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
+        if let Some(style) = self.painted(PaintState::Rest, cx) {
+            return style;
+        }
         let bg = self.bg_color(outline, cx);
         let border = self.border_color(outline, cx);
         let fg = self.text_color(outline, cx);
@@ -925,6 +983,9 @@ impl ButtonVariant {
     }
 
     fn hovered(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
+        if let Some(style) = self.painted(PaintState::Hover, cx) {
+            return style;
+        }
         let bg: Hsla = match self {
             Self::Default | Self::Secondary | Self::Ghost => cx.theme().background.washed(2),
             Self::Primary | Self::Accent => {
@@ -963,6 +1024,7 @@ impl ButtonVariant {
             .into(),
             Self::Link => cx.theme().transparent.into(),
             Self::Text => cx.theme().transparent.into(),
+            Self::Paint(..) => cx.theme().transparent,
         };
 
         let border = self.border_color(outline, cx);
@@ -984,6 +1046,9 @@ impl ButtonVariant {
     }
 
     fn active(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
+        if let Some(style) = self.painted(PaintState::Active, cx) {
+            return style;
+        }
         let bg = match self {
             Self::Default | Self::Secondary | Self::Ghost => cx.theme().background.washed(2),
             Self::Primary | Self::Accent => {
@@ -1017,6 +1082,7 @@ impl ButtonVariant {
             Self::Custom(colors) => colors.color.mix_oklab(cx.theme().transparent, 0.4).into(),
             Self::Link => cx.theme().transparent.into(),
             Self::Text => cx.theme().transparent.into(),
+            Self::Paint(..) => cx.theme().transparent,
         };
         let border = self.border_color(outline, cx);
         let fg = match self {
@@ -1037,6 +1103,9 @@ impl ButtonVariant {
     }
 
     fn selected(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
+        if let Some(style) = self.painted(PaintState::Selected, cx) {
+            return style;
+        }
         if outline {
             let active_style = self.active(outline, cx);
 
@@ -1055,6 +1124,7 @@ impl ButtonVariant {
             Self::Link => cx.theme().transparent.into(),
             Self::Text => cx.theme().transparent.into(),
             Self::Custom(colors) => colors.active.into(),
+            Self::Paint(..) => cx.theme().transparent,
         };
 
         let border = self.border_color(outline, cx);
@@ -1076,6 +1146,9 @@ impl ButtonVariant {
     }
 
     fn disabled(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
+        if let Some(style) = self.painted(PaintState::Disabled, cx) {
+            return style;
+        }
         let bg = match self {
             Self::Default | Self::Link | Self::Ghost | Self::Text => cx.theme().transparent.into(),
             Self::Primary | Self::Accent => self.solid(cx).opacity(0.15),
@@ -1084,6 +1157,7 @@ impl ButtonVariant {
             Self::Success => cx.theme().success.fill().opacity(0.15),
             Self::Secondary => cx.theme().background.raised(2).opacity(1.5),
             Self::Custom(style) => style.color.opacity(0.15).into(),
+            Self::Paint(..) => cx.theme().transparent,
         };
         let fg = cx.theme().foreground.muted().opacity(0.5);
         let (bg, border) = if outline {
@@ -1106,6 +1180,7 @@ impl ButtonVariant {
                 Self::Success => cx.theme().success.fill().opacity(0.15),
                 Self::Custom(style) => style.color.opacity(0.15),
                 Self::Default | Self::Link | Self::Ghost | Self::Text => cx.theme().transparent,
+                Self::Paint(..) => cx.theme().transparent,
             };
             (bg, border)
         };
