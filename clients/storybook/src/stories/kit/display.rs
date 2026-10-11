@@ -94,10 +94,8 @@ fn spinners(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "sizes",
             row()
-                .child(Spinner::new().xsmall())
                 .child(Spinner::new().small())
                 .child(Spinner::new())
-                .child(Spinner::new().large())
                 .child(Spinner::new().with_size(px(32.0))),
         )
         .state(
@@ -114,7 +112,7 @@ fn spinners(_: &mut Window, cx: &mut App) -> AnyElement {
             h_flex()
                 .gap_2()
                 .text_sm()
-                .child(Spinner::new().small().color(theme.foreground.muted()))
+                .child(Spinner::new().color(theme.foreground.muted()))
                 .child("Connecting to devbox"),
         )
         .into_any_element()
@@ -193,7 +191,7 @@ fn list_row(
             .w_full()
             .gap_2()
             .text_sm()
-            .child(Icon::new(icon).small().text_color(muted))
+            .child(Icon::new(icon).medium().text_color(muted))
             .child(div().flex_1().child(label))
             .child(div().text_xs().text_color(muted).child(detail)),
     )

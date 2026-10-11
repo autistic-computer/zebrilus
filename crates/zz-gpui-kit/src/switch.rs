@@ -185,7 +185,7 @@ impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
         let coarse = crate::touch::CoarsePointer::get(cx);
-        let m = Metrics::for_compact(matches!(self.size, Size::XSmall | Size::Small), coarse);
+        let m = Metrics::for_compact(matches!(self.size, Size::Small), coarse);
 
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
 

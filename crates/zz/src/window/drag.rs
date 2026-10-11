@@ -73,7 +73,6 @@ mod tests {
     use super::*;
     use zz_gpui::{AppContext as _, Context, Entity, FocusHandle, Render, div, prelude::*, px};
     use zz_ui::{
-        Sizable as _,
         button::Button,
         h_flex,
         input::{Input, InputState},
@@ -114,13 +113,13 @@ mod tests {
                             div()
                                 .w(px(80.0))
                                 .debug_selector(|| "drag-button".into())
-                                .child(Button::new("drag-button").small().label("Reset")),
+                                .child(Button::new("drag-button").label("Reset")),
                         )
                         .child(
                             div()
                                 .w(px(120.0))
                                 .debug_selector(|| "drag-input".into())
-                                .child(Input::new(&self.input).small()),
+                                .child(Input::new(&self.input)),
                         ),
                 )
         }

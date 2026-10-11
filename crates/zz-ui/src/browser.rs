@@ -182,7 +182,7 @@ pub fn browser_address(
     let focus_handle = address.read(cx).focus_handle(cx);
     let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
     let input = Input::new(address)
-        .xsmall()
+        .small()
         .h(px(BROWSER_CONTROL_HEIGHT))
         .flex_1()
         .min_w_0()
@@ -587,7 +587,7 @@ impl RenderOnce for BrowserEmptyHint {
                     .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
                     .child(
                         Icon::new(IconName::Globe)
-                            .xsmall()
+                            .small()
                             .text_color(cx.theme().foreground.muted()),
                     ),
             )
@@ -1158,7 +1158,7 @@ impl RenderOnce for BrowserErrorPanel {
                     .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
                     .child(
                         Icon::new(IconName::TriangleAlert)
-                            .xsmall()
+                            .small()
                             .text_color(cx.theme().danger),
                     ),
             )

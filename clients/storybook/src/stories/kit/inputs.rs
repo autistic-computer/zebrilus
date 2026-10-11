@@ -26,7 +26,7 @@ pub const STORY: Story = Story {
         Section {
             id: "field-sizes",
             name: "Field sizes",
-            summary: "Sizable on Input: xsmall, small, medium and large set the height, padding and text size together.",
+            summary: "Sizable on Input: small and medium set the height, padding and text size together.",
             build: |window, cx| cx.new(|cx| FieldSizes::new(window, cx)).into(),
         },
         Section {
@@ -123,7 +123,7 @@ impl Render for FieldStates {
             .state(
                 "prefix and suffix",
                 Input::new(&self.affixes)
-                    .prefix(Icon::new(IconName::Search).small().text_color(muted))
+                    .prefix(Icon::new(IconName::Search).medium().text_color(muted))
                     .suffix(Kbd::new(Keystroke::parse("cmd-k").unwrap_or_default())),
             )
             .state(
@@ -155,12 +155,7 @@ struct FieldSizes {
 
 impl FieldSizes {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let sizes = [
-            ("xsmall", Size::XSmall),
-            ("small", Size::Small),
-            ("medium", Size::Medium),
-            ("large", Size::Large),
-        ];
+        let sizes = [("small", Size::Small), ("medium", Size::Medium)];
         Self {
             fields: sizes
                 .into_iter()
@@ -252,7 +247,6 @@ struct Numbers {
     decimal: Entity<InputState>,
     disabled: Entity<InputState>,
     small: Entity<InputState>,
-    large: Entity<InputState>,
     bare: Entity<InputState>,
 }
 
@@ -266,7 +260,6 @@ impl Numbers {
             decimal: field(window, cx, |s| s.step(0.25).default_value("1.25")),
             disabled: field(window, cx, |s| s.step(1.0).default_value("12")),
             small: field(window, cx, |s| s.step(1.0).default_value("8")),
-            large: field(window, cx, |s| s.step(1.0).default_value("8")),
             bare: field(window, cx, |s| s.step(1.0).default_value("2")),
         }
     }
@@ -285,7 +278,6 @@ impl Render for Numbers {
                 narrow(NumberInput::new(&self.disabled).disabled(true)),
             )
             .state("small", narrow(NumberInput::new(&self.small).small()))
-            .state("large", narrow(NumberInput::new(&self.large).large()))
             .state(
                 "appearance(false)",
                 narrow(NumberInput::new(&self.bare).appearance(false)),

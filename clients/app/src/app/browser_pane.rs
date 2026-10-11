@@ -8,7 +8,7 @@ use zz_gpui::{
 };
 use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, Icon, IconName,
     browser::{
         BrowserHeader, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_address,
         browser_toolbar_button,
@@ -683,7 +683,6 @@ impl Render for BrowserPane {
                             row.child(
                                 Button::new("ios-browser-cancel-picker")
                                     .label("Cancel")
-                                    .small()
                                     .ghost()
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.toggle_element_pick(window, cx);

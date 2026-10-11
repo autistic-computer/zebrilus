@@ -4,8 +4,6 @@ use zz_gpui::{
     div, point, px,
 };
 
-use crate::Sizable as _;
-
 fn draw(cx: &mut VisualTestContext) {
     cx.run_until_parked();
     cx.update(|window, cx| {
@@ -102,9 +100,10 @@ impl Render for SettingsPageReplicaTest {
                                      through terminal and app chrome.",
                                 )
                                 .control(
-                                    div().w(px(120.)).flex_none().child(
-                                        crate::input::NumberInput::new(&self.numbers[0]).small(),
-                                    ),
+                                    div()
+                                        .w(px(120.))
+                                        .flex_none()
+                                        .child(crate::input::NumberInput::new(&self.numbers[0])),
                                 ),
                             )
                             .child(
@@ -124,9 +123,10 @@ impl Render for SettingsPageReplicaTest {
                                  in logical pixels (0-256).",
                             )
                             .control(
-                                div().w(px(120.)).flex_none().child(
-                                    crate::input::NumberInput::new(&self.numbers[1]).small(),
-                                ),
+                                div()
+                                    .w(px(120.))
+                                    .flex_none()
+                                    .child(crate::input::NumberInput::new(&self.numbers[1])),
                             ),
                         ),
                     )

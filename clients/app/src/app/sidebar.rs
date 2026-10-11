@@ -11,7 +11,7 @@ use zz_gpui::{
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Icon, IconName,
     navigation::{
         WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH,
@@ -610,7 +610,7 @@ fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) ->
         tree_host_marker(entry.bell, badge_color, cx)
     } else {
         tree_node_marker(
-            Icon::new(entry.icon.clone()).small().text_color(color),
+            Icon::new(entry.icon.clone()).medium().text_color(color),
             entry.bell,
             badge_color,
             cx,

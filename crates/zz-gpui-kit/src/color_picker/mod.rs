@@ -140,7 +140,7 @@ impl ColorPicker {
             inherited,
             label: None,
             style: StyleRefinement::default(),
-            size: Size::Small,
+            size: Size::Medium,
             disabled: false,
         }
     }
@@ -237,7 +237,7 @@ impl ColorPicker {
         let clear = state.clone();
         let close = state.clone();
         let dismiss = state.clone();
-        let field = Size::Small.control_h(cx.theme().density);
+        let field = Size::Medium.control_h(cx.theme().density);
         floating_sheet(
             bottom_sheet(
                 ("zz-color-picker-sheet", self.state.entity_id()),
@@ -264,12 +264,11 @@ impl ColorPicker {
                                     .border_1()
                                     .border_color(theme.border()),
                             )
-                            .child(Input::new(&hex).small().flex_1().min_w_0())
+                            .child(Input::new(&hex).flex_1().min_w_0())
                             .child(
                                 Button::new("zz-color-picker-sheet-clear")
                                     .ghost()
                                     .flat()
-                                    .small()
                                     .compact()
                                     .icon(crate::IconName::Undo2)
                                     .on_click(move |_, window, cx| {
@@ -395,12 +394,11 @@ impl RenderOnce for ColorPicker {
                     .child(
                         h_flex()
                             .gap(px(6.0))
-                            .child(Input::new(&hex).small().flex_1().min_w_0())
+                            .child(Input::new(&hex).flex_1().min_w_0())
                             .child(
                                 Button::new("zz-color-picker-clear")
                                     .ghost()
                                     .flat()
-                                    .small()
                                     .compact()
                                     .icon(crate::IconName::Undo2)
                                     .tooltip("Clear the override")

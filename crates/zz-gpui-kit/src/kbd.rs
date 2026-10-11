@@ -252,8 +252,7 @@ impl Styled for Keycap {
 impl RenderOnce for Keycap {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let (height, text) = match self.size {
-            Size::XSmall | Size::Small => (16.0, 10.0),
-            Size::Large => (22.0, 12.0),
+            Size::Small => (16.0, 10.0),
             Size::Medium | Size::Size(_) => (18.0, 11.0),
         };
         let theme = cx.theme();

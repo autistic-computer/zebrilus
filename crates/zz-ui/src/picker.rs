@@ -63,14 +63,13 @@ pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
             .on(cx.theme().surface(Elevation::Popover).opaque())
             .emphasis(Emphasis::Soft)
             .bordered(false)
-            .small()
             .h(px(32.0))
             .w_full()
             .min_w_0()
             .text_size(crate::rems_from_px(12.0))
             .prefix(
                 Icon::new(IconName::Search)
-                    .xsmall()
+                    .small()
                     .text_color(cx.theme().foreground.muted()),
             ),
     )
@@ -150,7 +149,7 @@ pub fn path_row(
         .h(px(26.0))
         .child(
             Icon::new(icon)
-                .xsmall()
+                .small()
                 .opacity(if selected { 1.0 } else { 0.8 }),
         )
         .child(
@@ -198,7 +197,7 @@ pub fn history_row(
                     .opacity(if selected { 1.0 } else { 0.8 })
                     .child(
                         Badge::new(directory)
-                            .xsmall()
+                            .small()
                             .min_w_0()
                             .overflow_hidden()
                             .text_ellipsis()

@@ -95,10 +95,8 @@ impl Styled for Badge {
 impl RenderOnce for Badge {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let (height, text, padding) = match self.size {
-            Size::XSmall => (16.0, 10.0, 5.0),
-            Size::Small => (18.0, 11.0, 6.0),
-            Size::Large => (24.0, 13.0, 9.0),
-            Size::Medium | Size::Size(_) => (20.0, 12.0, 7.0),
+            Size::Small => (16.0, 10.0, 5.0),
+            Size::Medium | Size::Size(_) => (18.0, 11.0, 6.0),
         };
         let paint = cx.theme().paint(self.tone, self.emphasis);
         let paint = if self.opaque { paint.opaque() } else { paint };

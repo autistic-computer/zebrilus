@@ -3,7 +3,7 @@ use zz_gpui::{
     div,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, TitleBar,
+    ActiveTheme as _, Colorize as _, Icon, IconName, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex,
 };
@@ -39,7 +39,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                             h_flex()
                                 .gap_2()
                                 .text_sm()
-                                .child(Icon::new(IconName::Zz).small())
+                                .child(Icon::new(IconName::Zz).medium())
                                 .child("work")
                                 .child(div().text_color(muted).child("~/dev/zz")),
                         )
@@ -50,14 +50,12 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                                     Button::new("bar-split")
                                         .icon(IconName::PanelRight)
                                         .ghost()
-                                        .small()
                                         .tooltip("Split right"),
                                 )
                                 .child(
                                     Button::new("bar-settings")
                                         .icon(IconName::Settings)
                                         .ghost()
-                                        .small()
                                         .tooltip("Settings"),
                                 ),
                         ),

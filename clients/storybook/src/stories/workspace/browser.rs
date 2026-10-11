@@ -4,7 +4,7 @@ use zz_gpui::{
 };
 use zz_protocol::PaneId;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, IconName,
     browser::{
         BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader,
         BrowserMenuActions, BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState,
@@ -631,7 +631,6 @@ fn error_and_picker(_: &mut Window, cx: &mut App) -> AnyElement {
     };
     let retry = Button::new("retry")
         .primary()
-        .small()
         .icon(IconName::Redo2)
         .label("Try again");
     states()

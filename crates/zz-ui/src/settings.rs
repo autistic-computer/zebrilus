@@ -145,7 +145,6 @@ pub fn settings_navigation_button(section: SettingsSection, selected: bool, _: &
     Button::new(section.title())
         .w_full()
         .px(px(8.0))
-        .small()
         .ghost()
         .icon(section.icon())
         .selected(selected)
@@ -159,7 +158,6 @@ pub fn settings_navigation_back_button(id: impl Into<ElementId>) -> Button {
     Button::new(id)
         .w_full()
         .px(px(8.0))
-        .small()
         .ghost()
         .icon(crate::IconName::ArrowLeft)
         .label("Back")
@@ -231,7 +229,7 @@ pub fn settings_section_index(
                     .rounded(radius)
                     .cursor_pointer()
                     .child(press)
-                    .child(Icon::new(section.icon()).small().text_color(muted))
+                    .child(Icon::new(section.icon()).medium().text_color(muted))
                     .child(
                         div()
                             .flex_1()
@@ -1262,7 +1260,7 @@ impl RenderOnce for SettingEntry {
                                 .items_center()
                                 .gap(px(4.0))
                                 .when_some(self.title_icon, |this, icon| {
-                                    this.child(icon.with_size(crate::Size::Small))
+                                    this.child(icon.with_size(crate::Size::Medium))
                                 })
                                 .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
                                 .when_some(self.title_actions, zz_gpui::ParentElement::child),
@@ -1451,7 +1449,7 @@ impl RenderOnce for SettingCopy {
                     .items_center()
                     .gap(px(4.0))
                     .when_some(self.title_icon, |this, icon| {
-                        this.child(icon.with_size(crate::Size::Small))
+                        this.child(icon.with_size(crate::Size::Medium))
                     })
                     .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
                     .when_some(self.title_actions, zz_gpui::ParentElement::child),
@@ -1475,7 +1473,7 @@ pub fn settings_card_ground(cx: &App) -> Ground {
 }
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {
-    Badge::new(label).small().emphasis(Emphasis::Outline)
+    Badge::new(label).emphasis(Emphasis::Outline)
 }
 
 pub fn settings_reset_button(
@@ -1483,9 +1481,9 @@ pub fn settings_reset_button(
     tooltip: impl Into<SharedString>,
     enabled: bool,
 ) -> Button {
-    let slop = crate::touch::control_slop(crate::Size::XSmall);
+    let slop = crate::touch::control_slop(crate::Size::Small);
     Button::new(id)
-        .xsmall()
+        .small()
         .compact()
         .ghost()
         .flat()

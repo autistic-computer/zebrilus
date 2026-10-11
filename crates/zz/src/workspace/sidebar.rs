@@ -31,7 +31,7 @@ use zz_ui::navigation::{
     workspace_tree_action_row, workspace_tree_disclosure, workspace_tree_row,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     rems_from_px,
     scroll::ScrollableElement as _,
@@ -632,7 +632,6 @@ impl WorkspaceSidebar {
         let back = Button::new("settings-back")
             .w_full()
             .px(px(8.0))
-            .small()
             .ghost()
             .icon(IconName::ArrowLeft)
             .label("Back")

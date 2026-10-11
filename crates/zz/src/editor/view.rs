@@ -12,7 +12,7 @@ use zz_gpui::{
 };
 use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, IconName, Sizable as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, IconName, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
@@ -483,7 +483,6 @@ impl EditorView {
                         h_flex().child(
                             Button::new(format!("editor-retry-{}", self.pane.0))
                                 .primary()
-                                .small()
                                 .icon(IconName::Redo2)
                                 .label("Try again")
                                 .on_click(move |_, window, cx| {
@@ -565,7 +564,7 @@ impl Render for EditorView {
 }
 
 fn vim_mode_badge(mode: VimMode) -> Badge {
-    let badge = Badge::new(mode.label()).small().opaque();
+    let badge = Badge::new(mode.label()).opaque();
     let badge = if matches!(mode, VimMode::Normal) {
         badge
     } else {

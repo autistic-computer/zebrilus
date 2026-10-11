@@ -82,8 +82,7 @@ impl Sizable for Check {
 impl RenderOnce for Check {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let side = match self.size {
-            Size::XSmall | Size::Small => 14.0,
-            Size::Large => 18.0,
+            Size::Small => 14.0,
             Size::Medium => 16.0,
             Size::Size(size) => f32::from(size),
         };

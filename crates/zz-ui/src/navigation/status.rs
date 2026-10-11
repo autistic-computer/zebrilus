@@ -61,7 +61,7 @@ fn status_menu_button(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::new(id)
         .ghost()
         .flat()
-        .xsmall()
+        .small()
         .compact()
         .h(WORKSPACE_STATUS_PILL_HEIGHT)
         .bg(workspace_row_highlight(cx))
@@ -193,7 +193,7 @@ pub fn status_window_overflow(
 ) -> AnyElement {
     Button::new(id)
         .ghost()
-        .xsmall()
+        .small()
         .compact()
         .icon(IconName::Ellipsis)
         .hover_bg(workspace_row_highlight(cx))

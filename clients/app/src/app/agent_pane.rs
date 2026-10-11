@@ -2555,7 +2555,7 @@ impl Render for AgentPane {
                     .child(
                         Button::new(("agent-unqueue", self.pane.0))
                             .ghost()
-                            .xsmall()
+                            .small()
                             .icon(IconName::Undo2)
                             .label(format!("{} queued", state.queued_prompts))
                             .tooltip("Return the queued prompts to the composer")

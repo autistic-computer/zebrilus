@@ -2,7 +2,7 @@ use super::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, Selec
 use super::menu_item::MenuItemElement;
 use crate::button::{Button, ButtonVariants as _};
 use crate::scroll::ScrollableElement;
-use crate::{ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt, h_flex, kbd::Kbd, v_flex};
+use crate::{ActiveTheme, Icon, IconName, Sizable as _, StyledExt, h_flex, kbd::Kbd, v_flex};
 use crate::{ElementExt, Elevation, Emphasis, PaintExt as _, PaintState, Side, Tone};
 use zz_gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
@@ -294,7 +294,6 @@ pub struct PopupMenu {
     max_width: Option<Pixels>,
     max_height: Option<Pixels>,
     bounds: Bounds<Pixels>,
-    size: Size,
 
     parent_menu: Option<WeakEntity<Self>>,
     scrollable: bool,
@@ -319,7 +318,6 @@ impl PopupMenu {
             bounds: Bounds::default(),
             scrollable: false,
             scroll_handle: ScrollHandle::default(),
-            size: Size::default(),
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
             _subscriptions: vec![],
         }
@@ -885,10 +883,10 @@ impl PopupMenu {
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
-        let item_height = match self.size {
-            _ if crate::touch::CoarsePointer::get(cx) => px(crate::touch::TOUCH_TARGET),
-            Size::Small => cx.theme().dense(px(20.)),
-            _ => cx.theme().dense(px(26.)),
+        let item_height = if crate::touch::CoarsePointer::get(cx) {
+            px(crate::touch::TOUCH_TARGET)
+        } else {
+            cx.theme().dense(px(26.))
         };
 
         let coarse = crate::touch::CoarsePointer::get(cx);
@@ -971,7 +969,7 @@ impl PopupMenu {
                         .debug_selector(move || format!("{id}-{ix}"))
                         .ghost()
                         .flat()
-                        .xsmall()
+                        .small()
                         .tab_stop(false)
                         .tooltip(label_for(action))
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -1087,7 +1085,7 @@ impl PopupMenu {
                                     .child(label.clone())
                                     .child(
                                         Icon::new(IconName::ExternalLink)
-                                            .xsmall()
+                                            .small()
                                             .opacity(detail_opacity),
                                     ),
                             )
@@ -1126,7 +1124,7 @@ impl PopupMenu {
                                 .child(label.clone())
                                 .child(
                                     Icon::new(IconName::ChevronRight)
-                                        .xsmall()
+                                        .small()
                                         .opacity(detail_opacity),
                                 ),
                         ),

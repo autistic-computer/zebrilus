@@ -18,7 +18,7 @@ use web_time::{Duration, Instant};
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName,
-    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    PaintExt as _, PaintState, StyledExt as _, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -2735,7 +2735,6 @@ impl zz_gpui::RenderOnce for AgentMarkdownView {
                     h_flex().w_full().justify_end().child(
                         Button::new(("agent-copy-full-markdown", state_id))
                             .secondary()
-                            .small()
                             .icon(IconName::Copy)
                             .label("Copy full message")
                             .on_click(move |_, _, cx| {
@@ -2993,7 +2992,7 @@ impl MarkdownPlugin for MermaidPlugin {
                 .text_color(cx.theme().foreground.muted())
                 .child(
                     Icon::new(IconName::Loader)
-                        .small()
+                        .medium()
                         .text_color(cx.theme().foreground.muted()),
                 )
                 .child("Rendering Mermaid…")
@@ -3021,7 +3020,7 @@ impl MarkdownPlugin for MermaidPlugin {
                     h_flex()
                         .gap_2()
                         .text_color(cx.theme().danger)
-                        .child(Icon::new(IconName::TriangleAlert).small())
+                        .child(Icon::new(IconName::TriangleAlert).medium())
                         .child("Mermaid could not be rendered"),
                 )
                 .child(

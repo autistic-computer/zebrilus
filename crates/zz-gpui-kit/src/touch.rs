@@ -118,14 +118,10 @@ impl Element for TouchScale {
 
 #[must_use]
 pub fn control_slop(size: Size) -> f32 {
-    let height = match size {
-        Size::XSmall => 24.0,
-        Size::Small => 28.0,
-        Size::Medium => 36.0,
-        Size::Large => 40.0,
-        Size::Size(_) => TOUCH_TARGET,
-    };
-    (TOUCH_TARGET - height) / 2.0
+    match size {
+        Size::Size(_) => 0.0,
+        size => (TOUCH_TARGET - size.control_px()) / 2.0,
+    }
 }
 
 #[must_use]

@@ -34,7 +34,7 @@ use zz_terminal::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Icon, IconName, Selectable as _,
-    Sizable as _, StyledExt as _,
+    StyledExt as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
     pane::{
@@ -694,7 +694,6 @@ impl TerminalView {
             .child(
                 div().flex_1().min_w(px(110.0)).child(
                     Input::new(&self.search_input)
-                        .small()
                         .appearance(false)
                         .prefix(Icon::new(IconName::Search).size(px(13.0))),
                 ),

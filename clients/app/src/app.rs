@@ -35,7 +35,7 @@ use zz_protocol::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Elevation, Icon, IconName,
-    Root, Selectable as _, Sizable as _,
+    Root, Selectable as _,
     button::{Button, ButtonVariants as _},
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserRowTheme,
@@ -1539,7 +1539,6 @@ impl AppShell {
                 )
                 .child(
                     Button::new("web-create-session")
-                        .small()
                         .label(if has_sessions {
                             "Attach to session"
                         } else {
@@ -3119,7 +3118,6 @@ fn unsupported_pane(
         )
         .children(url.map(|url| {
             Button::new("web-open-browser-page")
-                .small()
                 .icon(IconName::ExternalLink)
                 .label("Open in browser tab")
                 .on_click(move |_, _, cx| cx.open_url(&url))

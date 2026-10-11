@@ -61,7 +61,7 @@ impl Pickers {
         let set = make(Some("#7aa2f7"), window, cx);
         let inherited = make(None, window, cx);
         let disabled = make(Some("#9ece6a"), window, cx);
-        let sizes = [Size::XSmall, Size::Small, Size::Medium]
+        let sizes = [Size::Small, Size::Medium]
             .into_iter()
             .map(|size| (size, make(Some("#e0af68"), window, cx)))
             .collect();
@@ -108,7 +108,7 @@ impl Render for Pickers {
                     cx,
                 ),
             )
-            .state("xsmall, small, medium", h_flex().gap_3().children(sized))
+            .state("small, medium", h_flex().gap_3().children(sized))
     }
 }
 

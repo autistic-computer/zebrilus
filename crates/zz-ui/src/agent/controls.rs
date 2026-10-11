@@ -53,7 +53,7 @@ pub fn composer_action_button(
 }
 
 pub fn agent_chrome_button(id: impl Into<ElementId>) -> Button {
-    Button::new(id).ghost().xsmall().h(px(24.0)).px_2()
+    Button::new(id).ghost().small().h(px(24.0)).px_2()
 }
 
 pub fn agent_header_icon_button(
@@ -84,7 +84,7 @@ pub fn agent_directory_button(
         .when(enabled, |button| {
             button.text_color(cx.theme().foreground.muted())
         })
-        .child(Icon::new(IconName::Folder).small().relative().top(px(0.5)))
+        .child(Icon::new(IconName::Folder).medium().relative().top(px(0.5)))
         .child(
             div()
                 .min_w_0()
@@ -475,7 +475,7 @@ pub fn agent_model_picker(
                             .w_full()
                             .min_w_0()
                             .gap_2()
-                            .child(Icon::new(agent_provider_icon(vendor)).xsmall().flex_none())
+                            .child(Icon::new(agent_provider_icon(vendor)).small().flex_none())
                             .child(div().flex_1().min_w_0().child(vendor.label())),
                         window,
                         cx,
@@ -528,7 +528,7 @@ pub fn agent_model_picker(
                                 .child(div().flex_1().min_w_0().child(choice.name.clone()))
                                 .child(
                                     Icon::new(IconName::Check)
-                                        .xsmall()
+                                        .small()
                                         .flex_none()
                                         .when(!checked, zz_gpui::Styled::invisible),
                                 ),
@@ -653,7 +653,7 @@ pub fn agent_provider_label(provider: zz_protocol::AgentProvider, cx: &App) -> i
         .text_color(cx.theme().foreground.muted())
         .child(
             Icon::new(agent_provider_icon(provider))
-                .small()
+                .medium()
                 .relative()
                 .top(px(0.5)),
         )
@@ -722,7 +722,7 @@ pub fn git_summary_footer(
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .child(
             Icon::new(IconName::GitBranch)
-                .xsmall()
+                .small()
                 .flex_none()
                 .text_color(cx.theme().foreground.muted()),
         )

@@ -47,7 +47,7 @@ pub fn tree_host_indicator(
 ) -> AnyElement {
     if connecting {
         return Spinner::new()
-            .xsmall()
+            .small()
             .color(cx.theme().foreground.muted())
             .into_any_element();
     }
@@ -66,7 +66,7 @@ pub fn tree_host_indicator(
         })
         .child(
             Icon::new(IconName::TriangleAlert)
-                .xsmall()
+                .small()
                 .text_color(cx.theme().warning),
         )
         .into_any_element()

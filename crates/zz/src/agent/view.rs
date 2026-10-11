@@ -1651,7 +1651,7 @@ impl AgentView {
             h_flex().w_full().justify_end().child(
                 Button::new(format!("agent-unqueue-{}", self.pane.0))
                     .ghost()
-                    .xsmall()
+                    .small()
                     .icon(IconName::Undo2)
                     .label(format!("{queued} queued"))
                     .tooltip("Return the queued prompts to the composer")

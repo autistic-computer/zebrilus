@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName,
     compact::{bottom_sheet, sheet_action, sheet_close, sheet_option},
     h_flex, v_flex,
 };
@@ -50,7 +50,7 @@ fn backdrop(title: &'static str, cx: &App) -> impl IntoElement {
                 .gap_2()
                 .text_sm()
                 .text_color(muted)
-                .child(Icon::new(IconName::SquareTerminal).small())
+                .child(Icon::new(IconName::SquareTerminal).medium())
                 .child(name)
         }))
 }

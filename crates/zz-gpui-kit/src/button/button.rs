@@ -234,7 +234,6 @@ impl Button {
     pub fn compact_icon(id: impl Into<ElementId>, icon: impl Into<Icon>) -> Self {
         Self::new(id)
             .ghost()
-            .small()
             .compact()
             .size(rems_from_px(COMPACT_ICON_BUTTON_SIZE))
             .icon(icon.into().relative().top(COMPACT_ICON_DROP))
@@ -414,15 +413,6 @@ impl ParentElement for Button {
 impl InteractiveElement for Button {
     fn interactivity(&mut self) -> &mut Interactivity {
         self.base.interactivity()
-    }
-}
-
-#[inline]
-fn button_text_size<T: Styled>(this: T, size: Size) -> T {
-    match size {
-        Size::XSmall => this.text_xs(),
-        Size::Small => this.text_sm(),
-        _ => this.text_base(),
     }
 }
 
@@ -621,13 +611,12 @@ impl RenderOnce for Button {
                     let this = this.h(height);
                     match self.size {
                         Size::Size(size) => this.px(size * 0.2),
-                        Size::XSmall => this.px_1().when(self.compact, |this| this.min_w(height)),
                         Size::Small => this
+                            .px_2()
+                            .when(self.compact, |this| this.min_w(height).px_1()),
+                        Size::Medium => this
                             .px_3()
                             .when(self.compact, |this| this.min_w(height).px_1p5()),
-                        _ => this
-                            .px_4()
-                            .when(self.compact, |this| this.min_w(height).px_2()),
                     }
                 }
             })
@@ -740,15 +729,12 @@ impl RenderOnce for Button {
                     .items_center()
                     .justify_center();
 
-                button_text_size(label, self.size)
+                label
+                    .text_size(self.size.control_text())
                     .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
-                    .when(self.dropdown_caret, |this| {
-                        this.text_size(rems_from_px(13.0))
-                    })
                     .map(|this| match self.size {
-                        Size::XSmall => this.gap_1(),
                         Size::Small => this.gap_1(),
-                        _ => this.gap_2(),
+                        _ => this.gap_1p5(),
                     })
                     .when_some(self.icon, |this, icon| {
                         this.child(icon.loading(self.loading).with_size(icon_size))
@@ -759,7 +745,7 @@ impl RenderOnce for Button {
                     .children(self.children)
                     .when(self.dropdown_caret, |this| {
                         this.justify_between().child(
-                            Icon::new(IconName::ChevronDown).xsmall().text_color(
+                            Icon::new(IconName::ChevronDown).small().text_color(
                                 match self.disabled {
                                     true => normal_style.fg.opacity(0.3),
                                     false => normal_style.fg.opacity(0.5),

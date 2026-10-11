@@ -438,7 +438,7 @@ pub fn tree_chooser_row(
                 .when(tagged, |row| {
                     row.child(
                         Badge::new("Tagged")
-                            .xsmall()
+                            .small()
                             .ml(px(8.0))
                             .text_size(crate::rems_from_px(9.0)),
                     )
@@ -529,7 +529,7 @@ pub fn buffer_chooser_row(
                 .when(tagged, |row| {
                     row.child(
                         Badge::new("TAGGED")
-                            .xsmall()
+                            .small()
                             .tone(Tone::Primary)
                             .emphasis(Emphasis::Solid)
                             .ml(px(8.0))

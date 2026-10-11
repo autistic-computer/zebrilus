@@ -107,7 +107,7 @@ impl Render for ThreadTitleEditor {
                 .on_action(cx.listener(Self::cancel))
                 .child(
                     Input::new(&self.input)
-                        .xsmall()
+                        .small()
                         .w_full()
                         .h_full()
                         .px_2()

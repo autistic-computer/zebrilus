@@ -5,7 +5,7 @@ use zz_gpui::{
     Styled as _, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, Sizable as _, h_flex,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, h_flex,
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WorkspaceStatusWindowState,
         sidebar::{
@@ -292,7 +292,7 @@ fn labeled(label: &'static str, item: impl IntoElement, cx: &App) -> AnyElement 
 }
 
 fn node_icon(icon: IconName, cx: &App) -> Icon {
-    Icon::new(icon).small().text_color(cx.theme().foreground)
+    Icon::new(icon).medium().text_color(cx.theme().foreground)
 }
 
 fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -576,7 +576,7 @@ fn guide_list(
                     format!("guide-group-{index}").into(),
                     tree_node_marker(
                         Icon::new(icon)
-                            .small()
+                            .medium()
                             .text_color(cx.theme().foreground.muted()),
                         false,
                         None,

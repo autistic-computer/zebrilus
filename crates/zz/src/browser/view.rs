@@ -48,7 +48,7 @@ use zz_ui::browser::{
 use zz_ui::feedback::browser_clear_site_data_alert;
 use zz_ui::pane::{PaneDrag, pane_drag_button, pane_header_icon_button};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName, Sizable as _, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Elevation, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     input::{InputEvent, InputState},
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
@@ -3867,7 +3867,6 @@ impl Render for BrowserView {
                 let retry_view = cx.entity();
                 Button::new("browser-retry")
                     .primary()
-                    .small()
                     .icon(IconName::Redo2)
                     .label("Try again")
                     .on_click(move |_, _, cx| {

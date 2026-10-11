@@ -125,7 +125,7 @@ fn code(_: &mut Window, cx: &mut App) -> AnyElement {
                             Button::new("md-copy")
                                 .icon(IconName::Copy)
                                 .ghost()
-                                .xsmall()
+                                .small()
                                 .tooltip("Copy"),
                         )
                     }),

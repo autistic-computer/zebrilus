@@ -18,7 +18,7 @@ use zz_config::update::{checks_enabled, fetch_latest};
 use zz_gpui::{App, AsyncApp, Entity, Global, Window, prelude::*};
 use zz_protocol::CommandInvocation;
 use zz_ui::{
-    Sizable as _, WindowExt as _,
+    WindowExt as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     notification::Notification,
@@ -240,27 +240,21 @@ fn offer_update(release: &Release, current: &Version, cx: &mut App) {
                     .child(
                         Button::new("update-install")
                             .primary()
-                            .small()
                             .label("Update")
                             .on_click(|_, window, cx| install(window, cx)),
                     )
                     .child(
                         Button::new("update-notes")
                             .ghost()
-                            .small()
                             .label("What's new")
                             .on_click(move |_, _, cx| cx.open_url(&notes_url)),
                     )
-                    .child(
-                        Button::new("update-later")
-                            .ghost()
-                            .small()
-                            .label("Later")
-                            .on_click(move |_, window, cx| {
-                                dismiss(&later_version, cx);
-                                window.dismiss_notification(TOAST_KEY, cx);
-                            }),
-                    )
+                    .child(Button::new("update-later").ghost().label("Later").on_click(
+                        move |_, window, cx| {
+                            dismiss(&later_version, cx);
+                            window.dismiss_notification(TOAST_KEY, cx);
+                        },
+                    ))
                     .into_any_element()
             }),
         cx,

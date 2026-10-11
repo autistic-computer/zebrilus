@@ -94,7 +94,7 @@ impl Render for Selects {
             )
             .state("picked", Select::new(&self.picked))
             .state("disabled", Select::new(&self.disabled).disabled(true))
-            .state("small", Select::new(&self.small).small())
+            .state("small", Select::new(&self.small))
             .state("fixed width", Select::new(&self.wide).w(px(200.0)))
             .state(
                 "empty delegate",

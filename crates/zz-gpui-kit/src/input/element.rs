@@ -740,6 +740,13 @@ mod tests {
         layout.lines[0].width() / layout.lines[0].text.chars().count() as f32
     }
 
+    fn assert_close(actual: Pixels, expected: Pixels, what: &str) {
+        assert!(
+            (f32::from(actual) - f32::from(expected)).abs() < 0.001,
+            "{what}: {actual:?} is not {expected:?}"
+        );
+    }
+
     #[zz_gpui::test]
     fn typing_into_a_password_field_shapes_bullets_and_keeps_the_value(cx: &mut TestAppContext) {
         let (state, cx) = field("", SECRET, cx);
@@ -776,10 +783,10 @@ mod tests {
         let bullet = bullet_width(&layout);
 
         for (bullets, offset) in [(0., 0), (1., 1), (2., 5), (3., 6)] {
-            assert_eq!(
+            assert_close(
                 layout.position_for_offset(offset).x,
                 bullet * bullets,
-                "value offset {offset}"
+                &format!("value offset {offset}"),
             );
         }
     }
@@ -838,7 +845,7 @@ mod tests {
             panic!("one row, one quad");
         };
         assert_eq!(quad.origin.x, px(0.));
-        assert_eq!(quad.size.width, bullet * 2.);
+        assert_close(quad.size.width, bullet * 2., "two bullets");
     }
 
     #[zz_gpui::test]

@@ -58,8 +58,8 @@ Do this instead:
 2. Explicit row height, font size, and line-height in pixels.
 3. Line-height **taller** than ascent+descent, or `overflow_hidden` clips
    descenders. At 13px the system font is 15.31px tall; use 16px.
-4. Size icons to the font (`.size(px(13.0))`), not `.small()` (that is 14px,
-   `size_3p5`) or `.xsmall()` (12px, `size_3`).
+4. Size icons to the font (`.size(px(13.0))`), not `.medium()` (that is 14px,
+   `size_3p5`) or `.small()` (12px, `size_3`).
 5. Optically drop the icon so it sits on the letters, not the box centre.
    Less than the x-height offset so it never overshoots: **0.5px** at 13px.
 

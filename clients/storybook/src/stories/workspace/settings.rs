@@ -121,11 +121,10 @@ impl Controls {
     }
 
     fn number(&self, index: usize, cx: &App) -> zz_gpui::Div {
-        div().w(px(120.0)).flex_none().child(
-            NumberInput::new(&self.numbers[index])
-                .small()
-                .on(settings_card_ground(cx)),
-        )
+        div()
+            .w(px(120.0))
+            .flex_none()
+            .child(NumberInput::new(&self.numbers[index]).on(settings_card_ground(cx)))
     }
 }
 
@@ -235,7 +234,6 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     )
                     .control(
                         Select::new(&controls.choice)
-                            .small()
                             .title("Navigation layout")
                             .on(settings_card_ground(cx)),
                     ),
@@ -364,10 +362,10 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                             .child(
                                 Button::new("theme-duplicate")
                                     .ghost()
-                                    .xsmall()
+                                    .small()
                                     .label("Duplicate"),
                             )
-                            .child(Button::new("theme-import").ghost().xsmall().label("Import")),
+                            .child(Button::new("theme-import").ghost().small().label("Import")),
                     )
                     .child(
                         PickerStrip::new("settings-story-theme", 0)
@@ -385,7 +383,6 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         .control(
                             div().w(px(200.0)).flex_none().child(
                                 Select::new(&controls.font)
-                                    .small()
                                     .title("UI font")
                                     .placeholder("System default")
                                     .on(settings_card_ground(cx)),
