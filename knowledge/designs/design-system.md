@@ -33,7 +33,7 @@ The palette itself was fine: six roots and a scrim (see
 A widget picks two things and the theme does the rest.
 
 - **`Tone`**, what it means: `Neutral`, `Primary`, `Danger`, `Warning`, `Success`.
-  - Primary's color comes from the look: `primary = foreground | accent` (`PrimaryStyle`). It works like `selection = accent | wash` and defaults to foreground, so the main action is white on dark and black on light.
+  - Primary's color comes from the theme's look: `primary = foreground | accent` (`PrimaryStyle`). It works like `selection = accent | wash` and defaults to foreground, so the main action is white on dark and black on light. The theme picks both per look (see [interface themes](/designs/interface-themes.md)).
   - Code says "this is the main action" and never picks the color itself.
 - **`Emphasis`**, how loud it is: `Solid`, `Soft`, `Outline`, `Ghost`.
 - **`theme.paint(tone, emphasis)`** returns a `Paint`:
@@ -58,7 +58,7 @@ A widget picks two things and the theme does the rest.
 **Selected and current** are two different meanings, the same split as HTML's `aria-selected` and `aria-current`:
 - **Selected** is the row the cursor is on in a list you pick from: a menu, the palette, a picker, a select's options. It moves with the arrow keys and Enter acts on it. Neutral soft, outline and ghost on the window take `selection_background()`, so they follow the look's `selection`: accent fill or a wash. On any other ground, and for coloured tones, selected is the pressed fill.
 - **Current** is where you are or what is switched on: the open settings page, a toggle button that is on, the active session row, a latched phone modifier, an open tray panel. It is always the pressed wash (the tone's `active()` for solid), whatever the look's `selection`, so chrome that stays in this state never carries the accent. `Button::selected` draws it.
-- Text on an opaque selected fill is picked by perceptual lightness (`readable_on`), so a light accent gets dark text and a dark accent gets white.
+- Text on an accent fill (a solid primary in the accent, an accent selection) is the theme's `on_accent` when it names one. Otherwise, and on any other opaque fill, it is picked by perceptual lightness (`readable_on`), so a light accent gets dark text and a dark accent gets white.
 
 **Focused:** the border turns to the focus color. A neutral or primary paint focuses in the primary tone (the ground's ink when primary is the foreground, the accent otherwise); danger, warning and success focus in their own tone.
 
@@ -99,6 +99,7 @@ A pane fills with `theme.pane_background(fill)`: its own fill (the window color,
 - A rule between sections is `theme.divider_color()`, the border root at the look's `divider` strength. It replaces the separate rule recipes the audit found.
 - The edge of a card or panel is `theme.border()`.
 - Anything that dims the window behind a modal, a sheet or a slide-over fills with `theme.scrim`.
+- Every drop shadow is drawn in `theme.shadow_color`, which the theme sets per mode, so a light theme on a tinted background can tint its shadows instead of graying them. `contact_shadow` is the tight shadow a surface sits on, `control_shadow` the same at the look's `control-shadow` share, and `lifted_shadow` the small one under tooltips, toasts and switch thumbs.
 
 ## Text
 
@@ -161,7 +162,7 @@ Kit widgets on the model:
 # Rules
 
 - Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit. Clippy enforces it: the root `clippy.toml` disallows `Hsla::opacity` and the mixing transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`, `hover`, `active`, `on`, `floating`). The kit's own `clippy.toml` leaves them out, since the kit is where the recipes are mixed. `muted()`, `faint()` and `opaque()` stay open.
-- A color that is deliberately not a recipe takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function. Today that is the look and palette previews in Appearance, the element picker overlay (page CSS), the blurred chrome background, and the pane glow, inactive dimming and drag veil, which scale by their own look knobs.
+- A color that is deliberately not a recipe takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function. Today that is the theme previews in Appearance, the element picker overlay (page CSS), the blurred chrome background, and the pane glow, inactive dimming and drag veil, which scale by their own look knobs.
 - A widget nested in a painted surface takes that surface's `ground_at(state)`.
 - Secondary text comes from `muted_at`, not from `opacity(..)` on the foreground.
 - A variant that cannot be expressed as a tone and an emphasis is a missing recipe in the kit, not a local one-off.

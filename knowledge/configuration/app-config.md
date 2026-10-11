@@ -118,9 +118,9 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
 | `pane-corner-radius` | `13.5` | `0..=32` | All four corners of every pane, on every platform; applies only with `pane-gaps` |
 | `pane-border-width` | `0.5` | `0..=8` | Border width while pane gaps are enabled; `0` disables the border |
-| `interface-style` | `modern` | `flat`, `modern`, `full`, or a saved look's name | The look of the chrome, set together: `flat` is square, unoutlined and shadowless with rows that touch; `modern` is 24px corners over an opaque surface with a lit glass edge; `full` is pill controls over frosted glass. Any other name selects `looks/<name>.json` beside this file (see Saved looks). It decides the two keys below unless they are set; picking a style in Settings removes them |
-| `widget-corner-radius` | from the style (`0`, `24`, `25`) | `0..=25` | Widget corners in pixels through 24; values above 24 enable Full mode for buttons, fields, navigation chips, and picker rows. At 0, menu and tree rows become full-width bands with no gaps |
-| `shadow-strength` | from the style (`0`, `1`, `1`) | `0..=1` | Multiplier for shadows around controls and gapped panes; `0` turns them and the control rings off |
+| `interface-theme` | `default` | `default`, `macos`, `linear`, or a saved theme's name | The interface theme: a look (corners, outlines, shadows, glass, how rows and primary buttons are filled) and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. It decides the two keys below unless they are set; picking a theme in Settings removes them |
+| `widget-corner-radius` | from the theme (`24`, `10`, `8`) | `0..=25` | Widget corners in pixels through 24; values above 24 enable Full mode for buttons, fields, navigation chips, and picker rows. At 0, menu and tree rows become full-width bands with no gaps |
+| `shadow-strength` | from the theme (`1`) | `0..=1` | Multiplier for every shadow; `0` turns them and the control rings off. The theme's `control-shadow` says how much of it controls cast |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
 | `which-key-delay` | `400` | `0..=2000` | Milliseconds after the prefix, or inside a `switch-client -T` table, before the which-key sheet lists the next keys; `0` turns the sheet off. Read when the timer starts |
 | `editor-line-numbers` | `true` | `true` or `false` | Whether editor panes draw the line-number rail |
@@ -135,24 +135,22 @@ The client-local schema includes these scalar settings and chrome colors.
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `0.5`–`2.0` | Scales the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as 50–200% in steps of 5. |
-| `chrome-preset-light` | unset | a light preset id from the catalog below | The chrome palette used while the effective mode is light |
-| `chrome-preset-dark` | unset | a dark preset id from the catalog below | The chrome palette used while the effective mode is dark |
-| `chrome-background` | unset | `#rgb`, `#rrggbb`, `#rrggbbaa` | zz-ui's `ThemeColor::background` . the window's base plane |
-| `chrome-foreground` | unset | same | `ThemeColor::foreground` . default text, and the source of muted text, rings, links |
-| `chrome-accent` | unset | same | `ThemeColor::accent` . the one chromatic emphasis: the checked switch track, the selected tile ring, the active pane border and glow, the Agent send button |
 
-`chrome-success`, `chrome-warning`, and `chrome-danger` are retired: a line with one of them is
-reported and skipped, and the status roots follow the selected preset or the built-in palette.
+`interface-style`, `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
+`chrome-foreground`, `chrome-accent`, `chrome-success`, `chrome-warning` and `chrome-danger` are
+retired (`zz_config::RETIRED_APPEARANCE_KEYS`): a line with one of them is reported, skipped and
+hidden from the Terminal page's editor, and picking a theme in Settings removes it. Colors now
+come only from the theme.
 
 The status settings project directly into `zz_client::StatusBarSettings` and apply through the
 normal watched-config refresh. The clock never shows seconds. `AppShell` aligns its first wake to
 the next minute boundary, then requests one redraw per minute while the bar and clock are visible;
 `time-date` renders `%H:%M · %b %d`.
 
-`interface-style`, `widget-corner-radius`, `chrome-contrast`, `shadow-strength`, `pane-background-opacity`, and the theme keys land on the **zz-ui theme** rather than being read
+`interface-theme`, `widget-corner-radius`, `chrome-contrast`, `shadow-strength`, `pane-background-opacity`, and `theme-mode` land on the **zz-ui theme** rather than being read
 per-frame by a renderer: `zz::theme::apply_zz_overrides` pushes them onto the `Theme` global, and
-every widget already reads from there, so no component is plumbed individually. Because the preset
-and overrides are reapplied on every theme rebuild, they survive a light/dark switch, the same
+every widget already reads from there, so no component is plumbed individually. Because the theme
+and the overrides are reapplied on every theme rebuild, they survive a light/dark switch, the same
 treatment `mono_font_family` gets. `widget-corner-radius` is distinct
 from `pane-corner-radius`, which is pane *geometry* and is resolved per corner in
 `config::pane_content_radii`.
@@ -196,68 +194,62 @@ the file enables animations. Cursor blinking and Chromium page animation are con
 keep their own controls. Desktop GPUI does not currently publish the operating system's motion
 preference, so macOS, Linux, and Windows follow this key directly.
 
-## Saved looks
+## Interface themes
 
-A look is the JSON the storybook's style creator copies (Copy JSON): a
-`zz_ui::interface_style::Look` in kebab-case, where any key left out takes the `modern` value.
-Looks live one per file in a `looks` folder beside the configuration file
-(`~/.config/zz/looks/<name>.json`; zz Dev keeps its own), named by letters, digits, `-` and `_`.
-`interface-style = <name>` selects one. The config poll stamps the folder, so adding, editing or
-removing a look applies within half a second. A missing or unparsable look logs a warning and
-falls back to `modern`.
+An interface theme is one JSON object (`zz_ui::interface_theme::InterfaceTheme`): a `name`, a `look`
+and a `light` and a `dark` color set. The mode (`theme-mode`, or the OS appearance on System) only
+picks which color set applies; the look is the same in both.
 
-Settings > Appearance > Style shows the saved looks as tiles after the built-in styles. Its Import
-tile reads a look from the clipboard, saves it as the first free `look-N.json`, and selects it.
-Thin clients (web, iOS) still offer only the built-in styles.
+- `look` is `zz_ui::interface_theme::Look` in kebab-case: `radius`, `corner-smoothing`, `shadow`,
+  `control-shadow` (how much of the shadow controls cast; `0` keeps buttons, fields and rows flat
+  while popovers keep theirs), `elevation`, `outline`, `outline-width`, `row-inset`, `selection`
+  (`accent` or `wash`), `primary` (`foreground` or `accent`), `field` (`soft` or `outline`),
+  `density`, `control-fill`, `divider`, `animation-speed`, `font` and `glass`. `glass` is `null`
+  for plain surfaces, a preset name (`regular`, `clear`, `frosted`, `bubble`, `smoked`), or an
+  object with a `preset` and the fields it changes.
+- Each color set holds the six roots (`background`, `foreground`, `accent`, `success`, `warning`,
+  `danger`) and two optional colors: `on-accent`, the text on an accent fill (a solid primary
+  button in the accent, an accent selection), and `shadow-color`, the ink of every drop shadow,
+  whose alpha is a floating surface's shadow at full strength. A color left out falls back to the
+  built-in palette for the mode; `on-accent` falls back to black or white by the accent's
+  lightness.
 
-## Chrome theming
+Keys a file leaves out take `Look::default()` (the default theme's shape without glass) and the
+built-in palette. Every other color the UI paints (panels, hover and pressed fills, muted text,
+edges, washes) is derived from the roots at paint time, as `design-system` describes.
 
-The three chrome color keys overwrite three of zz-ui's **palette roots** (`ThemeColor`: background,
-foreground, accent, success, warning, danger, plus scrim). Other colors the UI paints (elevations, hover and pressed fills, muted text, focus rings, status washes)
-is derived from those roots by `Colorize` at paint time, so setting a root recolors everything built
-on it with no further plumbing. That is also why there are three knobs and not a table: the status
-roots come from the preset so they stay legible against it, `scrim` is black in both modes with
-only its alpha meaningful, and a larger table could disagree with itself. The accent is deliberately
-narrow: the checked switch track, the selected tile ring, the active pane border and its glow, and
-the primary tone when the look's `primary` is `accent` (the Agent send button and every other main action); every other control stays neutral.
+Three themes are compiled in from `crates/zz-ui/themes/*.json`:
 
-Resolution is `zz-ui base for the effective mode < the preset selected for that mode < explicit
-chrome-*`. An unset root is therefore **inherited** from the selected preset or, with no preset, the
-zz-ui base. `AppConfig` stores `Option<Hsla>` per root rather than a default color, and Settings
-labels a preset-inherited root accordingly.
+- `default`: the zz look (24px corners, opaque glass edge, foreground primary, accent selection)
+  on the macOS system colors: window `#ffffff` / `#1e1e1e`, label ink, system blue, and the
+  system status colors (the higher-contrast variants in light).
+- `macos`: 10px corners, flat controls (`control-shadow` 0) under shadowed frosted popovers,
+  inset rows, accent selection and accent primary with white text on it.
+- `linear`: 8px plain corners, opaque surfaces with ring-shadow outlines, gray (wash) selection,
+  indigo primary, and a cool tinted shadow in light.
 
-Every built-in in `zz::theme::CHROME_PRESETS` is a single-mode palette: six roots and a `dark`
-flag. `chrome-preset-light` and `chrome-preset-dark` each name one preset of the matching mode (a
-dark id under the light key is a diagnostic, and so is the retired paired `chrome-preset` key).
-Applying or clearing a preset for a mode atomically removes the three explicit roots and writes that
-mode's key; it does not change `theme-mode`. Switching System/Light/Dark, or an OS appearance change
-while on System, picks the other key's preset. A subsequent per-root edit is an override on both
-modes, and Reset returns that root to the selected preset.
+A test in `crates/zz-ui/src/interface_theme.rs` holds every built-in to contrast floors in both
+modes: foreground at least 7:1 on the background and on a popover, the accent and status colors
+at least 3:1, and text on the accent at least 3:1.
 
-The catalog takes every root from the upstream palette, then moves a root in Oklab toward the
-contrast pole where the upstream value fails the floor zz's chrome needs: foreground at least 7:1 on
-the background (muted text derives from it), and the accent and each status root at least 3:1 on
-the background and on a two-step raised panel. Each accent is the theme's own signature color
-(Tokyo Night blue, Catppuccin mauve, Gruvbox orange, Nord frost, Dracula purple, Rosé Pine rose,
-the KDE, GNOME, Ubuntu, and macOS system blues and orange), picked apart from its status colors. Dark presets: `tokyo-night`, `tokyo-night-storm`, `catppuccin-mocha`,
-`catppuccin-macchiato`, `catppuccin-frappe`, `gruvbox-dark`, `nord`, `dracula`, `one-dark`,
-`github-dark`, `everforest-dark`, `rose-pine`, `rose-pine-moon`, `solarized-dark`, `ayu-dark`,
-`breeze-dark`, `adwaita-dark`, `ubuntu-dark`, `ubuntu-terminal` (the aubergine GNOME Terminal
-profile with its Tango palette), `macos-classic-dark`. Light presets:
-`tokyo-night-day`, `catppuccin-latte`, `gruvbox-light`, `alucard`, `one-light`, `github-light`,
-`everforest-light`, `rose-pine-dawn`, `solarized-light`, `ayu-light`, `breeze-light`,
-`adwaita-light`, `ubuntu-light`, `macos-classic-light`. Nord and Dracula have no invented light
-half; Dracula's official light theme is Alucard. A test in `crates/zz-ui/src/chrome_palette.rs`
-holds every entry to the floors. At the default contrast, `border()` derives an opaque Oklab
-mix of 86% background and 14% foreground. The removed
-`chrome-border` key remains visible as an unrecognized key in the config editor.
+Saved themes live one per file in a `themes` folder beside the configuration file
+(`~/.config/zz/themes/<name>.json`; zz Dev keeps its own), named by letters, digits, `-` and `_`;
+a file named after a built-in id is ignored. `interface-theme = <name>` selects one. The config
+poll stamps the folder, so adding, editing or removing a theme applies within half a second. A
+missing or unparsable theme logs a warning and falls back to `default`.
+
+Settings > Interface > Interface theme shows the built-ins and then the saved themes as tiles.
+Duplicate writes the active theme to the first free `themes/theme-N.json` and selects it, so a
+theme is customized by editing that file. Import reads a theme from the clipboard (the storybook's
+theme creator copies one with Copy JSON), saves it the same way and selects it. Thin clients (web,
+iOS) offer the built-in themes only.
+
+Chrome colors come from the theme alone, never from the terminal's palette: there is no key that
+makes application chrome follow terminal colors.
 
 `chrome-contrast` adjusts derived surfaces, muted text, fills, and edges without storing colors.
 The default is 1.0; desktop and browser Settings show it as 100%. Reset removes the override.
 The native macOS client keeps the default derivation strengths and does not show this control.
-
-Chrome chroma comes from `zz/config` alone, never from the terminal's palette: there is no key that
-makes application chrome follow terminal colors.
 
 zz has no frame-rate overlay. The `show-fps` key was removed together with GPUI's `profiler`
 feature, which it needed; a leftover `show-fps` line, like the older `show-app-fps` and
@@ -390,7 +382,7 @@ curve; a nonzero margin detaches panes from the frame, so the pane radius alone 
 corners. The margin is single-counted everywhere: the layout root insets the window edge by one
 margin and each split's slot *is* the one inter-pane gap, so `pane-margin = 2` yields exactly 2px
 between panes and 2px at the frame; gaps never sum to double between neighbors. The gap paints the
-window's base plane (`chrome-background`) from three places: the frame inset is a border band on the
+window's base plane (the theme's `background`) from three places: the frame inset is a border band on the
 layout root rather than padding, the split slot is the divider's own fill, and each rounded pane
 fills the four wedges its arc leaves bare inside its own box with a band clipped to that box. Pane
 roots cover the native backdrop inside those bounds. In browser panes the toolbar owns the pane's
@@ -585,7 +577,7 @@ always-live inactive-opacity factor.
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Theme** (`theme-mode` as three drawn window previews, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles) · **Chroma Colors** (`chrome-preset-light` and `chrome-preset-dark` as two sideways-scrolling tile strips, the three `chrome-*` pickers, `chrome-contrast`) · **Tweaks** (`animations`, `widget-corner-radius`, `shadow-strength`, `window-background-blur` as "Window blur", Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Theme** (`theme-mode` as three drawn window previews, `interface-theme` as a sideways-scrolling tile strip with Duplicate and Import) · **Advanced**, collapsed until opened (`UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `chrome-contrast`, `animations`, `widget-corner-radius`, `shadow-strength`, `window-background-blur` as "Window blur", Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-show-session`, `status-badges`, `status-agents`, `status-host`, `status-update`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
@@ -603,9 +595,12 @@ semantic values.
 
 The Theme group is two picker cards rather than rows of buttons, because both choices are about
 appearance: `theme-mode` offers three tiles carrying a drawn 84×56 window mockup . sidebar strip,
-title-bar lights, two lines of body text . painted from the preset selected for that mode (or
-`ThemeColor::for_mode` with no preset), with System showing one window in both palettes (the dark
-copy is drawn full width and clipped to the right half).
+title-bar lights, two lines of body text . painted from the active theme's colors for that mode,
+with System showing one window in both color sets (the dark copy is drawn full width and clipped
+to the right half). The interface theme strip draws each theme as `interface_theme_preview`: the
+same window in the theme's colors for the current mode, a menu drawn the way its look draws one
+(corners, outline, shadow in its shadow color, frosted or plain, accent or wash selection) and a
+primary button in its primary fill and text.
 `app-icon` offers three tiles of the real artwork through `crate::app_icon::icon_preview` . macOS's
 own renders of `assets/zz.icon`, committed as `assets/zz-{light,dark}-512.png` . where Automatic
 renders the variant `cx.window_appearance()` resolves to right now. The preview is Lanczos-filtered
@@ -625,20 +620,12 @@ not enter `zz/config`;
 it follows Zed's per-run UI font-size adjustment and leaves browser page zoom and terminal font size
 under their existing pane-local controls.
 
-The Chroma Colors group's color rows use `zz_ui::color_picker::ColorPicker`: a swatch trigger opening a
-popover with a `#rrggbb` field and a swatch grid. It is *not* a port of upstream's picker (no
-saturation/lightness area, no hue slider), because chrome colors are pasted from a published palette
-or nudged, not explored. Clearing the field writes a key removal, which is how a root returns to
-the selected preset or built-in palette. Above the pickers sit two palette rows, Light and Dark: each
-is a `PickerStrip` (a sideways-scrolling row of the same 84×56 window tiles the Theme card uses,
-`palette_preview`) that bleeds to the row's edges with no scrollbar, a Default tile first, every
-catalog preset of that mode after it. Each strip keeps its own scroll offset and focus handle,
-keyed on its id in window state; clicking a tile focuses the strip, and the left and right arrows
-move the selection for users without horizontal scrolling. A tile's atomic writer stores that
-mode's key and clears explicit roots without changing `theme-mode`.
-`synchronize_geometry_inputs` echoes the resulting file back into the pickers through the silent
-`set_color` setter, so a preset (or a hand-edit of `zz/config`) updates the swatches without
-re-entering the writer.
+The interface theme strip is a `PickerStrip`: a sideways-scrolling row of tiles that bleeds to the
+row's edges, keeps its own scroll offset and focus handle keyed on its id in window state, and
+moves the selection with the left and right arrows once focused. Picking a tile writes
+`interface-theme` through `zz_config::set_interface_theme`, which also drops
+`widget-corner-radius`, `shadow-strength` and every retired appearance key so the theme shows as
+designed.
 
 Terminal reads saved appearance entries into its controls and writes edits back through the
 bounded, comment-preserving `zz/config` writer. Multiplexer mounts the native rope-backed

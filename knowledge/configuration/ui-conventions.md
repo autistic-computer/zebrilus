@@ -27,7 +27,9 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
 
 1. Every application-chrome color comes from a `cx.theme()` root or a `Colorize` derivation of one.
    The palette has six roots (`background`, `foreground`, `accent`, `success`, `warning`,
-   `danger`) plus the fixed per-mode `scrim` in `crates/zz-gpui-kit/src/foundation/theme_color.rs`; panels, hover fills, muted text, and
+   `danger`), the fixed per-mode `scrim`, the `shadow_color` every drop shadow is drawn in and an
+   optional `on_accent` text color, in `crates/zz-gpui-kit/src/foundation/theme_color.rs`; the
+   interface theme sets them per mode. Panels, hover fills, muted text, and
    focus rings are derived at paint time by `Colorize` in
    `crates/zz-gpui-kit/src/foundation/color.rs`. Outside the kit, chrome names what it draws
    instead of mixing it (see [Design system](/designs/design-system.md)): a filled, tinted or
@@ -159,20 +161,26 @@ stored page favicons, with a globe fallback.
 
 Menus, select dropdowns, command palettes, and file/history/tree pickers share
 `StyledExt::popover_style`: an opaque `theme.surface(Elevation::Popover)` fill, the shared half-pixel edge,
-and a soft outer shadow scaled by the shadow-strength setting and `Theme.elevation`. Menus use
+and a soft outer shadow in the theme's `shadow_color`, scaled by the shadow-strength setting and `Theme.elevation`. Menus use
 `Theme.row_inset` gutters (4px by default), 26px rows (20px for Small menus), 12px text, and
 half-pixel separators inset from the surface edge. At a 0 row inset (`Theme::inset_rows` is false)
 the gutters, the gaps between rows, and the separator inset go away, and rows become full-width
 bands; the workspace tree and command palette follow the same rule. `Theme.outline` scales the
 hairline of `control_surface`, tooltips, notifications and dialogs (0 drops it) and
-`Theme.outline_width` sets its width.
+`Theme.outline_width` sets its width. Shadows come in three sizes, all in the theme's shadow
+color: `contact_shadow` is the tight shadow a surface sits on (panes, cards, a popover's edge),
+`control_shadow` is the same shadow at the theme's `control_shadow` share (0 keeps buttons,
+fields and highlighted rows flat while popovers keep theirs; `Theme::control_shadows` says
+whether they draw at all), and `lifted_shadow` is the small shadow under a tooltip, a toast or a
+switch thumb.
 
 The rest of a look reaches widgets through `Theme` helpers, so new widgets should use them rather
 than literals: `dense(px)` for row and control heights (`Size::control_h` and `input_py` take the
 density too), `control_background(color)` for the fill of a field, stepper, slider track or
 default button, `divider_color()` (or `divider` as an alpha factor) for rules between things, and
 `duration(base)` for transitions, timers that wait for one included.
-Picker search fields use the shared Input surface. Command palettes embed a bare shared Input
+Picker search fields draw the soft field paint on the popover ground with no border and no focus
+ring, since they are always focused. Command palettes embed a bare shared Input
 inside their raised container, with inline mode, host, and command Badge pills. They use 8px list
 gutters; the container radius adds that inset to the theme radius. Rows retain the inset menu
 radius, so the configured corner setting reaches both the surface and its contents.
@@ -294,30 +302,32 @@ chrome (borders, labels, hover states, badges, and reset controls) still reads i
 
 # Chrome chroma is independent of the terminal
 
-**Application colors come from zz-ui's own `ThemeColor::light()` / `ThemeColor::dark()` palettes,
-an optional preset per mode (`chrome-preset-light`, `chrome-preset-dark`), and the `chrome-*`
-overrides in `zz/config`, never from the
-terminal.** The mode follows the OS appearance unless `theme-mode` pins one. There is no knob that
-derives chrome from terminal colors, and a Ghostty palette cannot repaint the window.
+**Application colors come from the interface theme (`interface-theme` in `zz/config`): a look and
+its colors for light and for dark, never from the terminal.** The mode follows the OS appearance
+unless `theme-mode` pins one, and only picks which of the theme's color sets applies. There is no
+knob that derives chrome from terminal colors, and a Ghostty palette cannot repaint the window.
 
-`crates/zz-ui/src/chrome_palette.rs` owns the shared preset catalog and palette resolver used by
-the desktop and browser clients. `crates/zz/src/theme.rs` applies desktop configuration. It holds the latest immutable
-`TerminalAppearance` and `AppearanceProvenance` as GPUI globals (used by settings badges and the
-detach action, not to color anything). `apply_zz_overrides` layers these values over the zz-ui base:
+`crates/zz-ui/src/interface_theme.rs` owns `InterfaceTheme`, `Look` and `ThemeColors`, the
+built-in themes compiled from `crates/zz-ui/themes/*.json`, and the theme file parser, shared by
+the desktop, browser and iOS clients and the storybook. `crates/zz/src/theme.rs` applies desktop
+configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
+GPUI globals (used by settings badges and the detach action, not to color anything).
+`apply_zz_overrides` layers these values over the zz-ui base:
 
-- the preset selected for the effective mode, when one is;
-- the three optional `chrome-*` palette roots from `zz/config`, written over the preset so every
-  elevation, hover, and focus ring derived from them at paint time follows the user's roots;
-- every value the `interface-style` decides, as one `zz_ui::interface_style::Look`
-  (a built-in `look(style)` or a saved look from the `looks` folder, then `.apply(theme)`): radius and corner smoothing, shadow strength and elevation, outline
-  strength and width, divider strength, density, row inset, control fill, selection fill, animation
-  speed, the interface font and the glass of floating surfaces; then `theme.radius` from
-  `widget-corner-radius` and `shadow_strength` from `shadow-strength` when those are set, so one
-  radius reaches every widget and survives a light/dark switch;
+- the active theme (`config::themes(cx).active`, a built-in or a saved file from the `themes`
+  folder), applied with `InterfaceTheme::apply`: its colors for the effective mode, then its look
+  (radius and corner smoothing, shadow strength, control shadow and elevation, outline strength
+  and width, divider strength, density, row inset, control fill, selection fill, primary and field
+  emphasis, animation speed, the interface font and the glass of floating surfaces); then
+  `theme.radius` from `widget-corner-radius` and `shadow_strength` from `shadow-strength` when
+  those are set, so one radius reaches every widget and survives a light/dark switch;
 - `font_family` from `ui-font-family` when set, else the look's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
 - `theme.contrast` from `chrome-contrast`, preserved across the same refreshes.
+
+The thin clients keep a built-in theme id in their preferences and apply the same
+`InterfaceTheme` in `Preferences::apply`.
 
 `chrome-contrast` defaults to 1.0 and accepts 0.5–2.0; other values are reported like any numeric
 key. The Appearance page shows 50–200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and
@@ -360,7 +370,7 @@ at any widget radius. Explicit button radius overrides remain in effect; the bro
 controls button opts into Full mode while keeping its existing 12px corner below that threshold.
 
 `MuxClient` refreshes those globals from the initial `ServerHello` and every `AppearanceChanged`
-event. `refresh_current_theme` restores the correct zz-ui base before reapplying the preset and
+event. `refresh_current_theme` restores the correct zz-ui base before reapplying the theme and
 overrides, while `sync_system_appearance` records the actual OS mode separately before doing the
 same after every light/dark refresh. Every application window must route appearance syncs through
 that wrapper. The separate OS-mode global is load-bearing: the installed `Theme::mode` may be a
@@ -370,20 +380,21 @@ Light/Dark pin and cannot be reused as the System preference.
 card is the System / Light / Dark picker, three drawn window previews
 (`config/settings.rs`, `theme_preview`). A pinned mode wins in both `refresh_current_theme` and
 `sync_system_appearance`, so the pin survives an OS light/dark switch; returning to System restores
-the last recorded OS mode. The previews paint each half from the preset selected for that mode.
+the last recorded OS mode. The previews paint each half from the active theme's colors for that mode.
 
 Settings maps each `AppearanceSource` tier to one badge: `Default` → “Default,” `ThemeFile` → “From
 theme,” `Ghostty` → “From Ghostty,” `Override` → “Overridden.” Those badges describe *terminal*
-appearance provenance; chrome colors carry the client-local `Default`/`Overridden` provenance
-instead, with “Preset” shown when an otherwise-unset root inherits from the selected family.
+appearance provenance; the interface theme carries the client-local `Default`/`Overridden`
+provenance instead.
 
-`ThemeColor` holds six palette roots plus the per-mode scrim. Selected menu, list, and picker
-rows use the opaque accent through `selection_highlight`. The accent also marks checked switches,
+`ThemeColor` holds six palette roots, the per-mode scrim, the shadow color and the optional text on
+the accent. Selected menu, list, and picker rows use the look's selection fill through
+`selection_highlight`: the opaque accent with the theme's `on_accent` text, or a wash. The accent also marks checked switches,
 selected tiles, active-pane borders and glow, keyboard focus, the Agent send button, effort pills,
 and palette mode prefixes and running-agent dots. Use the shared component treatment for these
 roles instead of choosing a separate highlight color. `border()` is an opaque Oklab mix
 of 86% background and 14% foreground at the default contrast. Other colors derive through `Colorize` at paint time, so
-overriding a root needs no parallel token table kept in step. Views read
+a theme names its roots and needs no parallel token table kept in step. Views read
 `cx.theme()` and never receive a copied palette or local color literals.
 The app shell paints one continuous chrome background beneath the pane layout. On Linux with
 client-side decorations, `RoundedWindowFrame` paints that background through the outer frame and
