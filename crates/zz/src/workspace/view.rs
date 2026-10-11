@@ -54,7 +54,7 @@ use zz_ui::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneChrome, PaneDrag, PaneDragOverlayState,
         PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
         TERMINAL_HEADER_HEIGHT, TerminalPaneAction, pane_border_color, pane_drag_button,
-        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_indicator_card,
+        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_indicator,
         pane_indicator_overlay, pane_overlay_stack, pane_split_hit_target, pane_split_slot,
         pane_split_surface, pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
         terminal_pane_header,
@@ -97,7 +97,7 @@ use crate::{
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
     pane::picker::PanePickerView,
-    terminal::view::{TERMINAL_FONT, TerminalView},
+    terminal::view::TerminalView,
     window::corners::WindowCorners,
 };
 use zz_ui::Colorize as _;
@@ -3332,8 +3332,12 @@ impl AppView {
                             .into_any_element(),
                     );
                 }
-                if let Some(indicator) = self.pane_indicators.get(pane) {
-                    overlays.push(self.pane_indicator(indicator, cx).into_any_element());
+                if let Some(indicator) = self
+                    .pane_indicators
+                    .get(pane)
+                    .and_then(|indicator| self.pane_indicator(indicator, cx))
+                {
+                    overlays.push(indicator.into_any_element());
                 }
                 let drag_state = match drag_layer {
                     PaneDragLayer::Idle => None,
@@ -3528,62 +3532,24 @@ impl AppView {
         }
     }
 
-    fn pane_indicator_label(indicator: &PaneIndicator, cx: &Context<Self>) -> Option<AnyElement> {
-        if indicator.label.is_empty() {
-            return None;
-        }
-        let [left, centre, right] = zz_ui::tmux_style::split_tmux_alignment(&indicator.label);
-        let foreground = cx.theme().foreground;
-        let background = crate::theme::chrome_background(cx);
-        let bucket = |segments: &[zz_protocol::StyledSegment]| {
-            crate::theme::tmux_styled_segments_text(segments, foreground, background, cx)
-                .into_styled_text()
-                .into_any_element()
-        };
-        Some(
-            div()
-                .absolute()
-                .top(px(8.0))
-                .left(px(8.0))
-                .right(px(8.0))
-                .overflow_hidden()
-                .flex()
-                .justify_between()
-                .font_family(TERMINAL_FONT)
-                .text_xs()
-                .text_color(foreground)
-                .child(bucket(&left))
-                .child(bucket(&centre))
-                .child(bucket(&right))
-                .into_any_element(),
-        )
-    }
-
-    fn pane_indicator(&self, indicator: &PaneIndicator, cx: &Context<Self>) -> impl IntoElement {
-        let active = indicator.active();
-        let key = indicator
-            .selection_key()
-            .and_then(|key| Keystroke::parse(&key.to_string()).ok());
+    fn pane_indicator(
+        &self,
+        indicator: &PaneIndicator,
+        cx: &Context<Self>,
+    ) -> Option<zz_gpui::Div> {
+        let state = self.mux.read(cx).display_panes()?;
         let mux = self.mux.clone();
         let pane = indicator.pane;
-        let card = pane_indicator_card(
-            ("pane-indicator", pane.0),
-            indicator.index.to_string(),
-            key,
-            active,
-            TERMINAL_FONT,
-            cx,
-        )
-        .debug_selector(move || format!("pane-indicator-{}", pane.0))
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_mouse_up(MouseButton::Left, move |_, _, cx| {
-            mux.read(cx)
-                .send_input(zz_protocol::InputMessage::DisplayPanes {
-                    action: DisplayPanesAction::Select(pane),
-                });
-            cx.stop_propagation();
-        });
-        pane_indicator_overlay(card).children(Self::pane_indicator_label(indicator, cx))
+        let chip = pane_indicator(("pane-indicator", pane.0), state, indicator, cx)
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_up(MouseButton::Left, move |_, _, cx| {
+                mux.read(cx)
+                    .send_input(zz_protocol::InputMessage::DisplayPanes {
+                        action: DisplayPanesAction::Select(pane),
+                    });
+                cx.stop_propagation();
+            });
+        Some(pane_indicator_overlay(chip))
     }
 
     fn float_cell_size(&self, window: &Window, cx: &App) -> Size<Pixels> {
@@ -3750,7 +3716,7 @@ impl AppView {
                 .children(
                     self.pane_indicators
                         .get(&pane)
-                        .map(|indicator| self.pane_indicator(indicator, cx)),
+                        .and_then(|indicator| self.pane_indicator(indicator, cx)),
                 )
                 .into_any_element(),
         )

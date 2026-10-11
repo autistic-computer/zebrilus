@@ -141,7 +141,7 @@ fn tmux_highlight_style(
     }
 }
 
-fn resolve_tmux_colour(colour: TmuxColour, cx: &App) -> Option<Hsla> {
+pub fn resolve_tmux_colour(colour: TmuxColour, cx: &App) -> Option<Hsla> {
     match colour {
         TmuxColour::Basic(index) | TmuxColour::Indexed(index) => {
             Some(packed_tmux_colour(indexed_colour_rgb(index)))

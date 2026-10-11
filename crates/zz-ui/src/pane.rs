@@ -784,74 +784,109 @@ pub fn pane_overlay_stack(
     .children(tags)
 }
 
-/// The pane-selection card for tmux `display-panes`: the pane index over the
-/// key that picks it, or "click" when it has none. The active pane is danger
-/// soft, the rest neutral soft, both opaque over the pane.
-pub fn pane_indicator_card(
+const DISPLAY_PANES_COLOUR: zz_protocol::TmuxColour = zz_protocol::TmuxColour::Theme(7);
+const DISPLAY_PANES_ACTIVE_COLOUR: zz_protocol::TmuxColour = zz_protocol::TmuxColour::Theme(6);
+
+/// The pane-selection chip for tmux `display-panes`: the key that picks the
+/// pane, or its index in muted ink when it has none, beside the
+/// `display-panes-format` caption, on the popover surface. The active pane is
+/// ringed in the accent. `display-panes-colour` and
+/// `display-panes-active-colour` take over the glyph and ring only when set
+/// away from their defaults.
+pub fn pane_indicator(
     id: impl Into<ElementId>,
-    index: impl Into<SharedString>,
-    key: Option<zz_gpui::Keystroke>,
-    active: bool,
-    font_family: impl Into<SharedString>,
+    state: &zz_protocol::DisplayPanesState,
+    indicator: &zz_protocol::PaneIndicator,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let paint = cx
-        .theme()
-        .paint(
-            if active { Tone::Danger } else { Tone::Neutral },
-            Emphasis::Soft,
-        )
-        .opaque();
-    let ground = paint.ground_at(PaintState::Rest);
-    let key = match key {
-        Some(key) => crate::kbd::Kbd::new(key).on(ground).into_any_element(),
-        None => div()
-            .text_xs()
-            .text_color(paint.muted_at(PaintState::Rest))
-            .child("click")
-            .into_any_element(),
+    let theme = cx.theme();
+    let active = indicator.active();
+    let ink = theme.paint_on(
+        theme.surface(Elevation::Popover).opaque(),
+        Tone::Neutral,
+        Emphasis::Ghost,
+    );
+    let muted = ink.muted_at(PaintState::Rest);
+    let (option, default) = if active {
+        (state.active_colour, DISPLAY_PANES_ACTIVE_COLOUR)
+    } else {
+        (state.colour, DISPLAY_PANES_COLOUR)
     };
+    let option = option
+        .filter(|colour| *colour != default)
+        .and_then(|colour| crate::tmux_style::resolve_tmux_colour(colour, cx));
+    let ring = active.then(|| option.unwrap_or(theme.accent));
+    let key = indicator.selection_key();
+    let glyph_ink = ring
+        .or(option)
+        .unwrap_or(if key.is_some() { ink.text } else { muted });
+    let glyph = key.map_or_else(|| indicator.index.to_string(), String::from);
+    let index = key
+        .is_some_and(|key| key.is_ascii_alphabetic())
+        .then(|| indicator.index.to_string().into_any_element());
+    let caption: Vec<AnyElement> = index
+        .into_iter()
+        .chain(
+            crate::tmux_style::split_tmux_alignment(&indicator.label)
+                .into_iter()
+                .filter(|segments| !segments.is_empty())
+                .map(|segments| {
+                    crate::tmux_style::tmux_styled_segments_text(
+                        &segments,
+                        muted,
+                        ink.ground.fill,
+                        cx,
+                    )
+                    .into_styled_text()
+                    .into_any_element()
+                }),
+        )
+        .collect();
+    let pane = indicator.pane;
+    let accent = theme.accent;
 
     div()
         .id(id)
-        .min_w(px(40.0))
-        .px(px(8.0))
-        .py(px(6.0))
+        .debug_selector(move || format!("pane-indicator-{}", pane.0))
         .flex()
-        .flex_col()
+        .flex_none()
         .items_center()
         .justify_center()
-        .gap(px(4.0))
-        .rounded(cx.theme().radius)
-        .bg(paint.fill)
-        .shadow(vec![
-            BoxShadow {
-                color: cx.theme().border(),
-                offset: point(px(0.0), px(0.0)),
-                blur_radius: px(0.0),
-                spread_radius: px(1.0),
-                inset: false,
-            },
-            BoxShadow {
-                color: cx.theme().shadow_color,
-                offset: point(px(0.0), px(6.0)),
-                blur_radius: px(16.0),
-                spread_radius: px(0.0),
-                inset: false,
-            },
-        ])
-        .cursor(zz_gpui::CursorStyle::PointingHand)
-        .hover(move |style| style.bg(paint.hover))
+        .gap(px(8.0))
+        .h(px(40.0))
+        .min_w(px(40.0))
+        .when(!caption.is_empty(), |chip| chip.pl(px(14.0)).pr(px(16.0)))
+        .popover_style(cx)
+        .rounded(theme.control_radius())
+        .when_some(ring, |chip, ring| chip.border(px(2.0)).border_color(ring))
+        .when(ring.is_none(), |chip| {
+            chip.hover(move |style| style.border_color(accent))
+        })
+        .cursor(CursorStyle::PointingHand)
+        .font_family(theme.font_family.clone())
         .child(
             div()
-                .font_family(font_family.into())
-                .font_weight(FontWeight::BOLD)
-                .text_size(crate::rems_from_px(18.0))
-                .line_height(crate::rems_from_px(20.0))
-                .text_color(paint.text)
-                .child(index.into()),
+                .text_size(crate::rems_from_px(20.0))
+                .line_height(crate::rems_from_px(24.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(glyph_ink)
+                .child(glyph),
         )
-        .child(key)
+        .when(!caption.is_empty(), |chip| {
+            chip.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .max_w(px(240.0))
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_size(crate::rems_from_px(12.0))
+                    .line_height(px(16.0))
+                    .text_color(muted)
+                    .children(caption),
+            )
+        })
 }
 
 pub fn pane_unzoom_control() -> Button {

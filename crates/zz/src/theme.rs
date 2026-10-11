@@ -8,8 +8,6 @@ use zz_ui::{Theme, ThemeMode};
 
 use crate::config;
 
-pub(crate) use zz_ui::tmux_style::tmux_styled_segments_text;
-
 pub use zz_ui::interface_theme::ThemeModeSetting;
 
 #[derive(Clone, Copy)]
