@@ -48,7 +48,7 @@ const SETTINGS_PREVIEW_RASTER_SIZE: u32 = 96;
 
 const ABOUT_LOGO_RASTER_SIZE: u32 = 176;
 
-pub use zz_client::chrome_palette::AppIconSetting;
+pub use zz_client::appearance::AppIconSetting;
 
 pub(crate) fn variant(setting: AppIconSetting, appearance: WindowAppearance) -> ThemeMode {
     match setting {

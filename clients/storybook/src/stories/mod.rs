@@ -6,12 +6,12 @@ mod agent;
 mod console;
 mod foundation;
 mod kit;
-mod style_creator;
+mod theme_creator;
 mod workspace;
 
 pub static STORIES: LazyLock<Vec<&'static Story>> = LazyLock::new(|| {
     [
-        &[style_creator::STORY][..],
+        &[theme_creator::STORY][..],
         foundation::STORIES,
         agent::STORIES,
         workspace::STORIES,
@@ -28,8 +28,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_style_creator_comes_first() {
-        assert_eq!(STORIES[0].id, style_creator::ID);
+    fn the_theme_creator_comes_first() {
+        assert_eq!(STORIES[0].id, theme_creator::ID);
     }
 
     #[test]

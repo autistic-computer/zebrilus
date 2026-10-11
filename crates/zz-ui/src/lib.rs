@@ -2,7 +2,6 @@
 //! settings, and navigation, shared by the desktop app and the thin clients.
 //! It re-exports the kit, so zz code imports UI from one place.
 
-pub mod chrome_palette;
 pub mod tmux_style;
 
 pub use zz_gpui_kit::{
@@ -34,7 +33,7 @@ pub mod chooser;
 pub mod command;
 pub mod compact;
 pub mod feedback;
-pub mod interface_style;
+pub mod interface_theme;
 pub mod mend;
 pub mod navigation;
 pub mod pane;

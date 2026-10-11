@@ -2,8 +2,8 @@ use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, IntoElement, Keystroke,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
-use zz_ui::{Elevation, 
-    ActiveTheme as _, Colorize as _, Emphasis, IconName, IndexPath, Sizable as _, Tone,
+use zz_ui::{
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Sizable as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     command::{
@@ -34,13 +34,13 @@ use super::{
 };
 use crate::story::{Section, Story};
 
-pub const ID: &str = "style-creator";
+pub const ID: &str = "theme-creator";
 
 pub const STORY: Story = Story {
     id: ID,
-    name: "Style creator",
+    name: "Theme creator",
     group: "Foundation",
-    summary: "Everything a style touches on one canvas. Tune the knobs, then copy the look as JSON.",
+    summary: "Everything a theme touches on one canvas. Tune the knobs, then copy the theme as JSON.",
     sections: &[Section {
         id: "canvas",
         name: "Canvas",

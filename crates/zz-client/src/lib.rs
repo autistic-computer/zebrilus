@@ -55,5 +55,5 @@ pub use status_bar::{
     StatusBarAgent, StatusBarModel, StatusBarPane, StatusBarSettings, StatusBarWindow,
 };
 
-pub mod chrome_palette;
+pub mod appearance;
 pub mod url_input;

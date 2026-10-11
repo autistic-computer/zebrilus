@@ -39,22 +39,20 @@ pub fn page_row(element: AnyElement, ends_run: bool) -> AnyElement {
 }
 
 #[derive(Clone, Copy)]
-pub enum AppearancePageItem<C> {
+pub enum AppearancePageItem {
     Description,
     Group {
         title: &'static str,
         description: Option<&'static str>,
     },
     ThemeMode,
-    InterfaceStyle,
+    InterfaceTheme,
     Advanced {
         expanded: bool,
     },
     UiFontFamily,
     UiZoom,
     AppIcon,
-    Preset(ThemeMode),
-    ChromeColor(C),
     ChromeContrast,
     Animations,
     WidgetCornerRadius,
@@ -66,7 +64,7 @@ pub enum AppearancePageItem<C> {
     UseSystemTitlebar,
 }
 
-impl<C: Copy> AppearancePageItem<C> {
+impl AppearancePageItem {
     pub const fn is_entry(self) -> bool {
         !matches!(
             self,
@@ -75,14 +73,13 @@ impl<C: Copy> AppearancePageItem<C> {
     }
 }
 
-/// The Interface page: theme, style and palettes up front, every other knob
+/// The Interface page: the mode and the theme up front, every other knob
 /// behind the Advanced heading, listed only while `advanced` is expanded.
-pub fn appearance_page_items<C>(
-    colors: impl IntoIterator<Item = C>,
+pub fn appearance_page_items(
     macos: bool,
     has_window_blur: bool,
     advanced: bool,
-) -> Vec<AppearancePageItem<C>> {
+) -> Vec<AppearancePageItem> {
     let mut items = vec![
         AppearancePageItem::Description,
         AppearancePageItem::Group {
@@ -90,15 +87,7 @@ pub fn appearance_page_items<C>(
             description: None,
         },
         AppearancePageItem::ThemeMode,
-        AppearancePageItem::InterfaceStyle,
-        AppearancePageItem::Group {
-            title: "Chroma Colors",
-            description: Some(
-                "Pick a palette for each appearance, or set the base colors under Advanced.",
-            ),
-        },
-        AppearancePageItem::Preset(ThemeMode::Light),
-        AppearancePageItem::Preset(ThemeMode::Dark),
+        AppearancePageItem::InterfaceTheme,
         AppearancePageItem::Advanced { expanded: advanced },
     ];
     if !advanced {
@@ -108,7 +97,6 @@ pub fn appearance_page_items<C>(
     if macos {
         items.push(AppearancePageItem::AppIcon);
     }
-    items.extend(colors.into_iter().map(AppearancePageItem::ChromeColor));
     items.extend([
         AppearancePageItem::ChromeContrast,
         AppearancePageItem::Animations,
@@ -126,9 +114,9 @@ pub fn appearance_page_items<C>(
     items
 }
 
-pub fn appearance_page<C: Copy + 'static>(
-    items: Vec<AppearancePageItem<C>>,
-    mut render: impl FnMut(AppearancePageItem<C>, StackPosition, &mut Window, &mut App) -> AnyElement
+pub fn appearance_page(
+    items: Vec<AppearancePageItem>,
+    mut render: impl FnMut(AppearancePageItem, StackPosition, &mut Window, &mut App) -> AnyElement
     + 'static,
 ) -> super::SettingsVirtualColumn {
     super::settings_virtual_column(
@@ -434,22 +422,28 @@ pub fn theme_preview(
     }
 }
 
-/// A small menu drawn the way `look` draws one, for the style tiles.
+/// A window with a menu over it, drawn in `theme`'s colors for `mode` and
+/// the way its look draws a menu, for the theme tiles.
 #[allow(
     clippy::disallowed_methods,
-    reason = "previews draw another look's surfaces, not the live one's"
+    reason = "previews draw another theme's colors and surfaces, not the live one's"
 )]
-pub fn interface_style_preview(look: &crate::interface_style::Look, cx: &App) -> zz_gpui::Div {
-    let theme = cx.theme();
+pub fn interface_theme_preview(
+    theme: &crate::interface_theme::InterfaceTheme,
+    mode: ThemeMode,
+    _: &App,
+) -> zz_gpui::Div {
+    let colors = theme.colors(mode);
+    let look = &theme.look;
     let surface_radius = (look.radius / 3.0).min(10.0);
     let row_radius = surface_radius / 2.0;
     let inset = look.row_inset.min(3.0);
     let frosted = look.glass.is_some_and(|glass| glass.blur > px(0.0));
-    let selection = match look.selection {
-        crate::SelectionStyle::Accent => theme.accent.opaque(),
-        crate::SelectionStyle::Wash => theme.background.washed(3),
+    let (selection, selected_text) = match look.selection {
+        crate::SelectionStyle::Accent => (colors.accent.opaque(), accent_ink(&colors)),
+        crate::SelectionStyle::Wash => (colors.background.washed(3), colors.foreground),
     };
-    let text = theme.foreground.muted();
+    let text = colors.foreground.muted();
     let row = |width: f32, selected: bool| {
         div()
             .h(px(10.0))
@@ -458,12 +452,17 @@ pub fn interface_style_preview(look: &crate::interface_style::Look, cx: &App) ->
             .px(px(5.0))
             .rounded(px(row_radius))
             .when(selected, |row| row.bg(selection))
-            .child(div().w(px(width)).h(px(3.0)).rounded_full().bg(text))
+            .child(
+                div()
+                    .w(px(width))
+                    .h(px(3.0))
+                    .rounded_full()
+                    .bg(if selected { selected_text } else { text }),
+            )
     };
-    let surface = theme.background.raised(2).opaque();
+    let surface = colors.background.raised(2).opaque();
     let menu = div()
-        .relative()
-        .w(px(52.0))
+        .w(px(44.0))
         .flex()
         .flex_col()
         .py(px(3.0))
@@ -477,35 +476,84 @@ pub fn interface_style_preview(look: &crate::interface_style::Look, cx: &App) ->
         })
         .when(look.outline > 0.0 && look.outline_width > 0.0, |menu| {
             menu.border(px(0.5))
-                .border_color(theme.foreground.opacity(0.15 * look.outline.min(1.0)))
+                .border_color(colors.foreground.opacity(0.15 * look.outline.min(1.0)))
         })
-        .when(look.shadow > 0.0, zz_gpui::Styled::shadow_md)
-        .children([row(30.0, false), row(22.0, true), row(26.0, false)]);
-    div()
-        .relative()
-        .w(px(THEME_PREVIEW_WIDTH))
-        .h(px(THEME_PREVIEW_HEIGHT))
-        .rounded(theme.radius)
-        .overflow_hidden()
-        .bg(theme.background)
+        .when(look.shadow > 0.0, |menu| {
+            menu.shadow(vec![zz_gpui::BoxShadow {
+                color: colors.shadow_color.opacity(look.shadow),
+                offset: zz_gpui::point(px(0.0), px(3.0)),
+                blur_radius: px(8.0),
+                spread_radius: px(-1.0),
+                inset: false,
+            }])
+        })
+        .children([row(24.0, false), row(18.0, true), row(21.0, false)]);
+    let (primary, primary_text) = match look.primary {
+        crate::PrimaryStyle::Accent => (colors.accent, accent_ink(&colors)),
+        crate::PrimaryStyle::Foreground => (colors.foreground, colors.background),
+    };
+    let button = div()
+        .w(px(20.0))
+        .h(px(8.0))
         .flex()
         .items_center()
         .justify_center()
-        .when(frosted, |preview| {
-            preview.child(
-                div()
-                    .absolute()
-                    .top(px(8.0))
-                    .left(px(46.0))
-                    .size(px(22.0))
-                    .rounded_full()
-                    .bg(theme.accent),
-            )
-        })
-        .child(menu)
+        .rounded(px(row_radius.max(2.0)))
+        .bg(primary)
+        .child(div().w(px(10.0)).h(px(2.0)).rounded_full().bg(primary_text));
+    div()
+        .w(px(THEME_PREVIEW_WIDTH))
+        .h(px(THEME_PREVIEW_HEIGHT))
+        .flex()
+        .overflow_hidden()
+        .rounded(px(surface_radius.max(4.0)))
+        .bg(theme_preview_split_background(
+            colors.background.raised(2),
+            colors.background,
+            THEME_PREVIEW_SIDEBAR_WIDTH / THEME_PREVIEW_WIDTH,
+        ))
+        .child(
+            div()
+                .w(px(THEME_PREVIEW_SIDEBAR_WIDTH))
+                .flex_none()
+                .border_r_1()
+                .border_color(colors.border()),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .gap(px(4.0))
+                .p(px(6.0))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div().flex().items_center().gap(px(3.0)).children(
+                                [colors.danger, colors.warning, colors.success]
+                                    .map(|light| div().size(px(4.0)).rounded_full().bg(light)),
+                            ),
+                        )
+                        .child(button),
+                )
+                .child(menu),
+        )
 }
 
-/// The window mockup the theme and palette tiles share, painted from `colors`.
+/// Text on `colors`' accent, as a solid primary button letters it.
+fn accent_ink(colors: &ThemeColor) -> zz_gpui::Hsla {
+    let mut theme = crate::Theme::from(colors);
+    theme.primary = crate::PrimaryStyle::Accent;
+    theme
+        .paint(crate::Tone::Primary, crate::Emphasis::Solid)
+        .text
+}
+
+/// The window mockup the mode and theme tiles share, painted from `colors`.
 #[allow(
     clippy::disallowed_methods,
     reason = "previews draw another palette's colors, not the live one's"

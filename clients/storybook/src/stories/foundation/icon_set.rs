@@ -2,8 +2,8 @@ use zz_gpui::{
     AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_ui::{Elevation, 
-    ActiveTheme as _, Colorize as _, Icon, Sizable as _, Size,
+use zz_ui::{
+    ActiveTheme as _, Colorize as _, Elevation, Icon, Sizable as _, Size,
     button::{Button, ButtonVariants as _},
     h_flex,
     icon::glyphs,

@@ -422,6 +422,29 @@ form fieldset[hidden] {
     accent-color: var(--zz-foreground);
 }
 
+.row.color {
+    cursor: pointer;
+}
+
+.row.color input[type="color"] {
+    width: 28px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--zz-border);
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.row.color input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.row.color input[type="color"]::-webkit-color-swatch {
+    border: 0;
+    border-radius: 5px;
+}
+
 .segmented {
     display: grid;
     grid-auto-columns: 1fr;

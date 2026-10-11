@@ -8,8 +8,8 @@ use std::{
     time::SystemTime,
 };
 use zz_client::StatusBarSettings;
-use zz_client::chrome_palette::{
-    AppIconSetting, ChromeColor, ChromePresetId, InterfaceStyle, ThemeModeSetting,
+use zz_client::appearance::{
+    AppIconSetting, BUILTIN_THEMES, DEFAULT_THEME, ThemeModeSetting, is_builtin_theme,
 };
 use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{HostEntry, RejectedHost, configured_fleet_hosts, validate_fleet_host};
@@ -22,8 +22,8 @@ pub mod agent_preferences;
 pub mod file_options;
 pub mod import;
 pub mod keymap;
-pub mod looks;
 pub mod mux_bindings;
+pub mod themes;
 #[cfg(feature = "update")]
 pub mod update;
 
@@ -49,8 +49,10 @@ pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
 pub const DEFAULT_PANE_CORNER_RADIUS: f32 = DEFAULT_WINDOW_CORNER_RADIUS;
 pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
 pub const DEFAULT_PANE_BORDER_WIDTH: f32 = 0.5;
-pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = InterfaceStyle::DEFAULT.widget_corner_radius();
-pub const DEFAULT_SHADOW_STRENGTH: f32 = InterfaceStyle::DEFAULT.shadow_strength();
+/// The default theme's radius and shadow strength, until the client reads the
+/// active theme and calls [`AppConfig::apply_look_defaults`].
+pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 24.0;
+pub const DEFAULT_SHADOW_STRENGTH: f32 = 1.0;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
 pub const DEFAULT_USE_SYSTEM_TITLEBAR: bool = false;
 pub const DEFAULT_WINDOW_BACKGROUND_BLUR: bool = false;
@@ -146,11 +148,9 @@ pub enum ConfigKey {
     BrowserSearchProvider,
     BrowserEgress,
     ThemeMode,
-    InterfaceStyle,
+    InterfaceTheme,
     UiFontFamily,
     AppIcon,
-    ChromePreset { dark: bool },
-    Chrome(ChromeColor),
 }
 
 impl ConfigKey {
@@ -196,12 +196,9 @@ impl ConfigKey {
             Self::BrowserSearchProvider => "browser-search-provider",
             Self::BrowserEgress => "browser-egress",
             Self::ThemeMode => "theme-mode",
-            Self::InterfaceStyle => "interface-style",
+            Self::InterfaceTheme => "interface-theme",
             Self::UiFontFamily => "ui-font-family",
             Self::AppIcon => "app-icon",
-            Self::ChromePreset { dark: false } => "chrome-preset-light",
-            Self::ChromePreset { dark: true } => "chrome-preset-dark",
-            Self::Chrome(color) => color.as_str(),
         }
     }
 
@@ -247,12 +244,10 @@ impl ConfigKey {
             "browser-search-provider" => Some(Self::BrowserSearchProvider),
             "browser-egress" => Some(Self::BrowserEgress),
             "theme-mode" => Some(Self::ThemeMode),
-            "interface-style" => Some(Self::InterfaceStyle),
+            "interface-theme" => Some(Self::InterfaceTheme),
             "ui-font-family" => Some(Self::UiFontFamily),
             "app-icon" => Some(Self::AppIcon),
-            "chrome-preset-light" => Some(Self::ChromePreset { dark: false }),
-            "chrome-preset-dark" => Some(Self::ChromePreset { dark: true }),
-            _ => ChromeColor::parse(key).map(Self::Chrome),
+            _ => None,
         }
     }
 
@@ -301,11 +296,9 @@ impl ConfigKey {
             | Self::BrowserSearchProvider
             | Self::BrowserEgress
             | Self::ThemeMode
-            | Self::InterfaceStyle
+            | Self::InterfaceTheme
             | Self::UiFontFamily
-            | Self::AppIcon
-            | Self::ChromePreset { .. }
-            | Self::Chrome(_) => None,
+            | Self::AppIcon => None,
         }
     }
 }
@@ -458,13 +451,10 @@ pub struct AppConfig {
     pub editor_vim_mode: ConfigValue<bool>,
     pub browser_egress: ConfigValue<bool>,
     pub theme_mode: ConfigValue<ThemeModeSetting>,
-    pub interface_style: ConfigValue<InterfaceStyle>,
+    /// The built-in theme `interface-theme` names, or the default when it
+    /// names a saved one; see [`ParsedConfig::theme`].
+    pub interface_theme: ConfigValue<&'static str>,
     pub app_icon: ConfigValue<AppIconSetting>,
-    pub chrome_preset_light: ConfigValue<Option<ChromePresetId>>,
-    pub chrome_preset_dark: ConfigValue<Option<ChromePresetId>>,
-    /// Chrome palette overrides, in [`ChromeColor::ALL`] order. `None` inherits
-    /// the active preset or the built-in palette.
-    pub chrome_colors: [ConfigValue<Option<[f32; 4]>>; ChromeColor::ALL.len()],
 }
 
 impl Default for AppConfig {
@@ -510,24 +500,13 @@ impl Default for AppConfig {
             editor_vim_mode: ConfigValue::from_default(DEFAULT_EDITOR_VIM_MODE),
             browser_egress: ConfigValue::from_default(DEFAULT_BROWSER_EGRESS),
             theme_mode: ConfigValue::from_default(ThemeModeSetting::System),
-            interface_style: ConfigValue::from_default(InterfaceStyle::DEFAULT),
+            interface_theme: ConfigValue::from_default(DEFAULT_THEME),
             app_icon: ConfigValue::from_default(AppIconSetting::Automatic),
-            chrome_preset_light: ConfigValue::from_default(None),
-            chrome_preset_dark: ConfigValue::from_default(None),
-            chrome_colors: [ConfigValue::from_default(None); ChromeColor::ALL.len()],
         }
     }
 }
 
 impl AppConfig {
-    pub fn chrome_preset(&self, dark: bool) -> ConfigValue<Option<ChromePresetId>> {
-        if dark {
-            self.chrome_preset_dark
-        } else {
-            self.chrome_preset_light
-        }
-    }
-
     pub fn apply_look_defaults(&mut self, radius: f32, shadow: f32) {
         if self.widget_corner_radius.provenance == ConfigProvenance::Default {
             self.widget_corner_radius.value = radius;
@@ -579,25 +558,11 @@ impl AppConfig {
             | ConfigKey::BrowserRemoteDebuggingPort
             | ConfigKey::BrowserSearchProvider
             | ConfigKey::ThemeMode
-            | ConfigKey::InterfaceStyle
+            | ConfigKey::InterfaceTheme
             | ConfigKey::UiFontFamily
-            | ConfigKey::AppIcon
-            | ConfigKey::ChromePreset { .. }
-            | ConfigKey::Chrome(_) => None,
+            | ConfigKey::AppIcon => None,
         }
     }
-
-    /// This root's override, if the user set one.
-    pub fn chrome(&self, color: ChromeColor) -> ConfigValue<Option<[f32; 4]>> {
-        self.chrome_colors[chrome_index(color)]
-    }
-}
-
-pub fn chrome_index(color: ChromeColor) -> usize {
-    ChromeColor::ALL
-        .iter()
-        .position(|candidate| *candidate == color)
-        .expect("ChromeColor::ALL contains every variant")
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -611,7 +576,8 @@ pub struct ParsedConfig {
     pub config: AppConfig,
     pub browser: BrowserConfig,
     pub ui_font: UiFontConfig,
-    pub look: Option<String>,
+    /// The saved theme `interface-theme` names, when it names one.
+    pub theme: Option<String>,
     pub agent: AgentConfig,
     pub hosts: Vec<HostEntry>,
     pub rejected_hosts: Vec<RejectedHost>,
@@ -647,7 +613,7 @@ pub struct ConfigFileStamp {
     pub path: Option<PathBuf>,
     pub modified: Option<SystemTime>,
     pub len: Option<u64>,
-    pub looks: looks::LooksStamp,
+    pub themes: themes::ThemesStamp,
 }
 
 impl ConfigFileStamp {
@@ -661,7 +627,7 @@ impl ConfigFileStamp {
                 .as_ref()
                 .and_then(|metadata| metadata.modified().ok()),
             len: metadata.as_ref().map(fs::Metadata::len),
-            looks: looks::looks_stamp(&looks::looks_directory_for(&path)),
+            themes: themes::themes_stamp(&themes::themes_directory_for(&path)),
             path: Some(path),
         }
     }
@@ -926,19 +892,11 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == "chrome-preset" {
-            parsed.diagnostics.push(ConfigDiagnostic {
-                line: line_number,
-                message: "`chrome-preset` was split into `chrome-preset-light` and `chrome-preset-dark`; preset ids are per mode now, pick them in Settings > Appearance".to_owned(),
-            });
-            continue;
-        }
-
-        if matches!(key, "chrome-success" | "chrome-warning" | "chrome-danger") {
+        if RETIRED_APPEARANCE_KEYS.contains(&key) {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
                 message: format!(
-                    "`{key}` is no longer a setting; status colors follow the palette"
+                    "`{key}` was removed: a theme now bundles the look with its colors; pick one in Settings > Interface or set `interface-theme`"
                 ),
             });
             continue;
@@ -1076,21 +1034,24 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == ConfigKey::InterfaceStyle {
-            parsed.config.interface_style.provenance = ConfigProvenance::Override;
+        if key == ConfigKey::InterfaceTheme {
+            parsed.config.interface_theme.provenance = ConfigProvenance::Override;
             let name = value.trim();
-            match InterfaceStyle::parse(name) {
-                Some(style) => {
-                    parsed.config.interface_style.value = style;
-                    parsed.look = None;
+            match BUILTIN_THEMES.iter().find(|builtin| **builtin == name) {
+                Some(builtin) => {
+                    parsed.config.interface_theme.value = builtin;
+                    parsed.theme = None;
                 }
-                None if looks::is_look_name(name) => {
-                    parsed.config.interface_style.value = InterfaceStyle::DEFAULT;
-                    parsed.look = Some(name.to_owned());
+                None if themes::is_theme_name(name) => {
+                    parsed.config.interface_theme.value = DEFAULT_THEME;
+                    parsed.theme = Some(name.to_owned());
                 }
                 None => parsed.diagnostics.push(ConfigDiagnostic {
                     line: line_number,
-                    message: "invalid `interface-style`: expected flat, modern, full or the name of a saved look".to_owned(),
+                    message: format!(
+                        "invalid `interface-theme`: expected {} or the name of a saved theme",
+                        BUILTIN_THEMES.join(", ")
+                    ),
                 }),
             }
             continue;
@@ -1102,11 +1063,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         }
         if matches!(
             key,
-            ConfigKey::ThemeMode
-                | ConfigKey::InterfaceStyle
-                | ConfigKey::AppIcon
-                | ConfigKey::ChromePreset { .. }
-                | ConfigKey::Chrome(_)
+            ConfigKey::ThemeMode | ConfigKey::InterfaceTheme | ConfigKey::AppIcon
         ) {
             continue;
         }
@@ -1152,11 +1109,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::StatusHost
             | ConfigKey::StatusUpdate
             | ConfigKey::ThemeMode
-            | ConfigKey::InterfaceStyle
+            | ConfigKey::InterfaceTheme
             | ConfigKey::UiFontFamily
-            | ConfigKey::AppIcon
-            | ConfigKey::ChromePreset { .. }
-            | ConfigKey::Chrome(_) => {
+            | ConfigKey::AppIcon => {
                 unreachable!("handled above")
             }
         };
@@ -1174,10 +1129,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         }
     }
 
-    let style = parsed.config.interface_style.value;
-    parsed
-        .config
-        .apply_look_defaults(style.widget_corner_radius(), style.shadow_strength());
     parsed
 }
 
@@ -1245,17 +1196,6 @@ pub fn apply_theme_key(
     line_number: usize,
 ) -> Option<ConfigDiagnostic> {
     let message = match key {
-        ConfigKey::Chrome(color) => {
-            let target = &mut config.chrome_colors[chrome_index(color)];
-            target.provenance = ConfigProvenance::Override;
-            match zz_client::chrome_palette::parse_hex(value) {
-                Ok(parsed) => {
-                    target.value = Some(parsed);
-                    return None;
-                }
-                Err(message) => message,
-            }
-        }
         ConfigKey::ThemeMode => {
             config.theme_mode.provenance = ConfigProvenance::Override;
             match ThemeModeSetting::parse(value) {
@@ -1274,30 +1214,6 @@ pub fn apply_theme_key(
                     return None;
                 }
                 None => "expected automatic, light or dark".to_owned(),
-            }
-        }
-        ConfigKey::ChromePreset { dark } => {
-            let target = if dark {
-                &mut config.chrome_preset_dark
-            } else {
-                &mut config.chrome_preset_light
-            };
-            target.provenance = ConfigProvenance::Override;
-            match ChromePresetId::parse(value) {
-                Some(preset) if preset.dark() == dark => {
-                    target.value = Some(preset);
-                    return None;
-                }
-                Some(preset) => format!(
-                    "`{}` is a {} preset; use {}",
-                    preset.as_str(),
-                    if preset.dark() { "dark" } else { "light" },
-                    ConfigKey::ChromePreset {
-                        dark: preset.dark()
-                    }
-                    .as_str(),
-                ),
-                None => "unknown preset; pick one in Settings > Appearance".to_owned(),
             }
         }
         _ => return None,
@@ -1476,8 +1392,24 @@ pub fn is_cumulative_appearance_key(key: AppearanceConfigKey) -> bool {
     )
 }
 
+/// Appearance keys an older zz wrote. Parsing reports them, and picking a theme
+/// in Settings removes them.
+pub const RETIRED_APPEARANCE_KEYS: [&str; 10] = [
+    "interface-style",
+    "chrome-preset",
+    "chrome-preset-light",
+    "chrome-preset-dark",
+    "chrome-background",
+    "chrome-foreground",
+    "chrome-accent",
+    "chrome-success",
+    "chrome-warning",
+    "chrome-danger",
+];
+
 pub fn is_app_config_key(key: &str) -> bool {
     ConfigKey::parse(key).is_some()
+        || RETIRED_APPEARANCE_KEYS.contains(&key)
         || AgentConfigKey::parse(key).is_some()
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
@@ -1738,64 +1670,21 @@ pub fn set_config_key(key: ConfigKey, value: &str) -> io::Result<()> {
     set_config_key_name(key.as_str(), value)
 }
 
-pub fn set_chrome_preset(dark: bool, preset: Option<ChromePresetId>) -> io::Result<()> {
-    let path = config_path_for_write()?;
-    write_chrome_preset_at(&path, dark, preset)
-}
-
-pub fn write_chrome_preset_at(
-    path: &Path,
-    dark: bool,
-    preset: Option<ChromePresetId>,
-) -> io::Result<()> {
-    let source = match read_config_source(path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error),
-    };
-    let mut without_explicit_roots = String::with_capacity(source.len());
-    for line in source.split_inclusive('\n') {
-        let is_chrome_root =
-            config_key_for_line(line).is_some_and(|key| ChromeColor::parse(key).is_some());
-        let is_cleared_preset = preset.is_none()
-            && config_key_for_line(line) == Some(ConfigKey::ChromePreset { dark }.as_str());
-        if !is_chrome_root && !is_cleared_preset {
-            without_explicit_roots.push_str(line);
-        }
-    }
-    let edited = edit_config_source(
-        &without_explicit_roots,
-        ConfigKey::ChromePreset { dark }.as_str(),
-        preset.map(ChromePresetId::as_str),
-    );
-    if edited.len() > MAX_CONFIG_BYTES {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("configuration edit exceeds the {MAX_CONFIG_BYTES}-byte limit"),
-        ));
-    }
-    atomic_write(path, edited.as_bytes())
-}
-
-/// Selects `style` and drops the explicit settings it decides, so the style
-/// shows as designed.
-pub fn set_interface_style(style: InterfaceStyle) -> io::Result<()> {
-    let path = config_path_for_write()?;
-    write_interface_style_at(&path, style.as_str())
-}
-
-pub fn set_saved_look(name: &str) -> io::Result<()> {
-    if !looks::is_look_name(name) || InterfaceStyle::parse(name).is_some() {
+/// Selects the theme `name`, a built-in id or a saved theme, and drops the
+/// explicit settings a theme decides and the retired appearance keys, so the
+/// theme shows as designed.
+pub fn set_interface_theme(name: &str) -> io::Result<()> {
+    if !is_builtin_theme(name) && !themes::is_theme_name(name) {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
-            format!("`{name}` is not a saved look name"),
+            format!("`{name}` is not a theme name"),
         ));
     }
     let path = config_path_for_write()?;
-    write_interface_style_at(&path, name)
+    write_interface_theme_at(&path, name)
 }
 
-pub fn write_interface_style_at(path: &Path, name: &str) -> io::Result<()> {
+pub fn write_interface_theme_at(path: &Path, name: &str) -> io::Result<()> {
     let source = match read_config_source(path) {
         Ok(source) => source,
         Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
@@ -1807,13 +1696,15 @@ pub fn write_interface_style_at(path: &Path, name: &str) -> io::Result<()> {
     ];
     let mut without_decided = String::with_capacity(source.len());
     for line in source.split_inclusive('\n') {
-        if !config_key_for_line(line).is_some_and(|key| decided.contains(&key)) {
+        let dropped = config_key_for_line(line)
+            .is_some_and(|key| decided.contains(&key) || RETIRED_APPEARANCE_KEYS.contains(&key));
+        if !dropped {
             without_decided.push_str(line);
         }
     }
     let edited = edit_config_source(
         &without_decided,
-        ConfigKey::InterfaceStyle.as_str(),
+        ConfigKey::InterfaceTheme.as_str(),
         Some(name),
     );
     if edited.len() > MAX_CONFIG_BYTES {
@@ -2219,176 +2110,81 @@ mod tests {
     }
 
     #[test]
-    fn retired_status_keys_diagnose_without_overriding_roots() {
-        let parsed = parse_config(
-            "chrome-success = #9ece6a\n\
-             chrome-warning = #e0af68\n\
-             chrome-danger = #f7768e\n",
-            "monospace",
-        );
-        assert_eq!(parsed.diagnostics.len(), 3);
-        for (index, key) in ["chrome-success", "chrome-warning", "chrome-danger"]
-            .into_iter()
-            .enumerate()
-        {
+    fn retired_appearance_keys_diagnose_and_stay_out_of_the_terminal_editor() {
+        let source = RETIRED_APPEARANCE_KEYS
+            .iter()
+            .fold(String::new(), |mut source, key| {
+                use std::fmt::Write as _;
+                let _ = writeln!(source, "{key} = something");
+                source
+            });
+        let parsed = parse_config(&source, "monospace");
+        assert_eq!(parsed.diagnostics.len(), RETIRED_APPEARANCE_KEYS.len());
+        for (index, key) in RETIRED_APPEARANCE_KEYS.into_iter().enumerate() {
             assert_eq!(ConfigKey::parse(key), None);
             assert_eq!(parsed.diagnostics[index].line, index + 1);
-            assert_eq!(
-                parsed.diagnostics[index].message,
-                format!("`{key}` is no longer a setting; status colors follow the palette"),
+            assert!(
+                parsed.diagnostics[index]
+                    .message
+                    .starts_with(&format!("`{key}` was removed")),
+                "{}",
+                parsed.diagnostics[index].message
             );
         }
-        for color in ChromeColor::ALL {
-            assert_eq!(parsed.config.chrome(color), ConfigValue::from_default(None));
-        }
-    }
-
-    #[test]
-    fn preset_keys_reject_retired_unknown_and_wrong_mode_values() {
-        let source = "chrome-preset = nord\n";
-        let parsed = parse_config(source, "monospace");
-        assert_eq!(ConfigKey::parse("chrome-preset"), None);
-        assert_eq!(appearance_editor_view(source), source);
+        assert_eq!(appearance_editor_view(&source), "");
         assert_eq!(
-            parsed.config.chrome_preset(false),
-            ConfigValue::from_default(None)
-        );
-        assert_eq!(
-            parsed.config.chrome_preset(true),
-            ConfigValue::from_default(None)
-        );
-        assert_eq!(parsed.diagnostics.len(), 1);
-        assert_eq!(parsed.diagnostics[0].line, 1);
-        assert_eq!(
-            parsed.diagnostics[0].message,
-            "`chrome-preset` was split into `chrome-preset-light` and `chrome-preset-dark`; preset ids are per mode now, pick them in Settings > Appearance",
-        );
-
-        for (dark, id, mode) in [(false, "nord", "dark"), (true, "catppuccin-latte", "light")] {
-            let key = ConfigKey::ChromePreset { dark };
-            assert_eq!(ConfigKey::parse(key.as_str()), Some(key));
-            let parsed = parse_config(&format!("{} = {id}\n", key.as_str()), "monospace");
-            assert_eq!(parsed.config.chrome_preset(dark).value, None);
-            assert_eq!(parsed.diagnostics.len(), 1);
-            assert_eq!(parsed.diagnostics[0].line, 1);
-            assert!(parsed.diagnostics[0].message.contains(&format!(
-                "`{id}` is a {mode} preset; use chrome-preset-{mode}",
-            )));
-        }
-
-        let parsed = parse_config("chrome-preset-dark = vaporwave\n", "monospace");
-        assert_eq!(parsed.config.chrome_preset(true).value, None);
-        assert_eq!(parsed.diagnostics.len(), 1);
-        assert_eq!(
-            parsed.diagnostics[0].message,
-            "invalid `chrome-preset-dark`: unknown preset; pick one in Settings > Appearance",
+            parsed.config.interface_theme,
+            ConfigValue::from_default(DEFAULT_THEME)
         );
     }
 
     #[test]
-    fn interface_style_writer_drops_the_settings_the_style_decides() {
+    fn interface_theme_writer_drops_what_the_theme_decides_and_retired_keys() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         fs::write(
             &path,
-            "widget-corner-radius = 25\nchrome-contrast = 1.2\nshadow-strength = 0.4\n",
+            "widget-corner-radius = 25\nchrome-contrast = 1.2\nshadow-strength = 0.4\n\
+             interface-style = flat\nchrome-preset-dark = nord\nchrome-accent = #123456\n",
         )
         .expect("write config");
-        let parsed = parse_config(&fs::read_to_string(&path).unwrap(), "monospace");
-        assert_eq!(
-            parsed.config.interface_style,
-            ConfigValue::from_default(InterfaceStyle::Modern)
-        );
 
-        write_interface_style_at(&path, InterfaceStyle::Flat.as_str()).expect("write style");
-        let source = fs::read_to_string(&path).expect("read style");
+        write_interface_theme_at(&path, "macos").expect("write theme");
+        let source = fs::read_to_string(&path).expect("read theme");
         let parsed = parse_config(&source, "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.config.interface_style.value, InterfaceStyle::Flat);
+        assert_eq!(parsed.config.interface_theme.value, "macos");
+        assert_eq!(parsed.theme, None);
         assert_eq!(
             parsed.config.widget_corner_radius,
-            ConfigValue::from_default(0.0)
+            ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS)
         );
         assert_eq!(
             parsed.config.shadow_strength,
-            ConfigValue::from_default(0.0)
+            ConfigValue::from_default(DEFAULT_SHADOW_STRENGTH)
         );
         assert_eq!(parsed.config.chrome_contrast.value, 1.2);
 
-        let parsed = parse_config("interface-style = round", "monospace");
+        let parsed = parse_config("interface-theme = round", "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.look.as_deref(), Some("round"));
-        assert_eq!(parsed.config.interface_style.value, InterfaceStyle::DEFAULT);
+        assert_eq!(parsed.theme.as_deref(), Some("round"));
+        assert_eq!(parsed.config.interface_theme.value, DEFAULT_THEME);
         assert_eq!(
-            parsed.config.interface_style.provenance,
+            parsed.config.interface_theme.provenance,
             ConfigProvenance::Override
         );
 
         let parsed = parse_config(
-            "interface-style = round\ninterface-style = flat",
+            "interface-theme = round\ninterface-theme = linear",
             "monospace",
         );
-        assert_eq!(parsed.look, None);
-        assert_eq!(parsed.config.interface_style.value, InterfaceStyle::Flat);
+        assert_eq!(parsed.theme, None);
+        assert_eq!(parsed.config.interface_theme.value, "linear");
 
-        let parsed = parse_config("interface-style = ../round", "monospace");
+        let parsed = parse_config("interface-theme = ../round", "monospace");
         assert_eq!(parsed.diagnostics.len(), 1);
-        assert_eq!(parsed.look, None);
-    }
-
-    #[test]
-    fn preset_writer_keeps_both_modes_and_clears_explicit_roots() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        let roots = ChromeColor::ALL
-            .into_iter()
-            .fold(String::new(), |mut roots, color| {
-                use std::fmt::Write as _;
-                let _ = writeln!(roots, "{} = #123456", color.as_str());
-                roots
-            });
-        fs::write(&path, format!("theme-mode = system\n{roots}")).expect("write roots");
-        let nord = ChromePresetId::parse("nord").expect("Nord exists");
-        let latte = ChromePresetId::parse("catppuccin-latte").expect("Latte exists");
-        write_chrome_preset_at(&path, true, Some(nord)).expect("write dark preset");
-        write_chrome_preset_at(&path, false, Some(latte)).expect("write light preset");
-        let source = fs::read_to_string(&path).expect("read presets");
-        let parsed = parse_config(&source, "monospace");
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.config.chrome_preset(true).value, Some(nord));
-        assert_eq!(parsed.config.chrome_preset(false).value, Some(latte));
-        for color in ChromeColor::ALL {
-            assert!(
-                !source
-                    .lines()
-                    .any(|line| config_key_for_line(line) == Some(color.as_str()))
-            );
-        }
-
-        fs::write(
-            &path,
-            format!("chrome-preset-dark = tokyo-night\n{source}{roots}"),
-        )
-        .expect("write duplicate preset and roots");
-        write_chrome_preset_at(&path, true, None).expect("clear dark preset");
-        let source = fs::read_to_string(&path).expect("read cleared preset");
-        let parsed = parse_config(&source, "monospace");
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(
-            parsed.config.chrome_preset(true),
-            ConfigValue::from_default(None)
-        );
-        assert_eq!(parsed.config.chrome_preset(false).value, Some(latte));
-        assert!(source.contains("theme-mode = system"));
-        assert!(!source.contains("chrome-preset-dark"));
-        for color in ChromeColor::ALL {
-            assert_eq!(parsed.config.chrome(color), ConfigValue::from_default(None));
-            assert!(
-                !source
-                    .lines()
-                    .any(|line| config_key_for_line(line) == Some(color.as_str()))
-            );
-        }
+        assert_eq!(parsed.theme, None);
+        assert!(set_interface_theme("../round").is_err());
     }
 
     #[test]

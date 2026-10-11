@@ -8,18 +8,14 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Emphasis, IconName, Sizable as _, StyledExt as _, Theme,
     ThemeMode, Tone, UiZoom,
     button::Button,
-    chrome_palette::{
-        ChromeColor, ChromePresetId, InterfaceStyle, ThemeModeSetting, chrome_presets,
-        inherited_chrome_colors, resolved_chrome_colors,
-    },
-    color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
     input::{InputEvent, InputState, NumberInput},
+    interface_theme::{self, ThemeModeSetting},
     select::{Select, SelectEvent, SelectState},
     settings::{
         SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack, StackPosition,
         appearance::{
-            AppearancePageItem, PickerStrip, appearance_page, appearance_page_items,
-            interface_style_preview, palette_preview, picker_tile, theme_preview, ui_font_select,
+            AppearancePageItem, appearance_page, appearance_page_items, interface_theme_preview,
+            picker_tile, theme_preview, ui_font_select,
         },
         settings_card_ground, settings_list_disclosure_header, settings_reset_button,
         settings_scroll_column,
@@ -124,7 +120,7 @@ impl Preferences {
         #[cfg(not(target_os = "ios"))]
         let (contrast, text_scale) = (self.contrast, 1.0);
         let zoom = interface_zoom(self, text_scale, phone());
-        let pinned = zz_ui::chrome_palette::pinned_theme_mode(self.theme_mode());
+        let pinned = interface_theme::pinned_theme_mode(self.theme_mode());
         #[cfg(target_os = "ios")]
         {
             cx.set_window_appearance(pinned.map(|mode| {
@@ -148,15 +144,7 @@ impl Preferences {
         } else {
             Theme::sync_system_appearance(Some(window), cx);
         }
-        let mode = cx.theme().mode;
-        Theme::global_mut(cx).colors = resolved_chrome_colors(
-            self.preset(mode),
-            mode,
-            self.colors
-                .clone()
-                .map(|color| color.and_then(|value| zz_ui::parse_hex(&value).ok())),
-        );
-        zz_ui::interface_style::look(self.interface_style()).apply(Theme::global_mut(cx));
+        self.interface_theme().apply(Theme::global_mut(cx));
         Theme::global_mut(cx).radius = px(self.widget_corner_radius());
         Theme::global_mut(cx).set_contrast(contrast);
         Theme::global_mut(cx).shadow = self.shadow() > 0.0;
@@ -218,7 +206,6 @@ pub(super) struct Controls {
     contrast: Entity<InputState>,
     shadow_strength: Entity<InputState>,
     panes: [Entity<InputState>; 6],
-    colors: Vec<Entity<ColorPickerState>>,
     ui_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     terminal_scale: Entity<InputState>,
@@ -398,28 +385,6 @@ impl Controls {
             ));
             input
         });
-        let colors = preferences
-            .colors
-            .iter()
-            .enumerate()
-            .map(|(index, value)| {
-                let color = value
-                    .as_deref()
-                    .and_then(|value| zz_ui::parse_hex(value).ok());
-                let state = cx.new(|cx| ColorPickerState::new(color, window, cx));
-                subscriptions.push(cx.subscribe_in(
-                    &state,
-                    window,
-                    move |this, _, event, window, cx| {
-                        let ColorPickerEvent::Change(color) = event;
-                        this.preferences.colors[index] = color.map(zz_ui::to_hex);
-                        this.preferences.save();
-                        this.preferences.apply(&this.connection, window, cx);
-                    },
-                ));
-                state
-            })
-            .collect();
         let ui_font = ui_font_select(Some(&preferences.ui_font_family), window, cx);
         let mut families = cx.text_system().all_font_names();
         families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
@@ -499,7 +464,6 @@ impl Controls {
             contrast,
             shadow_strength,
             panes,
-            colors,
             ui_font,
             terminal_font,
             terminal_scale,
@@ -512,7 +476,7 @@ impl Controls {
 
     /// Shows the radius and shadow the preferences resolve to, after a style
     /// change or a reset.
-    fn sync_style_inputs(&self, preferences: &Preferences, window: &mut Window, cx: &mut App) {
+    fn sync_theme_inputs(&self, preferences: &Preferences, window: &mut Window, cx: &mut App) {
         let radius = format!("{:.0}", preferences.widget_corner_radius());
         self.radius
             .update(cx, |input, cx| input.set_value(radius, window, cx));
@@ -534,27 +498,6 @@ impl AppShell {
         self.settings_controls
             .terminal_scale
             .update(cx, |input, cx| input.set_value(value, window, cx));
-    }
-
-    fn select_preset(
-        &mut self,
-        mode: ThemeMode,
-        preset: Option<ChromePresetId>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let value = preset.map(|id| id.as_str().to_owned());
-        if mode.is_dark() {
-            self.preferences.preset_dark = value;
-        } else {
-            self.preferences.preset_light = value;
-        }
-        self.preferences.colors = Default::default();
-        for color in &self.settings_controls.colors {
-            color.update(cx, |color, cx| color.set_color(None, window, cx));
-        }
-        self.preferences.save();
-        self.preferences.apply(&self.connection, window, cx);
     }
 
     pub(super) fn render_settings(
@@ -704,36 +647,29 @@ impl AppShell {
         let phone = phone();
         match section {
             SettingsSection::Appearance => {
-                let items = appearance_page_items(
-                    ChromeColor::ALL,
-                    false,
-                    false,
-                    self.settings_controls.advanced,
-                )
-                .into_iter()
-                .filter(|item| {
-                    matches!(
-                        item,
-                        AppearancePageItem::Description
-                            | AppearancePageItem::Group { .. }
-                            | AppearancePageItem::Advanced { .. }
-                            | AppearancePageItem::ThemeMode
-                            | AppearancePageItem::InterfaceStyle
-                            | AppearancePageItem::UiFontFamily
-                            | AppearancePageItem::UiZoom
-                            | AppearancePageItem::Preset(_)
-                            | AppearancePageItem::ChromeColor(_)
-                            | AppearancePageItem::ChromeContrast
-                            | AppearancePageItem::Animations
-                            | AppearancePageItem::WidgetCornerRadius
-                            | AppearancePageItem::ShadowStrength
-                    )
-                })
-                .filter(|item| {
-                    shown(Setting::UiZoom, phone) || !matches!(item, AppearancePageItem::UiZoom)
-                })
-                .filter(|item| !narrow || !matches!(item, AppearancePageItem::Description))
-                .collect::<Vec<_>>();
+                let items = appearance_page_items(false, false, self.settings_controls.advanced)
+                    .into_iter()
+                    .filter(|item| {
+                        matches!(
+                            item,
+                            AppearancePageItem::Description
+                                | AppearancePageItem::Group { .. }
+                                | AppearancePageItem::Advanced { .. }
+                                | AppearancePageItem::ThemeMode
+                                | AppearancePageItem::InterfaceTheme
+                                | AppearancePageItem::UiFontFamily
+                                | AppearancePageItem::UiZoom
+                                | AppearancePageItem::ChromeContrast
+                                | AppearancePageItem::Animations
+                                | AppearancePageItem::WidgetCornerRadius
+                                | AppearancePageItem::ShadowStrength
+                        )
+                    })
+                    .filter(|item| {
+                        shown(Setting::UiZoom, phone) || !matches!(item, AppearancePageItem::UiZoom)
+                    })
+                    .filter(|item| !narrow || !matches!(item, AppearancePageItem::Description))
+                    .collect::<Vec<_>>();
                 let focus = items
                     .iter()
                     .map(|item| self.appearance_focus(*item, cx))
@@ -961,23 +897,13 @@ impl AppShell {
         )
     }
 
-    fn appearance_focus(
-        &self,
-        item: AppearancePageItem<ChromeColor>,
-        cx: &App,
-    ) -> Option<FocusHandle> {
+    fn appearance_focus(&self, item: AppearancePageItem, cx: &App) -> Option<FocusHandle> {
         let controls = &self.settings_controls;
         let input = match item {
             AppearancePageItem::UiZoom => &controls.zoom,
             AppearancePageItem::ChromeContrast => &controls.contrast,
             AppearancePageItem::WidgetCornerRadius => &controls.radius,
             AppearancePageItem::ShadowStrength => &controls.shadow_strength,
-            AppearancePageItem::ChromeColor(color) => {
-                let index = ChromeColor::ALL
-                    .iter()
-                    .position(|candidate| *candidate == color)?;
-                return Some(controls.colors.get(index)?.focus_handle(cx));
-            }
             _ => return None,
         };
         Some(input.focus_handle(cx))
@@ -985,28 +911,23 @@ impl AppShell {
 
     fn appearance_item(
         &self,
-        item: AppearancePageItem<ChromeColor>,
+        item: AppearancePageItem,
         position: StackPosition,
         narrow: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let entry = match item {
             AppearancePageItem::ThemeMode => {
-                let light = inherited_chrome_colors(
-                    self.preferences.preset(ThemeMode::Light),
-                    ThemeMode::Light,
-                );
-                let dark = inherited_chrome_colors(
-                    self.preferences.preset(ThemeMode::Dark),
-                    ThemeMode::Dark,
-                );
+                let theme = self.preferences.interface_theme();
+                let light = theme.colors(ThemeMode::Light);
+                let dark = theme.colors(ThemeMode::Dark);
                 let tiles = div().flex().flex_none().flex_wrap().gap(px(8.0)).children(
                     ThemeModeSetting::ALL.map(|mode| {
                         picker_tile(
                             format!("settings-theme-{}", mode.as_str()).into(),
                             mode.title(),
                             theme_preview(
-                                zz_ui::chrome_palette::pinned_theme_mode(mode),
+                                interface_theme::pinned_theme_mode(mode),
                                 &light,
                                 &dark,
                                 cx,
@@ -1072,86 +993,6 @@ impl AppShell {
                 })),
             )
             .control(number_control(&self.settings_controls.zoom, cx)),
-            AppearancePageItem::Preset(mode) => {
-                let dark = mode.is_dark();
-                let selected = self.preferences.preset(mode);
-                let (title, description, strip) = if dark {
-                    (
-                        "Dark palette",
-                        "Used while the interface is dark.",
-                        "settings-presets-dark",
-                    )
-                } else {
-                    (
-                        "Light palette",
-                        "Used while the interface is light.",
-                        "settings-presets-light",
-                    )
-                };
-                let presets = std::iter::once(None)
-                    .chain(chrome_presets(dark).map(|preset| Some(preset.id)))
-                    .collect::<Vec<_>>();
-                let selected = presets
-                    .iter()
-                    .position(|preset| *preset == selected)
-                    .unwrap_or(0);
-                let view = cx.entity().downgrade();
-                let tiles = PickerStrip::new(strip, selected)
-                    .tiles(presets.iter().map(|preset| {
-                        (
-                            preset.map_or("Default", |id| id.preset().name),
-                            palette_preview(&inherited_chrome_colors(*preset, mode), cx),
-                        )
-                    }))
-                    .on_select(move |index, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.select_preset(mode, presets[index], window, cx);
-                        });
-                    });
-                SettingEntry::new(title, description)
-                    .title_actions(reset_button(
-                        format!("{strip}-reset"),
-                        self.preferences.preset(mode) != Preferences::default().preset(mode),
-                        move |this, _, _| {
-                            let defaults = Preferences::default();
-                            if dark {
-                                this.preferences.preset_dark = defaults.preset_dark;
-                            } else {
-                                this.preferences.preset_light = defaults.preset_light;
-                            }
-                        },
-                        cx,
-                    ))
-                    .child(tiles)
-            }
-            AppearancePageItem::ChromeColor(color) => {
-                let index = ChromeColor::ALL
-                    .iter()
-                    .position(|candidate| *candidate == color)
-                    .unwrap();
-                let mode = cx.theme().mode;
-                let inherited = inherited_chrome_colors(self.preferences.preset(mode), mode);
-                SettingEntry::new(color.title(), color.description())
-                    .title_actions(reset_button(
-                        format!("settings-{}-reset", color.as_str()),
-                        self.preferences.colors[index].is_some(),
-                        move |this, window, cx| {
-                            this.preferences.colors[index] = None;
-                            this.settings_controls.colors[index].update(cx, |picker, cx| {
-                                picker.set_color(None, window, cx);
-                            });
-                        },
-                        cx,
-                    ))
-                    .control(
-                        ColorPicker::new(
-                            &self.settings_controls.colors[index],
-                            zz_ui::chrome_palette::read_chrome_color(color, &inherited),
-                        )
-                        .label(color.title())
-                        .small(),
-                    )
-            }
             AppearancePageItem::ChromeContrast => SettingEntry::new(
                 "Contrast",
                 "Adjust surface, text, and edge contrast from 50% to 200%.",
@@ -1191,21 +1032,23 @@ impl AppShell {
                         this.preferences.apply(&this.connection, window, cx);
                     })),
             ),
-            AppearancePageItem::InterfaceStyle => {
-                let style = self.preferences.interface_style();
+            AppearancePageItem::InterfaceTheme => {
+                let selected = self.preferences.theme_id().to_owned();
+                let mode = cx.theme().mode;
                 let tiles = div().flex().flex_none().flex_wrap().gap(px(8.0)).children(
-                    InterfaceStyle::ALL.map(|choice| {
+                    interface_theme::builtin_themes().iter().map(|(id, theme)| {
+                        let id = *id;
                         picker_tile(
-                            format!("settings-style-{}", choice.as_str()).into(),
-                            choice.title(),
-                            interface_style_preview(&zz_ui::interface_style::look(choice), cx),
-                            choice == style,
+                            format!("settings-theme-{id}").into(),
+                            theme.name.clone(),
+                            interface_theme_preview(theme, mode, cx),
+                            id == selected,
                             cx,
                         )
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
-                                this.preferences.set_interface_style(choice);
-                                this.settings_controls.sync_style_inputs(
+                                this.preferences.set_interface_theme(id);
+                                this.settings_controls.sync_theme_inputs(
                                     &this.preferences,
                                     window,
                                     cx,
@@ -1218,17 +1061,17 @@ impl AppShell {
                 );
                 with_control(
                     SettingEntry::new(
-                        "Style",
-                        "Corners, outlines, shadows, and how menus and dialogs float.",
+                        "Interface theme",
+                        "The look of the whole interface and its colors in light and dark.",
                     )
                     .title_actions(reset_button(
-                        "settings-style-reset",
-                        style != InterfaceStyle::DEFAULT,
+                        "settings-interface-theme-reset",
+                        selected != interface_theme::DEFAULT_THEME,
                         |this, window, cx| {
                             this.preferences
-                                .set_interface_style(InterfaceStyle::DEFAULT);
+                                .set_interface_theme(interface_theme::DEFAULT_THEME);
                             this.settings_controls
-                                .sync_style_inputs(&this.preferences, window, cx);
+                                .sync_theme_inputs(&this.preferences, window, cx);
                         },
                         cx,
                     )),
@@ -1240,9 +1083,7 @@ impl AppShell {
                 return settings_list_disclosure_header(
                     "settings-appearance-advanced",
                     "Advanced",
-                    Some(
-                        "Fonts, zoom, base colors, and the corner and shadow sizes the style sets.",
-                    ),
+                    Some("Fonts, zoom, contrast, and the corner and shadow sizes the theme sets."),
                     expanded,
                     cx,
                 )
@@ -1266,7 +1107,7 @@ impl AppShell {
                 |this, window, cx| {
                     this.preferences.radius = None;
                     this.settings_controls
-                        .sync_style_inputs(&this.preferences, window, cx);
+                        .sync_theme_inputs(&this.preferences, window, cx);
                 },
                 cx,
             ))
@@ -1284,7 +1125,7 @@ impl AppShell {
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.preferences.shadow_strength = None;
                     this.settings_controls
-                        .sync_style_inputs(&this.preferences, window, cx);
+                        .sync_theme_inputs(&this.preferences, window, cx);
                     this.preferences.save();
                     this.preferences.apply(&this.connection, window, cx);
                 })),
