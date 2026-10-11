@@ -143,11 +143,13 @@ impl NumberInput {
         direction: StepDirection,
         size: Size,
         disabled: bool,
+        ground: Ground,
     ) -> Button {
         let state = state.clone();
         let slop = crate::touch::control_slop(size);
         Button::new(id)
             .emphasis(Emphasis::Ghost)
+            .on(ground)
             .hit_slop(slop, slop)
             .with_size(size)
             .icon(icon)
@@ -217,6 +219,7 @@ impl RenderOnce for NumberInput {
             (false, true) => PaintState::Focused,
             (false, false) => PaintState::Rest,
         };
+        let ground = paint.ground_at(state);
 
         h_flex()
             .id(("zz-number-input", self.state.entity_id()))
@@ -238,6 +241,7 @@ impl RenderOnce for NumberInput {
                 StepDirection::Decrement,
                 self.size,
                 self.disabled,
+                ground,
             ))
             .child(
                 Input::new(&self.state)
@@ -258,6 +262,7 @@ impl RenderOnce for NumberInput {
                 StepDirection::Increment,
                 self.size,
                 self.disabled,
+                ground,
             ))
     }
 }

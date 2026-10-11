@@ -39,7 +39,7 @@ pub(super) fn key_paint(look: KeyLook, cx: &App) -> (Paint, PaintState) {
     let soft = theme.paint(Tone::Neutral, Emphasis::Soft).opaque();
     match look {
         KeyLook::Rest => (soft, PaintState::Rest),
-        KeyLook::Latched => (soft, PaintState::Selected),
+        KeyLook::Latched => (soft, PaintState::Current),
         KeyLook::Inverted => (
             theme.paint(Tone::Neutral, Emphasis::Solid),
             PaintState::Rest,

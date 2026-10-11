@@ -1,8 +1,8 @@
 //! The shared styling vocabulary: one [`Size`] scale, one set of state traits,
 //! one set of [`zz_gpui::Styled`] extensions.
 
-use super::ActiveTheme;
 use super::Colorize as _;
+use super::{ActiveTheme, Elevation, Ground};
 use zz_gpui::{
     App, BoxShadow, Corners, DefiniteLength, Div, Edges, Hsla, Pixels, Refineable, StyleRefinement,
     Styled, div, point, px,
@@ -78,8 +78,14 @@ pub trait StyledExt: Styled + Sized {
     }
 
     fn control_highlight(self, cx: &App) -> Self {
+        self.control_highlight_on(cx.theme().ground(), cx)
+    }
+
+    /// The control's hairline, and its shadow when `ground` is the window: a
+    /// control on a panel or a popover stays flat.
+    fn control_highlight_on(self, ground: Ground, cx: &App) -> Self {
         let this = self.border_color(cx.theme().foreground.opacity(0.1 * cx.theme().outline));
-        if cx.theme().shadow {
+        if cx.theme().shadow && ground.elevation == Elevation::Window {
             this.shadow(control_shadow(cx))
         } else {
             this
@@ -87,10 +93,15 @@ pub trait StyledExt: Styled + Sized {
     }
 
     fn control_surface(self, cx: &App) -> Self {
+        self.control_surface_on(cx.theme().ground(), cx)
+    }
+
+    fn control_surface_on(self, ground: Ground, cx: &App) -> Self {
         if cx.theme().outlined() {
-            self.border(cx.theme().outline_width).control_highlight(cx)
+            self.border(cx.theme().outline_width)
+                .control_highlight_on(ground, cx)
         } else {
-            self.control_highlight(cx)
+            self.control_highlight_on(ground, cx)
         }
     }
 

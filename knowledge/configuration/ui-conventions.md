@@ -72,11 +72,15 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    gives the disclosure a toggle handler separate from row activation. Workspace and Navigate
    render selectable session/window/pane trees with these shared rows. Search flattens matching
    descendants into breadcrumbs. Shared row builders also render daemon command and value prompts.
-6. Use one translucent signal instead of competing fills. Sidebar pointer hover, keyboard selection,
-   mux focus, Settings navigation, and clickable native status windows use `workspace_row_highlight`, the
-   neutral ghost paint's hover fill, a translucent tint that preserves the desktop blur. Neutral buttons (Default, Secondary,
-   and Ghost) use the same tint for hover, pressed, and selected states through the shared Button
-   style. This covers toolbar icons, Back, and agent footer controls without per-button fills.
+6. Use one translucent signal instead of competing fills. Sidebar pointer hover and clickable
+   native status windows use `workspace_row_highlight`, the neutral ghost paint's hover fill, a
+   translucent tint that preserves the desktop blur. Where you are or what is on (the active
+   session row, the open Settings page, a toggle button that is on) is the paint's `current`
+   fill, one step stronger than hover and never the accent: the accent belongs to the cursor in
+   a list you pick from (rule 5). Neutral buttons (Default, Secondary, and Ghost) take hover,
+   pressed, and current from the shared Button style. This covers toolbar icons, Back, and agent
+   footer controls without per-button fills. A control that casts a shadow composites its fill
+   over its ground, and casts none on a panel or a popover (see the design-system doc).
    Tree fills keep a 1px vertical inset,
    so adjacent rounded rows never merge into one slab. The final Add host action is the exception:
    its row stays unpainted and only its label moves from muted to foreground on hover.

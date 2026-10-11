@@ -328,7 +328,7 @@ pub fn workspace_tree_row(
     } else {
         px(0.)
     };
-    let fill_color = workspace_row_highlight(cx);
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).opaque();
     let fill = div()
         .absolute()
         .top(fill_vertical_inset)
@@ -341,10 +341,10 @@ pub fn workspace_tree_row(
                 .border_color(zz_gpui::transparent_white())
         })
         .group_hover(row_group.clone(), |this| {
-            this.bg(fill_color).control_highlight(cx)
+            this.bg(paint.hover).control_highlight(cx)
         })
         .when(selected || active && focused, |this| {
-            this.bg(fill_color).control_highlight(cx)
+            this.bg(paint.current).control_highlight(cx)
         });
     let trailing = div()
         .h_full()

@@ -138,7 +138,7 @@ pub fn task_tray(
         let open = open == Some(TrayPanel::Plan);
         let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
         let state = if open {
-            PaintState::Selected
+            PaintState::Current
         } else {
             PaintState::Rest
         };

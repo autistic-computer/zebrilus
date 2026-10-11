@@ -1471,11 +1471,7 @@ impl RenderOnce for SettingCopy {
 /// fills step up from the card instead of dissolving into it.
 #[must_use]
 pub fn settings_card_ground(cx: &App) -> Ground {
-    let panel = cx.theme().surface(Elevation::Panel);
-    Ground {
-        fill: panel.fill.opaque(),
-        ..panel
-    }
+    cx.theme().surface(Elevation::Panel).opaque()
 }
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {
