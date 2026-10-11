@@ -37,12 +37,12 @@ A widget picks two things and the theme does the rest.
   - Code says "this is the main action" and never picks the color itself.
 - **`Emphasis`**, how loud it is: `Solid`, `Soft`, `Outline`, `Ghost`.
 - **`theme.paint(tone, emphasis)`** returns a `Paint`:
-  - fills for rest, hover, pressed and selected;
+  - fills for rest, hover, pressed, selected and current;
   - a border and its width;
   - text and selected text;
   - the `Ground` it sits on.
 
-  `fill_at`, `border_at`, `text_at`, `muted_at` and `faint_at` read any `PaintState`: rest, hover, active (pressed), selected, focused, disabled.
+  `fill_at`, `border_at`, `text_at`, `muted_at` and `faint_at` read any `PaintState`: rest, hover, active (pressed), selected, current, focused, disabled.
 - **`painted(paint, state)`** draws a paint on any element.
 - **`painted_interactive(paint, selected, enabled)`** draws one on an element with an id and adds live hover and press. Hover only changes the fill, which GPUI can repaint; text color cannot follow a hover style.
 
@@ -55,8 +55,9 @@ A widget picks two things and the theme does the rest.
 | outline | none | as soft | neutral: ink at 30%; other tones: the tone at 55%; 1px | soft's rest / hover |
 | ghost | none | as soft | none | soft's hover / pressed |
 
-**Selected:**
-- Neutral soft, outline and ghost on the window take `selection_background()`, so they follow the look's `selection`: accent fill or a wash. On any other ground, and for coloured tones, selected is the pressed fill.
+**Selected and current** are two different meanings, the same split as HTML's `aria-selected` and `aria-current`:
+- **Selected** is the row the cursor is on in a list you pick from: a menu, the palette, a picker, a select's options. It moves with the arrow keys and Enter acts on it. Neutral soft, outline and ghost on the window take `selection_background()`, so they follow the look's `selection`: accent fill or a wash. On any other ground, and for coloured tones, selected is the pressed fill.
+- **Current** is where you are or what is switched on: the open settings page, a toggle button that is on, the active session row, a latched phone modifier, an open tray panel. It is always the pressed wash (the tone's `active()` for solid), whatever the look's `selection`, so chrome that stays in this state never carries the accent. `Button::selected` draws it.
 - Text on an opaque selected fill is picked by perceptual lightness (`readable_on`), so a light accent gets dark text and a dark accent gets white.
 
 **Focused:** the border turns to the focus color. A neutral or primary paint focuses in the primary tone (the ground's ink when primary is the foreground, the accent otherwise); danger, warning and success focus in their own tone.
@@ -85,7 +86,11 @@ Without it, the keycap would compute muted gray against the window.
 - `Panel`: the window's fill raised one step, for a bar, a card or an inset box;
 - `Popover`: two steps, for a menu, a popover or a sheet.
 
-A surface floating over content takes its fill `.opaque()`. `popover_style`, tooltips, sheets and notifications fill from it.
+A surface floating over content takes its fill `.opaque()` (`Ground::opaque` keeps the elevation). `popover_style`, tooltips, sheets and notifications fill from it.
+
+A ground remembers its `elevation`, and `paint.ground_at` passes it on. Controls cast their shadow only on the window: on a panel or a popover they keep the hairline and drop the shadow, so a stepper in a menu or a field on a settings card does not stack a third layer on a surface that already stands off the window. `control_highlight_on(ground)` and `control_surface_on(ground)` apply the rule; `Button` reads its `.on` ground.
+
+GPUI draws a shadow under the whole box, not only outside it, so a translucent fill over a shadow turns muddy (a 12% wash over a 20% shadow reads as 30%). A control that casts a shadow composites its fill over its ground first.
 
 A pane fills with `theme.pane_background(fill)`: its own fill (the window color, or a terminal's background) over the window, at the look's pane opacity.
 
@@ -172,7 +177,7 @@ Kit widgets on the model:
 | Menu, list and chooser rows | neutral · ghost, selectable |
 | Digit keycap on a tile | neutral · outline, on the tile's ground |
 | Shortcut hint (`Kbd`) | neutral · soft; text in menus and tooltips |
-| Phone key | neutral · soft opaque; selected when latched; neutral · solid when held |
+| Phone key | neutral · soft opaque; current when latched; neutral · solid when held |
 | Count or kind chip (`2/3`, `Base`) | neutral · soft |
 | Reject, delete | danger · soft, or danger · solid when it is the main action |
 | Failing or blocked status | danger · soft |

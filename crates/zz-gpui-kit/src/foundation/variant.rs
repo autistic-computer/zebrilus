@@ -112,18 +112,25 @@ pub enum PaintState {
     Rest,
     Hover,
     Active,
+    /// The row the cursor is on in a list you pick from: a menu, the palette,
+    /// a picker. Drawn in the look's selection color.
     Selected,
+    /// Where you are, or what is switched on: the open page, a toggle that is
+    /// on, the active session. Always the neutral wash, so chrome that stays
+    /// in this state does not carry the selection color.
+    Current,
     /// Keyboard focus: the border takes the focus color.
     Focused,
     Disabled,
 }
 
 impl PaintState {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Rest,
         Self::Hover,
         Self::Active,
         Self::Selected,
+        Self::Current,
         Self::Focused,
         Self::Disabled,
     ];
@@ -134,6 +141,7 @@ impl PaintState {
             Self::Hover => "hover",
             Self::Active => "pressed",
             Self::Selected => "selected",
+            Self::Current => "current",
             Self::Focused => "focused",
             Self::Disabled => "disabled",
         }
@@ -147,6 +155,7 @@ pub struct Paint {
     pub hover: Hsla,
     pub active: Hsla,
     pub selected: Hsla,
+    pub current: Hsla,
     pub border: Hsla,
     /// Zero when the emphasis draws no border.
     pub border_width: Pixels,
@@ -180,6 +189,20 @@ pub enum Elevation {
 pub struct Ground {
     pub fill: Hsla,
     pub ink: Hsla,
+    /// The surface this ground belongs to. Controls cast a shadow only on the
+    /// window: a panel or a popover already stands off it.
+    pub elevation: Elevation,
+}
+
+impl Ground {
+    /// This ground with its fill made opaque, for a surface that floats over
+    /// content.
+    pub fn opaque(self) -> Self {
+        Self {
+            fill: self.fill.opaque(),
+            ..self
+        }
+    }
 }
 
 impl Paint {
@@ -189,6 +212,7 @@ impl Paint {
             PaintState::Hover => self.hover,
             PaintState::Active => self.active,
             PaintState::Selected => self.selected,
+            PaintState::Current => self.current,
             PaintState::Disabled => self.fill.opacity(DISABLED),
         }
     }
@@ -233,6 +257,7 @@ impl Paint {
             hover: ground.blend(self.hover),
             active: ground.blend(self.active),
             selected: ground.blend(self.selected),
+            current: ground.blend(self.current),
             ..self
         }
     }
@@ -242,6 +267,7 @@ impl Paint {
         Ground {
             fill: self.ground.fill.blend(self.fill_at(state)),
             ink: self.text_at(state),
+            elevation: self.ground.elevation,
         }
     }
 }
@@ -280,6 +306,7 @@ impl Theme {
         Ground {
             fill: self.background,
             ink: self.foreground,
+            elevation: Elevation::Window,
         }
     }
 
@@ -294,6 +321,7 @@ impl Theme {
         Ground {
             fill,
             ink: self.foreground,
+            elevation,
         }
     }
 
@@ -354,6 +382,7 @@ impl Theme {
                 hover: color.hover(),
                 active: color.active(),
                 selected: color.active(),
+                current: color.active(),
                 border: clear,
                 border_width: px(0.0),
                 focus,
@@ -368,6 +397,7 @@ impl Theme {
                     hover: soft(1),
                     active: soft(2),
                     selected,
+                    current: soft(2),
                     border: if hairline {
                         outline.opacity(self.outline / 3.0)
                     } else {
@@ -389,6 +419,7 @@ impl Theme {
                 hover: soft(0),
                 active: soft(1),
                 selected,
+                current: soft(2),
                 border: outline,
                 border_width: px(1.0),
                 focus,
@@ -401,6 +432,7 @@ impl Theme {
                 hover: soft(1),
                 active: soft(2),
                 selected,
+                current: soft(2),
                 border: clear,
                 border_width: px(0.0),
                 focus,

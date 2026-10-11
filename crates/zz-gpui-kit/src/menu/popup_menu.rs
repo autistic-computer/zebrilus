@@ -3,7 +3,7 @@ use super::menu_item::MenuItemElement;
 use crate::button::{Button, ButtonVariants as _};
 use crate::scroll::ScrollableElement;
 use crate::{ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt, h_flex, kbd::Kbd, v_flex};
-use crate::{ElementExt, Emphasis, Side, Tone};
+use crate::{ElementExt, Elevation, Emphasis, PaintExt as _, PaintState, Side, Tone};
 use zz_gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
@@ -12,7 +12,6 @@ use zz_gpui::{
 };
 use zz_gpui::{ClickEvent, Div, Hsla, MouseDownEvent, Point, Subscription};
 
-use crate::Colorize as _;
 use std::rc::Rc;
 
 const CONTEXT: &str = "ZzPopupMenu";
@@ -930,7 +929,7 @@ impl PopupMenu {
                 .rounded(px(0.0))
                 .border_0()
                 .border_b(px(0.5))
-                .border_color(cx.theme().foreground.opacity(0.1 * cx.theme().divider))
+                .border_color(cx.theme().divider_color())
                 .disabled(true),
             PopupMenuItem::Label(label) => this
                 .disabled(true)
@@ -957,8 +956,18 @@ impl PopupMenu {
                     StepperAction::Reset => format!("Reset {label}"),
                     StepperAction::Increment => format!("Increase {label}"),
                 };
+                let theme = cx.theme();
+                let paint = theme
+                    .paint_on(
+                        theme.surface(Elevation::Popover).opaque(),
+                        Tone::Neutral,
+                        theme.field_emphasis(),
+                    )
+                    .opaque();
+                let ground = paint.ground_at(PaintState::Rest);
                 let button = |id, action| {
                     Button::new((id, ix))
+                        .on(ground)
                         .debug_selector(move || format!("{id}-{ix}"))
                         .ghost()
                         .flat()
@@ -988,10 +997,7 @@ impl PopupMenu {
                         h_flex()
                             .flex_none()
                             .rounded(cx.theme().control_radius())
-                            .bg(cx
-                                .theme()
-                                .control_background(cx.theme().background.raised(2).opaque()))
-                            .control_surface(cx)
+                            .painted(paint, PaintState::Rest)
                             .child(
                                 button("menu-step-down", StepperAction::Decrement)
                                     .icon(IconName::Minus),
@@ -1314,7 +1320,9 @@ mod tests {
                     .iter()
                     .find(|quad| {
                         quad.background
-                            == zz_gpui::solid_background(cx.theme().background.raised(2).opaque())
+                            == zz_gpui::solid_background(
+                                cx.theme().surface(Elevation::Popover).opaque().fill,
+                            )
                     })
                     .expect("menu surface");
                 let highlight = quads
@@ -1370,7 +1378,9 @@ mod tests {
                     .iter()
                     .find(|quad| {
                         quad.background
-                            == zz_gpui::solid_background(cx.theme().background.washed(2))
+                            == zz_gpui::solid_background(
+                                cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover,
+                            )
                     })
                     .expect("open submenu parent has a neutral background");
                 let child = quads

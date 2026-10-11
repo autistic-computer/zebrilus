@@ -10,8 +10,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Emphasis, Ground, Icon, IconName, Paint,
-    PaintState, Selectable, Sizable, Size, StyledExt as _, Tone, control_shadow, h_flex,
+    ActiveTheme as _, Colorize as _, Disableable, Elevation, Emphasis, Ground, Icon, IconName,
+    Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Tone, control_shadow, h_flex,
     rems_from_px, tooltip::Tooltip,
 };
 
@@ -514,6 +514,7 @@ impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let style: ButtonVariant = self.variant;
         let on = self.on;
+        let ground = on.unwrap_or_else(|| cx.theme().ground());
         let clickable = self.clickable();
         let is_disabled = self.disabled;
         let hoverable = self.hoverable();
@@ -522,6 +523,16 @@ impl RenderOnce for Button {
         let neutral_surface = !self.flat && style.neutral();
         let resting_surface = neutral_surface && normal_style.shadow;
         let highlight_ring = cx.theme().shadow && neutral_surface && !normal_style.shadow;
+        let casts_shadow = (highlight_ring || resting_surface)
+            && cx.theme().shadow
+            && ground.elevation == Elevation::Window;
+        let lifted = move |fill: Hsla| {
+            if casts_shadow {
+                ground.fill.blend(fill)
+            } else {
+                fill
+            }
+        };
         let icon_size = match self.size {
             Size::Size(v) => Size::Size(v * 0.75),
             _ => self.size,
@@ -594,7 +605,11 @@ impl RenderOnce for Button {
             .cursor_default()
             .when(self.variant.is_link(), |this| this.cursor_pointer())
             .when(
-                cx.theme().shadow && normal_style.shadow && !self.flat && !resting_surface,
+                cx.theme().shadow
+                    && normal_style.shadow
+                    && !self.flat
+                    && !resting_surface
+                    && ground.elevation == Elevation::Window,
                 |this| this.shadow(control_shadow(cx)),
             )
             .when(!style.no_padding(), |this| {
@@ -623,12 +638,12 @@ impl RenderOnce for Button {
             )
             .text_color(normal_style.fg)
             .when(self.selected, |this| {
-                let selected_style = style.style_at(PaintState::Selected, on, cx);
-                this.bg(selected_style.bg)
+                let selected_style = style.style_at(PaintState::Current, on, cx);
+                this.bg(lifted(selected_style.bg))
                     .border_color(selected_style.border)
                     .text_color(selected_style.fg)
                     .when(highlight_ring || resting_surface, |this| {
-                        this.control_highlight(cx)
+                        this.control_highlight_on(ground, cx)
                     })
             })
             .when(!self.disabled && !self.selected, |this| {
@@ -637,17 +652,21 @@ impl RenderOnce for Button {
                 } else {
                     normal_style.border
                 })
-                .bg(normal_style.bg)
+                .bg(if resting_surface {
+                    lifted(normal_style.bg)
+                } else {
+                    normal_style.bg
+                })
                 .when(normal_style.underline, |this| this.text_decoration_1())
                 .when(!coarse, |this| {
                     this.hover(|this| {
                         let hover_style = style.style_at(PaintState::Hover, on, cx);
                         let this = this
-                            .bg(self.hover_bg.unwrap_or(hover_style.bg))
+                            .bg(self.hover_bg.unwrap_or(lifted(hover_style.bg)))
                             .border_color(hover_style.border)
                             .text_color(hover_style.fg);
                         if highlight_ring || resting_surface {
-                            this.control_highlight(cx)
+                            this.control_highlight_on(ground, cx)
                         } else {
                             this
                         }
@@ -657,18 +676,18 @@ impl RenderOnce for Button {
                     this.active(|this| {
                         let active_style = style.style_at(PaintState::Active, on, cx);
                         let this = this
-                            .bg(active_style.bg)
+                            .bg(lifted(active_style.bg))
                             .border_color(active_style.border)
                             .text_color(active_style.fg);
                         if highlight_ring || resting_surface {
-                            this.control_highlight(cx)
+                            this.control_highlight_on(ground, cx)
                         } else {
                             this
                         }
                     })
                 })
             })
-            .when(resting_surface, |this| this.control_surface(cx))
+            .when(resting_surface, |this| this.control_surface_on(ground, cx))
             .when(self.disabled, |this| {
                 let disabled_style = style.style_at(PaintState::Disabled, on, cx);
                 this.bg(disabled_style.bg)
