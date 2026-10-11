@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-10-11
+* **Fix**: `compat/results/summary.md` is current again: 282 scenarios and 3,966 steps against tmux 3.8 with the attached-client `PASS` at `b40f19cf2`, from a Nightly compat corpus run dispatched on `main`. It had not been regenerated since the catch-up campaign and the floating-pane work added and changed scenarios, so CI's summary check failed on every push on 2026-10-10. The compat harness playbook says how to regenerate it and why a macOS run cannot. See [compat harness](/playbooks/compat-harness.md).
+
 ## 2026-10-10
 * **Fix**: `pane-title-changed` fired by a title the terminal reports (a program's OSC 0/2, or the running command's name) now carries `hook_new_title`, like the one `select-pane -T` fires; before, only the command path set it. The zz-cli `events -t` session filter test now checks each title event's pane instead of assuming the first one is its own `select-pane -T`, since the shell's own `bash` title can arrive first.
 * **Update**: The app draws zz's own icon set. The renderer and `mac.json` moved into the kit (`crates/zz-gpui-kit/src/icon/glyphs.rs`), whose `Icon` rewrites each drawn icon's path for the theme radius and corner smoothing and whose `Assets` draws it, so the desktop app, the web and iOS clients and the storybook all get it with no wiring, and changing the radius redraws every icon. The Tabler SVGs are deleted except the `brand-chrome` mark, the `IconSource` global and the storybook's Icons knob are gone, and the storybook's Icon drafts story is now Icon set. `site/src/icons` holds the set exported at the default look by `cargo run -p zz-gpui-kit --example export_icons -- site/src/icons 24 4`. See [zz icon set](/configuration/icon-set.md).
