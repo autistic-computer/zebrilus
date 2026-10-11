@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PORT="${STORYBOOK_PORT:-8097}"
+PORT="${PORT:-${STORYBOOK_PORT:-8097}}"
 SERVER_PID=""
 
 cleanup() {
