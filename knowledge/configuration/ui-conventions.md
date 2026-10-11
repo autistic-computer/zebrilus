@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, gpui, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-06T00:00:00Z
+timestamp: 2026-10-10T00:00:00Z
 ---
 
 # Overview
@@ -203,6 +203,38 @@ that window, and `AppShell` mounts both the dialog and notification layers for e
 update until the current window callback finishes. Updating that handle during its own click
 callback fails because GPUI has temporarily removed the window from its registry. Views that
 already receive the workspace `Window` can call `window.push_notification` directly.
+
+# Spacing
+
+Spacing comes from a 4px grid (2px half steps inside small controls) and four rules. The agent
+pane's cards (permission, question, error, task tray) follow them through one set of builders in
+`crates/zz-ui/src/agent/presentation.rs` (`card_surface`, `card_header`, `card_tiles`, `card_tile`,
+`card_keycap`, `card_close`, `card_footer`, `card_button`), so a new card inherits the spacing
+instead of restating it.
+
+1. **One gutter, measured to ink.** A floating card keeps 12px (`CARD_GUTTER`, the dialog's
+   `CONTENT_PADDING`) between its edge and what the eye sees: the cap top of the title, the tiles,
+   the filled edge of the last button. Line boxes are taller than their glyphs, so paddings are set
+   so the *ink* lands on 12px: a 13px title in an 18px line sits 4px inside its box, so the
+   header's top padding is 8. Icon buttons at an edge (the close button) take a negative margin of
+   their padding so the glyph, not the hover box, meets the gutter.
+2. **One left edge.** The title and the tiles start on the same line; tile content is padded 12px
+   inside the tile.
+3. **Closer inside a group than between groups.** Tiles are 6px apart, a title is 10px above its
+   first tile, and separate groups (another question, the footer) sit 12px or a divider away.
+4. **Concentric corners.** A shape inside a rounded surface needs an inset of at least the outer
+   radius minus its own radius to share the corner's centre. Tiles are inset by the gutter, so
+   their radius is the theme radius minus 12 (never below 6, or square when the theme is square);
+   the 28px (`Small`) footer pills fit a 24px corner at the 12px gutter.
+
+Options are tiles (`card_tile`): a soft `washed(1)` fill that brightens on hover and when picked,
+so the label and its muted description stay legible in every state. Hover only changes the fill,
+which GPUI repaints; text color cannot follow a hover style. The key that picks an option is an
+outlined keycap (`card_keycap`) on the tile's right, a multi-select tile shows a checkbox there
+instead, and the free-text answer is a field inside an "Other" tile. The keycap rounds at
+`theme.radius` like the kit's `Kbd` and the checkbox at half of it like a markdown task box, so
+both go round in modern and full and square in flat. Glyphs beside a line of text
+sit in a box as tall as the line and drop 0.5px (`CARD_OPTICAL_DROP`).
 
 # UI font
 

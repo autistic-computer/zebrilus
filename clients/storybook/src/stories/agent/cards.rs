@@ -10,7 +10,7 @@ use zz_gpui::{
 };
 use zz_protocol::{AgentTaskWire, MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
 use zz_ui::{
-    Disableable as _, Sizable as _,
+    Disableable as _,
     agent::{
         composer::COMPOSER_MAX_WIDTH,
         presentation::{permission_card, permission_option, spinner_phase},
@@ -18,7 +18,7 @@ use zz_ui::{
         slash::{suggestion_list, suggestion_list_height, suggestion_row},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
-    button::{Button, ButtonVariants as _},
+    button::Button,
     input::InputEvent,
 };
 
@@ -46,20 +46,13 @@ pub(crate) fn permission(
         .iter()
         .enumerate()
         .map(|(index, (name, allow))| {
-            let button = Button::new(SharedString::from(format!("{id}-{index}")))
-                .small()
-                .label(*name)
-                .disabled(!enabled);
-            let button = match allow {
-                Some(true) => button.primary(),
-                Some(false) => button.danger(),
-                None => button,
-            };
             permission_option(
                 (SharedString::from(format!("{id}-option")), index),
                 index,
+                *name,
+                *allow == Some(false),
                 index == highlighted,
-                button,
+                enabled,
                 cx,
             )
             .into_any_element()
@@ -70,10 +63,8 @@ pub(crate) fn permission(
         counter.map(|counter| counter.to_owned().into()),
         options,
         Button::new(SharedString::from(format!("{id}-cancel")))
-            .small()
-            .ghost()
             .disabled(!enabled)
-            .label("Cancel request"),
+            .tooltip("Cancel request"),
         cx,
     )
     .into_any_element()

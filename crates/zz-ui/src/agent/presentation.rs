@@ -1,13 +1,16 @@
 use std::time::Duration;
 
 use zz_gpui::{
-    AnyElement, App, Div, ElementId, EntityId, FontWeight, IntoElement, SharedString, Stateful,
+    AnyElement, App, Div, ElementId, EntityId, FontWeight, Hsla, Pixels, SharedString, Stateful,
     Transformation, div, ease_in_out, percentage, prelude::*, px,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, button::Button, h_flex,
-    pulse::pulse_phase, v_flex,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _,
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    pulse::pulse_phase,
+    v_flex,
 };
 
 pub use zz_client::agent_config::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -46,14 +49,29 @@ pub fn welcome_state(cx: &App) -> Div {
 pub fn error_card(error: &str, cx: &App) -> Div {
     v_flex()
         .w_full()
-        .gap_2()
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().danger.outline())
-        .bg(cx.theme().danger.fill())
-        .p_3()
-        .text_size(crate::rems_from_px(11.0))
-        .child(rendered_error(error))
+        .gap(px(CARD_GAP))
+        .popover_style(cx)
+        .p(px(CARD_GUTTER))
+        .child(
+            h_flex()
+                .w_full()
+                .items_start()
+                .gap(px(CARD_GAP))
+                .text_size(crate::rems_from_px(12.0))
+                .line_height(px(CARD_LINE))
+                .child(card_glyph(
+                    Icon::new(IconName::CircleX).text_color(cx.theme().danger),
+                    CARD_LINE,
+                ))
+                .child(div().min_w_0().flex_1().child(rendered_error(error))),
+        )
+}
+
+pub fn error_actions() -> Div {
+    h_flex()
+        .flex_wrap()
+        .gap(px(CARD_GAP))
+        .pl(px(CARD_GLYPH + CARD_GAP))
 }
 
 pub fn spinner_phase(view: EntityId, cx: &mut App) -> f32 {
@@ -91,90 +109,217 @@ pub fn empty_state(
 pub fn permission_option(
     id: impl Into<ElementId>,
     index: usize,
+    label: impl Into<SharedString>,
+    danger: bool,
     highlighted: bool,
-    button: Button,
+    enabled: bool,
     cx: &App,
 ) -> Stateful<Div> {
-    h_flex()
-        .id(id)
-        .w_full()
-        .items_center()
-        .gap_2()
-        .rounded(cx.theme().radius)
-        .px_1()
-        .py(px(2.0))
-        .when(highlighted, |row| row.bg(cx.theme().background.hover()))
-        .when(index < 9, |row| {
-            row.child(
-                div()
-                    .flex_none()
-                    .rounded(cx.theme().radius)
-                    .bg(cx.theme().background.raised(2))
-                    .px_2()
-                    .py(px(2.0))
-                    .text_size(crate::rems_from_px(9.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(format!("{}", index + 1)),
-            )
-        })
-        .child(button)
+    let selected = highlighted && enabled;
+    card_tile(id, enabled, selected, cx)
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .when(danger && enabled, |label| {
+                    label.text_color(cx.theme().danger)
+                })
+                .child(label.into()),
+        )
+        .child(
+            card_trailing()
+                .gap(px(4.0))
+                .when(selected, |trailing| {
+                    trailing.child(card_keycap("↵", cx.theme().foreground, cx))
+                })
+                .when(index < 9, |trailing| {
+                    trailing.child(card_keycap(
+                        format!("{}", index + 1),
+                        cx.theme().foreground,
+                        cx,
+                    ))
+                }),
+        )
 }
 
 pub fn permission_card(
     title: impl Into<SharedString>,
     counter: Option<SharedString>,
     options: Vec<AnyElement>,
-    cancel: impl IntoElement,
+    cancel: Button,
     cx: &App,
 ) -> Div {
-    v_flex()
+    card_surface(cx)
+        .child(
+            card_header()
+                .child(card_glyph(
+                    Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
+                    CARD_TITLE_LINE,
+                ))
+                .child(div().min_w_0().flex_1().child(title.into()))
+                .when_some(counter, |row, counter| row.child(card_chip(counter, cx)))
+                .child(card_close(cancel)),
+        )
+        .child(card_tiles().pb(px(CARD_GUTTER)).children(options))
+}
+
+pub fn card_close(button: Button) -> Div {
+    div()
+        .flex_none()
+        .mt(px((CARD_TITLE_LINE - CARD_CLOSE) / 2.0))
+        .mb(px((CARD_TITLE_LINE - CARD_CLOSE) / 2.0))
+        .mr(px(-(CARD_CLOSE - CARD_GLYPH) / 2.0))
+        .child(
+            button
+                .icon(IconName::Xmark)
+                .ghost()
+                .compact()
+                .size(px(CARD_CLOSE)),
+        )
+}
+
+pub fn card_button(button: Button) -> Button {
+    button.small()
+}
+
+pub(crate) const CARD_GUTTER: f32 = 12.0;
+pub(crate) const CARD_GAP: f32 = 8.0;
+pub(crate) const CARD_GLYPH: f32 = 14.0;
+pub(crate) const CARD_LINE: f32 = 16.0;
+pub(crate) const CARD_TITLE_LINE: f32 = 18.0;
+pub(crate) const CARD_OPTICAL_DROP: f32 = 0.5;
+const CARD_TITLE_TOP: f32 = 8.0;
+const CARD_TITLE_BOTTOM: f32 = 10.0;
+const CARD_TILE_GAP: f32 = 6.0;
+const CARD_TILE_PADDING_X: f32 = 12.0;
+const CARD_TILE_PADDING_Y: f32 = 9.0;
+const CARD_LABEL_LINE: f32 = 18.0;
+const CARD_DETAIL_LINE: f32 = 16.0;
+const CARD_KEYCAP: f32 = 18.0;
+const CARD_CLOSE: f32 = 24.0;
+
+pub(crate) fn card_surface(cx: &App) -> Div {
+    v_flex().w_full().overflow_hidden().popover_style(cx)
+}
+
+pub(crate) fn card_header() -> Div {
+    h_flex()
         .w_full()
-        .gap_2()
+        .items_start()
+        .gap(px(CARD_GAP))
+        .px(px(CARD_GUTTER))
+        .pt(px(CARD_TITLE_TOP))
+        .pb(px(CARD_TITLE_BOTTOM))
+        .text_size(crate::rems_from_px(13.0))
+        .line_height(px(CARD_TITLE_LINE))
+        .font_weight(FontWeight::MEDIUM)
+}
+
+pub(crate) fn card_glyph(icon: Icon, line: f32) -> Div {
+    h_flex().flex_none().w(px(CARD_GLYPH)).h(px(line)).child(
+        div()
+            .relative()
+            .top(px(CARD_OPTICAL_DROP))
+            .child(icon.size(px(CARD_GLYPH))),
+    )
+}
+
+pub(crate) fn card_chip(text: impl Into<SharedString>, cx: &App) -> Div {
+    h_flex().flex_none().h(px(CARD_TITLE_LINE)).child(
+        div()
+            .rounded(cx.theme().menu_radius())
+            .bg(cx.theme().background.washed(2))
+            .px(px(6.0))
+            .text_size(crate::rems_from_px(10.0))
+            .line_height(px(14.0))
+            .font_weight(FontWeight::NORMAL)
+            .text_color(cx.theme().foreground.muted())
+            .child(text.into()),
+    )
+}
+
+pub(crate) fn card_divider(cx: &App) -> Div {
+    div()
+        .mx(px(CARD_GUTTER))
+        .my(px(CARD_GAP))
+        .h(px(0.5))
+        .bg(cx.theme().foreground.opacity(0.1 * cx.theme().divider))
+}
+
+pub(crate) fn card_tiles() -> Div {
+    v_flex().w_full().gap(px(CARD_TILE_GAP)).px(px(CARD_GUTTER))
+}
+
+fn card_tile_radius(cx: &App) -> Pixels {
+    let radius = cx.theme().radius;
+    (radius - px(CARD_GUTTER)).max(radius.min(px(6.0)))
+}
+
+pub(crate) fn card_tile(
+    id: impl Into<ElementId>,
+    enabled: bool,
+    selected: bool,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let rest = theme.control_background(theme.background.washed(1));
+    let hover = theme.control_background(theme.background.washed(2));
+    let chosen = theme.control_background(theme.background.washed(3));
+    let fill = if selected { chosen } else { rest };
+    h_flex()
+        .id(id)
+        .w_full()
+        .items_start()
+        .gap(px(CARD_GAP))
+        .px(px(CARD_TILE_PADDING_X))
+        .py(cx.theme().dense(px(CARD_TILE_PADDING_Y)))
+        .rounded(card_tile_radius(cx))
+        .bg(fill)
+        .text_size(crate::rems_from_px(13.0))
+        .line_height(px(CARD_LABEL_LINE))
+        .when(enabled, |tile| {
+            tile.cursor_pointer()
+                .hover(move |style| style.bg(if selected { chosen } else { hover }))
+        })
+        .when(!enabled, |tile| tile.text_color(theme.foreground.muted()))
+}
+
+pub(crate) fn card_detail(text: impl Into<SharedString>, cx: &App) -> Div {
+    div()
+        .text_size(crate::rems_from_px(12.0))
+        .line_height(px(CARD_DETAIL_LINE))
+        .text_color(cx.theme().foreground.muted())
+        .child(text.into())
+}
+
+pub(crate) fn card_trailing() -> Div {
+    h_flex().flex_none().h(px(CARD_LABEL_LINE))
+}
+
+pub(crate) fn card_keycap(text: impl Into<SharedString>, ink: Hsla, cx: &App) -> Div {
+    h_flex()
+        .flex_none()
+        .justify_center()
+        .h(px(CARD_KEYCAP))
+        .min_w(px(CARD_KEYCAP))
+        .px(px(4.0))
         .rounded(cx.theme().radius)
         .border_1()
-        .border_color(cx.theme().warning.outline())
-        .bg(cx.theme().warning.fill())
-        .p_3()
-        .child(
-            h_flex()
-                .w_full()
-                .items_center()
-                .gap_2()
-                .text_size(crate::rems_from_px(12.0))
-                .child(
-                    Icon::new(IconName::TriangleAlert)
-                        .small()
-                        .flex_none()
-                        .text_color(cx.theme().warning),
-                )
-                .child(div().min_w_0().flex_1().child(title.into()))
-                .when_some(counter, |row, counter| {
-                    row.child(
-                        div()
-                            .flex_none()
-                            .rounded(cx.theme().radius)
-                            .bg(cx.theme().background.raised(2))
-                            .px_2()
-                            .py(px(2.0))
-                            .text_size(crate::rems_from_px(9.0))
-                            .text_color(cx.theme().foreground.muted())
-                            .child(counter),
-                    )
-                }),
-        )
-        .child(v_flex().w_full().gap_1().children(options))
-        .child(
-            h_flex()
-                .w_full()
-                .items_center()
-                .justify_between()
-                .gap_2()
-                .child(
-                    div()
-                        .text_size(crate::rems_from_px(9.0))
-                        .text_color(cx.theme().foreground.muted())
-                        .child("1-9 picks · enter confirms · esc cancels"),
-                )
-                .child(cancel),
-        )
+        .border_color(ink.opacity(0.25))
+        .text_size(crate::rems_from_px(11.0))
+        .line_height(px(CARD_KEYCAP - 2.0))
+        .font_weight(FontWeight::NORMAL)
+        .text_color(ink.opacity(0.7))
+        .child(text.into())
+}
+
+pub(crate) fn card_footer() -> Div {
+    h_flex()
+        .w_full()
+        .items_center()
+        .justify_end()
+        .gap(px(CARD_GAP))
+        .px(px(CARD_GUTTER))
+        .pt(px(CARD_GUTTER))
+        .pb(px(CARD_GUTTER))
 }

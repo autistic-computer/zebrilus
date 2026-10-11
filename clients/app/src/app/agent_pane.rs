@@ -45,7 +45,8 @@ use zz_ui::{
         },
         fold_timeline_rows,
         presentation::{
-            empty_state, error_card, permission_card, permission_option, welcome_state,
+            card_button, empty_state, error_actions, error_card, permission_card,
+            permission_option, welcome_state,
         },
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
@@ -1935,32 +1936,22 @@ impl AgentPane {
             .enumerate()
             .map(|(index, option)| {
                 let id = option.id;
-                let button = Button::new(format!(
-                    "agent-permission-{}-{request_id}-{index}",
-                    self.pane.0
-                ))
-                .small()
-                .label(option.name)
-                .disabled(!writable)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.respond_permission(request_id, Some(id.clone()), cx);
-                    cx.stop_propagation();
-                }));
-                let button = match option.allow {
-                    Some(true) => button.primary(),
-                    Some(false) => button.danger(),
-                    None => button,
-                };
                 permission_option(
                     format!(
                         "agent-permission-option-{}-{request_id}-{index}",
                         self.pane.0
                     ),
                     index,
+                    option.name,
+                    option.allow == Some(false),
                     index == self.permission_selected,
-                    button,
+                    writable,
                     cx,
                 )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.respond_permission(request_id, Some(id.clone()), cx);
+                    cx.stop_propagation();
+                }))
                 .on_hover(cx.listener(move |this, hovered, _, cx| {
                     if *hovered && this.permission_selected != index {
                         this.permission_selected = index;
@@ -1978,10 +1969,8 @@ impl AgentPane {
                 "agent-permission-cancel-{}-{request_id}",
                 self.pane.0
             ))
-            .small()
-            .ghost()
             .disabled(!writable)
-            .label("Cancel request")
+            .tooltip("Cancel request")
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.respond_permission(request_id, None, cx);
                 cx.stop_propagation();
@@ -2409,46 +2398,47 @@ impl AgentPane {
                     .unwrap_or("Authenticate with the agent")
                     .to_owned();
                 Some(
-                    Button::new(format!("web-agent-authenticate-{}-{index}", self.pane.0))
-                        .secondary()
-                        .small()
-                        .label(name)
-                        .tooltip(description)
-                        .disabled(!writable || self.lifecycle_pending)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.connection.update(cx, |connection, cx| {
-                                connection.send(
-                                    ProtocolMessage::AgentAuthenticate {
-                                        pane: this.pane,
-                                        method_id: id.clone(),
-                                    },
-                                    cx,
-                                );
-                            });
-                        })),
+                    card_button(
+                        Button::new(format!("web-agent-authenticate-{}-{index}", self.pane.0))
+                            .secondary(),
+                    )
+                    .label(name)
+                    .tooltip(description)
+                    .disabled(!writable || self.lifecycle_pending)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.connection.update(cx, |connection, cx| {
+                            connection.send(
+                                ProtocolMessage::AgentAuthenticate {
+                                    pane: this.pane,
+                                    method_id: id.clone(),
+                                },
+                                cx,
+                            );
+                        });
+                    })),
                 )
             });
         Some(
             error_card(error, cx)
                 .when(failed, |card| {
                     card.child(
-                        zz_ui::h_flex()
-                            .flex_wrap()
-                            .gap_2()
+                        error_actions()
                             .child(
-                                Button::new(("web-agent-retry", self.pane.0))
-                                    .primary()
-                                    .small()
-                                    .icon(IconName::Redo2)
-                                    .label(if self.lifecycle_pending {
-                                        "Restarting…"
-                                    } else {
-                                        "Try again"
-                                    })
-                                    .disabled(!writable || self.lifecycle_pending)
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                card_button(
+                                    Button::new(("web-agent-retry", self.pane.0)).primary(),
+                                )
+                                .icon(IconName::Redo2)
+                                .label(if self.lifecycle_pending {
+                                    "Restarting…"
+                                } else {
+                                    "Try again"
+                                })
+                                .disabled(!writable || self.lifecycle_pending)
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.lifecycle_command(None, cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .children(auth),
                     )

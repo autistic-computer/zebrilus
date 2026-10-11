@@ -15,8 +15,8 @@ use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_
 #[cfg(test)]
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 use zz_ui::agent::presentation::{
-    empty_state, error_card, permission_card, permission_option, rendered_error, spinner_phase,
-    welcome_state,
+    card_button, empty_state, error_actions, error_card, permission_card, permission_option,
+    rendered_error, spinner_phase, welcome_state,
 };
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
@@ -1580,36 +1580,27 @@ impl AgentView {
             .map(|(index, option)| {
                 let answer_view = view.clone();
                 let hover_view = view.clone();
-                let button = Button::new(format!(
-                    "agent-permission-{}-{request_id}-{index}",
-                    self.pane.0
-                ))
-                .small()
-                .label(option.name.clone())
-                .on_click(move |_, _, cx| {
-                    answer_view.update(cx, |view, cx| {
-                        view.answer_permission(index, cx);
-                    });
-                    cx.stop_propagation();
-                });
-                let button = match option.kind {
-                    AgentPermissionKind::AllowOnce | AgentPermissionKind::AllowAlways => {
-                        button.primary()
-                    }
-                    AgentPermissionKind::RejectOnce | AgentPermissionKind::RejectAlways => {
-                        button.danger()
-                    }
-                };
                 permission_option(
                     format!(
                         "agent-permission-option-{}-{request_id}-{index}",
                         self.pane.0
                     ),
                     index,
+                    option.name.clone(),
+                    matches!(
+                        option.kind,
+                        AgentPermissionKind::RejectOnce | AgentPermissionKind::RejectAlways
+                    ),
                     index == highlighted,
-                    button,
+                    true,
                     cx,
                 )
+                .on_click(move |_, _, cx| {
+                    answer_view.update(cx, |view, cx| {
+                        view.answer_permission(index, cx);
+                    });
+                    cx.stop_propagation();
+                })
                 .on_hover(move |hovered, _, cx| {
                     if *hovered {
                         hover_view.update(cx, |view, cx| {
@@ -1632,9 +1623,7 @@ impl AgentView {
                     "agent-permission-cancel-{}-{request_id}",
                     self.pane.0
                 ))
-                .ghost()
-                .small()
-                .label("Cancel request")
+                .tooltip("Cancel request")
                 .on_click(move |_, _, cx| {
                     cancel_view.update(cx, Self::cancel_permission);
                     cx.stop_propagation();
@@ -1966,42 +1955,40 @@ impl AgentView {
                     .map(|(index, method)| {
                         let controller = self.controller.clone();
                         let method_id = method.id.clone();
-                        Button::new(format!("agent-auth-{}-{index}", self.pane.0))
-                            .secondary()
-                            .small()
-                            .label(method.name.clone())
-                            .tooltip(
-                                method
-                                    .description
-                                    .clone()
-                                    .unwrap_or_else(|| "Authenticate with the agent".to_owned()),
-                            )
-                            .on_click(move |_, _, cx| {
-                                controller.update(cx, |controller, cx| {
-                                    controller.authenticate(pane, method_id.clone(), cx);
-                                });
-                            })
+                        card_button(
+                            Button::new(format!("agent-auth-{}-{index}", self.pane.0)).secondary(),
+                        )
+                        .label(method.name.clone())
+                        .tooltip(
+                            method
+                                .description
+                                .clone()
+                                .unwrap_or_else(|| "Authenticate with the agent".to_owned()),
+                        )
+                        .on_click(move |_, _, cx| {
+                            controller.update(cx, |controller, cx| {
+                                controller.authenticate(pane, method_id.clone(), cx);
+                            });
+                        })
                     });
                 this.child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_2()
+                    error_actions()
                         .child(
-                            Button::new(format!("agent-retry-{}", self.pane.0))
-                                .primary()
-                                .small()
-                                .icon(IconName::Redo2)
-                                .label(if state.lifecycle_pending {
-                                    "Restarting…"
-                                } else {
-                                    "Try again"
-                                })
-                                .disabled(state.lifecycle_pending)
-                                .on_click(move |_, _, cx| {
-                                    retry_controller.update(cx, |controller, cx| {
-                                        controller.retry(pane, cx);
-                                    });
-                                }),
+                            card_button(
+                                Button::new(format!("agent-retry-{}", self.pane.0)).primary(),
+                            )
+                            .icon(IconName::Redo2)
+                            .label(if state.lifecycle_pending {
+                                "Restarting…"
+                            } else {
+                                "Try again"
+                            })
+                            .disabled(state.lifecycle_pending)
+                            .on_click(move |_, _, cx| {
+                                retry_controller.update(cx, |controller, cx| {
+                                    controller.retry(pane, cx);
+                                });
+                            }),
                         )
                         .children(auth_buttons),
                 )

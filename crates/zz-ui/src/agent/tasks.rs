@@ -5,6 +5,7 @@ use zz_protocol::AgentTaskWire;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
+    StyledExt as _,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -77,7 +78,7 @@ pub fn task_tray(
             .h(px(TASK_ROW_HEIGHT))
             .flex_none()
             .gap_2()
-            .px_2()
+            .px((px(super::presentation::CARD_GUTTER) - cx.theme().row_inset).max(px(0.0)))
             .rounded(cx.theme().menu_radius())
             .overflow_hidden()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
@@ -124,10 +125,12 @@ pub fn task_tray(
     let panel = match open {
         Some(TrayPanel::Tasks) if !tasks.is_empty() => Some(v_flex().children(rows)),
         Some(TrayPanel::Plan) => plan.as_ref().map(|(source, _)| {
-            v_flex()
-                .px_2()
-                .py_1()
-                .child(super::render_plan_items(source, cx))
+            v_flex().child(
+                div()
+                    .px((px(super::presentation::CARD_GUTTER) - cx.theme().row_inset).max(px(0.0)))
+                    .py_1()
+                    .child(super::render_plan_items(source, cx)),
+            )
         }),
         _ => None,
     };
@@ -212,11 +215,9 @@ pub fn task_tray(
                 tray.child(
                     panel
                         .w_full()
-                        .p_1()
-                        .rounded(cx.theme().radius)
-                        .border_1()
-                        .border_color(cx.theme().border())
-                        .bg(cx.theme().background.raised(1).opaque()),
+                        .py(px(4.0))
+                        .px(cx.theme().row_inset)
+                        .popover_style(cx),
                 )
             })
             .child(

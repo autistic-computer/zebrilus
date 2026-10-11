@@ -17,9 +17,14 @@ use crate::{
     v_flex,
 };
 
-const CHOICE_LINE_HEIGHT: f32 = 18.0;
-const CHOICE_MARKER: f32 = 14.0;
-const CHOICE_OPTICAL_DROP: f32 = 0.5;
+use super::presentation::{
+    CARD_GAP, CARD_GLYPH, CARD_TITLE_LINE, card_button, card_chip, card_close, card_detail,
+    card_divider, card_footer, card_header, card_keycap, card_surface, card_tile, card_tiles,
+    card_trailing,
+};
+
+const CHECKBOX: f32 = 16.0;
+const OTHER_LABEL: &str = "Other";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QuestionCardStep {
@@ -305,7 +310,7 @@ impl QuestionCardState {
                     let placeholder = if question.options.is_empty() {
                         "Type your answer"
                     } else {
-                        "Something else"
+                        "Type your own answer"
                     };
                     let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
                     let on_input = on_input.clone();
@@ -406,85 +411,86 @@ impl QuestionCardState {
         let on_action: Rc<dyn Fn(QuestionCardAction, &mut Window, &mut App)> = Rc::new(on_action);
         let card = &self.card;
         let several = card.questions().len() > 1;
-        let hint = if several {
-            "1-9 picks · tab moves · enter submits · esc dismisses"
-        } else {
-            "1-9 picks · enter submits · esc dismisses"
-        };
         let problem = card.problem();
-        let dismiss = Rc::clone(&on_action);
+        let close = Rc::clone(&on_action);
+        let skip = Rc::clone(&on_action);
         let submit = Rc::clone(&on_action);
-        v_flex()
-            .w_full()
-            .gap_3()
-            .rounded(cx.theme().radius)
-            .border_1()
-            .border_color(cx.theme().accent.outline())
-            .bg(cx.theme().background.raised(1).opaque())
-            .when(cx.theme().shadow, zz_gpui::Styled::shadow_xs)
-            .p_3()
+        let mut trailing = Some(
+            counter
+                .map(|counter| card_chip(counter, cx).into_any_element())
+                .into_iter()
+                .chain(std::iter::once(
+                    card_close(
+                        Button::new(SharedString::from(format!("{id}-close")))
+                            .tooltip("Skip")
+                            .disabled(!enabled)
+                            .on_click(move |_, window, cx| {
+                                close(QuestionCardAction::Dismiss, window, cx);
+                                cx.stop_propagation();
+                            }),
+                    )
+                    .into_any_element(),
+                ))
+                .collect::<Vec<_>>(),
+        );
+        let ink = cx.theme().foreground.on();
+        card_surface(cx)
             .children(
                 card.questions()
                     .iter()
                     .enumerate()
                     .map(|(index, question)| {
-                        self.render_question(id, index, question, several, enabled, &on_action, cx)
+                        self.render_question(
+                            id,
+                            index,
+                            question,
+                            several,
+                            enabled,
+                            trailing.take(),
+                            &on_action,
+                            cx,
+                        )
                     }),
             )
             .child(
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
+                card_footer()
+                    .when_some(problem.clone(), |footer, problem| {
+                        footer.child(
+                            div()
+                                .min_w_0()
+                                .flex_1()
+                                .text_size(crate::rems_from_px(12.0))
+                                .text_color(cx.theme().danger)
+                                .child(problem),
+                        )
+                    })
                     .child(
-                        h_flex()
-                            .min_w_0()
-                            .gap_2()
-                            .when_some(counter, |row, counter| row.child(chip(counter, cx)))
-                            .child(match problem.clone() {
-                                Some(problem) => div()
-                                    .min_w_0()
-                                    .text_size(crate::rems_from_px(11.0))
-                                    .text_color(cx.theme().danger)
-                                    .child(problem),
-                                None => div()
-                                    .min_w_0()
-                                    .text_size(crate::rems_from_px(9.0))
-                                    .text_color(cx.theme().foreground.muted())
-                                    .child(hint),
-                            }),
+                        card_button(
+                            Button::new(SharedString::from(format!("{id}-skip"))).secondary(),
+                        )
+                        .label("Skip")
+                        .disabled(!enabled)
+                        .on_click(move |_, window, cx| {
+                            skip(QuestionCardAction::Dismiss, window, cx);
+                            cx.stop_propagation();
+                        }),
                     )
                     .child(
-                        h_flex()
-                            .flex_none()
-                            .gap_1()
-                            .child(
-                                Button::new(SharedString::from(format!("{id}-dismiss")))
-                                    .ghost()
-                                    .small()
-                                    .label("Dismiss")
-                                    .disabled(!enabled)
-                                    .on_click(move |_, window, cx| {
-                                        dismiss(QuestionCardAction::Dismiss, window, cx);
-                                        cx.stop_propagation();
-                                    }),
-                            )
-                            .child(
-                                Button::new(SharedString::from(format!("{id}-submit")))
-                                    .primary()
-                                    .small()
-                                    .label("Submit")
-                                    .disabled(!enabled || !card.is_complete() || problem.is_some())
-                                    .on_click(move |_, window, cx| {
-                                        submit(QuestionCardAction::Submit, window, cx);
-                                        cx.stop_propagation();
-                                    }),
-                            ),
+                        card_button(
+                            Button::new(SharedString::from(format!("{id}-submit"))).primary(),
+                        )
+                        .label("Submit")
+                        .child(card_keycap("↵", ink, cx))
+                        .disabled(!enabled || !card.is_complete() || problem.is_some())
+                        .on_click(move |_, window, cx| {
+                            submit(QuestionCardAction::Submit, window, cx);
+                            cx.stop_propagation();
+                        }),
                     ),
             )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_question(
         &self,
         id: &str,
@@ -492,64 +498,58 @@ impl QuestionCardState {
         question: &AgentQuestion,
         several: bool,
         enabled: bool,
+        trailing: Option<Vec<AnyElement>>,
         on_action: &Rc<dyn Fn(QuestionCardAction, &mut Window, &mut App)>,
         cx: &App,
     ) -> AnyElement {
         let card = &self.card;
         let focused = card.focused() == index;
-        let digits = focused || !several;
-        let hover = cx.theme().background.hover();
+        let keys = enabled && (focused || !several);
+        let marker = |option: usize, picked: bool| {
+            card_trailing().child(if question.multi_select {
+                checkbox(picked, cx).into_any_element()
+            } else if picked {
+                Icon::new(IconName::Check)
+                    .size(px(CARD_GLYPH))
+                    .text_color(cx.theme().accent)
+                    .into_any_element()
+            } else if keys && option < 9 {
+                card_keycap(format!("{}", option + 1), cx.theme().foreground, cx).into_any_element()
+            } else {
+                div().into_any_element()
+            })
+        };
         let options = question.options.iter().enumerate().map(|(option, choice)| {
             let on_action = Rc::clone(on_action);
-            h_flex()
-                .id((SharedString::from(format!("{id}-{index}")), option))
-                .w_full()
-                .items_start()
-                .gap_2()
-                .px_1()
-                .py(px(3.0))
-                .rounded(cx.theme().radius)
-                .when(enabled, |row| {
-                    row.cursor_pointer()
-                        .hover(move |row| row.bg(hover))
-                        .on_click(move |_, window, cx| {
-                            on_action(
-                                QuestionCardAction::Pick {
-                                    question: index,
-                                    option,
-                                },
-                                window,
-                                cx,
-                            );
-                            cx.stop_propagation();
-                        })
-                })
-                .child(digit_badge(option, digits, cx))
-                .child(choice_marker(
-                    question.multi_select,
-                    card.is_picked(index, option),
+            let picked = card.is_picked(index, option);
+            card_tile(
+                (SharedString::from(format!("{id}-{index}")), option),
+                enabled,
+                picked,
+                cx,
+            )
+            .on_click(move |_, window, cx| {
+                on_action(
+                    QuestionCardAction::Pick {
+                        question: index,
+                        option,
+                    },
+                    window,
                     cx,
-                ))
-                .child(
-                    v_flex()
-                        .min_w_0()
-                        .flex_1()
-                        .child(
-                            div()
-                                .text_size(crate::rems_from_px(13.0))
-                                .line_height(px(CHOICE_LINE_HEIGHT))
-                                .child(choice.label.clone()),
-                        )
-                        .when_some(choice.description.clone(), |column, description| {
-                            column.child(
-                                div()
-                                    .text_size(crate::rems_from_px(11.0))
-                                    .text_color(cx.theme().foreground.muted())
-                                    .child(description),
-                            )
-                        }),
-                )
-                .into_any_element()
+                );
+                cx.stop_propagation();
+            })
+            .child(
+                v_flex()
+                    .min_w_0()
+                    .flex_1()
+                    .child(choice.label.clone())
+                    .when_some(choice.description.clone(), |column, description| {
+                        column.child(card_detail(description, cx))
+                    }),
+            )
+            .child(marker(option, picked))
+            .into_any_element()
         });
         let other = self.other_input(index).map(|input| {
             let field = Input::new(input)
@@ -560,155 +560,89 @@ impl QuestionCardState {
                     field.content_type(InputContentType::Password)
                 });
             if question.options.is_empty() {
-                return div().w_full().child(field).into_any_element();
+                return field.into_any_element();
             }
             let on_action = Rc::clone(on_action);
             let choice = question.options.len();
-            h_flex()
-                .w_full()
-                .items_center()
-                .gap_2()
-                .px_1()
-                .child(digit_badge(choice, digits, cx))
-                .child(
-                    div()
-                        .id((SharedString::from(format!("{id}-{index}-other")), choice))
-                        .flex_none()
-                        .when(enabled, |marker| {
-                            marker.cursor_pointer().on_click(move |_, window, cx| {
-                                on_action(
-                                    QuestionCardAction::Other { question: index },
-                                    window,
-                                    cx,
-                                );
-                                cx.stop_propagation();
-                            })
-                        })
-                        .child(choice_marker(
-                            question.multi_select,
-                            card.other_selected(index),
-                            cx,
-                        )),
-                )
-                .child(div().min_w_0().flex_1().child(field))
-                .into_any_element()
-        });
-        let edge = if several && focused {
-            cx.theme().accent
-        } else {
-            cx.theme().accent.opacity(0.0)
-        };
-        v_flex()
-            .w_full()
-            .gap_1()
-            .when(several, |section| {
-                section.pl_2().border_l_2().border_color(edge)
+            let picked = card.other_selected(index);
+            card_tile(
+                (SharedString::from(format!("{id}-{index}-other")), choice),
+                enabled,
+                picked,
+                cx,
+            )
+            .on_click(move |_, window, cx| {
+                on_action(QuestionCardAction::Other { question: index }, window, cx);
+                cx.stop_propagation();
             })
             .child(
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .gap_2()
-                    .when_some(question.header.clone(), |row, header| {
-                        row.child(chip(header.into(), cx))
-                    })
+                v_flex()
+                    .min_w_0()
+                    .flex_1()
+                    .gap(px(CARD_GAP))
                     .child(
-                        div()
-                            .min_w_0()
-                            .flex_1()
-                            .text_size(crate::rems_from_px(13.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(question.question.clone()),
+                        h_flex()
+                            .w_full()
+                            .gap(px(CARD_GAP))
+                            .child(div().min_w_0().flex_1().child(OTHER_LABEL))
+                            .child(marker(choice, picked)),
                     )
+                    .child(field),
+            )
+            .into_any_element()
+        });
+        v_flex()
+            .w_full()
+            .when(index > 0, |section| section.child(card_divider(cx)))
+            .child(
+                card_header()
+                    .when(index > 0, zz_gpui::Styled::pt_0)
+                    .when(several && !focused, |header| {
+                        header.text_color(cx.theme().foreground.muted())
+                    })
+                    .when_some(question.header.clone(), |row, header| {
+                        row.child(card_chip(header, cx))
+                    })
+                    .child(div().min_w_0().flex_1().child(question.question.clone()))
                     .when(question.multi_select, |row| {
                         row.child(
-                            div()
+                            h_flex()
                                 .flex_none()
-                                .text_size(crate::rems_from_px(10.0))
+                                .h(px(CARD_TITLE_LINE))
+                                .text_size(crate::rems_from_px(11.0))
+                                .font_weight(FontWeight::NORMAL)
                                 .text_color(cx.theme().foreground.muted())
                                 .child("Pick any"),
                         )
-                    }),
+                    })
+                    .children(trailing.into_iter().flatten()),
             )
-            .child(
-                v_flex()
-                    .w_full()
-                    .gap(px(2.0))
-                    .children(options)
-                    .children(other),
-            )
+            .child(card_tiles().children(options).children(other))
             .into_any_element()
     }
 }
 
-fn chip(text: SharedString, cx: &App) -> Div {
-    div()
-        .flex_none()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().background.raised(2))
-        .px_2()
-        .py(px(2.0))
-        .text_size(crate::rems_from_px(10.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(text)
-}
-
-fn digit_badge(index: usize, visible: bool, cx: &App) -> Div {
-    div()
-        .flex_none()
-        .w(px(18.0))
-        .h(px(CHOICE_LINE_HEIGHT))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(crate::rems_from_px(9.0))
-        .text_color(cx.theme().foreground.muted())
-        .when(visible && index < 9, |badge| {
-            badge.child(
-                div()
-                    .rounded(cx.theme().radius)
-                    .bg(cx.theme().background.raised(2))
-                    .px_1()
-                    .child(format!("{}", index + 1)),
-            )
-        })
-}
-
-fn choice_marker(multi_select: bool, picked: bool, cx: &App) -> Div {
+fn checkbox(checked: bool, cx: &App) -> Div {
     let accent = cx.theme().accent;
-    let edge = if picked {
-        accent
-    } else {
-        cx.theme().foreground.muted()
-    };
-    let marker = div()
-        .size(px(CHOICE_MARKER))
+    div()
+        .size(px(CHECKBOX))
         .flex()
         .items_center()
         .justify_center()
+        .rounded(cx.theme().radius / 2.0)
         .border_1()
-        .border_color(edge);
-    let marker = if multi_select {
-        marker.rounded(px(3.0)).when(picked, |marker| {
+        .border_color(if checked {
+            accent
+        } else {
+            cx.theme().foreground.opacity(0.35)
+        })
+        .when(checked, |marker| {
             marker.bg(accent).child(
                 Icon::new(IconName::Check)
-                    .size(px(10.0))
+                    .size(px(11.0))
                     .text_color(accent.on()),
             )
         })
-    } else {
-        marker.rounded_full().when(picked, |marker| {
-            marker.child(div().size(px(6.0)).rounded_full().bg(accent))
-        })
-    };
-    div()
-        .flex_none()
-        .h(px(CHOICE_LINE_HEIGHT))
-        .flex()
-        .items_center()
-        .relative()
-        .top(px(CHOICE_OPTICAL_DROP))
-        .child(marker)
 }
 
 #[cfg(test)]
