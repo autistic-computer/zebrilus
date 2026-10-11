@@ -527,15 +527,23 @@ mod tests {
 
     impl Render for PanesPageTest {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let [gaps, background, opacity, glow, margin, radius, border] =
-                std::array::from_fn::<_, 7, _>(|index| {
-                    SettingEntry::new(format!("Setting {index}"), "Sample pane setting").control(
-                        div()
-                            .w(px(100.0))
-                            .h(px(80.0))
-                            .debug_selector(move || format!("panes-control-{index}")),
-                    )
-                });
+            let [
+                gaps,
+                background,
+                glass,
+                opacity,
+                glow,
+                margin,
+                radius,
+                border,
+            ] = std::array::from_fn::<_, 8, _>(|index| {
+                SettingEntry::new(format!("Setting {index}"), "Sample pane setting").control(
+                    div()
+                        .w(px(100.0))
+                        .h(px(80.0))
+                        .debug_selector(move || format!("panes-control-{index}")),
+                )
+            });
             div().w(px(500.0)).h(px(600.0)).child(panes_page(
                 panes_preview::PanesPreview {
                     gaps: true,
@@ -545,7 +553,7 @@ mod tests {
                     inactive_opacity: 0.7,
                 },
                 [gaps],
-                background,
+                [background, glass],
                 [opacity, glow],
                 [margin, radius, border],
                 cx,
@@ -1536,7 +1544,7 @@ impl SelectItem for SettingsSelectItem {
 pub fn panes_page(
     preview: panes_preview::PanesPreview,
     layout: impl IntoIterator<Item = SettingEntry>,
-    background_opacity: SettingEntry,
+    appearance: [SettingEntry; 2],
     focus: [SettingEntry; 2],
     frame: [SettingEntry; 3],
     cx: &App,
@@ -1564,7 +1572,7 @@ pub fn panes_page(
                         .child(preview),
                 )
                 .child(SettingsStack::titled("Layout").children(layout))
-                .child(SettingsStack::titled("Appearance").child(background_opacity))
+                .child(SettingsStack::titled("Appearance").children(appearance))
                 .child(SettingsStack::titled("Focus").children(focus))
                 .child(
                     SettingsStack::titled("Frame")

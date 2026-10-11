@@ -6,8 +6,9 @@ use crate::{
 };
 use zz_gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, Corners, CursorStyle,
-    ElementId, FontWeight, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
-    Styled as _, StyledText, Window, div, point, prelude::*, px, relative, size,
+    ElementId, FontWeight, GlassMaterial, Hsla, IntoElement, ParentElement as _, Pixels,
+    SharedString, Stateful, Styled as _, StyledText, Window, div, point, prelude::*, px, relative,
+    size,
 };
 
 mod drag;
@@ -142,6 +143,7 @@ pub struct PaneChrome {
     pub shadow: bool,
     pub active: bool,
     pub inactive_opacity: f32,
+    pub glass: Option<GlassMaterial>,
 }
 
 impl PaneChrome {
@@ -159,6 +161,7 @@ impl PaneChrome {
             shadow,
             active: false,
             inactive_opacity: 1.0,
+            glass: None,
         }
     }
 
@@ -171,6 +174,12 @@ impl PaneChrome {
     #[must_use]
     pub fn dimmed(mut self, dimmed: bool, opacity: f32) -> Self {
         self.inactive_opacity = if dimmed { opacity.clamp(0.0, 1.0) } else { 1.0 };
+        self
+    }
+
+    #[must_use]
+    pub const fn glass(mut self, glass: Option<GlassMaterial>) -> Self {
+        self.glass = glass;
         self
     }
 }
@@ -201,8 +210,13 @@ pub fn pane_surface(
         .rounded_tr(chrome.radii.top_right)
         .rounded_bl(chrome.radii.bottom_left)
         .rounded_br(chrome.radii.bottom_right)
+        .when_some(chrome.glass, zz_gpui::Styled::glass)
         .border(chrome.border_width)
-        .border_color(chrome.border_color)
+        .border_color(if chrome.glass.is_some() && !chrome.active {
+            cx.theme().transparent
+        } else {
+            chrome.border_color
+        })
         .shadow(pane_surface_shadow_style(chrome.shadow, cx))
         .child(content)
         .when(
@@ -358,6 +372,7 @@ impl RenderOnce for FloatingSurface {
         let inset_y = (self.inset_y - border).max(Pixels::ZERO);
         let title_inset = self.inset_x.max(px(8.0)) - border;
         let titled = self.bordered && !(self.title.is_empty() && self.title_right.is_empty());
+        let glass = cx.theme().pane_glass_active();
         div()
             .id(self.id)
             .relative()
@@ -365,7 +380,13 @@ impl RenderOnce for FloatingSurface {
             .overflow_hidden()
             .occlude()
             .rounded(cx.theme().radius)
-            .bg(self.background)
+            .map(|surface| {
+                if glass {
+                    surface.surface_fill(self.background, cx)
+                } else {
+                    surface.bg(self.background)
+                }
+            })
             .text_color(self.foreground)
             .shadow(shadows)
             .when(self.bordered, |surface| {
@@ -389,7 +410,7 @@ impl RenderOnce for FloatingSurface {
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .bg(self.background)
+                        .when(!glass, |label| label.bg(self.background))
                         .child(text)
                 };
                 surface.child(

@@ -22,6 +22,7 @@ pub struct Knobs {
     pub zoom: f32,
     pub pane_opacity: f32,
     pub pane_glow: f32,
+    pub pane_glass: bool,
     pub motion: bool,
     pub backdrop: Backdrop,
 }
@@ -170,6 +171,7 @@ impl Knobs {
             zoom: 1.0,
             pane_opacity: 0.5,
             pane_glow: 1.0,
+            pane_glass: false,
             motion: true,
             backdrop: Backdrop::Plain,
         }
@@ -260,6 +262,9 @@ impl Knobs {
                 "zoom" => knobs.zoom = number(key, value)?,
                 "pane-opacity" => knobs.pane_opacity = number(key, value)?,
                 "pane-glow" => knobs.pane_glow = number(key, value)?,
+                "pane-glass" => {
+                    knobs.pane_glass = value != "0" && value != "off" && value != "false";
+                }
                 "motion" => knobs.motion = value != "0" && value != "off" && value != "false",
                 "backdrop" => {
                     knobs.backdrop = match value {
@@ -327,6 +332,7 @@ impl Knobs {
         }
         theme.pane_background_opacity = self.pane_opacity;
         theme.pane_glow_strength = self.pane_glow;
+        theme.pane_glass = self.pane_glass;
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();
@@ -467,6 +473,8 @@ mod tests {
         assert_eq!(knobs.zoom, 1.25);
         assert_eq!(knobs.interface, "linear");
         assert!(!knobs.motion);
+        assert!(!knobs.pane_glass);
+        assert!(Knobs::parse("pane-glass=on").unwrap().pane_glass);
         assert!(Knobs::parse("radius=wide").is_err());
         assert!(Knobs::parse("interface-theme=sepia").is_err());
     }

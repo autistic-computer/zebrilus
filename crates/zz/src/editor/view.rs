@@ -537,10 +537,7 @@ impl Render for EditorView {
             .on_action(cx.listener(Self::open_file))
             .on_action(cx.listener(Self::save_file))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
-            .child(
-                CodeEditor::new(&self.editor)
-                    .background_opacity(cx.theme().pane_background_opacity),
-            )
+            .child(CodeEditor::new(&self.editor).background_opacity(cx.theme().pane_fill_opacity()))
             .when(scratch_hint, |this| {
                 this.child(
                     div()

@@ -32,7 +32,7 @@ pub const STORY: Story = Story {
         Section {
             id: "frames",
             name: "Frames",
-            summary: "pane_surface with and without pane gaps. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-glow and pane-opacity knobs.",
+            summary: "pane_surface with and without pane gaps. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-glow, pane-opacity and pane-glass knobs: under pane glass the gapped frames take the theme's glass edge, tinted with the pane's color, and inactive frames drop their hairline.",
             build: |_, cx| stateless(frames, cx),
         },
         Section {
@@ -68,7 +68,7 @@ pub const STORY: Story = Story {
         Section {
             id: "floating",
             name: "Floating surface",
-            summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style.",
+            summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style. The pane-glass knob turns it into the theme's full glass; set backdrop=code to see it frost the panes behind.",
             build: |_, cx| stateless(floating, cx),
         },
         Section {
