@@ -23,11 +23,12 @@ use zz_client::{
     pane_drop_command, pane_rects, predicted_drop_layout,
 };
 use zz_gpui::{
-    Anchor, Animation, AnimationExt as _, AnyElement, AnyView, AnyWindowHandle, App, Bounds,
-    Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable as _,
-    IntoElement, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseExitEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Subscription, Task,
-    WeakEntity, Window, anchored, deferred, div, ease_out_quint, point, prelude::*, px,
+    Anchor, AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView,
+    AnyWindowHandle, App, Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId,
+    FocusHandle, Focusable as _, IntoElement, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
+    MouseExitEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement,
+    Subscription, Task, WeakEntity, Window, anchored, deferred, div, ease_out_quint, point,
+    prelude::*, px,
 };
 use zz_mux::display_width;
 use zz_protocol::{
@@ -3034,14 +3035,13 @@ impl AppView {
         kind: MenuPointerKind,
         buttons: u8,
         position: Point<Pixels>,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(menu) = self.menu.clone() else {
             return;
         };
         menu.update(cx, |menu, cx| {
-            menu.pointer(kind, buttons, position, window, cx);
+            menu.pointer(kind, buttons, position, cx);
         });
         cx.stop_propagation();
     }
@@ -3049,29 +3049,22 @@ impl AppView {
     fn on_menu_mouse_down(
         &mut self,
         event: &MouseDownEvent,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.route_menu_pointer(
             MenuPointerKind::Press,
             crate::command::menu::press_buttons(event.button),
             event.position,
-            window,
             cx,
         );
     }
 
-    fn on_menu_mouse_up(
-        &mut self,
-        event: &MouseUpEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_menu_mouse_up(&mut self, event: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.route_menu_pointer(
             MenuPointerKind::Release,
             crate::command::menu::RELEASE_BUTTONS,
             event.position,
-            window,
             cx,
         );
     }
@@ -3882,39 +3875,18 @@ impl AppView {
 
     fn menu_overlay(&self, origin: Point<Pixels>, window: &Window, cx: &App) -> Option<AnyElement> {
         let menu = self.menu.as_ref()?;
-        let state = menu.read(cx).state();
         let frame = menu_frame(
-            state,
+            menu.read(cx).state(),
             origin,
             self.pane_canvas_bounds.get().size,
             window.scale_factor(),
         );
-        let bordered = state.border_lines != PopupBorderLines::None;
-        let background = crate::theme::tmux_style_colour(
-            &state.style,
-            "bg",
-            cx.theme().surface(Elevation::Panel).fill.opaque(),
-            cx,
-        );
-        let foreground =
-            crate::theme::tmux_style_colour(&state.style, "fg", cx.theme().foreground, cx);
-        let border_color =
-            crate::theme::tmux_style_colour(&state.border_style, "fg", cx.theme().border(), cx);
         Some(
-            div()
-                .absolute()
-                .left(frame.bounds.origin.x)
-                .top(frame.bounds.origin.y)
-                .w(frame.bounds.size.width)
-                .h(frame.bounds.size.height)
-                .debug_selector(|| "display-menu".to_owned())
-                .child(
-                    FloatingSurface::new("display-menu-surface", menu.clone(), cx)
-                        .title(state.title.clone())
-                        .content_inset(frame.inset_x, frame.inset_y)
-                        .colors(background, foreground, border_color)
-                        .bordered(bordered),
-                )
+            anchored()
+                .position_mode(AnchoredPositionMode::Local)
+                .position(frame.bounds.origin)
+                .snap_to_window_with_margin(px(8.0))
+                .child(menu.clone())
                 .into_any_element(),
         )
     }
@@ -6142,6 +6114,28 @@ mod tests {
                 }
             )),
             "a menu that took the mouse still chooses the row under button 1: {:?}",
+            input.borrow()
+        );
+    }
+
+    #[zz_gpui::test]
+    fn a_bare_motion_over_a_nomouse_menu_sends_nothing(cx: &mut TestAppContext) {
+        let (input, cx) = menu_mouse_fixture(cx, false, false);
+        let row = cx
+            .debug_bounds("display-menu-row-1")
+            .expect("the menu drew its second row");
+
+        cx.simulate_mouse_move(row.center(), None, Modifiers::default());
+        assert!(
+            input.borrow().is_empty(),
+            "the pin never hears a bare motion over a NOMOUSE menu: {:?}",
+            input.borrow()
+        );
+
+        cx.simulate_keystrokes("escape");
+        assert!(
+            menu_cancelled(&input),
+            "the menu is still up for its keys: {:?}",
             input.borrow()
         );
     }

@@ -8,7 +8,7 @@ use zz_ui::{Theme, ThemeMode};
 
 use crate::config;
 
-pub(crate) use zz_ui::tmux_style::{tmux_style_colour, tmux_styled_segments_text};
+pub(crate) use zz_ui::tmux_style::tmux_styled_segments_text;
 
 pub use zz_ui::interface_theme::ThemeModeSetting;
 
