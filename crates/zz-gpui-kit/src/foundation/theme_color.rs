@@ -4,7 +4,7 @@ use zz_gpui::Hsla;
 
 use super::{Colorize as _, color::edge_weight};
 
-/// The six palette roots and scrim the widget layer names. Read them off `cx.theme()`; derive
+/// The six palette roots, the scrim and the shadow ink the widget layer names. Read them off `cx.theme()`; derive
 /// everything else with [`Colorize`].
 ///
 /// [`Colorize`]: super::Colorize
@@ -24,9 +24,17 @@ pub struct ThemeColor {
     pub warning: Hsla,
     /// Something failed or is destructive.
     pub danger: Hsla,
-    /// The dimming behind modals and under shadows. Black in both modes, with a
-    /// per-mode alpha.
+    /// The dimming behind modals, sheets and slide-overs. Black in both modes,
+    /// with a per-mode alpha.
     pub scrim: Hsla,
+    /// The ink of every drop shadow. Its alpha is the shadow under a floating
+    /// surface at full strength; small shadows keep its hue at their own
+    /// alpha. A light theme on a tinted background tints it to match.
+    pub shadow_color: Hsla,
+    /// Text on an accent fill: a solid primary button in the accent, an
+    /// accent selection. `None` picks black or white by the accent's
+    /// lightness.
+    pub on_accent: Option<Hsla>,
 }
 
 impl ThemeColor {

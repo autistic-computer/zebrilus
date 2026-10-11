@@ -137,7 +137,7 @@ fn thumb(
     div()
         .rounded_full()
         .bg(fill)
-        .shadow_md()
+        .shadow(crate::lifted_shadow(cx))
         .size(m.thumb)
         .map(|this| {
             if disabled || *toggle_state.read(cx) == checked {

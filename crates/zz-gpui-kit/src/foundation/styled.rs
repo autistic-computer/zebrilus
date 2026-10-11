@@ -82,10 +82,11 @@ pub trait StyledExt: Styled + Sized {
     }
 
     /// The control's hairline, and its shadow when `ground` is the window: a
-    /// control on a panel or a popover stays flat.
+    /// control on a panel or a popover stays flat, and so does every control
+    /// when the theme turns control shadows off.
     fn control_highlight_on(self, ground: Ground, cx: &App) -> Self {
         let this = self.border_color(cx.theme().foreground.opacity(0.1 * cx.theme().outline));
-        if cx.theme().shadow && ground.elevation == Elevation::Window {
+        if cx.theme().control_shadows() && ground.elevation == Elevation::Window {
             this.shadow(control_shadow(cx))
         } else {
             this
@@ -169,9 +170,9 @@ pub trait StyledExt: Styled + Sized {
             .rounded(cx.theme().radius);
         if cx.theme().shadow && cx.theme().shadow_strength > 0.0 {
             let elevation = cx.theme().elevation;
-            let mut shadows = control_shadow(cx);
+            let mut shadows = contact_shadow(cx);
             shadows.push(BoxShadow {
-                color: cx.theme().scrim.opacity(cx.theme().shadow_strength),
+                color: cx.theme().shadow_color.opacity(cx.theme().shadow_strength),
                 offset: point(px(0.0), px(12.0 * elevation)),
                 blur_radius: px(32.0 * elevation),
                 spread_radius: px(-4.0 * elevation),
@@ -201,9 +202,9 @@ const RING_SPREAD: Pixels = SURFACE_RING_OUTSET;
 const RING_INK_FLOOR: f32 = 0.12;
 
 fn ring(sink: Pixels, cx: &App) -> BoxShadow {
-    let scrim = cx.theme().scrim;
+    let ink = cx.theme().shadow_color;
     BoxShadow {
-        color: scrim.divide(scrim.a.max(RING_INK_FLOOR)),
+        color: ink.divide(ink.a.max(RING_INK_FLOOR)),
         offset: point(px(0.), sink),
         blur_radius: px(0.),
         spread_radius: RING_SPREAD,
@@ -211,17 +212,49 @@ fn ring(sink: Pixels, cx: &App) -> BoxShadow {
     }
 }
 
+/// The tight shadow a surface sits on: a pane, a card, the edge of a popover.
+pub fn contact_shadow(cx: &App) -> Vec<BoxShadow> {
+    tight_shadow(cx.theme().shadow_strength, cx)
+}
+
+/// The tight shadow a control casts, at the theme's share for controls.
 pub fn control_shadow(cx: &App) -> Vec<BoxShadow> {
-    if cx.theme().shadow_strength == 0.0 {
+    tight_shadow(cx.theme().shadow_strength * cx.theme().control_shadow, cx)
+}
+
+fn tight_shadow(strength: f32, cx: &App) -> Vec<BoxShadow> {
+    if strength <= 0.0 {
         return Vec::new();
     }
     vec![BoxShadow {
-        color: cx.theme().scrim.alpha(0.2 * cx.theme().shadow_strength),
+        color: cx.theme().shadow_color.alpha(0.2 * strength),
         offset: point(px(0.), px(1.)),
         blur_radius: px(2.),
         spread_radius: px(0.),
         inset: false,
     }]
+}
+
+/// The small shadow of a chip that floats over content: a tooltip, a toast,
+/// a switch thumb.
+pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
+    let ink = cx.theme().shadow_color;
+    vec![
+        BoxShadow {
+            color: ink.alpha(0.1),
+            offset: point(px(0.), px(4.)),
+            blur_radius: px(6.),
+            spread_radius: px(-1.),
+            inset: false,
+        },
+        BoxShadow {
+            color: ink.alpha(0.1),
+            offset: point(px(0.), px(2.)),
+            blur_radius: px(4.),
+            spread_radius: px(-2.),
+            inset: false,
+        },
+    ]
 }
 
 /// The control hairline without the soft falloff. Apply it to a box expanded by
@@ -434,6 +467,17 @@ mod tests {
 
             crate::Theme::global_mut(cx).shadow_strength = 0.0;
             assert!(super::control_shadow(cx).is_empty());
+        });
+    }
+
+    #[zz_gpui::test]
+    fn flat_controls_keep_surface_shadows(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(crate::init);
+        cx.update(|cx| {
+            crate::Theme::global_mut(cx).control_shadow = 0.0;
+            assert!(super::control_shadow(cx).is_empty());
+            assert!(!crate::Theme::global(cx).control_shadows());
+            assert_eq!(super::contact_shadow(cx).len(), 1);
         });
     }
 

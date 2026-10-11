@@ -2,7 +2,7 @@ use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Elevation, Emphasis, Icon,
     IconName, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
-    control_shadow, surface_ring,
+    contact_shadow, surface_ring,
 };
 use zz_gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, Corners, CursorStyle,
@@ -221,7 +221,7 @@ pub fn pane_surface(
 
 fn pane_surface_shadow_style(shadow: bool, cx: &App) -> Vec<BoxShadow> {
     if shadow && cx.theme().shadow {
-        control_shadow(cx)
+        contact_shadow(cx)
     } else {
         Vec::new()
     }
@@ -275,7 +275,7 @@ fn pane_inactive_scrim(radii: Corners<Pixels>, opacity: f32, cx: &App) -> zz_gpu
 
 fn floating_surface_shadow(cx: &App) -> Vec<BoxShadow> {
     vec![BoxShadow {
-        color: cx.theme().scrim,
+        color: cx.theme().shadow_color,
         offset: point(px(0.0), px(8.0)),
         blur_radius: px(24.0),
         spread_radius: px(-8.0),
@@ -833,7 +833,7 @@ pub fn pane_indicator_card(
                 inset: false,
             },
             BoxShadow {
-                color: cx.theme().scrim,
+                color: cx.theme().shadow_color,
                 offset: point(px(0.0), px(6.0)),
                 blur_radius: px(16.0),
                 spread_radius: px(0.0),
@@ -1115,7 +1115,7 @@ mod tests {
         cx.update(|cx| {
             assert!(pane_surface_shadow_style(false, cx).is_empty());
 
-            let expected = control_shadow(cx);
+            let expected = contact_shadow(cx);
             assert_eq!(pane_surface_shadow_style(true, cx), expected);
             assert!(!expected[0].inset);
 

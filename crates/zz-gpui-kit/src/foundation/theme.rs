@@ -95,6 +95,10 @@ pub struct Theme {
     pub contrast: f32,
     pub shadow: bool,
     pub shadow_strength: f32,
+    /// How much of the shadow strength controls cast: buttons, fields,
+    /// highlighted rows. 0 keeps them flat while floating surfaces still
+    /// cast theirs.
+    pub control_shadow: f32,
     /// Scales the drop shadows under floating surfaces: their offset and
     /// blur.
     pub elevation: f32,
@@ -185,6 +189,11 @@ impl Theme {
             SelectionStyle::Accent => self.accent.opaque(),
             SelectionStyle::Wash => self.background.washed(3),
         }
+    }
+
+    /// Whether controls cast shadows and draw the highlight ring.
+    pub fn control_shadows(&self) -> bool {
+        self.shadow && self.shadow_strength > 0.0 && self.control_shadow > 0.0
     }
 
     pub fn menu_radius(&self) -> Pixels {
@@ -335,6 +344,7 @@ impl From<&ThemeColor> for Theme {
             contrast: 1.0,
             shadow: true,
             shadow_strength: 1.0,
+            control_shadow: 1.0,
             elevation: 1.0,
             outline: 1.0,
             outline_width: px(0.5),

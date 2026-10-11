@@ -163,7 +163,7 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
                 .flex_none()
                 .px(px(6.0))
                 .rounded(cx.theme().control_radius())
-                .when(cx.theme().shadow, |item| {
+                .when(cx.theme().control_shadows(), |item| {
                     item.border(px(0.5))
                         .border_color(zz_gpui::transparent_white())
                 })

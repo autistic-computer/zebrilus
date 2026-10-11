@@ -491,7 +491,7 @@ impl TerminalPane {
                             .border_1()
                             .border_color(cx.theme().border())
                             .rounded(cx.theme().radius)
-                            .shadow_md()
+                            .shadow(zz_ui::lifted_shadow(cx))
                             .child(
                                 img(ImageSource::Image(image))
                                     .size_full()

@@ -2467,7 +2467,7 @@ mod tests {
         let shadows = cx.update(|cx| {
             install_config(Some(&path), Some(load_config(&path)), cx);
             crate::theme::refresh_current_theme(cx);
-            zz_ui::control_shadow(cx)
+            zz_ui::contact_shadow(cx)
         });
         for (value, expected, provenance) in [
             (Some("0"), 0.0, ConfigProvenance::Override),
@@ -2487,7 +2487,7 @@ mod tests {
                     resolved_config(cx).pane_background_opacity.provenance,
                     provenance
                 );
-                assert_eq!(zz_ui::control_shadow(cx), shadows);
+                assert_eq!(zz_ui::contact_shadow(cx), shadows);
             });
         }
     }

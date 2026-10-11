@@ -260,7 +260,7 @@ impl RenderOnce for SwipeBack {
                     .bg(theme.background.opaque())
                     .when(moving, |page| {
                         page.shadow(vec![BoxShadow {
-                            color: theme.scrim.alpha(SHADOW * (1.0 - progress)),
+                            color: theme.shadow_color.alpha(SHADOW * (1.0 - progress)),
                             offset: point(px(-1.0), px(1.0)),
                             blur_radius: px(5.0),
                             spread_radius: px(0.0),

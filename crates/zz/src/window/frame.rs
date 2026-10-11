@@ -109,7 +109,7 @@ impl RenderOnce for RoundedWindowFrame {
                                     })
                                     .when(!tiling.is_tiled(), |surface| {
                                         surface.shadow(vec![zz_gpui::BoxShadow {
-                                            color: cx.theme().scrim,
+                                            color: cx.theme().shadow_color,
                                             blur_radius: visual_shadow / 2.0,
                                             spread_radius: px(0.0),
                                             offset: point(px(0.0), px(0.0)),

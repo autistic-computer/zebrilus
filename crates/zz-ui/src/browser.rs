@@ -1237,7 +1237,7 @@ pub fn browser_surface_shadow(cx: &App) -> Vec<BoxShadow> {
             inset: false,
         },
         BoxShadow {
-            color: cx.theme().scrim,
+            color: cx.theme().shadow_color,
             offset: point(px(0.0), px(8.0)),
             blur_radius: px(24.0),
             spread_radius: px(-8.0),

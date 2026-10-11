@@ -71,7 +71,9 @@ impl Render for Tooltip {
                     cx,
                 )
                 .rounded(cx.theme().radius)
-                .when(cx.theme().shadow, zz_gpui::Styled::shadow_md)
+                .when(cx.theme().shadow, |this| {
+                    this.shadow(crate::lifted_shadow(cx))
+                })
                 .refine_style(&self.style)
                 .child(div().child(self.text.clone()))
                 .when_some(key_binding, |this, kbd| {

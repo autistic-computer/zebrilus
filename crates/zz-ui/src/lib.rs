@@ -20,10 +20,10 @@ pub use zz_gpui_kit::{
     InteractivePaintExt, MACOS_TRAFFIC_LIGHT_INSET, MACOS_TRAFFIC_LIGHT_SPAN, Paint, PaintExt,
     PaintState, PrimaryStyle, ROOT_KEY_CONTEXT, Root, SURFACE_RING_OUTSET, ScrollbarShow,
     Selectable, SelectionStyle, Side, Sizable, Size, StyledExt, TITLE_BAR_HEIGHT, Theme,
-    ThemeColor, ThemeMode, TitleBar, Tone, UiZoom, WindowControls, WindowExt, control_shadow,
-    cubic_ease, draws_window_controls, h_flex, init, macos_traffic_light_clearance,
-    oklab_lightness, parse_hex, rems_from_px, stacked_ring, surface_ring, to_hex, v_flex,
-    window_border, window_controls_width, window_paddings,
+    ThemeColor, ThemeMode, TitleBar, Tone, UiZoom, WindowControls, WindowExt, contact_shadow,
+    control_shadow, cubic_ease, draws_window_controls, h_flex, init, lifted_shadow,
+    macos_traffic_light_clearance, oklab_lightness, parse_hex, rems_from_px, stacked_ring,
+    surface_ring, to_hex, v_flex, window_border, window_controls_width, window_paddings,
 };
 
 #[cfg(feature = "agent")]

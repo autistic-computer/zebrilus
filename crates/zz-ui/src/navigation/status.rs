@@ -66,7 +66,7 @@ fn status_menu_button(id: impl Into<ElementId>, cx: &App) -> Button {
         .h(WORKSPACE_STATUS_PILL_HEIGHT)
         .bg(workspace_row_highlight(cx))
         .hover_bg(workspace_row_highlight(cx))
-        .when(cx.theme().shadow, |button| {
+        .when(cx.theme().control_shadows(), |button| {
             button.border(px(0.5)).control_highlight(cx)
         })
 }

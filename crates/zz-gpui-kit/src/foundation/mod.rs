@@ -23,8 +23,8 @@ pub use element_ext::{ElementExt, InteractiveElementExt};
 pub use geometry::Side;
 pub use index_path::IndexPath;
 pub use styled::{
-    Disableable, SURFACE_RING_OUTSET, Selectable, Sizable, Size, StyledExt, control_shadow, h_flex,
-    stacked_ring, surface_ring, v_flex,
+    Disableable, SURFACE_RING_OUTSET, Selectable, Sizable, Size, StyledExt, contact_shadow,
+    control_shadow, h_flex, lifted_shadow, stacked_ring, surface_ring, v_flex,
 };
 pub use theme::{ActiveTheme, CHROME_GAP, ScrollbarShow, SelectionStyle, Theme, ThemeMode};
 pub use theme_color::ThemeColor;
