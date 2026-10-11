@@ -7,7 +7,7 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName,
     InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     check::Check,
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -41,7 +41,7 @@ pub const STORY: Story = Story {
         Section {
             id: "buttons",
             name: "Buttons",
-            summary: "Button::tone and Button::emphasis. These hover and press for real; the last block is today's ButtonVariant for comparison.",
+            summary: "Button::tone and Button::emphasis; the shorthands primary, secondary, ghost and danger name the common pairs. These hover and press for real.",
             build: |_, cx| stateless(buttons, cx),
         },
         Section {
@@ -210,49 +210,9 @@ fn buttons(_: &mut Window, cx: &mut App) -> AnyElement {
             .collect();
         matrix(&columns, rows, cx)
     };
-    let today = row()
-        .child(Button::new("ds-today-default").small().label("Default"))
-        .child(
-            Button::new("ds-today-primary")
-                .small()
-                .primary()
-                .label("Primary"),
-        )
-        .child(
-            Button::new("ds-today-accent")
-                .small()
-                .accent()
-                .label("Accent"),
-        )
-        .child(
-            Button::new("ds-today-secondary")
-                .small()
-                .secondary()
-                .label("Secondary"),
-        )
-        .child(Button::new("ds-today-ghost").small().ghost().label("Ghost"))
-        .child(
-            Button::new("ds-today-danger")
-                .small()
-                .danger()
-                .label("Danger"),
-        )
-        .child(
-            Button::new("ds-today-warning")
-                .small()
-                .warning()
-                .label("Warning"),
-        )
-        .child(
-            Button::new("ds-today-success")
-                .small()
-                .success()
-                .label("Success"),
-        );
     states()
         .state("enabled", grid(false))
         .state("disabled", grid(true))
-        .state("today's ButtonVariant", today)
         .into_any_element()
 }
 

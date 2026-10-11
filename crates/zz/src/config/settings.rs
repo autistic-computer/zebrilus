@@ -1420,7 +1420,7 @@ impl SettingsView {
                 .child(
                     Button::new("settings-add-host")
                         .small()
-                        .accent()
+                        .primary()
                         .text_color(cx.theme().foreground)
                         .label("Add")
                         .on_click(cx.listener(|settings, _, window, cx| {

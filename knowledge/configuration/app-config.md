@@ -219,7 +219,7 @@ on it with no further plumbing. That is also why there are three knobs and not a
 roots come from the preset so they stay legible against it, `scrim` is black in both modes with
 only its alpha meaningful, and a larger table could disagree with itself. The accent is deliberately
 narrow: the checked switch track, the selected tile ring, the active pane border and its glow, and
-the Agent send button (`ButtonVariant::Accent`); every other control stays neutral.
+the primary tone when the look's `primary` is `accent` (the Agent send button and every other main action); every other control stays neutral.
 
 Resolution is `zz-ui base for the effective mode < the preset selected for that mode < explicit
 chrome-*`. An unset root is therefore **inherited** from the selected preset or, with no preset, the

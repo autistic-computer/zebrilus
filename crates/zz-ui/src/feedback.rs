@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _,
+    ActiveTheme as _, Emphasis, Icon, IconName, Sizable as _, StyledExt as _, Tone,
     button::ButtonVariant,
     dialog::{AlertDialog, Dialog, DialogButtonProps},
     input::{Input, InputContentType, InputState},
@@ -27,7 +27,7 @@ pub fn browser_clear_site_data_alert(alert: AlertDialog, cx: &App) -> AlertDialo
         )
         .button_props(
             DialogButtonProps::default()
-                .ok_variant(ButtonVariant::Danger)
+                .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
                 .ok_text("Clear data")
                 .cancel_text("Cancel")
                 .show_cancel(true),
@@ -45,7 +45,7 @@ pub fn import_configuration_file_alert(
         .description(description.into())
         .button_props(
             DialogButtonProps::default()
-                .ok_variant(ButtonVariant::Warning)
+                .ok_variant(ButtonVariant::Paint(Tone::Warning, Emphasis::Solid))
                 .ok_text("Import")
                 .cancel_text("Cancel")
                 .show_cancel(true),
@@ -127,7 +127,7 @@ pub fn ssh_confirm_prompt_dialog(
     prompt_dialog(dialog, title)
         .button_props(
             DialogButtonProps::default()
-                .ok_variant(ButtonVariant::Warning)
+                .ok_variant(ButtonVariant::Paint(Tone::Warning, Emphasis::Solid))
                 .ok_text("Yes, connect")
                 .cancel_text("No")
                 .show_cancel(true),

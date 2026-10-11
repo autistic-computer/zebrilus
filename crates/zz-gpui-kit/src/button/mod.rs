@@ -6,7 +6,4 @@
 mod button;
 mod button_icon;
 
-pub use button::{
-    Button, ButtonCustomVariant, ButtonRounded, ButtonVariant, ButtonVariants,
-    COMPACT_ICON_BUTTON_SIZE,
-};
+pub use button::{Button, ButtonRounded, ButtonVariant, ButtonVariants, COMPACT_ICON_BUTTON_SIZE};

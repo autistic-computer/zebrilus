@@ -13,7 +13,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, IconName, Sizable as _, StyledExt as _, TITLE_BAR_HEIGHT,
+    ActiveTheme as _, Emphasis, IconName, Sizable as _, StyledExt as _, TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
     scroll::ScrollableElement as _,
@@ -61,7 +61,7 @@ impl Default for DialogButtonProps {
     fn default() -> Self {
         Self {
             ok_text: None,
-            ok_variant: ButtonVariant::Primary,
+            ok_variant: ButtonVariant::Paint(Tone::Primary, Emphasis::Solid),
             cancel_text: None,
             show_cancel: false,
             on_ok: Rc::new(|_, _, _| true),
@@ -79,7 +79,7 @@ impl DialogButtonProps {
         self
     }
 
-    /// Variant for the OK button. Default: [`ButtonVariant::Primary`].
+    /// Variant for the OK button. Default: primary, solid.
     #[must_use]
     pub fn ok_variant(mut self, ok_variant: ButtonVariant) -> Self {
         self.ok_variant = ok_variant;

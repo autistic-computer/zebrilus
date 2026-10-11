@@ -280,7 +280,7 @@ impl AppShell {
                         .small()
                         .when(
                             index == 0 && current.is_none(),
-                            zz_ui::button::ButtonVariants::accent,
+                            zz_ui::button::ButtonVariants::primary,
                         )
                         .label("Connect")
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -379,7 +379,7 @@ impl AppShell {
                         Button::new("hosts-add")
                             .small()
                             .when(self.hosts.saved.endpoints().is_empty(), |button| {
-                                button.accent()
+                                button.primary()
                             })
                             .label("Connect")
                             .on_click(

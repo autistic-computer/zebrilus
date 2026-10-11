@@ -3,7 +3,7 @@ use zz_gpui::{
     Styled as _, Window, div, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Sizable as _, Tone, WindowExt as _,
     button::{Button, ButtonVariant, ButtonVariants as _},
     dialog::{Dialog, DialogButtonProps},
     h_flex,
@@ -95,7 +95,7 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
                 .button_props(
                     DialogButtonProps::default()
                         .ok_text("Kill session")
-                        .ok_variant(ButtonVariant::Danger)
+                        .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
                         .show_cancel(true),
                 )
         }),
@@ -120,7 +120,7 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
                                 .child(
                                     Button::new("restart")
                                         .label("Restart daemon")
-                                        .accent()
+                                        .primary()
                                         .small(),
                                 ),
                         ),
@@ -155,7 +155,7 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
                     .button_props(
                         DialogButtonProps::default()
                             .ok_text("Discard")
-                            .ok_variant(ButtonVariant::Danger)
+                            .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
                             .show_cancel(true),
                     )
             });
@@ -178,7 +178,7 @@ fn rename_dialog(dialog: Dialog, field: &Entity<InputState>, cx: &App) -> Dialog
         .button_props(
             DialogButtonProps::default()
                 .ok_text("Rename")
-                .ok_variant(ButtonVariant::Accent)
+                .ok_variant(ButtonVariant::Paint(Tone::Primary, Emphasis::Solid))
                 .show_cancel(true),
         )
 }

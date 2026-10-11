@@ -34,46 +34,36 @@ impl From<Pixels> for ButtonRounded {
     }
 }
 
-/// A caller-supplied palette for [`ButtonVariant::Custom`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ButtonCustomVariant {
-    color: Hsla,
-    shadow: bool,
-    active: Hsla,
-}
-
 /// The variant selectors, as a trait so wrappers around a Button can forward
 /// them (see [`ButtonVariant`] for the variants themselves).
 pub trait ButtonVariants: Sized {
     fn with_variant(self, variant: ButtonVariant) -> Self;
 
+    /// The main action of a surface: primary, solid.
     fn primary(self) -> Self {
-        self.with_variant(ButtonVariant::Primary)
+        self.with_variant(ButtonVariant::Paint(Tone::Primary, Emphasis::Solid))
     }
 
-    /// Solid, on the accent root: the one call to action a surface owns.
-    fn accent(self) -> Self {
-        self.with_variant(ButtonVariant::Accent)
-    }
-
+    /// An action beside the main one: neutral, soft.
     fn secondary(self) -> Self {
-        self.with_variant(ButtonVariant::Secondary)
+        self.with_variant(ButtonVariant::Paint(Tone::Neutral, Emphasis::Soft))
     }
 
     fn danger(self) -> Self {
-        self.with_variant(ButtonVariant::Danger)
+        self.with_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Soft))
     }
 
     fn warning(self) -> Self {
-        self.with_variant(ButtonVariant::Warning)
+        self.with_variant(ButtonVariant::Paint(Tone::Warning, Emphasis::Soft))
     }
 
     fn success(self) -> Self {
-        self.with_variant(ButtonVariant::Success)
+        self.with_variant(ButtonVariant::Paint(Tone::Success, Emphasis::Soft))
     }
 
+    /// A quiet action: neutral, ghost.
     fn ghost(self) -> Self {
-        self.with_variant(ButtonVariant::Ghost)
+        self.with_variant(ButtonVariant::Paint(Tone::Neutral, Emphasis::Ghost))
     }
 
     fn link(self) -> Self {
@@ -84,54 +74,24 @@ pub trait ButtonVariants: Sized {
     fn text(self) -> Self {
         self.with_variant(ButtonVariant::Text)
     }
-
-    fn custom(self, style: ButtonCustomVariant) -> Self {
-        self.with_variant(ButtonVariant::Custom(style))
-    }
 }
 
-impl ButtonCustomVariant {
-    pub fn new(cx: &App) -> Self {
-        Self {
-            color: cx.theme().transparent,
-            active: cx.theme().transparent,
-            shadow: false,
-        }
-    }
-
-    /// Background and text color. Defaults to transparent.
-    pub fn color(mut self, color: Hsla) -> Self {
-        self.color = color;
-        self
-    }
-
-    pub fn active(mut self, color: Hsla) -> Self {
-        self.active = color;
-        self
-    }
-
-    pub fn shadow(mut self, shadow: bool) -> Self {
-        self.shadow = shadow;
-        self
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+/// How a button is drawn: a tone at an emphasis, or one of the two
+/// unpadded forms that read as text.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonVariant {
-    #[default]
-    Default,
-    Primary,
-    Accent,
-    Secondary,
-    Danger,
-    Success,
-    Warning,
-    Ghost,
-    Link,
-    Text,
-    Custom(ButtonCustomVariant),
     /// A tone at an emphasis, drawn from the theme's [`Paint`].
     Paint(Tone, Emphasis),
+    /// Underlined text.
+    Link,
+    /// Plain text with no padding.
+    Text,
+}
+
+impl Default for ButtonVariant {
+    fn default() -> Self {
+        Self::Paint(Tone::Neutral, Emphasis::Soft)
+    }
 }
 
 impl ButtonVariant {
@@ -150,26 +110,58 @@ impl ButtonVariant {
         self.is_link() || self.is_text()
     }
 
-    #[inline]
-    fn is_default(&self) -> bool {
-        matches!(self, Self::Default)
+    /// The neutral soft button rests on the look's control surface (its
+    /// hairline and shadow); the neutral ghost one shows it on hover.
+    fn rests_on_surface(&self) -> bool {
+        matches!(self, Self::Paint(Tone::Neutral, Emphasis::Soft))
     }
 
+    fn neutral(&self) -> bool {
+        matches!(
+            self,
+            Self::Paint(Tone::Neutral, Emphasis::Soft | Emphasis::Ghost)
+        )
+    }
+
+    /// The paint, filled over the window when the button rests on the
+    /// control surface, so the surface's drop shadow does not show through
+    /// a translucent fill.
     fn paint(&self, cx: &App) -> Option<Paint> {
         match self {
-            Self::Paint(tone, emphasis) => Some(cx.theme().paint(*tone, *emphasis)),
+            Self::Paint(tone, emphasis) => {
+                let paint = cx.theme().paint(*tone, *emphasis);
+                Some(if self.rests_on_surface() {
+                    paint.opaque()
+                } else {
+                    paint
+                })
+            }
             _ => None,
         }
     }
 
-    fn painted(&self, state: PaintState, cx: &App) -> Option<ButtonVariantStyle> {
-        self.paint(cx).map(|paint| ButtonVariantStyle {
-            bg: paint.fill_at(state),
-            border: paint.border_at(state),
-            fg: paint.text_at(state),
-            underline: false,
+    fn style_at(&self, state: PaintState, cx: &App) -> ButtonVariantStyle {
+        if let Some(paint) = self.paint(cx) {
+            return ButtonVariantStyle {
+                bg: paint.fill_at(state),
+                border: paint.border_at(state),
+                fg: paint.text_at(state),
+                underline: false,
+                shadow: self.rests_on_surface() && state != PaintState::Disabled,
+            };
+        }
+        let foreground = cx.theme().foreground;
+        ButtonVariantStyle {
+            bg: cx.theme().transparent,
+            border: cx.theme().transparent,
+            fg: match (self, state) {
+                (_, PaintState::Disabled) => foreground.faint(),
+                (Self::Text, PaintState::Active) => foreground.muted(),
+                _ => foreground,
+            },
+            underline: self.is_link(),
             shadow: false,
-        })
+        }
     }
 }
 
@@ -186,7 +178,6 @@ pub struct Button {
     variant: ButtonVariant,
     hover_bg: Option<Hsla>,
     rounded: ButtonRounded,
-    outline: bool,
     flat: bool,
     dropdown_caret: bool,
     size: Size,
@@ -228,7 +219,6 @@ impl Button {
             on_hover: None,
             loading: false,
             compact: false,
-            outline: false,
             flat: false,
             children: Vec::new(),
             dropdown_caret: false,
@@ -245,11 +235,6 @@ impl Button {
             .compact()
             .size(rems_from_px(COMPACT_ICON_BUTTON_SIZE))
             .icon(icon.into().relative().top(COMPACT_ICON_DROP))
-    }
-
-    pub fn outline(mut self) -> Self {
-        self.outline = true;
-        self
     }
 
     pub fn flat(mut self) -> Self {
@@ -520,13 +505,9 @@ impl RenderOnce for Button {
         let clickable = self.clickable();
         let is_disabled = self.disabled;
         let hoverable = self.hoverable();
-        let normal_style = style.normal(self.outline, cx);
+        let normal_style = style.style_at(PaintState::Rest, cx);
         let paint = style.paint(cx);
-        let neutral_surface = !self.flat
-            && matches!(
-                style,
-                ButtonVariant::Default | ButtonVariant::Secondary | ButtonVariant::Ghost
-            );
+        let neutral_surface = !self.flat && style.neutral();
         let resting_surface = neutral_surface && normal_style.shadow;
         let highlight_ring = cx.theme().shadow && neutral_surface && !normal_style.shadow;
         let icon_size = match self.size {
@@ -550,7 +531,7 @@ impl RenderOnce for Button {
             .then(|| crate::touch::press_feedback(self.id.clone(), window, cx));
         let pressed = press.as_ref().map_or(0.0, |press| press.amount);
         let press_listener = press.map(crate::touch::PressFeedback::listener);
-        let press_fill = style.active(self.outline, cx).bg;
+        let press_fill = style.style_at(PaintState::Active, cx).bg;
         let on_mouse_down =
             move |_: &zz_gpui::MouseDownEvent, window: &mut Window, cx: &mut App| {
                 if is_disabled {
@@ -623,10 +604,6 @@ impl RenderOnce for Button {
                 }
             })
             .rounded(rounding)
-            .when(
-                !self.flat && (self.variant.is_default() || self.outline),
-                |this| this.border_1(),
-            )
             .when(highlight_ring, |this| this.border(px(0.5)))
             .when_some(
                 paint.filter(|paint| paint.border_width > px(0.0)),
@@ -634,7 +611,7 @@ impl RenderOnce for Button {
             )
             .text_color(normal_style.fg)
             .when(self.selected, |this| {
-                let selected_style = style.selected(self.outline, cx);
+                let selected_style = style.style_at(PaintState::Selected, cx);
                 this.bg(selected_style.bg)
                     .border_color(selected_style.border)
                     .text_color(selected_style.fg)
@@ -652,7 +629,7 @@ impl RenderOnce for Button {
                 .when(normal_style.underline, |this| this.text_decoration_1())
                 .when(!coarse, |this| {
                     this.hover(|this| {
-                        let hover_style = style.hovered(self.outline, cx);
+                        let hover_style = style.style_at(PaintState::Hover, cx);
                         let this = this
                             .bg(self.hover_bg.unwrap_or(hover_style.bg))
                             .border_color(hover_style.border)
@@ -666,7 +643,7 @@ impl RenderOnce for Button {
                 })
                 .when(!coarse, |this| {
                     this.active(|this| {
-                        let active_style = style.active(self.outline, cx);
+                        let active_style = style.style_at(PaintState::Active, cx);
                         let this = this
                             .bg(active_style.bg)
                             .border_color(active_style.border)
@@ -681,7 +658,7 @@ impl RenderOnce for Button {
             })
             .when(resting_surface, |this| this.control_surface(cx))
             .when(self.disabled, |this| {
-                let disabled_style = style.disabled(self.outline, cx);
+                let disabled_style = style.style_at(PaintState::Disabled, cx);
                 this.bg(disabled_style.bg)
                     .text_color(disabled_style.fg)
                     .border_color(if highlight_ring {
@@ -780,424 +757,6 @@ struct ButtonVariantStyle {
     shadow: bool,
 }
 
-#[derive(Clone, Copy)]
-enum ButtonStyleState {
-    Normal,
-    Hovered,
-    Active,
-}
-
-impl ButtonVariant {
-    fn solid(&self, cx: &App) -> Hsla {
-        match self {
-            Self::Accent => cx.theme().accent,
-            _ => cx.theme().foreground,
-        }
-    }
-
-    fn outline_background(&self, state: ButtonStyleState, cx: &mut App) -> Hsla {
-        match (self, state) {
-            (Self::Default, ButtonStyleState::Normal) => cx
-                .theme()
-                .control_background(cx.theme().background.raised(1)),
-            (Self::Default, ButtonStyleState::Hovered) => cx
-                .theme()
-                .border()
-                .mix_oklab(cx.theme().transparent, 0.5)
-                .into(),
-            (Self::Default, ButtonStyleState::Active) => cx
-                .theme()
-                .border()
-                .mix_oklab(cx.theme().transparent, 0.7)
-                .into(),
-            (Self::Primary | Self::Accent, ButtonStyleState::Normal) => self.solid(cx).opacity(0.1),
-            (Self::Primary | Self::Accent, ButtonStyleState::Hovered) => {
-                self.solid(cx).hover().opacity(0.2)
-            }
-            (Self::Primary | Self::Accent, ButtonStyleState::Active) => {
-                self.solid(cx).active().opacity(0.4)
-            }
-            (Self::Secondary, ButtonStyleState::Normal) => {
-                cx.theme().background.raised(2).opacity(0.1)
-            }
-            (Self::Secondary, ButtonStyleState::Hovered) => {
-                cx.theme().background.raised(2).hover().opacity(0.2)
-            }
-            (Self::Secondary, ButtonStyleState::Active) => {
-                cx.theme().background.raised(2).active().opacity(0.4)
-            }
-            (Self::Danger, ButtonStyleState::Normal) => cx.theme().danger.opacity(0.1),
-            (Self::Danger, ButtonStyleState::Hovered) => cx.theme().danger.hover().opacity(0.2),
-            (Self::Danger, ButtonStyleState::Active) => cx.theme().danger.active().opacity(0.4),
-            (Self::Warning, ButtonStyleState::Normal) => cx.theme().warning.opacity(0.1),
-            (Self::Warning, ButtonStyleState::Hovered) => cx.theme().warning.hover().opacity(0.2),
-            (Self::Warning, ButtonStyleState::Active) => cx.theme().warning.active().opacity(0.4),
-            (Self::Success, ButtonStyleState::Normal) => cx.theme().success.opacity(0.1),
-            (Self::Success, ButtonStyleState::Hovered) => cx.theme().success.hover().opacity(0.2),
-            (Self::Success, ButtonStyleState::Active) => cx.theme().success.active().opacity(0.4),
-            (Self::Ghost | Self::Link | Self::Text, _) => cx.theme().transparent.into(),
-            (Self::Custom(colors), _) => colors.color.mix_oklab(cx.theme().transparent, 0.2).into(),
-            (Self::Paint(tone, emphasis), _) => cx.theme().paint(*tone, *emphasis).fill,
-        }
-    }
-
-    fn bg_color(&self, outline: bool, cx: &mut App) -> Hsla {
-        if outline {
-            return self.outline_background(ButtonStyleState::Normal, cx);
-        }
-
-        match self {
-            Self::Default => cx
-                .theme()
-                .control_background(cx.theme().background.raised(1)),
-            Self::Primary | Self::Accent => self.solid(cx).into(),
-            Self::Secondary => cx
-                .theme()
-                .control_background(cx.theme().background.raised(2)),
-            Self::Danger => cx.theme().danger.fill().into(),
-            Self::Warning => cx.theme().warning.fill().into(),
-            Self::Success => cx.theme().success.fill().into(),
-            Self::Ghost | Self::Link | Self::Text => cx.theme().transparent.into(),
-            Self::Custom(colors) => colors.color.mix_oklab(cx.theme().transparent, 0.2).into(),
-            Self::Paint(tone, emphasis) => cx.theme().paint(*tone, *emphasis).fill,
-        }
-    }
-
-    fn text_color(&self, outline: bool, cx: &mut App) -> Hsla {
-        match self {
-            Self::Default => cx.theme().foreground,
-            Self::Primary | Self::Accent => {
-                if outline {
-                    self.solid(cx)
-                } else {
-                    self.solid(cx).on()
-                }
-            }
-            Self::Secondary => {
-                if outline {
-                    cx.theme().foreground
-                } else {
-                    cx.theme().foreground
-                }
-            }
-            Self::Ghost => cx.theme().foreground,
-            Self::Danger => {
-                if outline {
-                    cx.theme().danger
-                } else {
-                    cx.theme().danger
-                }
-            }
-            Self::Warning => {
-                if outline {
-                    cx.theme().warning
-                } else {
-                    cx.theme().warning
-                }
-            }
-            Self::Success => {
-                if outline {
-                    cx.theme().success
-                } else {
-                    cx.theme().success
-                }
-            }
-            Self::Link => cx.theme().foreground,
-            Self::Text => cx.theme().foreground,
-            Self::Custom(colors) => colors.color,
-            Self::Paint(tone, emphasis) => cx.theme().paint(*tone, *emphasis).text,
-        }
-    }
-
-    fn border_color(&self, outline: bool, cx: &mut App) -> Hsla {
-        match self {
-            Self::Default => cx.theme().border(),
-            Self::Secondary => cx.theme().border(),
-            Self::Primary | Self::Accent => self.solid(cx),
-            Self::Danger => {
-                if outline {
-                    cx.theme().danger.mix_oklab(transparent_white(), 0.4)
-                } else {
-                    cx.theme().danger.fill()
-                }
-            }
-            Self::Warning => {
-                if outline {
-                    cx.theme().warning.mix_oklab(transparent_white(), 0.4)
-                } else {
-                    cx.theme().warning.fill()
-                }
-            }
-            Self::Success => {
-                if outline {
-                    cx.theme().success.mix_oklab(transparent_white(), 0.4)
-                } else {
-                    cx.theme().success.fill()
-                }
-            }
-            Self::Ghost | Self::Link | Self::Text => cx.theme().transparent,
-            Self::Custom(colors) => {
-                if outline {
-                    colors.color.mix_oklab(transparent_white(), 0.4)
-                } else {
-                    colors.color
-                }
-            }
-            Self::Paint(tone, emphasis) => cx.theme().paint(*tone, *emphasis).border,
-        }
-    }
-
-    fn underline(&self, _: &App) -> bool {
-        match self {
-            Self::Link => true,
-            _ => false,
-        }
-    }
-
-    fn shadow(&self, outline: bool, _: &App) -> bool {
-        match self {
-            Self::Default => true,
-            Self::Primary | Self::Accent | Self::Secondary | Self::Danger => outline,
-            Self::Custom(c) => c.shadow,
-            _ => false,
-        }
-    }
-
-    fn normal(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
-        if let Some(style) = self.painted(PaintState::Rest, cx) {
-            return style;
-        }
-        let bg = self.bg_color(outline, cx);
-        let border = self.border_color(outline, cx);
-        let fg = self.text_color(outline, cx);
-        let underline = self.underline(cx);
-        let shadow = self.shadow(outline, cx);
-
-        ButtonVariantStyle {
-            bg,
-            border,
-            fg,
-            underline,
-            shadow,
-        }
-    }
-
-    fn hovered(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
-        if let Some(style) = self.painted(PaintState::Hover, cx) {
-            return style;
-        }
-        let bg: Hsla = match self {
-            Self::Default | Self::Secondary | Self::Ghost => cx.theme().background.washed(2),
-            Self::Primary | Self::Accent => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Hovered, cx)
-                } else {
-                    self.solid(cx).hover().into()
-                }
-            }
-            Self::Danger => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Hovered, cx)
-                } else {
-                    cx.theme().danger.fill().hover().into()
-                }
-            }
-            Self::Warning => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Hovered, cx)
-                } else {
-                    cx.theme().warning.fill().hover().into()
-                }
-            }
-            Self::Success => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Hovered, cx)
-                } else {
-                    cx.theme().success.fill().hover().into()
-                }
-            }
-            Self::Custom(colors) => if outline {
-                colors.color.mix_oklab(cx.theme().transparent, 0.2)
-            } else {
-                colors.color.mix_oklab(cx.theme().transparent, 0.3)
-            }
-            .into(),
-            Self::Link => cx.theme().transparent.into(),
-            Self::Text => cx.theme().transparent.into(),
-            Self::Paint(..) => cx.theme().transparent,
-        };
-
-        let border = self.border_color(outline, cx);
-        let fg = match self {
-            Self::Link => cx.theme().foreground,
-            _ => self.text_color(outline, cx),
-        };
-
-        let underline = self.underline(cx);
-        let shadow = self.shadow(outline, cx);
-
-        ButtonVariantStyle {
-            bg,
-            border,
-            fg,
-            underline,
-            shadow,
-        }
-    }
-
-    fn active(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
-        if let Some(style) = self.painted(PaintState::Active, cx) {
-            return style;
-        }
-        let bg = match self {
-            Self::Default | Self::Secondary | Self::Ghost => cx.theme().background.washed(2),
-            Self::Primary | Self::Accent => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Active, cx)
-                } else {
-                    self.solid(cx).active().into()
-                }
-            }
-            Self::Danger => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Active, cx)
-                } else {
-                    cx.theme().danger.fill().active().into()
-                }
-            }
-            Self::Warning => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Active, cx)
-                } else {
-                    cx.theme().warning.fill().active().into()
-                }
-            }
-            Self::Success => {
-                if outline {
-                    self.outline_background(ButtonStyleState::Active, cx)
-                } else {
-                    cx.theme().success.fill().active().into()
-                }
-            }
-            Self::Custom(colors) => colors.color.mix_oklab(cx.theme().transparent, 0.4).into(),
-            Self::Link => cx.theme().transparent.into(),
-            Self::Text => cx.theme().transparent.into(),
-            Self::Paint(..) => cx.theme().transparent,
-        };
-        let border = self.border_color(outline, cx);
-        let fg = match self {
-            Self::Link => cx.theme().foreground,
-            Self::Text => cx.theme().foreground.opacity(0.7),
-            _ => self.text_color(outline, cx),
-        };
-        let underline = self.underline(cx);
-        let shadow = self.shadow(outline, cx);
-
-        ButtonVariantStyle {
-            bg,
-            border,
-            fg,
-            underline,
-            shadow,
-        }
-    }
-
-    fn selected(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
-        if let Some(style) = self.painted(PaintState::Selected, cx) {
-            return style;
-        }
-        if outline {
-            let active_style = self.active(outline, cx);
-
-            return ButtonVariantStyle {
-                fg: self.text_color(outline, cx),
-                ..active_style
-            };
-        }
-
-        let bg = match self {
-            Self::Default | Self::Secondary | Self::Ghost => cx.theme().background.washed(2),
-            Self::Primary | Self::Accent => self.solid(cx).active().into(),
-            Self::Danger => cx.theme().danger.fill().active().into(),
-            Self::Warning => cx.theme().warning.fill().active().into(),
-            Self::Success => cx.theme().success.fill().active().into(),
-            Self::Link => cx.theme().transparent.into(),
-            Self::Text => cx.theme().transparent.into(),
-            Self::Custom(colors) => colors.active.into(),
-            Self::Paint(..) => cx.theme().transparent,
-        };
-
-        let border = self.border_color(outline, cx);
-        let fg = match self {
-            Self::Link => cx.theme().foreground,
-            Self::Text => cx.theme().foreground.opacity(0.7),
-            _ => self.text_color(false, cx),
-        };
-        let underline = self.underline(cx);
-        let shadow = self.shadow(outline, cx);
-
-        ButtonVariantStyle {
-            bg,
-            border,
-            fg,
-            underline,
-            shadow,
-        }
-    }
-
-    fn disabled(&self, outline: bool, cx: &mut App) -> ButtonVariantStyle {
-        if let Some(style) = self.painted(PaintState::Disabled, cx) {
-            return style;
-        }
-        let bg = match self {
-            Self::Default | Self::Link | Self::Ghost | Self::Text => cx.theme().transparent.into(),
-            Self::Primary | Self::Accent => self.solid(cx).opacity(0.15),
-            Self::Danger => cx.theme().danger.fill().opacity(0.15),
-            Self::Warning => cx.theme().warning.fill().opacity(0.15),
-            Self::Success => cx.theme().success.fill().opacity(0.15),
-            Self::Secondary => cx.theme().background.raised(2).opacity(1.5),
-            Self::Custom(style) => style.color.opacity(0.15).into(),
-            Self::Paint(..) => cx.theme().transparent,
-        };
-        let fg = cx.theme().foreground.muted().opacity(0.5);
-        let (bg, border) = if outline {
-            (
-                self.outline_background(ButtonStyleState::Normal, cx)
-                    .opacity(0.5),
-                self.border_color(true, cx).opacity(0.5),
-            )
-        } else if let Self::Default = self {
-            (
-                cx.theme().background.raised(1).opacity(0.5).into(),
-                cx.theme().border().opacity(0.5),
-            )
-        } else {
-            let border = match self {
-                Self::Primary | Self::Accent => self.solid(cx).opacity(0.15),
-                Self::Secondary => cx.theme().background.raised(2).opacity(1.5),
-                Self::Danger => cx.theme().danger.fill().opacity(0.15),
-                Self::Warning => cx.theme().warning.fill().opacity(0.15),
-                Self::Success => cx.theme().success.fill().opacity(0.15),
-                Self::Custom(style) => style.color.opacity(0.15),
-                Self::Default | Self::Link | Self::Ghost | Self::Text => cx.theme().transparent,
-                Self::Paint(..) => cx.theme().transparent,
-            };
-            (bg, border)
-        };
-
-        let underline = self.underline(cx);
-        let shadow = false;
-
-        ButtonVariantStyle {
-            bg,
-            border,
-            fg,
-            underline,
-            shadow,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1242,25 +801,24 @@ mod tests {
 
         assert!(ButtonVariant::Link.no_padding());
         assert!(ButtonVariant::Text.no_padding());
-        assert!(!ButtonVariant::Ghost.no_padding());
-
-        assert!(ButtonVariant::Default.is_default());
-        assert!(!ButtonVariant::Primary.is_default());
+        assert!(!ButtonVariant::default().no_padding());
+        assert!(ButtonVariant::default().rests_on_surface());
     }
 
     #[zz_gpui::test]
-    fn test_outline_selected_uses_outline_active_style(cx: &mut zz_gpui::TestAppContext) {
-        cx.update(crate::init);
-        let window = cx.add_empty_window();
-        window.update(|_, cx| {
-            let variant = ButtonVariant::Danger;
-            let active_style = variant.active(true, cx);
-            let selected_style = variant.selected(true, cx);
-
-            assert_eq!(selected_style.bg, active_style.bg);
-            assert_eq!(selected_style.border, active_style.border);
-            assert_eq!(selected_style.fg, cx.theme().danger);
-            assert_ne!(selected_style.bg, cx.theme().danger.active().into());
-        });
+    fn the_shorthands_name_a_tone_and_an_emphasis(_cx: &mut zz_gpui::TestAppContext) {
+        let variant = |button: Button| button.variant;
+        assert_eq!(
+            variant(Button::new("b").primary()),
+            ButtonVariant::Paint(Tone::Primary, Emphasis::Solid)
+        );
+        assert_eq!(
+            variant(Button::new("b").ghost()),
+            ButtonVariant::Paint(Tone::Neutral, Emphasis::Ghost)
+        );
+        assert_eq!(
+            variant(Button::new("b").danger().emphasis(Emphasis::Outline)),
+            ButtonVariant::Paint(Tone::Danger, Emphasis::Outline)
+        );
     }
 }

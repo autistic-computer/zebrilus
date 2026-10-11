@@ -2378,7 +2378,7 @@ impl AgentView {
                 })
                 .child(
                     agent_chrome_button(("agent-project-new", pane.0))
-                        .accent()
+                        .primary()
                         .text_color(cx.theme().foreground)
                         .debug_selector(|| "agent-project-new".into())
                         .min_w_0()
