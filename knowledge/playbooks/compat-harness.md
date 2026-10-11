@@ -4,7 +4,7 @@ title: Running the tmux compatibility harness
 description: How to run the pinned tmux differential corpus, read topology, geometry, format, and query-stdout results, and record known divergences.
 resource: compat/run.sh
 tags: [tmux, compatibility, differential-testing, geometry, playbook]
-timestamp: 2026-10-09T00:00:00-03:00
+timestamp: 2026-10-11T00:00:00-03:00
 last_updated: 2026-08-31
 last_updated_by: Codex
 ---
@@ -487,13 +487,18 @@ Use the registry vocabulary consistently:
 
 ## Coverage freshness
 
-`compat/results/summary.md` is the persisted acceptance artifact. It records 220 scenarios and 2,648
-steps against the previous pin, tmux `d77c9dc6`; it predates the move to the 3.8 tag. Every ordinary row is clean and exactly three registered
-`known/` rows carry GEO differences, one of them an approved OUT difference as well. Its SHA-256 is
-`5bef958b6945d2d07d39ab0409e47589e486e43695a458392fbae2957bfb4c1c`. The file also ends with an
-attached-client `Status: PASS` footer that nothing regenerates: `compat/attached-client.sh` does not
-complete on the ubuntu box, and `compat/run.sh --check-summary` passes on that stale line, so treat
-the footer as unverified until the fixture has an owner.
+`compat/results/summary.md` is the persisted acceptance artifact. It records 282 scenarios and 3,966
+steps against the tmux 3.8 tag (`7f2a35ad`), from the full strict run with `--attached-client` at
+`b40f19cf2` on 2026-10-11. Every ordinary row is clean; the ten registered `known/` rows carry their
+approved differences (seven display-popup and jobs rows, scrollbar columns, mixed spread and terminal
+runtime). The attached-client footer is a real `PASS` from that run, stamped with its commit.
+
+Regenerate it on Linux, where the canonical runs happen: `compat/run.sh --strict-geometry
+--attached-client` on a clean checkout, or dispatch the Nightly compat corpus workflow on `main` and
+copy the summary it prints just before `summary written` into the file. A macOS run needs bash 4 or
+newer first on `PATH` (`declare -A`) and still goes red on rows that read the host: Homebrew's gnubin
+`sleep` shows up as `gsleep` on the tmux side, BSD `date` has no `%N`, and several plugin and
+background-job rows differ, so it never writes the summary.
 
 Slice 10ag extends `compat/startup-diagnostics.sh` to eight cases. Its startup-client-cwd case builds
 distinct initial-client, top-level-config, containing-directory, runtime-client, and glob-decoy

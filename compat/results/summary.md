@@ -8,7 +8,8 @@
 | bare-targets | 8 | yes | 0 | yes | yes | yes |
 | base-index | 11 | yes | 0 | yes | yes | yes |
 | behavior-options | 12 | yes | 0 | yes | yes | yes |
-| break-pane | 30 | yes | 0 | yes | yes | yes |
+| break-pane | 37 | yes | 0 | yes | yes | yes |
+| buffer-binary-streams | 2 | yes | 0 | yes | yes | yes |
 | buffer-client-file-load | 3 | yes | 0 | yes | yes | yes |
 | buffer-client-file-save | 3 | yes | 0 | yes | yes | yes |
 | buffer-missing-target-error | 2 | yes | 0 | yes | yes | yes |
@@ -20,6 +21,7 @@
 | collapse | 4 | yes | 0 | yes | yes | yes |
 | command-alias | 16 | yes | 0 | yes | yes | yes |
 | command-item-format | 125 | yes | 0 | yes | yes | yes |
+| contract-breaks-3-8 | 17 | yes | 0 | yes | yes | yes |
 | copy-mode-bindings | 20 | yes | 0 | yes | yes | yes |
 | copy-mode-cursor-view | 13 | yes | 0 | yes | yes | yes |
 | copy-mode-goto-line | 18 | yes | 0 | yes | yes | yes |
@@ -29,10 +31,14 @@
 | copy-mode-selection-lifecycle | 19 | yes | 0 | yes | yes | yes |
 | copy-mode-stock-action-keys | 17 | yes | 0 | yes | yes | yes |
 | daemon-command-item-format | 24 | yes | 0 | yes | yes | yes |
-| display-message | 27 | yes | 0 | yes | yes | yes |
-| display-panes-format | 10 | yes | 0 | yes | yes | yes |
+| display-message | 34 | yes | 0 | yes | yes | yes |
+| display-panes-format | 38 | yes | 0 | yes | yes | yes |
 | errors | 2 | yes | 0 | yes | yes | yes |
 | exec-family | 30 | yes | 0 | yes | yes | yes |
+| float-keys | 32 | yes | 0 | yes | yes | yes |
+| floating-events | 39 | yes | 0 | yes | yes | yes |
+| floating-panes | 221 | yes | 0 | yes | yes | yes |
+| floating-zoom | 85 | yes | 0 | yes | yes | yes |
 | format-environment-fallback | 27 | yes | 0 | yes | yes | yes |
 | format-expansion-output-clamp | 7 | yes | 0 | yes | yes | yes |
 | format-flags | 8 | yes | 0 | yes | yes | yes |
@@ -41,13 +47,20 @@
 | format-option-loop-context | 14 | yes | 0 | yes | yes | yes |
 | format-window-cell-metrics | 8 | yes | 0 | yes | yes | yes |
 | format-window-neighbour-user-options | 26 | yes | 0 | yes | yes | yes |
-| formats-values | 45 | yes | 0 | yes | yes | yes |
+| formats-options-3-8 | 83 | yes | 0 | yes | yes | yes |
+| formats-values | 52 | yes | 0 | yes | yes | yes |
 | formats | 16 | yes | 0 | yes | yes | yes |
 | honest-knobs-c1-defaults | 18 | yes | 0 | yes | yes | yes |
 | honest-knobs-c1-errors | 17 | yes | 0 | yes | yes | yes |
 | honest-knobs-c1-layout | 9 | yes | 0 | yes | yes | yes |
 | honest-knobs-c1-readback | 21 | yes | 0 | yes | yes | yes |
 | honest-knobs-c2 | 27 | yes | 0 | yes | yes | yes |
+| hook-fire-count | 33 | yes | 0 | yes | yes | yes |
+| hooks-events-output | 3 | yes | 0 | yes | yes | yes |
+| hooks-events-payload | 62 | yes | 0 | yes | yes | yes |
+| hooks-events-sink | 3 | yes | 0 | yes | yes | yes |
+| hooks-events-structure | 88 | yes | 0 | yes | yes | yes |
+| hooks-events-user | 17 | yes | 0 | yes | yes | yes |
 | hooks-pane-clipboard | 3 | yes | 0 | yes | yes | yes |
 | if-shell-background-order | 2 | yes | 0 | yes | yes | yes |
 | jobs-environment | 3 | yes | 0 | yes | yes | yes |
@@ -55,9 +68,11 @@
 | join-pane-size | 11 | yes | 0 | yes | yes | yes |
 | lane2-store | 193 | yes | 0 | yes | yes | yes |
 | last-pane-input-off | 15 | yes | 0 | yes | yes | yes |
+| layout-json-v2 | 54 | yes | 0 | yes | yes | yes |
 | layout-strings | 6 | yes | 0 | yes | yes | yes |
 | list-keys-padding | 46 | yes | 0 | yes | yes | yes |
 | list-sort-filter | 12 | yes | 0 | yes | yes | yes |
+| main-preset-two-panes | 2 | yes | 0 | yes | yes | yes |
 | manual-window-size-transition | 24 | yes | 0 | yes | yes | yes |
 | micro-flags | 17 | yes | 0 | yes | yes | yes |
 | move-swap | 12 | yes | 0 | yes | yes | yes |
@@ -66,16 +81,18 @@
 | nested-splits | 4 | yes | 0 | yes | yes | yes |
 | new-session-cwd | 10 | yes | 0 | yes | yes | yes |
 | new-session-environment | 18 | yes | 0 | yes | yes | yes |
+| option-bytes | 2 | yes | 0 | yes | yes | yes |
 | option-name-formats | 60 | yes | 0 | yes | yes | yes |
 | options-readback | 15 | yes | 0 | yes | yes | yes |
 | pane-border-span-owner | 10 | yes | 0 | yes | yes | yes |
+| pane-current-command-fallback | 8 | yes | 0 | yes | yes | yes |
 | pane-dead-time | 6 | yes | 0 | yes | yes | yes |
 | pane-exact-target-prefix | 31 | yes | 0 | yes | yes | yes |
 | pane-selection-input-style | 40 | yes | 0 | yes | yes | yes |
 | pane-selection-marked | 73 | yes | 0 | yes | yes | yes |
 | pane-spawn-options | 25 | yes | 0 | yes | yes | yes |
 | pane-spawn-retain | 27 | yes | 0 | yes | yes | yes |
-| pane-spawn-style-title-v2 | 18 | yes | 0 | yes | yes | yes |
+| pane-spawn-style-title-v2 | 19 | yes | 0 | yes | yes | yes |
 | pane-target-grammar | 70 | yes | 0 | yes | yes | yes |
 | panes | 9 | yes | 0 | yes | yes | yes |
 | prefix2 | 15 | yes | 0 | yes | yes | yes |
@@ -86,6 +103,7 @@
 | resize-directions | 16 | yes | 0 | yes | yes | yes |
 | resize-window | 16 | yes | 0 | yes | yes | yes |
 | resize | 6 | yes | 0 | yes | yes | yes |
+| send-keys-mode-unattached | 5 | yes | 0 | yes | yes | yes |
 | send-keys-repeat | 16 | yes | 0 | yes | yes | yes |
 | send-keys-reset | 16 | yes | 0 | yes | yes | yes |
 | session-activity | 5 | yes | 0 | yes | yes | yes |
@@ -109,15 +127,12 @@
 | windows | 9 | yes | 0 | yes | yes | yes |
 | zoom | 5 | yes | 0 | yes | yes | yes |
 | known/known-display-popup-drag | 3 | yes | 0 | yes | no | no |
-| known/known-display-popup-kitty | 3 | yes | 0 | yes | no | no |
-| known/known-display-popup-kitty-noresize | 3 | yes | 0 | yes | no | no |
-| known/known-display-popup-menu | 3 | yes | 0 | yes | no | no |
 | known/known-display-popup-menu-policy | 3 | yes | 0 | yes | no | no |
+| known/known-display-popup-menu | 3 | yes | 0 | yes | no | no |
 | known/known-display-popup-resize-lifecycle | 3 | yes | 0 | yes | no | no |
 | known/known-display-popup-style-refresh | 3 | yes | 0 | yes | no | no |
 | known/known-display-popup-to-pane | 3 | yes | 0 | yes | no | no |
 | known/known-jobs-display-popup-environment | 3 | yes | 0 | yes | no | no |
-| known/known-main-preset-two-panes | 2 | yes | 1 | yes | yes | yes |
 | known/known-pane-scrollbar-columns | 4 | yes | 2 | yes | no | yes |
 | known/known-spread-mixed | 6 | yes | 1 | yes | yes | yes |
 | known/known-terminal-runtime | 28 | yes | 0 | no | yes | yes |
@@ -134,6 +149,8 @@
 | smoke/args-parse-set-option | 3 | yes | 0 | yes | yes | yes |
 | smoke/buffer-clipboard-write | 3 | yes | 0 | yes | yes | yes |
 | smoke/buffer-standard-streams | 2 | yes | 0 | yes | yes | yes |
+| smoke/capture-e-links | 12 | yes | 0 | yes | yes | yes |
+| smoke/capture-links | 19 | yes | 0 | yes | yes | yes |
 | smoke/cheap-flags | 22 | yes | 0 | yes | yes | yes |
 | smoke/chooser-buffer-confirm-flag | 3 | yes | 0 | yes | yes | yes |
 | smoke/chooser-buffer-vocabulary | 3 | yes | 0 | yes | yes | yes |
@@ -146,6 +163,7 @@
 | smoke/cli-chain-parse-abort | 3 | yes | 0 | yes | yes | yes |
 | smoke/cli-output-bytes | 2 | yes | 0 | yes | yes | yes |
 | smoke/client-exit-actions | 3 | yes | 0 | yes | yes | yes |
+| smoke/client-flags-active-pane | 3 | yes | 0 | yes | yes | yes |
 | smoke/client-non-utf8-cwd | 4 | yes | 0 | yes | yes | yes |
 | smoke/client-resized-context | 3 | yes | 0 | yes | yes | yes |
 | smoke/client-utf8-sanitizer | 2 | yes | 0 | yes | yes | yes |
@@ -162,6 +180,7 @@
 | smoke/config-non-utf8-byte-matrix | 2 | yes | 0 | yes | yes | yes |
 | smoke/config-non-utf8-file-bytes | 8 | yes | 0 | yes | yes | yes |
 | smoke/continuum-init | 2 | yes | 0 | yes | yes | yes |
+| smoke/control-3-8 | 2 | yes | 0 | yes | yes | yes |
 | smoke/control-alias-prepare | 4 | yes | 0 | yes | yes | yes |
 | smoke/control-eof-drain | 2 | yes | 0 | yes | yes | yes |
 | smoke/control-hard-loss | 2 | yes | 0 | yes | yes | yes |
@@ -172,6 +191,7 @@
 | smoke/copy-mode-formats | 3 | yes | 0 | yes | yes | yes |
 | smoke/copy-mode-history-freeze | 3 | yes | 0 | yes | yes | yes |
 | smoke/copy-mode-kill-on-exit | 3 | yes | 0 | yes | yes | yes |
+| smoke/copy-mode-line-numbers | 10 | yes | 0 | yes | yes | yes |
 | smoke/copy-mode-mode-keys-tail | 3 | yes | 0 | yes | yes | yes |
 | smoke/copy-mode-mode-keys | 3 | yes | 0 | yes | yes | yes |
 | smoke/copy-mode-prompt-bindings | 3 | yes | 0 | yes | yes | yes |
@@ -191,6 +211,8 @@
 | smoke/display-menu-style-refresh | 3 | yes | 0 | yes | yes | yes |
 | smoke/display-message-client-aliases | 3 | yes | 0 | yes | yes | yes |
 | smoke/display-panes-template | 3 | yes | 0 | yes | yes | yes |
+| smoke/display-popup-kitty-noresize | 3 | yes | 0 | yes | yes | yes |
+| smoke/display-popup-kitty | 3 | yes | 0 | yes | yes | yes |
 | smoke/environment-bytes | 2 | yes | 0 | yes | yes | yes |
 | smoke/fixture-conf | 5 | yes | 0 | yes | yes | yes |
 | smoke/focus-follows-mouse | 3 | yes | 0 | yes | yes | yes |
@@ -228,6 +250,7 @@
 | smoke/pane-engine-knobs | 3 | yes | 0 | yes | yes | yes |
 | smoke/pane-runtime-facts | 2 | yes | 0 | yes | yes | yes |
 | smoke/pane-tmux-path | 3 | yes | 0 | yes | yes | yes |
+| smoke/parse-close-brace | 2 | yes | 0 | yes | yes | yes |
 | smoke/plugin-runtime-continuum | 2 | yes | 0 | yes | yes | yes |
 | smoke/plugin-runtime-fpp | 2 | yes | 0 | yes | yes | yes |
 | smoke/plugin-runtime-oh-my-tmux | 4 | yes | 0 | yes | yes | yes |
@@ -241,6 +264,7 @@
 | smoke/remain-on-exit-format | 3 | yes | 0 | yes | yes | yes |
 | smoke/resurrect-init | 3 | yes | 0 | yes | yes | yes |
 | smoke/resurrect-save | 2 | yes | 0 | yes | yes | yes |
+| smoke/select-layout-z-order | 3 | yes | 0 | yes | yes | yes |
 | smoke/send-keys-client-selection | 3 | yes | 0 | yes | yes | yes |
 | smoke/send-keys-control | 3 | yes | 0 | yes | yes | yes |
 | smoke/send-keys-inject | 3 | yes | 0 | yes | yes | yes |
@@ -264,7 +288,7 @@
 ## Attached-client fixture
 
 Status: `PASS`
-Recorded at: `fd7fc3bc6c24`
+Recorded at: `b40f19cf295e`
 
 ## Retries
 
