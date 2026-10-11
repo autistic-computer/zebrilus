@@ -1482,7 +1482,7 @@ impl AgentPane {
                 })
                 .child(
                     agent_chrome_button("agent-project-new")
-                        .accent()
+                        .primary()
                         .text_color(cx.theme().foreground)
                         .min_w_0()
                         .max_w_full()

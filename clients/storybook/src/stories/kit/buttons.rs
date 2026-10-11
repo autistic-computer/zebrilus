@@ -3,8 +3,9 @@ use zz_gpui::{
     ParentElement as _, Render, Styled as _, Subscription, Window, div, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, IconName, Selectable as _, Sizable as _,
-    button::{Button, ButtonCustomVariant, ButtonRounded, ButtonVariant, ButtonVariants as _},
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName, Selectable as _,
+    Sizable as _, Tone,
+    button::{Button, ButtonRounded, ButtonVariant, ButtonVariants as _},
 };
 
 use super::support::{Probe, after_first_frame, hover, press, when_visible};
@@ -14,12 +15,12 @@ pub const STORY: Story = Story {
     id: "buttons",
     name: "Buttons",
     group: "Kit",
-    summary: "One button, ten variants. Neutral variants share the washed hover tint; Accent is the one call to action a surface owns.",
+    summary: "One button, drawn as a tone at an emphasis (see the Design system story) or as a link or plain text. The shorthands name the common pairs: primary is the main action, secondary and ghost the quiet ones.",
     sections: &[
         Section {
             id: "variants",
             name: "Variants",
-            summary: "Every ButtonVariant at the default size.",
+            summary: "The shorthands at the default size, and the link and text forms.",
             build: |_, cx| stateless(variants, cx),
         },
         Section {
@@ -36,8 +37,8 @@ pub const STORY: Story = Story {
         },
         Section {
             id: "custom-and-shapes",
-            name: "Custom and shapes",
-            summary: "ButtonCustomVariant colors, flat buttons without a resting surface, compact padding and rounded overrides.",
+            name: "Shapes",
+            summary: "Flat buttons without a resting surface, compact padding and rounded overrides.",
             build: |_, cx| stateless(custom_and_shapes, cx),
         },
         Section {
@@ -61,15 +62,28 @@ pub const STORY: Story = Story {
     ],
 };
 
-const VARIANTS: [(&str, ButtonVariant); 10] = [
-    ("Default", ButtonVariant::Default),
-    ("Primary", ButtonVariant::Primary),
-    ("Accent", ButtonVariant::Accent),
-    ("Secondary", ButtonVariant::Secondary),
-    ("Ghost", ButtonVariant::Ghost),
-    ("Danger", ButtonVariant::Danger),
-    ("Success", ButtonVariant::Success),
-    ("Warning", ButtonVariant::Warning),
+const VARIANTS: [(&str, ButtonVariant); 8] = [
+    (
+        "Primary",
+        ButtonVariant::Paint(Tone::Primary, Emphasis::Solid),
+    ),
+    (
+        "Secondary",
+        ButtonVariant::Paint(Tone::Neutral, Emphasis::Soft),
+    ),
+    (
+        "Ghost",
+        ButtonVariant::Paint(Tone::Neutral, Emphasis::Ghost),
+    ),
+    ("Danger", ButtonVariant::Paint(Tone::Danger, Emphasis::Soft)),
+    (
+        "Success",
+        ButtonVariant::Paint(Tone::Success, Emphasis::Soft),
+    ),
+    (
+        "Warning",
+        ButtonVariant::Paint(Tone::Warning, Emphasis::Soft),
+    ),
     ("Link", ButtonVariant::Link),
     ("Text", ButtonVariant::Text),
 ];
@@ -159,7 +173,7 @@ fn button_states(_: &mut Window, _: &mut App) -> AnyElement {
                 .child(
                     Button::new("loading-accent")
                         .label("Sending")
-                        .accent()
+                        .primary()
                         .loading(true),
                 ),
         )
@@ -188,12 +202,16 @@ fn button_states(_: &mut Window, _: &mut App) -> AnyElement {
         .state(
             "outline",
             row()
-                .child(Button::new("outline").label("Outline").outline())
+                .child(
+                    Button::new("outline")
+                        .label("Outline")
+                        .emphasis(Emphasis::Outline),
+                )
                 .child(
                     Button::new("outline-danger")
                         .label("Delete")
                         .danger()
-                        .outline(),
+                        .emphasis(Emphasis::Outline),
                 ),
         )
         .into_any_element()
@@ -201,39 +219,8 @@ fn button_states(_: &mut Window, _: &mut App) -> AnyElement {
 
 fn custom_and_shapes(_: &mut Window, cx: &mut App) -> AnyElement {
     let theme = cx.theme();
-    let violet = zz_ui::parse_hex("#bb9af7").unwrap_or(theme.accent);
-    let teal = zz_ui::parse_hex("#2ac3de").unwrap_or(theme.accent);
     states()
         .columns(2)
-        .state(
-            "custom",
-            row()
-                .child(
-                    Button::new("custom-violet").label("Violet").custom(
-                        ButtonCustomVariant::new(cx)
-                            .color(violet)
-                            .active(violet.opacity(0.8)),
-                    ),
-                )
-                .child(
-                    Button::new("custom-teal").label("Teal").custom(
-                        ButtonCustomVariant::new(cx)
-                            .color(teal)
-                            .active(teal.opacity(0.8))
-                            .shadow(true),
-                    ),
-                )
-                .child(
-                    Button::new("custom-selected")
-                        .label("Selected")
-                        .custom(
-                            ButtonCustomVariant::new(cx)
-                                .color(violet)
-                                .active(violet.opacity(0.8)),
-                        )
-                        .selected(true),
-                ),
-        )
         .state(
             "flat",
             row()
@@ -367,9 +354,12 @@ impl Pointer {
 impl Render for Pointer {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let (label, variant) = match self.gesture {
-            Gesture::Hover => ("Default", ButtonVariant::Default),
-            Gesture::Press => ("Primary", ButtonVariant::Primary),
-            Gesture::Focus => ("Focused", ButtonVariant::Default),
+            Gesture::Hover => ("Secondary", ButtonVariant::default()),
+            Gesture::Press => (
+                "Primary",
+                ButtonVariant::Paint(Tone::Primary, Emphasis::Solid),
+            ),
+            Gesture::Focus => ("Focused", ButtonVariant::default()),
         };
         let caption = match self.gesture {
             Gesture::Hover => "hovered, resting",

@@ -129,7 +129,7 @@ impl Toasts {
                                     .child(
                                         Button::new("toast-restart")
                                             .label("Restart")
-                                            .accent()
+                                            .primary()
                                             .small(),
                                     )
                                     .child(
@@ -326,7 +326,7 @@ impl Render for Panel {
                                             .child(
                                                 Button::new("popover-save")
                                                     .label("Save")
-                                                    .accent()
+                                                    .primary()
                                                     .small(),
                                             ),
                                     )

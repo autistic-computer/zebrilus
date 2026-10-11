@@ -3,7 +3,7 @@ use zz_gpui::{
     Render, Styled as _, Subscription, Window, div, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, Size, h_flex,
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, h_flex,
     kbd::Kbd, list::ListItem, separator::Separator, spinner::Spinner, v_flex,
 };
 
