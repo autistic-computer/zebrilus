@@ -62513,15 +62513,14 @@ mod tests {
             .expect("start terminal watcher");
 
         let deadline = Instant::now() + Duration::from_secs(2);
-        while terminal.diagnostics().event_queue_len != 0 {
-            assert!(Instant::now() < deadline, "watcher did not become idle");
+        while terminal.diagnostics().event_queue_len != 0 || Arc::strong_count(&terminal) != 2 {
+            assert!(
+                Instant::now() < deadline,
+                "only the test and terminal map should own an idle session, found {} owners",
+                Arc::strong_count(&terminal)
+            );
             thread::sleep(Duration::from_millis(5));
         }
-        assert_eq!(
-            Arc::strong_count(&terminal),
-            2,
-            "only the test and terminal map should own the session"
-        );
 
         shared.inner.lock().terminals_mut().remove(&pane);
         drop(terminal);
@@ -77675,7 +77674,9 @@ set-option -g @alias-mixed-next yes
                 &CommandInvocation::new("send-text", ["-t", &target, &line]),
             )
             .expect("write a wrapped line");
-        let screen = wait_for_capture(&shared, client, &target, |screen| screen.contains("zzz"));
+        let screen = wait_for_capture(&shared, client, &target, |screen| {
+            screen.lines().filter(|row| row.trim_end() == "zzz").count() == 2
+        });
         assert!(!screen.contains(&line), "fixture must wrap the line");
         let execution = shared
             .execute(
@@ -86362,12 +86363,8 @@ set-option -g @alias-mixed-next yes
             .replace(replacement_cwd);
 
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !output.is_file() {
-            assert!(Instant::now() < deadline, "delayed cwd job did not finish");
-            thread::sleep(Duration::from_millis(5));
-        }
         assert_eq!(
-            fs::read_to_string(output).expect("delayed cwd output"),
+            wait_for_file_text(&output, deadline),
             format!(
                 "{}\n",
                 fs::canonicalize(scheduled_cwd).unwrap().to_string_lossy()
@@ -89526,6 +89523,7 @@ set-option -g @alias-mixed-next yes
                 }
             );
             let (stream, _) = listener.accept().expect("outbound connection");
+            stream.set_nonblocking(false).expect("blocking peer stream");
             let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
             let mut line = String::new();
             BufReader::new(stream)
@@ -89569,6 +89567,7 @@ set-option -g @alias-mixed-next yes
                     Err(error) => panic!("peer accept: {error}"),
                 }
             };
+            stream.set_nonblocking(false).expect("blocking peer stream");
             let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
             let mut line = String::new();
             BufReader::new(stream)
@@ -108738,10 +108737,7 @@ bind - split-window -v -c "#{pane_current_path}"
             }
         );
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !first.exists() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert_eq!(fs::read_to_string(first).expect("first marker"), "first");
+        assert_eq!(wait_for_file_text(&first, deadline), "first");
         assert!(!second.exists());
         while !shared.stopping.load(Ordering::Acquire) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
@@ -108975,10 +108971,7 @@ bind - split-window -v -c "#{pane_current_path}"
             CommandResponse::Success { exit_code: 0, .. }
         ));
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !nested.exists() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert_eq!(fs::read_to_string(nested).expect("nested marker"), "nested");
+        assert_eq!(wait_for_file_text(&nested, deadline), "nested");
         assert!(!outer.exists());
         while !shared.stopping.load(Ordering::Acquire) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
@@ -109179,10 +109172,7 @@ bind - split-window -v -c "#{pane_current_path}"
         );
         assert_eq!(read_global_option(&shared, "@sourced-effect"), "yes");
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !outer.exists() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert_eq!(fs::read_to_string(outer).expect("outer marker"), "outer");
+        assert_eq!(wait_for_file_text(&outer, deadline), "outer");
         while !shared.stopping.load(Ordering::Acquire) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
         }
@@ -109314,13 +109304,7 @@ bind - split-window -v -c "#{pane_current_path}"
         assert!(!outer.exists());
         assert!(!shared.stopping.load(Ordering::Acquire));
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !marker.exists() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert_eq!(
-            fs::read_to_string(marker).expect("foreground marker"),
-            "foreground"
-        );
+        assert_eq!(wait_for_file_text(&marker, deadline), "foreground");
         while !shared.stopping.load(Ordering::Acquire) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
         }
@@ -110072,13 +110056,7 @@ bind - split-window -v -c "#{pane_current_path}"
         ));
         assert!(!shared.stopping.load(Ordering::Acquire));
         let deadline = Instant::now() + Duration::from_secs(2);
-        while !marker.exists() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(20));
-        }
-        assert_eq!(
-            fs::read_to_string(marker).expect("detached marker"),
-            "detached"
-        );
+        assert_eq!(wait_for_file_text(&marker, deadline), "detached");
         let deadline = Instant::now() + Duration::from_secs(2);
         while !shared.stopping.load(Ordering::Acquire) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(20));
@@ -121454,6 +121432,16 @@ bind - split-window -v -c "#{pane_current_path}"
             .expect("popup command timed out");
         worker.join().expect("popup command worker");
         result
+    }
+
+    fn wait_for_file_text(path: &Path, deadline: Instant) -> String {
+        loop {
+            let text = fs::read_to_string(path).unwrap_or_default();
+            if !text.is_empty() || Instant::now() >= deadline {
+                return text;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     fn wait_for_pending_terminal(mailbox: &OutboundMailbox, pane: PaneId) {
