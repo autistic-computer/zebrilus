@@ -7,14 +7,16 @@ use zz_gpui::{
 };
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
-    CHROME_GAP, Disableable as _, IconName, Sizable as _,
+    CHROME_GAP, Disableable as _, IconName,
     agent::{
         AgentPaneStatus, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
         agent_jump_to_bottom_button, agent_pane_header, agent_status_pill,
         composer::COMPOSER_OUTER_PADDING,
         controls::agent_provider_label,
         fold_timeline_rows,
-        presentation::{empty_state, error_card, spinner_phase, welcome_state},
+        presentation::{
+            card_button, empty_state, error_actions, error_card, spinner_phase, welcome_state,
+        },
         title::agent_thread_title_editor,
     },
     button::{Button, ButtonVariants as _},
@@ -404,20 +406,14 @@ impl Render for EmptyStates {
                     cx,
                 )
                 .child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_2()
+                    error_actions()
                         .child(
-                            Button::new("error-retry")
-                                .primary()
-                                .small()
+                            card_button(Button::new("error-retry").primary())
                                 .icon(IconName::Redo2)
                                 .label("Try again"),
                         )
                         .child(
-                            Button::new("error-auth")
-                                .secondary()
-                                .small()
+                            card_button(Button::new("error-auth").secondary())
                                 .label("Log in with Claude")
                                 .tooltip("Open the browser to sign in"),
                         ),
@@ -426,10 +422,8 @@ impl Render for EmptyStates {
             .state(
                 "error card, restarting",
                 error_card("Codex exited with status 1.", cx).child(
-                    h_flex().flex_wrap().gap_2().child(
-                        Button::new("error-restarting")
-                            .primary()
-                            .small()
+                    error_actions().child(
+                        card_button(Button::new("error-restarting").primary())
                             .icon(IconName::Redo2)
                             .label("Restarting…")
                             .disabled(true),
