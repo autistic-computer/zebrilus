@@ -377,7 +377,7 @@ pub(super) fn session_tree(
         px(WORKSPACE_TREE_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
         px(4.0),
         IndentGuideColors {
-            default: guide_color.wash(),
+            default: cx.theme().divider_color(),
             active: guide_color,
         },
     );

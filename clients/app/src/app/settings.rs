@@ -21,7 +21,7 @@ use zz_ui::{
             AppearancePageItem, PickerStrip, appearance_page, appearance_page_items,
             interface_style_preview, palette_preview, picker_tile, theme_preview, ui_font_select,
         },
-        settings_control_fill, settings_list_disclosure_header, settings_reset_button,
+        settings_card_ground, settings_list_disclosure_header, settings_reset_button,
         settings_scroll_column,
     },
     switch::Switch,
@@ -577,13 +577,13 @@ impl AppShell {
         let picked = self.settings_picked;
         zz_ui::compact::swipe_back(
             "settings-swipe-back",
-            self.settings_route(section, picked, window, cx),
+            self.settings_route(section, picked, cx),
             move |window, cx| {
                 let _ = view.update(cx, |this, cx| this.settings_back(window, cx));
             },
         )
         .when(picked, |swipe| {
-            swipe.under(self.settings_route(section, false, window, cx))
+            swipe.under(self.settings_route(section, false, cx))
         })
         .into_any_element()
     }
@@ -603,7 +603,6 @@ impl AppShell {
         &self,
         section: SettingsSection,
         picked: bool,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let content = if picked {
@@ -634,7 +633,6 @@ impl AppShell {
                         });
                     }
                 },
-                window,
                 cx,
             )
             .into_any_element()
@@ -1583,7 +1581,7 @@ fn font_select(
             .small()
             .title(title)
             .placeholder(placeholder)
-            .bg(settings_control_fill(cx)),
+            .on(settings_card_ground(cx)),
     )
 }
 
@@ -1595,7 +1593,7 @@ fn choice_select(
     Select::new(select)
         .small()
         .title(title)
-        .bg(settings_control_fill(cx))
+        .on(settings_card_ground(cx))
 }
 
 fn number_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
@@ -1608,11 +1606,7 @@ fn number_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
         .w(zz_ui::rems_from_px(width))
         .max_w_full()
         .flex_none()
-        .child(
-            NumberInput::new(input)
-                .small()
-                .bg(settings_control_fill(cx)),
-        )
+        .child(NumberInput::new(input).small().on(settings_card_ground(cx)))
 }
 
 pub(super) fn settings_heading(
@@ -1659,15 +1653,10 @@ impl zz_gpui::RenderOnce for TerminalPreview {
         let viewport = Arc::new(sample_terminal_viewport(&appearance));
         let cache = Rc::new(RefCell::new(RowRenderCache::default()));
         let paint_cache = Rc::clone(&cache);
-        let background = cx
-            .theme()
-            .background
-            .opaque()
-            .blend(terminal_background(
-                appearance.background,
-                appearance.background_opacity,
-            ))
-            .opacity(cx.theme().pane_background_opacity);
+        let background = cx.theme().pane_background(terminal_background(
+            appearance.background,
+            appearance.background_opacity,
+        ));
         let font = terminal_font_for_style(&appearance, &cx.theme().mono_font_family, false, false);
         let font_size = px(appearance.font_size_points);
         let probe = window.text_system().shape_line(

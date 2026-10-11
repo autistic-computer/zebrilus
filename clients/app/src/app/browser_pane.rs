@@ -140,6 +140,10 @@ impl BrowserPane {
         self.connection.read(cx).connected && !self.connection.read(cx).core.attached_read_only()
     }
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the picker overlay is page CSS, not chrome"
+    )]
     fn toggle_element_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.writable(cx) || !self.visible {
             return;

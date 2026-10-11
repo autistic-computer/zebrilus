@@ -49,7 +49,7 @@ pub const STORY: Story = Story {
         Section {
             id: "address-focused",
             name: "Address field, focused",
-            summary: "With focus the field fills and takes the control highlight.",
+            summary: "With focus the ghost field takes a border in the focus color.",
             build: |window, cx| stateful(window, cx, focused_input, focused_address),
         },
         Section {

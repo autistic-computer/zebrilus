@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use zz_gpui::{App, Global, Hsla, SharedString, Window};
 use zz_terminal::TerminalAppearance;
-use zz_ui::{Colorize as _, Theme, ThemeMode};
+use zz_ui::{Theme, ThemeMode};
 
 use crate::config;
 
@@ -48,10 +48,7 @@ pub fn chrome_background(cx: &App) -> Hsla {
 
 pub fn app_pane_background(cx: &App) -> Hsla {
     let theme = Theme::global(cx);
-    theme
-        .background
-        .opaque()
-        .opacity(theme.pane_background_opacity)
+    theme.pane_background(theme.background)
 }
 
 pub(crate) fn refresh_current_theme(cx: &mut App) {

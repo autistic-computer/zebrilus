@@ -9,5 +9,5 @@ mod scrollbar;
 pub use scrollable::{Scrollable, ScrollableElement};
 pub use scrollbar::{
     MIN_THUMB_SIZE, Scrollbar, ScrollbarAxis, ScrollbarHandle, ScrollbarShow, THUMB_INSET,
-    THUMB_WIDTH, WIDTH as GUTTER_WIDTH, thumb_radius,
+    THUMB_WIDTH, WIDTH as GUTTER_WIDTH, thumb_color, thumb_radius,
 };

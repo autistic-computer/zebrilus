@@ -7,10 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    ActiveTheme as _, Colorize as _,
-    scroll::{MIN_THUMB_SIZE, THUMB_INSET, THUMB_WIDTH, thumb_radius},
-};
+use crate::scroll::{MIN_THUMB_SIZE, THUMB_INSET, THUMB_WIDTH, thumb_color, thumb_radius};
 use smallvec::SmallVec;
 use zz_gpui::{
     App, BorderStyle, Bounds, ContentMask, Corners, Font, FontFallbacks, FontFeatures,
@@ -1699,7 +1696,7 @@ fn scrollbar_quad(
     Some(
         fill(
             Bounds::new(origin, size(THUMB_WIDTH, thumb_height)),
-            cx.theme().foreground.wash(),
+            thumb_color(cx),
         )
         .corner_radii(thumb_radius(THUMB_WIDTH, cx)),
     )

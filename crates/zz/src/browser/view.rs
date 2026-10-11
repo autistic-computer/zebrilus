@@ -469,6 +469,10 @@ enum ZoomOp {
     Reset,
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the picker overlay is page CSS, not chrome"
+)]
 fn element_picker_appearance(theme: &zz_ui::Theme, page_zoom: f64) -> ElementPickerAppearance {
     ElementPickerAppearance {
         highlight_outline: to_hex(theme.foreground),

@@ -6,7 +6,7 @@ use zz_gpui::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{Sizable, Size};
+use crate::{Ground, Sizable, Size};
 
 use super::{
     CONTEXT,
@@ -54,6 +54,14 @@ impl<D: SelectDelegate> Select<D> {
     #[must_use]
     pub fn menu_max_h(mut self, max_h: impl Into<Length>) -> Self {
         self.options.menu_max_h = Some(max_h.into());
+        self
+    }
+
+    /// Draw the trigger on `ground`, the surface it sits on, instead of the
+    /// window.
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.options.on = Some(ground);
         self
     }
 

@@ -2895,11 +2895,7 @@ impl Render for AgentPane {
             .rounded_tr(self.corner_radii.top_right)
             .rounded_bl(self.corner_radii.bottom_left)
             .rounded_br(self.corner_radii.bottom_right)
-            .bg(cx
-                .theme()
-                .background
-                .opaque()
-                .opacity(cx.theme().pane_background_opacity))
+            .bg(cx.theme().pane_background(cx.theme().background))
             .child(agent_pane_header(
                 self.connection
                     .read(cx)

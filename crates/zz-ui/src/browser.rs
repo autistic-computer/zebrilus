@@ -1,8 +1,8 @@
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, Selectable as _,
-    Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintExt as _,
+    PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     input::{Input, InputContentType, InputState},
@@ -180,7 +180,7 @@ pub fn browser_address(
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let focus_handle = address.read(cx).focus_handle(cx);
-    let focused_background = cx.theme().background.washed(1);
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
     let input = Input::new(address)
         .xsmall()
         .h(px(BROWSER_CONTROL_HEIGHT))
@@ -204,9 +204,14 @@ pub fn browser_address(
         .min_w_0()
         .items_center()
         .rounded(cx.theme().control_radius())
-        .border(px(0.5))
-        .border_color(cx.theme().transparent)
-        .focus(|style| style.bg(focused_background).control_highlight(cx))
+        .painted(paint, PaintState::Rest)
+        .border(px(1.0))
+        .hover(move |style| style.bg(paint.hover))
+        .focus(move |style| {
+            style
+                .bg(paint.fill_at(PaintState::Focused))
+                .border_color(paint.focus)
+        })
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             focus_handle.focus(window, cx);
             cx.stop_propagation();
@@ -461,9 +466,14 @@ fn browser_tab_shell(
     favicon: Option<Arc<[u8]>>,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let rest = cx.theme().background.washed(1);
-    let foreground = cx.theme().foreground;
-    let hover_background = cx.theme().background.washed(2);
+    let paint = cx.theme().paint(
+        Tone::Neutral,
+        if active {
+            Emphasis::Soft
+        } else {
+            Emphasis::Ghost
+        },
+    );
     div()
         .id(("browser-tab", id))
         .debug_selector(move || format!("browser-tab-{id}"))
@@ -478,13 +488,14 @@ fn browser_tab_shell(
         .rounded(cx.theme().control_radius())
         .border(px(0.5))
         .border_color(cx.theme().transparent)
+        .bg(paint.fill)
         .text_color(if active {
-            foreground
+            paint.text
         } else {
-            foreground.muted()
+            paint.muted_at(PaintState::Rest)
         })
-        .when(active, |tab| tab.bg(rest).control_highlight(cx))
-        .hover(move |style| style.bg(hover_background).text_color(foreground))
+        .when(active, |tab| tab.control_highlight(cx))
+        .hover(move |style| style.bg(paint.hover))
         .child(
             div()
                 .flex_none()
@@ -573,7 +584,7 @@ impl RenderOnce for BrowserEmptyHint {
                     .items_center()
                     .justify_center()
                     .rounded_full()
-                    .bg(cx.theme().background.washed(2))
+                    .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
                     .child(
                         Icon::new(IconName::Globe)
                             .xsmall()
@@ -625,8 +636,7 @@ pub fn browser_recent_row(
     favicon: Option<Arc<[u8]>>,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let rest = cx.theme().background.washed(1);
-    let highlight = crate::navigation::workspace_row_highlight(cx);
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
     let url = url.into();
     div()
         .id(id)
@@ -638,9 +648,9 @@ pub fn browser_recent_row(
         .gap(px(8.0))
         .px(px(12.0))
         .rounded(cx.theme().menu_radius())
-        .bg(rest)
+        .bg(paint.fill)
         .cursor_pointer()
-        .hover(move |style| style.bg(highlight))
+        .hover(move |style| style.bg(paint.hover))
         .text_size(crate::rems_from_px(12.0))
         .font_medium()
         .child(browser_favicon(favicon, cx))
@@ -1135,7 +1145,7 @@ impl RenderOnce for BrowserErrorPanel {
             .gap(px(10.0))
             .p(px(20.0))
             .rounded(cx.theme().radius)
-            .bg(cx.theme().background.washed(1))
+            .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
             .text_color(cx.theme().foreground)
             .shadow(browser_surface_shadow(cx))
             .child(
@@ -1220,7 +1230,7 @@ impl RenderOnce for BrowserPickStatus {
 pub fn browser_surface_shadow(cx: &App) -> Vec<BoxShadow> {
     vec![
         BoxShadow {
-            color: cx.theme().border().subtle(),
+            color: cx.theme().border(),
             offset: point(px(0.0), px(0.0)),
             blur_radius: px(0.0),
             spread_radius: px(1.0),

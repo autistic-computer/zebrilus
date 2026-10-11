@@ -7,7 +7,8 @@ use std::rc::Rc;
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable as _, Elevation, Emphasis, Selectable as _, Sizable as _,
+    ActiveTheme as _, Disableable as _, Elevation, Emphasis, Ground, Selectable as _, Sizable as _,
+    Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     control_shadow,
@@ -196,8 +197,7 @@ pub fn settings_section_index(
     sections: &[SettingsSection],
     meta: impl Fn(SettingsSection) -> Option<SharedString>,
     on_pick: impl Fn(SettingsSection, &mut Window, &mut App) + 'static,
-    window: &mut Window,
-    cx: &mut App,
+    cx: &App,
 ) -> SettingsScrollColumn {
     let on_pick = Rc::new(on_pick);
     let mut groups: Vec<(SettingsNavigationGroup, Vec<SettingsSection>)> = Vec::new();
@@ -209,9 +209,9 @@ pub fn settings_section_index(
         }
     }
     let muted = cx.theme().foreground.muted();
-    let dim = cx.theme().foreground.opacity(0.3);
+    let faint = cx.theme().foreground.faint();
     let radius = cx.theme().radius;
-    let wash = cx.theme().foreground.opacity(0.08);
+    let pressed = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active;
     let mut column = settings_scroll_column("settings-index");
     for (group, members) in groups {
         let rows = members
@@ -219,8 +219,7 @@ pub fn settings_section_index(
             .map(|section| {
                 let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
                 let on_pick = Rc::clone(&on_pick);
-                let press = crate::touch::press_feedback(id.clone(), window, cx);
-                let pressed = press.amount;
+                let press = crate::touch::press_highlight(id.clone(), pressed, radius);
                 div()
                     .id(id)
                     .relative()
@@ -231,11 +230,7 @@ pub fn settings_section_index(
                     .px(px(10.0))
                     .rounded(radius)
                     .cursor_pointer()
-                    .when(pressed > 0.0, |row| {
-                        row.bg(wash.opacity(wash.a * pressed))
-                            .border(px(0.5))
-                            .border_color(cx.theme().foreground.opacity(0.1 * pressed))
-                    })
+                    .child(press)
                     .child(Icon::new(section.icon()).small().text_color(muted))
                     .child(
                         div()
@@ -253,10 +248,9 @@ pub fn settings_section_index(
                     .child(
                         Icon::new(crate::IconName::ChevronRight)
                             .size(px(14.0))
-                            .text_color(dim),
+                            .text_color(faint),
                     )
                     .on_click(move |_, window, cx| on_pick(section, window, cx))
-                    .child(press.listener())
             })
             .collect::<Vec<_>>();
         column = column.child(
@@ -1313,7 +1307,11 @@ impl RenderOnce for SettingEntry {
                         .when(position.rounds_bottom(), |this| {
                             this.rounded_b(cx.theme().radius)
                         })
-                        .bg(cx.theme().foreground.opacity(0.1 * pressed)),
+                        .bg(cx
+                            .theme()
+                            .paint_on(settings_card_ground(cx), Tone::Neutral, Emphasis::Ghost)
+                            .active)
+                        .opacity(pressed),
                 )
             })
             .child(heading)
@@ -1323,7 +1321,7 @@ impl RenderOnce for SettingEntry {
             .flex()
             .flex_col()
             .w_full()
-            .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
+            .bg(settings_card_ground(cx).fill)
             .border_color(cx.theme().border())
             .border_l(px(0.5))
             .border_r(px(0.5))
@@ -1469,12 +1467,15 @@ impl RenderOnce for SettingCopy {
     }
 }
 
-/// Fill for a value control mounted on a settings card or mux row. Those
-/// surfaces are already `raised(1)`, so a control at that default would
-/// dissolve into the card behind it.
+/// The ground of a settings card, for the controls mounted on it, so their
+/// fills step up from the card instead of dissolving into it.
 #[must_use]
-pub fn settings_control_fill(cx: &App) -> zz_gpui::Hsla {
-    cx.theme().surface(Elevation::Popover).fill
+pub fn settings_card_ground(cx: &App) -> Ground {
+    let panel = cx.theme().surface(Elevation::Panel);
+    Ground {
+        fill: panel.fill.opaque(),
+        ..panel
+    }
 }
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {

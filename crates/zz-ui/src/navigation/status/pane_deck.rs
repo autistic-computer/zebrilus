@@ -6,7 +6,7 @@ use zz_gpui::{
 };
 use zz_protocol::PaneKindSnapshot;
 
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, tooltip::Tooltip};
+use crate::{ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, tooltip::Tooltip};
 
 use super::StatusAction;
 
@@ -235,11 +235,15 @@ fn pane_card(active: bool, hovered: bool, cx: &App) -> zz_gpui::Div {
         .justify_center()
         .rounded(cx.theme().control_radius())
         .border(px(0.5))
-        .border_color(cx.theme().foreground.opacity(0.16))
+        .border_color(cx.theme().border())
         .bg(cx
             .theme()
-            .background
-            .raised(if active || hovered { 2 } else { 1 })
+            .surface(if active || hovered {
+                Elevation::Popover
+            } else {
+                Elevation::Panel
+            })
+            .fill
             .opaque())
         .text_color(if active || hovered {
             cx.theme().foreground

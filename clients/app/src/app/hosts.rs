@@ -11,7 +11,7 @@ use zz_ui::{
 use zz_ui::{
     button::ButtonVariants as _,
     input::{Input, InputEvent, InputState},
-    settings::settings_control_fill,
+    settings::settings_card_ground,
 };
 
 use super::{
@@ -372,7 +372,7 @@ impl AppShell {
                             .child(
                                 Input::new(&self.hosts.destination)
                                     .small()
-                                    .bg(settings_control_fill(cx)),
+                                    .on(settings_card_ground(cx)),
                             ),
                     )
                     .child(

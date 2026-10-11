@@ -5,7 +5,7 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _, Window,
     div, prelude::*, px,
 };
-use zz_ui::{
+use zz_ui::{Emphasis, Tone, 
     ActiveTheme as _, Colorize as _, Icon, IconName, IndexPath, SelectionStyle, Sizable as _,
     ThemeMode,
     button::{Button, ButtonVariants as _},
@@ -26,7 +26,7 @@ use zz_ui::{
         },
         panes_page,
         panes_preview::PanesPreview,
-        settings_control_fill, settings_list_disclosure_header, settings_navigation_back_button,
+        settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
         settings_navigation_back_row, settings_navigation_button, settings_navigation_group_label,
         settings_page_description, settings_provenance_badge, settings_reset_button,
         settings_scroll_column, settings_section_index,
@@ -128,12 +128,12 @@ impl Controls {
         div().w(px(120.0)).flex_none().child(
             NumberInput::new(&self.numbers[index])
                 .small()
-                .bg(settings_control_fill(cx)),
+                .on(settings_card_ground(cx)),
         )
     }
 }
 
-fn navigation(window: &mut Window, cx: &mut App) -> AnyElement {
+fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
     let selected = SettingsSection::Appearance;
     let mut rows = Vec::new();
     let mut previous: Option<SettingsNavigationGroup> = None;
@@ -164,7 +164,6 @@ fn navigation(window: &mut Window, cx: &mut App) -> AnyElement {
             _ => None,
         },
         |_, _, _| {},
-        window,
         cx,
     );
     states()
@@ -242,7 +241,7 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         Select::new(&controls.choice)
                             .small()
                             .title("Navigation layout")
-                            .bg(settings_control_fill(cx)),
+                            .on(settings_card_ground(cx)),
                     ),
                 ),
         )
@@ -302,7 +301,10 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     div()
                         .p(px(10.0))
                         .rounded(cx.theme().radius)
-                        .bg(settings_control_fill(cx))
+                        .bg(cx
+                            .theme()
+                            .paint_on(settings_card_ground(cx), Tone::Neutral, Emphasis::Soft)
+                            .fill)
                         .font_family(cx.theme().mono_font_family.clone())
                         .text_size(px(12.0))
                         .child("font-family = Lilex\ncursor-style = bar\nwindow-padding-x = 8"),
@@ -386,7 +388,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                                     .small()
                                     .title("UI font")
                                     .placeholder("System default")
-                                    .bg(settings_control_fill(cx)),
+                                    .on(settings_card_ground(cx)),
                             ),
                         ),
                 ),

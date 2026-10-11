@@ -206,10 +206,10 @@ pub fn history_row(
                             div()
                                 .flex_none()
                                 .rounded(px(999.0))
-                                .bg(cx.theme().success.opaque())
+                                .bg(cx.theme().paint(Tone::Success, Emphasis::Solid).fill)
                                 .px_1()
                                 .text_size(crate::rems_from_px(8.0))
-                                .text_color(cx.theme().success.on())
+                                .text_color(cx.theme().paint(Tone::Success, Emphasis::Solid).text)
                                 .child("CURRENT"),
                         )
                     })

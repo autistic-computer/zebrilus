@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: "Design system: tone, emphasis and ground"
-description: "How zz chrome picks colors: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, and the old hand-picked washes, opacities and per-widget variant enums move onto it one component family at a time."
-status: In progress (everything but the clean-up built)
+description: "How zz chrome picks colors: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, planes name an elevation, and clippy rejects hand-mixed washes and opacities outside the kit."
+status: Built
 resource: crates/zz-gpui-kit/src/foundation/variant.rs
 tags:
 - ui
@@ -87,6 +87,8 @@ Without it, the keycap would compute muted gray against the window.
 
 A surface floating over content takes its fill `.opaque()`. `popover_style`, tooltips, sheets and notifications fill from it.
 
+A pane fills with `theme.pane_background(fill)`: its own fill (the window color, or a terminal's background) over the window, at the look's pane opacity.
+
 ## Lines and backdrops
 
 - A rule between sections is `theme.divider_color()`, the border root at the look's `divider` strength. It replaces the separate rule recipes the audit found.
@@ -110,7 +112,8 @@ Text, number and select fields are neutral paints at the look's field emphasis, 
 - `Input::tone(Tone::Danger)` marks an invalid value: a danger fill or border, and a danger focus ring.
 - `Input::emphasis(Emphasis::Ghost)` is for a field that shows its edge only on hover or focus.
 - `Input::on(ground)` puts a field inside a tile or card on that surface's ground.
-- `NumberInput` takes the same three.
+- `NumberInput` takes the same three, and `Select` and `Button` take `.on(ground)` too.
+- Settings controls sit on `settings_card_ground(cx)`, the opaque panel a settings card fills with, so their fills step up from the card instead of a hand-picked control fill.
 
 The shared chrome, `field_chrome` in `input/field.rs`, does three things:
 - it always draws at least a 1px border, clear when the paint has none, so focusing never moves the text;
@@ -152,7 +155,8 @@ Kit widgets on the model:
 
 # Rules
 
-- Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit.
+- Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit. Clippy enforces it: the root `clippy.toml` disallows `Hsla::opacity` and the mixing transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`, `hover`, `active`, `on`, `floating`). The kit's own `clippy.toml` leaves them out, since the kit is where the recipes are mixed. `muted()`, `faint()` and `opaque()` stay open.
+- A color that is deliberately not a recipe takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function. Today that is the look and palette previews in Appearance, the element picker overlay (page CSS), the blurred chrome background, and the pane glow, inactive dimming and drag veil, which scale by their own look knobs.
 - A widget nested in a painted surface takes that surface's `ground_at(state)`.
 - Secondary text comes from `muted_at`, not from `opacity(..)` on the foreground.
 - A variant that cannot be expressed as a tone and an emphasis is a missing recipe in the kit, not a local one-off.
@@ -178,7 +182,10 @@ Kit widgets on the model:
 | Single-select mark | `Check::radio`, primary |
 | Text, number, select field | neutral at the look's field emphasis |
 | Invalid field | danger at the look's field emphasis |
-| Inline field (rename in place) | neutral · ghost |
+| Inline field (rename in place) | the look's field emphasis, no focus ring |
+| Browser address bar | neutral · ghost field |
+| Browser tab | neutral · soft when active, ghost otherwise |
+| Settings control | its own recipe, on `settings_card_ground` |
 | Switch, slider | primary · solid when on, neutral soft when off |
 
 # Where to look
@@ -205,8 +212,9 @@ One component family at a time, each checked in the storybook and in the app:
 3. **Badges** (done): `Tag` is deleted. `Badge` carries the editor's vim mode, settings provenance, the palette's mode, host and command pills, chooser and picker chips and the command kind; the palette shortcut is a `Keycap`. The agent status pill, the trace count, the plan chip and the pane's status badge, drag chip and overlay lines paint from tones too. `Badge::opaque()` and `Paint::opaque()` fill over the window for anything floating over content. The compact bar pill, browser tab pill and queue chip are controls and move with buttons and rows.
 4. **Buttons** (done): the old variants, the `outline` flag and `ButtonCustomVariant` are deleted, and `.accent()` callers use `.primary()`. The neutral soft button paints opaque over the window so its resting shadow does not show through.
 5. **Rows and selection** (done): a selected row is the neutral ghost paint's selected fill with its selected text. `selection_highlight` reads it, so `ListItem`, menus, the chooser, the palette, the picker and the slash menu all agree, and an accent selection gets text that reads on the accent. A hovered row that is not selected takes the ghost hover wash instead of the selection fill: GPUI repaints a hover's fill but not its text, so an accent hover would keep text picked for the window. Menus already move their selection with the pointer, so their hover becomes a real selection. The submenu parent and the agent picker's open provider row use the ghost hover, and `workspace_row_highlight` reads it too.
-6. **Clean-up:**
-   - the remaining keycaps;
-   - one divider recipe;
-   - faint text in place of opacity text;
-   - a check that rejects `washed()`/`opacity()` fills outside the kit.
+6. **Clean-up** (done):
+   - `Kbd` draws through `Keycap`; menus and tooltips show bindings as text. The phone key row, popover keys, arrow pad, bar pill, bindings list and overview cards paint from neutral soft, selected and solid.
+   - `Elevation` and `theme.surface()` name panels and popovers; `theme.pane_background()` names the pane fill.
+   - Rules read `divider_color()`, edges `border()`, quiet text `faint()`, hover and press washes the ghost paint, danger callouts the danger paints, and backdrops the scrim.
+   - The browser address bar is a ghost field and its tabs soft or ghost; `Button` and `Select` take a ground, and settings controls paint on the card's.
+   - Clippy rejects hand-mixed fills outside the kit (see Rules).

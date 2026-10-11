@@ -227,6 +227,10 @@ fn pane_surface_shadow_style(shadow: bool, cx: &App) -> Vec<BoxShadow> {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the glow fades by the look's glow strength"
+)]
 fn pane_focus_glow(radii: Corners<Pixels>, cx: &App) -> impl IntoElement {
     div()
         .absolute()
@@ -254,6 +258,10 @@ fn pane_focus_glow(radii: Corners<Pixels>, cx: &App) -> impl IntoElement {
         )
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "an inactive pane dims by the look's inactive-pane opacity"
+)]
 fn pane_inactive_scrim(radii: Corners<Pixels>, opacity: f32, cx: &App) -> zz_gpui::Div {
     div()
         .absolute()
@@ -414,6 +422,10 @@ pub enum PaneDragOverlayState {
 }
 
 /// The occluding pane layer used while the tmux prefix is armed.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the dragged pane fades under a veil of the window color"
+)]
 pub fn pane_drag_overlay(
     id: impl Into<ElementId>,
     state: PaneDragOverlayState,
@@ -421,7 +433,10 @@ pub fn pane_drag_overlay(
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let (tint, cursor) = match state {
-        PaneDragOverlayState::Armed => (cx.theme().border().opacity(0.08), CursorStyle::OpenHand),
+        PaneDragOverlayState::Armed => (
+            cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover,
+            CursorStyle::OpenHand,
+        ),
         PaneDragOverlayState::Source => (
             cx.theme()
                 .background
@@ -453,7 +468,10 @@ pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> zz_g
         .rounded(radius)
         .border(border_width)
         .border_color(cx.theme().foreground)
-        .bg(cx.theme().foreground.fill())
+        .bg(cx
+            .theme()
+            .paint(Tone::Neutral, Emphasis::Soft)
+            .fill_at(PaintState::Active))
 }
 
 /// The chip that follows the pointer while a pane is being dragged, carrying
@@ -616,7 +634,7 @@ pub fn pane_split_surface(
             let hairline = div()
                 .absolute()
                 .bg(if resizing {
-                    cx.theme().foreground.wash()
+                    cx.theme().foreground.faint()
                 } else {
                     hairline.unwrap_or_else(|| cx.theme().border())
                 })
@@ -808,7 +826,7 @@ pub fn pane_indicator_card(
         .bg(paint.fill)
         .shadow(vec![
             BoxShadow {
-                color: cx.theme().border().subtle(),
+                color: cx.theme().border(),
                 offset: point(px(0.0), px(0.0)),
                 blur_radius: px(0.0),
                 spread_radius: px(1.0),

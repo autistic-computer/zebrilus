@@ -203,7 +203,7 @@ impl SettingsView {
                                 Input::new(&row.key)
                                     .small()
                                     .disabled(disabled)
-                                    .bg(settings_control_fill(cx)),
+                                    .on(settings_card_ground(cx)),
                             ),
                         )
                         .child(
@@ -212,7 +212,7 @@ impl SettingsView {
                                 .label(label)
                                 .dropdown_caret(true)
                                 .disabled(disabled)
-                                .bg(settings_control_fill(cx))
+                                .on(settings_card_ground(cx))
                                 .dropdown_menu_with_anchor(
                                     zz_gpui::Anchor::TopRight,
                                     move |menu, _, _| {

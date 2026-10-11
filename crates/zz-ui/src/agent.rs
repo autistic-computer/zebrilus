@@ -2558,7 +2558,7 @@ pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {
                 PlanItemState::Done => marker.border_color(foreground).bg(foreground).child(
                     Icon::new(IconName::Check)
                         .size(px(MARKER * 0.65))
-                        .text_color(foreground.on()),
+                        .text_color(cx.theme().paint(Tone::Neutral, Emphasis::Solid).text),
                 ),
             };
             h_flex()
@@ -3088,18 +3088,22 @@ impl MermaidTheme {
             MermaidThemeColors {
                 background: cx.theme().background,
                 surface: cx.theme().surface(Elevation::Panel).fill,
-                muted: cx.theme().background.hover(),
+                muted: cx
+                    .theme()
+                    .paint(Tone::Neutral, Emphasis::Soft)
+                    .opaque()
+                    .fill,
                 foreground: cx.theme().foreground,
                 muted_foreground: cx.theme().foreground.muted(),
                 border: cx.theme().border(),
                 primary: cx.theme().foreground,
-                primary_foreground: cx.theme().foreground.on(),
+                primary_foreground: cx.theme().paint(Tone::Neutral, Emphasis::Solid).text,
                 success: cx.theme().success,
-                success_foreground: cx.theme().success.on(),
+                success_foreground: cx.theme().paint(Tone::Success, Emphasis::Solid).text,
                 warning: cx.theme().warning,
-                warning_foreground: cx.theme().warning.on(),
+                warning_foreground: cx.theme().paint(Tone::Warning, Emphasis::Solid).text,
                 danger: cx.theme().danger,
-                danger_foreground: cx.theme().danger.on(),
+                danger_foreground: cx.theme().paint(Tone::Danger, Emphasis::Solid).text,
             },
             cx.theme().font_family.as_ref(),
             cx.theme().is_dark(),
@@ -3416,18 +3420,21 @@ fn mermaid_theme_key(cx: &App) -> u64 {
     for color in [
         cx.theme().background,
         cx.theme().surface(Elevation::Panel).fill,
-        cx.theme().background.hover(),
+        cx.theme()
+            .paint(Tone::Neutral, Emphasis::Soft)
+            .opaque()
+            .fill,
         cx.theme().foreground,
         cx.theme().foreground.muted(),
         cx.theme().border(),
         cx.theme().foreground,
-        cx.theme().foreground.on(),
+        cx.theme().paint(Tone::Neutral, Emphasis::Solid).text,
         cx.theme().success,
-        cx.theme().success.on(),
+        cx.theme().paint(Tone::Success, Emphasis::Solid).text,
         cx.theme().warning,
-        cx.theme().warning.on(),
+        cx.theme().paint(Tone::Warning, Emphasis::Solid).text,
         cx.theme().danger,
-        cx.theme().danger.on(),
+        cx.theme().paint(Tone::Danger, Emphasis::Solid).text,
     ] {
         color.h.to_bits().hash(&mut hasher);
         color.s.to_bits().hash(&mut hasher);

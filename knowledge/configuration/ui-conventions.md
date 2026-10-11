@@ -29,24 +29,29 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    The palette has six roots (`background`, `foreground`, `accent`, `success`, `warning`,
    `danger`) plus the fixed per-mode `scrim` in `crates/zz-gpui-kit/src/foundation/theme_color.rs`; panels, hover fills, muted text, and
    focus rings are derived at paint time by `Colorize` in
-   `crates/zz-gpui-kit/src/foundation/color.rs`. Choose the nearest derivation, such as
-   `background.raised(1)`, `background.hover()`, or `foreground.muted()`; do not color-match an old
-   literal. A filled, tinted or outlined widget names a tone and an emphasis instead and draws
-   `theme.paint(tone, emphasis)` (see [Design system](/designs/design-system.md)); the derivations
-   are for what the paints do not cover yet.
+   `crates/zz-gpui-kit/src/foundation/color.rs`. Outside the kit, chrome names what it draws
+   instead of mixing it (see [Design system](/designs/design-system.md)): a filled, tinted or
+   outlined widget draws `theme.paint(tone, emphasis)`, a plane `theme.surface(elevation)`, a rule
+   `theme.divider_color()`, an edge `theme.border()`, a pane `theme.pane_background(fill)`, and
+   quieter text `foreground.muted()` or `.faint()`. Do not color-match an old literal.
 2. Check the zz-ui widget set before hand-rolling a control. A custom GPUI
    element is appropriate only when a component cannot preserve required input routing,
    rendering, or interaction behavior. When a fork-local widget must diverge from upstream, record
    why in `crates/zz-gpui-kit/UPSTREAM.md`.
 3. `clippy.toml` enforces the chrome-color rule by disallowing calls to `zz_gpui::rgb`, `zz_gpui::rgba`,
-   and `zz_gpui::hsla`. Keep any exemption narrowly scoped and document why the color is not
-   application chrome.
+   and `zz_gpui::hsla`, and the design-system rule by disallowing `Hsla::opacity` and the mixing
+   transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`,
+   `hover`, `active`, `on`, `floating`). The kit mixes its recipes from them, so
+   `crates/zz-gpui-kit/clippy.toml` keeps only the raw-color ban. Keep any exemption narrowly
+   scoped, as an `#[allow(clippy::disallowed_methods, reason = ..)]` on the one function, and say
+   why the color is not application chrome: a preview of another look, page CSS, a pane effect
+   with its own strength knob.
 4. Do not scatter branding or palette literals through views, fixtures that model application
    chrome, or component state branches.
-5. **Menu, picker, and list highlights use the same control treatment.** Rows use
-   `Theme::selection_background()` (opaque accent) with a matching edge, the same
-   `foreground` text and icons as unselected entries, and no shadow. `StyledExt::selection_highlight` applies the
-   solid treatment; secondary text inherits the row color. `ListItem`, popup
+5. **Menu, picker, and list highlights use the same control treatment.** A selected row is the
+   neutral ghost paint's selected fill (the look's `selection`: accent or wash) with a matching
+   edge, its selected text (picked to read on that fill), and no shadow.
+   `StyledExt::selection_highlight` applies it; secondary text takes the row's `muted_at`. `ListItem`, popup
    menu rows, select rows, and file/history picker rows use `Theme::menu_radius()`: the
    container radius minus 4px, without a fixed cap or Full-mode radius sentinel.
    Highlights use native row backgrounds and corner rounding. PopupMenu, model picker,
@@ -68,8 +73,8 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    render selectable session/window/pane trees with these shared rows. Search flattens matching
    descendants into breadcrumbs. Shared row builders also render daemon command and value prompts.
 6. Use one translucent signal instead of competing fills. Sidebar pointer hover, keyboard selection,
-   mux focus, Settings navigation, and clickable native status windows use `workspace_row_highlight`, a
-   `background.washed(2)` tint that preserves the desktop blur. Neutral buttons (Default, Secondary,
+   mux focus, Settings navigation, and clickable native status windows use `workspace_row_highlight`, the
+   neutral ghost paint's hover fill, a translucent tint that preserves the desktop blur. Neutral buttons (Default, Secondary,
    and Ghost) use the same tint for hover, pressed, and selected states through the shared Button
    style. This covers toolbar icons, Back, and agent footer controls without per-button fills.
    Tree fills keep a 1px vertical inset,
@@ -136,9 +141,10 @@ and Browser headers. Its icon is a two-column, three-row grid of dots. It keeps 
 drag-to-split or swap behavior and availability rules.
 The URL field contains a 24px site-controls button at its left edge. Its popup reads Chromium connection
 status and tab sound state when opened, and offers the existing site-data clearing confirmation.
-The URL field has no visible resting background, border, or shadow; focusing it adds a
-`background.washed(1)` fill and the shared button border and shadow. Active tabs use the
-same treatment. Both reserve the border width so state changes preserve layout.
+The URL field is a neutral ghost field: no resting background, the ghost hover fill, and a
+border in the focus color while focused. Active tabs take the neutral soft fill and the shared
+control highlight; inactive tabs are ghost with muted text. Both reserve the border width so state
+changes preserve layout.
 Browser tabs start at 180px wide and shrink evenly to 112px before overflowing into horizontal
 scrolling. Tab labels and URL text use 13px type with a 16px line height. Tab icons have 12px leading padding and a 6px gap before the label.
 Omnibox suggestions use 32px single-line rows with title and muted URL text. Their rounded
@@ -148,7 +154,7 @@ stored page favicons, with a globe fallback.
 # Control density
 
 Menus, select dropdowns, command palettes, and file/history/tree pickers share
-`StyledExt::popover_style`: an opaque `background.raised(2)` surface, the shared half-pixel edge,
+`StyledExt::popover_style`: an opaque `theme.surface(Elevation::Popover)` fill, the shared half-pixel edge,
 and a soft outer shadow scaled by the shadow-strength setting and `Theme.elevation`. Menus use
 `Theme.row_inset` gutters (4px by default), 26px rows (20px for Small menus), 12px text, and
 half-pixel separators inset from the surface edge. At a 0 row inset (`Theme::inset_rows` is false)

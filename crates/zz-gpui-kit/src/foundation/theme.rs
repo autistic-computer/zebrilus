@@ -213,6 +213,15 @@ impl Theme {
         color.opacity(self.control_fill)
     }
 
+    /// A pane's fill: `fill` over the window color, at the look's pane
+    /// opacity. Pass `background` for a pane with no fill of its own.
+    pub fn pane_background(&self, fill: Hsla) -> Hsla {
+        self.background
+            .opaque()
+            .blend(fill)
+            .opacity(self.pane_background_opacity)
+    }
+
     /// The color of a divider rule.
     pub fn divider_color(&self) -> Hsla {
         self.border().opacity(self.divider)

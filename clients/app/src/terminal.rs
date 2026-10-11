@@ -433,11 +433,7 @@ impl TerminalPane {
                         .map_or(1.0, |appearance| appearance.background_opacity),
                 )
             });
-        cx.theme()
-            .background
-            .opaque()
-            .blend(background)
-            .opacity(cx.theme().pane_background_opacity)
+        cx.theme().pane_background(background)
     }
 
     fn observe_image_hover(&mut self, uri: Option<Arc<str>>, cx: &mut Context<Self>) {

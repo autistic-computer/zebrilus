@@ -57,7 +57,7 @@ use zz_ui::settings::appearance::{
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
-    StackPosition, settings_control_fill, settings_list_disclosure_header,
+    StackPosition, settings_card_ground, settings_list_disclosure_header,
     settings_list_group_header, settings_page_content, settings_page_description,
     settings_provenance_badge, settings_reset_button, settings_scroll_column,
 };
@@ -998,7 +998,7 @@ impl SettingsView {
             div().w(px(CONTROL_WIDTH)).flex_none().child(
                 NumberInput::new(&self.ui_zoom)
                     .small()
-                    .bg(settings_control_fill(cx)),
+                    .on(settings_card_ground(cx)),
             ),
         )
     }
@@ -1206,7 +1206,7 @@ impl SettingsView {
                             .clone()
                             .unwrap_or_else(|| "System default".to_owned()),
                     )
-                    .bg(settings_control_fill(cx)),
+                    .on(settings_card_ground(cx)),
             ),
         )
     }
@@ -1296,7 +1296,7 @@ impl SettingsView {
                         div().flex_none().child(
                             Select::new(&self.browser_search_provider)
                                 .small()
-                                .bg(settings_control_fill(cx)),
+                                .on(settings_card_ground(cx)),
                         ),
                     ),
                 ),
@@ -1315,7 +1315,7 @@ impl SettingsView {
                         div().w(px(CONTROL_WIDTH)).flex_none().child(
                             Input::new(&self.browser_element_selector_hotkey)
                                 .small()
-                                .bg(settings_control_fill(cx)),
+                                .on(settings_card_ground(cx)),
                         ),
                     ),
                 ),
@@ -1415,7 +1415,7 @@ impl SettingsView {
                     div()
                         .w(px(INPUT_WIDTH))
                         .flex_none()
-                        .child(Input::new(&input).small().bg(settings_control_fill(cx))),
+                        .child(Input::new(&input).small().on(settings_card_ground(cx))),
                 )
                 .child(
                     Button::new("settings-add-host")
@@ -1553,7 +1553,7 @@ impl SettingsView {
                     .small()
                     .label(label)
                     .dropdown_caret(true)
-                    .bg(settings_control_fill(cx))
+                    .on(settings_card_ground(cx))
                     .dropdown_menu_with_anchor(zz_gpui::Anchor::TopRight, move |menu, _, _| {
                         choices.iter().fold(menu, |menu, &(choice, label)| {
                             menu.item(PopupMenuItem::new(label).checked(choice == value).on_click(
@@ -1580,7 +1580,7 @@ impl SettingsView {
         let check_button = Button::new("settings-update-check")
             .small()
             .label(if checking { "Checking…" } else { "Check now" })
-            .bg(settings_control_fill(cx))
+            .on(settings_card_ground(cx))
             .disabled(checking)
             .on_click(|_, _, cx| update::check_now(cx))
             .into_any_element();
@@ -1608,7 +1608,7 @@ impl SettingsView {
                                 .small()
                                 .icon(zz_ui::IconName::ExternalLink)
                                 .label("What's new")
-                                .bg(settings_control_fill(cx))
+                                .on(settings_card_ground(cx))
                                 .on_click(move |_, _, cx| cx.open_url(&notes_url)),
                         )
                         .into_any_element(),
@@ -2125,17 +2125,16 @@ fn boolean_control(
 }
 
 fn numeric_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
-    div().w(px(CONTROL_WIDTH)).flex_none().child(
-        NumberInput::new(input)
-            .small()
-            .bg(settings_control_fill(cx)),
-    )
+    div()
+        .w(px(CONTROL_WIDTH))
+        .flex_none()
+        .child(NumberInput::new(input).small().on(settings_card_ground(cx)))
 }
 
 fn select_control(select: &Entity<SelectState<Vec<SettingsSelectItem>>>, cx: &App) -> zz_gpui::Div {
     div()
         .flex_none()
-        .child(Select::new(select).small().bg(settings_control_fill(cx)))
+        .child(Select::new(select).small().on(settings_card_ground(cx)))
 }
 
 fn settings_select_state(
