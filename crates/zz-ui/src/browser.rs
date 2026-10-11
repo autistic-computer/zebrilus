@@ -5,14 +5,17 @@ use crate::{
     PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
+    h_flex,
     input::{Input, InputContentType, InputState},
     menu::{PopupMenu, PopupMenuItem},
+    overlay::{dialog_description, dialog_footer, dialog_title},
     tooltip::Tooltip,
+    v_flex,
 };
 use zz_gpui::{
-    AnyElement, App, BoxShadow, Context, Entity, Focusable as _, IntoElement, MouseButton,
-    ParentElement as _, Pixels, RenderOnce, ScrollHandle, SharedString, Styled as _,
-    StyledImage as _, Window, deferred, div, point, prelude::*, px,
+    AnyElement, App, Context, Entity, Focusable as _, IntoElement, MouseButton, ParentElement as _,
+    Pixels, RenderOnce, ScrollHandle, SharedString, Styled as _, StyledImage as _, Window,
+    deferred, div, prelude::*, px,
 };
 
 pub const BROWSER_OMNIBOX_KEY_CONTEXT: &str = "BrowserOmnibox";
@@ -1113,7 +1116,7 @@ pub fn browser_action_menu(
     )
 }
 
-/// Browser recovery card. The caller supplies the optional retry control.
+/// Inline alert shown in place of a page that failed. The caller supplies the optional retry control.
 #[derive(IntoElement)]
 pub struct BrowserErrorPanel {
     message: SharedString,
@@ -1137,47 +1140,32 @@ impl BrowserErrorPanel {
 
 impl RenderOnce for BrowserErrorPanel {
     fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
-        div()
-            .max_w(px(440.0))
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap(px(10.0))
-            .p(px(20.0))
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
-            .text_color(cx.theme().foreground)
-            .shadow(browser_surface_shadow(cx))
+        v_flex()
+            .id("browser-error")
+            .w_full()
+            .max_w(px(360.0))
+            .p(px(12.0))
+            .gap(px(12.0))
+            .popover_style(cx)
             .child(
-                div()
-                    .size(px(32.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
+                h_flex()
+                    .items_start()
+                    .gap_2()
                     .child(
                         Icon::new(IconName::TriangleAlert)
-                            .small()
+                            .medium()
                             .text_color(cx.theme().danger),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .child(dialog_title().child("This page couldn’t load"))
+                            .child(dialog_description(cx).child(self.message)),
                     ),
             )
-            .child(
-                div()
-                    .text_center()
-                    .text_size(crate::rems_from_px(13.0))
-                    .font_semibold()
-                    .child("This page couldn’t load"),
-            )
-            .child(
-                div()
-                    .max_w(px(400.0))
-                    .text_center()
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(self.message),
-            )
-            .children(self.retry)
+            .children(self.retry.map(|retry| dialog_footer(cx).child(retry)))
     }
 }
 
@@ -1227,30 +1215,11 @@ impl RenderOnce for BrowserPickStatus {
     }
 }
 
-pub fn browser_surface_shadow(cx: &App) -> Vec<BoxShadow> {
-    vec![
-        BoxShadow {
-            color: cx.theme().border(),
-            offset: point(px(0.0), px(0.0)),
-            blur_radius: px(0.0),
-            spread_radius: px(1.0),
-            inset: false,
-        },
-        BoxShadow {
-            color: cx.theme().shadow_color,
-            offset: point(px(0.0), px(8.0)),
-            blur_radius: px(24.0),
-            spread_radius: px(-8.0),
-            inset: false,
-        },
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use zz_gpui::{Context, Modifiers, Render, TestAppContext, VisualTestContext};
+    use zz_gpui::{Context, Modifiers, Render, TestAppContext, VisualTestContext, point};
 
     use super::*;
     use crate::menu::DropdownMenu as _;

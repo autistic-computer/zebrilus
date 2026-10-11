@@ -73,7 +73,7 @@ pub const STORY: Story = Story {
         Section {
             id: "error-and-picker",
             name: "Error and element picker",
-            summary: "BrowserErrorPanel when a page fails, with a retry when the failure is recoverable, and BrowserPickStatus while the element picker is on.",
+            summary: "BrowserErrorPanel, an inline alert on the popover surface when a page fails, with Try again when the failure is recoverable, and BrowserPickStatus while the element picker is on.",
             build: |_, cx| stateless(error_and_picker, cx),
         },
         Section {
@@ -618,21 +618,7 @@ fn start_page(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn error_and_picker(_: &mut Window, cx: &mut App) -> AnyElement {
-    let centered = |panel: BrowserErrorPanel| {
-        div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .px(px(20.0))
-            .child(panel)
-    };
-    let retry = Button::new("retry")
-        .primary()
-        .icon(IconName::Redo2)
-        .label("Try again");
+    let retry = Button::new("retry").primary().label("Try again");
     states()
         .columns(2)
         .state(
@@ -640,8 +626,8 @@ fn error_and_picker(_: &mut Window, cx: &mut App) -> AnyElement {
             page(
                 "error-retry",
                 260.0,
-                centered(
-                    BrowserErrorPanel::new("net::ERR_CONNECTION_REFUSED while loading http://localhost:4321/")
+                browser_start_surface(
+                    BrowserErrorPanel::new("localhost:4321: net::ERR_CONNECTION_REFUSED")
                         .retry(retry),
                 ),
                 cx,
@@ -652,7 +638,7 @@ fn error_and_picker(_: &mut Window, cx: &mut App) -> AnyElement {
             page(
                 "error-final",
                 260.0,
-                centered(BrowserErrorPanel::new(
+                browser_start_surface(BrowserErrorPanel::new(
                     "The browser process for this profile exited. Close the pane and open a new one.",
                 )),
                 cx,

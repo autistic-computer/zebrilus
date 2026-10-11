@@ -1370,11 +1370,7 @@ impl BrowserView {
                 BrowserEvent::LoadFailed {
                     description, url, ..
                 } => {
-                    self.error = Some(Arc::from(format!(
-                        "Could not load {}: {}",
-                        display_url(url),
-                        description
-                    )));
+                    self.error = Some(Arc::from(format!("{}: {}", display_url(url), description)));
                     self.recoverable = true;
                 }
                 BrowserEvent::CursorChanged { cursor, .. } => {
@@ -3867,7 +3863,6 @@ impl Render for BrowserView {
                 let retry_view = cx.entity();
                 Button::new("browser-retry")
                     .primary()
-                    .icon(IconName::Redo2)
                     .label("Try again")
                     .on_click(move |_, _, cx| {
                         retry_view.update(cx, BrowserView::on_retry);
@@ -3877,19 +3872,18 @@ impl Render for BrowserView {
             if let Some(retry) = retry {
                 error_panel = error_panel.retry(retry);
             }
-            let panel = round_div_radii(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .px(px(20.0))
-                    .child(error_panel),
+            let select_view = cx.entity();
+            let address_focus_handle = self.address.read(cx).focus_handle(cx);
+            content = content.child(round_div_radii(
+                browser_start_surface(error_panel).on_mouse_down(
+                    MouseButton::Left,
+                    move |_, window, cx| {
+                        select_view.update(cx, |view, cx| view.select_pane(cx));
+                        address_focus_handle.focus(window, cx);
+                    },
+                ),
                 surface_radii,
-            );
-            content = content.child(panel);
+            ));
         }
 
         if shows_empty_state {
