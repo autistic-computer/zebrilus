@@ -197,7 +197,6 @@ fn buttons(_: &mut Window, cx: &mut App) -> AnyElement {
                                 tone.name(),
                                 emphasis.name()
                             )))
-                            .small()
                             .label(title(*tone))
                             .tone(*tone)
                             .emphasis(*emphasis)
@@ -239,16 +238,14 @@ fn badges(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "sizes",
             row()
-                .child(Badge::new("xsmall").xsmall())
                 .child(Badge::new("small").small())
-                .child(Badge::new("medium"))
-                .child(Badge::new("large").large()),
+                .child(Badge::new("medium")),
         )
         .state(
             "in use",
             row()
-                .child(Badge::new("2/3").small())
-                .child(Badge::new("Base").small().emphasis(Emphasis::Outline))
+                .child(Badge::new("2/3"))
+                .child(Badge::new("Base").emphasis(Emphasis::Outline))
                 .child(
                     Badge::new("3 failing")
                         .icon(IconName::CircleX)
@@ -285,7 +282,6 @@ fn keycaps(_: &mut Window, cx: &mut App) -> AnyElement {
             .paint(tone, Emphasis::Solid)
             .ground_at(PaintState::Rest);
         Button::new(id)
-            .small()
             .label("Submit")
             .tone(tone)
             .emphasis(Emphasis::Solid)
@@ -308,7 +304,6 @@ fn keycaps(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(inside("ds-keycap-success", Tone::Success))
                 .child(
                     Button::new("ds-keycap-soft")
-                        .small()
                         .label("Skip")
                         .emphasis(Emphasis::Ghost)
                         .child(Keycap::new("esc")),
@@ -318,8 +313,7 @@ fn keycaps(_: &mut Window, cx: &mut App) -> AnyElement {
             "sizes",
             row()
                 .child(Keycap::new("1").small())
-                .child(Keycap::new("1"))
-                .child(Keycap::new("1").large()),
+                .child(Keycap::new("1")),
         )
         .into_any_element()
 }
@@ -352,10 +346,8 @@ fn checks(_: &mut Window, cx: &mut App) -> AnyElement {
             row()
                 .child(Check::checkbox(true).small())
                 .child(Check::checkbox(true))
-                .child(Check::checkbox(true).large())
                 .child(Check::radio(true).small())
-                .child(Check::radio(true))
-                .child(Check::radio(true).large()),
+                .child(Check::radio(true)),
         )
         .into_any_element()
 }
@@ -745,14 +737,12 @@ impl Render for Fields {
                     .child(tile(
                         false,
                         Input::new(&self.in_tile)
-                            .small()
                             .on(tile_paint.ground_at(PaintState::Rest))
                             .into_any_element(),
                     ))
                     .child(tile(
                         true,
                         Input::new(&self.in_selected_tile)
-                            .small()
                             .on(selected_ground)
                             .into_any_element(),
                     )),

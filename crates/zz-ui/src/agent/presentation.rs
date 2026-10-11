@@ -7,8 +7,8 @@ use zz_gpui::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractivePaintExt as _,
-    Paint, PaintState, Sizable as _, StyledExt as _, Tone, badge::Badge, button::Button, h_flex,
-    kbd::Keycap, pulse::pulse_phase, v_flex,
+    Paint, PaintState, StyledExt as _, Tone, badge::Badge, button::Button, h_flex, kbd::Keycap,
+    pulse::pulse_phase, v_flex,
 };
 
 pub use zz_client::agent_config::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -97,7 +97,7 @@ pub fn empty_state(
         .when(busy, |column| {
             column.child(
                 spinner(phase)
-                    .small()
+                    .medium()
                     .text_color(cx.theme().foreground.muted()),
             )
         })
@@ -164,7 +164,7 @@ pub fn card_close(button: Button) -> Div {
 }
 
 pub fn card_button(button: Button) -> Button {
-    button.small()
+    button
 }
 
 pub(crate) const CARD_GUTTER: f32 = 12.0;
@@ -209,7 +209,7 @@ pub(crate) fn card_glyph(icon: Icon, line: f32) -> Div {
 }
 
 pub(crate) fn card_chip(text: impl Into<SharedString>) -> Badge {
-    Badge::new(text).small().flex_none()
+    Badge::new(text).flex_none()
 }
 
 pub(crate) fn card_divider(cx: &App) -> Div {

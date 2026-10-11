@@ -174,7 +174,7 @@ pub fn queue_chip(id: SharedString, queued: usize, enabled: bool, cx: &App) -> A
         .child(
             Button::new(id)
                 .ghost()
-                .xsmall()
+                .small()
                 .icon(IconName::Undo2)
                 .label(format!("{queued} queued"))
                 .tooltip("Return the queued prompts to the composer")

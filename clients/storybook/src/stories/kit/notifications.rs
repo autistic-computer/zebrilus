@@ -5,7 +5,7 @@ use zz_gpui::{
     ParentElement as _, Render, Styled as _, Subscription, Window, actions, div, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _, WindowExt as _,
+    ActiveTheme as _, Colorize as _, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{Input, InputState},
@@ -126,15 +126,8 @@ impl Toasts {
                                 h_flex()
                                     .gap_2()
                                     .pt_2()
-                                    .child(
-                                        Button::new("toast-restart")
-                                            .label("Restart")
-                                            .primary()
-                                            .small(),
-                                    )
-                                    .child(
-                                        Button::new("toast-later").label("Later").ghost().small(),
-                                    )
+                                    .child(Button::new("toast-restart").label("Restart").primary())
+                                    .child(Button::new("toast-later").label("Later").ghost())
                                     .into_any_element()
                             }),
                         cx,
@@ -312,7 +305,7 @@ impl Render for Panel {
                                     .w(px(260.0))
                                     .gap_2()
                                     .child(div().text_xs().text_color(muted).child("Session name"))
-                                    .child(Input::new(&name).small())
+                                    .child(Input::new(&name))
                                     .child(
                                         h_flex()
                                             .justify_end()
@@ -320,14 +313,10 @@ impl Render for Panel {
                                             .child(
                                                 Button::new("popover-cancel")
                                                     .label("Cancel")
-                                                    .ghost()
-                                                    .small(),
+                                                    .ghost(),
                                             )
                                             .child(
-                                                Button::new("popover-save")
-                                                    .label("Save")
-                                                    .primary()
-                                                    .small(),
+                                                Button::new("popover-save").label("Save").primary(),
                                             ),
                                     )
                             }),

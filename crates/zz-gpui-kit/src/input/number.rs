@@ -154,6 +154,7 @@ impl NumberInput {
             .with_size(size)
             .icon(icon)
             .compact()
+            .h_full()
             .tab_stop(false)
             .disabled(disabled)
             .on_click(move |_, window, cx| {
@@ -229,6 +230,7 @@ impl RenderOnce for NumberInput {
             .on_action(window.listener_for(&self.state, InputState::on_increment))
             .on_action(window.listener_for(&self.state, InputState::on_decrement))
             .w_full()
+            .h(self.size.control_h(cx.theme().density))
             .items_center()
             .when(self.appearance, |this| {
                 field_chrome(this, paint, state, true, true).rounded(cx.theme().control_radius())
@@ -252,6 +254,7 @@ impl RenderOnce for NumberInput {
                     .when_some(self.on, Input::on)
                     .appearance(false)
                     .text_align(TextAlign::Center)
+                    .h_full()
                     .flex_1()
                     .min_w_0(),
             )

@@ -4,8 +4,8 @@
 use super::Colorize as _;
 use super::{ActiveTheme, Elevation, Ground};
 use zz_gpui::{
-    App, BoxShadow, Corners, DefiniteLength, Div, Edges, Hsla, Pixels, Refineable, StyleRefinement,
-    Styled, div, point, px,
+    AbsoluteLength, App, BoxShadow, Corners, DefiniteLength, Div, Edges, Hsla, Pixels, Refineable,
+    StyleRefinement, Styled, div, point, px,
 };
 
 use super::rems_from_px;
@@ -274,102 +274,41 @@ pub fn stacked_ring(caps_top: bool, cx: &App) -> Vec<BoxShadow> {
     vec![ring(if caps_top { px(0.) } else { RING_SPREAD }, cx)]
 }
 
-/// The size scale shared by every widget in the crate.
+/// The size scale shared by every widget in the crate: [`Size::Medium`] for
+/// form controls, [`Size::Small`] for toolbars and dense rows.
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
 pub enum Size {
     /// An explicit pixel size, for the few places the scale does not fit.
     Size(Pixels),
-    XSmall,
     Small,
     #[default]
     Medium,
-    Large,
 }
 
 impl Size {
-    fn as_f32(&self) -> f32 {
+    /// Control height in pixels before density.
+    pub fn control_px(&self) -> f32 {
         match self {
-            Size::Size(val) => val.as_f32(),
-            Size::XSmall => 0.,
-            Size::Small => 1.,
-            Size::Medium => 2.,
-            Size::Large => 3.,
+            Size::Size(value) => value.as_f32(),
+            Size::Small => 24.,
+            Size::Medium => 28.,
         }
     }
 
-    /// The short name: `xs`, `sm`, `md`, `lg`, or `custom`.
-    pub fn as_str(&self) -> &'static str {
+    /// Label text of every control at this size.
+    pub fn control_text(&self) -> AbsoluteLength {
         match self {
-            Size::XSmall => "xs",
-            Size::Small => "sm",
-            Size::Medium => "md",
-            Size::Large => "lg",
-            Size::Size(_) => "custom",
-        }
-    }
-
-    /// Parse a size name, case-insensitively: `xs`/`xsmall`, `sm`/`small`,
-    /// `md`/`medium`, `lg`/`large`. Anything else is [`Size::Medium`].
-    pub fn from_str(size: &str) -> Self {
-        match size.to_lowercase().as_str() {
-            "xs" | "xsmall" => Size::XSmall,
-            "sm" | "small" => Size::Small,
-            "md" | "medium" => Size::Medium,
-            "lg" | "large" => Size::Large,
-            _ => Size::Medium,
-        }
-    }
-
-    pub fn smaller(&self) -> Self {
-        match self {
-            Size::XSmall => Size::XSmall,
-            Size::Small => Size::XSmall,
-            Size::Medium => Size::Small,
-            Size::Large => Size::Medium,
-            Size::Size(val) => Size::Size(*val * 0.2),
-        }
-    }
-
-    pub fn larger(&self) -> Self {
-        match self {
-            Size::XSmall => Size::Small,
-            Size::Small => Size::Medium,
-            Size::Medium => Size::Large,
-            Size::Large => Size::Large,
-            Size::Size(val) => Size::Size(*val * 1.2),
-        }
-    }
-
-    /// The *smaller* of two sizes, despite the name: the ordering is inverted
-    /// (`Size::XSmall.max(Size::Small) == Size::XSmall`).
-    pub fn max(&self, other: Self) -> Self {
-        match (self, other) {
-            (Size::Size(a), Size::Size(b)) => Size::Size(px(a.as_f32().min(b.as_f32()))),
-            (Size::Size(a), _) => Size::Size(*a),
-            (_, Size::Size(b)) => Size::Size(b),
-            (a, b) if a.as_f32() < b.as_f32() => *a,
-            _ => other,
-        }
-    }
-
-    /// The *larger* of two sizes; see [`Size::max`] on the inverted naming.
-    pub fn min(&self, other: Self) -> Self {
-        match (self, other) {
-            (Size::Size(a), Size::Size(b)) => Size::Size(px(a.as_f32().max(b.as_f32()))),
-            (Size::Size(a), _) => Size::Size(*a),
-            (_, Size::Size(b)) => Size::Size(b),
-            (a, b) if a.as_f32() > b.as_f32() => *a,
-            _ => other,
+            Size::Size(value) => (*value * 0.875).into(),
+            Size::Small => rems_from_px(12.).into(),
+            Size::Medium => rems_from_px(13.).into(),
         }
     }
 
     /// Horizontal padding for input-shaped controls.
     pub fn input_px(&self) -> DefiniteLength {
         match self {
-            Self::Large => rems_from_px(16.).into(),
-            Self::Medium => rems_from_px(12.).into(),
-            Self::Small => rems_from_px(8.).into(),
-            Self::XSmall => rems_from_px(4.).into(),
+            Self::Medium => rems_from_px(8.).into(),
+            Self::Small => rems_from_px(6.).into(),
             Self::Size(_) => px(8.).into(),
         }
     }
@@ -377,10 +316,8 @@ impl Size {
     /// Vertical padding for input-shaped controls at `density`.
     pub fn input_py(&self, density: f32) -> DefiniteLength {
         match self {
-            Size::Large => rems_from_px(10. * density).into(),
-            Size::Medium => rems_from_px(8. * density).into(),
-            Size::Small => rems_from_px(2. * density).into(),
-            Size::XSmall => rems_from_px(0.).into(),
+            Size::Medium => rems_from_px(2. * density).into(),
+            Size::Small => rems_from_px(0.).into(),
             Size::Size(_) => px(2.).into(),
         }
     }
@@ -391,10 +328,7 @@ impl Size {
     pub fn control_h(&self, density: f32) -> DefiniteLength {
         match self {
             Size::Size(value) => (*value).into(),
-            Size::XSmall => rems_from_px((24. * density).round()).into(),
-            Size::Small => rems_from_px((28. * density).round()).into(),
-            Size::Medium => rems_from_px((36. * density).round()).into(),
-            Size::Large => rems_from_px((40. * density).round()).into(),
+            size => rems_from_px((size.control_px() * density).round()).into(),
         }
     }
 }
@@ -429,27 +363,13 @@ pub trait Sizable: Sized {
     fn with_size(mut self, size: impl Into<Size>) -> Self;
 
     #[inline(always)]
-    fn xsmall(self) -> Self {
-        self.with_size(Size::XSmall)
-    }
-
-    #[inline(always)]
     fn small(self) -> Self {
         self.with_size(Size::Small)
-    }
-
-    #[inline(always)]
-    fn large(self) -> Self {
-        self.with_size(Size::Large)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::px;
-
-    use super::Size;
-
     #[zz_gpui::test]
     fn control_shadow_strength_scales_ink_without_changing_shape(cx: &mut zz_gpui::TestAppContext) {
         cx.update(crate::init);
@@ -479,51 +399,5 @@ mod tests {
             assert!(!crate::Theme::global(cx).control_shadows());
             assert_eq!(super::contact_shadow(cx).len(), 1);
         });
-    }
-
-    #[test]
-    fn size_max_min_are_inverted_upstream_and_stay_that_way() {
-        assert_eq!(Size::Small.min(Size::XSmall), Size::Small);
-        assert_eq!(Size::XSmall.min(Size::Small), Size::Small);
-        assert_eq!(Size::Small.min(Size::Medium), Size::Medium);
-        assert_eq!(Size::Medium.min(Size::Large), Size::Large);
-        assert_eq!(Size::Large.min(Size::Small), Size::Large);
-        assert_eq!(
-            Size::Size(px(10.)).min(Size::Size(px(20.))),
-            Size::Size(px(20.))
-        );
-
-        assert_eq!(Size::Small.max(Size::XSmall), Size::XSmall);
-        assert_eq!(Size::XSmall.max(Size::Small), Size::XSmall);
-        assert_eq!(Size::Small.max(Size::Medium), Size::Small);
-        assert_eq!(Size::Medium.max(Size::Large), Size::Medium);
-        assert_eq!(Size::Large.max(Size::Small), Size::Small);
-        assert_eq!(
-            Size::Size(px(10.)).max(Size::Size(px(20.))),
-            Size::Size(px(10.))
-        );
-    }
-
-    #[test]
-    fn size_names_round_trip() {
-        assert_eq!(Size::XSmall.as_str(), "xs");
-        assert_eq!(Size::Small.as_str(), "sm");
-        assert_eq!(Size::Medium.as_str(), "md");
-        assert_eq!(Size::Large.as_str(), "lg");
-        assert_eq!(Size::Size(px(15.)).as_str(), "custom");
-
-        assert_eq!(Size::from_str("xs"), Size::XSmall);
-        assert_eq!(Size::from_str("SMALL"), Size::Small);
-        assert_eq!(Size::from_str("Md"), Size::Medium);
-        assert_eq!(Size::from_str("large"), Size::Large);
-        assert_eq!(Size::from_str("unknown"), Size::Medium);
-    }
-
-    #[test]
-    fn size_steps_saturate_at_the_ends() {
-        assert_eq!(Size::XSmall.smaller(), Size::XSmall);
-        assert_eq!(Size::Large.larger(), Size::Large);
-        assert_eq!(Size::Medium.smaller(), Size::Small);
-        assert_eq!(Size::Medium.larger(), Size::Large);
     }
 }

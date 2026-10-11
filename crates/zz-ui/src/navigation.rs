@@ -19,7 +19,7 @@ pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
 pub const WORKSPACE_TREE_CONTENT_INSET: f32 = 8.0;
 pub const WORKSPACE_TREE_MARKER_SLOT_WIDTH: f32 = 18.0;
-/// Icon size for a tree row's node marker. Matches `Size::Small` in `icon/mod.rs`.
+/// Icon size for a tree row's node marker. Matches `Size::Medium` in `icon/mod.rs`.
 pub const WORKSPACE_TREE_NODE_ICON_SIZE: f32 = 14.0;
 pub const WORKSPACE_TREE_MARKER_LABEL_GAP: f32 = 6.0;
 const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;

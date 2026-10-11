@@ -3,7 +3,7 @@ use zz_gpui::{
     Styled as _, Window, div, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Sizable as _, Tone, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Tone, WindowExt as _,
     button::{Button, ButtonVariant, ButtonVariants as _},
     dialog::{Dialog, DialogButtonProps},
     h_flex,
@@ -87,7 +87,7 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
             alert
                 .icon(
                     Icon::new(IconName::TriangleAlert)
-                        .large()
+                        .size_6()
                         .text_color(cx.theme().danger),
                 )
                 .title("Kill session work?")
@@ -112,16 +112,16 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
                     h_flex()
                         .w_full()
                         .justify_between()
-                        .child(Button::new("notes").label("Release notes").link().small())
+                        .child(Button::new("notes").label("Release notes").link())
                         .child(
                             h_flex()
                                 .gap_2()
-                                .child(Button::new("later").label("Later").ghost().small())
+                                .child(Button::new("later").label("Later").ghost())
                                 .child(
                                     Button::new("restart")
                                         .label("Restart daemon")
                                         .primary()
-                                        .small(),
+                                        ,
                                 ),
                         ),
                 )
@@ -223,7 +223,7 @@ impl Render for Backdrop {
                     .map(|name| {
                         h_flex()
                             .gap_2()
-                            .child(Icon::new(IconName::SquareTerminal).small())
+                            .child(Icon::new(IconName::SquareTerminal).medium())
                             .child(name)
                     }),
             )

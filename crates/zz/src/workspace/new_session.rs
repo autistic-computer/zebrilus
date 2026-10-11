@@ -12,7 +12,7 @@ use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, Sizable as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Tone,
     button::{Button, ButtonVariants as _},
     kbd::Kbd,
 };
@@ -263,7 +263,6 @@ impl Render for NewSessionView {
                         .child(
                             Button::new("new-session-add-host")
                                 .primary()
-                                .small()
                                 .label("Add host…")
                                 .on_click(|_, window, cx| {
                                     super::add_host::open(window, cx);

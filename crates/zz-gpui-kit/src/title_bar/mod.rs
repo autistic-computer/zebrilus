@@ -12,10 +12,7 @@ use zz_gpui::{
 
 use crate::Colorize as _;
 use crate::UiZoom;
-use crate::{
-    ActiveTheme as _, Icon, IconName, InteractiveElementExt as _, Sizable as _, StyledExt as _,
-    h_flex,
-};
+use crate::{ActiveTheme as _, Icon, IconName, InteractiveElementExt as _, StyledExt as _, h_flex};
 
 /// Height of the title bar, and of every strip that has to line up with it
 /// (the sidebar headers in zz-ui's navigation and settings).
@@ -289,7 +286,7 @@ impl RenderOnce for ControlIcon {
                     }
                 })
             })
-            .child(Icon::new(self.icon()).small())
+            .child(Icon::new(self.icon()).medium())
     }
 }
 

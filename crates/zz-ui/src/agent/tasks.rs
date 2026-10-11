@@ -112,7 +112,7 @@ pub fn task_tray(
                 Button::new((SharedString::from(format!("{id}-task-stop")), index))
                     .debug_selector(move || format!("agent-task-stop-{index}"))
                     .ghost()
-                    .xsmall()
+                    .small()
                     .label("Stop")
                     .disabled(!enabled)
                     .on_click(move |_, window, cx| {

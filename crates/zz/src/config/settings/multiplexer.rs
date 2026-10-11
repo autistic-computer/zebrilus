@@ -201,14 +201,12 @@ impl SettingsView {
                         .child(
                             div().w(px(KEY_INPUT_WIDTH)).child(
                                 Input::new(&row.key)
-                                    .small()
                                     .disabled(disabled)
                                     .on(settings_card_ground(cx)),
                             ),
                         )
                         .child(
                             Button::new(("settings-split-kind", index))
-                                .small()
                                 .label(label)
                                 .dropdown_caret(true)
                                 .disabled(disabled)
@@ -252,7 +250,6 @@ impl SettingsView {
                 )
                 .control(
                     Button::new("settings-retry-split-reload")
-                        .small()
                         .label("Reload")
                         .disabled(disabled_reason.is_some())
                         .on_click(cx.listener(|this, _, _, cx| {

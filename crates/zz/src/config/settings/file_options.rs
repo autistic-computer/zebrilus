@@ -387,7 +387,7 @@ impl SettingsView {
                         matches!(row.key, FileKey::Mux(MuxOptionKey::Prefix)),
                         |this| this.w(px(KEY_INPUT_WIDTH)),
                     )
-                    .child(Input::new(&row.input).small().on(settings_card_ground(cx)))
+                    .child(Input::new(&row.input).on(settings_card_ground(cx)))
                     .into_any_element()
             };
             stack = stack.child(entry.control(control));
@@ -416,14 +416,9 @@ impl SettingsView {
                 .control(
                     h_flex()
                         .gap_2()
-                        .child(
-                            div()
-                                .w(px(230.0))
-                                .child(Input::new(&controls.donor).small()),
-                        )
+                        .child(div().w(px(230.0)).child(Input::new(&controls.donor)))
                         .child(
                             Button::new("choose-config-donor")
-                                .small()
                                 .label("Choose…")
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     let selected =
@@ -454,7 +449,6 @@ impl SettingsView {
                         )
                         .child(
                             Button::new("import-config-donor")
-                                .small()
                                 .label("Import")
                                 .disabled(
                                     disabled || controls.donor.read(cx).value().trim().is_empty(),

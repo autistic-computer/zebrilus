@@ -69,7 +69,6 @@ pub fn about_link_button(
     cx: &App,
 ) -> Button {
     Button::new(id)
-        .small()
         .icon(IconName::ExternalLink)
         .label(label)
         .on(settings_card_ground(cx))
@@ -79,7 +78,7 @@ pub fn about_link_button(
 #[must_use]
 pub fn about_copy_button(id: impl Into<ElementId>) -> Button {
     Button::new(id)
-        .xsmall()
+        .small()
         .compact()
         .ghost()
         .icon(IconName::Copy)

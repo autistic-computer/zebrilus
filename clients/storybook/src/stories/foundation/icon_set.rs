@@ -118,12 +118,7 @@ fn in_chrome(_: &mut Window, cx: &mut App) -> AnyElement {
 
 fn sidebar(cx: &App) -> impl IntoElement {
     let theme = cx.theme();
-    let button = |name: &'static str| {
-        Button::new(name)
-            .icon(Radius::Theme.icon(name))
-            .ghost()
-            .small()
-    };
+    let button = |name: &'static str| Button::new(name).icon(Radius::Theme.icon(name)).ghost();
     let item = |icon: &'static str, label: &'static str, selected: bool| {
         h_flex()
             .h(px(28.0))

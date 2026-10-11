@@ -10,7 +10,7 @@ use zz_protocol::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, PaintState, Sizable as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, PaintState, Tone,
     button::Button,
     check::Check,
     h_flex,
@@ -560,7 +560,6 @@ impl QuestionCardState {
             let tile = (!question.options.is_empty())
                 .then(|| CardTile::new(Tone::Neutral, enabled, picked, cx));
             let field = Input::new(input)
-                .small()
                 .w_full()
                 .disabled(!enabled)
                 .when_some(tile, |field, tile| field.on(tile.ground()))

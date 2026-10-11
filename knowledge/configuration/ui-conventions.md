@@ -192,10 +192,15 @@ Escape dismisses the menu. Other menu actions retain their existing dismissal be
 `PopupMenuItem::stepper` owns those interactions so nested buttons cannot trigger a parent
 menu dismissal.
 
-Settings uses 13px primary row labels, so `Input::small()` renders its editable value at the same
-13px rather than GPUI's 14px `text_sm`; `NumberInput::small()` inherits that field treatment. The
-shared dialog surface is similarly compact: 400px default width, 12px gutters, 13px title, 12px
-description, and Small action buttons. Explicitly sized content dialogs such as the attachment
+Controls come in two sizes, set with `Sizable`: Medium, the default, is 28px tall with 13px text
+(the macOS control font, and the comfortable click target in Apple's guidelines); `.small()` is
+24px with 12px text, for toolbars and dense rows. Buttons pad their label by 12px at Medium and
+8px at Small; fields by 8px and 6px. Anything else takes an explicit `Size::Size(px)` or a
+`.size(...)` override. `Size::control_h` is the one height table, and the touch hit slop derives
+from it. Icons keep the ambient font size unless sized: `.small()` is 12px, `Icon::medium()` 14px.
+Settings rows use 13px labels, so a Medium field's value matches them. The shared dialog surface
+is similarly compact: 400px default width, 12px gutters, 13px title, 12px description, and Medium
+action buttons. Explicitly sized content dialogs such as the attachment
 preview retain their own width.
 
 Dedicated pane/client tree and paste-buffer choosers use `zz-ui::chooser::ChooserModal`: 600px and 640px

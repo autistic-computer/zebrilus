@@ -101,7 +101,7 @@ pub fn command_kind_badge(
     font_family: impl Into<SharedString>,
 ) -> Badge {
     Badge::new(label)
-        .xsmall()
+        .small()
         .font_family(font_family.into())
         .text_size(crate::rems_from_px(9.0))
 }

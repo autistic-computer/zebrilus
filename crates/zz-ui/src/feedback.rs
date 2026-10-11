@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
     button::ButtonVariant,
     dialog::{AlertDialog, Dialog, DialogButtonProps},
     input::{Input, InputContentType, InputState},
@@ -69,7 +69,7 @@ pub fn add_host_prompt_dialog(
         .child(
             prompt_body()
                 .child(dialog_description(cx).child(ADD_HOST_DESCRIPTION))
-                .child(Input::new(input).small())
+                .child(Input::new(input))
                 .when_some(error, |this, error| {
                     this.child(
                         div()
@@ -110,7 +110,7 @@ pub fn ssh_text_prompt_dialog(
                 .show_cancel(true),
         )
         .child(prompt_body().child(prompt_question(question, cx)).child(
-            Input::new(input).small().when(!echo, |input| {
+            Input::new(input).when(!echo, |input| {
                 input.content_type(InputContentType::Password)
             }),
         ))

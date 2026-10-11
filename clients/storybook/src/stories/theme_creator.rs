@@ -3,7 +3,7 @@ use zz_gpui::{
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Sizable as _, Tone,
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     command::{
@@ -285,7 +285,7 @@ impl Showcase {
                             .icon(IconName::Settings),
                     )
                     .child(div().flex_1())
-                    .child(Button::new("showcase-small").small().label("Small")),
+                    .child(Button::new("showcase-small").label("Small")),
             )
             .child(
                 h_flex()

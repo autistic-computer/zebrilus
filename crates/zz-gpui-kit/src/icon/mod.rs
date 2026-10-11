@@ -74,6 +74,13 @@ impl Styled for Icon {
     }
 }
 
+impl Icon {
+    #[must_use]
+    pub fn medium(self) -> Self {
+        self.with_size(Size::Medium)
+    }
+}
+
 impl Sizable for Icon {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
         self.size = Some(size.into());
@@ -99,10 +106,8 @@ impl RenderOnce for Icon {
             .when(!styled_size, |this| this.size(ambient))
             .when_some(self.size, |this, size| match size {
                 Size::Size(size) => this.size(size),
-                Size::XSmall => this.size_3(),
-                Size::Small => this.size_3p5(),
-                Size::Medium => this.size_4(),
-                Size::Large => this.size_6(),
+                Size::Small => this.size_3(),
+                Size::Medium => this.size_3p5(),
             })
             .when_some(self.transformation, Svg::with_transformation)
             .path(path)

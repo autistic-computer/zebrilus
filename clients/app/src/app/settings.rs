@@ -5,8 +5,8 @@ use zz_gpui::{
     TextInputMode, Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, IconName, Sizable as _, StyledExt as _, Theme,
-    ThemeMode, Tone, UiZoom,
+    ActiveTheme as _, Colorize as _, Emphasis, IconName, StyledExt as _, Theme, ThemeMode, Tone,
+    UiZoom,
     button::Button,
     input::{InputEvent, InputState, NumberInput},
     interface_theme::{self, ThemeModeSetting},
@@ -1419,7 +1419,6 @@ fn font_select(
 ) -> zz_gpui::Div {
     div().w(px(200.0)).max_w_full().flex_none().child(
         Select::new(select)
-            .small()
             .title(title)
             .placeholder(placeholder)
             .on(settings_card_ground(cx)),
@@ -1432,7 +1431,6 @@ fn choice_select(
     cx: &App,
 ) -> Select<Vec<SettingsSelectItem>> {
     Select::new(select)
-        .small()
         .title(title)
         .on(settings_card_ground(cx))
 }
@@ -1447,7 +1445,7 @@ fn number_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
         .w(zz_ui::rems_from_px(width))
         .max_w_full()
         .flex_none()
-        .child(NumberInput::new(input).small().on(settings_card_ground(cx)))
+        .child(NumberInput::new(input).on(settings_card_ground(cx)))
 }
 
 pub(super) fn settings_heading(

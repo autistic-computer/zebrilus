@@ -856,7 +856,6 @@ pub fn pane_indicator_card(
 
 pub fn pane_unzoom_control() -> Button {
     Button::new("pane-unzoom")
-        .small()
         .icon(IconName::WindowRestore)
         .label("Unzoom")
 }

@@ -226,7 +226,7 @@ impl Render for Notification {
                                 .h(LINE_HEIGHT)
                                 .flex_shrink_0()
                                 .debug_selector(|| "notification-icon".to_owned())
-                                .child(icon.with_size(Size::Small)),
+                                .child(icon.with_size(Size::Medium)),
                         )
                     })
                     .child(
@@ -265,7 +265,7 @@ impl Render for Notification {
                         Button::new("close")
                             .icon(IconName::Xmark)
                             .ghost()
-                            .xsmall()
+                            .small()
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.dismiss(window, cx);

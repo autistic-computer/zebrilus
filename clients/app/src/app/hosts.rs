@@ -2,7 +2,7 @@ use zz_gpui::{AnyElement, Context, IntoElement, div, prelude::*};
 #[cfg(target_os = "ios")]
 use zz_gpui::{Entity, SharedString, Subscription, Window, px};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,
     h_flex, rems_from_px,
     settings::{SettingEntry, SettingsStack, settings_scroll_column},
@@ -269,7 +269,6 @@ impl AppShell {
                     });
                 let action = if active && (connected || busy) {
                     Button::new(("hosts-disconnect", index))
-                        .small()
                         .label(if connected { "Disconnect" } else { "Cancel" })
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.connection.update(cx, Connection::disconnect);
@@ -277,7 +276,6 @@ impl AppShell {
                 } else {
                     let endpoint = endpoint.clone();
                     Button::new(("hosts-connect", index))
-                        .small()
                         .when(
                             index == 0 && current.is_none(),
                             zz_ui::button::ButtonVariants::primary,
@@ -291,7 +289,6 @@ impl AppShell {
                 };
                 let removed = endpoint.clone();
                 let remove = Button::new(("hosts-remove", index))
-                    .small()
                     .ghost()
                     .icon(IconName::Xmark)
                     .tooltip("Remove host")
@@ -340,7 +337,6 @@ impl AppShell {
             entry,
             h_flex().child(
                 Button::new("hosts-reconnect")
-                    .small()
                     .label(if connected { "Reconnect" } else { "Retry" })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.connection.update(cx, Connection::reconnect);
@@ -371,13 +367,11 @@ impl AppShell {
                             .when(!narrow, |field| field.w(px(220.0)).flex_none())
                             .child(
                                 Input::new(&self.hosts.destination)
-                                    .small()
                                     .on(settings_card_ground(cx)),
                             ),
                     )
                     .child(
                         Button::new("hosts-add")
-                            .small()
                             .when(self.hosts.saved.endpoints().is_empty(), |button| {
                                 button.primary()
                             })
@@ -393,7 +387,7 @@ impl AppShell {
                     "SSH key",
                     "Add this key to ~/.ssh/authorized_keys on the host to sign in without a password.",
                 ),
-                h_flex().child(Button::new("hosts-copy-ssh-key").small().label("Copy").on_click(
+                h_flex().child(Button::new("hosts-copy-ssh-key").label("Copy").on_click(
                     |_, window, cx| {
                         use zz_ui::{WindowExt as _, notification::Notification};
                         let notification = match zz_daemon_client::ios_ssh_public_key() {

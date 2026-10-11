@@ -5,7 +5,7 @@ use zz_gpui::{
     Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, Sizable as _,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _,
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH,
@@ -240,7 +240,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
         tree_host_marker(node.bell, badge, cx)
     } else {
         tree_node_marker(
-            Icon::new(node.icon.clone()).small().text_color(color),
+            Icon::new(node.icon.clone()).medium().text_color(color),
             node.bell,
             badge,
             cx,

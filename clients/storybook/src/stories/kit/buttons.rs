@@ -26,7 +26,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sizes",
             name: "Sizes",
-            summary: "Sizable: xsmall, small, medium and large, with and without labels.",
+            summary: "Sizable: small (24px) and medium (28px, the default), with and without labels.",
             build: |_, cx| stateless(sizes, cx),
         },
         Section {
@@ -103,20 +103,12 @@ fn sizes(_: &mut Window, _: &mut App) -> AnyElement {
         .state(
             "label",
             row()
-                .child(Button::new("size-xs").label("Extra small").xsmall())
                 .child(Button::new("size-sm").label("Small").small())
-                .child(Button::new("size-md").label("Medium"))
-                .child(Button::new("size-lg").label("Large").large()),
+                .child(Button::new("size-md").label("Medium")),
         )
         .state(
             "icon",
             row()
-                .child(
-                    Button::new("icon-xs")
-                        .icon(IconName::Bell)
-                        .xsmall()
-                        .tooltip("Notifications"),
-                )
                 .child(
                     Button::new("icon-sm")
                         .icon(IconName::Bell)
@@ -126,12 +118,6 @@ fn sizes(_: &mut Window, _: &mut App) -> AnyElement {
                 .child(
                     Button::new("icon-md")
                         .icon(IconName::Bell)
-                        .tooltip("Notifications"),
-                )
-                .child(
-                    Button::new("icon-lg")
-                        .icon(IconName::Bell)
-                        .large()
                         .tooltip("Notifications"),
                 )
                 .child(Button::compact_icon("icon-compact", IconName::Ellipsis).tooltip("More")),
@@ -236,7 +222,7 @@ fn custom_and_shapes(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "compact",
             row()
-                .child(Button::new("compact-sm").label("Run").small().compact())
+                .child(Button::new("compact-sm").label("Run").compact())
                 .child(Button::new("compact-md").label("Run").compact())
                 .child(Button::new("normal-md").label("Run"))
                 .child(Button::compact_icon("compact-icon", IconName::Plus).tooltip("Add")),

@@ -19,8 +19,6 @@ use super::{actions, state::InputState};
 use crate::Colorize as _;
 
 const LINE_HEIGHT: DefiniteLength = DefiniteLength::Fraction(1.25);
-const SMALL_TEXT_SIZE: f32 = 13.;
-
 /// A semantic hint about what a field holds, for the accessibility role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputContentType {
@@ -113,13 +111,7 @@ pub(crate) fn field_chrome<E: Styled + InteractiveElement>(
 
 /// The text size of a field at `size`.
 pub(crate) fn field_text<E: Styled>(element: E, size: Size) -> E {
-    match size {
-        Size::XSmall => element.text_xs(),
-        Size::Small => element.text_size(crate::rems_from_px(SMALL_TEXT_SIZE)),
-        Size::Medium => element.text_sm(),
-        Size::Large => element.text_base(),
-        Size::Size(value) => element.text_size(value * 0.875),
-    }
+    element.text_size(size.control_text())
 }
 
 impl Input {
@@ -242,7 +234,7 @@ impl Input {
         Button::new("zz-input-clear")
             .icon(Icon::new(IconName::CircleX))
             .emphasis(Emphasis::Ghost)
-            .xsmall()
+            .small()
             .tab_stop(false)
             .text_color(cx.theme().foreground.muted())
             .on_click(move |_, window, cx| {
@@ -309,8 +301,7 @@ impl RenderOnce for Input {
         };
 
         let gap = match self.size {
-            Size::XSmall | Size::Small => px(4.),
-            Size::Large => px(8.),
+            Size::Small => px(4.),
             Size::Medium | Size::Size(_) => px(6.),
         };
         let paint_state = if focused {
@@ -428,11 +419,7 @@ impl RenderOnce for Input {
                         .items_center()
                         .when(disabled, |this| this.opacity(0.5))
                         .when(loading, |this| {
-                            this.child(
-                                Spinner::new()
-                                    .with_size(self.size.smaller())
-                                    .color(spinner_color),
-                            )
+                            this.child(Spinner::new().small().color(spinner_color))
                         })
                         .children(clear_button)
                         .children(suffix),

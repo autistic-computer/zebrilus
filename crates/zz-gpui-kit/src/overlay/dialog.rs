@@ -13,7 +13,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, IconName, Sizable as _, StyledExt as _, TITLE_BAR_HEIGHT, Tone,
+    ActiveTheme as _, Emphasis, IconName, StyledExt as _, TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
     scroll::ScrollableElement as _,
@@ -127,7 +127,6 @@ impl DialogButtonProps {
 
         Button::new("ok")
             .label(label)
-            .small()
             .with_variant(self.ok_variant)
             .on_click(move |_, window, cx| {
                 if on_ok(&ClickEvent::default(), window, cx) {
@@ -148,7 +147,6 @@ impl DialogButtonProps {
 
         Button::new("cancel")
             .label(label)
-            .small()
             .on_click(move |_, window, cx| {
                 if on_cancel(&ClickEvent::default(), window, cx) {
                     window.close_dialog(cx);
@@ -444,7 +442,6 @@ impl RenderOnce for Dialog {
                     .absolute()
                     .top(px(8.))
                     .right(px(8.))
-                    .small()
                     .ghost()
                     .icon(IconName::Xmark)
                     .on_click(move |_, window, cx| {

@@ -340,7 +340,7 @@ impl<D: SelectDelegate> SelectState<D> {
         )
         .child(
             Icon::new(IconName::ChevronDown)
-                .xsmall()
+                .small()
                 .text_color(paint.muted_at(state)),
         )
         .refine_style(&self.options.style)
@@ -422,7 +422,7 @@ impl<D: SelectDelegate> SelectState<D> {
                     div()
                         .px(px(16.0))
                         .pb(px(8.0))
-                        .child(Input::new(search).small().cleanable(true))
+                        .child(Input::new(search).cleanable(true))
                 }))
                 .child(div().flex().flex_col().px(px(8.0)).children(rows)),
             sheet_inset(window),
@@ -499,13 +499,11 @@ mod tests {
             _: &mut zz_gpui::Window,
             _: &mut zz_gpui::Context<Self>,
         ) -> impl zz_gpui::IntoElement {
-            use crate::Sizable as _;
             use zz_gpui::{ParentElement as _, Styled as _};
-            zz_gpui::div().flex().w(zz_gpui::px(200.0)).child(
-                super::super::Select::new(&self.state)
-                    .small()
-                    .disabled(self.disabled),
-            )
+            zz_gpui::div()
+                .flex()
+                .w(zz_gpui::px(200.0))
+                .child(super::super::Select::new(&self.state).disabled(self.disabled))
         }
     }
 

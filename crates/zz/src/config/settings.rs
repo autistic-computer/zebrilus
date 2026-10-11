@@ -970,11 +970,10 @@ impl SettingsView {
             .on_click(|_, _, cx| crate::ui_scale::reset(cx)),
         )
         .control(
-            div().w(px(CONTROL_WIDTH)).flex_none().child(
-                NumberInput::new(&self.ui_zoom)
-                    .small()
-                    .on(settings_card_ground(cx)),
-            ),
+            div()
+                .w(px(CONTROL_WIDTH))
+                .flex_none()
+                .child(NumberInput::new(&self.ui_zoom).on(settings_card_ground(cx))),
         )
     }
 
@@ -1039,7 +1038,7 @@ impl SettingsView {
                 .child(
                     Button::new("settings-interface-theme-duplicate")
                         .ghost()
-                        .xsmall()
+                        .small()
                         .label("Duplicate")
                         .tooltip("Save a copy of this theme to edit and use it")
                         .on_click(|_, _, cx| {
@@ -1050,7 +1049,7 @@ impl SettingsView {
                 .child(
                     Button::new("settings-interface-theme-import")
                         .ghost()
-                        .xsmall()
+                        .small()
                         .label("Import")
                         .tooltip("Save the theme on the clipboard and use it")
                         .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
@@ -1097,7 +1096,6 @@ impl SettingsView {
         .control(
             div().flex_none().child(
                 Select::new(&self.ui_font_family)
-                    .small()
                     .placeholder(
                         self.observed_ui_font
                             .value
@@ -1193,7 +1191,6 @@ impl SettingsView {
                     .control(
                         div().flex_none().child(
                             Select::new(&self.browser_search_provider)
-                                .small()
                                 .on(settings_card_ground(cx)),
                         ),
                     ),
@@ -1212,7 +1209,6 @@ impl SettingsView {
                     .control(
                         div().w(px(CONTROL_WIDTH)).flex_none().child(
                             Input::new(&self.browser_element_selector_hotkey)
-                                .small()
                                 .on(settings_card_ground(cx)),
                         ),
                     ),
@@ -1261,7 +1257,6 @@ impl SettingsView {
                     .title_icon(Icon::new(glyph).text_color(color))
                     .control(
                         Button::new(format!("settings-remove-host-{name}"))
-                            .small()
                             .ghost()
                             .icon(IconName::Xmark)
                             .tooltip(format!("Remove host ({})", state.label()))
@@ -1313,11 +1308,10 @@ impl SettingsView {
                     div()
                         .w(px(INPUT_WIDTH))
                         .flex_none()
-                        .child(Input::new(&input).small().on(settings_card_ground(cx))),
+                        .child(Input::new(&input).on(settings_card_ground(cx))),
                 )
                 .child(
                     Button::new("settings-add-host")
-                        .small()
                         .primary()
                         .text_color(cx.theme().foreground)
                         .label("Add")
@@ -1448,7 +1442,6 @@ impl SettingsView {
             .title_actions(key_annotations(key, provenance))
             .control(
                 Button::new(format!("settings-{}", key.as_str()))
-                    .small()
                     .label(label)
                     .dropdown_caret(true)
                     .on(settings_card_ground(cx))
@@ -1476,7 +1469,6 @@ impl SettingsView {
         let check = status.as_ref().map(|status| &status.check);
         let checking = matches!(check, Some(CheckState::Checking));
         let check_button = Button::new("settings-update-check")
-            .small()
             .label(if checking { "Checking…" } else { "Check now" })
             .on(settings_card_ground(cx))
             .disabled(checking)
@@ -1497,13 +1489,11 @@ impl SettingsView {
                         .child(
                             Button::new("settings-update-install")
                                 .primary()
-                                .small()
                                 .label(format!("Update to {}", release.version))
                                 .on_click(|_, window, cx| update::install(window, cx)),
                         )
                         .child(
                             Button::new("settings-update-notes")
-                                .small()
                                 .icon(zz_ui::IconName::ExternalLink)
                                 .label("What's new")
                                 .on(settings_card_ground(cx))
@@ -1633,7 +1623,6 @@ impl SettingsView {
                             .when(kind == ConfigFileKind::Mux, |row| {
                                 row.child(
                                     Button::new("settings-reload-mux-config")
-                                        .small()
                                         .label("Reload")
                                         .disabled(
                                             dirty || !local || self.pending_file_command.is_some(),
@@ -1652,7 +1641,6 @@ impl SettingsView {
                             })
                             .child(
                                 Button::new(kind.save_button_id())
-                                    .small()
                                     .label("Save")
                                     .disabled(!dirty || self.pending_file_command.is_some())
                                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -2026,13 +2014,13 @@ fn numeric_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
     div()
         .w(px(CONTROL_WIDTH))
         .flex_none()
-        .child(NumberInput::new(input).small().on(settings_card_ground(cx)))
+        .child(NumberInput::new(input).on(settings_card_ground(cx)))
 }
 
 fn select_control(select: &Entity<SelectState<Vec<SettingsSelectItem>>>, cx: &App) -> zz_gpui::Div {
     div()
         .flex_none()
-        .child(Select::new(select).small().on(settings_card_ground(cx)))
+        .child(Select::new(select).on(settings_card_ground(cx)))
 }
 
 fn settings_select_state(

@@ -21,7 +21,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sizes",
             name: "Sizes",
-            summary: "xsmall 12px, small 14px, medium 16px, large 24px, and an explicit Size(px).",
+            summary: "small 12px, medium 14px, and an explicit Size(px).",
             build: |_, cx| stateless(sizes, cx),
         },
         Section {
@@ -70,10 +70,8 @@ const SAMPLES: [IconName; 6] = [
 
 fn sizes(_: &mut Window, _: &mut App) -> AnyElement {
     [
-        ("xsmall", Size::XSmall),
         ("small", Size::Small),
         ("medium", Size::Medium),
-        ("large", Size::Large),
         ("Size(px(32))", Size::Size(px(32.0))),
     ]
     .into_iter()
@@ -107,14 +105,14 @@ fn colors_and_rotation(_: &mut Window, cx: &mut App) -> AnyElement {
             row().children(
                 colors
                     .into_iter()
-                    .map(|color| Icon::new(IconName::CircleCheck).large().text_color(color)),
+                    .map(|color| Icon::new(IconName::CircleCheck).size_6().text_color(color)),
             ),
         )
         .state(
             "0, 90, 180 and 270 degrees",
             row().children((0..4).map(|quarter| {
                 Icon::new(IconName::ChevronRight)
-                    .large()
+                    .size_6()
                     .transform(Transformation::rotate(percentage(quarter as f32 * 0.25)))
             })),
         )
