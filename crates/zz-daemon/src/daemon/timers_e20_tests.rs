@@ -56,6 +56,7 @@ fn copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence() {
         now + Duration::from_millis(50)
     );
     deadlines.remove(TimerKey::ClockMode);
+    deadlines.remove(TimerKey::PeerProbe);
     let tick = now + Duration::from_millis(50);
     assert!(matches!(deadlines.pop_due(tick), Some(Expiry::CopyRefresh)));
     shared.run_timer_expiry(Expiry::CopyRefresh, tick);

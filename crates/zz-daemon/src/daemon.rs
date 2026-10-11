@@ -57961,6 +57961,23 @@ mod tests {
             .attach(first, session)
             .expect("make first attached client latest");
         wait_for_pending_terminal(&first_mailbox, pane);
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .expect("focus pane")
+            .title
+            != "client-focus fixture"
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the fixture title never reached the pane"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
         let mut chooser_context =
             ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane)
                 .expect("activity chooser context");
