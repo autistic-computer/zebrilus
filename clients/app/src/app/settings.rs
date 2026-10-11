@@ -1200,7 +1200,7 @@ impl AppShell {
                         picker_tile(
                             format!("settings-style-{}", choice.as_str()).into(),
                             choice.title(),
-                            interface_style_preview(choice, cx),
+                            interface_style_preview(&zz_ui::interface_style::look(choice), cx),
                             choice == style,
                             cx,
                         )

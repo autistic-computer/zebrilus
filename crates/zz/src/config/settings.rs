@@ -34,7 +34,7 @@ use crate::{
     app_icon::AppIconSetting,
     config::{
         self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue,
-        remove_config_key, set_chrome_preset, set_config_key, set_interface_style,
+        remove_config_key, set_chrome_preset, set_config_key, set_interface_style, set_saved_look,
     },
     diagnostics,
     mux::{
@@ -1032,32 +1032,61 @@ impl SettingsView {
 
     fn interface_style_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
         let setting = resolved.interface_style;
+        let looks = config::looks(cx);
+        let choices =
+            InterfaceStyle::ALL
+                .into_iter()
+                .map(|style| {
+                    (
+                        SharedString::from(style.title()),
+                        zz_ui::interface_style::look(style),
+                        StyleChoice::Builtin(style),
+                    )
+                })
+                .chain(looks.saved.iter().map(|(name, look)| {
+                    (name.clone(), look.clone(), StyleChoice::Saved(name.clone()))
+                }))
+                .collect::<Vec<_>>();
+        let selected = choices
+            .iter()
+            .position(|(_, _, choice)| match (choice, &looks.selected) {
+                (StyleChoice::Builtin(style), None) => *style == setting.value,
+                (StyleChoice::Saved(name), Some(selected)) => name == selected,
+                _ => false,
+            })
+            .unwrap_or(0);
+        let strip = PickerStrip::new("settings-interface-style", selected)
+            .tiles(
+                choices
+                    .iter()
+                    .map(|(label, look, _)| (label.clone(), interface_style_preview(look, cx))),
+            )
+            .on_select(move |index, _, cx| {
+                let written = match &choices[index].2 {
+                    StyleChoice::Builtin(style) => set_interface_style(*style),
+                    StyleChoice::Saved(name) => set_saved_look(name),
+                };
+                if let Err(error) = written {
+                    report_write_error("set", ConfigKey::InterfaceStyle.as_str(), &error, cx);
+                    return;
+                }
+                refresh_settings_preview(ConfigKey::InterfaceStyle, cx);
+            });
         SettingEntry::new(
             "Style",
-            "Corners, outlines, shadows, and how menus and dialogs float.",
+            "Corners, outlines, shadows, and how menus and dialogs float. Import adds a look copied from the style creator.",
         )
-        .title_actions(key_annotations(
-            ConfigKey::InterfaceStyle,
-            setting.provenance,
-        ))
-        .control(div().flex().flex_none().gap(px(10.0)).children(
-            InterfaceStyle::ALL.into_iter().map(|style| {
-                picker_tile(
-                    format!("settings-interface-style-{}", style.as_str()).into(),
-                    style.title(),
-                    interface_style_preview(style, cx),
-                    style == setting.value,
-                    cx,
-                )
-                .on_click(move |_, _, cx| {
-                    if let Err(error) = set_interface_style(style) {
-                        report_write_error("set", ConfigKey::InterfaceStyle.as_str(), &error, cx);
-                        return;
-                    }
-                    refresh_settings_preview(ConfigKey::InterfaceStyle, cx);
-                })
-            }),
-        ))
+        .title_actions(
+            key_annotations(ConfigKey::InterfaceStyle, setting.provenance).child(
+                Button::new("settings-interface-style-import")
+                    .ghost()
+                    .xsmall()
+                    .label("Import")
+                    .tooltip("Save the look on the clipboard and use it")
+                    .on_click(|_, _, cx| import_look_from_clipboard(cx)),
+            ),
+        )
+        .child(strip)
     }
 
     fn app_icon_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
@@ -2713,6 +2742,43 @@ pub(crate) fn run_import(cx: &mut App) {
                 cx,
             );
         }
+    }
+}
+
+enum StyleChoice {
+    Builtin(InterfaceStyle),
+    Saved(SharedString),
+}
+
+fn import_look_from_clipboard(cx: &mut App) {
+    let source = cx
+        .read_from_clipboard()
+        .and_then(|item| item.text())
+        .unwrap_or_default();
+    if let Err(error) = config::parse_look(&source) {
+        toast::push(
+            Notification::error(format!(
+                "The clipboard holds no look: {error}. Copy one with Copy JSON in the style creator."
+            )),
+            cx,
+        );
+        return;
+    }
+    let saved = config::looks::looks_directory().and_then(|directory| {
+        let name = config::looks::next_look_name(&directory);
+        let path = config::looks::save_look(&directory, &name, &source)?;
+        set_saved_look(&name)?;
+        Ok(path)
+    });
+    match saved {
+        Ok(path) => {
+            refresh_settings_preview(ConfigKey::InterfaceStyle, cx);
+            toast::push(
+                Notification::success(format!("Saved the look as {}", path.display())),
+                cx,
+            );
+        }
+        Err(error) => report_write_error("import", "look", &error, cx),
     }
 }
 

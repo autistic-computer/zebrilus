@@ -264,7 +264,7 @@ detach action, not to color anything). `apply_zz_overrides` layers these values 
 - the three optional `chrome-*` palette roots from `zz/config`, written over the preset so every
   elevation, hover, and focus ring derived from them at paint time follows the user's roots;
 - every value the `interface-style` decides, as one `zz_ui::interface_style::Look`
-  (`look(style).apply(theme)`): radius and corner smoothing, shadow strength and elevation, outline
+  (a built-in `look(style)` or a saved look from the `looks` folder, then `.apply(theme)`): radius and corner smoothing, shadow strength and elevation, outline
   strength and width, divider strength, density, row inset, control fill, selection fill, animation
   speed, the interface font and the glass of floating surfaces; then `theme.radius` from
   `widget-corner-radius` and `shadow_strength` from `shadow-strength` when those are set, so one

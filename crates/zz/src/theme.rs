@@ -87,10 +87,7 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
         .into();
     cx.set_global(SystemThemeMode(system_mode));
     if let Some(window) = window.as_deref_mut() {
-        window.set_default_corner_smoothing(
-            zz_ui::interface_style::look(config::resolved_config(cx).interface_style.value)
-                .corner_smoothing,
-        );
+        window.set_default_corner_smoothing(config::looks(cx).active.corner_smoothing);
         window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
     }
     Theme::sync_system_appearance(window, cx);
@@ -109,7 +106,7 @@ fn apply_zz_overrides(cx: &mut App) {
         .as_deref()
         .map(crate::terminal::view::terminal_font)
         .map(|font| font.family);
-    let look = zz_ui::interface_style::look(config::resolved_config(cx).interface_style.value);
+    let look = config::looks(cx).active.clone();
     let ui_font_family = config::ui_font_family(cx)
         .value
         .map(SharedString::from)

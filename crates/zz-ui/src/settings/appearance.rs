@@ -184,7 +184,7 @@ pub fn ui_font_select(
 
 pub fn picker_tile(
     id: SharedString,
-    label: &'static str,
+    label: impl Into<SharedString>,
     preview: impl IntoElement,
     selected: bool,
     cx: &App,
@@ -194,7 +194,7 @@ pub fn picker_tile(
 
 fn tile(
     id: SharedString,
-    label: &'static str,
+    label: impl Into<SharedString>,
     preview: impl IntoElement,
     selected: bool,
     focused: bool,
@@ -244,7 +244,7 @@ fn tile(
                 } else {
                     cx.theme().foreground.muted()
                 })
-                .child(label),
+                .child(label.into()),
         )
 }
 
@@ -255,7 +255,7 @@ fn tile(
 pub struct PickerStrip {
     id: &'static str,
     selected: usize,
-    tiles: Vec<(&'static str, AnyElement)>,
+    tiles: Vec<(SharedString, AnyElement)>,
     on_select: Option<Rc<dyn Fn(usize, &mut Window, &mut App)>>,
 }
 
@@ -270,15 +270,15 @@ impl PickerStrip {
     }
 
     #[must_use]
-    pub fn tile(mut self, label: &'static str, preview: impl IntoElement) -> Self {
-        self.tiles.push((label, preview.into_any_element()));
+    pub fn tile(mut self, label: impl Into<SharedString>, preview: impl IntoElement) -> Self {
+        self.tiles.push((label.into(), preview.into_any_element()));
         self
     }
 
     #[must_use]
-    pub fn tiles<E: IntoElement>(
+    pub fn tiles<L: Into<SharedString>, E: IntoElement>(
         mut self,
-        tiles: impl IntoIterator<Item = (&'static str, E)>,
+        tiles: impl IntoIterator<Item = (L, E)>,
     ) -> Self {
         for (label, preview) in tiles {
             self = self.tile(label, preview);
@@ -430,19 +430,17 @@ pub fn theme_preview(
     }
 }
 
-/// A small menu drawn the way `style` draws one, for the style tiles.
-pub fn interface_style_preview(
-    style: crate::interface_style::InterfaceStyle,
-    cx: &App,
-) -> zz_gpui::Div {
-    use crate::interface_style::InterfaceStyle;
+/// A small menu drawn the way `look` draws one, for the style tiles.
+pub fn interface_style_preview(look: &crate::interface_style::Look, cx: &App) -> zz_gpui::Div {
     let theme = cx.theme();
-    let (surface_radius, row_radius, inset) = match style {
-        InterfaceStyle::Flat => (0.0, 0.0, 0.0),
-        InterfaceStyle::Modern => (8.0, 4.0, 3.0),
-        InterfaceStyle::Full => (10.0, 5.0, 3.0),
+    let surface_radius = (look.radius / 3.0).min(10.0);
+    let row_radius = surface_radius / 2.0;
+    let inset = look.row_inset.min(3.0);
+    let frosted = look.glass.is_some_and(|glass| glass.blur > px(0.0));
+    let selection = match look.selection {
+        crate::SelectionStyle::Accent => theme.accent.opaque(),
+        crate::SelectionStyle::Wash => theme.background.washed(3),
     };
-    let flat = style == InterfaceStyle::Flat;
     let text = theme.foreground.muted();
     let row = |width: f32, selected: bool| {
         div()
@@ -451,7 +449,7 @@ pub fn interface_style_preview(
             .items_center()
             .px(px(5.0))
             .rounded(px(row_radius))
-            .when(selected, |row| row.bg(theme.selection_background()))
+            .when(selected, |row| row.bg(selection))
             .child(div().w(px(width)).h(px(3.0)).rounded_full().bg(text))
     };
     let surface = theme.background.raised(2).opaque();
@@ -462,18 +460,18 @@ pub fn interface_style_preview(
         .flex_col()
         .py(px(3.0))
         .px(px(inset))
-        .when(!flat, |menu| menu.gap(px(1.0)))
+        .when(inset > 0.0, |menu| menu.gap(px(1.0)))
         .rounded(px(surface_radius))
-        .bg(if style == InterfaceStyle::Full {
+        .bg(if frosted {
             surface.opacity(0.6)
         } else {
             surface
         })
-        .when(!flat, |menu| {
+        .when(look.outline > 0.0 && look.outline_width > 0.0, |menu| {
             menu.border(px(0.5))
-                .border_color(theme.foreground.opacity(0.15))
-                .shadow_md()
+                .border_color(theme.foreground.opacity(0.15 * look.outline.min(1.0)))
         })
+        .when(look.shadow > 0.0, zz_gpui::Styled::shadow_md)
         .children([row(30.0, false), row(22.0, true), row(26.0, false)]);
     div()
         .relative()
@@ -485,7 +483,7 @@ pub fn interface_style_preview(
         .flex()
         .items_center()
         .justify_center()
-        .when(style == InterfaceStyle::Full, |preview| {
+        .when(frosted, |preview| {
             preview.child(
                 div()
                     .absolute()

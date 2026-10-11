@@ -356,7 +356,7 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `pane-margin` | `6` | Gap between panes and at the window edge, 0–32 |
 | `pane-corner-radius` | `13.5` | 0–32 |
 | `pane-border-width` | `0.5` | 0–8, zero disables |
-| `interface-style` | `modern` | `flat` (square, no outlines or shadows), `modern` (rounded, lit glass edge), or `full` (pills over frosted glass) |
+| `interface-style` | `modern` | `flat` (square, no outlines or shadows), `modern` (rounded, lit glass edge), `full` (pills over frosted glass), or the name of a look saved as `looks/<name>.json` next to the config file |
 | `widget-corner-radius` | from the style | Widget corners, 0–24px; set 25 for fully rounded buttons, fields, and rows |
 | `animations` | `true` | Interface transitions, loading indicators, scrollbars, and animated UI images |
 | `theme` | unset | A Ghostty theme file by name, or `light:a,dark:b` |

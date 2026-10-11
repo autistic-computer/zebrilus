@@ -6,12 +6,14 @@ use zz_gpui::{
     div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, IndexPath, Sizable as _, ThemeMode,
+    ActiveTheme as _, Colorize as _, Icon, IconName, IndexPath, SelectionStyle, Sizable as _,
+    ThemeMode,
+    button::{Button, ButtonVariants as _},
     chrome_palette::{
         ThemeModeSetting, chrome_presets, inherited_chrome_colors, pinned_theme_mode,
     },
     input::{InputState, NumberInput},
-    interface_style::InterfaceStyle,
+    interface_style::{InterfaceStyle, Look, look},
     select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsNavigationGroup, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -357,17 +359,24 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         "Style",
                         "Corners, outlines, shadows, and how menus and dialogs float.",
                     )
-                    .control(div().flex().flex_none().gap(px(8.0)).children(
-                        InterfaceStyle::ALL.map(|style| {
-                            picker_tile(
-                                format!("style-{}", style.as_str()).into(),
-                                style.title(),
-                                interface_style_preview(style, cx),
-                                style == InterfaceStyle::DEFAULT,
-                                cx,
-                            )
-                        }),
-                    )),
+                    .title_actions(Button::new("style-import").ghost().xsmall().label("Import"))
+                    .child(
+                        PickerStrip::new("settings-story-style", 3)
+                            .tiles(InterfaceStyle::ALL.map(|style| {
+                                (style.title(), interface_style_preview(&look(style), cx))
+                            }))
+                            .tile(
+                                "look-1",
+                                interface_style_preview(
+                                    &Look {
+                                        radius: 10.0,
+                                        selection: SelectionStyle::Wash,
+                                        ..look(InterfaceStyle::Flat)
+                                    },
+                                    cx,
+                                ),
+                            ),
+                    ),
                 )
                 .child(
                     SettingEntry::new("UI font", "Choose an available font for the interface.")

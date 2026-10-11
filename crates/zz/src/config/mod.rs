@@ -10,9 +10,11 @@ use zz_client::StatusBarSettings;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
 use zz_gpui::{
-    App, Corners, Global, Hsla, Pixels, WindowBackgroundAppearance, WindowDecorations, px,
+    App, Corners, Global, Hsla, Pixels, SharedString, WindowBackgroundAppearance,
+    WindowDecorations, px,
 };
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};
+use zz_ui::interface_style::{self, Look};
 
 use crate::{
     app_icon::AppIconSetting,
@@ -38,6 +40,14 @@ const UNBLURRED_WINDOW_BACKGROUND: WindowBackgroundAppearance = WindowBackground
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AppConfig(pub zz_config::AppConfig);
 impl Global for AppConfig {}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Looks {
+    pub(crate) active: Look,
+    pub(crate) selected: Option<SharedString>,
+    pub(crate) saved: Vec<(SharedString, Look)>,
+}
+impl Global for Looks {}
 impl From<zz_config::AppConfig> for AppConfig {
     fn from(value: zz_config::AppConfig) -> Self {
         Self(value)
@@ -199,6 +209,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         cx.set_global(AppConfig::default());
         cx.set_global(BrowserConfig::default());
         cx.set_global(UiFontConfig::default());
+        cx.set_global(Looks::default());
         apply_animations(cx);
         apply_window_background_appearance(cx);
         apply_window_decorations(cx);
@@ -210,7 +221,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         send_current_config_overrides(cx);
         return;
     };
-    let parsed = match parsed.expect("a discovered configuration has a load result") {
+    let mut parsed = match parsed.expect("a discovered configuration has a load result") {
         Ok(parsed) => parsed,
         Err(error) => {
             log::warn!(
@@ -232,6 +243,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         );
     }
 
+    let looks = load_looks(path, &mut parsed);
     log::info!(
         target: "zz::config",
         "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_corner_radius={} pane_margin={} pane_border_width={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} agent_working_directory={:?} daemon_override_entries={}",
@@ -274,6 +286,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     cx.set_global(AppConfig(parsed.config));
     cx.set_global(BrowserConfig(parsed.browser));
     cx.set_global(UiFontConfig(parsed.ui_font));
+    cx.set_global(looks);
     apply_animations(cx);
     apply_window_background_appearance(cx);
     apply_window_decorations(cx);
@@ -283,6 +296,67 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         entries: parsed.daemon_entries,
     });
     send_current_config_overrides(cx);
+}
+
+fn load_looks(config_path: &Path, parsed: &mut ParsedConfig) -> Looks {
+    let directory = looks::looks_directory_for(config_path);
+    let saved = looks::saved_look_names(&directory)
+        .into_iter()
+        .filter_map(|name| match read_look(&directory, &name) {
+            Ok(look) => Some((SharedString::from(name), look)),
+            Err(error) => {
+                log::warn!(
+                    target: "zz::config",
+                    "could not load look path={} error={error}",
+                    looks::look_path(&directory, &name).display(),
+                );
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    let selected = parsed.look.as_deref().map(SharedString::from);
+    let active = match &selected {
+        None => interface_style::look(parsed.config.interface_style.value),
+        Some(name) => saved.iter().find(|(saved, _)| saved == name).map_or_else(
+            || {
+                log::warn!(
+                    target: "zz::config",
+                    "interface-style names the look `{name}`, which {} does not hold; using the default style",
+                    directory.display(),
+                );
+                Look::default()
+            },
+            |(_, look)| look.clone(),
+        ),
+    };
+    parsed
+        .config
+        .apply_look_defaults(active.radius, active.shadow);
+    Looks {
+        active,
+        selected,
+        saved,
+    }
+}
+
+pub(crate) fn parse_look(source: &str) -> Result<Look, String> {
+    match serde_json::from_str::<serde_json::Value>(source) {
+        Ok(serde_json::Value::Object(_)) => {
+            serde_json::from_str(source).map_err(|error| error.to_string())
+        }
+        Ok(_) => Err("a look is a JSON object".to_owned()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn read_look(directory: &Path, name: &str) -> Result<Look, String> {
+    let source = looks::read_look_source(directory, name).map_err(|error| error.to_string())?;
+    parse_look(&source)
+}
+
+pub(crate) fn looks(cx: &App) -> &Looks {
+    static DEFAULT: std::sync::LazyLock<Looks> = std::sync::LazyLock::new(Looks::default);
+    cx.try_global::<Looks>().unwrap_or(&DEFAULT)
 }
 
 /// Radius of the app-drawn window frame, visible only under Linux client-side
@@ -826,6 +900,56 @@ mod tests {
             .filter(|(key, _)| AppearanceConfigKey::from_config_key(key).is_some())
             .cloned()
             .collect()
+    }
+
+    #[test]
+    fn interface_style_selects_a_saved_look_and_falls_back_without_it() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        let looks_directory = looks::looks_directory_for(&path);
+        looks::save_look(
+            &looks_directory,
+            "square",
+            r#"{"radius": 3, "shadow": 0.25}"#,
+        )
+        .expect("save look");
+        looks::save_look(&looks_directory, "broken", "[1, 2]").expect("save look");
+
+        let mut parsed = parse_config("interface-style = square\n");
+        let loaded = load_looks(&path, &mut parsed);
+        assert_eq!(loaded.selected.as_deref(), Some("square"));
+        assert_eq!(
+            loaded
+                .saved
+                .iter()
+                .map(|(name, _)| name.as_ref())
+                .collect::<Vec<_>>(),
+            ["square"]
+        );
+        assert_f32_eq(loaded.active.radius, 3.0);
+        assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
+        assert_f32_eq(parsed.config.shadow_strength.value, 0.25);
+
+        let mut parsed = parse_config("interface-style = square\nwidget-corner-radius = 9\n");
+        load_looks(&path, &mut parsed);
+        assert_f32_eq(parsed.config.widget_corner_radius.value, 9.0);
+
+        let mut parsed = parse_config("interface-style = missing\n");
+        let loaded = load_looks(&path, &mut parsed);
+        assert_eq!(loaded.active, Look::default());
+        assert_f32_eq(
+            parsed.config.widget_corner_radius.value,
+            Look::default().radius,
+        );
+
+        let mut parsed = parse_config("interface-style = flat\n");
+        let loaded = load_looks(&path, &mut parsed);
+        assert_eq!(loaded.selected, None);
+        assert_eq!(
+            loaded.active,
+            interface_style::look(interface_style::InterfaceStyle::Flat)
+        );
+        assert!(parse_look("not json").is_err());
     }
 
     fn assert_f32_eq(actual: f32, expected: f32) {

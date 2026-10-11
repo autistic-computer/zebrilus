@@ -22,6 +22,7 @@ pub mod agent_preferences;
 pub mod file_options;
 pub mod import;
 pub mod keymap;
+pub mod looks;
 pub mod mux_bindings;
 #[cfg(feature = "update")]
 pub mod update;
@@ -527,13 +528,12 @@ impl AppConfig {
         }
     }
 
-    fn apply_interface_style(&mut self) {
-        let style = self.interface_style.value;
+    pub fn apply_look_defaults(&mut self, radius: f32, shadow: f32) {
         if self.widget_corner_radius.provenance == ConfigProvenance::Default {
-            self.widget_corner_radius.value = style.widget_corner_radius();
+            self.widget_corner_radius.value = radius;
         }
         if self.shadow_strength.provenance == ConfigProvenance::Default {
-            self.shadow_strength.value = style.shadow_strength();
+            self.shadow_strength.value = shadow;
         }
     }
 
@@ -611,6 +611,7 @@ pub struct ParsedConfig {
     pub config: AppConfig,
     pub browser: BrowserConfig,
     pub ui_font: UiFontConfig,
+    pub look: Option<String>,
     pub agent: AgentConfig,
     pub hosts: Vec<HostEntry>,
     pub rejected_hosts: Vec<RejectedHost>,
@@ -646,6 +647,7 @@ pub struct ConfigFileStamp {
     pub path: Option<PathBuf>,
     pub modified: Option<SystemTime>,
     pub len: Option<u64>,
+    pub looks: looks::LooksStamp,
 }
 
 impl ConfigFileStamp {
@@ -659,6 +661,7 @@ impl ConfigFileStamp {
                 .as_ref()
                 .and_then(|metadata| metadata.modified().ok()),
             len: metadata.as_ref().map(fs::Metadata::len),
+            looks: looks::looks_stamp(&looks::looks_directory_for(&path)),
             path: Some(path),
         }
     }
@@ -1073,6 +1076,26 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if key == ConfigKey::InterfaceStyle {
+            parsed.config.interface_style.provenance = ConfigProvenance::Override;
+            let name = value.trim();
+            match InterfaceStyle::parse(name) {
+                Some(style) => {
+                    parsed.config.interface_style.value = style;
+                    parsed.look = None;
+                }
+                None if looks::is_look_name(name) => {
+                    parsed.config.interface_style.value = InterfaceStyle::DEFAULT;
+                    parsed.look = Some(name.to_owned());
+                }
+                None => parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: "invalid `interface-style`: expected flat, modern, full or the name of a saved look".to_owned(),
+                }),
+            }
+            continue;
+        }
+
         if let Some(diagnostic) = apply_theme_key(&mut parsed.config, key, value, line_number) {
             parsed.diagnostics.push(diagnostic);
             continue;
@@ -1151,7 +1174,10 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         }
     }
 
-    parsed.config.apply_interface_style();
+    let style = parsed.config.interface_style.value;
+    parsed
+        .config
+        .apply_look_defaults(style.widget_corner_radius(), style.shadow_strength());
     parsed
 }
 
@@ -1238,16 +1264,6 @@ pub fn apply_theme_key(
                     return None;
                 }
                 None => "expected system, light or dark".to_owned(),
-            }
-        }
-        ConfigKey::InterfaceStyle => {
-            config.interface_style.provenance = ConfigProvenance::Override;
-            match InterfaceStyle::parse(value) {
-                Some(style) => {
-                    config.interface_style.value = style;
-                    return None;
-                }
-                None => "expected flat, modern or full".to_owned(),
             }
         }
         ConfigKey::AppIcon => {
@@ -1765,10 +1781,21 @@ pub fn write_chrome_preset_at(
 /// shows as designed.
 pub fn set_interface_style(style: InterfaceStyle) -> io::Result<()> {
     let path = config_path_for_write()?;
-    write_interface_style_at(&path, style)
+    write_interface_style_at(&path, style.as_str())
 }
 
-pub fn write_interface_style_at(path: &Path, style: InterfaceStyle) -> io::Result<()> {
+pub fn set_saved_look(name: &str) -> io::Result<()> {
+    if !looks::is_look_name(name) || InterfaceStyle::parse(name).is_some() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            format!("`{name}` is not a saved look name"),
+        ));
+    }
+    let path = config_path_for_write()?;
+    write_interface_style_at(&path, name)
+}
+
+pub fn write_interface_style_at(path: &Path, name: &str) -> io::Result<()> {
     let source = match read_config_source(path) {
         Ok(source) => source,
         Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
@@ -1787,7 +1814,7 @@ pub fn write_interface_style_at(path: &Path, style: InterfaceStyle) -> io::Resul
     let edited = edit_config_source(
         &without_decided,
         ConfigKey::InterfaceStyle.as_str(),
-        Some(style.as_str()),
+        Some(name),
     );
     if edited.len() > MAX_CONFIG_BYTES {
         return Err(io::Error::new(
@@ -2273,7 +2300,7 @@ mod tests {
             ConfigValue::from_default(InterfaceStyle::Modern)
         );
 
-        write_interface_style_at(&path, InterfaceStyle::Flat).expect("write style");
+        write_interface_style_at(&path, InterfaceStyle::Flat.as_str()).expect("write style");
         let source = fs::read_to_string(&path).expect("read style");
         let parsed = parse_config(&source, "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
@@ -2289,7 +2316,24 @@ mod tests {
         assert_eq!(parsed.config.chrome_contrast.value, 1.2);
 
         let parsed = parse_config("interface-style = round", "monospace");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.look.as_deref(), Some("round"));
+        assert_eq!(parsed.config.interface_style.value, InterfaceStyle::DEFAULT);
+        assert_eq!(
+            parsed.config.interface_style.provenance,
+            ConfigProvenance::Override
+        );
+
+        let parsed = parse_config(
+            "interface-style = round\ninterface-style = flat",
+            "monospace",
+        );
+        assert_eq!(parsed.look, None);
+        assert_eq!(parsed.config.interface_style.value, InterfaceStyle::Flat);
+
+        let parsed = parse_config("interface-style = ../round", "monospace");
         assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(parsed.look, None);
     }
 
     #[test]
