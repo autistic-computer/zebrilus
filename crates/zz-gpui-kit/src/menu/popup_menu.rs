@@ -3,14 +3,14 @@ use super::menu_item::MenuItemElement;
 use crate::button::{Button, ButtonVariants as _};
 use crate::scroll::ScrollableElement;
 use crate::{ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt, h_flex, kbd::Kbd, v_flex};
-use crate::{ElementExt, Side};
+use crate::{ElementExt, Emphasis, Side, Tone};
 use zz_gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     ParentElement, Pixels, Render, Role, ScrollHandle, SharedString, StatefulInteractiveElement,
     Styled, WeakEntity, Window, anchored, div, prelude::FluentBuilder, px, rems,
 };
-use zz_gpui::{ClickEvent, MouseDownEvent, Point, Subscription};
+use zz_gpui::{ClickEvent, Hsla, MouseDownEvent, Point, Subscription};
 
 use crate::Colorize as _;
 use std::rc::Rc;
@@ -788,9 +788,9 @@ impl PopupMenu {
     fn render_key_binding(
         &self,
         action: Option<Box<dyn Action>>,
+        ink: Hsla,
         opacity: f32,
         window: &mut Window,
-        cx: &mut Context<Self>,
     ) -> Option<Kbd> {
         let action = action?;
 
@@ -808,7 +808,7 @@ impl PopupMenu {
                 .flex_nowrap()
                 .border_0()
                 .bg(zz_gpui::transparent_white())
-                .text_color(cx.theme().foreground)
+                .text_color(ink)
                 .opacity(opacity)
         })
     }
@@ -1042,7 +1042,13 @@ impl PopupMenu {
             } => {
                 let show_link_icon = *is_link;
                 let action = action.as_ref().map(|action| action.boxed_clone());
-                let key = self.render_key_binding(action, detail_opacity, window, cx);
+                let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+                let ink = if selected {
+                    paint.selected_text
+                } else {
+                    paint.text
+                };
+                let key = self.render_key_binding(action, ink, detail_opacity, window);
 
                 this.when(!disabled, |this| {
                     this.on_click(

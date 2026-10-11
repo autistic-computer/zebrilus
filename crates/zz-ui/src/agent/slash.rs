@@ -2,7 +2,7 @@ use zz_gpui::{
     App, Div, ElementId, IntoElement, Pixels, SharedString, Stateful, div, prelude::*, px,
 };
 
-use crate::{ActiveTheme as _, StyledExt as _, h_flex, v_flex};
+use crate::{ActiveTheme as _, Emphasis, StyledExt as _, Tone, h_flex, v_flex};
 
 const ROW_HEIGHT: f32 = 52.0;
 const MAX_VISIBLE_ROWS: u8 = 6;
@@ -36,7 +36,8 @@ pub fn suggestion_row(
         .border_color(zz_gpui::transparent_white())
         .when(selected, |row| row.selection_highlight(cx))
         .when(!selected, |row| {
-            row.hover(|row| row.selection_highlight(cx))
+            let hover = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover;
+            row.hover(move |row| row.bg(hover))
         })
         .child(
             v_flex()

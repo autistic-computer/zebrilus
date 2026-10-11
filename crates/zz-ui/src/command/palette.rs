@@ -6,7 +6,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Sizable as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Sizable as _, Tone,
     badge::Badge,
     input::{Input, InputState},
     kbd::Keycap,
@@ -143,12 +143,14 @@ pub(super) fn palette_entry(
     on_toggle: Option<ToggleHandler>,
     cx: &App,
 ) -> ListItem {
-    let foreground = cx.theme().foreground;
-    let secondary = if selected {
-        foreground
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+    let state = if selected {
+        PaintState::Selected
     } else {
-        foreground.muted()
+        PaintState::Rest
     };
+    let foreground = paint.text_at(state);
+    let secondary = paint.muted_at(state);
     let highlights = row
         .label
         .char_indices()
@@ -279,12 +281,7 @@ pub(super) fn palette_entry(
                         Keycap::new(shortcut)
                             .small()
                             .emphasis(Emphasis::Soft)
-                            .when(selected, |cap| {
-                                cap.on(Ground {
-                                    fill: cx.theme().selection_background(),
-                                    ink: foreground,
-                                })
-                            })
+                            .on(paint.ground_at(state))
                             .font_family(cx.theme().mono_font_family.clone()),
                     )
                 })
@@ -475,7 +472,12 @@ mod tests {
                 assert!(selection.corner_radii.top_left.0 < selection.bounds.size.height.0 / 2.0);
                 assert!(
                     quads.iter().any(|quad| {
-                        quad.border_color == cx.theme().foreground.opacity(0.65)
+                        quad.border_color
+                            == cx
+                                .theme()
+                                .paint(Tone::Neutral, Emphasis::Ghost)
+                                .selected_text
+                                .opacity(0.65)
                             && quad.bounds.size.width.0 == 8.0 * window.scale_factor()
                             && quad.border_widths.top.0 > 0.0
                     }),

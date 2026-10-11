@@ -123,10 +123,15 @@ pub trait StyledExt: Styled + Sized {
             .corner_smoothing(2.5)
     }
 
+    /// A selected row: the neutral ghost paint's selected fill, with the
+    /// text that reads on it.
     fn selection_highlight(self, cx: &App) -> Self {
-        self.bg(cx.theme().selection_background())
-            .border_color(cx.theme().selection_background())
-            .text_color(cx.theme().foreground)
+        let paint = cx
+            .theme()
+            .paint(crate::Tone::Neutral, crate::Emphasis::Ghost);
+        self.bg(paint.selected)
+            .border_color(paint.selected)
+            .text_color(paint.selected_text)
             .shadow_none()
     }
 

@@ -6,8 +6,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
-    StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, Sizable as _,
+    StyledExt as _, Tone,
     button::{Button, ButtonVariants},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
@@ -192,10 +192,11 @@ fn agent_picker_row(
         .use_keyed_state(format!("{id}:focus"), cx, |_, cx| cx.focus_handle())
         .read(cx)
         .clone();
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
     let highlight = if parent && selected {
         zz_gpui::StyleRefinement::default()
-            .bg(cx.theme().background.washed(2))
-            .text_color(cx.theme().foreground)
+            .bg(paint.hover)
+            .text_color(paint.text)
     } else {
         zz_gpui::StyleRefinement::default().selection_highlight(cx)
     };
@@ -216,7 +217,9 @@ fn agent_picker_row(
         .when(enabled, |this| {
             this.track_focus(&focus.tab_stop(true))
                 .when(selected, |this| this.refine_style(&highlight))
-                .hover(move |this| this.refine_style(&highlight))
+                .when(!selected, |this| {
+                    this.hover(move |this| this.bg(paint.hover))
+                })
         })
         .when(!enabled, |this| {
             this.text_color(cx.theme().foreground.muted())
@@ -1008,7 +1011,7 @@ mod tests {
             for (bounds, color) in [
                 (provider, cx.theme().background.washed(2)),
                 (model, cx.theme().selection_background()),
-                (hovered, cx.theme().selection_background()),
+                (hovered, cx.theme().background.washed(2)),
             ] {
                 let quad = quads
                     .iter()

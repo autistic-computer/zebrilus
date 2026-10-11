@@ -268,7 +268,9 @@ pub fn workspace_sidebar_divider(cx: &App) -> Hsla {
 /// pointer, the keyboard cursor, or the mux.
 #[must_use]
 pub fn workspace_row_highlight(cx: &App) -> Hsla {
-    cx.theme().background.washed(2)
+    cx.theme()
+        .paint(crate::Tone::Neutral, crate::Emphasis::Ghost)
+        .hover
 }
 
 /// Full-height sidebar interior. Native callers attach window dragging to the

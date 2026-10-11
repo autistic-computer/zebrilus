@@ -8,7 +8,7 @@ use zz_gpui::{
 };
 
 use crate::Colorize as _;
-use crate::{ActiveTheme as _, Disableable, Selectable, StyledExt as _, h_flex};
+use crate::{ActiveTheme as _, Disableable, Emphasis, Selectable, StyledExt as _, Tone, h_flex};
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 type MouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
@@ -161,7 +161,8 @@ impl RenderOnce for ListItem {
                             })
                     })
                     .when(!selected, |this| {
-                        this.hover(|this| this.selection_highlight(cx))
+                        let hover = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover;
+                        this.hover(move |this| this.bg(hover))
                     })
             })
             .when(!interactive, |this| this.text_color(muted_foreground))
