@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use zz_gpui::{
-    AnyElement, App, Div, ElementId, EntityId, FontWeight, Pixels, SharedString, Stateful,
-    Transformation, div, ease_in_out, percentage, prelude::*, px,
+    AnyElement, App, Div, ElementId, EntityId, FontWeight, SharedString, Stateful, Transformation,
+    div, ease_in_out, percentage, prelude::*, px,
 };
 
 use crate::{
@@ -211,11 +211,6 @@ pub(crate) fn card_tiles() -> Div {
     v_flex().w_full().gap(px(CARD_TILE_GAP)).px(px(CARD_GUTTER))
 }
 
-fn card_tile_radius(cx: &App) -> Pixels {
-    let radius = cx.theme().radius;
-    (radius - px(CARD_GUTTER)).max(radius.min(px(6.0)))
-}
-
 /// An option tile in a card: neutral soft, or danger soft for a
 /// destructive choice, selectable. What sits inside it (its description,
 /// keycaps, checks) paints on the tile's ground.
@@ -254,7 +249,7 @@ impl CardTile {
             .gap(px(CARD_GAP))
             .px(px(CARD_TILE_PADDING_X))
             .py(cx.theme().dense(px(CARD_TILE_PADDING_Y)))
-            .rounded(card_tile_radius(cx))
+            .rounded(cx.theme().control_radius())
             .painted_interactive(self.paint, self.selected(), enabled)
             .text_size(crate::rems_from_px(13.0))
             .line_height(px(CARD_LABEL_LINE))
