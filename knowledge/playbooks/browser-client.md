@@ -9,7 +9,7 @@ tags:
 - client
 - websocket
 - gpui
-timestamp: 2026-09-22T18:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # Overview
@@ -117,7 +117,7 @@ three editable palette roots, zoom, corner radius, animations, and shadow streng
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
 color pickers, theme previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and
-Frame groups for gaps, inactive opacity, margins, pane radius, and border width. These settings are
+Frame groups for gaps, inactive opacity, the selected pane's edge, margins, pane radius, and edge width. These settings are
 saved independently from widget radius. Sidebar rows share desktop labels, markers, layout and
 rename menus, add/split/close actions, and keyboard navigation. Drag the sidebar’s right edge to
 resize it; the browser saves the width and clamps it to 160–640 logical pixels and half the viewport,

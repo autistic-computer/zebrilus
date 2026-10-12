@@ -36,16 +36,13 @@ pane-inactive-opacity = 0.7
 # Pane geometry renders app-side on every platform, in logical pixels, and
 # applies only while pane-gaps is on: pane-corner-radius (0..=32) rounds all
 # four corners of each pane, pane-margin (0..=32) is the single gap between
-# neighbors and at the window edge, and pane-border-width (0..=8) outlines each
-# pane (0 disables it). Gapped panes carry a subtle inset surface ring, the
-# same even treatment as other raised surfaces.
+# neighbors and at the window edge. Gapped panes draw their frame in glass: the
+# interface theme's glass edge, or a plain lit edge when the theme has none,
+# and the active pane lights its edge in the accent. pane-border-width (0..=8)
+# is the width of the bright line along that edge (0 turns it off).
 pane-corner-radius = 13.5
 pane-margin = 6
 pane-border-width = 0.5
-
-# Draw gapped panes in the interface theme's glass: a lit edge on tiled panes,
-# frost behind floating ones. Needs pane-gaps and a theme with glass.
-pane-glass = false
 
 # The interface theme: a look (corners, outlines, shadows, glass, how rows and
 # primary buttons are filled) bundled with its colors for light and for dark.

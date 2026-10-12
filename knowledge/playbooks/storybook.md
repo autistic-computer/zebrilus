@@ -9,7 +9,7 @@ tags:
 - zz-gpui-kit
 - wasm
 - agents
-timestamp: 2026-10-09T00:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # What it is
@@ -37,8 +37,9 @@ Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`defaul
 (`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
 theme's alpha, or the palette's when the theme sets none), `contrast`, `zoom`, the pane knobs
 (`pane-gaps`, `pane-margin`, `pane-corner-radius`, `pane-border-width`, `pane-opacity`,
-`pane-inactive-opacity`, `pane-glow`, `pane-glass`, mirroring Settings → Panes, where glass needs
-gaps; `pane-gaps` drives the Theme creator, while other stories show gaps on and off side by side), `motion` (`motion=0` turns animations off and freezes
+`pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes; `pane-gaps` drives the Theme
+creator and makes the glass pane frame own the pane fill, as in the app, while other stories show
+gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `motion` (`motion=0` turns animations off and freezes
 spinners). Pane knobs are app config, not theme, so Copy JSON leaves them out; they stay in the URL. The Theme creator story is every surface on one canvas;
 its Copy JSON copies a theme file Settings can Import, and Import loads one back into the knobs.
 

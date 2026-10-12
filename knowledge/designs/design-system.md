@@ -10,7 +10,7 @@ tags:
 - design-system
 - zz-gpui-kit
 - design-plan
-timestamp: 2026-10-11T00:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # Why
@@ -162,7 +162,7 @@ Kit widgets on the model:
 # Rules
 
 - Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit. Clippy enforces it: the root `clippy.toml` disallows `Hsla::opacity` and the mixing transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`, `hover`, `active`, `on`, `floating`). The kit's own `clippy.toml` leaves them out, since the kit is where the recipes are mixed. `muted()`, `faint()` and `opaque()` stay open.
-- A color that is deliberately not a recipe takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function. Today that is the theme previews in Appearance, the element picker overlay (page CSS), the blurred chrome background, and the pane glow, inactive dimming and drag veil, which scale by their own look knobs.
+- A color that is deliberately not a recipe takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function. Today that is the theme previews in Appearance, the element picker overlay (page CSS), the blurred chrome background, and the pane inactive dimming and drag veil, which scale by their own look knobs.
 - A widget nested in a painted surface takes that surface's `ground_at(state)`.
 - Secondary text comes from `muted_at`, not from `opacity(..)` on the foreground.
 - A variant that cannot be expressed as a tone and an emphasis is a missing recipe in the kit, not a local one-off.

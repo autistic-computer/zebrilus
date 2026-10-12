@@ -4,7 +4,7 @@ title: zz crate (the GPUI client)
 description: The long-lived GPUI desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser, and native Agent panes.
 resource: crates/zz/src/lib.rs
 tags: [gpui, crate, client, terminal, browser, agent, ui]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # Overview
@@ -209,7 +209,7 @@ Browser, Terminal, Hosts, System, About:
 | Interface | Theme (`theme-mode` and the `interface-theme` strip with Duplicate and Import), Advanced (system UI font picker, transient UI zoom, macOS app-icon pickers, contrast, `animations`, `widget-corner-radius`, `shadow-strength`, window blur, and Linux `use-system-titlebar`) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
-| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`), Frame (`pane-margin`, `pane-corner-radius`, `pane-border-width`); gapped panes carry subtle inset surface rings |
+| Panes | Layout (`pane-gaps`), Appearance (`pane-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`, `pane-corner-radius`, `pane-border-width`); gapped panes draw their frame in glass |
 | Multiplexer | Full-file `zz/mux.conf` editor without line numbers, 12px text, Save, and tmux import |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Full-file Ghostty-compatible configuration editor with Save and Import Ghostty |
@@ -415,9 +415,9 @@ built:
 `AppView::render_layout` recursively renders `zz_protocol::LayoutNode::{Pane, Split}` into a plain
 `div()` tree. Flush layouts use draggable 1px split-owned separators; the active pane colors only
 its half of each adjacent segment with a washed foreground accent, including the projected edge at
-nested T-junctions. Gapped layouts use the configured border width around each pane, replacing the
-active pane's neutral border color with the same wash. Their half-pixel surface ring matches the
-Settings stack and paints before the pane background without a directional tail.
+nested T-junctions. Gapped layouts draw each pane's frame and fill in glass from
+`Theme::pane_frame`, with no border: the edge is the glass's glint and contour, lit in the accent
+on the active pane, and a hairline stands in where the window cannot sample its backdrop.
 `pane-inactive-opacity` controls the retained strength of inactive content from `0` to `1`, with
 `1` disabling dimming. Native picker, editor, Agent, and waiting surfaces use the inverse as a
 theme-background scrim. Terminal panes apply the factor to glyphs and decorations only. Browser

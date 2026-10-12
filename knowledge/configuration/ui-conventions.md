@@ -99,29 +99,29 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    reset buttons. These retain the keyboard focus indicator without another raised edge. Tree-row
    actions and browser tab close buttons also use `Button::text()` so hover only brightens their
    foreground, without a button fill. Other embedded actions keep their wash.
-   Gapped panes use the same soft shadow and foreground edge, retaining their configured border
-   width and a stronger active-pane outline. The continuous app background sits beneath both pane and shadow. Flush panes have no
+   Gapped panes keep the same soft shadow and draw their frame only in glass: no border, the glass
+   edge (glint, fresnel, thin contour) is the frame, tinted with the pane's own color. The
+   continuous app background sits beneath both pane and shadow. Flush panes have no
    outer shadow. Only shared divider segments touching the active flush pane use the accent
    color; exterior edges stay unoutlined. The settings preview follows the same rule.
 
    The local renderer makes blurred shadows follow the pane's corner smoothing, including
    its small 2px control shadow. Circular and fully rounded surfaces retain circular shadows.
 
-   Active panes add a soft inset accent glow above content and below status overlays:
-   6% opacity at the default strength, 96px blur, (16px, 24px) offset, and -8px spread.
-   Settings > Panes > Selected pane glow scales its strength from 0–200%; 0 turns it off.
-   `pane-glow-strength` stores the factor from 0–2, defaulting to 1.
-   `PaneChrome::active` shares this top-left emphasis across desktop, browser, and preview callers.
-   The glow fades in over 300ms when a pane becomes selected, paced at 30fps through
-   `Animation::with_max_fps` because every animation frame redraws the whole window; reduced
-   motion or disabled animations show the final strength immediately. The local Metal,
-   WGPU, and DirectX renderers dither the fade to reduce banding. Pane content roots paint their own backgrounds using the configured pane opacity.
+   The active gapped pane shows focus in its frame: `Theme::pane_frame` lights the glint and
+   fresnel in the accent and colors the contour with it, which is what reads on a light pane.
+   Settings > Panes > Selected pane edge scales the glint and fresnel from 0–200%; 0 lights the
+   active pane like the others. `pane-glow-strength` stores the factor from 0–2, defaulting to 1.
+   There is no inset focus glow any more: at its peak it was most of zz's GPU fragment time.
+   `PaneChrome::active` and `PaneChrome::frame` share this across desktop, thin client, and preview
+   callers. Without gaps, pane content roots paint their own backgrounds using the configured pane
+   opacity; under a frame they paint none.
 
 Settings > Panes scrolls its three-pane preview with the controls, like the Terminal preview. The shared
 `settings::panes_preview::PanesPreview` uses sample Terminal, Agent, and Browser content inside
-`pane_surface` and `pane_split_surface`, with full-size logical-pixel margins, corners, and borders.
-A neutral backdrop makes pane transparency visible. Clicking a sample changes only the preview
-selection and replays the selected-pane glow.
+`pane_surface` and `pane_split_surface`, with full-size logical-pixel margins and corners, and the
+theme's pane frames. A neutral backdrop makes pane transparency visible. Clicking a sample changes
+only the preview selection and moves the accent edge.
 The Browser sample keeps its page opaque; its toolbar follows pane background opacity, and the
 Agent sample keeps its composer opaque. Desktop pane edits and resets refresh the saved configuration
 immediately, including valid numeric input while typing; the file watcher still handles external edits.
@@ -418,7 +418,7 @@ provenance instead.
 `ThemeColor` holds six palette roots, the per-mode scrim, the shadow color and the optional text on
 the accent. Selected menu, list, and picker rows use the look's selection fill through
 `selection_highlight`: the opaque accent with the theme's `on_accent` text, or a wash. The accent also marks checked switches,
-selected tiles, active-pane borders and glow, keyboard focus, the Agent send button, effort pills,
+selected tiles, the active pane's glass edge, keyboard focus, the Agent send button, effort pills,
 and palette mode prefixes and running-agent dots. Use the shared component treatment for these
 roles instead of choosing a separate highlight color. `border()` is an opaque Oklab mix
 of 86% background and 14% foreground at the default contrast. Other colors derive through `Colorize` at paint time, so

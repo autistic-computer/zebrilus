@@ -3089,7 +3089,6 @@ mod tests {
             "experimental-agent-pane",
             "experimental-editor-pane",
             "pane-gaps",
-            "pane-glass",
             "pane-background-opacity",
             "pane-glow-strength",
             "pane-inactive-opacity",
@@ -3115,7 +3114,7 @@ mod tests {
         for key in named {
             assert_eq!(ConfigKey::parse(key).map(ConfigKey::as_str), Some(key));
         }
-        for key in RETIRED_APPEARANCE_KEYS {
+        for key in RETIRED_APPEARANCE_KEYS.into_iter().chain(RETIRED_PANE_KEYS) {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }
     }

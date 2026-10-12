@@ -88,10 +88,11 @@ opaque window alpha.
 Wide blurred inset shadows take a cheaper path in Metal, WGPU, and DirectX (`1b395e5`). A
 pixel more than three blur radii (plus the largest corner) inside the hole is discarded, and
 when every corner radius is at most a quarter of the blur the shadow is blurred as a sharp
-rectangle with two erf pairs instead of the four-sample corner loop. zz's pane focus glow is
-such a shadow: zz's GPU fragment time on a 2672x1482pt window fell from 237 to 144 ms/s. The
-ignored test `bench_pane_glow` times the glow offscreen; see
-[the surface cost research](/research/2026-10-06-surface-cost.md).
+rectangle with two erf pairs instead of the four-sample corner loop. zz's pane focus glow was
+such a shadow: zz's GPU fragment time on a 2672x1482pt window fell from 237 to 144 ms/s; see
+[the surface cost research](/research/2026-10-06-surface-cost.md). The glow is gone since
+2026-10-12 (the active pane lights its glass frame instead); `bench_glass_rendering` keeps its
+cost as the "four panes as bordered fills, one glowing" case.
 
 Five fixes from building the iPhone client (`67e9cbc` to `01d7c9a`):
 
@@ -277,7 +278,9 @@ shape array out of fast uniform registers (0.04 ms on a full 5K window), and emp
 clear instead of discarding (0.01 ms).
 
 `GlassMaterial::light_color` (white by default) colors the glint and the fresnel glow; theme files
-without the key keep white. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
+without the key keep white. Light only adds, so it cannot show on a white surface:
+`GlassMaterial::edge_color` (black by default) colors the contour instead, its alpha folded into
+the edge shadow strength on the CPU side, and zz's active pane frame sets both to the accent. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
 blur or refraction, a 1 px glint, faint fresnel, a 0.5 px contour), meant for surfaces that cover
 most of the window, such as pane frames.
 
@@ -305,6 +308,18 @@ it sits near its noise floor:
 Small glass (one or ten buttons, a toolbar) is all rim and costs the same as before. On the
 Raphael iGPU (`ZED_DEVICE_ID=0x164e`) a full-window pass is bound by fill rate, and four panes of
 edge glass now cost less than the bordered quads they would replace.
+
+zz's gapped panes have drawn that glass as their frame since 2026-10-12, in place of a border and
+the active pane's inset focus glow. Against what it replaced (added ms/frame, same window):
+
+| Case | M4 Max | RX 7900 XTX | Raphael iGPU |
+| --- | --- | --- | --- |
+| Four panes as bordered fills, one with the 96 pt inset glow (before) | 0.29 | 0.11 | 6.44 |
+| Four panes of `edge` glass, one lit in the accent (after) | 0.22 | 0.09 | 3.75 |
+
+The RX 7900 XTX values are medians of three runs and sit at its noise floor; the glow was most of
+the old cost on the iGPU (+2.35 ms over the plain bordered fills). Lighting one frame in the accent
+costs nothing measurable over plain edge glass.
 
 # Examples
 

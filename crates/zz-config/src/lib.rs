@@ -41,7 +41,6 @@ pub const MAX_WINDOW_CORNER_RADIUS: f32 = 32.0;
 pub const DEFAULT_WINDOW_CORNER_RADIUS: f32 = 13.5;
 
 pub const DEFAULT_PANE_GAPS: bool = false;
-pub const DEFAULT_PANE_GLASS: bool = false;
 pub const DEFAULT_PANE_GLOW_STRENGTH: f32 = 1.0;
 pub const DEFAULT_PANE_BACKGROUND_OPACITY: f32 = 0.5;
 pub const DEFAULT_PANE_INACTIVE_OPACITY: f32 = 0.7;
@@ -130,7 +129,6 @@ pub enum ConfigKey {
     ExperimentalAgentPane,
     ExperimentalEditorPane,
     PaneGaps,
-    PaneGlass,
     PaneBackgroundOpacity,
     PaneGlowStrength,
     PaneInactiveOpacity,
@@ -179,7 +177,6 @@ impl ConfigKey {
             Self::ExperimentalAgentPane => "experimental-agent-pane",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
-            Self::PaneGlass => "pane-glass",
             Self::PaneBackgroundOpacity => "pane-background-opacity",
             Self::PaneGlowStrength => "pane-glow-strength",
             Self::PaneInactiveOpacity => "pane-inactive-opacity",
@@ -228,7 +225,6 @@ impl ConfigKey {
             "experimental-agent-pane" => Some(Self::ExperimentalAgentPane),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
-            "pane-glass" => Some(Self::PaneGlass),
             "pane-background-opacity" => Some(Self::PaneBackgroundOpacity),
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
             "pane-inactive-opacity" => Some(Self::PaneInactiveOpacity),
@@ -291,7 +287,6 @@ impl ConfigKey {
             | Self::ExperimentalAgentPane
             | Self::ExperimentalEditorPane
             | Self::PaneGaps
-            | Self::PaneGlass
             | Self::EditorLineNumbers
             | Self::EditorRelativeLineNumbers
             | Self::EditorSoftWrap
@@ -440,7 +435,6 @@ pub struct AppConfig {
     pub experimental_agent_pane: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
-    pub pane_glass: ConfigValue<bool>,
     pub pane_background_opacity: ConfigValue<f32>,
     pub pane_glow_strength: ConfigValue<f32>,
     pub pane_inactive_opacity: ConfigValue<f32>,
@@ -488,7 +482,6 @@ impl Default for AppConfig {
             experimental_agent_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_AGENT_PANE),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
-            pane_glass: ConfigValue::from_default(DEFAULT_PANE_GLASS),
             pane_background_opacity: ConfigValue::from_default(DEFAULT_PANE_BACKGROUND_OPACITY),
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
             pane_inactive_opacity: ConfigValue::from_default(DEFAULT_PANE_INACTIVE_OPACITY),
@@ -542,7 +535,6 @@ impl AppConfig {
             ConfigKey::ExperimentalAgentPane => Some(&mut self.experimental_agent_pane),
             ConfigKey::ExperimentalEditorPane => Some(&mut self.experimental_editor_pane),
             ConfigKey::PaneGaps => Some(&mut self.pane_gaps),
-            ConfigKey::PaneGlass => Some(&mut self.pane_glass),
             ConfigKey::EditorLineNumbers => Some(&mut self.editor_line_numbers),
             ConfigKey::EditorRelativeLineNumbers => Some(&mut self.editor_relative_line_numbers),
             ConfigKey::EditorSoftWrap => Some(&mut self.editor_soft_wrap),
@@ -910,6 +902,14 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if RETIRED_PANE_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!("`{key}` was removed: gapped panes always draw a glass frame"),
+            });
+            continue;
+        }
+
         let Some(key) = ConfigKey::parse(key) else {
             if AppearanceConfigKey::from_config_key(key).is_some()
                 || MuxOptionKey::from_config_key(key).is_some()
@@ -1105,7 +1105,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ExperimentalAgentPane
             | ConfigKey::ExperimentalEditorPane
             | ConfigKey::PaneGaps
-            | ConfigKey::PaneGlass
             | ConfigKey::EditorLineNumbers
             | ConfigKey::EditorRelativeLineNumbers
             | ConfigKey::EditorSoftWrap
@@ -1424,9 +1423,13 @@ pub const RETIRED_APPEARANCE_KEYS: [&str; 10] = [
     "chrome-danger",
 ];
 
+/// Pane keys an older zz read. Parsing reports them and otherwise ignores them.
+pub const RETIRED_PANE_KEYS: [&str; 1] = ["pane-glass"];
+
 pub fn is_app_config_key(key: &str) -> bool {
     ConfigKey::parse(key).is_some()
         || RETIRED_APPEARANCE_KEYS.contains(&key)
+        || RETIRED_PANE_KEYS.contains(&key)
         || AgentConfigKey::parse(key).is_some()
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
@@ -2154,6 +2157,34 @@ mod tests {
         assert_eq!(
             parsed.config.interface_theme,
             ConfigValue::from_default(DEFAULT_THEME)
+        );
+    }
+
+    #[test]
+    fn a_retired_pane_glass_line_is_reported_and_otherwise_ignored() {
+        let source = "pane-gaps = true\npane-glass = true\n";
+        let parsed = parse_config(source, "monospace");
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(parsed.diagnostics[0].line, 2);
+        assert!(
+            parsed.diagnostics[0]
+                .message
+                .starts_with("`pane-glass` was removed"),
+            "{}",
+            parsed.diagnostics[0].message
+        );
+        assert_eq!(ConfigKey::parse("pane-glass"), None);
+        assert!(is_app_config_key("pane-glass"));
+        assert_eq!(appearance_editor_view(source), "");
+        assert_eq!(
+            parsed.config,
+            AppConfig {
+                pane_gaps: ConfigValue {
+                    value: true,
+                    provenance: ConfigProvenance::Override,
+                },
+                ..AppConfig::default()
+            }
         );
     }
 
