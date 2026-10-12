@@ -2990,6 +2990,7 @@ fn is_decorative_character(character: char) -> bool {
             | 0x25a0..=0x25ff
             | 0xe0b0..=0xe0ca
             | 0xe0cc..=0xe0d7
+            | 0x1fb00..=0x1fbff
     )
 }
 
@@ -2999,42 +3000,59 @@ fn resolved_foreground(
     decorative: bool,
 ) -> Color {
     let foreground = style.foreground();
-    if style.explicit_rgb() || decorative || appearance.minimum_contrast <= 1.0 {
+    if decorative || appearance.minimum_contrast <= 1.0 {
         return foreground;
     }
-    ensure_minimum_contrast(foreground, style.background(), appearance.minimum_contrast)
+    contrasted_foreground(foreground, style.background(), appearance.minimum_contrast)
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "terminal contrast correction operates on terminal palette colors, not application chrome"
-)]
+const CONTRAST_CACHE_LIMIT: usize = 4096;
+
+thread_local! {
+    static CONTRASTED: RefCell<zz_gpui::collections::FxHashMap<(u32, u32, u32), Color>> =
+        RefCell::default();
+}
+
+fn contrasted_foreground(foreground: Color, background: Color, minimum: f32) -> Color {
+    let key = (foreground.packed(), background.packed(), minimum.to_bits());
+    CONTRASTED.with(|cache| {
+        if let Some(color) = cache.borrow().get(&key) {
+            return *color;
+        }
+        let color = ensure_minimum_contrast(foreground, background, minimum);
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= CONTRAST_CACHE_LIMIT {
+            cache.clear();
+        }
+        cache.insert(key, color);
+        color
+    })
+}
+
 fn ensure_minimum_contrast(foreground: Color, background: Color, minimum: f32) -> Color {
     if contrast_ratio(foreground, background) >= minimum {
         return foreground;
     }
     let black = Color::rgb(0, 0, 0);
     let white = Color::rgb(u8::MAX, u8::MAX, u8::MAX);
-    let target = if contrast_ratio(black, background) > contrast_ratio(white, background) {
-        black
-    } else {
-        white
-    };
-    if contrast_ratio(target, background) < minimum {
-        return target;
+    let lighten = contrast_ratio(white, background) > contrast_ratio(black, background);
+    let extreme = if lighten { white } else { black };
+    if contrast_ratio(extreme, background) < minimum {
+        return extreme;
     }
 
-    let mut low = 0.0_f32;
-    let mut high = 1.0_f32;
-    for _ in 0..12 {
-        let midpoint = (low + high) * 0.5;
-        if contrast_ratio(blend_color(foreground, target, midpoint), background) >= minimum {
-            high = midpoint;
+    let (lightness, green_red, blue_yellow) = oklab(foreground);
+    let mut near = lightness;
+    let mut far = if lighten { 1.0 } else { 0.0 };
+    for _ in 0..16 {
+        let midpoint = (near + far) * 0.5;
+        if contrast_ratio(from_oklab(midpoint, green_red, blue_yellow), background) >= minimum {
+            far = midpoint;
         } else {
-            low = midpoint;
+            near = midpoint;
         }
     }
-    blend_color(foreground, target, high)
+    from_oklab(far, green_red, blue_yellow)
 }
 
 fn contrast_ratio(left: Color, right: Color) -> f32 {
@@ -3044,32 +3062,75 @@ fn contrast_ratio(left: Color, right: Color) -> f32 {
 }
 
 fn relative_luminance(color: Color) -> f32 {
-    fn channel(value: u8) -> f32 {
+    let [red, green, blue] = linear_rgb(color);
+    red * 0.2126 + green * 0.7152 + blue * 0.0722
+}
+
+fn linear_rgb(color: Color) -> [f32; 3] {
+    let channel = |value: u8| {
         let value = f32::from(value) / 255.0;
         if value <= 0.04045 {
             value / 12.92
         } else {
             ((value + 0.055) / 1.055).powf(2.4)
         }
-    }
-    channel(color.r) * 0.2126 + channel(color.g) * 0.7152 + channel(color.b) * 0.0722
+    };
+    [channel(color.r), channel(color.g), channel(color.b)]
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "terminal color blending operates on terminal palette colors, not application chrome"
-)]
-fn blend_color(from: Color, to: Color, amount: f32) -> Color {
-    let channel = |from: u8, to: u8| {
-        (f32::from(from) + (f32::from(to) - f32::from(from)) * amount)
-            .round()
-            .clamp(0.0, 255.0) as u8
-    };
-    Color::rgb(
-        channel(from.r, to.r),
-        channel(from.g, to.g),
-        channel(from.b, to.b),
+fn oklab(color: Color) -> (f32, f32, f32) {
+    let [red, green, blue] = linear_rgb(color);
+    let long = (0.412_221_46 * red + 0.536_332_55 * green + 0.051_445_995 * blue).cbrt();
+    let medium = (0.211_903_5 * red + 0.680_699_5 * green + 0.107_396_96 * blue).cbrt();
+    let short = (0.088_302_46 * red + 0.281_718_85 * green + 0.629_978_7 * blue).cbrt();
+    (
+        0.210_454_26 * long + 0.793_617_8 * medium - 0.004_072_047 * short,
+        1.977_998_5 * long - 2.428_592_2 * medium + 0.450_593_7 * short,
+        0.025_904_037 * long + 0.782_771_77 * medium - 0.808_675_77 * short,
     )
+}
+
+fn oklab_to_linear_rgb(lightness: f32, green_red: f32, blue_yellow: f32) -> [f32; 3] {
+    let long = (lightness + 0.396_337_78 * green_red + 0.215_803_76 * blue_yellow).powi(3);
+    let medium = (lightness - 0.105_561_346 * green_red - 0.063_854_17 * blue_yellow).powi(3);
+    let short = (lightness - 0.089_484_18 * green_red - 1.291_485_5 * blue_yellow).powi(3);
+    [
+        4.076_741_7 * long - 3.307_711_6 * medium + 0.230_969_94 * short,
+        -1.268_438 * long + 2.609_757_4 * medium - 0.341_319_38 * short,
+        -0.004_196_086_3 * long - 0.703_418_6 * medium + 1.707_614_7 * short,
+    ]
+}
+
+fn from_oklab(lightness: f32, green_red: f32, blue_yellow: f32) -> Color {
+    let in_gamut = |rgb: [f32; 3]| rgb.iter().all(|channel| (-1e-4..=1.0001).contains(channel));
+    let mut rgb = oklab_to_linear_rgb(lightness, green_red, blue_yellow);
+    if !in_gamut(rgb) {
+        let mut kept = 0.0_f32;
+        let mut dropped = 1.0_f32;
+        for _ in 0..12 {
+            let chroma = (kept + dropped) * 0.5;
+            if in_gamut(oklab_to_linear_rgb(
+                lightness,
+                green_red * chroma,
+                blue_yellow * chroma,
+            )) {
+                kept = chroma;
+            } else {
+                dropped = chroma;
+            }
+        }
+        rgb = oklab_to_linear_rgb(lightness, green_red * kept, blue_yellow * kept);
+    }
+    let channel = |value: f32| {
+        let value = value.clamp(0.0, 1.0);
+        let encoded = if value <= 0.003_130_8 {
+            value * 12.92
+        } else {
+            1.055 * value.powf(1.0 / 2.4) - 0.055
+        };
+        (encoded * 255.0).round() as u8
+    };
+    Color::rgb(channel(rgb[0]), channel(rgb[1]), channel(rgb[2]))
 }
 
 fn cursor_quad(
@@ -3905,13 +3966,26 @@ mod tests {
     }
 
     #[test]
-    fn contrast_correction_respects_exact_colors_and_decorative_glyphs() {
+    fn contrast_correction_reaches_the_floor_for_every_color_but_decorative_glyphs() {
         let mut appearance = TerminalAppearance {
             minimum_contrast: 4.5,
             ..TerminalAppearance::default()
         };
         let background = Color::rgb(245, 245, 245);
         let foreground = Color::rgb(238, 238, 238);
+        for attributes in [0, zz_terminal::ATTR_EXPLICIT_RGB] {
+            let style = PackedStyle::new(
+                foreground,
+                background,
+                None,
+                attributes,
+                TerminalUnderlineStyle::None,
+            );
+            let corrected = resolved_foreground(style, &appearance, false);
+            assert!(contrast_ratio(corrected, background) >= 4.5);
+            assert_eq!(resolved_foreground(style, &appearance, true), foreground);
+        }
+
         let style = PackedStyle::new(
             foreground,
             background,
@@ -3919,27 +3993,79 @@ mod tests {
             0,
             TerminalUnderlineStyle::None,
         );
-        let corrected = resolved_foreground(style, &appearance, false);
-        assert_ne!(corrected, foreground);
-        assert!(contrast_ratio(corrected, background) >= 4.5);
-
-        let exact = PackedStyle::new(
-            foreground,
-            background,
-            None,
-            zz_terminal::ATTR_EXPLICIT_RGB,
-            TerminalUnderlineStyle::None,
-        );
-        assert_eq!(resolved_foreground(exact, &appearance, false), foreground);
-        assert_eq!(resolved_foreground(style, &appearance, true), foreground);
-
         appearance.minimum_contrast = 1.0;
         assert_eq!(resolved_foreground(style, &appearance, false), foreground);
     }
 
     #[test]
+    fn the_default_floor_rescues_unreadable_text_and_leaves_the_rest() {
+        let floor = TerminalAppearance::default().minimum_contrast;
+        let dark = Color::rgb(0x10, 0x13, 0x18);
+        let white = Color::rgb(u8::MAX, u8::MAX, u8::MAX);
+        for readable in [
+            Color::rgb(0xd8, 0xde, 0xe9),
+            Color::rgb(0x00, 0xcd, 0x00),
+            Color::rgb(0x7f, 0x7f, 0x7f),
+        ] {
+            assert_eq!(contrasted_foreground(readable, dark, floor), readable);
+        }
+        for (unreadable, background) in [
+            (Color::rgb(0x00, 0x00, 0x00), dark),
+            (Color::rgb(0xff, 0xff, 0x00), white),
+            (Color::rgb(0xf8, 0xf8, 0xf2), white),
+            (Color::rgb(0x50, 0xfa, 0x7b), white),
+        ] {
+            let corrected = contrasted_foreground(unreadable, background, floor);
+            assert_ne!(corrected, unreadable);
+            assert!(contrast_ratio(corrected, background) >= floor);
+        }
+    }
+
+    #[test]
+    fn contrast_correction_keeps_the_hue() {
+        let hue = |color: Color| {
+            let (_, green_red, blue_yellow) = oklab(color);
+            blue_yellow.atan2(green_red).to_degrees()
+        };
+        for (foreground, background) in [
+            (Color::rgb(0x00, 0x00, 0xee), Color::rgb(0x10, 0x13, 0x18)),
+            (Color::rgb(0xcd, 0x00, 0x00), Color::rgb(0x10, 0x13, 0x18)),
+            (Color::rgb(0xb5, 0x89, 0x00), Color::rgb(0xfd, 0xf6, 0xe3)),
+        ] {
+            let corrected = ensure_minimum_contrast(foreground, background, 4.5);
+            assert!(contrast_ratio(corrected, background) >= 4.5);
+            let drift = (hue(corrected) - hue(foreground)).abs();
+            assert!(
+                drift.min(360.0 - drift) < 4.0,
+                "{foreground:?} -> {corrected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn contrast_correction_is_cached_per_color_pair_and_floor() {
+        let foreground = Color::rgb(0x00, 0x00, 0xee);
+        let background = Color::rgb(0x10, 0x13, 0x18);
+        for floor in [2.0, 4.5, 7.0] {
+            let expected = ensure_minimum_contrast(foreground, background, floor);
+            assert_eq!(
+                contrasted_foreground(foreground, background, floor),
+                expected
+            );
+            assert_eq!(
+                contrasted_foreground(foreground, background, floor),
+                expected
+            );
+        }
+        assert_ne!(
+            contrasted_foreground(foreground, background, 2.0),
+            contrasted_foreground(foreground, background, 7.0)
+        );
+    }
+
+    #[test]
     fn decorative_character_ranges_match_terminal_separators_only() {
-        for character in ['─', '█', '◆', '\u{e0b0}', '\u{e0d7}'] {
+        for character in ['─', '█', '◆', '\u{e0b0}', '\u{e0d7}', '\u{1fb00}'] {
             assert!(is_decorative_character(character), "{character:?}");
         }
         for character in ['A', '$', '→', '\u{f00c}', '😀'] {

@@ -445,6 +445,13 @@ rather than trusting a count here.
 | Policy | `minimum-contrast`, `background-opacity`, `cursor-style`, `cursor-style-blink` |
 | zz extensions | `zz-font-weight`, `zz-cursor-blink-interval-ms`, `zz-search-match-color`, `zz-search-current-color`, `zz-link-color`, `zz-copy-cursor-color`, `zz-rounded-selection` |
 
+`minimum-contrast` (a WCAG ratio from 1 to 21, default 2) keeps terminal text readable whatever the
+theme or the application picked: any text color below the floor against its cell background gets
+lighter or darker until it reaches it, keeping its hue. 2 only rescues text that is hard to read, such
+as a dark-theme application's yellow on a white background or palette black on a dark one, and leaves
+designed palettes almost untouched; 3 to 4.5 is stricter; 1 turns it off. Box drawing, block and
+Powerline glyphs are never changed.
+
 File order is preserved, including repeated `palette`, face-specific font-family, and `font-feature`
 entries. `config-file` is not part of the native override surface.
 
