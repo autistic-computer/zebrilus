@@ -9,7 +9,7 @@ timestamp: 2026-10-10T12:00:00Z
 
 # Overview
 
-zz has its own icon set: 69 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
+zz has its own icon set: 73 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
 `brand-chrome`, `zz`), which keep their own artwork as files in `crates/zz-gpui-kit/assets/icons`. The
 set lives as skeletons in `crates/zz-gpui-kit/src/icon/mac.json`, not as SVG files, and is drawn at
 paint time for the current theme, so radius 0 gives flat icons and higher radii round them the way zz

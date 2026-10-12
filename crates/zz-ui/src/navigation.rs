@@ -1,3 +1,4 @@
+pub mod flat;
 pub mod sidebar;
 pub mod status;
 pub mod tree;
