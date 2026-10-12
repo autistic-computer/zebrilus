@@ -181,6 +181,7 @@ mod tests {
                 active: linear.clone(),
                 selected: "linear".into(),
                 saved: Vec::new(),
+                error: None,
             });
             for (setting, mode) in [
                 (ThemeModeSetting::Light, ThemeMode::Light),
@@ -281,6 +282,7 @@ mod tests {
                     active: theme.clone(),
                     selected: id.into(),
                     saved: Vec::new(),
+                    error: None,
                 });
                 let mut config = config::AppConfig::default();
                 config.pane_gaps.value = gaps;
