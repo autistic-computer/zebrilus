@@ -483,20 +483,11 @@ impl TerminalPane {
                     .position(position)
                     .snap_to_window_with_margin(px(8.0))
                     .child(
-                        div()
-                            .size(px(300.0))
-                            .p_1()
-                            .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
-                            .text_color(cx.theme().foreground)
-                            .border_1()
-                            .border_color(cx.theme().border())
-                            .rounded(cx.theme().radius)
-                            .shadow(zz_ui::lifted_shadow(cx))
-                            .child(
-                                img(ImageSource::Image(image))
-                                    .size_full()
-                                    .object_fit(ObjectFit::ScaleDown),
-                            ),
+                        div().size(px(300.0)).p_1().popover_style(cx).child(
+                            img(ImageSource::Image(image))
+                                .size_full()
+                                .object_fit(ObjectFit::ScaleDown),
+                        ),
                     ),
             )
             .with_priority(1)

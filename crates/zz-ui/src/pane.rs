@@ -265,7 +265,7 @@ fn pane_focus_glow(radii: Corners<Pixels>, cx: &App) -> impl IntoElement {
         }])
         .with_animation(
             "pane-focus-glow",
-            Animation::new(std::time::Duration::from_millis(300))
+            Animation::new(cx.theme().duration(std::time::Duration::from_millis(300)))
                 .with_easing(zz_gpui::ease_in_out)
                 .with_max_fps(PANE_FOCUS_GLOW_FADE_FPS),
             zz_gpui::Styled::opacity,

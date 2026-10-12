@@ -172,7 +172,7 @@ color: `contact_shadow` is the tight shadow a surface sits on (panes, cards, a p
 `control_shadow` is the same shadow at the theme's `control_shadow` share (0 keeps buttons,
 fields and highlighted rows flat while popovers keep theirs; `Theme::control_shadows` says
 whether they draw at all), and `lifted_shadow` is the small shadow under a tooltip, a toast or a
-switch thumb.
+switch thumb. All three scale with `Theme.shadow_strength` and vanish at 0.
 
 The rest of a look reaches widgets through `Theme` helpers, so new widgets should use them rather
 than literals: `dense(px)` for row and control heights (`Size::control_h` and `input_py` take the

@@ -238,17 +238,21 @@ fn tight_shadow(strength: f32, cx: &App) -> Vec<BoxShadow> {
 /// The small shadow of a chip that floats over content: a tooltip, a toast,
 /// a switch thumb.
 pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
-    let ink = cx.theme().shadow_color;
+    let strength = cx.theme().shadow_strength;
+    if strength <= 0.0 {
+        return Vec::new();
+    }
+    let ink = cx.theme().shadow_color.alpha(0.1 * strength);
     vec![
         BoxShadow {
-            color: ink.alpha(0.1),
+            color: ink,
             offset: point(px(0.), px(4.)),
             blur_radius: px(6.),
             spread_radius: px(-1.),
             inset: false,
         },
         BoxShadow {
-            color: ink.alpha(0.1),
+            color: ink,
             offset: point(px(0.), px(2.)),
             blur_radius: px(4.),
             spread_radius: px(-2.),
