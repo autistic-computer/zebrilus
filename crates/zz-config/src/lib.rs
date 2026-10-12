@@ -1124,13 +1124,21 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 unreachable!("handled above")
             }
         };
-        target.provenance = ConfigProvenance::Override;
+        if !matches!(
+            key,
+            ConfigKey::WidgetCornerRadius | ConfigKey::ShadowStrength
+        ) {
+            target.provenance = ConfigProvenance::Override;
+        }
 
         let range = key
             .numeric_range()
             .expect("every key reaching here is a numeric value");
         match parse_numeric_value(key, value, range) {
-            Ok(value) => target.value = value,
+            Ok(value) => {
+                target.value = value;
+                target.provenance = ConfigProvenance::Override;
+            }
             Err(message) => parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
                 message: format!("invalid `{}`: {message}", key.as_str()),
@@ -1681,8 +1689,8 @@ pub fn set_config_key(key: ConfigKey, value: &str) -> io::Result<()> {
 
 /// Selects the theme `name`, a built-in id or a saved theme, and drops the
 /// explicit settings a theme decides and the retired appearance keys, so the
-/// theme shows as designed.
-pub fn set_interface_theme(name: &str) -> io::Result<()> {
+/// theme shows as designed. A theme that sets a font decides the UI font too.
+pub fn set_interface_theme(name: &str, theme_sets_font: bool) -> io::Result<()> {
     if !is_builtin_theme(name) && !themes::is_theme_name(name) {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
@@ -1690,23 +1698,25 @@ pub fn set_interface_theme(name: &str) -> io::Result<()> {
         ));
     }
     let path = config_path_for_write()?;
-    write_interface_theme_at(&path, name)
+    write_interface_theme_at(&path, name, theme_sets_font)
 }
 
-pub fn write_interface_theme_at(path: &Path, name: &str) -> io::Result<()> {
+pub fn write_interface_theme_at(path: &Path, name: &str, theme_sets_font: bool) -> io::Result<()> {
     let source = match read_config_source(path) {
         Ok(source) => source,
         Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
         Err(error) => return Err(error),
     };
     let decided = [
-        ConfigKey::WidgetCornerRadius.as_str(),
-        ConfigKey::ShadowStrength.as_str(),
+        Some(ConfigKey::WidgetCornerRadius.as_str()),
+        Some(ConfigKey::ShadowStrength.as_str()),
+        theme_sets_font.then_some(ConfigKey::UiFontFamily.as_str()),
     ];
     let mut without_decided = String::with_capacity(source.len());
     for line in source.split_inclusive('\n') {
-        let dropped = config_key_for_line(line)
-            .is_some_and(|key| decided.contains(&key) || RETIRED_APPEARANCE_KEYS.contains(&key));
+        let dropped = config_key_for_line(line).is_some_and(|key| {
+            decided.contains(&Some(key)) || RETIRED_APPEARANCE_KEYS.contains(&key)
+        });
         if !dropped {
             without_decided.push_str(line);
         }
@@ -2154,11 +2164,12 @@ mod tests {
         fs::write(
             &path,
             "widget-corner-radius = 25\nchrome-contrast = 1.2\nshadow-strength = 0.4\n\
-             interface-style = flat\nchrome-preset-dark = nord\nchrome-accent = #123456\n",
+             interface-style = flat\nchrome-preset-dark = nord\nchrome-accent = #123456\n\
+             ui-font-family = \"Fira Sans\"\n",
         )
         .expect("write config");
 
-        write_interface_theme_at(&path, "macos").expect("write theme");
+        write_interface_theme_at(&path, "macos", false).expect("write theme");
         let source = fs::read_to_string(&path).expect("read theme");
         let parsed = parse_config(&source, "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
@@ -2173,6 +2184,13 @@ mod tests {
             ConfigValue::from_default(DEFAULT_SHADOW_STRENGTH)
         );
         assert_eq!(parsed.config.chrome_contrast.value, 1.2);
+        assert_eq!(parsed.ui_font.family.value.as_deref(), Some("Fira Sans"));
+
+        write_interface_theme_at(&path, "round", true).expect("write theme");
+        let source = fs::read_to_string(&path).expect("read theme");
+        let parsed = parse_config(&source, "monospace");
+        assert_eq!(parsed.theme.as_deref(), Some("round"));
+        assert_eq!(parsed.ui_font.family, ConfigValue::from_default(None));
 
         let parsed = parse_config("interface-theme = round", "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
@@ -2193,7 +2211,7 @@ mod tests {
         let parsed = parse_config("interface-theme = ../round", "monospace");
         assert_eq!(parsed.diagnostics.len(), 1);
         assert_eq!(parsed.theme, None);
-        assert!(set_interface_theme("../round").is_err());
+        assert!(set_interface_theme("../round", false).is_err());
     }
 
     #[test]

@@ -99,10 +99,15 @@ fn apply_zz_overrides(cx: &mut App) {
         .map(crate::terminal::view::terminal_font)
         .map(|font| font.family);
     let active = config::themes(cx).active.clone();
-    let ui_font_family = config::ui_font_family(cx)
+    let ui_font = config::ui_font_family(cx);
+    let ui_font_family = ui_font
         .value
         .map(SharedString::from)
-        .or_else(|| active.look.font.clone())
+        .or_else(|| {
+            (ui_font.provenance == config::ConfigProvenance::Default)
+                .then(|| active.look.font.clone())
+                .flatten()
+        })
         .unwrap_or_else(|| zz_gpui::Font::default().family);
     let widget_corner_radius = config::widget_corner_radius(cx);
     let chrome_contrast = config::chrome_contrast(cx);
