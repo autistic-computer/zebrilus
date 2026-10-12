@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, gpui, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-10T00:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # Overview
@@ -338,7 +338,8 @@ GPUI globals (used by settings badges and the detach action, not to color anythi
   emphasis, animation speed, the interface font and the glass of floating surfaces); then
   `theme.radius` from `widget-corner-radius` and `shadow_strength` from `shadow-strength` when
   those are set, so one radius reaches every widget and survives a light/dark switch;
-- `font_family` from `ui-font-family` when set, else the look's font, else the system UI font;
+- `font_family` from `ui-font-family` when present (a System default line keeps the system UI
+  font even under a theme with its own), else the look's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
 - `theme.contrast` from `chrome-contrast`, preserved across the same refreshes.

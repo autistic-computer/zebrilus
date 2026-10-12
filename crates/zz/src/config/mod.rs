@@ -940,6 +940,26 @@ mod tests {
     }
 
     #[test]
+    fn an_invalid_radius_keeps_the_active_themes_radius() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        let mut parsed = parse_config(
+            "interface-theme = macos\nwidget-corner-radius = wide\nshadow-strength = 9\n",
+        );
+        let loaded = load_themes(&path, &mut parsed);
+        assert_eq!(parsed.diagnostics.len(), 2, "{:?}", parsed.diagnostics);
+        assert_f32_eq(loaded.active.look.radius, 10.0);
+        assert_eq!(
+            parsed.config.widget_corner_radius,
+            ConfigValue::from_default(loaded.active.look.radius)
+        );
+        assert_eq!(
+            parsed.config.shadow_strength,
+            ConfigValue::from_default(loaded.active.look.shadow)
+        );
+    }
+
+    #[test]
     fn config_defaults_match_the_default_theme() {
         let look = &interface_theme::default_theme().look;
         assert_f32_eq(zz_config::DEFAULT_WIDGET_CORNER_RADIUS, look.radius);
@@ -2137,7 +2157,7 @@ mod tests {
             ),
         )
         .expect("write retired keys");
-        write_interface_theme_at(&path, "linear").expect("write theme");
+        write_interface_theme_at(&path, "linear", false).expect("write theme");
 
         let source = fs::read_to_string(&path).expect("read theme settings");
         let parsed = parse_config(&source);

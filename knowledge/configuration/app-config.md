@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-10T00:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # Overview
@@ -166,10 +166,13 @@ rectangles, and the larger `widget-corner-radius` is, the more visible it gets (
 from a circular arc by roughly a fifth of the radius, so it is sub-pixel below about 4px).
 
 `ui-font-family` lives in `UiFontConfig`. Interface settings lists font families from GPUI's
-cross-platform text system. Selecting System default writes `.SystemUIFont`; Reset removes the
-current override. The 500 ms config watcher reapplies the family to `Theme.font_family` and redraws
-open windows. Quoted names preserve spaces, Unicode, quotes, and backslashes. Theme changes keep
-the chosen font; terminal, editor, and code-block fonts use their existing monospace settings.
+cross-platform text system. Selecting System default writes `.SystemUIFont`, which keeps the system
+font even under a theme that names its own; Reset removes the current override. With no line, the
+select shows the active theme's font when it sets one. The 500 ms config watcher reapplies the family
+to `Theme.font_family` and redraws open windows. Quoted names preserve spaces, Unicode, quotes, and
+backslashes. Picking or importing a theme that sets `look.font` drops `ui-font-family`, like the
+radius and shadow it decides; other theme changes keep the chosen font. Terminal, editor, and
+code-block fonts use their existing monospace settings.
 
 `browser-element-selector-hotkey` lives in a separate `BrowserConfig` GPUI global so `AppConfig`
 can remain `Copy`. The parser canonicalizes GPUI keystroke syntax and rejects keys without a
@@ -241,7 +244,10 @@ missing or unparsable theme logs a warning and falls back to `default`.
 
 Settings > Interface > Interface theme shows the built-ins and then the saved themes as tiles.
 Duplicate writes the active theme to the first free `themes/theme-N.json` and selects it, so a
-theme is customized by editing that file. Import reads a theme from the clipboard (the storybook's
+theme is customized by editing that file. The copy takes the effective widget corner radius and
+shadow strength and an explicit UI font into its look first, so nothing on screen changes. A
+duplicated or imported theme whose name is empty or a built-in's is saved under its file name
+(`theme-N`), so Settings never shows two tiles called Default. Import reads a theme from the clipboard (the storybook's
 theme creator copies one with Copy JSON), saves it the same way and selects it. Thin clients (web,
 iOS) offer the built-in themes only.
 
@@ -515,6 +521,8 @@ loaded file contains no assignment for that key and `Override` when the key is p
 recorded even when its value is invalid; the diagnostic still follows the warn-and-keep rule, so an
 invalid override can display the preceding/default effective value with an `Overridden` badge. This
 definition lets Reset remove a stale invalid line instead of incorrectly presenting it as absent.
+`widget-corner-radius` and `shadow-strength` are the exception: their default is the active theme's,
+so only a line that parses marks them `Override`, and an invalid one leaves the theme's value in place.
 
 Appearance provenance is resolved by the daemon and arrives with `ServerHello` and
 `AppearanceChanged` as a complete per-key map. `AppearanceSource` has four tiers . `default`,
@@ -685,6 +693,8 @@ accepts other paths. Existing installs receive this offer once more after the ow
 Shadow strength appears in Interface's Tweaks group beside Widget corner radius. The numeric control
 shows 0–100%, steps by five percentage points, and stores a 0–1 factor. Valid edits save as they are
 typed; partial or invalid values stay in the field until Enter or blur restores the effective value.
+Enter or blur on a numeric field with no override writes nothing while its value is unchanged, so
+visiting Widget corner radius or Shadow strength does not pin the theme's value.
 Reset removes the override and restores 100% through the normal config watcher.
 
 Structured control callbacks, including Terminal, only write `zz/config`; they never mutate the

@@ -109,6 +109,7 @@ pub(crate) struct SettingsView {
     observed: AppConfig,
     observed_browser: BrowserConfig,
     observed_ui_font: ConfigValue<Option<String>>,
+    observed_theme_font: Option<SharedString>,
     ui_font_family: Entity<SelectState<Vec<SettingsSelectItem>>>,
     browser_element_selector_hotkey: Entity<InputState>,
     browser_search_provider: Entity<SelectState<Vec<SettingsSelectItem>>>,
@@ -148,7 +149,15 @@ impl SettingsView {
         let observed = config::resolved_config(cx);
         let observed_browser = config::browser_config(cx);
         let observed_ui_font = config::ui_font_family(cx);
-        let ui_font_family = ui_font_select(observed_ui_font.value.as_deref(), window, cx);
+        let observed_theme_font = config::themes(cx).active.look.font.clone();
+        let ui_font_family = ui_font_select(
+            Some(&shown_ui_font(
+                &observed_ui_font,
+                observed_theme_font.as_ref(),
+            )),
+            window,
+            cx,
+        );
         let browser_element_selector_hotkey =
             text_value_input(&observed_browser.element_selector_hotkey.value, window, cx);
         let browser_search_provider =
@@ -294,6 +303,7 @@ impl SettingsView {
             observed,
             observed_browser,
             observed_ui_font,
+            observed_theme_font,
             ui_font_family,
             browser_element_selector_hotkey,
             browser_search_provider,
@@ -620,13 +630,16 @@ impl SettingsView {
 
     fn synchronize_ui_font(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let resolved = config::ui_font_family(cx);
-        if resolved == self.observed_ui_font {
+        let theme_font = config::themes(cx).active.look.font.clone();
+        if resolved == self.observed_ui_font && theme_font == self.observed_theme_font {
             return;
         }
+        let shown = shown_ui_font(&resolved, theme_font.as_ref());
         self.ui_font_family.update(cx, |select, cx| {
-            select.set_selected_value(&resolved.value.clone().unwrap_or_default(), window, cx);
+            select.set_selected_value(&shown, window, cx);
         });
         self.observed_ui_font = resolved;
+        self.observed_theme_font = theme_font;
     }
 
     fn synchronize_ui_zoom_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -702,7 +715,8 @@ impl SettingsView {
                     Notification::error(format!("Invalid {}: {message}", key.as_str())),
                     cx,
                 );
-                let effective = numeric_input_text(key, numeric_config_value(&self.observed, key));
+                let effective =
+                    numeric_input_text(key, numeric_config_value(&self.observed, key).value);
                 input.update(cx, |input, cx| input.set_value(effective, window, cx));
                 return;
             }
@@ -710,6 +724,13 @@ impl SettingsView {
         let displayed = value.to_string();
         if normalize && input.read(cx).value().as_ref() != displayed {
             input.update(cx, |input, cx| input.set_value(displayed, window, cx));
+        }
+        let current = numeric_config_value(&self.observed, key);
+        if normalize
+            && current.provenance == ConfigProvenance::Default
+            && numeric_input_matches_value(key, &candidate, current.value)
+        {
+            return;
         }
         let value = (value / numeric_input_scale(key)).to_string();
         match set_config_key(key, &value) {
@@ -1012,7 +1033,10 @@ impl SettingsView {
             .iter()
             .position(|(id, _)| *id == themes.selected)
             .unwrap_or(0);
-        let ids = choices.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+        let ids = choices
+            .iter()
+            .map(|(id, theme)| (id.clone(), theme.look.font.is_some()))
+            .collect::<Vec<_>>();
         let strip = PickerStrip::new("settings-interface-theme", selected)
             .tiles(choices.iter().map(|(id, theme)| {
                 let label = if theme.name.is_empty() {
@@ -1023,7 +1047,8 @@ impl SettingsView {
                 (label, interface_theme_preview(theme, mode, cx))
             }))
             .on_select(move |index, _, cx| {
-                if let Err(error) = set_interface_theme(&ids[index]) {
+                let (id, sets_font) = &ids[index];
+                if let Err(error) = set_interface_theme(id, *sets_font) {
                     report_write_error("set", ConfigKey::InterfaceTheme.as_str(), &error, cx);
                     return;
                 }
@@ -1042,8 +1067,14 @@ impl SettingsView {
                         .label("Duplicate")
                         .tooltip("Save a copy of this theme to edit and use it")
                         .on_click(|_, _, cx| {
-                            let theme = config::themes(cx).active.clone();
-                            save_and_select_theme(&theme, cx);
+                            let mut theme = config::themes(cx).active.clone();
+                            theme.look.radius = config::widget_corner_radius(cx).as_f32();
+                            theme.look.shadow = config::shadow_strength(cx);
+                            let font = config::ui_font_family(cx);
+                            if font.provenance == ConfigProvenance::Override {
+                                theme.look.font = font.value.map(SharedString::from);
+                            }
+                            save_and_select_theme(theme, cx);
                         }),
                 )
                 .child(
@@ -1097,10 +1128,12 @@ impl SettingsView {
             div().flex_none().child(
                 Select::new(&self.ui_font_family)
                     .placeholder(
-                        self.observed_ui_font
-                            .value
-                            .clone()
-                            .unwrap_or_else(|| "System default".to_owned()),
+                        Some(shown_ui_font(
+                            &self.observed_ui_font,
+                            self.observed_theme_font.as_ref(),
+                        ))
+                        .filter(|family| !family.is_empty())
+                        .unwrap_or_else(|| "System default".to_owned()),
                     )
                     .on(settings_card_ground(cx)),
             ),
@@ -2219,6 +2252,23 @@ fn search_provider_subscription(
     )
 }
 
+/// The family the UI font select shows: the configured one, or the theme's
+/// font while nothing is configured, or `""` for the system font.
+fn shown_ui_font(
+    family: &ConfigValue<Option<String>>,
+    theme_font: Option<&SharedString>,
+) -> String {
+    family
+        .value
+        .clone()
+        .or_else(|| {
+            (family.provenance == ConfigProvenance::Default)
+                .then(|| theme_font.map(ToString::to_string))
+                .flatten()
+        })
+        .unwrap_or_default()
+}
+
 fn ui_font_subscription(
     select: &Entity<SelectState<Vec<SettingsSelectItem>>>,
     window: &mut Window,
@@ -2433,20 +2483,20 @@ fn numeric_input_matches_value(key: ConfigKey, text: &str, value: f32) -> bool {
         .is_ok_and(|shown| (shown / numeric_input_scale(key) - value).abs() < f32::EPSILON)
 }
 
-fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> f32 {
+fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> {
     match key {
-        ConfigKey::PaneBackgroundOpacity => config.pane_background_opacity.value,
-        ConfigKey::PaneGlowStrength => config.pane_glow_strength.value,
-        ConfigKey::PaneInactiveOpacity => config.pane_inactive_opacity.value,
-        ConfigKey::PaneCornerRadius => config.pane_corner_radius.value,
-        ConfigKey::PaneMargin => config.pane_margin.value,
-        ConfigKey::PaneBorderWidth => config.pane_border_width.value,
-        ConfigKey::WidgetCornerRadius => config.widget_corner_radius.value,
-        ConfigKey::ChromeContrast => config.chrome_contrast.value,
-        ConfigKey::ShadowStrength => config.shadow_strength.value,
-        ConfigKey::WindowCornerRadius => config.window_corner_radius.value,
-        ConfigKey::EditorFontSize => config.editor_font_size.value,
-        ConfigKey::WhichKeyDelay => config.which_key_delay.value,
+        ConfigKey::PaneBackgroundOpacity => config.pane_background_opacity,
+        ConfigKey::PaneGlowStrength => config.pane_glow_strength,
+        ConfigKey::PaneInactiveOpacity => config.pane_inactive_opacity,
+        ConfigKey::PaneCornerRadius => config.pane_corner_radius,
+        ConfigKey::PaneMargin => config.pane_margin,
+        ConfigKey::PaneBorderWidth => config.pane_border_width,
+        ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
+        ConfigKey::ChromeContrast => config.chrome_contrast,
+        ConfigKey::ShadowStrength => config.shadow_strength,
+        ConfigKey::WindowCornerRadius => config.window_corner_radius,
+        ConfigKey::EditorFontSize => config.editor_font_size,
+        ConfigKey::WhichKeyDelay => config.which_key_delay,
         ConfigKey::UseSystemTitlebar
         | ConfigKey::PaletteWindowLayout
         | ConfigKey::PaletteHostPrefix
@@ -2586,7 +2636,7 @@ fn import_theme_from_clipboard(cx: &mut App) {
         .and_then(|item| item.text())
         .unwrap_or_default();
     match interface_theme::parse_theme(&source) {
-        Ok(theme) => save_and_select_theme(&theme, cx),
+        Ok(theme) => save_and_select_theme(theme, cx),
         Err(error) => toast::push(
             Notification::error(format!(
                 "The clipboard holds no theme: {error}. Copy one with Copy JSON in the storybook."
@@ -2596,12 +2646,20 @@ fn import_theme_from_clipboard(cx: &mut App) {
     }
 }
 
-/// Writes `theme` to the next free `themes/theme-N.json` and selects it.
-fn save_and_select_theme(theme: &InterfaceTheme, cx: &mut App) {
+/// Writes `theme` to the next free `themes/theme-N.json` and selects it. A
+/// theme without a name of its own is named after its file.
+fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
     let saved = config::themes::themes_directory().and_then(|directory| {
         let name = config::themes::next_theme_name(&directory);
+        if theme.name.trim().is_empty()
+            || interface_theme::builtin_themes()
+                .iter()
+                .any(|(_, builtin)| builtin.name == theme.name)
+        {
+            theme.name.clone_from(&name);
+        }
         let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
-        set_interface_theme(&name)?;
+        set_interface_theme(&name, theme.look.font.is_some())?;
         Ok(path)
     });
     match saved {
@@ -2643,7 +2701,7 @@ mod tests {
             assert!(validate_numeric_value(key, value).is_err());
         }
         assert_eq!(
-            numeric_input_text(key, numeric_config_value(&AppConfig::default(), key)),
+            numeric_input_text(key, numeric_config_value(&AppConfig::default(), key).value),
             "100"
         );
         let items = appearance_page_items(true, true);
@@ -2677,7 +2735,7 @@ mod tests {
             assert!(!numeric_input_matches_value(key, "", 0.5));
             assert!(!numeric_input_matches_value(key, "50.", 1.0));
             assert_eq!(
-                numeric_input_text(key, numeric_config_value(&AppConfig::default(), key)),
+                numeric_input_text(key, numeric_config_value(&AppConfig::default(), key).value),
                 default,
             );
         }
