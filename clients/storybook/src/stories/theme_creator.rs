@@ -66,7 +66,7 @@ pub struct Showcase {
     search: Entity<InputState>,
     toasts: [Entity<Notification>; 2],
     tooltip: Entity<Tooltip>,
-    gaps: bool,
+    restore: bool,
     animations: bool,
     sound: bool,
     scrollback: usize,
@@ -118,7 +118,7 @@ impl Showcase {
             search,
             toasts,
             tooltip,
-            gaps: false,
+            restore: true,
             animations: true,
             sound: false,
             scrollback: 2,
@@ -135,12 +135,12 @@ impl Showcase {
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().divider_color())
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .child(with_sidebar(self.gaps, &self.shell, 0, cx)),
-            )
+            .child(div().flex_1().min_h_0().child(with_sidebar(
+                crate::pane().gaps,
+                &self.shell,
+                0,
+                cx,
+            )))
             .into_any_element()
     }
 
@@ -155,7 +155,7 @@ impl Showcase {
             .bg(cx.theme().background)
             .child(titlebar(
                 &Bar {
-                    gaps: self.gaps,
+                    gaps: crate::pane().gaps,
                     ..Bar::FULL
                 },
                 cx,
@@ -200,14 +200,14 @@ impl Showcase {
     fn preferences(&self, cx: &mut Context<Self>) -> AnyElement {
         let this = cx.entity();
         card("showcase-preferences", cx)
-            .child(heading("Panes", "How the canvas lays out and behaves.", cx))
+            .child(heading("Behavior", "How sessions and panes behave.", cx))
             .child(toggle(
-                "showcase-gaps",
-                "Pane gaps",
-                "Float panes apart with rounded corners",
-                self.gaps,
+                "showcase-restore",
+                "Restore sessions",
+                "Bring windows and panes back after a restart",
+                self.restore,
                 cx.listener(|this, checked: &bool, _, cx| {
-                    this.gaps = *checked;
+                    this.restore = *checked;
                     cx.notify();
                 }),
                 cx,

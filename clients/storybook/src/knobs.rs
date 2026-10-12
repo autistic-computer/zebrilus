@@ -20,11 +20,36 @@ pub struct Knobs {
     pub dark: ThemeColors,
     pub contrast: f32,
     pub zoom: f32,
-    pub pane_opacity: f32,
-    pub pane_glow: f32,
-    pub pane_glass: bool,
+    pub pane: PaneKnobs,
     pub motion: bool,
     pub backdrop: Backdrop,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaneKnobs {
+    pub gaps: bool,
+    pub margin: f32,
+    pub radius: f32,
+    pub border: f32,
+    pub background: f32,
+    pub inactive: f32,
+    pub glow: f32,
+    pub glass: bool,
+}
+
+impl Default for PaneKnobs {
+    fn default() -> Self {
+        Self {
+            gaps: false,
+            margin: 6.0,
+            radius: 13.5,
+            border: 0.5,
+            background: 0.5,
+            inactive: 0.7,
+            glow: 1.0,
+            glass: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -169,9 +194,7 @@ impl Knobs {
             dark: theme.dark.clone(),
             contrast: 1.0,
             zoom: 1.0,
-            pane_opacity: 0.5,
-            pane_glow: 1.0,
-            pane_glass: false,
+            pane: PaneKnobs::default(),
             motion: true,
             backdrop: Backdrop::Plain,
         }
@@ -260,12 +283,15 @@ impl Knobs {
                 }
                 "contrast" => knobs.contrast = number(key, value)?,
                 "zoom" => knobs.zoom = number(key, value)?,
-                "pane-opacity" => knobs.pane_opacity = number(key, value)?,
-                "pane-glow" => knobs.pane_glow = number(key, value)?,
-                "pane-glass" => {
-                    knobs.pane_glass = value != "0" && value != "off" && value != "false";
-                }
-                "motion" => knobs.motion = value != "0" && value != "off" && value != "false",
+                "pane-gaps" => knobs.pane.gaps = flag(value),
+                "pane-margin" => knobs.pane.margin = number(key, value)?,
+                "pane-corner-radius" => knobs.pane.radius = number(key, value)?,
+                "pane-border-width" => knobs.pane.border = number(key, value)?,
+                "pane-opacity" => knobs.pane.background = number(key, value)?,
+                "pane-inactive-opacity" => knobs.pane.inactive = number(key, value)?,
+                "pane-glow" => knobs.pane.glow = number(key, value)?,
+                "pane-glass" => knobs.pane.glass = flag(value),
+                "motion" => knobs.motion = flag(value),
                 "backdrop" => {
                     knobs.backdrop = match value {
                         "plain" => Backdrop::Plain,
@@ -330,9 +356,9 @@ impl Knobs {
         if self.look.font.is_none() {
             theme.font_family = UI_FONT.into();
         }
-        theme.pane_background_opacity = self.pane_opacity;
-        theme.pane_glow_strength = self.pane_glow;
-        theme.pane_glass = self.pane_glass;
+        theme.pane_background_opacity = self.pane.background;
+        theme.pane_glow_strength = self.pane.glow;
+        theme.pane_glass = self.pane.glass;
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();
@@ -450,6 +476,10 @@ fn decode(value: &str) -> String {
     String::from_utf8_lossy(&decoded).into_owned()
 }
 
+fn flag(value: &str) -> bool {
+    !matches!(value, "0" | "off" | "false")
+}
+
 fn number(key: &str, value: &str) -> Result<f32, String> {
     value
         .parse::<f32>()
@@ -473,8 +503,15 @@ mod tests {
         assert_eq!(knobs.zoom, 1.25);
         assert_eq!(knobs.interface, "linear");
         assert!(!knobs.motion);
-        assert!(!knobs.pane_glass);
-        assert!(Knobs::parse("pane-glass=on").unwrap().pane_glass);
+        assert!(!knobs.pane.glass);
+        assert!(Knobs::parse("pane-glass=on").unwrap().pane.glass);
+        let pane = Knobs::parse("pane-gaps=1&pane-corner-radius=20&pane-inactive-opacity=0.4")
+            .unwrap()
+            .pane;
+        assert!(pane.gaps);
+        assert_eq!(pane.radius, 20.0);
+        assert_eq!(pane.inactive, 0.4);
+        assert!(Knobs::parse("pane-margin=wide").is_err());
         assert!(Knobs::parse("radius=wide").is_err());
         assert!(Knobs::parse("interface-theme=sepia").is_err());
     }

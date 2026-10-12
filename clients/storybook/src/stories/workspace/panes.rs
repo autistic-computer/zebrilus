@@ -18,8 +18,7 @@ use zz_ui::{
 };
 
 use super::fixtures::{
-    BUILD, INACTIVE_OPACITY, LOGS, PANE_BORDER, PANE_MARGIN, PANE_RADIUS, SERVER, TerminalPane,
-    gap, pane_background, placeholder_pane, radii, terminal_body,
+    BUILD, LOGS, SERVER, TerminalPane, gap, pane_background, placeholder_pane, radii, terminal_body,
 };
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -200,7 +199,7 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
             header_box(
                 "header-inactive",
                 None,
-                div().opacity(INACTIVE_OPACITY).child(header(
+                div().opacity(crate::pane().inactive).child(header(
                     2,
                     "tail -f daemon.log",
                     false,
@@ -571,6 +570,7 @@ fn splits(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
+    let pane = crate::pane();
     let armed = |index: u64, active: bool, cx: &App| {
         let (title, lines) = if active {
             ("cargo test", BUILD)
@@ -596,14 +596,14 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
     };
     let armed_layout = div()
         .size_full()
-        .p(px(PANE_MARGIN))
+        .p(px(pane.margin))
         .child(pane_split_surface(
             "armed-split",
             PaneSplitAxis::Horizontal,
             0.5,
             false,
             true,
-            px(PANE_MARGIN),
+            px(pane.margin),
             None,
             None,
             armed(1, true, cx),
@@ -643,14 +643,14 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
     let dragging = div()
         .relative()
         .size_full()
-        .p(px(PANE_MARGIN))
+        .p(px(pane.margin))
         .child(pane_split_surface(
             "dragging-split",
             PaneSplitAxis::Horizontal,
             0.5,
             false,
             true,
-            px(PANE_MARGIN),
+            px(pane.margin),
             None,
             None,
             source,
@@ -659,10 +659,10 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
             cx,
         ))
         .child(
-            pane_drop_preview(px(PANE_RADIUS), px(PANE_BORDER.max(1.0)), cx)
-                .top(px(PANE_MARGIN))
-                .bottom(px(PANE_MARGIN))
-                .right(px(PANE_MARGIN))
+            pane_drop_preview(px(pane.radius), px(pane.border.max(1.0)), cx)
+                .top(px(pane.margin))
+                .bottom(px(pane.margin))
+                .right(px(pane.margin))
                 .w(relative(0.24)),
         )
         .child(
@@ -699,7 +699,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
                         .relative()
                         .w(px(160.0))
                         .h(px(90.0))
-                        .child(pane_drop_preview(px(PANE_RADIUS), px(1.0), cx).inset_0()),
+                        .child(pane_drop_preview(px(pane.radius), px(1.0), cx).inset_0()),
                 )
                 .child(
                     div()
@@ -798,7 +798,7 @@ fn picker_pane(id: &'static str, selected: usize, enabled: bool, cx: &App) -> im
                 .items_center()
                 .justify_center()
                 .px(px(12.0))
-                .rounded(px(PANE_RADIUS))
+                .rounded(px(crate::pane().radius))
                 .bg(pane_background(cx))
                 .text_color(cx.theme().foreground)
                 .child(pane_picker_choices(rows)),
@@ -844,16 +844,17 @@ fn picker(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn preview(_: &mut Window, _: &mut App) -> AnyElement {
+    let pane = crate::pane();
     let preview = |gaps: bool| PanesPreview {
         gaps,
-        margin: PANE_MARGIN,
-        radius: PANE_RADIUS,
-        border_width: PANE_BORDER,
-        inactive_opacity: INACTIVE_OPACITY,
+        margin: pane.margin,
+        radius: pane.radius,
+        border_width: pane.border,
+        inactive_opacity: pane.inactive,
     };
     states()
         .state(
-            "gaps on: 6px margin, 13.5px radius, 0.5px border",
+            "gaps on, at the pane knobs",
             div().id("preview-gaps").child(preview(true)),
         )
         .state(

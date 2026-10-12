@@ -14,11 +14,6 @@ use zz_ui::{
     pane::{PaneChrome, pane_border_color, pane_drag_button, pane_surface, terminal_pane_header},
 };
 
-pub const PANE_RADIUS: f32 = 13.5;
-pub const PANE_BORDER: f32 = 0.5;
-pub const PANE_MARGIN: f32 = 6.0;
-pub const INACTIVE_OPACITY: f32 = 0.7;
-
 #[derive(Clone, Copy)]
 pub enum Tone {
     Plain,
@@ -59,22 +54,23 @@ pub fn noop() -> StatusAction {
 }
 
 pub fn radii(gaps: bool) -> Corners<Pixels> {
-    Corners::all(px(if gaps { PANE_RADIUS } else { 0.0 }))
+    Corners::all(px(if gaps { crate::pane().radius } else { 0.0 }))
 }
 
 pub fn gap(gaps: bool) -> Pixels {
-    px(if gaps { PANE_MARGIN } else { 0.0 })
+    px(if gaps { crate::pane().margin } else { 0.0 })
 }
 
 pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
+    let pane = crate::pane();
     PaneChrome::new(
         radii(gaps),
-        px(if gaps { PANE_BORDER } else { 0.0 }),
+        px(if gaps { pane.border } else { 0.0 }),
         pane_border_color(active, cx),
         gaps,
     )
     .active(active)
-    .dimmed(!active && scrim, INACTIVE_OPACITY)
+    .dimmed(!active && scrim, pane.inactive)
     .glass(
         cx.theme()
             .pane_glass(cx.theme().background, cx.theme().background)
@@ -105,7 +101,7 @@ pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> 
         .whitespace_nowrap()
         .text_color(theme.foreground)
         .children(lines.iter().map(|(tone, text)| {
-            let line = div().opacity(if dimmed { INACTIVE_OPACITY } else { 1.0 });
+            let line = div().opacity(if dimmed { crate::pane().inactive } else { 1.0 });
             match tone {
                 Tone::Plain => line.child(*text),
                 Tone::Muted => line.text_color(theme.foreground.muted()).child(*text),
@@ -214,7 +210,11 @@ impl TerminalPane {
                     .bg(pane_background(cx))
                     .child(
                         div()
-                            .opacity(if self.active { 1.0 } else { INACTIVE_OPACITY })
+                            .opacity(if self.active {
+                                1.0
+                            } else {
+                                crate::pane().inactive
+                            })
                             .child(header),
                     ),
             )

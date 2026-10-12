@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-10-12
+* **Update**: The storybook knob panel has a Panes section mirroring Settings → Panes: gaps, margin, corner radius, border width, background opacity, inactive opacity, selected glow and glass. The pane fixtures read them instead of fixed constants, so every pane story follows; gaps drive the Theme creator canvas. They are app config, not theme, so Copy JSON leaves them out and the URL keeps them. See [storybook](/playbooks/storybook.md).
+
 ## 2026-10-11
 * **Fix**: The storybook passes clippy under the root rules again, and `just storybook lint` checks it for the host and for wasm (it is its own workspace, so the root run never saw it). The design system and grounds stories use the panel surface instead of `raised(1)`, the icon set's mock sidebar marks its current row with the ghost paint's Current fill, the tree story's indent guides use the divider color like the app's sidebar, the Colors story and the knob panel's theme JSON keep their raw transforms behind scoped allows, and the wasm-only `launch` moved into the wasm module.
 * **Update**: Panes can draw in the theme's glass. `pane-glass` (off by default, Settings → Panes → Appearance → Glass) needs pane gaps and a theme whose glass draws an effect. The pane frame then owns the single fill: tiled panes take the material's lit edge tinted with their own color, with blur and refraction off since they sit on the flat app background, and floating panes take the full material and frost what is behind them. Inactive hairlines give way to the glass edge; the active pane keeps its accent border. Desktop, web and iOS, with a `pane-glass` storybook knob. See [app config](/configuration/app-config.md).

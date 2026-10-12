@@ -35,6 +35,10 @@ pub(crate) fn knobs() -> Knobs {
     KNOBS.with(|knobs| knobs.borrow().clone())
 }
 
+pub(crate) fn pane() -> knobs::PaneKnobs {
+    KNOBS.with(|knobs| knobs.borrow().pane)
+}
+
 pub fn find(id: &str) -> Option<&'static Story> {
     STORIES.iter().find(|story| story.id == id).copied()
 }
