@@ -20,15 +20,15 @@ The flat sidebar shows one row per window on every host: a title, a second line 
 window is doing, an age on the right, and a pane stack: one tile for the active pane with a card
 behind it for each other pane, two at most. Line 2's lead carries what needs you, so the tiles have
 no status dot; folded host and session headers roll attention up. Every fact it needs now rides
-the mux tree, so a client that subscribes to all sessions can draw every row
-without `AgentPaneWire`, without attaching, and without keeping its own "seen" state.
+the mux tree, so a client that subscribes to all sessions can draw every row without
+`AgentPaneWire`, without attaching, and without keeping its own "seen" state.
 
 This plan covers the daemon producers, the wire fields, and the view model. The row, header and
 sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`); wiring
 them into the desktop `MuxTreeModel` and the thin-client tree is the next piece of work and is not
 built. A window row draws its highlight with `navigation::workspace_row_fill`, the same fill as the
 tree rows (outline, corners, inset and press), and its corners and tiles follow the theme's corner
-rule like every other control, so no row or tile forces a pill.
+rule like every other control, so neither becomes a pill until the theme's radius asks for pills.
 
 # What every client receives
 
@@ -104,8 +104,8 @@ Needs you, Failed, Done, Exit) takes its tone and anything after it follows mute
 the agreed mock; Done is in the foreground only while the finish is unseen.
 
 **Ages** are `short_age`: "now" under a minute, then minutes, hours and days. `age_label` shows
-nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order; the row draws the first as its tile and
-one card behind it for each of the next two.
+nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order; the row
+draws the first as its tile and one card behind it for each of the next two.
 **Rollups** count one attention per window and keep the newest change; a host merges its sessions.
 
 # What the source changed in the first draft

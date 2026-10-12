@@ -53,7 +53,7 @@ pub const STORY: Story = Story {
         Section {
             id: "stacks",
             name: "Tile stacks",
-            summary: "flat_tile_stack for one to four panes on the rest, hover, current and selected grounds. The active pane's tile is always full size; each other pane adds a card behind it, narrower and fainter than the one in front and peeking out above it, two at most.",
+            summary: "flat_tile_stack for one to four panes on the rest, hover, current and selected grounds. The active pane's tile is always full size; each other pane adds a card behind it, a little narrower than the one in front and peeking out above it, two at most.",
             build: |_, cx| stateless(stacks, cx),
         },
         Section {
