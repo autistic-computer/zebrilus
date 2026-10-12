@@ -1,8 +1,8 @@
 use crate::{
     ActiveTheme as _, Colorize as _, Elevation, Icon, IconName,
     pane::{
-        PaneChrome, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_border_color,
-        pane_split_surface, pane_surface,
+        PaneChrome, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface,
+        pane_surface,
     },
 };
 use zz_gpui::{App, Corners, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px};
@@ -12,7 +12,6 @@ pub struct PanesPreview {
     pub gaps: bool,
     pub margin: f32,
     pub radius: f32,
-    pub border_width: f32,
     pub inactive_opacity: f32,
 }
 
@@ -23,33 +22,25 @@ impl RenderOnce for PanesPreview {
         let selected = *selection.read(cx);
         let margin = px(if self.gaps { self.margin } else { 0.0 });
         let radius = px(if self.gaps { self.radius } else { 0.0 });
-        let border = px(if self.gaps { self.border_width } else { 0.0 });
-        let content_radius = (radius - border).max(px(0.0));
         let height = (f32::from(window.viewport_size().height) * 0.32)
             .clamp(180.0, 280.0)
-            .max(f32::from(margin) * 3.0 + f32::from(border) * 4.0 + 112.0);
+            .max(f32::from(margin) * 3.0 + 112.0);
         let backdrop = cx.theme().surface(Elevation::Popover).fill;
-        let glass = cx
-            .theme()
-            .pane_glass(cx.theme().background, backdrop)
-            .filter(|_| self.gaps);
         let pane = |index: usize, content: zz_gpui::Div| {
             let active = selected == index;
             pane_surface(
                 ("settings-preview-pane", index),
                 content
-                    .rounded(content_radius)
+                    .rounded(radius)
                     .debug_selector(move || format!("settings-preview-active-{index}-{active}")),
                 [],
-                PaneChrome::new(
-                    Corners::all(radius),
-                    border,
-                    pane_border_color(active, cx),
-                    self.gaps,
-                )
-                .active(active)
-                .dimmed(!active, self.inactive_opacity)
-                .glass(glass),
+                PaneChrome::new(Corners::all(radius), self.gaps)
+                    .active(active)
+                    .dimmed(!active, self.inactive_opacity)
+                    .frame(self.gaps.then(|| {
+                        cx.theme()
+                            .pane_frame(cx.theme().background, backdrop, active)
+                    })),
                 cx,
             )
             .min_w_0()
@@ -72,7 +63,7 @@ impl RenderOnce for PanesPreview {
         };
         let terminal = pane(0_usize, terminal_sample(cx));
         let agent = pane(1_usize, agent_sample(cx));
-        let browser = pane(2_usize, browser_sample(content_radius, cx));
+        let browser = pane(2_usize, browser_sample(radius, cx));
         let horizontal_highlight = match selected {
             0 => PaneSplitHighlight::new(0.0, 1.0, PaneSplitSide::First, cx.theme().accent),
             1 => PaneSplitHighlight::new(0.0, 0.5, PaneSplitSide::Second, cx.theme().accent),
@@ -287,7 +278,6 @@ mod tests {
             gaps: true,
             margin: 8.0,
             radius: 12.0,
-            border_width: 1.0,
             inactive_opacity: 0.6,
         }
     }
@@ -332,14 +322,13 @@ mod tests {
     }
 
     #[zz_gpui::test]
-    fn spacing_and_border_updates_use_workspace_pixel_geometry(cx: &mut TestAppContext) {
+    fn spacing_updates_use_workspace_pixel_geometry(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|_, _| PreviewTest(preview()));
-        for (gaps, margin, border) in [(true, 8.0, 1.0), (true, 32.0, 8.0), (false, 32.0, 8.0)] {
+        for (gaps, margin) in [(true, 8.0), (true, 32.0), (false, 32.0)] {
             view.update(cx, |view, cx| {
                 view.0.gaps = gaps;
                 view.0.margin = margin;
-                view.0.border_width = border;
                 cx.notify();
             });
             draw(cx);
@@ -351,10 +340,7 @@ mod tests {
             assert_eq!(agent.origin.x - terminal.right(), gap);
             assert_eq!(browser.origin.y - agent.bottom(), gap);
             assert_eq!(terminal.origin.x, px(1.0 + if gaps { margin } else { 0.0 }));
-            assert_eq!(
-                terminal_content.origin.x - terminal.origin.x,
-                px(if gaps { border } else { 0.0 })
-            );
+            assert_eq!(terminal_content.origin, terminal.origin);
             assert!(browser.size.height > px(40.0));
         }
     }

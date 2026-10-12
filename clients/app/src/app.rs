@@ -48,9 +48,9 @@ use zz_ui::{
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneChrome, PaneDrag, PaneDragOverlayState, PaneSplitAxis,
-        PaneSplitHighlight, PaneSplitSide, TerminalPaneAction, pane_border_color, pane_drag_button,
-        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_split_hit_target,
-        pane_split_surface, pane_surface, terminal_pane_header,
+        PaneSplitHighlight, PaneSplitSide, TerminalPaneAction, pane_drag_button, pane_drag_overlay,
+        pane_drag_preview, pane_drop_preview, pane_split_hit_target, pane_split_surface,
+        pane_surface, terminal_pane_header,
     },
     settings::{SettingsSection, settings_navigation_button, settings_navigation_group_label},
     shell::{app_shell_surface, app_workspace_surface},
@@ -1823,24 +1823,17 @@ impl AppShell {
             } else {
                 content
             };
-            let chrome = PaneChrome::new(
-                radii,
-                px(frame.border_width),
-                pane_border_color(active_window.active_pane == pane_id, cx),
-                frame.shadow,
-            )
-            .active(active_window.active_pane == pane_id)
-            .dimmed(
-                active_window.active_pane != pane_id
-                    && !matches!(pane.kind, PaneKindSnapshot::Terminal),
-                self.preferences.pane_inactive_opacity,
-            )
-            .glass(if is_float {
-                None
-            } else {
-                cx.theme()
-                    .pane_glass(background.opaque(), cx.theme().background)
-            });
+            let active = active_window.active_pane == pane_id;
+            let chrome = PaneChrome::new(radii, frame.framed)
+                .active(active)
+                .dimmed(
+                    !active && !matches!(pane.kind, PaneKindSnapshot::Terminal),
+                    self.preferences.pane_inactive_opacity,
+                )
+                .frame(frame.framed.then(|| {
+                    cx.theme()
+                        .pane_frame(background.opaque(), cx.theme().background, active)
+                }));
             let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal);
             let mut status_tags = Vec::new();
             if !terminal_pane && let Some(label) = dead_label {

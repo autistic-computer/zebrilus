@@ -5,10 +5,9 @@ use crate::{
     contact_shadow, surface_ring,
 };
 use zz_gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, Corners, CursorStyle,
-    ElementId, FontWeight, GlassMaterial, Hsla, IntoElement, ParentElement as _, Pixels,
-    SharedString, Stateful, Styled as _, StyledText, Window, div, point, prelude::*, px, relative,
-    size,
+    AnyElement, App, BorderStyle, Bounds, BoxShadow, Corners, CursorStyle, ElementId, FontWeight,
+    GlassMaterial, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
+    Styled as _, StyledText, Window, canvas, div, point, prelude::*, px, quad, relative, size,
 };
 
 mod drag;
@@ -132,36 +131,25 @@ pub fn terminal_pane_header(
 }
 
 const PANE_DRAG_SOURCE_FADE: f32 = 0.3;
-const PANE_FOCUS_GLOW_ALPHA: f32 = 0.06;
-const PANE_FOCUS_GLOW_FADE_FPS: f32 = 30.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaneChrome {
     pub radii: Corners<Pixels>,
-    pub border_width: Pixels,
-    pub border_color: Hsla,
     pub shadow: bool,
     pub active: bool,
     pub inactive_opacity: f32,
-    pub glass: Option<GlassMaterial>,
+    pub frame: Option<GlassMaterial>,
 }
 
 impl PaneChrome {
     #[must_use]
-    pub const fn new(
-        radii: Corners<Pixels>,
-        border_width: Pixels,
-        border_color: Hsla,
-        shadow: bool,
-    ) -> Self {
+    pub const fn new(radii: Corners<Pixels>, shadow: bool) -> Self {
         Self {
             radii,
-            border_width,
-            border_color,
             shadow,
             active: false,
             inactive_opacity: 1.0,
-            glass: None,
+            frame: None,
         }
     }
 
@@ -177,9 +165,12 @@ impl PaneChrome {
         self
     }
 
+    /// The glass the pane draws as its frame and fill, from
+    /// [`Theme::pane_frame`](crate::Theme::pane_frame); `None` leaves the
+    /// pane flush, its content painting its own fill.
     #[must_use]
-    pub const fn glass(mut self, glass: Option<GlassMaterial>) -> Self {
-        self.glass = glass;
+    pub const fn frame(mut self, frame: Option<GlassMaterial>) -> Self {
+        self.frame = frame;
         self
     }
 }
@@ -210,19 +201,9 @@ pub fn pane_surface(
         .rounded_tr(chrome.radii.top_right)
         .rounded_bl(chrome.radii.bottom_left)
         .rounded_br(chrome.radii.bottom_right)
-        .when_some(chrome.glass, zz_gpui::Styled::glass)
-        .border(chrome.border_width)
-        .border_color(if chrome.glass.is_some() && !chrome.active {
-            cx.theme().transparent
-        } else {
-            chrome.border_color
-        })
+        .when_some(chrome.frame, zz_gpui::Styled::glass)
         .shadow(pane_surface_shadow_style(chrome.shadow, cx))
         .child(content)
-        .when(
-            chrome.active && cx.theme().pane_glow_strength > 0.0,
-            |surface| surface.child(pane_focus_glow(chrome.radii, cx)),
-        )
         .when(chrome.inactive_opacity < 1.0, |surface| {
             surface.child(pane_inactive_scrim(
                 chrome.radii,
@@ -230,6 +211,19 @@ pub fn pane_surface(
                 cx,
             ))
         })
+        .when_some(
+            chrome
+                .frame
+                .filter(|frame| frame.glint_width > Pixels::ZERO),
+            |surface, frame| {
+                let lit = chrome.active && cx.theme().pane_glow_strength > 0.0;
+                surface.child(pane_frame_hairline(
+                    chrome.radii,
+                    frame.glint_width,
+                    pane_border_color(lit, cx),
+                ))
+            },
+        )
         .children(overlays)
 }
 
@@ -241,35 +235,27 @@ fn pane_surface_shadow_style(shadow: bool, cx: &App) -> Vec<BoxShadow> {
     }
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the glow fades by the look's glow strength"
-)]
-fn pane_focus_glow(radii: Corners<Pixels>, cx: &App) -> impl IntoElement {
-    div()
-        .absolute()
-        .inset_0()
-        .rounded_tl(radii.top_left)
-        .rounded_tr(radii.top_right)
-        .rounded_bl(radii.bottom_left)
-        .rounded_br(radii.bottom_right)
-        .shadow(vec![BoxShadow {
-            color: cx
-                .theme()
-                .accent
-                .opacity(PANE_FOCUS_GLOW_ALPHA * cx.theme().pane_glow_strength),
-            offset: point(px(16.0), px(24.0)),
-            blur_radius: px(96.0),
-            spread_radius: px(-8.0),
-            inset: true,
-        }])
-        .with_animation(
-            "pane-focus-glow",
-            Animation::new(cx.theme().duration(std::time::Duration::from_millis(300)))
-                .with_easing(zz_gpui::ease_in_out)
-                .with_max_fps(PANE_FOCUS_GLOW_FADE_FPS),
-            zz_gpui::Styled::opacity,
-        )
+/// The frame's edge where the window cannot sample its backdrop and glass
+/// paints only its fill: a hairline the width of the glint, over the content
+/// as a border would be.
+fn pane_frame_hairline(radii: Corners<Pixels>, width: Pixels, color: Hsla) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |bounds, (), window, cx| {
+            if !window.supports_backdrop_sampling() {
+                window.paint_quad(quad(
+                    bounds,
+                    radii,
+                    cx.theme().transparent,
+                    width,
+                    color,
+                    BorderStyle::default(),
+                ));
+            }
+        },
+    )
+    .absolute()
+    .inset_0()
 }
 
 #[allow(
@@ -372,7 +358,7 @@ impl RenderOnce for FloatingSurface {
         let inset_y = (self.inset_y - border).max(Pixels::ZERO);
         let title_inset = self.inset_x.max(px(8.0)) - border;
         let titled = self.bordered && !(self.title.is_empty() && self.title_right.is_empty());
-        let glass = cx.theme().pane_glass_active();
+        let glass = cx.theme().glass_effect().is_some();
         div()
             .id(self.id)
             .relative()
@@ -380,13 +366,7 @@ impl RenderOnce for FloatingSurface {
             .overflow_hidden()
             .occlude()
             .rounded(cx.theme().radius)
-            .map(|surface| {
-                if glass {
-                    surface.surface_fill(self.background, cx)
-                } else {
-                    surface.bg(self.background)
-                }
-            })
+            .surface_fill(self.background, cx)
             .text_color(self.foreground)
             .shadow(shadows)
             .when(self.bordered, |surface| {
@@ -1079,12 +1059,7 @@ mod tests {
 
     #[test]
     fn inactive_opacity_one_disables_surface_dimming() {
-        let chrome = PaneChrome::new(
-            Corners::default(),
-            px(0.0),
-            zz_gpui::transparent_black(),
-            false,
-        );
+        let chrome = PaneChrome::new(Corners::default(), false);
 
         assert_eq!(chrome.dimmed(true, 1.0).inactive_opacity, 1.0);
         assert_eq!(chrome.dimmed(false, 0.0).inactive_opacity, 1.0);

@@ -1715,7 +1715,6 @@ impl SettingsView {
                 gaps,
                 margin: resolved.pane_margin.value,
                 radius: resolved.pane_corner_radius.value,
-                border_width: resolved.pane_border_width.value,
                 inactive_opacity: resolved.pane_inactive_opacity.value,
             },
 [Self::boolean_setting(
@@ -1732,15 +1731,7 @@ impl SettingsView {
                 resolved.pane_background_opacity,
                 &self.pane_background_opacity,
                 cx,
-            ),
-Self::boolean_setting(
-                ConfigKey::PaneGlass,
-                "Glass",
-                "Draw panes in the theme's glass. Needs pane gaps and a theme with glass.",
-                resolved.pane_glass,
-                cx,
-            )
-            .disabled(!gaps || cx.theme().glass_effect().is_none())],
+            )],
 [Self::numeric_setting(
                 ConfigKey::PaneInactiveOpacity,
                 "Inactive pane opacity",
@@ -1751,12 +1742,14 @@ Self::boolean_setting(
             ),
 Self::numeric_setting(
                 ConfigKey::PaneGlowStrength,
-                "Selected pane glow",
-                "Glow strength when a pane is selected (0–200%). Set to 0 to turn it off.",
+                "Selected pane edge",
+                "How brightly the selected pane's edge lights in the accent (0–200%). Set to 0 to \
+                 light it like the others. Applies only while pane gaps are enabled.",
                 resolved.pane_glow_strength,
                 &self.pane_glow_strength,
                 cx,
-            )],
+            )
+            .disabled(!gaps)],
 [Self::numeric_setting(
                             ConfigKey::PaneMargin,
                             "Pane margin",
@@ -1775,9 +1768,9 @@ Self::numeric_setting(
                         ).disabled(!gaps),
 Self::numeric_setting(
                             ConfigKey::PaneBorderWidth,
-                            "Pane border width",
-                            "Border width for gapped panes, in logical pixels (0–8). Set to 0 to \
-                             disable.",
+                            "Pane edge width",
+                            "Width of the bright line along each pane's glass edge, in logical \
+                             pixels (0–8). Set to 0 to turn it off.",
                             resolved.pane_border_width,
                             &self.pane_border_width,
                             cx,

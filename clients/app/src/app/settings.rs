@@ -152,7 +152,8 @@ impl Preferences {
         Theme::global_mut(cx).shadow_strength = self.shadow();
         Theme::global_mut(cx).pane_background_opacity = self.pane_background_opacity;
         Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
-        Theme::global_mut(cx).pane_glass = self.pane_glass && self.gaps;
+        Theme::global_mut(cx).pane_frames = self.gaps;
+        Theme::global_mut(cx).pane_edge_width = px(self.pane_border_width);
         let available_fonts = cx.text_system().all_font_names();
         let ui_font = if available_fonts
             .iter()
@@ -381,6 +382,7 @@ impl Controls {
                     Theme::global_mut(cx).pane_background_opacity =
                         this.preferences.pane_background_opacity;
                     Theme::global_mut(cx).pane_glow_strength = this.preferences.pane_glow_strength;
+                    Theme::global_mut(cx).pane_edge_width = px(this.preferences.pane_border_width);
                     cx.refresh_windows();
                     cx.notify();
                 },
@@ -706,38 +708,16 @@ impl AppShell {
                                     cx.notify();
                                 })),
                         );
-                let glass = SettingEntry::new(
-                    "Glass",
-                    "Draw panes in the theme's glass. Needs pane gaps and a theme with glass.",
-                )
-                .disabled(!self.preferences.gaps || cx.theme().glass_effect().is_none())
-                .title_actions(reset_button(
-                    "settings-pane-glass-reset",
-                    self.preferences.pane_glass != Preferences::default().pane_glass,
-                    |this, _, _| this.preferences.pane_glass = Preferences::default().pane_glass,
-                    cx,
-                ))
-                .control(
-                    Switch::new("settings-pane-glass")
-                        .checked(self.preferences.pane_glass)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.preferences.pane_glass = !this.preferences.pane_glass;
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                            cx.notify();
-                        })),
-                );
                 let agent = self.agent_panes_setting(cx);
                 return zz_ui::settings::panes_page(
                     zz_ui::settings::panes_preview::PanesPreview {
                         gaps: self.preferences.gaps,
                         margin: self.preferences.pane_margin,
                         radius: self.preferences.pane_radius,
-                        border_width: self.preferences.pane_border_width,
                         inactive_opacity: self.preferences.pane_inactive_opacity,
                     },
                     [gaps, agent],
-                    [background, glass],
+                    [background],
                     [inactive, glow],
                     [margin, radius, border],
                     cx,
@@ -1179,7 +1159,7 @@ impl AppShell {
             .disabled(
                 !matches!(
                     control,
-                    PaneControl::BackgroundOpacity | PaneControl::Opacity | PaneControl::Glow
+                    PaneControl::BackgroundOpacity | PaneControl::Opacity
                 ) && !self.preferences.gaps,
             )
             .title_actions(
@@ -1729,10 +1709,10 @@ impl PaneControl {
         match self {
             Self::BackgroundOpacity => "Pane background opacity",
             Self::Opacity => "Inactive pane opacity",
-            Self::Glow => "Selected pane glow",
+            Self::Glow => "Selected pane edge",
             Self::Margin => "Pane margin",
             Self::Radius => "Pane corner radius",
-            Self::Border => "Pane border width",
+            Self::Border => "Pane edge width",
         }
     }
 
@@ -1744,11 +1724,13 @@ impl PaneControl {
             Self::Opacity => {
                 "Visible strength of inactive pane content and chrome (0–1). Set to 1 to disable dimming."
             }
-            Self::Glow => "Glow strength from 0% to 200%. Set to 0 to turn it off.",
+            Self::Glow => {
+                "How brightly the selected pane's edge lights in the accent, from 0% to 200%. Set to 0 to light it like the others."
+            }
             Self::Margin => "Space around each pane, in logical pixels (0–32).",
             Self::Radius => "Rounds every pane corner, in logical pixels (0–32).",
             Self::Border => {
-                "Border width for gapped panes, in logical pixels (0–8). Set to 0 to disable."
+                "Width of the bright line along each pane's glass edge, in logical pixels (0–8). Set to 0 to turn it off."
             }
         }
     }
