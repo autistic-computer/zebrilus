@@ -1,18 +1,19 @@
 use zz_gpui::{
-    AnyView, App, AppContext as _, Context, Entity, IntoElement, Render, Styled as _, Window, div,
-    px,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
+    Render, Styled as _, Window, div, px,
 };
 use zz_ui::{
     WindowExt as _,
+    button::{Button, ButtonVariants as _},
     feedback::{
-        add_host_prompt_dialog, browser_clear_site_data_alert, import_configuration_file_alert,
-        ssh_confirm_prompt_dialog, ssh_offer_prompt_dialog, ssh_secret_prompt_dialog,
-        ssh_text_prompt_dialog,
+        add_host_prompt_dialog, alert_actions, browser_clear_site_data_alert,
+        import_configuration_file_alert, inline_alert, ssh_confirm_prompt_dialog,
+        ssh_offer_prompt_dialog, ssh_secret_prompt_dialog, ssh_text_prompt_dialog,
     },
     input::InputState,
 };
 
-use crate::story::{Section, Story};
+use crate::story::{Section, Story, stateless, states};
 
 pub const STORY: Story = Story {
     id: "feedback-dialogs",
@@ -142,8 +143,60 @@ pub const STORY: Story = Story {
                 })
             },
         },
+        Section {
+            id: "inline-alerts",
+            name: "Inline alerts",
+            summary: "inline_alert, the failure a pane shows in place instead of a modal: the alert dialog's layout on the popover surface, with the main action last on the right. The browser, editor and agent panes all use it.",
+            build: |_, cx| stateless(inline_alerts, cx),
+        },
     ],
 };
+
+fn inline_alerts(_: &mut Window, cx: &mut App) -> AnyElement {
+    let retry = |id: &'static str| Button::new(id).primary().label("Try again");
+    states()
+        .columns(2)
+        .state(
+            "browser: the page failed",
+            inline_alert(
+                Some("This page couldn’t load".into()),
+                "localhost:4321: net::ERR_CONNECTION_REFUSED",
+                cx,
+            )
+            .child(alert_actions(cx).child(retry("browser-retry"))),
+        )
+        .state(
+            "editor: a save failed",
+            inline_alert(
+                Some("Couldn’t save this file".into()),
+                "Permission denied (os error 13): /etc/hosts",
+                cx,
+            )
+            .child(alert_actions(cx).child(retry("editor-retry"))),
+        )
+        .state(
+            "agent: stopped, with sign-in",
+            inline_alert(
+                Some("The agent stopped".into()),
+                "Claude Code exited before the session started: authentication required (401).",
+                cx,
+            )
+            .child(
+                alert_actions(cx)
+                    .child(
+                        Button::new("agent-auth")
+                            .secondary()
+                            .label("Log in with Claude"),
+                    )
+                    .child(retry("agent-retry")),
+            ),
+        )
+        .state(
+            "agent: a request failed, no title",
+            inline_alert(None, "This agent does not accept images.", cx),
+        )
+        .into_any_element()
+}
 
 struct DialogHost;
 

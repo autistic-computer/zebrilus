@@ -15,12 +15,13 @@ use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_
 #[cfg(test)]
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 use zz_ui::agent::presentation::{
-    card_button, empty_state, error_actions, error_card, permission_card, permission_option,
-    rendered_error, spinner_phase, welcome_state,
+    card_button, empty_state, error_card, permission_card, permission_option, rendered_error,
+    spinner_phase, welcome_state,
 };
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
 use zz_ui::agent::title::{agent_thread_title_editor, agent_title_is_editing};
+use zz_ui::feedback::alert_actions;
 
 use chrono::{DateTime, Datelike as _, Local, NaiveDate, Timelike as _};
 use zz_client::agent_completion::{
@@ -1945,55 +1946,48 @@ impl AgentView {
             .or_else(|| self.submission_error.clone())?;
         let retry_controller = self.controller.clone();
         let pane = self.pane;
-        Some(error_card(&error, cx).when(
-            runtime_error.is_some() && state.connection == AgentConnectionState::Failed,
-            |this| {
-                let auth_buttons = state
-                    .auth_methods
-                    .iter()
-                    .enumerate()
-                    .map(|(index, method)| {
-                        let controller = self.controller.clone();
-                        let method_id = method.id.clone();
-                        card_button(
-                            Button::new(format!("agent-auth-{}-{index}", self.pane.0)).secondary(),
-                        )
-                        .label(method.name.clone())
-                        .tooltip(
-                            method
-                                .description
-                                .clone()
-                                .unwrap_or_else(|| "Authenticate with the agent".to_owned()),
-                        )
-                        .on_click(move |_, _, cx| {
-                            controller.update(cx, |controller, cx| {
-                                controller.authenticate(pane, method_id.clone(), cx);
-                            });
+        let stopped = runtime_error.is_some() && state.connection == AgentConnectionState::Failed;
+        Some(error_card(&error, stopped, cx).when(stopped, |this| {
+            let auth_buttons = state
+                .auth_methods
+                .iter()
+                .enumerate()
+                .map(|(index, method)| {
+                    let controller = self.controller.clone();
+                    let method_id = method.id.clone();
+                    card_button(
+                        Button::new(format!("agent-auth-{}-{index}", self.pane.0)).secondary(),
+                    )
+                    .label(method.name.clone())
+                    .tooltip(
+                        method
+                            .description
+                            .clone()
+                            .unwrap_or_else(|| "Authenticate with the agent".to_owned()),
+                    )
+                    .on_click(move |_, _, cx| {
+                        controller.update(cx, |controller, cx| {
+                            controller.authenticate(pane, method_id.clone(), cx);
+                        });
+                    })
+                });
+            this.child(
+                alert_actions(cx).children(auth_buttons).child(
+                    card_button(Button::new(format!("agent-retry-{}", self.pane.0)).primary())
+                        .label(if state.lifecycle_pending {
+                            "Restarting…"
+                        } else {
+                            "Try again"
                         })
-                    });
-                this.child(
-                    error_actions()
-                        .child(
-                            card_button(
-                                Button::new(format!("agent-retry-{}", self.pane.0)).primary(),
-                            )
-                            .icon(IconName::Redo2)
-                            .label(if state.lifecycle_pending {
-                                "Restarting…"
-                            } else {
-                                "Try again"
-                            })
-                            .disabled(state.lifecycle_pending)
-                            .on_click(move |_, _, cx| {
-                                retry_controller.update(cx, |controller, cx| {
-                                    controller.retry(pane, cx);
-                                });
-                            }),
-                        )
-                        .children(auth_buttons),
-                )
-            },
-        ))
+                        .disabled(state.lifecycle_pending)
+                        .on_click(move |_, _, cx| {
+                            retry_controller.update(cx, |controller, cx| {
+                                controller.retry(pane, cx);
+                            });
+                        }),
+                ),
+            )
+        }))
     }
 
     fn render_model_picker(

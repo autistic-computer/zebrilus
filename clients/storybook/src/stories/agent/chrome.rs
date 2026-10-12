@@ -14,12 +14,11 @@ use zz_ui::{
         composer::COMPOSER_OUTER_PADDING,
         controls::agent_provider_label,
         fold_timeline_rows,
-        presentation::{
-            card_button, empty_state, error_actions, error_card, spinner_phase, welcome_state,
-        },
+        presentation::{card_button, empty_state, error_card, spinner_phase, welcome_state},
         title::agent_thread_title_editor,
     },
     button::{Button, ButtonVariants as _},
+    feedback::alert_actions,
     h_flex,
     pane::{pane_drag_button, pane_header_icon_button},
     scroll::Scrollbar,
@@ -403,28 +402,24 @@ impl Render for EmptyStates {
                 "error card, failed to start, with Try again and sign-in",
                 error_card(
                     "Claude Code exited before the session started: authentication required (401). Sign in and try again.",
+                    true,
                     cx,
                 )
                 .child(
-                    error_actions()
-                        .child(
-                            card_button(Button::new("error-retry").primary())
-                                .icon(IconName::Redo2)
-                                .label("Try again"),
-                        )
+                    alert_actions(cx)
                         .child(
                             card_button(Button::new("error-auth").secondary())
                                 .label("Log in with Claude")
                                 .tooltip("Open the browser to sign in"),
-                        ),
+                        )
+                        .child(card_button(Button::new("error-retry").primary()).label("Try again")),
                 ),
             )
             .state(
                 "error card, restarting",
-                error_card("Codex exited with status 1.", cx).child(
-                    error_actions().child(
+                error_card("Codex exited with status 1.", true, cx).child(
+                    alert_actions(cx).child(
                         card_button(Button::new("error-restarting").primary())
-                            .icon(IconName::Redo2)
                             .label("Restarting…")
                             .disabled(true),
                     ),
@@ -432,11 +427,11 @@ impl Render for EmptyStates {
             )
             .state(
                 "error card, draft error",
-                error_card("Timed out applying agent settings.", cx),
+                error_card("Timed out applying agent settings.", false, cx),
             )
             .state(
                 "error card, long error",
-                error_card(&"thread 'tokio-runtime-worker' panicked at crates/zz-daemon/src/agent/host.rs:2873:13: the adapter closed stdout before answering session/new\nstack backtrace:\n   0: rust_begin_unwind\n   1: core::panicking::panic_fmt\n".repeat(3), cx),
+                error_card(&"thread 'tokio-runtime-worker' panicked at crates/zz-daemon/src/agent/host.rs:2873:13: the adapter closed stdout before answering session/new\nstack backtrace:\n   0: rust_begin_unwind\n   1: core::panicking::panic_fmt\n".repeat(3), true, cx),
             )
     }
 }

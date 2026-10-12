@@ -195,7 +195,7 @@ Kit widgets on the model:
 | Switch, slider | primary · solid when on, neutral soft when off |
 | tmux display-menu | a popover menu; neutral · ghost rows; literal tmux colours override |
 | Display-panes chip | popover surface; accent ring and ink when active |
-| Failed page (browser) | popover surface in the alert layout; primary · solid Try again |
+| A pane's failure (browser, editor, agent) | `inline_alert`: popover surface in the alert layout; primary · solid Try again last |
 
 # Where to look
 
@@ -216,7 +216,7 @@ Kit widgets on the model:
 
 One component family at a time, each checked in the storybook and in the app:
 
-1. **Agent cards** (done): `CardTile` paints tiles, keycaps and checks on its ground; `card_chip` is a `Badge`; Skip is neutral ghost and Submit primary solid. The retry and auth buttons in the zz and thin-client error cards wait for the button step.
+1. **Agent cards** (done): `CardTile` paints tiles, keycaps and checks on its ground; `card_chip` is a `Badge`; Skip is neutral ghost and Submit primary solid. The error card is an `inline_alert` with its retry and sign-in buttons right-aligned.
 2. **Fields** (done): `Input`, `NumberInput`, the `Select` trigger, `Switch` and `DiscreteSlider` draw from paints. The zz-ui fields that wrap a bare `Input` in their own chrome (the composer, the palette, the browser address bar, the agent title) still pick their colors and move with the clean-up.
 3. **Badges** (done): `Tag` is deleted. `Badge` carries the editor's vim mode, settings provenance, the palette's mode, host and command pills, chooser and picker chips and the command kind; the palette shortcut is a `Keycap`. The agent status pill, the trace count, the plan chip and the pane's status badge, drag chip and overlay lines paint from tones too. `Badge::opaque()` and `Paint::opaque()` fill over the window for anything floating over content. The compact bar pill, browser tab pill and queue chip are controls and move with buttons and rows.
 4. **Buttons** (done): the old variants, the `outline` flag and `ButtonCustomVariant` are deleted, and `.accent()` callers use `.primary()`. The neutral soft button paints opaque over the window so its resting shadow does not show through.

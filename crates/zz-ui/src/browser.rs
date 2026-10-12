@@ -5,12 +5,10 @@ use crate::{
     PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    h_flex,
+    feedback::{alert_actions, inline_alert},
     input::{Input, InputContentType, InputState},
     menu::{PopupMenu, PopupMenuItem},
-    overlay::{dialog_description, dialog_footer, dialog_title},
     tooltip::Tooltip,
-    v_flex,
 };
 use zz_gpui::{
     AnyElement, App, Context, Entity, Focusable as _, IntoElement, MouseButton, ParentElement as _,
@@ -1140,32 +1138,10 @@ impl BrowserErrorPanel {
 
 impl RenderOnce for BrowserErrorPanel {
     fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
-        v_flex()
+        inline_alert(Some("This page couldn’t load".into()), self.message, cx)
             .id("browser-error")
-            .w_full()
             .max_w(px(360.0))
-            .p(px(12.0))
-            .gap(px(12.0))
-            .popover_style(cx)
-            .child(
-                h_flex()
-                    .items_start()
-                    .gap_2()
-                    .child(
-                        Icon::new(IconName::TriangleAlert)
-                            .medium()
-                            .text_color(cx.theme().danger),
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_1()
-                            .child(dialog_title().child("This page couldn’t load"))
-                            .child(dialog_description(cx).child(self.message)),
-                    ),
-            )
-            .children(self.retry.map(|retry| dialog_footer(cx).child(retry)))
+            .children(self.retry.map(|retry| alert_actions(cx).child(retry)))
     }
 }
 
