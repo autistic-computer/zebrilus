@@ -529,7 +529,10 @@ impl PaneLane {
             }
             AgentStreamPayload::Activity { busy } => {
                 if *busy {
-                    self.external_turn = true;
+                    if !std::mem::replace(&mut self.external_turn, true) {
+                        self.reply_head.clear();
+                        self.turn_end = None;
+                    }
                 } else if std::mem::take(&mut self.external_turn) {
                     self.turn_end = Some(TurnEnd::Finished);
                 }
@@ -3063,6 +3066,13 @@ mod tests {
             AgentConnectionPhase::Ready,
             AgentStreamPayload::Activity { busy: false },
         );
+        for (phase, busy) in [
+            (AgentConnectionPhase::Running, true),
+            (AgentConnectionPhase::Running, true),
+            (AgentConnectionPhase::Ready, false),
+        ] {
+            accept_in(&fixture, phase, AgentStreamPayload::Activity { busy });
+        }
 
         assert_eq!(
             recorded_statuses(&fixture),
@@ -3077,6 +3087,8 @@ mod tests {
                 ),
                 (PaneStatusState::Working, None, String::new()),
                 (PaneStatusState::Done, None, "background".to_owned()),
+                (PaneStatusState::Working, None, String::new()),
+                (PaneStatusState::Done, None, String::new()),
             ]
         );
     }

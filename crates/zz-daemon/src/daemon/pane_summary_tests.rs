@@ -219,6 +219,57 @@ fn a_new_turn_drops_a_stale_unseen() {
 }
 
 #[test]
+fn opening_never_stamps_and_agent_panes_finish_only_on_done() {
+    let mut inner = ServerState::default();
+    let (_, _, terminal) = inner.engine.state.create_session("opens").expect("session");
+    let mut context = ExecutionContext::for_pane(&inner.engine.state, terminal).expect("context");
+    for command in [
+        CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
+        CommandInvocation::new("split-window", ["--kind", "picker"]),
+        CommandInvocation::new("select-pane-kind", ["agent"]),
+    ] {
+        inner
+            .engine
+            .execute(&mut context, &command)
+            .expect("agent setup");
+    }
+    let agent = context.pane.expect("agent pane");
+
+    for pane in [terminal, agent] {
+        assert!(apply_pane_status(
+            &mut inner,
+            pane,
+            Some(status(PaneStatusState::Idle, "")),
+            10
+        ));
+        assert_eq!(summary(&inner, pane), PaneSummary::default());
+        apply_pane_status(
+            &mut inner,
+            pane,
+            Some(status(PaneStatusState::Working, "")),
+            20,
+        );
+        apply_pane_status(
+            &mut inner,
+            pane,
+            Some(status(PaneStatusState::Idle, "partial")),
+            30,
+        );
+        assert_eq!(summary(&inner, pane).changed_at, 30);
+    }
+    assert!(summary(&inner, terminal).unseen);
+    assert!(!summary(&inner, agent).unseen);
+
+    apply_pane_status(
+        &mut inner,
+        agent,
+        Some(status(PaneStatusState::Done, "")),
+        40,
+    );
+    assert!(summary(&inner, agent).unseen);
+}
+
+#[test]
 fn agent_state_values_map_to_status_records() {
     let mapped = |value| agent_state_status(Some(value)).map(|status| (status.state, status.kind));
     assert_eq!(mapped("working"), Some((PaneStatusState::Working, None)));
@@ -527,6 +578,82 @@ fn shell_command_marks_reach_the_summary() {
 
 #[cfg(unix)]
 #[test]
+fn a_shell_mark_rides_the_title_publish_of_its_frame() {
+    let shared = Arc::new(Shared::new(1));
+    let terminal = Arc::new(TerminalSession::spawn(
+        64,
+        Arc::new(TerminalAppearance::default()),
+        zz_terminal::TerminalSpawn {
+            command: Some(vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                "printf '\\033]133;C\\007'; exec sleep 30".to_owned(),
+            ]),
+            ..zz_terminal::TerminalSpawn::default()
+        },
+    ));
+    let pane = {
+        let mut inner = shared.inner.lock();
+        let (_, _, pane) = inner
+            .engine
+            .state
+            .create_session("batched")
+            .expect("session");
+        inner.terminals_mut().insert(pane, Arc::clone(&terminal));
+        pane
+    };
+    let mailbox = OutboundMailbox::new();
+    shared.register_subscribed(ClientKind::Control, None, None, Arc::clone(&mailbox));
+    thread::sleep(Duration::from_millis(50));
+    super::super::tests::take_reliable_messages(&mailbox);
+    let watcher = Arc::new(Shared {
+        server: Arc::clone(&shared.server),
+        command_item: None,
+        owner: Some(Arc::clone(&shared)),
+        watcher_effects: Some(Mutex::new(Vec::new())),
+    });
+
+    wait_until("the command mark", || {
+        watcher.raise_shell_marks(pane, &terminal);
+        summary(&shared.inner.lock(), pane).command == Some(ShellCommand::Running)
+    });
+    watcher.synchronize_pane_title(pane, &terminal, "make", true);
+    let effects = watcher
+        .watcher_effects
+        .as_ref()
+        .expect("watcher context")
+        .lock()
+        .drain(..)
+        .collect::<Vec<_>>();
+    assert!(!effects.is_empty());
+    for effect in effects {
+        effect(&shared);
+    }
+
+    let published = super::super::tests::take_reliable_messages(&mailbox)
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::Snapshot(snapshot),
+                ..
+            }) => snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .find_map(|window| window.panes.get(&pane))
+                .map(|pane| (pane.summary.command, pane.title.clone())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        published,
+        [(Some(ShellCommand::Running), "make".to_owned())]
+    );
+    terminal.terminate();
+}
+
+#[cfg(unix)]
+#[test]
 fn program_status_reports_stamp_through_the_daemon() {
     let shared = Arc::new(Shared::new(1));
     let (pane, terminal) = quiet_pane(&shared, "osc-7501");
@@ -751,6 +878,10 @@ fn git_branch_reads_head_without_git() {
     fs::write(broken.join(".git"), "not a link\n").expect("broken file");
     assert_eq!(git_branch(&broken), None);
 
+    let reftable = scratch.path().join("reftable");
+    git_repo(&reftable, "ref: refs/heads/.invalid\n");
+    assert_eq!(git_branch(&reftable), None);
+
     let outside = scratch.path().join("outside");
     fs::create_dir_all(&outside).expect("plain dir");
     assert_eq!(git_branch(&outside), None);
@@ -821,20 +952,67 @@ fn location_jobs_coalesce_while_in_flight() {
         (summary.cwd, summary.branch)
     };
 
-    shared.inner.lock().location_jobs.insert(pane, false);
+    shared.inner.lock().locations.jobs.insert(pane, false);
     shared.synchronize_pane_reported_path(pane, &terminal, &report);
-    assert_eq!(shared.inner.lock().location_jobs.get(&pane), Some(&true));
+    assert_eq!(shared.inner.lock().locations.jobs.get(&pane), Some(&true));
     assert_eq!(location(), (String::new(), String::new()));
 
     shared.finish_pane_location(pane, "stale".to_owned(), "old".to_owned());
+    assert_ne!(location(), ("stale".to_owned(), "old".to_owned()));
     wait_until("the resubmitted location", || location() == expected);
-    assert!(shared.inner.lock().location_jobs.is_empty());
+    assert!(shared.inner.lock().locations.jobs.is_empty());
     assert_eq!(summary(&shared.inner.lock(), pane).changed_at, 0);
 
     fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
     shared.request_pane_location(pane);
     wait_until("the new branch", || location().1 == "next");
-    assert!(shared.inner.lock().location_jobs.is_empty());
+    assert!(shared.inner.lock().locations.jobs.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_stalled_location_leaves_the_helper_pool_free() {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let trap = scratch.path().join("trap");
+    fs::create_dir_all(trap.join(".git")).expect("git dir");
+    let head = trap.join(".git").join("HEAD");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&head)
+            .status()
+            .expect("mkfifo")
+            .success()
+    );
+    let plain = scratch.path().join("plain.txt");
+    fs::write(&plain, b"hello").expect("plain file");
+    let shared = Arc::new(Shared::new(1));
+    let start = trap.display().to_string();
+    for name in ["stall-a", "stall-b"] {
+        run(
+            &shared,
+            &["new-session", "-d", "-s", name, "-c", &start, "exec cat"],
+        );
+    }
+
+    let reader = Arc::clone(&shared);
+    let read = thread::spawn(move || reader.helpers.read(&plain));
+    wait_until("an unrelated helper read", || read.is_finished());
+    assert_eq!(read.join().expect("reader").expect("read"), b"hello");
+    assert!(!shared.inner.lock().locations.jobs.is_empty());
+
+    wait_until("the stalled locations", || {
+        if let Ok(writer) = fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&head)
+        {
+            drop(writer);
+        }
+        shared.inner.lock().locations.jobs.is_empty()
+    });
+    shared.request_shutdown();
 }
 
 #[cfg(all(unix, feature = "agent"))]

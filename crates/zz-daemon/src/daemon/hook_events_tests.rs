@@ -145,6 +145,7 @@ fn read_only_commands_leave_the_structure_and_its_hooks_alone() {
         .expect("set-hook");
     }
     shared.inner.lock().message_log.clear();
+    shared.settle_pane_locations();
     let generation = shared.inner.lock().engine.state.generation();
     for command in [
         &["list-panes", "-a", "-F", "#{pane_id} #{pane_active}"][..],

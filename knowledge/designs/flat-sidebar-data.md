@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-12T12:00:00-03:00
+timestamp: 2026-10-12T18:00:00-03:00
 ---
 
 # Overview
@@ -60,9 +60,10 @@ connected goes uncorrected until the next reconnect.
 JSON blobs and republishes on config, mode and task edges; the status record is bounded and changes
 only on phase, permission and turn-end edges.
 
-**Location never stats under the lock.** cwd and branch are resolved on the daemon's helper pool,
-one job per pane in flight, and the branch is read from `.git` and `HEAD` directly instead of
-running git or adding a dependency.
+**Location never stats under the lock or on the helper pool.** cwd and branch are resolved on a
+location thread of its own that starts when a job arrives and exits when its queue is empty, one
+job per pane in flight. The branch is read from `.git` and `HEAD` directly instead of running git or
+adding a dependency.
 
 # The view model
 
@@ -76,13 +77,13 @@ Working, then `unseen` is Done, then the bell. A window takes the most urgent of
 the highest attention among NeedsYou, Failed, Done and Working; ties go to the active pane, then the
 newer `changed_at`, then layout order. With none, the active pane. A bell never takes line 2.
 
-**Title (line 1)**, first that applies:
+**Title (line 1)** describes the title pane: the headline when it is agent-like (Agent kind, a
+status record, or a `@name`), else the active pane. First that applies:
 
-1. The first agent-like pane (Agent kind, a status record, or a `@name`) of the headline and the
-   active pane, in that order: its own title when it is an Agent pane and the title is not the
-   default `agent`, else its status title, else its `@name`.
+1. The title pane's own title when it is an Agent pane and the title is not the default `agent`,
+   else its status title, else its `@name`.
 2. The window name when the user renamed it (`automatic_rename` off).
-3. `navigation::pane_label` of the active pane: the program title, the page title, or "New session".
+3. `navigation::pane_label` of the title pane: the program title, the page title, or "New session".
 4. The window name.
 
 An agent's title or `@name` beats an explicit rename, and an explicit rename beats program titles.
@@ -111,9 +112,17 @@ nothing while `changed_at` is 0. **Tiles** put the active pane first, then layou
   session ends Idle.
 - New panes did not get a location: the spawn path records the live path itself, so the first
   runtime check sees no change. Terminal spawns and Agent pane opens now start a location job.
-- The location job applies its result from the helper thread through a weak handle on the server,
-  instead of going back through the helper result queue, because a test build drains that queue on a
+- Location jobs first ran on the two-worker helper pool. Two panes on a hung mount then blocked
+  both workers, and source reads, terminfo warmup, path listings, history and the Claude peer scan
+  queued behind them, so they moved to their own thread. It applies results through a weak handle
+  on the server, not the helper result queue, because a test build drains that queue on a
   connection thread and the job would otherwise hold one.
+- Review fixes: line 1 names the headline's pane, not the active one, when an agent-like headline
+  has no title of its own; a first `Idle` record does not stamp an opening Agent pane; an Agent
+  pane's `Working` to `Idle` (a cancelled turn) raises no `unseen`; an agent-started turn drops the
+  previous turn's reply; a shell mark publishes with the title change of the same output frame
+  instead of on its own; a location job that is triggered again drops its stale result; a reftable
+  `HEAD` shows no branch; and line 2 splits Windows paths on `\`.
 - `.git` is followed through symlinks, since tools such as Android's `repo` link it.
 - `kill-session -C` also clears `unseen`, and `TreeOp::UpsertPane` boxes its pane (the summary made
   the variant large; the wire bytes are unchanged).
@@ -134,9 +143,8 @@ nothing while `changed_at` is 0. **Tiles** put the active pane first, then layou
 - A daemon restart clears `unseen` and `changed_at`, like the bell.
 - OSC 7 from a nested ssh shell names a path on another machine; the daemon only accepts a
   directory that exists locally, so the worst case is a wrong but harmless branch.
-- A stat that blocks on a network mount holds one of the two helper workers until it returns.
-- On a Windows daemon the folded cwd uses backslashes, which the view model's last-component split
-  does not handle yet.
+- A stat that blocks on a network mount holds the location thread until it returns, so no pane's
+  cwd or branch updates in the meantime.
 
 # Related
 

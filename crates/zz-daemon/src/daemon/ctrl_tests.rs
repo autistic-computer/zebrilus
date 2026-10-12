@@ -2828,6 +2828,7 @@ fn personalized_view_materializes_the_existing_stamped_tree() {
             .expect("attach");
         clients.push((client, mailbox));
     }
+    shared.settle_pane_locations();
     for (client, _) in &clients {
         let messages = shared.compact_tree_messages(*client, true);
         let mut raw = messages

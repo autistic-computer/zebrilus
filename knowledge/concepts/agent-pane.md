@@ -4,7 +4,7 @@ title: Native Agent pane
 description: The daemon-addressable Agent pane, its daemon-owned ACP v1 runtime, flat transcript, approvals, session controls, restore metadata, and the status record every client sees in the tree.
 resource: crates/zz/src/agent/controller.rs
 tags: [agent, gpui, markdown, mermaid, acp, pane, sessions, persistence, keyboard]
-timestamp: 2026-10-12T15:00:00Z
+timestamp: 2026-10-12T21:00:00Z
 ---
 
 # Overview
@@ -1016,13 +1016,16 @@ carries the agent's, and `progress` is unset. Messages trim leading markdown mar
 whitespace and stop at 240 bytes on a char boundary. The fanout publishes a status only when it
 differs from the last one, and reply chunks only reach it once the phase is `Ready`, so a streaming
 turn costs two tree updates (`Working`, then `Done`), not one per chunk. A reset or restored
-session clears the turn record, so it ends `Idle` instead of raising `Done` again.
+session clears the turn record, so it ends `Idle` instead of raising `Done` again, and an
+agent-started turn clears the reply head, so it never ends on the previous turn's answer.
 
 On the daemon side the record goes through the same edge rule as every other source: a change of
 state or kind stamps `summary.changed_at`, a finish nobody is watching sets `summary.unseen`, and a
-new turn clears it. A status edge out of `Working`, or any status while the pane has no resolved
-location yet, also re-reads the pane's directory and branch from `AgentDescriptor.cwd` into
-`summary.cwd` and `summary.branch`, since a turn may have switched branches.
+new turn clears it. Only `Done` counts as a finish here, so a cancelled turn's `Idle` raises no
+dot, and the first `Idle` of an opening or restored pane does not date it. A status edge out of
+`Working`, or any status while the pane has no resolved location yet, also re-reads the pane's
+directory and branch from `AgentDescriptor.cwd` into `summary.cwd` and `summary.branch`, since a
+turn may have switched branches.
 
 # Persistence boundary
 

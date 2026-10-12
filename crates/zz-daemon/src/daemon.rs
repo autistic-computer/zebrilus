@@ -30518,7 +30518,13 @@ impl Shared {
             (events, summary_changed, finished)
         };
         if summary_changed {
-            self.request_publish(timers::PublishReason::Tree);
+            if let Some(effects) = &self.watcher_effects {
+                effects
+                    .lock()
+                    .push(Box::new(Shared::publish_unpublished_tree));
+            } else {
+                self.request_publish(timers::PublishReason::Tree);
+            }
         }
         if finished {
             self.request_pane_location(pane);
@@ -35476,7 +35482,7 @@ struct ServerState {
     pane_read_observations: BTreeMap<PaneId, Weak<terminal_reads::Observation>>,
     control_activity_pending: BTreeSet<PaneId>,
     program_status_panes: BTreeSet<PaneId>,
-    location_jobs: BTreeMap<PaneId, bool>,
+    locations: pane_summary::Locations,
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
