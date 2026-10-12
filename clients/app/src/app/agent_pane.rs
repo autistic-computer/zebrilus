@@ -45,8 +45,7 @@ use zz_ui::{
         },
         fold_timeline_rows,
         presentation::{
-            card_button, empty_state, error_actions, error_card, permission_card,
-            permission_option, welcome_state,
+            card_button, empty_state, error_card, permission_card, permission_option, welcome_state,
         },
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
@@ -54,6 +53,7 @@ use zz_ui::{
         tool_output_text,
     },
     button::{Button, ButtonVariants as _},
+    feedback::alert_actions,
     input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
     pane::{PaneDrag, pane_drag_button, pane_header_icon_button},
     scroll::{ScrollableElement as _, Scrollbar},
@@ -2422,28 +2422,21 @@ impl AgentPane {
                 )
             });
         Some(
-            error_card(error, cx)
+            error_card(error, failed, cx)
                 .when(failed, |card| {
                     card.child(
-                        error_actions()
-                            .child(
-                                card_button(
-                                    Button::new(("web-agent-retry", self.pane.0)).primary(),
-                                )
-                                .icon(IconName::Redo2)
+                        alert_actions(cx).children(auth).child(
+                            card_button(Button::new(("web-agent-retry", self.pane.0)).primary())
                                 .label(if self.lifecycle_pending {
                                     "Restarting…"
                                 } else {
                                     "Try again"
                                 })
                                 .disabled(!writable || self.lifecycle_pending)
-                                .on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.lifecycle_command(None, cx);
-                                    },
-                                )),
-                            )
-                            .children(auth),
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.lifecycle_command(None, cx);
+                                })),
+                        ),
                     )
                 })
                 .into_any_element(),

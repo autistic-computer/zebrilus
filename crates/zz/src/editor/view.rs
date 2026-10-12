@@ -12,11 +12,11 @@ use zz_gpui::{
 };
 use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, IconName, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
-    h_flex, v_flex,
+    feedback::{alert_actions, inline_alert},
 };
 
 use crate::{
@@ -458,6 +458,10 @@ impl EditorView {
 
     fn render_error(&self, error: EditorError, cx: &Context<Self>) -> impl IntoElement {
         let view = cx.entity();
+        let title = match error.retry {
+            Retry::Open(_) => "Couldn’t open this file",
+            Retry::Save(_) => "Couldn’t save this file",
+        };
         let retry = error.retry;
         div()
             .absolute()
@@ -465,25 +469,15 @@ impl EditorView {
             .flex()
             .items_center()
             .justify_center()
-            .p_4()
+            .px(px(12.0))
             .bg(cx.theme().background.opaque())
             .child(
-                v_flex()
-                    .w_full()
-                    .max_w(px(440.0))
-                    .gap_3()
-                    .rounded(cx.theme().radius)
-                    .border_1()
-                    .border_color(cx.theme().paint(Tone::Danger, Emphasis::Outline).border)
-                    .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
-                    .p_4()
-                    .text_size(zz_ui::rems_from_px(12.0))
-                    .child(error.message.to_string())
+                inline_alert(Some(title.into()), error.message.to_string(), cx)
+                    .max_w(px(360.0))
                     .child(
-                        h_flex().child(
+                        alert_actions(cx).child(
                             Button::new(format!("editor-retry-{}", self.pane.0))
                                 .primary()
-                                .icon(IconName::Redo2)
                                 .label("Try again")
                                 .on_click(move |_, window, cx| {
                                     view.update(cx, |view, cx| {

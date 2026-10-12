@@ -7,8 +7,8 @@ use zz_gpui::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractivePaintExt as _,
-    Paint, PaintState, StyledExt as _, Tone, badge::Badge, button::Button, h_flex, kbd::Keycap,
-    pulse::pulse_phase, v_flex,
+    Paint, PaintState, StyledExt as _, Tone, badge::Badge, button::Button, feedback::inline_alert,
+    h_flex, kbd::Keycap, pulse::pulse_phase, v_flex,
 };
 
 pub use zz_client::agent_config::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -44,32 +44,12 @@ pub fn welcome_state(cx: &App) -> Div {
         )
 }
 
-pub fn error_card(error: &str, cx: &App) -> Div {
-    v_flex()
-        .w_full()
-        .gap(px(CARD_GAP))
-        .popover_style(cx)
-        .p(px(CARD_GUTTER))
-        .child(
-            h_flex()
-                .w_full()
-                .items_start()
-                .gap(px(CARD_GAP))
-                .text_size(crate::rems_from_px(12.0))
-                .line_height(px(CARD_LINE))
-                .child(card_glyph(
-                    Icon::new(IconName::CircleX).text_color(cx.theme().danger),
-                    CARD_LINE,
-                ))
-                .child(div().min_w_0().flex_1().child(rendered_error(error))),
-        )
-}
-
-pub fn error_actions() -> Div {
-    h_flex()
-        .flex_wrap()
-        .gap(px(CARD_GAP))
-        .pl(px(CARD_GLYPH + CARD_GAP))
+pub fn error_card(error: &str, stopped: bool, cx: &App) -> Div {
+    inline_alert(
+        stopped.then(|| "The agent stopped".into()),
+        rendered_error(error),
+        cx,
+    )
 }
 
 pub fn spinner_phase(view: EntityId, cx: &mut App) -> f32 {
@@ -170,7 +150,6 @@ pub fn card_button(button: Button) -> Button {
 pub(crate) const CARD_GUTTER: f32 = 12.0;
 pub(crate) const CARD_GAP: f32 = 8.0;
 pub(crate) const CARD_GLYPH: f32 = 14.0;
-pub(crate) const CARD_LINE: f32 = 16.0;
 pub(crate) const CARD_TITLE_LINE: f32 = 18.0;
 pub(crate) const CARD_OPTICAL_DROP: f32 = 0.5;
 const CARD_TITLE_TOP: f32 = 8.0;

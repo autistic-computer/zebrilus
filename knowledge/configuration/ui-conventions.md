@@ -205,9 +205,11 @@ look's own surface and selection; only literal colours from the options or `-s`,
 (last field wins) tint the surface, the outline and separators, or the highlight. The tmux
 `display-panes` indicator is one popover chip per pane with the key to press, the pane's
 `display-panes-format` line as a muted caption, and a 2px accent ring on the active pane (or
-`display-panes-active-colour` when it differs from zz's default). A browser page that fails to
-load shows an inline alert on the popover surface: the dialog's icon, title and description layout
-with a Medium Try again on the right.
+`display-panes-active-colour` when it differs from zz's default). A pane that fails in place (a browser page that will not load, an
+editor file that will not open or save, an agent that stopped) shows `zz_ui::feedback::inline_alert`:
+the alert dialog's layout on the popover surface, a 14px danger icon, a 13px title when there is one,
+the message, and `alert_actions` below with label-only Medium buttons and the main action last on
+the right.
 Settings rows use 13px labels, so a Medium field's value matches them. The shared dialog surface
 is similarly compact: 400px default width, 12px gutters, 13px title, 12px description, and Medium
 action buttons. Explicitly sized content dialogs such as the attachment

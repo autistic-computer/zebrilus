@@ -287,7 +287,7 @@ impl Render for Composers {
                     Some(0),
                     cx,
                 )],
-                Prefix::Error(error) => vec![error_card(error, cx).into_any_element()],
+                Prefix::Error(error) => vec![error_card(error, false, cx).into_any_element()],
             };
             let element = composer(
                 Draft {

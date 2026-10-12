@@ -2,14 +2,69 @@ use crate::{
     ActiveTheme as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
     button::ButtonVariant,
     dialog::{AlertDialog, Dialog, DialogButtonProps},
+    h_flex,
     input::{Input, InputContentType, InputState},
-    overlay::dialog_description,
+    overlay::{dialog_description, dialog_footer, dialog_title},
     rems_from_px, v_flex,
 };
 use zz_gpui::{
     App, Div, Entity, ParentElement as _, SharedString, Styled as _, div,
-    prelude::FluentBuilder as _,
+    prelude::FluentBuilder as _, px,
 };
+
+const ALERT_LINE: f32 = 16.0;
+const ALERT_OPTICAL_DROP: f32 = 0.5;
+
+/// A failure shown in place, in the alert dialog's layout on the popover
+/// surface: a danger icon, an optional title, the message, and
+/// [`alert_actions`] below when the failure can be acted on.
+pub fn inline_alert(
+    title: Option<SharedString>,
+    message: impl Into<SharedString>,
+    cx: &App,
+) -> Div {
+    let titled = title.is_some();
+    v_flex()
+        .w_full()
+        .p(px(12.0))
+        .gap(px(12.0))
+        .popover_style(cx)
+        .child(
+            h_flex()
+                .w_full()
+                .items_start()
+                .gap_2()
+                .child(
+                    h_flex().flex_none().h(px(ALERT_LINE)).child(
+                        Icon::new(IconName::TriangleAlert)
+                            .medium()
+                            .text_color(cx.theme().danger)
+                            .relative()
+                            .top(px(ALERT_OPTICAL_DROP)),
+                    ),
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_1()
+                        .when_some(title, |column, title| {
+                            column.child(dialog_title().line_height(px(ALERT_LINE)).child(title))
+                        })
+                        .child(
+                            dialog_description(cx)
+                                .line_height(px(ALERT_LINE))
+                                .when(!titled, |message| message.text_color(cx.theme().foreground))
+                                .child(message.into()),
+                        ),
+                ),
+        )
+}
+
+/// The buttons under an [`inline_alert`], right-aligned with the main action last.
+pub fn alert_actions(cx: &App) -> Div {
+    dialog_footer(cx).flex_wrap()
+}
 
 #[cfg(target_os = "ios")]
 const ADD_HOST_DESCRIPTION: &str = "Connects over SSH with this device's built-in key.";
