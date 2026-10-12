@@ -259,10 +259,10 @@ restating it.
    inside the tile.
 3. **Closer inside a group than between groups.** Tiles are 6px apart, a title is 10px above its
    first tile, and separate groups (another question, the footer) sit 12px or a divider away.
-4. **Concentric corners.** A shape inside a rounded surface needs an inset of at least the outer
-   radius minus its own radius to share the corner's centre. Tiles are inset by the gutter, so
-   their radius is the theme radius minus 12 (never below 6, or square when the theme is square);
-   the 28px (`Small`) footer pills fit a 24px corner at the 12px gutter.
+4. **Tiles are controls.** A tile takes the theme's control radius (`Theme::control_radius`), the
+   same corner as the buttons and fields beside it, so every clickable thing in a card reads as
+   one family. The 12px gutter is deeper than any built-in theme's card radius, so a concentric
+   inner corner would round to square and fall to an arbitrary floor instead.
 
 Options are tiles (`CardTile`): neutral soft paints, danger soft for a destructive choice, that
 brighten on hover and take the look's selection fill when picked (see
