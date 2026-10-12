@@ -1,21 +1,21 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use zz_gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, Focusable as _, IntoElement, Subscription,
-    TextInputMode, Window, canvas, div, prelude::*, px,
+    AnyElement, App, Context, Entity, FocusHandle, Focusable as _, IntoElement, SharedString,
+    Subscription, TextInputMode, Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, IconName, StyledExt as _, Theme, ThemeMode, Tone,
-    UiZoom,
-    button::Button,
+    ActiveTheme as _, Colorize as _, Emphasis, IconName, Sizable as _, StyledExt as _, Theme,
+    ThemeMode, Tone, UiZoom,
+    button::{Button, ButtonVariants as _},
     input::{InputEvent, InputState, NumberInput},
     interface_theme::{self, ThemeModeSetting},
     select::{Select, SelectEvent, SelectState},
     settings::{
         SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack, StackPosition,
         appearance::{
-            AppearancePageItem, appearance_page, appearance_page_items, interface_theme_preview,
-            picker_tile, theme_preview, ui_font_select,
+            AppearancePageItem, PickerStrip, appearance_page, appearance_page_items,
+            interface_theme_preview, picker_tile, theme_preview, ui_font_select,
         },
         settings_card_ground, settings_list_disclosure_header, settings_reset_button,
         settings_scroll_column,
@@ -155,11 +155,12 @@ impl Preferences {
         Theme::global_mut(cx).pane_frames = self.gaps;
         Theme::global_mut(cx).pane_edge_width = px(self.pane_border_width);
         let available_fonts = cx.text_system().all_font_names();
+        let wanted_font = self.shown_ui_font();
         let ui_font = if available_fonts
             .iter()
-            .any(|family| family.eq_ignore_ascii_case(&self.ui_font_family))
+            .any(|family| family.eq_ignore_ascii_case(wanted_font))
         {
-            self.ui_font_family.clone()
+            wanted_font.to_owned()
         } else if cfg!(any(target_family = "wasm", target_os = "ios")) {
             "Inter Variable".to_owned()
         } else {
@@ -389,7 +390,7 @@ impl Controls {
             ));
             input
         });
-        let ui_font = ui_font_select(Some(&preferences.ui_font_family), window, cx);
+        let ui_font = ui_font_select(Some(preferences.shown_ui_font()), window, cx);
         let mut families = cx.text_system().all_font_names();
         families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
         families.sort_by_cached_key(|family| family.to_lowercase());
@@ -478,8 +479,8 @@ impl Controls {
         }
     }
 
-    /// Shows the radius and shadow the preferences resolve to, after a style
-    /// change or a reset.
+    /// Shows the radius, shadow and UI font the preferences resolve to, after
+    /// a theme change or a reset.
     fn sync_theme_inputs(&self, preferences: &Preferences, window: &mut Window, cx: &mut App) {
         let radius = format!("{:.0}", preferences.widget_corner_radius());
         self.radius
@@ -487,10 +488,55 @@ impl Controls {
         let shadow = number_text(preferences.shadow() * 100.0);
         self.shadow_strength
             .update(cx, |input, cx| input.set_value(shadow, window, cx));
+        let font = preferences.shown_ui_font().to_owned();
+        self.ui_font.update(cx, |select, cx| {
+            select.set_selected_value(&font, window, cx);
+        });
     }
 }
 
 impl AppShell {
+    fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_controls
+            .sync_theme_inputs(&self.preferences, window, cx);
+        self.preferences.save();
+        self.preferences.apply(&self.connection, window, cx);
+    }
+
+    fn theme_saved(
+        &mut self,
+        saved: Result<String, String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use zz_ui::{WindowExt as _, notification::Notification};
+        let notification = match saved {
+            Ok(id) => {
+                self.theme_changed(window, cx);
+                Notification::success(format!("Saved the theme as {id}"))
+            }
+            Err(error) => Notification::error(error),
+        };
+        window.push_notification(notification, cx);
+    }
+
+    fn import_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let clipboard = cx.read_from_clipboard_async();
+        cx.spawn_in(window, async move |this, cx| {
+            let clipboard = clipboard.await;
+            this.update_in(cx, |this, window, cx| {
+                let saved = match clipboard {
+                    Ok(item) => this
+                        .preferences
+                        .import_theme(&item.and_then(|item| item.text()).unwrap_or_default()),
+                    Err(error) => Err(format!("Could not read the clipboard: {error}.")),
+                };
+                this.theme_saved(saved, window, cx);
+            })
+        })
+        .detach();
+    }
+
     pub(super) fn sync_zoom_input(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_controls.zoom.update(cx, |input, cx| {
             input.set_value(format!("{:.0}", self.preferences.zoom * 100.0), window, cx);
@@ -966,11 +1012,11 @@ impl AppShell {
                         "settings-ui-font-reset",
                         self.preferences.ui_font_family != Preferences::default().ui_font_family,
                         |this, window, cx| {
-                            let family = Preferences::default().ui_font_family;
+                            this.preferences.ui_font_family = Preferences::default().ui_font_family;
+                            let family = this.preferences.shown_ui_font().to_owned();
                             this.settings_controls.ui_font.update(cx, |select, cx| {
                                 select.set_selected_value(&family, window, cx);
                             });
-                            this.preferences.ui_font_family = family;
                         },
                         cx,
                     ))
@@ -1039,49 +1085,111 @@ impl AppShell {
             AppearancePageItem::InterfaceTheme => {
                 let selected = self.preferences.theme_id().to_owned();
                 let mode = cx.theme().mode;
-                let tiles = div().flex().flex_none().flex_wrap().gap(px(8.0)).children(
-                    interface_theme::builtin_themes().iter().map(|(id, theme)| {
-                        let id = *id;
-                        picker_tile(
-                            format!("settings-theme-{id}").into(),
-                            theme.name.clone(),
-                            interface_theme_preview(theme, mode, cx),
-                            id == selected,
-                            cx,
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.preferences.set_interface_theme(id);
-                                this.settings_controls.sync_theme_inputs(
-                                    &this.preferences,
-                                    window,
-                                    cx,
-                                );
-                                this.preferences.save();
-                                this.preferences.apply(&this.connection, window, cx);
-                            },
-                        ))
-                    }),
-                );
-                with_control(
-                    SettingEntry::new(
-                        "Interface theme",
-                        "The look of the whole interface and its colors in light and dark.",
+                let choices = interface_theme::builtin_themes()
+                    .iter()
+                    .map(|(id, theme)| (SharedString::from(*id), theme))
+                    .chain(
+                        self.preferences
+                            .themes
+                            .iter()
+                            .map(|(id, theme)| (SharedString::from(id.clone()), theme)),
                     )
-                    .title_actions(reset_button(
-                        "settings-interface-theme-reset",
-                        selected != interface_theme::DEFAULT_THEME,
-                        |this, window, cx| {
-                            this.preferences
-                                .set_interface_theme(interface_theme::DEFAULT_THEME);
-                            this.settings_controls
-                                .sync_theme_inputs(&this.preferences, window, cx);
+                    .collect::<Vec<_>>();
+                let index = choices
+                    .iter()
+                    .position(|(id, _)| *id == selected)
+                    .unwrap_or(0);
+                let ids = choices.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+                let view = cx.entity().downgrade();
+                let strip = PickerStrip::new("settings-interface-theme", index)
+                    .tiles(choices.iter().map(|(id, theme)| {
+                        let label = if theme.name.is_empty() {
+                            id.clone()
+                        } else {
+                            SharedString::from(theme.name.clone())
+                        };
+                        (label, interface_theme_preview(theme, mode, cx))
+                    }))
+                    .on_select(move |index, window, cx| {
+                        let id = ids[index].clone();
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.set_interface_theme(&id);
+                            this.theme_changed(window, cx);
+                        });
+                    });
+                let actions = div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(4.0))
+                    .child(
+                        Button::new("settings-interface-theme-duplicate")
+                            .ghost()
+                            .small()
+                            .label("Duplicate")
+                            .tooltip("Save a copy of this theme and use it")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                let saved = this.preferences.duplicate_theme();
+                                this.theme_saved(saved, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("settings-interface-theme-import")
+                            .ghost()
+                            .small()
+                            .label("Import")
+                            .tooltip("Save the theme on the clipboard and use it")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.import_theme(window, cx);
+                            })),
+                    )
+                    .when(
+                        self.preferences.saved_theme(&selected).is_some(),
+                        |actions| {
+                            actions.child(
+                                Button::new("settings-interface-theme-delete")
+                                    .ghost()
+                                    .small()
+                                    .label("Delete")
+                                    .tooltip("Delete this saved theme and use the default one")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        let id = this.preferences.theme_id().to_owned();
+                                        this.preferences.delete_theme(&id);
+                                        this.theme_changed(window, cx);
+                                    })),
+                            )
                         },
-                        cx,
-                    )),
-                    tiles,
-                    narrow,
-                )
+                    );
+                let reset = reset_button(
+                    "settings-interface-theme-reset",
+                    selected != interface_theme::DEFAULT_THEME,
+                    |this, window, cx| {
+                        this.preferences
+                            .set_interface_theme(interface_theme::DEFAULT_THEME);
+                        this.settings_controls
+                            .sync_theme_inputs(&this.preferences, window, cx);
+                    },
+                    cx,
+                );
+                let entry = SettingEntry::new(
+                    "Interface theme",
+                    "The look of the whole interface and its colors in light and dark. Duplicate saves a copy on this device; Import adds one from the clipboard.",
+                );
+                if narrow {
+                    entry.title_actions(reset).child(strip).child(actions)
+                } else {
+                    entry
+                        .title_actions(
+                            div()
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .gap(px(8.0))
+                                .child(reset)
+                                .child(actions),
+                        )
+                        .child(strip)
+                }
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
@@ -1819,5 +1927,34 @@ mod tests {
         assert_eq!(cursor.style(), appearance.cursor_style);
         assert_eq!(cursor.color(), appearance.cursor_color);
         assert!(cursor.column() < viewport.columns && cursor.row() < viewport.rows);
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[zz_gpui::test]
+    fn apply_draws_a_saved_theme_in_its_colors_and_look(cx: &mut zz_gpui::TestAppContext) {
+        use zz_gpui::{AppContext as _, px};
+        use zz_ui::{ActiveTheme as _, ThemeMode};
+
+        cx.update(zz_ui::init);
+        let mut preferences = Preferences {
+            mode: Some("dark".into()),
+            ..Preferences::default()
+        };
+        preferences
+            .import_theme(
+                r##"{"name":"Neon","look":{"radius":3,"shadow":0.25,"outline":0.4},"dark":{"accent":"#ff00ff"}}"##,
+            )
+            .unwrap();
+        let expected = preferences.interface_theme().colors(ThemeMode::Dark).accent;
+        cx.add_empty_window().update(|window, cx| {
+            let connection = cx.new(crate::connection::Connection::new);
+            preferences.apply(&connection, window, cx);
+            let theme = cx.theme();
+            assert_eq!(theme.mode, ThemeMode::Dark);
+            assert_eq!(theme.accent, expected);
+            assert_eq!(theme.radius, px(3.0));
+            assert_eq!(theme.shadow_strength, 0.25);
+            assert_eq!(theme.outline, 0.4);
+        });
     }
 }

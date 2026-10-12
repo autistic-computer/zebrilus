@@ -202,6 +202,18 @@ impl InterfaceTheme {
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_default()
     }
+
+    /// Names a theme saved as `id` after it when it has no name of its own
+    /// or a built-in's, so Settings never shows two tiles called Default.
+    pub fn name_after(&mut self, id: &str) {
+        if self.name.trim().is_empty()
+            || builtin_themes()
+                .iter()
+                .any(|(_, builtin)| builtin.name == self.name)
+        {
+            id.clone_into(&mut self.name);
+        }
+    }
 }
 
 /// Reads a theme file. Missing keys keep [`Look::default`] and the built-in

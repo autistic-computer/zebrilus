@@ -250,7 +250,9 @@ shadow strength and an explicit UI font into its look first, so nothing on scree
 duplicated or imported theme whose name is empty or a built-in's is saved under its file name
 (`theme-N`), so Settings never shows two tiles called Default. Import reads a theme from the clipboard (the storybook's
 theme creator copies one with Copy JSON), saves it the same way and selects it. Thin clients (web,
-iOS) offer the built-in themes only.
+iOS) never read this folder: they keep their own saved themes in their preferences, with the same
+Duplicate and Import (Import uses the browser's async clipboard read on web) and a Delete for the
+selected saved theme.
 
 Chrome colors come from the theme alone, never from the terminal's palette: there is no key that
 makes application chrome follow terminal colors.

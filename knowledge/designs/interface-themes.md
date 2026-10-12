@@ -10,7 +10,7 @@ tags:
 - design-system
 - configuration
 - design-plan
-timestamp: 2026-10-11T00:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # Why
@@ -55,17 +55,19 @@ They imitate an app's feel, not its pixels. A test holds every built-in to contr
 | Built-in ids for config validation | `zz_client::appearance::BUILTIN_THEMES` |
 | `interface-theme` key, `themes/` folder, writer, retired keys | `crates/zz-config/src/lib.rs`, `crates/zz-config/src/themes.rs` |
 | Desktop: load, apply, Settings tiles, Duplicate and Import | `crates/zz/src/config/mod.rs`, `crates/zz/src/theme.rs`, `crates/zz/src/config/settings.rs` |
-| Thin clients: a built-in id in preferences | `clients/app/src/preferences.rs`, `clients/app/src/app/settings.rs` |
+| Thin clients: the selected id and saved themes in preferences; tiles, Duplicate, Import and Delete | `clients/app/src/preferences.rs`, `clients/app/src/app/settings.rs` |
 | Tile preview | `zz_ui::settings::appearance::interface_theme_preview` |
 | Kit colors the theme sets | `ThemeColor::shadow_color`, `ThemeColor::on_accent`, `Theme::control_shadow` |
 | Theme creator and knobs | `clients/storybook/src/knobs.rs`, `clients/storybook/web/main.js` |
 
 Customizing means editing a file: Settings' Duplicate writes the active theme to `themes/theme-N.json` and selects it, and the storybook's theme creator edits a theme live (each mode's colors included) and copies it as JSON for Import. There is no override layer for colors in `zz/config`; `widget-corner-radius`, `shadow-strength` and `chrome-contrast` stay as overrides of the look, and picking a theme removes the first two.
 
+The web and iOS clients pick their theme themselves and never take the host's. Their preferences (local storage on web, `preferences.json` on iOS) hold the selected id and up to 32 saved themes as `[id, theme]` pairs. Duplicate and Import work as on desktop, saving under the first free `theme-N` id, and Delete removes the selected saved theme and falls back to Default. A saved theme this build cannot read is skipped instead of losing the other preferences, a selection that names no theme falls back to Default, and Import refuses text over 64 KB so local storage stays well under its quota.
+
 # Decisions
 
 - **No surviving palettes.** None of the 34 presets read right across looks, so all went, with their per-mode keys and the three `chrome-*` color overrides. Old keys are reported as removed and dropped when a theme is picked.
 - **Flat, Modern and Full dropped.** Default, macOS and Linear cover the same range with colors that fit them.
 - **`interface-theme` keeps `theme-mode`.** The mode stays its own setting, as in the apps themes imitate.
-- **Thin clients get built-ins only.** They keep a theme id; saved theme files are a desktop feature for now.
+- **Thin clients keep their own themes.** Web and iOS save themes in their preferences instead of syncing the host's `themes/` folder, so a phone can look different from the desktop it attaches to, and a theme carries over by Import.
 - **Terminal colors untouched.** Ghostty theme files still color terminal content; chrome never follows them.
