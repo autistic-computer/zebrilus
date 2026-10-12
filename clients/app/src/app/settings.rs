@@ -145,6 +145,7 @@ impl Preferences {
             Theme::sync_system_appearance(Some(window), cx);
         }
         self.interface_theme().apply(Theme::global_mut(cx));
+        window.set_default_corner_smoothing(self.interface_theme().look.corner_smoothing);
         Theme::global_mut(cx).radius = px(self.widget_corner_radius());
         Theme::global_mut(cx).set_contrast(contrast);
         Theme::global_mut(cx).shadow = self.shadow() > 0.0;
