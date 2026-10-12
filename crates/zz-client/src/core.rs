@@ -290,6 +290,7 @@ pub enum CoreDetachReason {
 #[derive(Debug, Default)]
 pub struct ClientCore {
     hello_received: bool,
+    server_clock: u64,
     capabilities: Vec<String>,
     appearance: Option<Box<TerminalAppearance>>,
     appearance_provenance: AppearanceProvenance,
@@ -533,8 +534,14 @@ impl ClientCore {
         self.client_view.layout_generation
     }
 
+    #[must_use]
+    pub const fn server_clock(&self) -> u64 {
+        self.server_clock
+    }
+
     pub fn adopt_welcome(&mut self, welcome: Welcome) {
         self.hello_received = true;
+        self.server_clock = welcome.clock;
         self.capabilities = welcome.capability_strings();
         self.command_output_watermark = 0;
     }
@@ -790,8 +797,10 @@ impl ClientCore {
             mux_options,
             status,
             key_tables,
+            clock,
         } = hello;
         self.hello_received = true;
+        self.server_clock = clock;
         self.capabilities = capabilities;
         self.appearance = Some(Box::new(appearance));
         self.appearance_provenance = appearance_provenance;
@@ -1492,7 +1501,7 @@ mod tests {
 
     use zz_protocol::{
         AgentConnectionPhase, ClientId, LayoutNode, PROTOCOL_VERSION, PaneKindSnapshot,
-        PaneSnapshot, SessionSnapshot, WindowId, WindowSnapshot,
+        PaneSnapshot, PaneSummary, SessionSnapshot, WindowId, WindowSnapshot,
     };
     use zz_terminal::TerminalAppearance;
 
@@ -1517,6 +1526,7 @@ mod tests {
             mux_options: MuxOptions::default(),
             status: StatusLine::default(),
             key_tables: Vec::new(),
+            clock: 0,
         }))
     }
 
@@ -1566,6 +1576,7 @@ mod tests {
                         border_status_text: String::new(),
                         mode: None,
                         status: None,
+                        summary: PaneSummary::default(),
                     },
                 )
             })
@@ -1978,6 +1989,36 @@ mod tests {
         core.handle_message(command_output_frame(pane, 9, 6));
         assert_eq!(drain(&mut core), vec![CoreEvent::CommandOutputChanged]);
         assert_eq!(core.command_output_id(), Some(9));
+    }
+
+    #[test]
+    fn welcome_clock_is_kept_and_reset_on_reconnect() {
+        let mut core = ClientCore::new();
+        assert_eq!(core.server_clock(), 0);
+        core.handle_message(ProtocolMessage::Welcome(Welcome {
+            protocol_version: PROTOCOL_VERSION,
+            server_id: 1,
+            client_id: ClientId(1),
+            client_instance_id: zz_protocol::ClientInstanceId(1),
+            caps: 0,
+            clock: 1_760_000_000,
+        }));
+        assert_eq!(drain(&mut core), vec![CoreEvent::HelloReceived]);
+        assert_eq!(core.server_clock(), 1_760_000_000);
+
+        core.reset_session();
+        core.clear_attachment();
+        assert_eq!(core.server_clock(), 1_760_000_000);
+
+        core.handle_message(hello());
+        assert_eq!(core.server_clock(), 0);
+
+        let ProtocolMessage::ServerHello(mut next) = hello() else {
+            unreachable!("the fixture is a server hello");
+        };
+        next.clock = 1_760_000_100;
+        core.adopt_hello(*next);
+        assert_eq!(core.server_clock(), 1_760_000_100);
     }
 
     #[test]

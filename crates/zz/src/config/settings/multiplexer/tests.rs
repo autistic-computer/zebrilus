@@ -76,6 +76,7 @@ fn test_server(tables: Vec<KeyTableSnapshot>) -> (InteractiveClient, TestServer)
                 mux_options: MuxOptions::default(),
                 status: StatusLine::default(),
                 key_tables: tables,
+                clock: 0,
             })),
         )
         .unwrap();

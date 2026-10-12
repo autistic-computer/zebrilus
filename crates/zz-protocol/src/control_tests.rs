@@ -36,6 +36,7 @@ fn snapshot() -> MuxSnapshot {
                         border_status_text: String::new(),
                         mode: None,
                         status: None,
+                        summary: PaneSummary::default(),
                     },
                 )]),
                 layout_dump: String::new(),
@@ -84,6 +85,7 @@ fn compact_welcome_round_trip_is_bounded_and_caps_recover_names() {
         client_id: ClientId(42),
         client_instance_id: ClientInstanceId(u64::MAX),
         caps: Welcome::caps_from_strings(&capabilities),
+        clock: 0,
     };
     let message = ProtocolMessage::Welcome(welcome);
     let encoded = encode_protocol_message(&message).unwrap();
@@ -106,6 +108,7 @@ fn compact_welcome_rejects_missing_required_capabilities_on_encode_and_decode() 
             client_id: ClientId(2),
             client_instance_id: ClientInstanceId(3),
             caps: Welcome::caps_from_strings(&capabilities),
+            clock: 0,
         };
         assert!(!welcome.has_capability(missing));
         let message = ProtocolMessage::Welcome(welcome);

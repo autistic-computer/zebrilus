@@ -4637,6 +4637,7 @@ mod tests {
                     border_status_text: String::new(),
                     mode: None,
                     status: None,
+                    summary: zz_protocol::PaneSummary::default(),
                 },
             )]
             .into_iter()
@@ -4895,6 +4896,7 @@ mod tests {
                     mux_options,
                     status: zz_protocol::StatusLine::default(),
                     key_tables: zz_protocol::KeyTables::default().snapshot(),
+                    clock: 0,
                 })),
             )
             .unwrap();
@@ -6571,6 +6573,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: zz_protocol::PaneSummary::default(),
         };
         let window = WindowSnapshot {
             id: WindowId(0),

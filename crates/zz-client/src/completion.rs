@@ -742,8 +742,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use zz_protocol::{
-        LayoutNode, PaneId, PaneKindSnapshot, PaneSnapshot, SessionId, SessionSnapshot, WindowId,
-        WindowSnapshot,
+        LayoutNode, PaneId, PaneKindSnapshot, PaneSnapshot, PaneSummary, SessionId,
+        SessionSnapshot, WindowId, WindowSnapshot,
     };
 
     use super::*;
@@ -780,6 +780,7 @@ mod tests {
                             border_status_text: String::new(),
                             mode: None,
                             status: None,
+                            summary: PaneSummary::default(),
                         },
                     )]),
                     layout_dump: String::new(),

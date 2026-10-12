@@ -1597,6 +1597,7 @@ mod tests {
                 mux_options: zz_protocol::MuxOptions::default(),
                 status: zz_protocol::StatusLine::default(),
                 key_tables: Vec::new(),
+                clock: 0,
             }));
             let encoded = zz_protocol::encode_protocol_message(&hello).unwrap();
             let decoded = zz_protocol::decode_protocol_frame(&encoded).unwrap();

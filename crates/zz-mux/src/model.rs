@@ -10,7 +10,7 @@ use zz_protocol::{
     AgentDescriptor, AgentProvider, Axis, BrowserDescriptor, EditorDescriptor,
     FloatingPaneSnapshot, MAX_GUI_TEXT_BYTES, ModalPaneSnapshot, MuxSnapshot, PaneBorderIndicators,
     PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus,
-    ServerError, SessionId, SessionSnapshot, SplitId, WindowId, WindowSnapshot,
+    PaneSummary, ServerError, SessionId, SessionSnapshot, SplitId, WindowId, WindowSnapshot,
     normalize_browser_profile_name,
 };
 
@@ -220,6 +220,7 @@ pub struct Pane {
     /// A BEL rang here and nobody has been back since.
     pub bell: bool,
     pub status: Option<PaneStatus>,
+    pub summary: PaneSummary,
     pub dead: bool,
     pub dead_status: Option<u32>,
     pub dead_time: Option<u64>,
@@ -910,6 +911,7 @@ impl MuxState {
             active_point,
             bell: false,
             status: None,
+            summary: PaneSummary::default(),
             dead: false,
             dead_status: None,
             dead_time: None,
@@ -1041,6 +1043,7 @@ impl MuxState {
             active_point,
             bell: false,
             status: None,
+            summary: PaneSummary::default(),
             dead: false,
             dead_status: None,
             dead_time: None,
@@ -1611,6 +1614,7 @@ impl MuxState {
                 active_point,
                 bell: false,
                 status: None,
+                summary: PaneSummary::default(),
                 dead: false,
                 dead_status: None,
                 dead_time: None,
@@ -1673,6 +1677,7 @@ impl MuxState {
                 active_point: 0,
                 bell: false,
                 status: None,
+                summary: PaneSummary::default(),
                 dead: false,
                 dead_status: None,
                 dead_time: None,
@@ -1986,7 +1991,7 @@ impl MuxState {
     fn clear_window_alerts(&mut self, window: WindowId) {
         let panes = self.windows[&window].pane_order.clone();
         for pane in panes {
-            self.set_pane_bell(pane, false);
+            self.clear_pane_alerts(pane);
         }
         self.set_window_activity_flag(window, false);
         self.set_window_silence_flag(window, false);
@@ -2552,6 +2557,33 @@ impl MuxState {
         pane_state.status = status;
         self.bump_generation();
         true
+    }
+
+    pub fn update_pane_summary(
+        &mut self,
+        pane: PaneId,
+        edit: impl FnOnce(&mut PaneSummary),
+    ) -> bool {
+        let Some(current) = self.pane(pane) else {
+            return false;
+        };
+        let mut summary = current.summary.clone();
+        edit(&mut summary);
+        if current.summary == summary {
+            return false;
+        }
+        let Some(pane_state) = self.pane_mut(pane) else {
+            return false;
+        };
+        pane_state.summary = summary;
+        self.bump_generation();
+        true
+    }
+
+    pub fn clear_pane_alerts(&mut self, pane: PaneId) -> bool {
+        let bell = self.set_pane_bell(pane, false);
+        let unseen = self.update_pane_summary(pane, |summary| summary.unseen = false);
+        bell || unseen
     }
 
     /// Replace a pending picker with its selected runtime kind, keeping the pane
@@ -3864,13 +3896,21 @@ impl MuxState {
         let pane = self
             .pane_mut(pane)
             .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
-        if !pane.dead && pane.dead_status.is_none() && pane.dead_time.is_none() && !pane.empty {
+        if !pane.dead
+            && pane.dead_status.is_none()
+            && pane.dead_time.is_none()
+            && !pane.empty
+            && pane.summary.command.is_none()
+            && !pane.summary.unseen
+        {
             return Ok(false);
         }
         pane.dead = false;
         pane.dead_status = None;
         pane.dead_time = None;
         pane.empty = false;
+        pane.summary.command = None;
+        pane.summary.unseen = false;
         self.bump_generation();
         Ok(true)
     }
@@ -4691,6 +4731,7 @@ impl MuxState {
                             border_status_text: String::new(),
                             mode: None,
                             status: pane.status.clone(),
+                            summary: pane.summary.clone(),
                         },
                     )
                 })
@@ -7699,6 +7740,91 @@ mod tests {
         assert!(!state.set_pane_bell(pane, false));
 
         assert!(!state.set_pane_bell(PaneId(9999), false));
+    }
+
+    #[test]
+    fn update_pane_summary_bumps_generation_only_on_change() {
+        let mut state = MuxState::default();
+        let (_, _, pane) = state.create_session("work").unwrap();
+        let summary = |state: &MuxState| {
+            state.snapshot().sessions[0].windows[0].panes[&pane]
+                .summary
+                .clone()
+        };
+        assert_eq!(summary(&state), PaneSummary::default());
+
+        let generation = state.generation();
+        assert!(state.update_pane_summary(pane, |summary| summary.changed_at = 42));
+        assert!(state.generation() > generation);
+        assert_eq!(summary(&state).changed_at, 42);
+
+        let generation = state.generation();
+        assert!(!state.update_pane_summary(pane, |summary| summary.changed_at = 42));
+        assert!(!state.update_pane_summary(pane, |_| {}));
+        assert_eq!(state.generation(), generation);
+
+        assert!(!state.update_pane_summary(PaneId(9999), |summary| summary.unseen = true));
+        assert_eq!(state.generation(), generation);
+    }
+
+    #[test]
+    fn window_activation_clears_bell_and_unseen() {
+        let mut state = MuxState::default();
+        let (session, first, _) = state.create_session("work").unwrap();
+        let (second, pane) = state
+            .create_window(session, Some("second".to_owned()), PaneKind::Terminal)
+            .unwrap();
+        state.select_window(session, first).unwrap();
+        assert!(state.set_pane_bell(pane, true));
+        assert!(state.update_pane_summary(pane, |summary| {
+            summary.unseen = true;
+            summary.changed_at = 7;
+        }));
+
+        state.select_window(session, second).unwrap();
+        let pane = state.pane(pane).unwrap();
+        assert!(!pane.bell);
+        assert!(!pane.summary.unseen);
+        assert_eq!(pane.summary.changed_at, 7);
+    }
+
+    #[test]
+    fn clear_pane_alerts_reports_either_latch() {
+        let mut state = MuxState::default();
+        let (_, _, pane) = state.create_session("work").unwrap();
+        assert!(!state.clear_pane_alerts(pane));
+        assert!(state.update_pane_summary(pane, |summary| summary.unseen = true));
+        assert!(state.clear_pane_alerts(pane));
+        assert!(state.set_pane_bell(pane, true));
+        assert!(state.clear_pane_alerts(pane));
+        assert!(!state.clear_pane_alerts(pane));
+    }
+
+    #[test]
+    fn revive_clears_command_and_unseen() {
+        let mut state = MuxState::default();
+        let (_, _, pane) = state.create_session("work").unwrap();
+        assert!(state.update_pane_summary(pane, |summary| {
+            summary.changed_at = 9;
+            summary.unseen = true;
+            summary.command = Some(zz_protocol::ShellCommand::Finished(1));
+            summary.name = "reviewer".to_owned();
+        }));
+        assert!(state.mark_pane_dead(pane, Some(1)).unwrap());
+
+        assert!(state.revive_pane(pane).unwrap());
+        let summary = &state.pane(pane).unwrap().summary;
+        assert_eq!(summary.command, None);
+        assert!(!summary.unseen);
+        assert_eq!(summary.changed_at, 9);
+        assert_eq!(summary.name, "reviewer");
+        assert!(!state.revive_pane(pane).unwrap());
+
+        assert!(state.update_pane_summary(pane, |summary| {
+            summary.command = Some(zz_protocol::ShellCommand::Running);
+        }));
+        assert!(state.revive_pane(pane).unwrap());
+        assert_eq!(state.pane(pane).unwrap().summary.command, None);
     }
 
     #[test]

@@ -2282,6 +2282,7 @@ mod tests {
                     border_status_text: String::new(),
                     mode: None,
                     status: None,
+                    summary: zz_protocol::PaneSummary::default(),
                 },
             );
         }
@@ -3127,6 +3128,7 @@ mod tests {
                 border_status_text: String::new(),
                 mode: None,
                 status: None,
+                summary: zz_protocol::PaneSummary::default(),
             },
         );
         model.update_snapshot(Arc::new(snapshot));

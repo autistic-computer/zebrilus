@@ -386,7 +386,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use zz_protocol::{Axis, LayoutNode, SplitId, WindowSnapshot};
+    use zz_protocol::{Axis, LayoutNode, PaneSummary, SplitId, WindowSnapshot};
 
     fn pane(id: u64, title: &str, kind: PaneKindSnapshot, bell: bool) -> PaneSnapshot {
         PaneSnapshot {
@@ -402,6 +402,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         }
     }
 

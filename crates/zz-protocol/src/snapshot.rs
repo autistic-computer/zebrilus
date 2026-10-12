@@ -473,6 +473,35 @@ pub struct PaneSnapshot {
     pub mode: Option<PaneMode>,
     #[serde(default)]
     pub status: Option<PaneStatus>,
+    #[serde(default)]
+    pub summary: PaneSummary,
+}
+
+pub const MAX_PANE_NAME_BYTES: usize = 256;
+pub const MAX_PANE_CWD_BYTES: usize = 4096;
+pub const MAX_PANE_BRANCH_BYTES: usize = 256;
+pub const MAX_PANE_STATUS_APP_BYTES: usize = 64;
+pub const MAX_PANE_STATUS_TITLE_BYTES: usize = 256;
+pub const MAX_PANE_STATUS_MESSAGE_BYTES: usize = 2048;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PaneSummary {
+    pub changed_at: u64,
+    pub unseen: bool,
+    pub command: Option<ShellCommand>,
+    #[serde(deserialize_with = "deserialize_pane_name")]
+    pub name: String,
+    #[serde(deserialize_with = "deserialize_pane_cwd")]
+    pub cwd: String,
+    #[serde(deserialize_with = "deserialize_pane_branch")]
+    pub branch: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShellCommand {
+    Running,
+    Finished(u8),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -480,8 +509,11 @@ pub struct PaneStatus {
     pub state: PaneStatusState,
     pub kind: Option<PaneStatusKind>,
     pub progress: Option<u8>,
+    #[serde(deserialize_with = "deserialize_pane_status_app")]
     pub app: String,
+    #[serde(deserialize_with = "deserialize_pane_status_title")]
     pub title: String,
+    #[serde(deserialize_with = "deserialize_pane_status_message")]
     pub message: String,
 }
 
@@ -658,6 +690,48 @@ where
     D: Deserializer<'de>,
 {
     deserialize_bounded_text(deserializer, MAX_WINDOW_STATUS_LABEL_BYTES)
+}
+
+fn deserialize_pane_name<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_PANE_NAME_BYTES)
+}
+
+fn deserialize_pane_cwd<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_PANE_CWD_BYTES)
+}
+
+fn deserialize_pane_branch<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_PANE_BRANCH_BYTES)
+}
+
+fn deserialize_pane_status_app<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_PANE_STATUS_APP_BYTES)
+}
+
+fn deserialize_pane_status_title<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_PANE_STATUS_TITLE_BYTES)
+}
+
+fn deserialize_pane_status_message<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_PANE_STATUS_MESSAGE_BYTES)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

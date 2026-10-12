@@ -4763,6 +4763,7 @@ mod tests {
                             border_status_text: String::new(),
                             mode: None,
                             status: None,
+                            summary: zz_protocol::PaneSummary::default(),
                         },
                     )]),
                     layout_dump: String::new(),
@@ -5826,6 +5827,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: zz_protocol::PaneSummary::default(),
         };
         window.panes.insert(
             browser,
@@ -5902,6 +5904,7 @@ mod tests {
             border_status_text: String::new(),
             mode,
             status: None,
+            summary: zz_protocol::PaneSummary::default(),
         };
         window.panes.insert(tiled, pane(tiled, mode));
         window.panes.insert(float.pane, pane(float.pane, None));

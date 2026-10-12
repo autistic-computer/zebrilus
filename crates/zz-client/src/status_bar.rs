@@ -170,7 +170,8 @@ impl StatusBarModel {
 #[cfg(test)]
 mod tests {
     use zz_protocol::{
-        AgentDescriptor, LayoutNode, PaneId, PaneSnapshot, SessionSnapshot, WindowSnapshot,
+        AgentDescriptor, LayoutNode, PaneId, PaneSnapshot, PaneSummary, SessionSnapshot,
+        WindowSnapshot,
     };
 
     use super::*;
@@ -189,6 +190,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         }
     }
 

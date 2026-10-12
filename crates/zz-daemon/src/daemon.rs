@@ -6676,6 +6676,7 @@ impl Shared {
             mux_options: hello_mux_options,
             status: StatusLine::default(),
             key_tables: inner.engine.keys.snapshot(),
+            clock: unix_timestamp(),
         };
         if kind == ClientKind::Interactive && client_has_terminal {
             return Some((client, hello));

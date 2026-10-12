@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     FloatingPaneSnapshot, LayoutNode, ModalPaneSnapshot, MuxSnapshot, PaneBorderIndicators,
     PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PaneMode, PaneSnapshot,
-    PaneStatus, SessionId, SessionSnapshot, SessionViewer, TmuxColour, WindowId, WindowSnapshot,
+    PaneStatus, PaneSummary, SessionId, SessionSnapshot, SessionViewer, TmuxColour, WindowId,
+    WindowSnapshot,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,7 +75,7 @@ pub enum TreeOp {
     UpsertPane {
         session: SessionId,
         window: WindowId,
-        pane: PaneSnapshot,
+        pane: Box<PaneSnapshot>,
     },
     RemovePane {
         session: SessionId,
@@ -111,6 +112,12 @@ pub enum TreeOp {
         window: WindowId,
         pane: PaneId,
         status: Option<PaneStatus>,
+    },
+    PaneSummary {
+        session: SessionId,
+        window: WindowId,
+        pane: PaneId,
+        summary: PaneSummary,
     },
 }
 
@@ -327,7 +334,7 @@ fn window_diff(
             ops.push(TreeOp::UpsertPane {
                 session,
                 window,
-                pane: pane.clone(),
+                pane: Box::new(pane.clone()),
             });
             continue;
         };
@@ -377,6 +384,14 @@ fn window_diff(
                 window,
                 pane: pane.id,
                 status: pane.status.clone(),
+            });
+        }
+        if previous.summary != pane.summary {
+            ops.push(TreeOp::PaneSummary {
+                session,
+                window,
+                pane: pane.id,
+                summary: pane.summary.clone(),
             });
         }
     }
@@ -527,7 +542,7 @@ fn apply_op(snapshot: &mut MuxSnapshot, op: &TreeOp) -> Result<(), TreeDeltaErro
         } => {
             window_mut(snapshot, *session, *window)?
                 .panes
-                .insert(pane.id, pane.clone());
+                .insert(pane.id, PaneSnapshot::clone(pane));
         }
         TreeOp::RemovePane {
             session,
@@ -584,6 +599,14 @@ fn apply_op(snapshot: &mut MuxSnapshot, op: &TreeOp) -> Result<(), TreeDeltaErro
         } => pane_mut(snapshot, *session, *window, *pane)?
             .status
             .clone_from(status),
+        TreeOp::PaneSummary {
+            session,
+            window,
+            pane,
+            summary,
+        } => pane_mut(snapshot, *session, *window, *pane)?
+            .summary
+            .clone_from(summary),
     }
     Ok(())
 }

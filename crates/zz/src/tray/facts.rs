@@ -177,7 +177,8 @@ mod tests {
         use std::collections::BTreeMap;
         use zz_protocol::{
             AgentDescriptor, LayoutNode, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus,
-            PaneSnapshot, SessionId, SessionSnapshot, SessionViewer, WindowId, WindowSnapshot,
+            PaneSnapshot, PaneSummary, SessionId, SessionSnapshot, SessionViewer, WindowId,
+            WindowSnapshot,
         };
 
         let pane = |id, title: &str, kind| PaneSnapshot {
@@ -193,6 +194,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         };
         let terminal = pane(1, "Shell", PaneKindSnapshot::Terminal);
         let approval = pane(
