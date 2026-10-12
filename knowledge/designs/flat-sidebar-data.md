@@ -21,8 +21,10 @@ window is doing, an age on the right, a stack of pane tiles, and an attention do
 needs now rides the mux tree, so a client that subscribes to all sessions can draw every row
 without `AgentPaneWire`, without attaching, and without keeping its own "seen" state.
 
-This plan covers the daemon producers, the wire fields, and the view model. Drawing the rows in the
-desktop `MuxTreeModel` and the thin-client tree is the next piece of work and is not built.
+This plan covers the daemon producers, the wire fields, and the view model. The row, header and
+sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`); wiring
+them into the desktop `MuxTreeModel` and the thin-client tree is the next piece of work and is not
+built.
 
 # What every client receives
 
@@ -93,7 +95,9 @@ you, Failed (each with the status message), Done with the reply or message, Work
 or title and progress, Done for an unseen finish, an idle message, Exited with a non-zero status,
 Exit with a failed shell command and the location, the browser's host ("New tab" for a blank page),
 the editor's file, "New pane" for a picker, the location (`cwd` folder and branch), then the window
-name or "Shell" for terminals and the provider label for agents.
+name or "Shell" for terminals and the provider label for agents. A lead (Needs approval, Question,
+Needs you, Failed, Done, Exit) takes its tone and anything after it follows muted after " · ", as in
+the agreed mock; Done is in the foreground only while the finish is unseen.
 
 **Ages** are `short_age`: "now" under a minute, then minutes, hours and days. `age_label` shows
 nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order.

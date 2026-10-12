@@ -15,7 +15,8 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Ground,
+    ActiveTheme as _,
+    command::PaletteHostId,
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
         flat::{
@@ -52,13 +53,13 @@ pub const STORY: Story = Story {
         Section {
             id: "stacks",
             name: "Tile stacks",
-            summary: "flat_tile_stack for one, two and three or more panes, the active pane in front, on the rest, hover and current grounds. Stacked tiles cut a ring of the ground around themselves.",
+            summary: "flat_tile_stack for one, two and three or more panes, the active pane in front, on the rest, hover, current and selected grounds. Stacked tiles cut a ring of the ground around themselves.",
             build: |_, cx| stateless(stacks, cx),
         },
         Section {
             id: "hosts",
             name: "Hosts",
-            summary: "Folded sessions and hosts keep a rollup of what needs you on the right. A host that is not connected says so, with Retry or Upgrade when there is something to do, and dims the rows it still knows.",
+            summary: "Folded sessions and hosts keep a rollup of what needs you on the right. A host that is not connected says so, with Connect, Retry or Upgrade when there is something to do; hover Unreachable for the reason. Its rows dim and keep their last known state, with no spinners.",
             build: |_, cx| stateless(hosts, cx),
         },
     ],
@@ -69,6 +70,10 @@ const MINUTE: u64 = 60;
 const HOUR: u64 = 3_600;
 const SIDEBAR_HEIGHT: f32 = 800.0;
 const MAC: &str = "/Users/fabrico/dev/zz";
+const MACBOOK: PaletteHostId = PaletteHostId(0);
+const UBUNTU: PaletteHostId = PaletteHostId(1);
+const EXTRAS: PaletteHostId = PaletteHostId(2);
+const DEVBOX: PaletteHostId = PaletteHostId(3);
 
 trait PaneFixture: Sized {
     fn ago(self, seconds: u64) -> Self;
@@ -209,6 +214,7 @@ fn session(id: u64, name: &str, windows: Vec<WindowSnapshot>) -> SessionSnapshot
 }
 
 fn host(
+    id: PaletteHostId,
     name: &str,
     remote: bool,
     connection: HostConnection,
@@ -220,6 +226,7 @@ fn host(
         focused_window: None,
     };
     FlatHost::new(
+        id,
         name,
         remote,
         connection,
@@ -232,6 +239,7 @@ fn macbook() -> FlatHost {
     use PaneStatusKind::{Permission, Question};
     use PaneStatusState::{Blocked, Done, Error, Working};
     host(
+        MACBOOK,
         "macbook",
         false,
         HostConnection::Connected,
@@ -330,6 +338,7 @@ fn macbook() -> FlatHost {
 fn ubuntu() -> FlatHost {
     use PaneStatusState::{Done, Working};
     host(
+        UBUNTU,
         "ubuntu",
         true,
         HostConnection::Connected,
@@ -379,6 +388,7 @@ fn ubuntu() -> FlatHost {
 
 fn extras() -> FlatHost {
     host(
+        EXTRAS,
         "extras",
         false,
         HostConnection::Connected,
@@ -430,6 +440,7 @@ fn extras() -> FlatHost {
 
 fn devbox() -> FlatHost {
     host(
+        DEVBOX,
         "devbox",
         true,
         HostConnection::Reconnecting,
@@ -455,13 +466,33 @@ fn devbox() -> FlatHost {
                             .ago(20 * MINUTE),
                     ],
                 ),
+                window(
+                    3,
+                    None,
+                    vec![
+                        codex(3, "Migrations")
+                            .status(PaneStatusState::Done, None, "Wrote 0042_sessions.sql")
+                            .unseen()
+                            .ago(25 * MINUTE),
+                        terminal(4, "zsh").at("/home/fabrico/src/api", "main"),
+                    ],
+                ),
+                window(
+                    4,
+                    None,
+                    vec![
+                        claude(5, "Rate limiter")
+                            .status(PaneStatusState::Working, None, "Running the load test")
+                            .ago(3 * MINUTE),
+                    ],
+                ),
             ],
         )],
     )
 }
 
-fn offline(name: &str, connection: HostConnection) -> FlatHost {
-    host(name, true, connection, Vec::new())
+fn offline(id: u32, name: &str, connection: HostConnection) -> FlatHost {
+    host(PaletteHostId(id), name, true, connection, Vec::new())
 }
 
 fn sidebar_hosts() -> Vec<FlatHost> {
@@ -490,8 +521,8 @@ impl Live {
         Self {
             hosts: sidebar_hosts(),
             state: FlatState {
-                current: Some((0, WindowId(1))),
-                hovered: None,
+                current: Some((MACBOOK, WindowId(1))),
+                ..FlatState::default()
             },
         }
     }
@@ -502,16 +533,17 @@ impl Live {
                 self.state.current = Some((host, window));
                 true
             }
-            FlatEvent::Fold(FlatTarget::Host(host)) => {
-                if let Some(host) = self.hosts.get_mut(host) {
+            FlatEvent::FoldHost(host) => {
+                if let Some(host) = self.hosts.iter_mut().find(|item| item.id == host) {
                     host.folded = !host.folded;
                 }
                 true
             }
-            FlatEvent::Fold(FlatTarget::Session(host, session)) => {
+            FlatEvent::FoldSession(host, session) => {
                 if let Some(session) = self
                     .hosts
-                    .get_mut(host)
+                    .iter_mut()
+                    .find(|item| item.id == host)
                     .and_then(|host| host.sessions.iter_mut().find(|item| item.id == session))
                 {
                     session.folded = !session.folded;
@@ -519,10 +551,9 @@ impl Live {
                 true
             }
             FlatEvent::Hover(target, hovered) => self.state.hover(target, hovered),
-            FlatEvent::Fold(FlatTarget::Window(..))
-            | FlatEvent::Actions(..)
+            FlatEvent::Actions(..)
             | FlatEvent::NewWindow(..)
-            | FlatEvent::Retry(_)
+            | FlatEvent::Connect(_)
             | FlatEvent::Upgrade(_) => false,
         };
         if changed {
@@ -565,62 +596,63 @@ fn row_frame(index: usize, content: impl IntoElement) -> AnyElement {
 fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     let handler = noop();
-    let (mac, ubuntu, extras) = (macbook(), ubuntu(), extras());
+    let (mac, ubuntu, extras, devbox) = (macbook(), ubuntu(), extras(), devbox());
     let rest = FlatRowState::default();
-    let cases: [(&str, usize, &FlatWindow, FlatRowState); 17] = [
-        ("working", 0, find(&mac, 1), rest),
-        ("needs approval", 0, find(&mac, 2), rest),
-        ("asked a question", 0, find(&mac, 3), rest),
-        ("done, unseen", 0, find(&mac, 5), rest),
-        ("done, seen", 1, find(&ubuntu, 3), rest),
-        ("failed", 0, find(&mac, 8), rest),
-        ("shell, idle", 0, find(&mac, 4), rest),
-        ("shell, exit code", 0, find(&mac, 7), rest),
-        ("bell", 2, find(&extras, 20), rest),
-        ("browser", 2, find(&extras, 21), rest),
-        ("editor", 2, find(&extras, 23), rest),
-        ("split, two panes", 0, find(&mac, 6), rest),
+    let current = FlatRowState {
+        current: true,
+        ..rest
+    };
+    let selected = FlatRowState {
+        selected: true,
+        ..rest
+    };
+    let hovered = FlatRowState {
+        hovered: true,
+        ..rest
+    };
+    let dimmed = FlatRowState {
+        dimmed: true,
+        ..rest
+    };
+    let cases: [(&str, PaletteHostId, &FlatWindow, FlatRowState); 19] = [
+        ("working", MACBOOK, find(&mac, 1), rest),
+        ("needs approval", MACBOOK, find(&mac, 2), rest),
+        ("asked a question", MACBOOK, find(&mac, 3), rest),
+        ("done, unseen", MACBOOK, find(&mac, 5), rest),
+        ("done, seen", UBUNTU, find(&ubuntu, 3), rest),
+        ("failed", MACBOOK, find(&mac, 8), rest),
+        ("shell, idle", MACBOOK, find(&mac, 4), rest),
+        ("shell, exit code", MACBOOK, find(&mac, 7), rest),
+        ("bell", EXTRAS, find(&extras, 20), rest),
+        ("browser", EXTRAS, find(&extras, 21), rest),
+        ("editor", EXTRAS, find(&extras, 23), rest),
+        ("split, two panes", MACBOOK, find(&mac, 6), rest),
         (
             "split, three panes, agent working",
-            2,
+            EXTRAS,
             find(&extras, 22),
             rest,
         ),
+        ("current", MACBOOK, find(&mac, 1), current),
         (
-            "current",
-            0,
-            find(&mac, 1),
-            FlatRowState {
-                current: true,
-                ..rest
-            },
-        ),
-        (
-            "hover",
-            0,
+            "selected: the keyboard cursor, inked for the selection fill",
+            MACBOOK,
             find(&mac, 2),
-            FlatRowState {
-                hovered: true,
-                ..rest
-            },
+            selected,
+        ),
+        ("hover", MACBOOK, find(&mac, 2), hovered),
+        ("hover on a working row", MACBOOK, find(&mac, 1), hovered),
+        (
+            "host reconnecting: a stale turn shows no spinner",
+            DEVBOX,
+            find(&devbox, 4),
+            dimmed,
         ),
         (
-            "hover on a working row",
-            0,
-            find(&mac, 1),
-            FlatRowState {
-                hovered: true,
-                ..rest
-            },
-        ),
-        (
-            "host reconnecting",
-            1,
-            find(&ubuntu, 1),
-            FlatRowState {
-                dimmed: true,
-                ..rest
-            },
+            "host reconnecting: a split with a dot",
+            DEVBOX,
+            find(&devbox, 3),
+            dimmed,
         ),
     ];
     cases
@@ -650,9 +682,12 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             current: true,
             ..FlatRowState::default()
         },
-    ]
-    .map(|state| flat_row_ground(state, cx));
-    let cell = |tags: &[PaneTag], ground: Ground| {
+        FlatRowState {
+            selected: true,
+            ..FlatRowState::default()
+        },
+    ];
+    let cell = |tags: &[PaneTag], state: FlatRowState| {
         div()
             .flex()
             .flex_none()
@@ -660,21 +695,21 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             .justify_center()
             .size(px(44.0))
             .rounded(cx.theme().control_radius())
-            .bg(ground.fill)
-            .child(flat_tile_stack(tags, ground, cx))
+            .bg(flat_row_ground(state, cx).fill)
+            .child(flat_tile_stack(tags, state, cx))
     };
     let claude = Agent(AgentProvider::ClaudeCode);
     let codex = Agent(AgentProvider::Codex);
     let kinds = [claude, codex, Terminal, Browser, Editor, Picker];
     let on_every_ground =
-        |tags: &[PaneTag]| row().children(grounds.iter().map(|ground| cell(tags, *ground)));
+        |tags: &[PaneTag]| row().children(grounds.iter().map(|state| cell(tags, *state)));
     states()
         .state(
             "one pane, every kind",
             row().children(kinds.iter().map(|kind| cell(&[*kind], grounds[0]))),
         )
         .state(
-            "one pane on rest, hover and current",
+            "one pane on rest, hover, current and selected",
             on_every_ground(&[claude]),
         )
         .state(
@@ -716,15 +751,26 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
     ubuntu.folded = true;
     let folding = [mac, ubuntu];
     let folding_state = FlatState {
-        current: Some((0, WindowId(1))),
-        hovered: Some(FlatTarget::Session(0, SessionId(1))),
+        current: Some((MACBOOK, WindowId(1))),
+        hovered: Some(FlatTarget::Session(MACBOOK, SessionId(1))),
+        ..FlatState::default()
     };
+    let refused = "ssh: connect to host studio port 22: Connection refused";
     let connections = [
         devbox(),
-        offline("studio", HostConnection::Unreachable),
-        offline("pi", HostConnection::Incompatible("zz 0.15".into())),
-        offline("alienware", HostConnection::Connecting),
+        offline(4, "studio", HostConnection::Unreachable(refused.into())),
+        offline(5, "pi", HostConnection::Incompatible("zz 0.15".into())),
+        offline(6, "alienware", HostConnection::Connecting),
+        offline(7, "mini", HostConnection::Disconnected),
     ];
+    let mut stale = devbox();
+    stale.folded = true;
+    let mut lost = devbox();
+    lost.id = PaletteHostId(8);
+    lost.name = "buildbox".into();
+    lost.connection = HostConnection::Unreachable(refused.into());
+    lost.folded = true;
+    let folded = [stale, lost];
     states()
         .columns(2)
         .state(
@@ -740,6 +786,14 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
             host_frame(
                 "flat-hosts-connections",
                 flat_sidebar(&connections, FlatState::default(), &handler, cx),
+                cx,
+            ),
+        )
+        .state(
+            "folded while not connected: no spinner; a host with an action drops its rollup",
+            host_frame(
+                "flat-hosts-folded-stale",
+                flat_sidebar(&folded, FlatState::default(), &handler, cx),
                 cx,
             ),
         )
