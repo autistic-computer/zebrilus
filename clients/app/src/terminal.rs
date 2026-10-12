@@ -2348,7 +2348,8 @@ mod tests {
     ) {
         use zz_protocol::{
             Batch, ClientView, Event, EventPayload, LayoutNode, MuxSnapshot, PaneKindSnapshot,
-            PaneSnapshot, ProtocolMessage, SessionId, SessionSnapshot, WindowId, WindowSnapshot,
+            PaneSnapshot, PaneSummary, ProtocolMessage, SessionId, SessionSnapshot, WindowId,
+            WindowSnapshot,
         };
 
         cx.update(zz_ui::init);
@@ -2387,6 +2388,7 @@ mod tests {
                                     border_status_text: String::new(),
                                     mode: None,
                                     status: None,
+                                    summary: PaneSummary::default(),
                                 },
                             )]
                             .into(),

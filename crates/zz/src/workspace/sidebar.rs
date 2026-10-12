@@ -1611,8 +1611,8 @@ mod tests {
     use zz_daemon_client::DaemonError;
     use zz_gpui::TestAppContext;
     use zz_protocol::{
-        Axis, BrowserDescriptor, LayoutNode, PaneKindSnapshot, PaneSnapshot, SessionSnapshot,
-        SplitId, WindowSnapshot,
+        Axis, BrowserDescriptor, LayoutNode, PaneKindSnapshot, PaneSnapshot, PaneSummary,
+        SessionSnapshot, SplitId, WindowSnapshot,
     };
 
     use super::*;
@@ -1887,6 +1887,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         }
     }
 
@@ -1907,6 +1908,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         }
     }
 
@@ -2909,6 +2911,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         };
 
         let projected = MuxTreePane::from_snapshot(&pane);
@@ -2931,6 +2934,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         };
 
         let projected = MuxTreePane::from_snapshot(&pane);

@@ -2787,6 +2787,7 @@ fn materialize_welcome<S: TransportStream>(
         mux_options: zz_protocol::MuxOptions::default(),
         status: zz_protocol::StatusLine::default(),
         key_tables: Vec::new(),
+        clock: welcome.clock,
     };
     let batch = loop {
         let message = reader.recv()?;
@@ -3781,6 +3782,7 @@ mod tests {
                         mux_options: MuxOptions::default(),
                         status: StatusLine::default(),
                         key_tables: Vec::new(),
+                        clock: 0,
                     })))
                     .expect("send hello");
             });

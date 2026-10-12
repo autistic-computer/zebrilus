@@ -4,8 +4,8 @@ use zz_protocol::{
     BrowserDescriptor, ClientHello, ClientInstanceId, ClientKind, CommandResponse,
     ControlSourceFileEvent, Event, EventPayload, GuiResponse, InputMessage, LayoutNode,
     MuxOptionKey, MuxSnapshot, PROTOCOL_VERSION, PaneId, PaneKindSnapshot, PaneSnapshot,
-    PasteUploadPurpose, ProtocolMessage, ServerError, TmuxColour, WindowId, WindowSnapshot,
-    encode_protocol_message,
+    PaneSummary, PasteUploadPurpose, ProtocolMessage, ServerError, TmuxColour, WindowId,
+    WindowSnapshot, encode_protocol_message,
 };
 use zz_terminal::TerminalColorScheme;
 
@@ -434,6 +434,7 @@ fn pane_snapshot_carries_bell() {
         border_status_text: String::new(),
         mode: None,
         status: None,
+        summary: PaneSummary::default(),
     };
     assert!(snapshot.bell);
 }
@@ -453,6 +454,7 @@ fn pane_snapshot_border_colours_round_trip_and_reject_invalid_rgb() {
         border_status_text: String::new(),
         mode: None,
         status: None,
+        summary: PaneSummary::default(),
     };
     let bytes = postcard::to_stdvec(&snapshot).expect("pane snapshot encodes");
     assert_eq!(

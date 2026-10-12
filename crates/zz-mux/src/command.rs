@@ -6804,7 +6804,7 @@ impl MuxEngine {
                 .flat_map(|window| window.pane_order().to_vec())
                 .collect::<Vec<_>>();
             for pane in panes {
-                self.state.set_pane_bell(pane, false);
+                self.state.clear_pane_alerts(pane);
             }
             return Ok(Execution::default());
         }
@@ -19403,6 +19403,14 @@ impl MuxEngine {
             PaneKind::Browser(browser) => Some(browser.url()),
             _ => None,
         }
+    }
+
+    #[must_use]
+    pub fn pane_user_option(&self, pane: PaneId, name: &str) -> Option<&str> {
+        self.pane_user_options
+            .get(&pane)
+            .and_then(|values| values.get(name))
+            .map(RawText::as_str)
     }
 
     #[must_use]
@@ -40557,6 +40565,31 @@ mod tests {
         assert_eq!(plain.commands[0].args[2], "A");
         let assignment = engine.parse_config("<test>", "OCTAL=a\\375b\n");
         assert_eq!(assignment.environment[0].value.as_bytes(), b"a\xfdb");
+    }
+
+    #[test]
+    fn pane_user_option_reads_only_the_pane_scope() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "work"]))
+            .unwrap();
+        let pane = context.pane.unwrap();
+        engine
+            .execute(
+                &mut context,
+                &command("set-option", &["-w", "@agent_state", "working"]),
+            )
+            .unwrap();
+        assert_eq!(engine.pane_user_option(pane, "@agent_state"), None);
+        engine
+            .execute(
+                &mut context,
+                &command("set-option", &["-p", "@agent_state", "done"]),
+            )
+            .unwrap();
+        assert_eq!(engine.pane_user_option(pane, "@agent_state"), Some("done"));
+        assert_eq!(engine.pane_user_option(PaneId(9999), "@agent_state"), None);
     }
 
     #[test]

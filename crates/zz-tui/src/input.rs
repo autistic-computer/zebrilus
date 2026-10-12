@@ -2239,8 +2239,8 @@ mod tests {
 
     fn routing_model() -> Model {
         use zz_protocol::{
-            LayoutNode, MuxSnapshot, PaneId, PaneSnapshot, SessionId, SessionSnapshot, WindowId,
-            WindowSnapshot,
+            LayoutNode, MuxSnapshot, PaneId, PaneSnapshot, PaneSummary, SessionId, SessionSnapshot,
+            WindowId, WindowSnapshot,
         };
 
         let mut model = base_model();
@@ -2273,6 +2273,7 @@ mod tests {
                     border_status_text: String::new(),
                     mode: None,
                     status: None,
+                    summary: PaneSummary::default(),
                 },
             )
         })

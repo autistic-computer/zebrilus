@@ -183,6 +183,8 @@ pub struct Welcome {
     pub client_id: ClientId,
     pub client_instance_id: ClientInstanceId,
     pub caps: u64,
+    #[serde(default)]
+    pub clock: u64,
 }
 
 impl Welcome {

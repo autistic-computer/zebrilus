@@ -3021,6 +3021,7 @@ mod tests {
                 client_id: zz_protocol::ClientId(1),
                 client_instance_id: zz_protocol::ClientInstanceId(1),
                 caps: zz_protocol::Welcome::caps_from_strings(&capabilities),
+                clock: 0,
             });
             let initial = ProtocolMessage::Batch(
                 zz_protocol::Batch::from_messages(
@@ -5555,6 +5556,7 @@ mod tests {
                     border_status_text: String::new(),
                     mode: None,
                     status: None,
+                    summary: zz_protocol::PaneSummary::default(),
                 },
             )]),
             layout_dump: "abcd,80x24,0,0,5".to_owned(),

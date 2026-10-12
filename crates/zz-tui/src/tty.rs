@@ -611,6 +611,7 @@ mod tests {
             mux_options: zz_protocol::MuxOptions::default(),
             status: zz_protocol::StatusLine::default(),
             key_tables: Vec::new(),
+            clock: 0,
         };
         assert_eq!(
             TerminalOptions::from_hello(&hello),

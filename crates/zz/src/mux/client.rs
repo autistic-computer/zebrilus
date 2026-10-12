@@ -4655,8 +4655,8 @@ mod tests {
     use zz_client::scrollback::{HISTORY_REQUEST_RETRY, MAX_HISTORY_CHUNK_ROWS};
     use zz_gpui::{AppContext as _, TestAppContext};
     use zz_protocol::{
-        Axis, BrowserDescriptor, MuxOptions, PaneSnapshot, SessionSnapshot, SplitId, WindowId,
-        WindowSnapshot,
+        Axis, BrowserDescriptor, MuxOptions, PaneSnapshot, PaneSummary, SessionSnapshot, SplitId,
+        WindowId, WindowSnapshot,
     };
     #[cfg(unix)]
     use zz_protocol::{read_protocol_message, write_protocol_message};
@@ -4693,6 +4693,7 @@ mod tests {
             mux_options: MuxOptions::default(),
             status: StatusLine::default(),
             key_tables: Vec::new(),
+            clock: 0,
         }
     }
 
@@ -9352,6 +9353,7 @@ mod tests {
             border_status_text: String::new(),
             mode: None,
             status: None,
+            summary: PaneSummary::default(),
         }
     }
 

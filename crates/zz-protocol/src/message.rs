@@ -1721,6 +1721,8 @@ pub struct ServerHello {
     /// Every key table at attach time, refreshed by
     /// [`EventPayload::KeyTablesChanged`].
     pub key_tables: Vec<KeyTableSnapshot>,
+    #[serde(default)]
+    pub clock: u64,
 }
 
 /// One key table flattened for the wire, so clients can label key hints,

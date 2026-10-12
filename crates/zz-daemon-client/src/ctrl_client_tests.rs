@@ -20,6 +20,40 @@ fn readiness_pair() -> (tempfile::TempDir, super::LocalStream, super::LocalStrea
 
 #[cfg(unix)]
 #[test]
+fn a_welcome_hands_its_clock_to_the_materialized_hello() {
+    use std::io::Write as _;
+    let (_directory, mut daemon, client) = readiness_pair();
+    let initial = zz_protocol::ProtocolMessage::Batch(
+        zz_protocol::Batch::from_messages(
+            1,
+            [zz_protocol::ProtocolMessage::Event(zz_protocol::Event {
+                sequence: 1,
+                payload: zz_protocol::EventPayload::ClientView(zz_protocol::ClientView::default()),
+            })],
+        )
+        .unwrap(),
+    );
+    daemon
+        .write_all(&zz_protocol::encode_protocol_message(&initial).unwrap())
+        .unwrap();
+    let mut receiver = super::ProtocolReceiver::new(client);
+    let hello = super::materialize_welcome(
+        &mut receiver,
+        zz_protocol::Welcome {
+            protocol_version: zz_protocol::PROTOCOL_VERSION,
+            server_id: 1,
+            client_id: zz_protocol::ClientId(2),
+            client_instance_id: zz_protocol::ClientInstanceId(3),
+            caps: 0,
+            clock: 1_760_000_000,
+        },
+    )
+    .unwrap();
+    assert_eq!(hello.clock, 1_760_000_000);
+}
+
+#[cfg(unix)]
+#[test]
 fn readiness_retains_partial_frames_and_resumes_blocking_receive() {
     use super::TransportStream as _;
     use std::io::Write as _;
@@ -237,6 +271,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
                     mux_options: zz_protocol::MuxOptions::default(),
                     status: zz_protocol::StatusLine::default(),
                     key_tables: Vec::new(),
+                    clock: 0,
                 },
             )))
             .unwrap();

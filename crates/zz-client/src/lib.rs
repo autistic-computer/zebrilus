@@ -29,6 +29,7 @@ pub mod scrollback;
 mod status;
 mod status_bar;
 pub mod which_key;
+pub mod window_summary;
 
 pub use chrome::{
     BROWSER_TABLE, CHROME_TABLES, ChromeAction, ChromeKey, ChromeKeymap, ChromeProfile,

@@ -27,6 +27,7 @@ fn window() -> WindowSnapshot {
                 border_status_text: String::new(),
                 mode: None,
                 status: None,
+                summary: PaneSummary::default(),
             },
         )]),
         layout_dump: String::new(),
