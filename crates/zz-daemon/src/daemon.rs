@@ -54,6 +54,7 @@ mod jobs;
 mod lifecycle;
 #[cfg(unix)]
 mod loop_handoff;
+mod pane_summary;
 #[cfg(unix)]
 mod pipe_jobs;
 #[cfg(all(test, unix))]
@@ -9632,7 +9633,7 @@ impl Shared {
                 "read-only {command_name} selected a pane"
             );
             for pane in selected_panes {
-                if inner.engine.state.set_pane_bell(pane, false) {
+                if inner.engine.state.clear_pane_alerts(pane) {
                     snapshot_changed = true;
                 }
             }
@@ -11999,6 +12000,11 @@ impl Shared {
                 .filter(|target| target.starts_with('%'))
                 .and_then(|target| target.parse::<PaneId>().ok())
             {
+                snapshot_changed |= pane_summary::mirror_agent_state(
+                    &mut self.inner.lock(),
+                    pane,
+                    unix_timestamp(),
+                );
                 agent_waits::state_changed(self, pane);
                 let event = {
                     let inner = self.inner.lock();
@@ -12035,11 +12041,12 @@ impl Shared {
                     self.run_event_hooks(vec![event]);
                 }
             }
-            #[cfg(all(feature = "agent", unix))]
             if let Some(pane) = channel
                 .strip_prefix("@name@")
                 .and_then(|pane| pane.parse().ok())
             {
+                snapshot_changed |= pane_summary::mirror_pane_name(&mut self.inner.lock(), pane);
+                #[cfg(all(feature = "agent", unix))]
                 self.update_terminal_peer(pane);
             }
             self.signal_wait_channel(&channel);
@@ -20375,7 +20382,7 @@ impl Shared {
                 .copied()
                 .collect::<Vec<_>>();
             for pane in panes {
-                inner.engine.state.set_pane_bell(pane, false);
+                inner.engine.state.clear_pane_alerts(pane);
             }
             inner
                 .engine
@@ -22270,7 +22277,7 @@ impl Shared {
             )
         };
         apply_terminal_resizes(resizes);
-        let bell_cleared = clear_bell && self.clear_pane_bell(pane);
+        let bell_cleared = clear_bell && self.clear_pane_alerts(pane);
         if layout_changed || bell_cleared {
             self.publish_snapshot_state();
         } else if refresh_activity_choosers {
@@ -27880,6 +27887,9 @@ impl Shared {
             } else {
                 false
             };
+            if changed {
+                pane_summary::stamp_pane(&mut inner, pane, unix_timestamp());
+            }
             let (mut events, hook_scope) = if retained {
                 let mut events = hook_scope.finish(&inner.engine, "").events;
                 if changed
@@ -28102,7 +28112,7 @@ impl Shared {
                 }
             });
             (
-                inner.engine.state.set_pane_status(pane, headline),
+                pane_summary::apply_pane_status(&mut inner, pane, headline, unix_timestamp()),
                 agent_state,
             )
         };
@@ -30478,10 +30488,12 @@ impl Shared {
         if marks.is_empty() {
             return;
         }
-        let events = {
+        let (events, summary_changed) = {
             let mut inner = self.inner.lock();
             let mut events = Vec::new();
+            let mut summary_changed = false;
             for mark in marks {
+                summary_changed |= pane_summary::note_shell_mark(&mut inner, pane, &mark);
                 let name = match mark.kind {
                     zz_terminal::ShellMarkKind::Prompt => "pane-shell-prompt",
                     zz_terminal::ShellMarkKind::CommandStarted => "pane-command-started",
@@ -30494,8 +30506,11 @@ impl Shared {
                     events.push(event);
                 }
             }
-            events
+            (events, summary_changed)
         };
+        if summary_changed {
+            self.request_publish(timers::PublishReason::Tree);
+        }
         self.run_event_hooks(events);
     }
 
@@ -30519,16 +30534,11 @@ impl Shared {
             let window_index = window_state.index;
             if inner.engine.monitor_bell_for_window(window) {
                 let current = inner.engine.state.sessions[&session].active_window == window;
-                let attached = inner
-                    .attached
-                    .get(&session)
-                    .is_some_and(|clients| !clients.is_empty());
-                let suppressed = current && attached;
-                let snapshot_changed = if suppressed {
-                    false
-                } else {
-                    inner.engine.state.set_pane_bell(pane, true)
-                };
+                let snapshot_changed = !pane_summary::pane_window_watched(&inner, pane)
+                    && inner.engine.state.set_pane_bell(pane, true);
+                if snapshot_changed {
+                    pane_summary::stamp_pane(&mut inner, pane, unix_timestamp());
+                }
                 let action = inner.engine.bell_action_for_session(session);
                 let visual = inner.engine.visual_bell_for_session(session);
                 let (hook, notifications) = window_alert_notifications(
@@ -30837,8 +30847,8 @@ impl Shared {
         }
     }
 
-    fn clear_pane_bell(&self, pane: PaneId) -> bool {
-        self.inner.lock().engine.state.set_pane_bell(pane, false)
+    fn clear_pane_alerts(&self, pane: PaneId) -> bool {
+        self.inner.lock().engine.state.clear_pane_alerts(pane)
     }
 
     fn query_client_clipboard(&self, client: ClientId) {
@@ -34107,6 +34117,18 @@ impl Shared {
         };
         self.publish_for_pane(pane, &EventPayload::AgentState { pane, state });
         event
+    }
+
+    fn apply_agent_status(self: &Arc<Self>, pane: PaneId, status: PaneStatus) {
+        let changed = pane_summary::apply_pane_status(
+            &mut self.inner.lock(),
+            pane,
+            Some(status),
+            unix_timestamp(),
+        );
+        if changed {
+            self.request_publish(timers::PublishReason::Tree);
+        }
     }
 
     fn agent_tool_call_event(&self, pane: PaneId, call: AgentToolCall) -> Option<PendingHookEvent> {
