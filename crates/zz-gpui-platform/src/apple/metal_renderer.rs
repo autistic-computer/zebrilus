@@ -2552,7 +2552,7 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
     }
 
     #[test]
-    #[ignore = "benchmark: cargo test -p zz-gpui-platform --release bench_glass -- --ignored --nocapture"]
+    #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_glass -- --ignored --nocapture"]
     fn bench_glass() -> Result<()> {
         let mut renderer =
             MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));

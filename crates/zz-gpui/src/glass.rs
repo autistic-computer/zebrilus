@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Bounds, Corners, Hsla, Interpolate, Pixels, Point, ScaledPixels, Size, SpringConfig,
-    SpringState, WindowCornerMask, hsla, point, px, size,
+    SpringState, WindowCornerMask, hsla, point, px, size, white,
 };
 
 /// The WGSL source every renderer draws glass with.
@@ -65,6 +65,9 @@ pub struct GlassMaterial {
     /// The axis light falls along, in radians clockwise from the right edge;
     /// `-3π/4` lights the top left and bottom right edges.
     pub light_angle: f32,
+    /// Color of the glint and the fresnel glow; its alpha scales both.
+    #[serde(default = "white")]
+    pub light_color: Hsla,
     /// Glow filling the rim, strongest at the edge.
     pub fresnel: f32,
     /// Darkness of the contour just outside the edge.
@@ -127,6 +130,7 @@ impl GlassMaterial {
             specular: 0.6,
             glint_width: px(1.2),
             light_angle: -std::f32::consts::FRAC_PI_4 * 3.,
+            light_color: white(),
             fresnel: 0.08,
             edge_shadow: 0.25,
             edge_width: px(0.75),
@@ -206,6 +210,31 @@ impl GlassMaterial {
             brightness: 0.03,
             specular: 0.7,
             fresnel: 0.12,
+            ..Self::regular()
+        }
+    }
+
+    /// Opaque glass that only lights its edge over a fill of `fill`: a fine
+    /// glint, a faint fresnel glow and a thin contour. It reads nothing
+    /// under it, so past the rim it draws like a plain fill, which suits
+    /// surfaces that cover most of the window.
+    pub fn edge(fill: impl Into<Hsla>) -> Self {
+        let fill = fill.into();
+        Self {
+            blur: px(0.),
+            bezel: px(3.),
+            refraction: px(0.),
+            dispersion: 0.,
+            tint: Hsla { a: 1., ..fill },
+            saturation: 1.,
+            brightness: 0.,
+            contrast: 1.,
+            specular: 0.35,
+            glint_width: px(1.),
+            fresnel: 0.04,
+            edge_shadow: 0.3,
+            edge_width: px(0.5),
+            merge: px(0.),
             ..Self::regular()
         }
     }
@@ -293,6 +322,12 @@ impl GlassMaterial {
     /// Sets [`Self::light_angle`].
     pub fn light_angle(mut self, light_angle: f32) -> Self {
         self.light_angle = light_angle;
+        self
+    }
+
+    /// Sets [`Self::light_color`].
+    pub fn light_color(mut self, light_color: impl Into<Hsla>) -> Self {
+        self.light_color = light_color.into();
         self
     }
 
@@ -432,6 +467,7 @@ impl Interpolate for GlassMaterial {
             specular: lerp(from.specular, to.specular),
             glint_width: length(from.glint_width, to.glint_width),
             light_angle: lerp(from.light_angle, to.light_angle),
+            light_color: Hsla::interpolate(from.light_color, to.light_color, phase),
             fresnel: lerp(from.fresnel, to.fresnel),
             edge_shadow: lerp(from.edge_shadow, to.edge_shadow),
             edge_width: length(from.edge_width, to.edge_width),
@@ -557,7 +593,8 @@ pub struct GlassUniform {
     pub tone: [f32; 4],
     /// Fresnel glow, edge shadow strength and width, opacity.
     pub rim: [f32; 4],
-    /// Shape count, corner smoothing, merge radius, padding.
+    /// Shape count, corner smoothing, merge radius, then how deep inside a
+    /// shape the face is flat, where the shader skips the field (0 never).
     pub shape: [f32; 4],
     /// Glow center, radius, strength.
     pub glow: [f32; 4],
@@ -569,6 +606,9 @@ pub struct GlassUniform {
     pub mask_radii: [f32; 4],
     /// Its corner smoothing, then 1 when there is a clip.
     pub mask: [f32; 4],
+    /// The glint and fresnel glow's color, scaled by its alpha, then
+    /// padding.
+    pub light_color: [f32; 4],
 }
 
 impl GlassUniform {
@@ -724,6 +764,7 @@ impl Glass {
         let bezel = material.bezel.as_f32().max(0.5);
         let refraction = material.refraction.as_f32();
         let tint = material.tint.to_rgb();
+        let light = material.light_color.to_rgb();
         let (sin, cos) = material.light_angle.sin_cos();
         let shape_bounds = self.shape_bounds();
         let glow_center = point(
@@ -773,7 +814,7 @@ impl Glass {
                 self.shape_count.max(1) as f32,
                 self.corner_smoothing,
                 material.merge.as_f32().max(0.),
-                0.,
+                face_depth(material),
             ],
             glow: [
                 glow_center.x,
@@ -804,6 +845,7 @@ impl Glass {
                 ]
             }),
             mask: mask.map_or([0.; 4], |mask| [mask.corner_smoothing, 1., 0., 0.]),
+            light_color: [light.r * light.a, light.g * light.a, light.b * light.a, 0.],
         }
     }
 
@@ -816,6 +858,34 @@ impl Glass {
             .reduce(|union, bounds| union.union(&bounds))
             .unwrap_or_default()
     }
+}
+
+/// How deep inside its shapes glass has a flat face: past the bezel, where
+/// lensing and the fresnel glow end, and past the glint's faint bleed, with
+/// a pixel to spare. Zero while [`with_full_field`] runs.
+fn face_depth(material: &GlassMaterial) -> f32 {
+    #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+    if FULL_FIELD.get() {
+        return 0.;
+    }
+    let bezel = material.bezel.as_f32().max(0.5);
+    bezel.max(4. * material.glint_width.as_f32().max(1e-3)) + 1.
+}
+
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+thread_local! {
+    static FULL_FIELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `f` with the glass this thread plans computing its field at every
+/// pixel, as before the flat face was skipped, for checks and benchmarks to
+/// compare against.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+fn with_full_field<R>(f: impl FnOnce() -> R) -> R {
+    let previous = FULL_FIELD.replace(true);
+    let result = f();
+    FULL_FIELD.set(previous);
+    result
 }
 
 /// One run of a glass batch, worked out for a renderer to carry out in
@@ -1225,20 +1295,24 @@ pub fn glass_test_scene(material: Option<GlassMaterial>) -> crate::Scene {
 /// Times the glass cases every renderer is benchmarked on, at `width` by
 /// `height` device pixels over 24 colored stripes, and prints one line per
 /// case. `time` draws a scene repeatedly and returns its milliseconds per
-/// frame; each case keeps its best of five.
+/// frame; each case keeps its best of five. Glass is timed twice: as drawn,
+/// and with the field computed at every pixel, which shows what skipping it
+/// on the flat face saves.
 #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
 pub fn bench_glass_rendering(
     width: f32,
     height: f32,
     mut time: impl FnMut(&crate::Scene) -> anyhow::Result<f64>,
 ) -> anyhow::Result<()> {
-    use crate::{ContentMask, Quad, Scene};
+    use crate::{ContentMask, Edges, Quad, Scene};
     let rect = |x: f32, y: f32, w: f32, h: f32| Bounds {
         origin: point(ScaledPixels(x), ScaledPixels(y)),
         size: size(ScaledPixels(w), ScaledPixels(h)),
     };
     let viewport = rect(0., 0., width, height);
-    let scene = |glasses: &[(Bounds<ScaledPixels>, f32, GlassMaterial)]| {
+    let pane_color = hsla(0.6, 0.1, 0.12, 1.);
+    let scene = |glasses: &[(Bounds<ScaledPixels>, f32, f32, GlassMaterial)],
+                 fills: &[(Bounds<ScaledPixels>, f32)]| {
         let mut scene = Scene::default();
         let stripes = 24;
         let stripe = width / stripes as f32;
@@ -1251,18 +1325,35 @@ pub fn bench_glass_rendering(
                 ..Default::default()
             });
         }
-        for (bounds, radius, material) in glasses {
+        for (bounds, radius) in fills {
+            scene.insert_primitive(Quad {
+                bounds: *bounds,
+                content_mask: ContentMask { bounds: viewport },
+                background: pane_color.into(),
+                border_color: hsla(0., 0., 1., 0.12),
+                corner_radii: Corners::all(ScaledPixels(*radius)),
+                border_widths: Edges::all(ScaledPixels(2.)),
+                corner_smoothing: 4.,
+                ..Default::default()
+            });
+        }
+        for (bounds, radius, smoothing, material) in glasses {
             let mut shapes: [(Bounds<ScaledPixels>, Corners<ScaledPixels>); GLASS_MAX_SHAPES] =
                 Default::default();
             shapes[0] = (*bounds, Corners::all(ScaledPixels(*radius)));
+            let dilated = bounds.dilate(ScaledPixels(3.));
             scene.insert_primitive(Glass {
                 order: 0,
-                bounds: bounds.dilate(ScaledPixels(3.)),
-                backdrop_bounds: bounds.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
+                bounds: dilated,
+                backdrop_bounds: if material.reads_backdrop() {
+                    bounds.dilate(ScaledPixels(material.backdrop_reach().as_f32()))
+                } else {
+                    dilated
+                },
                 content_mask: ContentMask { bounds: viewport },
                 shapes,
                 shape_count: 1,
-                corner_smoothing: 2.,
+                corner_smoothing: *smoothing,
                 material: *material,
             });
         }
@@ -1274,47 +1365,82 @@ pub fn bench_glass_rendering(
     let regular = GlassMaterial::regular().scale(2.);
     let frosted = GlassMaterial::frosted().scale(2.);
     let clear = GlassMaterial::clear().scale(2.);
+    let edge = GlassMaterial::edge(pane_color).scale(2.);
     let buttons: Vec<_> = (0..10)
         .map(|index| {
             (
                 rect(200. + index as f32 * 140., 200., 100., 100.),
                 50.,
+                2.,
                 regular,
             )
         })
         .collect();
-    let mut toolbar = vec![(rect(150., 170., 1450., 160.), 80., regular)];
+    let mut toolbar = vec![(rect(150., 170., 1450., 160.), 80., 2., regular)];
     toolbar.extend(buttons.iter().copied());
+    // Four panes split by 16 pixel gaps, as zz tiles a window.
+    let gap = 16.;
+    let (pane_width, pane_height) = ((width - 3. * gap) / 2., (height - 3. * gap) / 2.);
+    let panes: Vec<_> = (0..4)
+        .map(|index| {
+            let (column, row) = ((index % 2) as f32, (index / 2) as f32);
+            rect(
+                gap + column * (pane_width + gap),
+                gap + row * (pane_height + gap),
+                pane_width,
+                pane_height,
+            )
+        })
+        .collect();
+    let pane_fills: Vec<_> = panes.iter().map(|pane| (*pane, 27.)).collect();
+    let pane_glass: Vec<_> = panes.iter().map(|pane| (*pane, 27., 4., edge)).collect();
     let cases = [
         ("one 100x100 button", vec![buttons[0]]),
         ("ten buttons in a row", buttons.clone()),
         ("toolbar under its buttons", toolbar),
         (
             "frosted sidebar 640x2800",
-            vec![(rect(60., 80., 640., 2800.), 56., frosted)],
+            vec![(rect(60., 80., 640., 2800.), 56., 2., frosted)],
         ),
         (
             "clear glass over the whole window",
-            vec![(viewport, 0., clear)],
+            vec![(viewport, 0., 2., clear)],
         ),
         (
             "frosted glass over the whole window",
-            vec![(viewport, 0., frosted)],
+            vec![(viewport, 0., 2., frosted)],
+        ),
+        ("four panes of edge glass", pane_glass),
+        (
+            "edge glass over the whole window",
+            vec![(viewport, 0., 4., edge)],
         ),
     ];
-    let mut best = |glasses: &[(Bounds<ScaledPixels>, f32, GlassMaterial)]| {
-        let scene = scene(glasses);
+    let mut best = |scene: &Scene| {
         (0..5).try_fold(f64::MAX, |fastest, _| {
-            Ok::<_, anyhow::Error>(fastest.min(time(&scene)?))
+            Ok::<_, anyhow::Error>(fastest.min(time(scene)?))
         })
     };
-    let base = best(&[])?;
+    let base = best(&scene(&[], &[]))?;
     println!("glass {width}x{height} background only: {base:.3} ms/frame");
-    for (name, glasses) in &cases {
-        let ms = best(glasses)?;
+    for (name, fills) in [
+        ("four panes as bordered fills", pane_fills),
+        ("the whole window as a bordered fill", vec![(viewport, 0.)]),
+    ] {
+        let ms = best(&scene(&[], &fills))?;
         println!(
             "glass {width}x{height} {name}: {ms:.3} ms/frame (+{:.3})",
             ms - base
+        );
+    }
+    for (name, glasses) in &cases {
+        let scene = scene(glasses, &[]);
+        let ms = best(&scene)?;
+        let full = with_full_field(|| best(&scene))?;
+        println!(
+            "glass {width}x{height} {name}: {ms:.3} ms/frame (+{:.3}), full field {full:.3} (+{:.3})",
+            ms - base,
+            full - base
         );
     }
     Ok(())
@@ -1522,6 +1648,208 @@ pub fn check_glass_rendering(
         &render(&stacked)?,
         "glass over lit opaque glass should see it",
     )?;
+
+    check_flat_face(&mut render, close)?;
+
+    let body = [(shape, Corners::all(ScaledPixels(8.)))];
+    let bright = lit.fresnel(0.4);
+    let white_light = render(&glass_body_scene(&body, 2., bright, None))?;
+    let red_light = render(&glass_body_scene(
+        &body,
+        2.,
+        bright.light_color(hsla(0., 1., 0.5, 1.)),
+        None,
+    ))?;
+    let (lit_white, lit_red) = (white_light.get_pixel(9, 32).0, red_light.get_pixel(9, 32).0);
+    anyhow::ensure!(
+        lit_white[0].abs_diff(lit_red[0]) <= 1
+            && lit_white[1] > lit_red[1] + 30
+            && lit_white[2] > lit_red[2] + 30,
+        "a red light should only add red, got {lit_red:?} where white light gives {lit_white:?}"
+    );
+    close(
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            lit.specular(0.).fresnel(0.),
+            None,
+        ))?,
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            lit.light_color(white().alpha(0.)),
+            None,
+        ))?,
+        "a transparent light should light nothing",
+    )?;
+    Ok(())
+}
+
+/// A 64 by 64 device pixel scene over a checkerboard of hues, with one
+/// glass body made of `shapes`.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+fn glass_body_scene(
+    shapes: &[(Bounds<ScaledPixels>, Corners<ScaledPixels>)],
+    corner_smoothing: f32,
+    material: GlassMaterial,
+    window_mask: Option<WindowCornerMask>,
+) -> crate::Scene {
+    use crate::{ContentMask, Quad, Scene};
+    let mut scene = Scene::default();
+    for index in 0..256 {
+        let (column, row) = ((index % 16) as f32, (index / 16) as f32);
+        let cell = Bounds {
+            origin: point(ScaledPixels(column * 4.), ScaledPixels(row * 4.)),
+            size: size(ScaledPixels(4.), ScaledPixels(4.)),
+        };
+        scene.insert_primitive(Quad {
+            bounds: cell,
+            content_mask: ContentMask { bounds: cell },
+            background: hsla((index as f32 * 0.137).fract(), 0.8, 0.5, 1.).into(),
+            ..Default::default()
+        });
+    }
+    let mut slots: [(Bounds<ScaledPixels>, Corners<ScaledPixels>); GLASS_MAX_SHAPES] =
+        Default::default();
+    for (slot, shape) in slots.iter_mut().zip(shapes) {
+        *slot = *shape;
+    }
+    let union = shapes
+        .iter()
+        .map(|(bounds, _)| *bounds)
+        .reduce(|union, bounds| union.union(&bounds))
+        .unwrap_or_default();
+    let bounds = union.dilate(ScaledPixels(material.edge_width.as_f32().max(0.) + 1.5));
+    scene.insert_primitive(Glass {
+        order: 0,
+        bounds,
+        backdrop_bounds: if material.reads_backdrop() {
+            union
+                .dilate(ScaledPixels(material.backdrop_reach().as_f32()))
+                .union(&bounds)
+        } else {
+            bounds
+        },
+        content_mask: ContentMask {
+            bounds: Bounds {
+                origin: point(ScaledPixels(0.), ScaledPixels(0.)),
+                size: size(ScaledPixels(64.), ScaledPixels(64.)),
+            },
+        },
+        shapes: slots,
+        shape_count: shapes.len() as u32,
+        corner_smoothing,
+        material,
+    });
+    scene.finish();
+    scene.window_corner_mask = window_mask;
+    scene
+}
+
+/// The flat face must draw what computing the field there would: checked
+/// for each shape, smoothing, material and clip below.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+fn check_flat_face(
+    mut render: impl FnMut(&crate::Scene) -> anyhow::Result<image::RgbaImage>,
+    close: impl Fn(&image::RgbaImage, &image::RgbaImage, &str) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    let rect = |x: f32, y: f32, width: f32, height: f32| Bounds {
+        origin: point(ScaledPixels(x), ScaledPixels(y)),
+        size: size(ScaledPixels(width), ScaledPixels(height)),
+    };
+    let round = |radius: f32| Corners::all(ScaledPixels(radius));
+    let body = rect(8., 8., 48., 48.);
+    let uneven = Corners {
+        top_left: ScaledPixels(0.),
+        top_right: ScaledPixels(12.),
+        bottom_right: ScaledPixels(4.),
+        bottom_left: ScaledPixels(20.),
+    };
+    let bodies = [
+        ("square corners", vec![(body, round(0.))], 2.),
+        ("round corners", vec![(body, round(8.))], 2.),
+        ("smoothed corners", vec![(body, round(8.))], 4.),
+        ("a circle", vec![(body, round(24.))], 4.),
+        (
+            "uneven corners",
+            vec![(rect(8., 12., 48., 40.), uneven)],
+            4.,
+        ),
+        (
+            "two shapes melting",
+            vec![
+                (rect(6., 8., 26., 48.), round(6.)),
+                (rect(35., 8., 23., 48.), round(6.)),
+            ],
+            4.,
+        ),
+        (
+            "two shapes overlapping",
+            vec![
+                (rect(6., 6., 32., 32.), round(6.)),
+                (rect(26., 26., 32., 32.), round(10.)),
+            ],
+            2.,
+        ),
+    ];
+    let tint = hsla(0.6, 0.3, 0.25, 1.);
+    let lit = GlassMaterial::regular()
+        .tint(tint)
+        .blur(px(0.))
+        .refraction(px(0.))
+        .bezel(px(6.))
+        .specular(0.8)
+        .glint_width(px(1.5))
+        .fresnel(0.4)
+        .edge_shadow(0.5)
+        .edge_width(px(1.))
+        .merge(px(6.));
+    let lens = GlassMaterial::regular()
+        .blur(px(0.))
+        .tint(hsla(0., 0., 1., 0.15))
+        .bezel(px(8.))
+        .refraction(px(10.))
+        .dispersion(0.4)
+        .merge(px(6.));
+    let materials = [
+        ("lit opaque glass", lit),
+        ("edge glass", GlassMaterial::edge(tint).merge(px(6.))),
+        (
+            "glowing grainy glass",
+            lit.glow(0.3)
+                .glow_radius(px(30.))
+                .glow_center(point(0.3, 0.6))
+                .noise(0.06),
+        ),
+        ("a lens", lens),
+        ("frost", lens.blur(px(2.)).refraction(px(-6.)).opacity(0.8)),
+    ];
+    let window = WindowCornerMask {
+        bounds: rect(20., 20., 44., 44.),
+        corner_radii: round(12.),
+        corner_smoothing: 4.,
+    };
+    for (body, shapes, smoothing) in &bodies {
+        for (material_name, material) in materials {
+            anyhow::ensure!(
+                face_depth(&material) < 12.,
+                "{material_name} leaves no flat face to check"
+            );
+            for mask in [None, Some(window)] {
+                let scene = glass_body_scene(shapes, *smoothing, material, mask);
+                let fast = render(&scene)?;
+                let full = with_full_field(|| render(&scene))?;
+                let clipped = if mask.is_some() { ", clipped" } else { "" };
+                close(
+                    &full,
+                    &fast,
+                    &format!(
+                        "the flat face of {material_name} on {body}{clipped} should match the full field"
+                    ),
+                )?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1531,7 +1859,7 @@ mod tests {
 
     #[test]
     fn uniform_blocks_match_the_shader_layout() {
-        assert_eq!(std::mem::size_of::<GlassUniform>(), 464);
+        assert_eq!(std::mem::size_of::<GlassUniform>(), 480);
         assert_eq!(std::mem::size_of::<GlassBlurUniform>(), 32);
     }
 

@@ -4124,7 +4124,7 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
-    #[ignore = "benchmark: cargo test -p zz-gpui-platform --release bench_glass -- --ignored --nocapture"]
+    #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_glass -- --ignored --nocapture"]
     fn bench_glass() -> anyhow::Result<()> {
         use zz_gpui::PlatformHeadlessRenderer;
         let mut renderer = WgpuHeadlessRenderer::new()?;

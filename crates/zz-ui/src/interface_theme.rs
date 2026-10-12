@@ -386,6 +386,12 @@ mod tests {
                 ..clear
             })
         );
+        let lit = parse_theme(r##"{"look":{"glass":{"preset":"clear","light_color":"#ff0000"}}}"##)
+            .unwrap();
+        assert_eq!(
+            lit.look.glass.map(|glass| glass.light_color),
+            Some(crate::parse_hex("#ff0000").unwrap())
+        );
         assert!(parse_theme(r#"{"look":{"glass":"stained"}}"#).is_err());
         assert!(parse_theme("[]").is_err());
     }
