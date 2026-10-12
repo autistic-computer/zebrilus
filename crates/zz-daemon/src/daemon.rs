@@ -11903,6 +11903,7 @@ impl Shared {
         }
         for (pane, terminal) in terminals_to_watch {
             self.watch_terminal(pane, &terminal)?;
+            self.request_pane_location(pane);
         }
         for event in client_events {
             let pane = match &event {
@@ -28425,6 +28426,7 @@ impl Shared {
         };
         if changed {
             self.request_publish(timers::PublishReason::RuntimeFacts);
+            self.request_pane_location(pane);
         }
     }
 
@@ -28456,7 +28458,7 @@ impl Shared {
             .tty()
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let (changed, events) = {
+        let ((changed, events), relocated) = {
             let mut inner = self.inner.lock();
             if !inner
                 .terminals
@@ -28471,6 +28473,8 @@ impl Shared {
                 .cloned()
                 .unwrap_or_default();
             let current_path = live_path.unwrap_or_else(|| previous.start_path.clone());
+            let relocated =
+                previous.reported_path.is_empty() && previous.current_path != current_path;
             let runtime = PaneRuntimeFacts {
                 current_command: current_command.to_owned(),
                 current_path,
@@ -28509,13 +28513,16 @@ impl Shared {
                 inner.engine.note_automatic_rename_output(pane, now);
             }
             self.schedule_window_renames(&mut inner);
-            result
+            (result, relocated)
         };
         if (output || changed.is_some()) && pid.is_some() {
             self.request_peer_probe();
         }
         if let Some(reason) = changed {
             self.request_publish(reason);
+        }
+        if relocated {
+            self.request_pane_location(pane);
         }
         events
     }
@@ -30488,12 +30495,14 @@ impl Shared {
         if marks.is_empty() {
             return;
         }
-        let (events, summary_changed) = {
+        let (events, summary_changed, finished) = {
             let mut inner = self.inner.lock();
             let mut events = Vec::new();
             let mut summary_changed = false;
+            let mut finished = false;
             for mark in marks {
                 summary_changed |= pane_summary::note_shell_mark(&mut inner, pane, &mark);
+                finished |= mark.kind == zz_terminal::ShellMarkKind::CommandFinished;
                 let name = match mark.kind {
                     zz_terminal::ShellMarkKind::Prompt => "pane-shell-prompt",
                     zz_terminal::ShellMarkKind::CommandStarted => "pane-command-started",
@@ -30506,10 +30515,13 @@ impl Shared {
                     events.push(event);
                 }
             }
-            (events, summary_changed)
+            (events, summary_changed, finished)
         };
         if summary_changed {
             self.request_publish(timers::PublishReason::Tree);
+        }
+        if finished {
+            self.request_pane_location(pane);
         }
         self.run_event_hooks(events);
     }
@@ -34120,14 +34132,28 @@ impl Shared {
     }
 
     fn apply_agent_status(self: &Arc<Self>, pane: PaneId, status: PaneStatus) {
-        let changed = pane_summary::apply_pane_status(
-            &mut self.inner.lock(),
-            pane,
-            Some(status),
-            unix_timestamp(),
-        );
+        let (changed, relocate) = {
+            let mut inner = self.inner.lock();
+            let left_work = status.state != PaneStatusState::Working
+                && inner.engine.state.pane(pane).is_some_and(|pane| {
+                    pane.status
+                        .as_ref()
+                        .is_some_and(|status| status.state == PaneStatusState::Working)
+                });
+            let changed =
+                pane_summary::apply_pane_status(&mut inner, pane, Some(status), unix_timestamp());
+            let unknown = inner
+                .engine
+                .state
+                .pane(pane)
+                .is_some_and(|pane| pane.summary.cwd.is_empty());
+            (changed, changed && (left_work || unknown))
+        };
         if changed {
             self.request_publish(timers::PublishReason::Tree);
+        }
+        if relocate {
+            self.request_pane_location(pane);
         }
     }
 
@@ -35450,6 +35476,7 @@ struct ServerState {
     pane_read_observations: BTreeMap<PaneId, Weak<terminal_reads::Observation>>,
     control_activity_pending: BTreeSet<PaneId>,
     program_status_panes: BTreeSet<PaneId>,
+    location_jobs: BTreeMap<PaneId, bool>,
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,

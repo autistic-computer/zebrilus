@@ -11,9 +11,9 @@ use std::{
 
 use parking_lot::{Condvar, Mutex};
 
-use super::path_listing;
 #[cfg(feature = "agent")]
-use super::{ClientId, PaneId};
+use super::ClientId;
+use super::{PaneId, pane_summary, path_listing};
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
 const MAX_WORKERS: usize = 2;
@@ -68,6 +68,12 @@ pub(super) enum Task {
         command: Vec<String>,
         search: Vec<String>,
         complete: Completion<()>,
+    },
+    PaneLocation {
+        owner: std::sync::Weak<super::Shared>,
+        pane: PaneId,
+        reported: String,
+        live: std::path::PathBuf,
     },
     #[cfg(test)]
     Hold(
@@ -485,6 +491,19 @@ fn run(task: Task, _state: &State) -> Option<Result> {
             Some(Result::Complete(Box::new(move |shared| {
                 complete(shared, ());
             })))
+        }
+        Task::PaneLocation {
+            owner,
+            pane,
+            reported,
+            live,
+        } => {
+            let (cwd, branch) =
+                pane_summary::resolve_location(&reported, &live, pane_summary::daemon_home());
+            if let Some(shared) = owner.upgrade() {
+                shared.finish_pane_location(pane, cwd, branch);
+            }
+            None
         }
         #[cfg(test)]
         Task::Hold(wait, started) => {

@@ -1,10 +1,10 @@
 ---
 type: Protocol
 title: Mux snapshots (snapshot.rs)
-description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync.
+description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
-tags: [protocol, snapshot, layout, state, presence]
-timestamp: 2026-09-30T00:00:00-03:00
+tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
+timestamp: 2026-10-12T12:00:00-03:00
 ---
 
 # Overview
@@ -53,12 +53,24 @@ deserializer so hostile nesting is rejected before it can exhaust the receiving 
 | `MuxSnapshot` | `generation: u64`, `sessions: Vec<SessionSnapshot>`, `focused_window: Option<WindowId>` |
 | `SessionSnapshot` | `id: SessionId`, `name: String`, `active_window: WindowId`, `windows: Vec<WindowSnapshot>`, `viewers: Vec<SessionViewer>` |
 | `SessionViewer` | `name: String`, `window: WindowId`, `is_self: bool` |
-| `WindowSnapshot` | `id: WindowId`, `index: u32`, `name: String`, `automatic_rename: bool`, `active_pane: PaneId`, `zoomed_pane: Option<PaneId>`, `layout: LayoutNode`, `panes: BTreeMap<PaneId, PaneSnapshot>`, `layout_dump: String`, `visible_layout_dump: String`, `status_label: String`, `activity: bool` |
-| `PaneSnapshot` | `id: PaneId`, `title: String`, `kind: PaneKindSnapshot`, `synchronized_input: bool`, `bell: bool`, `dead: bool`, `dead_status: Option<u32>`, `border_colour: Option<TmuxColour>`, `active_border_colour: Option<TmuxColour>` |
+| `WindowSnapshot` | `id: WindowId`, `index: u32`, `name: String`, `automatic_rename: bool`, `active_pane: PaneId`, `zoomed_pane: Option<PaneId>`, `layout: LayoutNode`, `panes: BTreeMap<PaneId, PaneSnapshot>`, `layout_dump: String`, `visible_layout_dump: String`, `status_label: String`, `activity: bool`, `silence: bool`, `pane_border_status: PaneBorderStatus`, `pane_border_lines: PaneBorderLines`, `pane_border_indicators: PaneBorderIndicators`, `pane_order: Vec<PaneId>`, `pane_z_order: Vec<PaneId>`, `floating: Vec<FloatingPaneSnapshot>`, `modal: Option<ModalPaneSnapshot>`, `sx: u16`, `sy: u16` |
+| `FloatingPaneSnapshot` | `pane: PaneId`, `xoff: i32`, `yoff: i32`, `sx: u16`, `sy: u16`, `visible: bool`, `border_lines: PaneBorderLines`, `border_status: PaneBorderStatus` |
+| `ModalPaneSnapshot` | `pane: PaneId`, `capture_keys: bool`, `close_on_click: bool`, `close_on_cancel: bool` |
+| `PaneSnapshot` | `id: PaneId`, `title: String`, `kind: PaneKindSnapshot`, `synchronized_input: bool`, `bell: bool`, `dead: bool`, `dead_status: Option<u32>`, `border_colour: Option<TmuxColour>`, `active_border_colour: Option<TmuxColour>`, `border_status_text: String`, `mode: Option<PaneMode>`, `status: Option<PaneStatus>`, `summary: PaneSummary` |
+| `PaneStatus` | `state: PaneStatusState`, `kind: Option<PaneStatusKind>`, `progress: Option<u8>`, `app: String`, `title: String`, `message: String` |
+| `PaneStatusState` | `Idle` \| `Working` \| `Done` \| `Blocked` \| `Error` |
+| `PaneStatusKind` | `Permission` \| `Question` \| `Auth` |
+| `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `branch: String` |
+| `ShellCommand` | `Running` \| `Finished(u8)` |
+| `PaneMode` | `Clock { .. }` \| `Switch { .. }` \| `Customize { .. }` \| `Panes { .. }` |
 | `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Agent(AgentDescriptor)` \| `Editor(EditorDescriptor)` |
 | `BrowserDescriptor` | `tabs: Vec<String>`, `active_tab: usize`, `profile: String` |
 | `AgentDescriptor` | `provider: AgentProvider`, `cwd: Option<PathBuf>`, `session_id: Option<String>` |
 | `EditorDescriptor` | `path: Option<String>`, `cwd: String` |
+
+Every field after `activity` on `WindowSnapshot`, and after `active_border_colour` on
+`PaneSnapshot`, carries `#[serde(default)]`. That only helps JSON readers: postcard is positional,
+so an older decoder still fails on a newer frame, and the protocol version gates the mix.
 
 `generation` is the version stamp for the whole tree; `WindowSnapshot.index` is the tmux-style window
 number; `automatic_rename` tells presentation surfaces whether the active pane may supply the tab
@@ -93,6 +105,13 @@ without parsing status text. Protocol v95 then appended the window's pane border
 `window_pane_index` counts) and `pane_z_order` (which of two panes owns a border cell they both
 touch).
 
+`silence` is the window's latched `monitor-silence` alert. `border_status_text` is the pane's
+expanded `pane-border-format`, empty while `pane-border-status` is off. `mode` is the server pane
+mode a client draws over the pane: `clock-mode`, `switch-mode`, `options-mode` (customize) or
+`panes-mode` (`display-panes`). `floating`, `modal`, `sx` and `sy` are the window's floating panes, its modal
+float and its own size ([floating panes](/designs/floating-panes.md)). `status` and `summary` are
+described under [pane status, summary and time](#pane-status-summary-and-time).
+
 `Picker` is a durable, runtime-free pane state used by the native split-window --kind picker flow. It occupies a real
 layout leaf and survives GUI detach/reattach, but the daemon owns no PTY and the GUI owns no CEF
 session for it. `select-pane-kind` with `terminal`, `browser`, `agent`, or `editor` materializes the
@@ -110,6 +129,67 @@ directory when a picker becomes an Agent pane, then updates the descriptor with 
 absolute cwd and opaque session ID. The daemon owns the adapter process, retained runtime state,
 and journal. Prompts, messages, tool calls, permissions, credentials, and provider-specific payloads
 travel through the separate Agent protocol lanes rather than the mux snapshot.
+
+## Pane status, summary and time
+
+`PaneSnapshot.status` is one attention record per pane, whoever reported it:
+
+- a terminal that speaks OSC 7501 gets its headline record ([program status](/terminal/program-status.md));
+- an Agent pane gets the record the daemon's agent fanout computes from its phase, pending
+  permission and last turn ([Native Agent pane](/concepts/agent-pane.md));
+- any other terminal pane gets its `@agent_state` option mirrored into a record (`working`,
+  `blocked`, `needs-approval` as Blocked/Permission, `needs-input` as Blocked/Question, `failed` or
+  `error`, `done`, and `idle` or `starting`, which only replace an existing record), so the Claude
+  peer sampler, the OSC 9;4 bridge and user hooks all reach the tree.
+
+`app`, `title` and `message` are bounded on decode at `MAX_PANE_STATUS_APP_BYTES` (64),
+`MAX_PANE_STATUS_TITLE_BYTES` (256) and `MAX_PANE_STATUS_MESSAGE_BYTES` (2048) bytes; a longer
+string fails the decode. Producers cut text on a char boundary before it gets there.
+
+`PaneSnapshot.summary: PaneSummary` is what a sidebar row needs beyond the status. Every field
+moves on an event, never on output bytes:
+
+| Field | Meaning |
+|---|---|
+| `changed_at` | Daemon wall clock, Unix seconds, of the pane's last meaningful change; 0 until one happens |
+| `unseen` | A finish nobody has looked at |
+| `command` | The last OSC 133 mark on a Terminal pane: `Running` after `C`, `Finished(status)` after `D`; `None` without shell integration |
+| `name` | The pane-scoped `@name` user option, cut to `MAX_PANE_NAME_BYTES` (256) |
+| `cwd` | Working directory for display: absolute, the daemon user's home folded to `~`; empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
+| `branch` | The branch checked out at `cwd`, the ref as written when HEAD names something outside `refs/heads/`, or a 7-character commit id when HEAD is detached; empty outside a repository; cut to `MAX_PANE_BRANCH_BYTES` (256) |
+
+`changed_at` is stamped by a status state or kind change, a shell command start (the `C` mark's
+start time) or finish (the `D` mark's end time), a bell latch going from false to true, and pane
+death. Output, title writes, a status message, title or progress change within the same state and
+kind, cwd, branch, `@name`, browser navigation and pane creation never stamp it.
+
+`unseen` is raised on a status edge into `Done` from anything else, or from `Working` or `Blocked`
+into `Idle`, unless the pane's window is the current window of a session some client is attached
+to (the same rule that keeps a watched pane's bell from latching). An edge into `Working` or
+`Blocked` drops it, so a stale finish does not resurface after the next turn. It clears wherever the
+bell clears: pane selection, attach, pane input, window activation, `kill-session -C` and respawn.
+Because it lives in the daemon, every client on every host sees the same latch. A daemon restart
+clears it and `changed_at`, as it does the bell.
+
+`cwd` comes from the terminal's OSC 7 report, or from the live working directory of the pane's
+foreground process when the shell sends no OSC 7, and from `AgentDescriptor.cwd` for Agent panes.
+The daemon resolves it and the branch on its helper pool, never under the server lock, with at most
+one job per pane in flight (a trigger while one runs resubmits when it finishes). Jobs start when a
+pane's terminal is spawned or an Agent pane opens, when the OSC 7 path changes, when the live path
+changes on a pane without OSC 7, when a shell command finishes, and on a native agent status edge
+out of `Working` or while the summary has no cwd yet. The branch is read from the `.git` directory
+or `gitdir:` file and `HEAD` (4 KiB at most) without running git; bare repositories and `GIT_DIR`
+are not followed.
+
+`TreeOp::PaneSummary { session, window, pane, summary }` (tag 18) carries a summary change on its
+own, so a stamp that moves sends one small op instead of the pane.
+
+`Welcome.clock` and `ServerHello.clock` carry the daemon's wall clock, Unix seconds, when the
+handshake was sent. `ClientCore::server_clock()` keeps it and a reconnect replaces it.
+`zz_client::window_summary::DaemonClock` turns it into an offset, so ages are computed against
+daemon time and saturate at "now" when either clock steps backwards. The same module holds the
+renderer-free sidebar view model (`summarize_window`, `summarize_session`, `summarize_host`); no
+client draws it yet ([flat sidebar data](/designs/flat-sidebar-data.md)).
 
 ## Per-client stamping and presence
 
@@ -179,6 +259,8 @@ let snapshot = MuxSnapshot {
             visible_layout_dump: "layout".into(),
             status_label: "0:edit".into(),
             activity: false,
+            // silence, the pane border fields, pane_order, pane_z_order, floating, modal,
+            // sx and sy omitted
         }],
         // stamped per recipient: this copy went to "laptop"
         viewers: vec![

@@ -4,7 +4,7 @@ title: zz wire protocol (v108)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-09-30T00:00:00-03:00
+timestamp: 2026-10-12T12:00:00-03:00
 ---
 
 # Overview
@@ -934,6 +934,22 @@ rest, and the vi table when `status-keys` is vi, whose command mode draws in
 `message-command-style`; the search prompt takes the emacs keys), and the raw TUI draws that row and
 puts its cursor there instead of clipping the line and parking the cursor at its end; a client that
 ignores the fields keeps the old drawing.
+
+v108 also carries the sidebar's pane summary and the daemon clock
+([design](/designs/flat-sidebar-data.md), [snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
+`PaneSnapshot` appends `summary: PaneSummary { changed_at, unseen, command: Option<ShellCommand>,
+name, cwd, branch }` after `status`, and `TreeOp` appends `PaneSummary { session, window, pane,
+summary }` at tag 18, which the tree diff sends when only the summary moved. `ShellCommand` is
+`Running` or `Finished(u8)`. `Welcome` and `ServerHello` append `clock: u64`, the daemon's wall
+clock in Unix seconds when the handshake was sent; `materialize_welcome` copies it into the
+`ServerHello` it builds, and clients compute ages against it. Every new field is
+`#[serde(default)]`. The new strings decode bounded: `name` at `MAX_PANE_NAME_BYTES` (256), `cwd`
+at `MAX_PANE_CWD_BYTES` (4096) and `branch` at `MAX_PANE_BRANCH_BYTES` (256). `PaneStatus` keeps its
+encoding but now decodes `app`, `title` and `message` bounded at 64, 256 and 2048 bytes
+(`MAX_PANE_STATUS_*`). `TreeOp::UpsertPane` now holds a `Box<PaneSnapshot>`; postcard encodes a box
+as its contents, so its bytes are unchanged. `pane_summary_wire_tests` pins the layout and the tag.
+The daemon now fills `PaneSnapshot.status` for native Agent panes and, from `@agent_state`, for
+terminal panes with no OSC 7501 record, so the record reaches every session on every host.
 
 # Versioning & compatibility
 
