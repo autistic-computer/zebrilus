@@ -8,22 +8,25 @@ use zz_client::window_summary::{
 };
 use zz_gpui::{
     App, ClickEvent, CornerRadiusMode, Div, ElementId, FontFeatures, FontWeight, HighlightStyle,
-    Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Stateful, StyledText, Window, div,
-    prelude::*, px,
+    Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString, Stateful, StyledText,
+    Window, div, font, prelude::*, px,
 };
 use zz_protocol::{AgentProvider, SessionId, WindowId};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Paint, PaintState,
-    Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, PaintState, Sizable as _,
+    StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
+    command::PaletteHostId,
     h_flex,
     icon::cap_center_drop,
     spinner::Spinner,
+    tooltip::Tooltip,
+    touch::{CoarsePointer, TOUCH_TARGET, press_highlight},
     v_flex,
 };
 
-pub const FLAT_ROW_HEIGHT: f32 = 48.0;
+const ROW_HEIGHT: f32 = 48.0;
 const ROW_PADDING: f32 = 10.0;
 const TILE_SLOT: f32 = 28.0;
 const TILE_GAP: f32 = 10.0;
@@ -47,6 +50,7 @@ const DETAIL_AGE_GAP: f32 = 8.0;
 const SPINNER_SIZE: f32 = 12.0;
 const ACTIONS_WIDTH: f32 = 20.0;
 const ACTIONS_HEIGHT: f32 = 16.0;
+const ACTIONS_ICON: f32 = 14.0;
 const ACTIONS_RADIUS_MAX: f32 = 8.0;
 const DIMMED: f32 = 0.45;
 const HEADER_INSET: f32 = 16.0;
@@ -63,6 +67,7 @@ const SESSION_LINE: f32 = 18.0;
 const SESSION_SIZE: f32 = 12.0;
 const SESSION_SPACING: f32 = 6.0;
 const NEW_WINDOW_SIZE: f32 = 18.0;
+const NEW_WINDOW_ICON: f32 = 12.0;
 const CHEVRON_SIZE: f32 = 10.0;
 const NOTE_SIZE: f32 = 11.0;
 const NOTE_LINE: f32 = 15.0;
@@ -80,7 +85,8 @@ pub enum HostConnection {
     Connected,
     Connecting,
     Reconnecting,
-    Unreachable,
+    Disconnected,
+    Unreachable(SharedString),
     Incompatible(SharedString),
 }
 
@@ -120,6 +126,7 @@ impl FlatSession {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FlatHost {
+    pub id: PaletteHostId,
     pub name: SharedString,
     pub remote: bool,
     pub connection: HostConnection,
@@ -130,6 +137,7 @@ pub struct FlatHost {
 
 impl FlatHost {
     pub fn new(
+        id: PaletteHostId,
         name: impl Into<SharedString>,
         remote: bool,
         connection: HostConnection,
@@ -137,6 +145,7 @@ impl FlatHost {
         age: impl Fn(u64) -> Option<String>,
     ) -> Self {
         Self {
+            id,
             name: name.into(),
             remote,
             connection,
@@ -148,23 +157,28 @@ impl FlatHost {
                 .collect(),
         }
     }
+
+    fn live(&self) -> bool {
+        self.connection == HostConnection::Connected
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlatTarget {
-    Host(usize),
-    Session(usize, SessionId),
-    Window(usize, WindowId),
+    Host(PaletteHostId),
+    Session(PaletteHostId, SessionId),
+    Window(PaletteHostId, WindowId),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlatEvent {
-    Open(usize, WindowId),
-    Actions(usize, WindowId),
-    Fold(FlatTarget),
-    NewWindow(usize, SessionId),
-    Retry(usize),
-    Upgrade(usize),
+    Open(PaletteHostId, WindowId),
+    Actions(PaletteHostId, WindowId),
+    FoldHost(PaletteHostId),
+    FoldSession(PaletteHostId, SessionId),
+    NewWindow(PaletteHostId, SessionId),
+    Connect(PaletteHostId),
+    Upgrade(PaletteHostId),
     Hover(FlatTarget, bool),
 }
 
@@ -172,7 +186,8 @@ pub type FlatHandler = Rc<dyn Fn(FlatEvent, &mut Window, &mut App)>;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FlatState {
-    pub current: Option<(usize, WindowId)>,
+    pub current: Option<(PaletteHostId, WindowId)>,
+    pub selected: Option<(PaletteHostId, WindowId)>,
     pub hovered: Option<FlatTarget>,
 }
 
@@ -192,6 +207,7 @@ impl FlatState {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FlatRowState {
     pub current: bool,
+    pub selected: bool,
     pub hovered: bool,
     pub dimmed: bool,
 }
@@ -200,11 +216,67 @@ impl FlatRowState {
     fn paint_state(self) -> PaintState {
         if self.current {
             PaintState::Current
+        } else if self.selected {
+            PaintState::Selected
         } else if self.hovered {
             PaintState::Hover
         } else {
             PaintState::Rest
         }
+    }
+
+    fn for_pointer(self, cx: &App) -> Self {
+        Self {
+            hovered: self.hovered && !CoarsePointer::get(cx),
+            ..self
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RowInk {
+    ground: Ground,
+    text: Hsla,
+    muted: Hsla,
+    plain: bool,
+    dimmed: bool,
+}
+
+impl RowInk {
+    fn new(state: FlatRowState, cx: &App) -> Self {
+        let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+        let paint_state = state.paint_state();
+        let text = paint.text_at(paint_state);
+        Self {
+            ground: paint.ground_at(paint_state),
+            text,
+            muted: paint.muted_at(paint_state),
+            plain: text != paint.text,
+            dimmed: state.dimmed,
+        }
+    }
+
+    fn dim(self, color: Hsla) -> Hsla {
+        if self.dimmed {
+            color.mix_oklab(self.ground.fill, DIMMED)
+        } else {
+            color
+        }
+    }
+
+    fn tone(self, tone: DetailTone, cx: &App) -> Hsla {
+        self.dim(match tone {
+            DetailTone::Normal => self.text,
+            DetailTone::Muted => self.muted,
+            DetailTone::Warning | DetailTone::Danger if self.plain => self.text,
+            DetailTone::Warning => cx.theme().warning,
+            DetailTone::Danger => cx.theme().danger,
+        })
+    }
+
+    fn attention(self, attention: Attention, cx: &App) -> Option<Hsla> {
+        let color = attention_color(attention, cx)?;
+        Some(self.dim(if self.plain { self.text } else { color }))
     }
 }
 
@@ -229,14 +301,23 @@ pub fn attention_color(attention: Attention, cx: &App) -> Option<Hsla> {
     }
 }
 
+fn attention_word(attention: Attention) -> Option<&'static str> {
+    match attention {
+        Attention::NeedsYou => Some("needs you"),
+        Attention::Failed => Some("failed"),
+        Attention::Done => Some("unseen"),
+        Attention::Bell => Some("bell"),
+        Attention::Working => Some("working"),
+        Attention::None => None,
+    }
+}
+
 pub fn flat_row_ground(state: FlatRowState, cx: &App) -> Ground {
-    cx.theme()
-        .paint(Tone::Neutral, Emphasis::Ghost)
-        .ground_at(state.paint_state())
+    RowInk::new(state, cx).ground
 }
 
 fn row_height(cx: &App) -> Pixels {
-    cx.theme().dense(px(FLAT_ROW_HEIGHT))
+    cx.theme().dense(px(ROW_HEIGHT))
 }
 
 fn row_radius(cx: &App) -> Pixels {
@@ -250,7 +331,31 @@ fn tile_radius(cx: &App) -> Pixels {
         .min(px(TILE_SLOT / 2.0))
 }
 
-fn tile(tag: Option<PaneTag>, size: f32, radius: Pixels, glyph: f32, paint: &Paint) -> Div {
+#[derive(Clone, Copy)]
+struct TileInk {
+    fill: Hsla,
+    border: Hsla,
+    border_width: Pixels,
+    glyph: Hsla,
+}
+
+impl TileInk {
+    fn new(ink: RowInk, cx: &App) -> Self {
+        let paint = cx
+            .theme()
+            .paint_on(ink.ground, Tone::Neutral, Emphasis::Soft)
+            .opaque();
+        let fill = paint.hover;
+        Self {
+            fill: ink.dim(fill),
+            border: ink.dim(fill.blend(paint.border)),
+            border_width: paint.border_width,
+            glyph: ink.dim(paint.text),
+        }
+    }
+}
+
+fn tile(tag: Option<PaneTag>, size: f32, radius: Pixels, glyph: f32, ink: TileInk) -> Div {
     div()
         .flex()
         .flex_none()
@@ -259,18 +364,15 @@ fn tile(tag: Option<PaneTag>, size: f32, radius: Pixels, glyph: f32, paint: &Pai
         .size(px(size))
         .rounded(radius)
         .corner_radius_mode(CornerRadiusMode::Fixed)
-        .bg(paint.fill)
-        .border(paint.border_width)
-        .border_color(paint.border)
-        .text_color(paint.text)
+        .bg(ink.fill)
+        .border(ink.border_width)
+        .border_color(ink.border)
+        .text_color(ink.glyph)
         .children(tag.map(|tag| Icon::new(pane_glyph(tag)).size(px(glyph))))
 }
 
-pub fn flat_tile_stack(tiles: &[PaneTag], ground: Ground, cx: &App) -> Div {
-    let paint = cx
-        .theme()
-        .paint_on(ground, Tone::Neutral, Emphasis::Soft)
-        .opaque();
+fn tile_stack(tiles: &[PaneTag], ink: RowInk, cx: &App) -> Div {
+    let tile_ink = TileInk::new(ink, cx);
     let radius = tile_radius(cx);
     let slot = div().relative().flex_none().size(px(TILE_SLOT));
     let shown = &tiles[..tiles.len().min(STACK_LIMIT)];
@@ -280,7 +382,7 @@ pub fn flat_tile_stack(tiles: &[PaneTag], ground: Ground, cx: &App) -> Div {
             TILE_SLOT,
             radius,
             TILE_GLYPH,
-            &paint,
+            tile_ink,
         ));
     }
     let offsets: &[(f32, f32)] = if shown.len() == 2 {
@@ -304,13 +406,17 @@ pub fn flat_tile_stack(tiles: &[PaneTag], ground: Ground, cx: &App) -> Div {
             .p(px(STACK_RING))
             .rounded(radius + px(STACK_RING))
             .corner_radius_mode(CornerRadiusMode::Fixed)
-            .bg(ground.fill)
-            .child(tile(Some(*tag), size, radius, glyph, &paint))
+            .bg(ink.ground.fill)
+            .child(tile(Some(*tag), size, radius, glyph, tile_ink))
     }))
 }
 
-pub fn flat_attention_dot(attention: Attention, ground: Ground, cx: &App) -> Option<Div> {
-    let color = attention_color(attention, cx)?;
+pub fn flat_tile_stack(tiles: &[PaneTag], state: FlatRowState, cx: &App) -> Div {
+    tile_stack(tiles, RowInk::new(state, cx), cx)
+}
+
+fn attention_dot(attention: Attention, ink: RowInk, cx: &App) -> Option<Div> {
+    let color = ink.attention(attention, cx)?;
     let ring = DOT_SIZE + DOT_RING * 2.0;
     Some(
         div()
@@ -320,21 +426,17 @@ pub fn flat_attention_dot(attention: Attention, ground: Ground, cx: &App) -> Opt
             .size(px(ring))
             .p(px(DOT_RING))
             .rounded_full()
-            .bg(ground.fill)
+            .bg(ink.ground.fill)
             .child(div().size(px(DOT_SIZE)).rounded_full().bg(color)),
     )
 }
 
-fn spinner(size: f32, line_font: f32, cx: &App) -> Div {
+fn spinner(size: f32, line_font: f32, color: Hsla, cx: &App) -> Div {
     div()
         .flex_none()
         .relative()
         .top(cap_center_drop(px(line_font), px(size), cx))
-        .child(
-            Spinner::new()
-                .with_size(px(size))
-                .color(cx.theme().foreground.muted()),
-        )
+        .child(Spinner::new().with_size(px(size)).color(color))
 }
 
 fn glyph(icon: IconName, size: f32, line_font: f32, color: Hsla, cx: &App) -> Div {
@@ -345,23 +447,23 @@ fn glyph(icon: IconName, size: f32, line_font: f32, color: Hsla, cx: &App) -> Di
         .child(Icon::new(icon).size(px(size)).text_color(color))
 }
 
-fn detail_text(window: &WindowSummary, paint: &Paint, state: PaintState, cx: &App) -> StyledText {
-    let theme = cx.theme();
+fn baseline_drop(line_font: f32, own_font: f32, cx: &App) -> Pixels {
+    let text = cx.text_system();
+    let font = text.resolve_font(&font(cx.theme().font_family.clone()));
+    let middle = |size: f32| (text.ascent(font, px(size)) + text.descent(font, px(size))) / 2.0;
+    middle(line_font) - middle(own_font)
+}
+
+fn detail_text(window: &WindowSummary, ink: RowInk, cx: &App) -> StyledText {
     let mut text = String::new();
     let mut highlights = Vec::with_capacity(window.detail.len());
     for part in &window.detail {
         let start = text.len();
         text.push_str(&part.text);
-        let color = match part.tone {
-            DetailTone::Normal => paint.text_at(state),
-            DetailTone::Muted => paint.muted_at(state),
-            DetailTone::Warning => theme.warning,
-            DetailTone::Danger => theme.danger,
-        };
         highlights.push((
             start..text.len(),
             HighlightStyle {
-                color: Some(color),
+                color: Some(ink.tone(part.tone, cx)),
                 ..HighlightStyle::default()
             },
         ));
@@ -369,56 +471,100 @@ fn detail_text(window: &WindowSummary, paint: &Paint, state: PaintState, cx: &Ap
     StyledText::new(text).with_highlights(highlights)
 }
 
-fn actions_button(host: usize, window: WindowId, ground: Ground, handler: &FlatHandler) -> Button {
+fn row_description(window: &FlatWindow) -> String {
+    let detail = window
+        .summary
+        .detail
+        .iter()
+        .map(|part| part.text.as_str())
+        .collect::<String>();
+    [
+        Some(detail.as_str()),
+        attention_word(window.summary.attention),
+        window.age.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|part| !part.is_empty())
+    .collect::<Vec<_>>()
+    .join(", ")
+}
+
+fn icon_button(id: impl Into<ElementId>, icon: IconName, icon_size: f32) -> Button {
+    Button::new(id)
+        .child(Icon::new(icon).size(px(icon_size)))
+        .px_0()
+        .corner_radius_mode(CornerRadiusMode::Fixed)
+}
+
+fn actions_button(
+    host: PaletteHostId,
+    window: WindowId,
+    title: &SharedString,
+    ground: Ground,
+    handler: &FlatHandler,
+    cx: &App,
+) -> Button {
     let handler = handler.clone();
-    Button::new(("flat-window-actions", window.0))
-        .icon(IconName::Ellipsis)
-        .with_size(px(ACTIONS_HEIGHT))
-        .w(px(ACTIONS_WIDTH))
-        .flat()
-        .on(ground)
-        .tooltip("Window actions")
-        .on_click(move |_: &ClickEvent, window_handle, cx| {
-            cx.stop_propagation();
-            handler(FlatEvent::Actions(host, window), window_handle, cx);
-        })
+    icon_button(
+        ("flat-window-actions", window.0),
+        IconName::Ellipsis,
+        ACTIONS_ICON,
+    )
+    .w(px(ACTIONS_WIDTH))
+    .h(px(ACTIONS_HEIGHT))
+    .rounded((cx.theme().radius / 2.0).min(px(ACTIONS_RADIUS_MAX)))
+    .flat()
+    .on(ground)
+    .hit_slop(
+        (TOUCH_TARGET - ACTIONS_WIDTH) / 2.0,
+        (TOUCH_TARGET - ACTIONS_HEIGHT) / 2.0,
+    )
+    .tooltip(format!("Actions for {title}"))
+    .on_click(move |_: &ClickEvent, window_handle, cx| {
+        cx.stop_propagation();
+        handler(FlatEvent::Actions(host, window), window_handle, cx);
+    })
 }
 
 pub fn flat_window_row(
-    host: usize,
+    host: PaletteHostId,
     window: &FlatWindow,
     state: FlatRowState,
     handler: &FlatHandler,
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
+    let coarse = CoarsePointer::get(cx);
+    let state = state.for_pointer(cx);
     let paint = theme.paint(Tone::Neutral, Emphasis::Ghost);
     let paint_state = state.paint_state();
-    let ground = paint.ground_at(paint_state);
+    let ink = RowInk::new(state, cx);
     let summary = &window.summary;
     let id = summary.window;
-    let working = summary.attention == Attention::Working;
-    let muted = paint.muted_at(paint_state);
+    let title = SharedString::from(summary.title.clone());
     let target = FlatTarget::Window(host, id);
-    let trailing = if state.hovered {
-        Some(
-            actions_button(host, id, ground, handler)
-                .rounded((theme.radius / 2.0).min(px(ACTIONS_RADIUS_MAX)))
-                .into_any_element(),
-        )
-    } else if working {
-        Some(spinner(SPINNER_SIZE, TITLE_SIZE, cx).into_any_element())
-    } else {
-        None
-    };
-    let age = window.age.clone().filter(|_| !working);
+    let working = summary.attention == Attention::Working && !state.dimmed;
+    let busy =
+        (working && !state.hovered).then(|| spinner(SPINNER_SIZE, TITLE_SIZE, ink.muted, cx));
+    let actions = (state.hovered || coarse)
+        .then(|| actions_button(host, id, &title, ink.ground, handler, cx));
+    let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
+    let radius = row_radius(cx);
+    let press = coarse.then(|| press_highlight(row_id.clone(), paint.active, radius));
     let hover = handler.clone();
     let click = handler.clone();
     div()
-        .id(ElementId::NamedInteger(
-            format!("flat-window-{host}").into(),
-            id.0,
-        ))
+        .id(row_id)
+        .role(Role::Button)
+        .aria_label(title.clone())
+        .aria_description(row_description(window))
+        .aria_selected(state.current)
+        .when(
+            state.selected,
+            StatefulInteractiveElement::aria_active_descendant,
+        )
+        .relative()
         .flex()
         .flex_none()
         .items_center()
@@ -426,21 +572,19 @@ pub fn flat_window_row(
         .h(row_height(cx))
         .mx(theme.row_inset)
         .px(px(ROW_PADDING))
-        .rounded(row_radius(cx))
+        .rounded(radius)
         .corner_radius_mode(CornerRadiusMode::Fixed)
         .bg(paint.fill_at(paint_state))
-        .text_color(paint.text_at(paint_state))
-        .when(state.dimmed, |row| row.opacity(DIMMED))
+        .text_color(ink.dim(ink.text))
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::Open(host, id), window, cx))
-        .child(
-            flat_tile_stack(&summary.tiles, ground, cx).children(flat_attention_dot(
-                summary.attention,
-                ground,
-                cx,
-            )),
-        )
+        .children(press)
+        .child(tile_stack(&summary.tiles, ink, cx).children(attention_dot(
+            summary.attention,
+            ink,
+            cx,
+        )))
         .child(
             v_flex()
                 .flex_1()
@@ -461,9 +605,10 @@ pub fn flat_window_row(
                                 .text_size(px(TITLE_SIZE))
                                 .line_height(px(TITLE_LINE))
                                 .font_medium()
-                                .child(SharedString::from(summary.title.clone())),
+                                .child(title),
                         )
-                        .children(trailing),
+                        .children(busy)
+                        .children(actions),
                 )
                 .child(
                     h_flex()
@@ -479,23 +624,25 @@ pub fn flat_window_row(
                                 .text_ellipsis()
                                 .text_size(px(DETAIL_SIZE))
                                 .line_height(px(DETAIL_LINE))
-                                .text_color(muted)
-                                .child(detail_text(summary, &paint, paint_state, cx)),
+                                .text_color(ink.dim(ink.muted))
+                                .child(detail_text(summary, ink, cx)),
                         )
-                        .children(age.map(|age| {
+                        .children(window.age.clone().map(|age| {
                             div()
                                 .flex_none()
+                                .relative()
+                                .top(baseline_drop(DETAIL_SIZE, AGE_SIZE, cx))
                                 .text_size(px(AGE_SIZE))
                                 .line_height(px(DETAIL_LINE))
                                 .font_features(TABULAR.clone())
-                                .text_color(muted)
+                                .text_color(ink.dim(ink.muted))
                                 .child(age)
                         })),
                 ),
         )
 }
 
-pub fn flat_rollup(rollup: &AttentionRollup, cx: &App) -> Div {
+pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
     let theme = cx.theme();
     let muted = theme.foreground.muted();
     let count = |value: u32| div().child(SharedString::from(value.to_string()));
@@ -512,11 +659,11 @@ pub fn flat_rollup(rollup: &AttentionRollup, cx: &App) -> Div {
         .font_features(TABULAR.clone())
         .font_weight(FontWeight::NORMAL)
         .text_color(muted)
-        .when(rollup.working > 0, |this| {
+        .when(live && rollup.working > 0, |this| {
             this.child(
                 h_flex()
                     .gap(px(ROLLUP_ITEM_GAP))
-                    .child(spinner(ROLLUP_SPINNER, NOTE_SIZE, cx))
+                    .child(spinner(ROLLUP_SPINNER, NOTE_SIZE, muted, cx))
                     .child(count(rollup.working)),
             )
         })
@@ -587,36 +734,84 @@ fn chevron(folded: bool, hovered: bool, line_font: f32, cx: &App) -> Option<Div>
     ))
 }
 
+struct HostNote {
+    text: SharedString,
+    color: Hsla,
+    reason: Option<SharedString>,
+    action: Option<(&'static str, FlatEvent)>,
+}
+
+fn host_note(host: &FlatHost, cx: &App) -> Option<HostNote> {
+    let theme = cx.theme();
+    let note =
+        |text: SharedString, color: Hsla, action: Option<(&'static str, FlatEvent)>| HostNote {
+            text,
+            color,
+            reason: None,
+            action,
+        };
+    let muted = theme.foreground.muted();
+    let connect = Some(("Connect", FlatEvent::Connect(host.id)));
+    Some(match &host.connection {
+        HostConnection::Connected => return None,
+        HostConnection::Connecting => note("Connecting…".into(), muted, None),
+        HostConnection::Reconnecting => note("Reconnecting…".into(), muted, None),
+        HostConnection::Disconnected => note("Disconnected".into(), muted, connect),
+        HostConnection::Unreachable(reason) => HostNote {
+            reason: Some(reason.clone()).filter(|reason| !reason.is_empty()),
+            ..note(
+                "Unreachable".into(),
+                theme.danger,
+                Some(("Retry", FlatEvent::Connect(host.id))),
+            )
+        },
+        HostConnection::Incompatible(version) => note(
+            version.clone(),
+            theme.warning,
+            Some(("Upgrade", FlatEvent::Upgrade(host.id))),
+        ),
+    })
+}
+
 pub fn flat_host_header(
-    index: usize,
     host: &FlatHost,
     hovered: bool,
     handler: &FlatHandler,
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
+    let hovered = hovered && !CoarsePointer::get(cx);
     let muted = theme.foreground.muted();
-    let target = FlatTarget::Host(index);
-    let (state, action) = match &host.connection {
-        HostConnection::Connected => (None, None),
-        HostConnection::Connecting => (Some(("Connecting…".into(), muted)), None),
-        HostConnection::Reconnecting => (Some(("Reconnecting…".into(), muted)), None),
-        HostConnection::Unreachable => (
-            Some(("Unreachable".into(), theme.danger)),
-            Some(("Retry", FlatEvent::Retry(index))),
-        ),
-        HostConnection::Incompatible(version) => (
-            Some((version.clone(), theme.warning)),
-            Some(("Upgrade", FlatEvent::Upgrade(index))),
-        ),
-    };
-    let rollup = host.folded.then(|| flat_rollup(&host.rollup, cx));
-    let ssh = (host.remote && host.connection == HostConnection::Connected && !host.folded)
-        .then(|| header_note("ssh", muted));
+    let id = host.id;
+    let target = FlatTarget::Host(id);
+    let note = host_note(host, cx);
+    let action = note.as_ref().and_then(|note| note.action);
+    let rollup =
+        (host.folded && action.is_none()).then(|| flat_rollup(&host.rollup, host.live(), cx));
+    let ssh = (host.remote && host.live() && !host.folded).then(|| header_note("ssh", muted));
+    let description = note.as_ref().map(|note| note.text.clone());
+    let note = note.map(|note| {
+        let text = header_note(note.text, note.color);
+        match note.reason {
+            Some(reason) => div()
+                .id(("flat-host-reason", id.0))
+                .flex_none()
+                .tooltip(move |window, cx| Tooltip::new(reason.clone()).build(window, cx))
+                .child(text)
+                .into_any_element(),
+            None => text.into_any_element(),
+        }
+    });
     let hover = handler.clone();
     let click = handler.clone();
     h_flex()
-        .id(("flat-host", index))
+        .id(("flat-host", id.0))
+        .role(Role::Button)
+        .aria_label(host.name.clone())
+        .aria_expanded(!host.folded)
+        .when_some(description, |this, description| {
+            this.aria_description(description)
+        })
         .flex_none()
         .h(theme.dense(px(HOST_HEIGHT)))
         .pl(px(HEADER_INSET))
@@ -628,7 +823,7 @@ pub fn flat_host_header(
         .font_semibold()
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
-        .on_click(move |_, window, cx| click(FlatEvent::Fold(target), window, cx))
+        .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
         .child(glyph(
             if host.remote {
                 IconName::Server
@@ -652,14 +847,16 @@ pub fn flat_host_header(
         .child(div().flex_1())
         .children(rollup)
         .children(ssh)
-        .children(state.map(|(text, color)| header_note(text, color)))
-        .children(action.map(|(label, event)| {
-            header_button(("flat-host-action", index), label, event, handler)
-        }))
+        .children(note)
+        .children(
+            action.map(|(label, event)| {
+                header_button(("flat-host-action", id.0), label, event, handler)
+            }),
+        )
 }
 
 pub fn flat_session_header(
-    host: usize,
+    host: &FlatHost,
     session: &FlatSession,
     holds_current: bool,
     hovered: bool,
@@ -667,28 +864,43 @@ pub fn flat_session_header(
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let target = FlatTarget::Session(host, session.id);
-    let rollup = session.folded.then(|| flat_rollup(&session.rollup, cx));
-    let new_window = hovered.then(|| {
+    let coarse = CoarsePointer::get(cx);
+    let hovered = hovered && !coarse;
+    let host_id = host.id;
+    let session_id = session.id;
+    let target = FlatTarget::Session(host_id, session_id);
+    let rollup = session
+        .folded
+        .then(|| flat_rollup(&session.rollup, host.live(), cx));
+    let new_window = (hovered || coarse).then(|| {
         let handler = handler.clone();
-        let session = session.id;
-        Button::new(("flat-new-window", session.0))
-            .icon(IconName::Plus)
-            .ghost()
-            .with_size(px(NEW_WINDOW_SIZE))
-            .tooltip("New window")
-            .on_click(move |_: &ClickEvent, window, cx| {
-                cx.stop_propagation();
-                handler(FlatEvent::NewWindow(host, session), window, cx);
-            })
+        icon_button(
+            ("flat-new-window", session_id.0),
+            IconName::Plus,
+            NEW_WINDOW_ICON,
+        )
+        .ghost()
+        .size(px(NEW_WINDOW_SIZE))
+        .hit_slop(
+            (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,
+            (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,
+        )
+        .tooltip("New window")
+        .on_click(move |_: &ClickEvent, window, cx| {
+            cx.stop_propagation();
+            handler(FlatEvent::NewWindow(host_id, session_id), window, cx);
+        })
     });
     let hover = handler.clone();
     let click = handler.clone();
     div()
         .id(ElementId::NamedInteger(
-            format!("flat-session-{host}").into(),
-            session.id.0,
+            format!("flat-session-{}", host_id.0).into(),
+            session_id.0,
         ))
+        .role(Role::Button)
+        .aria_label(session.label.clone())
+        .aria_expanded(!session.folded)
         .flex_none()
         .pt(px(SESSION_TOP))
         .pb(px(SESSION_BOTTOM))
@@ -696,7 +908,9 @@ pub fn flat_session_header(
         .pr(px(HEADER_TRAILING_INSET))
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
-        .on_click(move |_, window, cx| click(FlatEvent::Fold(target), window, cx))
+        .on_click(move |_, window, cx| {
+            click(FlatEvent::FoldSession(host_id, session_id), window, cx);
+        })
         .child(
             h_flex()
                 .h(px(SESSION_LINE))
@@ -729,9 +943,8 @@ pub fn flat_sidebar(hosts: &[FlatHost], state: FlatState, handler: &FlatHandler,
     for (index, host) in hosts.iter().enumerate() {
         list = list.child(
             flat_host_header(
-                index,
                 host,
-                state.hovered == Some(FlatTarget::Host(index)),
+                state.hovered == Some(FlatTarget::Host(host.id)),
                 handler,
                 cx,
             )
@@ -740,20 +953,20 @@ pub fn flat_sidebar(hosts: &[FlatHost], state: FlatState, handler: &FlatHandler,
         if host.folded {
             continue;
         }
-        let dimmed = host.connection != HostConnection::Connected;
+        let dimmed = !host.live();
         for session in &host.sessions {
             let holds_current = state.current.is_some_and(|(current_host, window)| {
-                current_host == index
+                current_host == host.id
                     && session
                         .windows
                         .iter()
                         .any(|candidate| candidate.summary.window == window)
             });
             list = list.child(flat_session_header(
-                index,
+                host,
                 session,
                 holds_current,
-                state.hovered == Some(FlatTarget::Session(index, session.id)),
+                state.hovered == Some(FlatTarget::Session(host.id, session.id)),
                 handler,
                 cx,
             ));
@@ -761,13 +974,15 @@ pub fn flat_sidebar(hosts: &[FlatHost], state: FlatState, handler: &FlatHandler,
                 continue;
             }
             list = list.children(session.windows.iter().map(|window| {
-                let id = window.summary.window;
+                let key = Some((host.id, window.summary.window));
                 flat_window_row(
-                    index,
+                    host.id,
                     window,
                     FlatRowState {
-                        current: state.current == Some((index, id)),
-                        hovered: state.hovered == Some(FlatTarget::Window(index, id)),
+                        current: state.current == key,
+                        selected: state.selected == key,
+                        hovered: state.hovered
+                            == Some(FlatTarget::Window(host.id, window.summary.window)),
                         dimmed,
                     },
                     handler,
@@ -785,8 +1000,9 @@ mod tests {
 
     #[test]
     fn hover_survives_entering_the_next_row_before_leaving_the_last() {
-        let first = FlatTarget::Window(0, WindowId(1));
-        let second = FlatTarget::Window(0, WindowId(2));
+        let host = PaletteHostId(0);
+        let first = FlatTarget::Window(host, WindowId(1));
+        let second = FlatTarget::Window(host, WindowId(2));
         let mut state = FlatState::default();
         assert!(state.hover(first, true));
         assert!(state.hover(second, true));

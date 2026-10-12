@@ -313,7 +313,7 @@ fn single_line(text: &str) -> String {
 fn labelled(label: &str, tone: Tone, message: &str) -> Vec<DetailPart> {
     let mut parts = vec![part(label, tone)];
     if !message.is_empty() {
-        parts.push(part(format!(": {message}"), Tone::Normal));
+        parts.push(part(format!(" · {message}"), Tone::Muted));
     }
     parts
 }
@@ -333,13 +333,22 @@ fn status_detail(pane: &PaneSnapshot) -> Option<Vec<DetailPart>> {
         (PaneStatusState::Blocked, Some(PaneStatusKind::Permission)) => {
             Some(labelled("Needs approval", Tone::Warning, &message))
         }
-        (PaneStatusState::Blocked, Some(PaneStatusKind::Question)) => Some(vec![part(
-            or_else(message, "Has a question"),
-            Tone::Warning,
-        )]),
+        (PaneStatusState::Blocked, Some(PaneStatusKind::Question)) if message.is_empty() => {
+            Some(vec![part("Has a question", Tone::Warning)])
+        }
+        (PaneStatusState::Blocked, Some(PaneStatusKind::Question)) => {
+            Some(labelled("Question", Tone::Warning, &message))
+        }
         (PaneStatusState::Blocked, _) => Some(labelled("Needs you", Tone::Warning, &message)),
         (PaneStatusState::Error, _) => Some(labelled("Failed", Tone::Danger, &message)),
-        (PaneStatusState::Done, _) => Some(vec![part(or_else(message, "Done"), Tone::Normal)]),
+        (PaneStatusState::Done, _) => {
+            let tone = if pane.summary.unseen {
+                Tone::Normal
+            } else {
+                Tone::Muted
+            };
+            Some(labelled("Done", tone, &message))
+        }
         (PaneStatusState::Working, _) => {
             let text = if message.is_empty() {
                 or_else(single_line(&status.title), "Working")
@@ -688,7 +697,7 @@ mod tests {
                 ),
                 vec![
                     ("Needs approval", Tone::Warning),
-                    (": Run cargo test", Tone::Normal),
+                    (" · Run cargo test", Tone::Muted),
                 ],
             ),
             (
@@ -700,7 +709,10 @@ mod tests {
                         "Which branch?",
                     ),
                 ),
-                vec![("Which branch?", Tone::Warning)],
+                vec![
+                    ("Question", Tone::Warning),
+                    (" · Which branch?", Tone::Muted),
+                ],
             ),
             (
                 with_status(
@@ -721,18 +733,25 @@ mod tests {
                     terminal(1, "x"),
                     status(PaneStatusState::Error, None, "rate limited"),
                 ),
-                vec![("Failed", Tone::Danger), (": rate limited", Tone::Normal)],
+                vec![("Failed", Tone::Danger), (" · rate limited", Tone::Muted)],
             ),
             (
                 with_status(
                     agent(1, "x"),
                     status(PaneStatusState::Done, None, "All green"),
                 ),
-                vec![("All green", Tone::Normal)],
+                vec![("Done", Tone::Muted), (" · All green", Tone::Muted)],
+            ),
+            (
+                unseen(with_status(
+                    agent(1, "x"),
+                    status(PaneStatusState::Done, None, "All green"),
+                )),
+                vec![("Done", Tone::Normal), (" · All green", Tone::Muted)],
             ),
             (
                 with_status(agent(1, "x"), status(PaneStatusState::Done, None, "")),
-                vec![("Done", Tone::Normal)],
+                vec![("Done", Tone::Muted)],
             ),
             (
                 with_status(agent(1, "x"), progress),
