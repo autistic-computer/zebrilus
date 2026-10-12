@@ -4,7 +4,7 @@ title: Mux snapshots (snapshot.rs)
 description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-10-12T12:00:00-03:00
+timestamp: 2026-10-12T18:00:00-03:00
 ---
 
 # Overview
@@ -155,31 +155,36 @@ moves on an event, never on output bytes:
 | `unseen` | A finish nobody has looked at |
 | `command` | The last OSC 133 mark on a Terminal pane: `Running` after `C`, `Finished(status)` after `D`; `None` without shell integration |
 | `name` | The pane-scoped `@name` user option, cut to `MAX_PANE_NAME_BYTES` (256) |
-| `cwd` | Working directory for display: absolute, the daemon user's home folded to `~`; empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
+| `cwd` | Working directory for display: absolute, the daemon user's home folded to `~`, with the daemon platform's separators (`\` on Windows); empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
 | `branch` | The branch checked out at `cwd`, the ref as written when HEAD names something outside `refs/heads/`, or a 7-character commit id when HEAD is detached; empty outside a repository; cut to `MAX_PANE_BRANCH_BYTES` (256) |
 
 `changed_at` is stamped by a status state or kind change, a shell command start (the `C` mark's
 start time) or finish (the `D` mark's end time), a bell latch going from false to true, and pane
 death. Output, title writes, a status message, title or progress change within the same state and
-kind, cwd, branch, `@name`, browser navigation and pane creation never stamp it.
+kind, cwd, branch, `@name`, browser navigation and pane creation never stamp it, and neither does a
+pane's first record when it is `Idle` (an Agent pane opening or restoring).
 
 `unseen` is raised on a status edge into `Done` from anything else, or from `Working` or `Blocked`
-into `Idle`, unless the pane's window is the current window of a session some client is attached
+into `Idle` on a terminal pane, unless the pane's window is the current window of a session some client is attached
 to (the same rule that keeps a watched pane's bell from latching). An edge into `Working` or
-`Blocked` drops it, so a stale finish does not resurface after the next turn. It clears wherever the
+`Blocked` drops it, so a stale finish does not resurface after the next turn. Agent panes report
+`Done` themselves, so their `Idle` after a cancelled turn raises nothing. It clears wherever the
 bell clears: pane selection, attach, pane input, window activation, `kill-session -C` and respawn.
 Because it lives in the daemon, every client on every host sees the same latch. A daemon restart
 clears it and `changed_at`, as it does the bell.
 
 `cwd` comes from the terminal's OSC 7 report, or from the live working directory of the pane's
 foreground process when the shell sends no OSC 7, and from `AgentDescriptor.cwd` for Agent panes.
-The daemon resolves it and the branch on its helper pool, never under the server lock, with at most
-one job per pane in flight (a trigger while one runs resubmits when it finishes). Jobs start when a
+The daemon resolves it and the branch on a location thread of its own, never under the server lock
+and never on the helper pool, so a stat that hangs on a network mount delays only other locations.
+At most one job per pane is in flight; a trigger while one runs drops that job's result and runs it
+again with fresh inputs. Jobs start when a
 pane's terminal is spawned or an Agent pane opens, when the OSC 7 path changes, when the live path
 changes on a pane without OSC 7, when a shell command finishes, and on a native agent status edge
 out of `Working` or while the summary has no cwd yet. The branch is read from the `.git` directory
 or `gitdir:` file and `HEAD` (4 KiB at most) without running git; bare repositories and `GIT_DIR`
-are not followed.
+are not followed, and a reftable repository, whose `HEAD` is the `refs/heads/.invalid` placeholder,
+shows no branch.
 
 `TreeOp::PaneSummary { session, window, pane, summary }` (tag 18) carries a summary change on its
 own, so a stamp that moves sends one small op instead of the pane.

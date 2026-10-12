@@ -34,17 +34,19 @@ pub(super) fn apply_pane_status(
     status: Option<PaneStatus>,
     now: u64,
 ) -> bool {
-    let Some(previous) = inner
-        .engine
-        .state
-        .pane(pane)
-        .map(|pane| status_edge(pane.status.as_ref()))
-    else {
+    let Some((previous, reports_done)) = inner.engine.state.pane(pane).map(|pane| {
+        (
+            status_edge(pane.status.as_ref()),
+            matches!(pane.kind, PaneKind::Agent(_)),
+        )
+    }) else {
         return false;
     };
     let next = status_edge(status.as_ref());
     let changed = inner.engine.state.set_pane_status(pane, status);
-    if previous == next {
+    if previous == next
+        || previous.is_none() && next.is_some_and(|(state, _)| state == PaneStatusState::Idle)
+    {
         return changed;
     }
     let unseen = match (
@@ -55,7 +57,7 @@ pub(super) fn apply_pane_status(
         (
             Some(PaneStatusState::Working | PaneStatusState::Blocked),
             Some(PaneStatusState::Idle),
-        ) => Some(!pane_window_watched(inner, pane)),
+        ) if !reports_done => Some(!pane_window_watched(inner, pane)),
         (previous, Some(PaneStatusState::Done)) if previous != Some(PaneStatusState::Done) => {
             Some(!pane_window_watched(inner, pane))
         }
@@ -163,20 +165,27 @@ pub(super) fn stamp_pane(inner: &mut ServerState, pane: PaneId, now: u64) -> boo
         .update_pane_summary(pane, |summary| summary.changed_at = now)
 }
 
+#[derive(Default)]
+pub(super) struct Locations {
+    jobs: BTreeMap<PaneId, bool>,
+    queue: VecDeque<(PaneId, String, PathBuf)>,
+    running: bool,
+}
+
 impl Shared {
-    pub(super) fn request_pane_location(self: &Arc<Self>, pane: PaneId) {
-        let Some((reported, live)) = claim_location_job(&mut self.inner.lock(), pane) else {
-            return;
+    pub(super) fn publish_unpublished_tree(self: &Arc<Self>) {
+        let unpublished = {
+            let inner = self.inner.lock();
+            inner.last_published_mux_generation != inner.engine.state.generation()
         };
-        let owner = Arc::downgrade(&self.server_owner());
-        if let Err(error) = self.helpers.submit(helpers::Task::PaneLocation {
-            owner,
-            pane,
-            reported,
-            live,
-        }) {
-            self.inner.lock().location_jobs.remove(&pane);
-            log::debug!("could not resolve the location of {pane}: {error}");
+        if unpublished {
+            self.request_publish(timers::PublishReason::Tree);
+        }
+    }
+
+    pub(super) fn request_pane_location(self: &Arc<Self>, pane: PaneId) {
+        if queue_location(&mut self.inner.lock(), pane) {
+            self.start_location_worker();
         }
     }
 
@@ -186,28 +195,90 @@ impl Shared {
         cwd: String,
         branch: String,
     ) {
-        let (changed, again) = {
+        let (changed, start) = {
             let mut inner = self.inner.lock();
-            let again = inner.location_jobs.remove(&pane).unwrap_or_default();
-            let changed = inner.engine.state.update_pane_summary(pane, |summary| {
-                summary.cwd = cwd;
-                summary.branch = branch;
-            });
-            (changed, again)
+            if inner.locations.jobs.remove(&pane) == Some(true) {
+                (false, queue_location(&mut inner, pane))
+            } else {
+                let changed = inner.engine.state.update_pane_summary(pane, |summary| {
+                    summary.cwd = cwd;
+                    summary.branch = branch;
+                });
+                (changed, false)
+            }
         };
         if changed {
             self.request_publish(timers::PublishReason::Tree);
         }
-        if again {
-            self.request_pane_location(pane);
+        if start {
+            self.start_location_worker();
+        }
+    }
+
+    fn start_location_worker(self: &Arc<Self>) {
+        let owner = Arc::downgrade(&self.server_owner());
+        if let Err(error) = thread::Builder::new()
+            .name("zz-location".to_owned())
+            .spawn(move || locate_panes(&owner))
+        {
+            let mut inner = self.inner.lock();
+            let Locations {
+                jobs,
+                queue,
+                running,
+            } = &mut inner.locations;
+            for (pane, ..) in queue.drain(..) {
+                jobs.remove(&pane);
+            }
+            *running = false;
+            log::debug!("could not start the pane location worker: {error}");
         }
     }
 }
 
-pub(super) fn claim_location_job(
-    inner: &mut ServerState,
-    pane: PaneId,
-) -> Option<(String, PathBuf)> {
+#[cfg(test)]
+impl Shared {
+    pub(super) fn settle_pane_locations(&self) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !self.inner.lock().locations.jobs.is_empty() {
+            assert!(Instant::now() < deadline, "pane locations never settled");
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+}
+
+fn locate_panes(owner: &Weak<Shared>) {
+    loop {
+        let job = {
+            let Some(shared) = owner.upgrade() else {
+                return;
+            };
+            let mut inner = shared.inner.lock();
+            let job = inner.locations.queue.pop_front();
+            inner.locations.running = job.is_some();
+            job
+        };
+        let Some((pane, reported, live)) = job else {
+            return;
+        };
+        let (cwd, branch) = resolve_location(&reported, &live, daemon_home());
+        let Some(shared) = owner.upgrade() else {
+            return;
+        };
+        shared.finish_pane_location(pane, cwd, branch);
+    }
+}
+
+fn queue_location(inner: &mut ServerState, pane: PaneId) -> bool {
+    let Some((reported, live)) = claim_location_job(inner, pane) else {
+        return false;
+    };
+    let locations = &mut inner.locations;
+    locations.queue.push_back((pane, reported, live));
+    !std::mem::replace(&mut locations.running, true)
+}
+
+fn claim_location_job(inner: &mut ServerState, pane: PaneId) -> Option<(String, PathBuf)> {
     let source = match &inner.engine.state.pane(pane)?.kind {
         PaneKind::Terminal => inner
             .engine
@@ -222,7 +293,7 @@ pub(super) fn claim_location_job(
         PaneKind::Agent(agent) => (String::new(), agent.cwd.clone().unwrap_or_default()),
         _ => return None,
     };
-    match inner.location_jobs.entry(pane) {
+    match inner.locations.jobs.entry(pane) {
         Entry::Occupied(mut job) => {
             job.insert(true);
             None
@@ -234,11 +305,7 @@ pub(super) fn claim_location_job(
     }
 }
 
-pub(super) fn resolve_location(
-    reported: &str,
-    live: &Path,
-    home: Option<&Path>,
-) -> (String, String) {
+fn resolve_location(reported: &str, live: &Path, home: Option<&Path>) -> (String, String) {
     let dir = if reported.is_empty() {
         Some(live.to_path_buf()).filter(|live| live.is_absolute() && live.is_dir())
     } else {
@@ -252,7 +319,7 @@ pub(super) fn resolve_location(
     (display_path(&dir, home), branch)
 }
 
-pub(super) fn daemon_home() -> Option<&'static Path> {
+fn daemon_home() -> Option<&'static Path> {
     static HOME: LazyLock<Option<PathBuf>> = LazyLock::new(home_directory);
     HOME.as_deref()
 }
@@ -303,7 +370,8 @@ fn head_branch(head: &str) -> Option<String> {
     if let Some(reference) = head.strip_prefix("ref:") {
         let reference = reference.trim();
         let branch = reference.strip_prefix("refs/heads/").unwrap_or(reference);
-        return (!branch.is_empty()).then(|| branch.to_owned());
+        return (!branch.is_empty() && reference != "refs/heads/.invalid")
+            .then(|| branch.to_owned());
     }
     (head.len() >= 7 && head.bytes().all(|byte| byte.is_ascii_hexdigit()))
         .then(|| head[..7].to_owned())

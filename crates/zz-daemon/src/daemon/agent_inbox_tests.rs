@@ -222,10 +222,13 @@ fn agent_status_reaches_the_pane_from_the_current_generation_only() {
         .engine
         .state
         .pane(pane)
-        .and_then(|pane| pane.status.clone());
+        .map(|pane| (pane.status.clone(), pane.summary.changed_at));
     assert_eq!(
-        opened.map(|status| (status.state, status.app)),
-        Some((PaneStatusState::Idle, "codex".to_owned()))
+        opened.map(|(status, changed_at)| (
+            status.map(|status| (status.state, status.app)),
+            changed_at
+        )),
+        Some((Some((PaneStatusState::Idle, "codex".to_owned())), 0))
     );
     let status = |state, message: &str| PaneStatus {
         state,

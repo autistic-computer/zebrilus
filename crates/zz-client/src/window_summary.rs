@@ -289,16 +289,13 @@ fn window_title(
     headline: Option<&PaneSnapshot>,
     active: Option<&PaneSnapshot>,
 ) -> String {
-    [headline, active]
-        .into_iter()
-        .flatten()
-        .find(|pane| agent_like(pane))
-        .and_then(agent_title)
+    let pane = headline.filter(|pane| agent_like(pane)).or(active);
+    pane.and_then(agent_title)
         .or_else(|| {
             let name = window.name.trim();
             (!window.automatic_rename && !name.is_empty()).then(|| name.to_owned())
         })
-        .or_else(|| active.map(pane_label))
+        .or_else(|| pane.map(pane_label))
         .unwrap_or_else(|| window.name.clone())
 }
 
@@ -417,7 +414,7 @@ fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) -> Vec
 }
 
 fn last_component(path: &str) -> &str {
-    path.rsplit('/')
+    path.rsplit(['/', '\\'])
         .find(|component| !component.is_empty())
         .unwrap_or(path)
 }
@@ -618,6 +615,20 @@ mod tests {
         window.panes.get_mut(&PaneId(2)).unwrap().status =
             Some(status(PaneStatusState::Working, None, ""));
         assert_eq!(summarize_window(&window).title, "Review PR");
+
+        let claude = with_status(
+            terminal(2, "Refactor parser"),
+            status(
+                PaneStatusState::Blocked,
+                Some(PaneStatusKind::Permission),
+                "",
+            ),
+        );
+        window.panes.insert(PaneId(2), claude);
+        let summary = summarize_window(&window);
+        assert_eq!(summary.headline, PaneId(2));
+        assert_eq!(summary.title, "Refactor parser");
+        assert_eq!(texts(&summary)[0], ("Needs approval", Tone::Warning));
     }
 
     #[test]
@@ -752,6 +763,14 @@ mod tests {
                 vec![("Exit 1", Tone::Danger), (" · zz · main", Tone::Muted)],
             ),
             (finished(127, "", ""), vec![("Exit 127", Tone::Danger)]),
+            (
+                finished(1, "~\\dev\\zz", "main"),
+                vec![("Exit 1", Tone::Danger), (" · zz · main", Tone::Muted)],
+            ),
+            (
+                located(terminal(1, "pwsh"), "C:\\Users\\me\\proj\\", ""),
+                vec![("proj", Tone::Muted)],
+            ),
             (
                 browser("https://www.example.com:8443/path?q=1"),
                 vec![("example.com:8443", Tone::Muted)],
