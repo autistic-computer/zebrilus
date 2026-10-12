@@ -315,22 +315,16 @@ impl AppShell {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct PaneFrame {
     pub header: bool,
-    pub shadow: bool,
+    pub framed: bool,
     pub radius: f32,
-    pub border_width: f32,
 }
 
 pub(super) fn pane_frame(terminal: bool, floating: bool, preferences: &Preferences) -> PaneFrame {
     let gaps = preferences.gaps && !floating;
     PaneFrame {
         header: terminal && !floating,
-        shadow: gaps,
+        framed: gaps,
         radius: if gaps { preferences.pane_radius } else { 0.0 },
-        border_width: if gaps {
-            preferences.pane_border_width
-        } else {
-            0.0
-        },
     }
 }
 
@@ -448,14 +442,14 @@ mod tests {
             pane_frame(true, true, &preferences),
             super::PaneFrame {
                 header: false,
-                shadow: false,
+                framed: false,
                 radius: 0.0,
-                border_width: 0.0,
             }
         );
         let tiled = pane_frame(true, false, &preferences);
         assert!(tiled.header);
-        assert_eq!((tiled.radius, tiled.border_width), (10.0, 1.0));
+        assert!(tiled.framed);
+        assert_eq!(tiled.radius, 10.0);
         assert!(!pane_frame(false, false, &preferences).header);
     }
 

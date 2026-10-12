@@ -34,7 +34,6 @@ pub struct PaneKnobs {
     pub background: f32,
     pub inactive: f32,
     pub glow: f32,
-    pub glass: bool,
 }
 
 impl Default for PaneKnobs {
@@ -47,7 +46,6 @@ impl Default for PaneKnobs {
             background: 0.5,
             inactive: 0.7,
             glow: 1.0,
-            glass: false,
         }
     }
 }
@@ -290,7 +288,6 @@ impl Knobs {
                 "pane-opacity" => knobs.pane.background = number(key, value)?,
                 "pane-inactive-opacity" => knobs.pane.inactive = number(key, value)?,
                 "pane-glow" => knobs.pane.glow = number(key, value)?,
-                "pane-glass" => knobs.pane.glass = flag(value),
                 "motion" => knobs.motion = flag(value),
                 "backdrop" => {
                     knobs.backdrop = match value {
@@ -362,7 +359,8 @@ impl Knobs {
         }
         theme.pane_background_opacity = self.pane.background;
         theme.pane_glow_strength = self.pane.glow;
-        theme.pane_glass = self.pane.glass && self.pane.gaps;
+        theme.pane_frames = self.pane.gaps;
+        theme.pane_edge_width = px(self.pane.border);
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();
@@ -507,8 +505,10 @@ mod tests {
         assert_eq!(knobs.zoom, 1.25);
         assert_eq!(knobs.interface, "linear");
         assert!(!knobs.motion);
-        assert!(!knobs.pane.glass);
-        assert!(Knobs::parse("pane-glass=on").unwrap().pane.glass);
+        assert_eq!(
+            Knobs::parse("pane-glass=on").unwrap().pane,
+            PaneKnobs::default()
+        );
         let pane = Knobs::parse("pane-gaps=1&pane-corner-radius=20&pane-inactive-opacity=0.4")
             .unwrap()
             .pane;

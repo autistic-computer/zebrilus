@@ -44,6 +44,8 @@ struct Glass {
     mask: vec4<f32>,
     // color of the glint and the fresnel glow, premultiplied by its alpha
     light_color: vec4<f32>,
+    // color of the contour; its alpha is in the edge shadow strength
+    edge_color: vec4<f32>,
 }
 
 struct Blur {
@@ -274,7 +276,7 @@ fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, 
 
     let body = (color.a + (1.0 - color.a) * glass.tint.a) * coverage * glass.rim.w;
     let alpha = body + (1.0 - body) * contour * glass.rim.w;
-    return vec4<f32>(rgb * body, alpha);
+    return vec4<f32>(rgb * body + glass.edge_color.rgb * (alpha - body), alpha);
 }
 
 @fragment
@@ -296,8 +298,9 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     // Where the edge faces along the light axis, either way round.
     let facing = abs(dot(normal, light));
 
-    // A thin dark contour just outside the edge, strongest along the light
-    // axis, separates the glass from what it floats over.
+    // A thin contour just outside the edge, dark unless the material colors
+    // it and strongest along the light axis, separates the glass from what
+    // it floats over.
     let contour_width = glass.rim.z;
     var contour = 0.0;
     if (contour_width > 0.0) {
@@ -319,7 +322,7 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
             return vec4<f32>(0.0);
         }
         let alpha = contour * glass.rim.w;
-        return vec4<f32>(0.0, 0.0, 0.0, alpha);
+        return vec4<f32>(glass.edge_color.rgb * alpha, alpha);
     }
 
     // The rim lenses the backdrop. Across the bezel the pull grows like a

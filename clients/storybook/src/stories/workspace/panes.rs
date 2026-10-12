@@ -31,7 +31,7 @@ pub const STORY: Story = Story {
         Section {
             id: "frames",
             name: "Frames",
-            summary: "pane_surface with and without pane gaps. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-glow, pane-opacity and pane-glass knobs: under pane glass the gapped frames take the theme's glass edge, tinted with the pane's color, and inactive frames drop their hairline.",
+            summary: "pane_surface with and without pane gaps. A gapped pane draws its frame in glass: the theme's glass edge, or a plain lit edge when the theme has none, tinted with the pane's color; the active pane lights its edge in the accent. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-gaps, pane-glow, pane-border-width and pane-opacity knobs: with pane-gaps on the frame owns the pane fill, as in the app.",
             build: |_, cx| stateless(frames, cx),
         },
         Section {
@@ -67,7 +67,7 @@ pub const STORY: Story = Story {
         Section {
             id: "floating",
             name: "Floating surface",
-            summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style. The pane-glass knob turns it into the theme's full glass; set backdrop=code to see it frost the panes behind.",
+            summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style. It takes the theme's glass like every popover; set backdrop=code to see it frost the panes behind.",
             build: |_, cx| stateless(floating, cx),
         },
         Section {
@@ -849,7 +849,6 @@ fn preview(_: &mut Window, _: &mut App) -> AnyElement {
         gaps,
         margin: pane.margin,
         radius: pane.radius,
-        border_width: pane.border,
         inactive_opacity: pane.inactive,
     };
     states()
@@ -862,12 +861,11 @@ fn preview(_: &mut Window, _: &mut App) -> AnyElement {
             div().id("preview-flush").child(preview(false)),
         )
         .state(
-            "wide margin and thick border",
+            "wide margin and deep dimming",
             div().id("preview-wide").child(PanesPreview {
                 gaps: true,
                 margin: 16.0,
                 radius: 20.0,
-                border_width: 3.0,
                 inactive_opacity: 0.4,
             }),
         )

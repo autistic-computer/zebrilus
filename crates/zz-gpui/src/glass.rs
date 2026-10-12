@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Bounds, Corners, Hsla, Interpolate, Pixels, Point, ScaledPixels, Size, SpringConfig,
-    SpringState, WindowCornerMask, hsla, point, px, size, white,
+    SpringState, WindowCornerMask, black, hsla, point, px, size, white,
 };
 
 /// The WGSL source every renderer draws glass with.
@@ -74,6 +74,9 @@ pub struct GlassMaterial {
     pub edge_shadow: f32,
     /// Width of that contour.
     pub edge_width: Pixels,
+    /// Color of that contour; its alpha scales it.
+    #[serde(default = "black")]
+    pub edge_color: Hsla,
     /// Frosted grain over the surface; 0.02 hides banding.
     pub noise: f32,
     /// Light from inside the glass, as a press would cause.
@@ -134,6 +137,7 @@ impl GlassMaterial {
             fresnel: 0.08,
             edge_shadow: 0.25,
             edge_width: px(0.75),
+            edge_color: black(),
             noise: 0.0,
             glow: 0.0,
             glow_radius: px(90.),
@@ -349,6 +353,12 @@ impl GlassMaterial {
         self
     }
 
+    /// Sets [`Self::edge_color`].
+    pub fn edge_color(mut self, edge_color: impl Into<Hsla>) -> Self {
+        self.edge_color = edge_color.into();
+        self
+    }
+
     /// Sets [`Self::noise`].
     pub fn noise(mut self, noise: f32) -> Self {
         self.noise = noise;
@@ -471,6 +481,7 @@ impl Interpolate for GlassMaterial {
             fresnel: lerp(from.fresnel, to.fresnel),
             edge_shadow: lerp(from.edge_shadow, to.edge_shadow),
             edge_width: length(from.edge_width, to.edge_width),
+            edge_color: Hsla::interpolate(from.edge_color, to.edge_color, phase),
             noise: lerp(from.noise, to.noise),
             glow: lerp(from.glow, to.glow),
             glow_radius: length(from.glow_radius, to.glow_radius),
@@ -609,6 +620,9 @@ pub struct GlassUniform {
     /// The glint and fresnel glow's color, scaled by its alpha, then
     /// padding.
     pub light_color: [f32; 4],
+    /// The contour's color, its alpha already in the edge shadow strength,
+    /// then padding.
+    pub edge_color: [f32; 4],
 }
 
 impl GlassUniform {
@@ -765,6 +779,7 @@ impl Glass {
         let refraction = material.refraction.as_f32();
         let tint = material.tint.to_rgb();
         let light = material.light_color.to_rgb();
+        let edge = material.edge_color.to_rgb();
         let (sin, cos) = material.light_angle.sin_cos();
         let shape_bounds = self.shape_bounds();
         let glow_center = point(
@@ -806,7 +821,7 @@ impl Glass {
             ],
             rim: [
                 material.fresnel.max(0.),
-                material.edge_shadow.clamp(0., 1.),
+                material.edge_shadow.clamp(0., 1.) * edge.a.clamp(0., 1.),
                 material.edge_width.as_f32().max(0.),
                 material.opacity.clamp(0., 1.),
             ],
@@ -846,6 +861,7 @@ impl Glass {
             }),
             mask: mask.map_or([0.; 4], |mask| [mask.corner_smoothing, 1., 0., 0.]),
             light_color: [light.r * light.a, light.g * light.a, light.b * light.a, 0.],
+            edge_color: [edge.r, edge.g, edge.b, 0.],
         }
     }
 
@@ -1304,7 +1320,7 @@ pub fn bench_glass_rendering(
     height: f32,
     mut time: impl FnMut(&crate::Scene) -> anyhow::Result<f64>,
 ) -> anyhow::Result<()> {
-    use crate::{ContentMask, Edges, Quad, Scene};
+    use crate::{ContentMask, Edges, Quad, Scene, Shadow};
     let rect = |x: f32, y: f32, w: f32, h: f32| Bounds {
         origin: point(ScaledPixels(x), ScaledPixels(y)),
         size: size(ScaledPixels(w), ScaledPixels(h)),
@@ -1312,7 +1328,8 @@ pub fn bench_glass_rendering(
     let viewport = rect(0., 0., width, height);
     let pane_color = hsla(0.6, 0.1, 0.12, 1.);
     let scene = |glasses: &[(Bounds<ScaledPixels>, f32, f32, GlassMaterial)],
-                 fills: &[(Bounds<ScaledPixels>, f32)]| {
+                 fills: &[(Bounds<ScaledPixels>, f32)],
+                 glows: &[(Bounds<ScaledPixels>, f32)]| {
         let mut scene = Scene::default();
         let stripes = 24;
         let stripe = width / stripes as f32;
@@ -1335,6 +1352,23 @@ pub fn bench_glass_rendering(
                 border_widths: Edges::all(ScaledPixels(2.)),
                 corner_smoothing: 4.,
                 ..Default::default()
+            });
+        }
+        // The inset accent glow zz's active pane drew until its glass frame
+        // replaced it: a 96 px blur offset by (16, 24), at 2x.
+        for (bounds, radius) in glows {
+            scene.insert_primitive(Shadow {
+                order: 0,
+                blur_radius: ScaledPixels(192.),
+                bounds: (*bounds + point(ScaledPixels(32.), ScaledPixels(48.)))
+                    .dilate(ScaledPixels(16.)),
+                corner_radii: Corners::all(ScaledPixels(radius + 16.)),
+                content_mask: ContentMask { bounds: viewport },
+                color: hsla(0.6, 0.8, 0.6, 0.06),
+                element_bounds: *bounds,
+                element_corner_radii: Corners::all(ScaledPixels(*radius)),
+                inset: 1,
+                corner_smoothing: 4.,
             });
         }
         for (bounds, radius, smoothing, material) in glasses {
@@ -1394,6 +1428,13 @@ pub fn bench_glass_rendering(
         .collect();
     let pane_fills: Vec<_> = panes.iter().map(|pane| (*pane, 27.)).collect();
     let pane_glass: Vec<_> = panes.iter().map(|pane| (*pane, 27., 4., edge)).collect();
+    let accent = hsla(0.6, 0.8, 0.6, 1.);
+    let mut pane_frames = pane_glass.clone();
+    pane_frames[0].3 = edge
+        .light_color(accent)
+        .edge_color(accent)
+        .edge_shadow(1.)
+        .edge_width(px(2.));
     let cases = [
         ("one 100x100 button", vec![buttons[0]]),
         ("ten buttons in a row", buttons.clone()),
@@ -1412,6 +1453,10 @@ pub fn bench_glass_rendering(
         ),
         ("four panes of edge glass", pane_glass),
         (
+            "four panes of edge glass, one lit in the accent",
+            pane_frames,
+        ),
+        (
             "edge glass over the whole window",
             vec![(viewport, 0., 4., edge)],
         ),
@@ -1421,20 +1466,29 @@ pub fn bench_glass_rendering(
             Ok::<_, anyhow::Error>(fastest.min(time(scene)?))
         })
     };
-    let base = best(&scene(&[], &[]))?;
+    let base = best(&scene(&[], &[], &[]))?;
     println!("glass {width}x{height} background only: {base:.3} ms/frame");
-    for (name, fills) in [
-        ("four panes as bordered fills", pane_fills),
-        ("the whole window as a bordered fill", vec![(viewport, 0.)]),
+    for (name, fills, glows) in [
+        ("four panes as bordered fills", pane_fills.clone(), vec![]),
+        (
+            "four panes as bordered fills, one glowing",
+            pane_fills.clone(),
+            vec![pane_fills[0]],
+        ),
+        (
+            "the whole window as a bordered fill",
+            vec![(viewport, 0.)],
+            vec![],
+        ),
     ] {
-        let ms = best(&scene(&[], &fills))?;
+        let ms = best(&scene(&[], &fills, &glows))?;
         println!(
             "glass {width}x{height} {name}: {ms:.3} ms/frame (+{:.3})",
             ms - base
         );
     }
     for (name, glasses) in &cases {
-        let scene = scene(glasses, &[]);
+        let scene = scene(glasses, &[], &[]);
         let ms = best(&scene)?;
         let full = with_full_field(|| best(&scene))?;
         println!(
@@ -1682,6 +1736,37 @@ pub fn check_glass_rendering(
         ))?,
         "a transparent light should light nothing",
     )?;
+
+    let contoured = lit.edge_shadow(1.).edge_width(px(2.));
+    let dark_edge = render(&glass_body_scene(&body, 2., contoured, None))?;
+    let green_edge = render(&glass_body_scene(
+        &body,
+        2.,
+        contoured.edge_color(hsla(1. / 3., 1., 0.5, 1.)),
+        None,
+    ))?;
+    let (dark, green) = (dark_edge.get_pixel(7, 32).0, green_edge.get_pixel(7, 32).0);
+    anyhow::ensure!(
+        green[1] > dark[1] + 40
+            && green[0].abs_diff(dark[0]) <= 1
+            && green[2].abs_diff(dark[2]) <= 1,
+        "a green contour should only add green, got {green:?} where black gives {dark:?}"
+    );
+    close(
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            contoured.edge_shadow(0.),
+            None,
+        ))?,
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            contoured.edge_color(black().alpha(0.)),
+            None,
+        ))?,
+        "a transparent contour should draw nothing",
+    )?;
     Ok(())
 }
 
@@ -1859,7 +1944,7 @@ mod tests {
 
     #[test]
     fn uniform_blocks_match_the_shader_layout() {
-        assert_eq!(std::mem::size_of::<GlassUniform>(), 480);
+        assert_eq!(std::mem::size_of::<GlassUniform>(), 496);
         assert_eq!(std::mem::size_of::<GlassBlurUniform>(), 32);
     }
 

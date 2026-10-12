@@ -114,7 +114,8 @@ fn apply_zz_overrides(cx: &mut App) {
     let shadow_strength = config::shadow_strength(cx);
     let pane_background_opacity = config::pane_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
-    let pane_glass = config::resolved_config(cx).pane_glass.value && config::pane_gaps(cx);
+    let pane_frames = config::pane_gaps(cx);
+    let pane_edge_width = config::pane_border_width(cx);
     let theme = Theme::global_mut(cx);
 
     active.apply(theme);
@@ -129,7 +130,8 @@ fn apply_zz_overrides(cx: &mut App) {
     theme.shadow_strength = shadow_strength;
     theme.pane_background_opacity = pane_background_opacity;
     theme.pane_glow_strength = pane_glow_strength;
-    theme.pane_glass = pane_glass;
+    theme.pane_frames = pane_frames;
+    theme.pane_edge_width = pane_edge_width;
 }
 
 #[cfg(test)]
@@ -265,13 +267,14 @@ mod tests {
     }
 
     #[zz_gpui::test]
-    fn pane_glass_needs_gaps_and_a_theme_whose_glass_draws(cx: &mut zz_gpui::TestAppContext) {
+    fn gapped_panes_draw_frames_in_every_theme(cx: &mut zz_gpui::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
-            for (id, gaps, glass) in [
-                ("macos", true, true),
-                ("macos", false, false),
-                ("linear", true, false),
+            for (id, gaps) in [
+                ("macos", true),
+                ("macos", false),
+                ("linear", true),
+                ("linear", false),
             ] {
                 let theme = zz_ui::interface_theme::builtin_theme(id).expect("theme is built in");
                 cx.set_global(config::Themes {
@@ -280,16 +283,18 @@ mod tests {
                     saved: Vec::new(),
                 });
                 let mut config = config::AppConfig::default();
-                config.pane_glass.value = true;
                 config.pane_gaps.value = gaps;
+                config.pane_border_width.value = 1.5;
                 cx.set_global(config);
                 refresh_current_theme(cx);
+                let theme = Theme::global(cx);
+                assert_eq!(theme.pane_frames, gaps, "{id} with gaps {gaps}");
                 assert_eq!(
-                    Theme::global(cx).pane_glass_active(),
-                    glass,
+                    theme.pane_edge_width,
+                    zz_gpui::px(if gaps { 1.5 } else { 0.0 }),
                     "{id} with gaps {gaps}"
                 );
-                assert_alpha(app_pane_background(cx), if glass { 0.0 } else { 0.5 });
+                assert_alpha(app_pane_background(cx), if gaps { 0.0 } else { 0.5 });
             }
         });
     }

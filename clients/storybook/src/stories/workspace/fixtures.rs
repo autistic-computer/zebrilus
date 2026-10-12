@@ -11,7 +11,7 @@ use zz_protocol::{
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     navigation::status::{StatusAction, StatusPaneEntry},
-    pane::{PaneChrome, pane_border_color, pane_drag_button, pane_surface, terminal_pane_header},
+    pane::{PaneChrome, pane_drag_button, pane_surface, terminal_pane_header},
 };
 
 #[derive(Clone, Copy)]
@@ -62,20 +62,13 @@ pub fn gap(gaps: bool) -> Pixels {
 }
 
 pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
-    let pane = crate::pane();
-    PaneChrome::new(
-        radii(gaps),
-        px(if gaps { pane.border } else { 0.0 }),
-        pane_border_color(active, cx),
-        gaps,
-    )
-    .active(active)
-    .dimmed(!active && scrim, pane.inactive)
-    .glass(
-        cx.theme()
-            .pane_glass(cx.theme().background, cx.theme().background)
-            .filter(|_| gaps),
-    )
+    PaneChrome::new(radii(gaps), gaps)
+        .active(active)
+        .dimmed(!active && scrim, crate::pane().inactive)
+        .frame(gaps.then(|| {
+            cx.theme()
+                .pane_frame(cx.theme().background, cx.theme().background, active)
+        }))
 }
 
 pub fn pane_background(cx: &App) -> Hsla {

@@ -3362,25 +3362,23 @@ impl AppView {
                     && pane_content
                         .as_ref()
                         .is_none_or(|content| content.inactive_style == PaneInactiveStyle::Surface);
-                let border_color = pane_border_color(active, cx);
+                let gaps = config::pane_gaps(cx);
                 let follows_pointer = inactive && self.mux.read(cx).focus_follows_mouse();
                 let hovered_pane = *pane;
                 pane_surface(
                     ("mux-pane", pane.0),
                     content,
                     overlays,
-                    PaneChrome::new(
-                        radii,
-                        config::pane_border_width(cx),
-                        border_color,
-                        config::pane_gaps(cx),
-                    )
-                    .active(active)
-                    .dimmed(surface_dimmed, inactive_opacity)
-                    .glass(
-                        cx.theme()
-                            .pane_glass(background.opaque(), crate::theme::chrome_background(cx)),
-                    ),
+                    PaneChrome::new(radii, gaps)
+                        .active(active)
+                        .dimmed(surface_dimmed, inactive_opacity)
+                        .frame(gaps.then(|| {
+                            cx.theme().pane_frame(
+                                background.opaque(),
+                                crate::theme::chrome_background(cx),
+                                active,
+                            )
+                        })),
                     cx,
                 )
                 .key_context(pane_key_context(*pane))

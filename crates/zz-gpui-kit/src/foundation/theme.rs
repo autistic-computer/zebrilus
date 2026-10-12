@@ -130,14 +130,18 @@ pub struct Theme {
     /// How fast transitions play: 1 is the usual pace, 2 twice as fast.
     pub animation_speed: f32,
     /// Floating surfaces (popovers, menus, tooltips, notifications, dialogs,
-    /// sheets) become this glass when set, and so do panes under
-    /// [`Self::pane_glass`]. Each surface tints it with its own color; the
+    /// sheets, floating panes) become this glass when set, and pane frames
+    /// take its edge. Each surface tints it with its own color; the
     /// material's tint alpha says how much of that color covers the glass.
     pub glass: Option<GlassMaterial>,
     pub pane_background_opacity: f32,
-    /// Draws pane frames and floating panes in [`Self::glass`], when the
-    /// look's glass draws anything.
-    pub pane_glass: bool,
+    /// Whether panes draw a [`Self::pane_frame`], which then owns their
+    /// fill: set while panes have gaps.
+    pub pane_frames: bool,
+    /// The width of the glint along a pane frame's edge; 0 turns it off.
+    pub pane_edge_width: Pixels,
+    /// How strongly the active pane's frame lights its edge in the accent:
+    /// 1 is the look's own glint, 0 lights it like any other pane.
     pub pane_glow_strength: f32,
     pub transparent: Hsla,
     /// When scrollbars are visible, default: [`ScrollbarShow::Scrolling`].
@@ -230,11 +234,6 @@ impl Theme {
         self.glass.filter(|material| !material.is_opaque_fill())
     }
 
-    /// Whether panes are drawn in the look's glass.
-    pub fn pane_glass_active(&self) -> bool {
-        self.pane_glass && self.glass_effect().is_some()
-    }
-
     /// The color a pane shows: `fill` over the window color, at the look's
     /// pane opacity. Pass `background` for a pane with no fill of its own.
     pub fn pane_color(&self, fill: Hsla) -> Hsla {
@@ -244,10 +243,10 @@ impl Theme {
             .opacity(self.pane_background_opacity)
     }
 
-    /// How much of its fill a pane's content paints. None under pane glass,
-    /// where the pane frame owns the fill.
+    /// How much of its fill a pane's content paints. None under
+    /// [`Self::pane_frames`], where the pane frame owns the fill.
     pub fn pane_fill_opacity(&self) -> f32 {
-        if self.pane_glass_active() {
+        if self.pane_frames {
             0.0
         } else {
             self.pane_background_opacity
@@ -255,8 +254,9 @@ impl Theme {
     }
 
     /// What a pane's content paints as its fill: [`Self::pane_color`], or
-    /// nothing under pane glass, where the pane frame owns the fill. It keeps
-    /// the color's channels, so `.opaque()` still gives the solid color.
+    /// nothing under [`Self::pane_frames`], where the pane frame owns the
+    /// fill. It keeps the color's channels, so `.opaque()` still gives the
+    /// solid color.
     pub fn pane_background(&self, fill: Hsla) -> Hsla {
         self.background
             .opaque()
@@ -264,22 +264,43 @@ impl Theme {
             .opacity(self.pane_fill_opacity())
     }
 
-    /// The glass a tiled pane frame draws under pane glass: the look's edge
-    /// with no frost or lensing, tinted with the pane's color over `plane`,
-    /// the window color behind the pane. On an opaque window the tint is
-    /// solid, so the glass paints in place without reading the backdrop.
-    pub fn pane_glass(&self, fill: Hsla, plane: Hsla) -> Option<GlassMaterial> {
+    /// The glass a gapped pane draws as its frame and fill: the look's glass
+    /// edge, or a plain lit edge when the look has no glass, with no frost or
+    /// lensing, tinted with the pane's color over `plane`, the window color
+    /// behind the pane. On an opaque window the tint is solid, so the glass
+    /// paints in place without reading the backdrop. The active pane lights
+    /// its edge in the accent: the glint and fresnel scaled by
+    /// [`Self::pane_glow_strength`], and the contour, which also shows on a
+    /// light pane where added light cannot.
+    pub fn pane_frame(&self, fill: Hsla, plane: Hsla, active: bool) -> GlassMaterial {
         let tint = plane.blend(self.pane_color(fill));
-        self.glass_effect()
-            .filter(|_| self.pane_glass)
-            .map(|material| {
-                material
-                    .blur(px(0.0))
-                    .refraction(px(0.0))
-                    .dispersion(0.0)
-                    .tint(tint)
-                    .fallback(tint)
-            })
+        let frame = self
+            .glass_effect()
+            .unwrap_or_else(|| GlassMaterial::edge(tint))
+            .blur(px(0.0))
+            .refraction(px(0.0))
+            .dispersion(0.0)
+            .noise(0.0)
+            .tint(tint)
+            .fallback(tint)
+            .glint_width(self.pane_edge_width);
+        let frame = if self.pane_edge_width > px(0.0) {
+            frame
+        } else {
+            frame.specular(0.0)
+        };
+        if active && self.pane_glow_strength > 0.0 {
+            let strength = self.pane_glow_strength;
+            frame
+                .light_color(self.accent.opaque())
+                .specular(frame.specular * strength)
+                .fresnel(frame.fresnel * strength)
+                .edge_color(self.accent.opaque())
+                .edge_shadow(strength.min(1.0))
+                .edge_width(frame.edge_width.max(px(1.0)))
+        } else {
+            frame
+        }
     }
 
     /// The color of a divider rule.
@@ -410,7 +431,8 @@ impl From<&ThemeColor> for Theme {
             animation_speed: 1.0,
             glass: None,
             pane_background_opacity: 0.5,
-            pane_glass: false,
+            pane_frames: false,
+            pane_edge_width: px(0.5),
             pane_glow_strength: 1.0,
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
@@ -480,39 +502,79 @@ mod tests {
     }
 
     #[test]
-    fn pane_glass_owns_the_pane_fill_only_while_the_glass_draws() {
-        let mut theme = Theme {
-            pane_glass: true,
-            ..Theme::default()
-        };
+    fn pane_frames_own_the_pane_fill() {
+        let mut theme = Theme::default();
         let fill = theme.accent;
-        let plane = theme.background;
         let solid = theme.background.opaque().blend(fill);
-        for glass in [
-            None,
-            Some(GlassMaterial::regular().vanished().tint(plane.opaque())),
-        ] {
-            theme.glass = glass;
-            assert!(!theme.pane_glass_active());
-            assert_eq!(theme.pane_glass(fill, plane), None);
-            assert_eq!(theme.pane_background(fill), theme.pane_color(fill));
-        }
+        assert_eq!(theme.pane_background(fill), theme.pane_color(fill));
+        assert_eq!(theme.pane_fill_opacity(), theme.pane_background_opacity);
 
-        theme.glass = Some(GlassMaterial::frosted());
-        let material = theme.pane_glass(fill, plane).unwrap();
-        assert_eq!(material.tint, plane.blend(theme.pane_color(fill)));
-        assert_eq!(material.fallback, Some(material.tint));
-        assert!(!material.reads_backdrop());
-        assert_eq!(
-            (material.blur, material.refraction, material.dispersion),
-            (px(0.0), px(0.0), 0.0)
-        );
+        theme.pane_frames = true;
         assert_eq!(theme.pane_background(fill).a, 0.0);
         assert_eq!(theme.pane_background(fill).opaque(), solid);
         assert_eq!(theme.pane_fill_opacity(), 0.0);
+    }
 
-        theme.pane_glass = false;
-        assert_eq!(theme.pane_glass(fill, plane), None);
-        assert_eq!(theme.pane_fill_opacity(), theme.pane_background_opacity);
+    #[test]
+    fn a_pane_frame_lights_an_opaque_edge_with_or_without_the_looks_glass() {
+        let mut theme = Theme::default();
+        let fill = theme.accent;
+        let plane = theme.background;
+        let tint = plane.blend(theme.pane_color(fill));
+        for (glass, bezel) in [
+            (None, GlassMaterial::edge(tint).bezel),
+            (
+                Some(GlassMaterial::regular().vanished().tint(plane.opaque())),
+                GlassMaterial::edge(tint).bezel,
+            ),
+            (
+                Some(GlassMaterial::frosted()),
+                GlassMaterial::frosted().bezel,
+            ),
+        ] {
+            theme.glass = glass;
+            let frame = theme.pane_frame(fill, plane, false);
+            assert_eq!(frame.tint, tint);
+            assert_eq!(frame.fallback, Some(tint));
+            assert_eq!(frame.bezel, bezel);
+            assert!(!frame.reads_backdrop());
+            assert!(!frame.is_opaque_fill());
+            assert_eq!(
+                (frame.blur, frame.refraction, frame.dispersion, frame.noise),
+                (px(0.0), px(0.0), 0.0, 0.0)
+            );
+            assert_eq!(frame.glint_width, theme.pane_edge_width);
+            assert_eq!(frame.light_color, GlassMaterial::regular().light_color);
+        }
+
+        theme.pane_edge_width = px(0.0);
+        assert_eq!(theme.pane_frame(fill, plane, false).specular, 0.0);
+    }
+
+    #[test]
+    fn the_active_pane_frame_lights_its_edge_in_the_accent() {
+        let mut theme = Theme::default();
+        let (fill, plane) = (theme.background, theme.background);
+        let inactive = theme.pane_frame(fill, plane, false);
+        let active = theme.pane_frame(fill, plane, true);
+        assert_eq!(active.light_color, theme.accent.opaque());
+        assert_eq!(active.edge_color, theme.accent.opaque());
+        assert_eq!(inactive.edge_color, GlassMaterial::regular().edge_color);
+        assert_eq!(active.edge_shadow, 1.0);
+        assert!(active.edge_width >= px(1.0));
+        assert_eq!(
+            (active.specular, active.fresnel),
+            (inactive.specular, inactive.fresnel)
+        );
+
+        theme.pane_glow_strength = 2.0;
+        let bright = theme.pane_frame(fill, plane, true);
+        assert_eq!(
+            (bright.specular, bright.fresnel),
+            (inactive.specular * 2.0, inactive.fresnel * 2.0)
+        );
+
+        theme.pane_glow_strength = 0.0;
+        assert_eq!(theme.pane_frame(fill, plane, true), inactive);
     }
 }

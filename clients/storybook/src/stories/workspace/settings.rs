@@ -267,9 +267,12 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         .control(controls.number(3, cx)),
                 )
                 .child(
-                    SettingEntry::new("Pane border width", "Border width for gapped panes (0-8).")
-                        .disabled(true)
-                        .control(controls.number(5, cx)),
+                    SettingEntry::new(
+                        "Pane edge width",
+                        "Width of the bright line along each pane's glass edge (0-8).",
+                    )
+                    .disabled(true)
+                    .control(controls.number(5, cx)),
                 ),
         )
         .state(
@@ -445,7 +448,6 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 gaps,
                 margin: pane.margin,
                 radius: pane.radius,
-                border_width: pane.border,
                 inactive_opacity: pane.inactive,
             },
             [
@@ -462,10 +464,6 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 )
                 .title_actions(reset("background-reset"))
                 .control(controls.number(0, cx)),
-                pane_entry("Glass", "Draw panes in the theme's glass. Needs pane gaps.")
-                    .title_actions(reset("glass-reset"))
-                    .control(Switch::new("glass").checked(cx.theme().pane_glass))
-                    .disabled(!gaps || cx.theme().glass_effect().is_none()),
             ],
             [
                 pane_entry(
@@ -475,9 +473,10 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 .title_actions(reset("inactive-reset"))
                 .control(controls.number(1, cx)),
                 pane_entry(
-                    "Selected pane glow",
-                    "Glow strength from 0% to 200%. Set to 0 to turn it off.",
+                    "Selected pane edge",
+                    "How brightly the selected pane's edge lights in the accent, from 0% to 200%. Set to 0 to light it like the others.",
                 )
+                .disabled(!gaps)
                 .title_actions(reset("glow-reset"))
                 .control(controls.number(2, cx)),
             ],
@@ -491,8 +490,8 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     .title_actions(reset("radius-reset"))
                     .control(controls.number(4, cx)),
                 pane_entry(
-                    "Pane border width",
-                    "Border width for gapped panes, in logical pixels (0-8). Set to 0 to disable.",
+                    "Pane edge width",
+                    "Width of the bright line along each pane's glass edge, in logical pixels (0-8). Set to 0 to turn it off.",
                 )
                 .disabled(!gaps)
                 .title_actions(reset("border-reset"))
