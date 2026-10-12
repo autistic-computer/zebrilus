@@ -4,7 +4,7 @@ title: zz-gpui
 description: zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 resource: crates/zz-gpui/Cargo.toml
 tags: [zz-gpui, gpui, reference, vendored]
-timestamp: 2026-10-09T00:00:00Z
+timestamp: 2026-10-12T00:00:00Z
 ---
 
 # Overview
@@ -256,6 +256,55 @@ see [zz-gpui web windows for agents](/references/zz-gpui-web-agents.md).
 `git log -- gpui` is the authority (it carries
 more commits than this list numbers, because a few patches landed as follow-up fixes to an entry
 above).
+
+# Liquid glass
+
+`crates/zz-gpui/src/glass.rs` holds the `Glass` primitive, `GlassMaterial` and `plan_glass`;
+`glass.wgsl` is the one shader Metal (through naga) and wgpu draw it with. Glass whose tint is
+translucent reads its backdrop: a pass break, a copy of its region and a blur chain the size of that
+region. Glass with an opaque tint reads nothing and draws in the scene's own pass, and a material
+with no light either (`is_opaque_fill`) is painted as a plain quad.
+
+Past the rim nothing lenses, glints or casts the contour, so `fs_glass` skips the signed distance
+field there (2026-10-12). `Glass::uniform` puts the depth where the face goes flat in `shape.w`:
+the bezel or four glint widths, whichever is larger, plus a pixel. A pixel at least that deep inside
+any one of the body's shapes (past the depth from every side and past the largest corner radius from
+one, where no corner curve reaches) and 1.5 px inside the window clip draws the toned backdrop or
+tint with the touch glow and grain and nothing else. Melting only deepens a body, since the smooth
+union never lies outside the closer shape, so testing each shape alone is safe. Two details measured
+on Metal: the first shape is tested at a constant index, because the loop's dynamic index kept the
+shape array out of fast uniform registers (0.04 ms on a full 5K window), and empty pixels return
+clear instead of discarding (0.01 ms).
+
+`GlassMaterial::light_color` (white by default) colors the glint and the fresnel glow; theme files
+without the key keep white. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
+blur or refraction, a 1 px glint, faint fresnel, a 0.5 px contour), meant for surfaces that cover
+most of the window, such as pane frames.
+
+`check_glass_rendering`, which both renderers' `glass_lenses_its_backdrop` run, compares the flat
+face against the full field within 1/255 for square, round, smoothed, circular and uneven corners,
+two melting and two overlapping shapes, five materials (lit opaque, edge, glowing and grainy, a
+lens, frost) and with and without a window clip; `with_full_field` (test and bench builds only)
+turns the shortcut off for the calling thread. Shrinking the depth, dropping the clip test, ignoring
+the corner radius, and testing the union's box instead of each shape all fail it.
+
+`bench_glass` (Metal and wgpu, `cargo test -p zz-gpui-platform --all-features --release bench_glass
+-- --ignored --nocapture`) times each case with and without the shortcut. Added ms/frame at
+5344x2964, before (the previous shader) and after; RX 7900 XTX values are medians of three runs, as
+it sits near its noise floor:
+
+| Case | M4 Max | RX 7900 XTX | Raphael iGPU |
+| --- | --- | --- | --- |
+| Four gapped panes (13.5 pt corners) as bordered quads, for reference | 0.19 | 0.06 | 4.10 |
+| Four panes of `edge` glass | 0.35 → 0.22 | 0.13 → 0.08 | 9.54 → 3.73 |
+| `edge` glass over the whole window | 0.35 → 0.21 | 0.12 → 0.07 | 9.70 → 3.65 |
+| Clear glass over the whole window | 0.61 → 0.44 | 0.24 → 0.19 | 14.76 → 8.69 |
+| Frosted glass over the whole window | 0.90 → 0.73 | 0.34 → 0.29 | 17.97 → 13.46 |
+| Frosted sidebar 640x2800 | 0.16 → 0.15 | 0.11 → 0.11 | 2.38 → 1.95 |
+
+Small glass (one or ten buttons, a toolbar) is all rim and costs the same as before. On the
+Raphael iGPU (`ZED_DEVICE_ID=0x164e`) a full-window pass is bound by fill rate, and four panes of
+edge glass now cost less than the bordered quads they would replace.
 
 # Examples
 
