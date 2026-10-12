@@ -314,17 +314,21 @@ impl Knobs {
                         if let Some(material) = knobs.look.glass.as_mut() {
                             set(material, value);
                         }
-                    } else if let Some((colors, name)) = key
+                    } else if let Some((colors, mode, name)) = key
                         .strip_prefix("light-")
-                        .map(|name| (&mut knobs.light, name))
+                        .map(|name| (&mut knobs.light, ThemeMode::Light, name))
                         .or_else(|| {
                             key.strip_prefix("dark-")
-                                .map(|name| (&mut knobs.dark, name))
+                                .map(|name| (&mut knobs.dark, ThemeMode::Dark, name))
                         })
                         && let Some((_, get, set)) =
                             COLOR_KNOBS.iter().find(|(color, ..)| *color == name)
                     {
-                        set(colors, color(key, value, get(colors))?);
+                        let previous = get(colors).or_else(|| {
+                            (name == "shadow-color")
+                                .then(|| ThemeColor::for_mode(mode).shadow_color)
+                        });
+                        set(colors, color(key, value, previous)?);
                     }
                 }
             }
@@ -358,7 +362,7 @@ impl Knobs {
         }
         theme.pane_background_opacity = self.pane.background;
         theme.pane_glow_strength = self.pane.glow;
-        theme.pane_glass = self.pane.glass;
+        theme.pane_glass = self.pane.glass && self.pane.gaps;
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();
@@ -557,6 +561,10 @@ mod tests {
         let knobs = Knobs::parse("interface-theme=macos&dark-shadow-color=%23102030").unwrap();
         let shadow = knobs.dark.shadow_color.unwrap();
         assert_eq!(shadow.a, macos.dark.shadow_color.unwrap().a);
+        assert_eq!(zz_ui::to_hex(shadow.alpha(1.0)), "#102030");
+        let default = Knobs::parse("dark-shadow-color=%23102030").unwrap();
+        let shadow = default.dark.shadow_color.unwrap();
+        assert_eq!(shadow.a, ThemeColor::dark().shadow_color.a);
         assert_eq!(zz_ui::to_hex(shadow.alpha(1.0)), "#102030");
     }
 
