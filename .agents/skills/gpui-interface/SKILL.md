@@ -47,11 +47,17 @@ set color only on the row.
 
 ## `items_center` centres boxes, not ink
 
-GPUI centres a glyph on its **ascent/descent box**. The ink a reader sees sits
-below that centre — at 13px, about 0.33px for caps and 1.49px for x-height.
-Flex `items_center` will look like the icon sits high and the text is sunk.
+GPUI centres a glyph on its **ascent/descent box**, and `items_center` centres
+the icon's box on the same line. Neither is where the letters are. The rule is
+Apple's for SF Symbols: an icon next to text is **centred on the cap height**.
 
-Do this instead:
+The middle of the capitals sits `(ascent - descent - cap height) / 2` below the
+middle of the line box, whatever the line height. For SF Pro that is 0.28px at
+11px, 0.31px at 12px and 0.33px at 13px; for Inter it is 0.
+`zz_gpui_kit::icon::cap_center_drop(font_size, icon_size, cx)` reads it from
+the theme font's metrics, so the same code is right on every font.
+
+Do this:
 
 1. One shared builder for every row of the same shape (font, metrics, hover
    cannot drift across callers).
@@ -60,20 +66,24 @@ Do this instead:
    descenders. At 13px the system font is 15.31px tall; use 16px.
 4. Size icons to the font (`.size(px(13.0))`), not `.medium()` (that is 14px,
    `size_3p5`) or `.small()` (12px, `size_3`).
-5. Optically drop the icon so it sits on the letters, not the box centre.
-   Less than the x-height offset so it never overshoots: **0.5px** at 13px.
+5. Centre the icon on the line, then move it down by `cap_center_drop` for the
+   label's font size and the icon's size. Never a fixed `0.5px`: that was
+   0.17px too low on SF Pro and 0.5px too low on Inter.
+6. The glyph's ink has to be centred in its 24-unit box, or no layout fixes it.
+   `triangle-alert` sat 0.86 to 1 unit low (its round apex trims the top and
+   the base does not move) and is now drawn a unit higher. Check a glyph with
+   `cargo run -p zz-gpui-kit --example export_icons` and `resvg`.
 
 ```rust
 const ROW_HEIGHT: f32 = 28.0;
 const FONT_SIZE: f32 = 13.0;
 const LINE_HEIGHT: f32 = 16.0; // > 15.31px ascent+descent
-const ICON_DROP: f32 = 0.5;
 
-fn row_glyph(icon: IconName, size: f32) -> Div {
+fn row_glyph(icon: IconName, size: f32, cx: &App) -> Div {
     div()
         .flex_none()
         .relative()
-        .top(px(ICON_DROP))
+        .top(cap_center_drop(px(FONT_SIZE), px(size), cx))
         .child(Icon::new(icon).size(px(size)))
 }
 ```
@@ -81,12 +91,30 @@ fn row_glyph(icon: IconName, size: f32) -> Div {
 `line_height(relative(1.0))` is not enough: it still centres on the em box,
 and a 13px line box clips the 15.31px font.
 
-Wrapping rows (markdown task lists) cannot `items_center` the marker on the
-whole block. Give the checkbox a **first-line strut** of `window.line_height()`,
-size the box to the ambient font (`window.text_style().font_size`), then apply
-the same 0.5px optical drop. Magic `.mt(rems(0.4))` plus a rem-sized box will
-not track a 13px agent transcript. Worked example:
-`render_list_item_row` in `crates/zz-gpui-kit/src/text/node.rs`.
+Wrapping rows (markdown task lists, alerts, card titles, disclosure headings)
+cannot `items_center` the marker on the whole block. Give the marker a
+**first-line strut**: a box as tall as the first line's pixel line height, the
+icon sized to that line's font and centred in it, then the same
+`cap_center_drop`. A heading with no explicit line height gets the 1.618 default,
+and an `items_start` row then parks a 14px chevron near the top of a 19px line,
+almost 3pt above the caps. Worked examples: `render_list_item_row` in
+`crates/zz-gpui-kit/src/text/node.rs`, `settings_list_disclosure_header` in
+`crates/zz-ui/src/settings.rs`.
+
+What is left is pixel snapping. GPUI rounds the text baseline and the icon's
+box to device pixels separately, so an icon left at the exact cap centre jumps
+a pixel against the letters depending on where the row lands (a scrolled
+transcript). `cap_center_drop` moves the icon by up to a quarter point so its
+top sits a whole number of half points above the baseline; then both round
+together and the error is fixed, at most 0.25pt by the metrics. CoreText also
+inks caps about 0.1pt above the cap height. Measured on the macOS text system
+(2026-10-12): 13px rows land 0.13 to 0.19pt low, 12px rows 0.32 to 0.36pt low
+(SF Pro's 12px cap half-height sits between two pixel steps), where the old
+0.5px rule left triangles 0.66 to 0.88pt low and the settings chevron 3.1pt
+high. The storybook draws Inter through
+skrifa's autohinter, which grows 13px capitals by a device pixel, so there
+13px icons read about 0.45pt low while the desktop is right; measure alignment
+in the desktop app, not only in the storybook.
 
 ## One row, three callers
 

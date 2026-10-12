@@ -271,8 +271,8 @@ text color cannot follow a hover style. What sits on a tile paints on the tile's
 stays legible on an accent selection: the description (`CardTile::detail`, the tile's
 `muted_at`), the keycap that picks the option (`CardTile::keycap`), and the `Check` a
 multi-select tile shows, or the radio a picked single-select tile shows. The free-text answer is
-a field inside an "Other" tile. Glyphs beside a line of text sit in a box as tall as the line and
-drop 0.5px (`CARD_OPTICAL_DROP`).
+a field inside an "Other" tile. Glyphs beside a line of text sit in a box as tall as the line,
+centred on its cap height (see "Icons next to text" below).
 
 # UI font
 
@@ -360,6 +360,16 @@ glyph with a 0.5px downward optical adjustment. The titlebar, sidebar row action
 and Agent pane share this constructor, which fixes padding and icon scale in one place. Browser
 controls override the hover surface to 28px while retaining the shared icon scale. Workspace settings
 and sidebar buttons use 26px surfaces to match the titlebar pills, with the same 14px glyphs.
+
+Icons next to text are centred on the text's cap height, as Apple places SF Symbols. The icon is
+centred on the line, then moved down by `zz_gpui_kit::icon::cap_center_drop(font_size, icon_size,
+cx)`: half of the theme font's ascent less descent less cap height, 0.31px for SF Pro at 12px and
+0.33px at 13px, nothing for Inter, nudged by up to a quarter point so the icon and the baseline
+round to the same device pixel grid. Rows that wrap give the icon a first-line strut as tall as the
+first line's pixel line height. The agent pane's activity rows, cards, alerts, task tray and composer
+footer, the workspace status pills, markdown task lists and the settings disclosure heading all
+use it. The glyph's own ink has to be centred in its 24-unit box too; the GPUI notes are in
+`.agents/skills/gpui-interface/SKILL.md`.
 
 A radius is a *request*, not the final corner. GPUI caps one at half the shorter side . the point a
 rounded rectangle stops existing . so one global setting applied to components of different sizes

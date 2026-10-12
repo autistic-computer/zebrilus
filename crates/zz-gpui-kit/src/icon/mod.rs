@@ -14,8 +14,8 @@ pub mod glyphs;
 pub use assets::Assets;
 
 use zz_gpui::{
-    AnyElement, App, Hsla, IntoElement, RenderOnce, SharedString, StyleRefinement, Styled, Svg,
-    Transformation, Window, prelude::FluentBuilder as _, svg,
+    AnyElement, App, Hsla, IntoElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled,
+    Svg, Transformation, Window, font, prelude::FluentBuilder as _, svg,
 };
 
 use crate::{Sizable, Size, Theme};
@@ -118,6 +118,29 @@ impl From<Icon> for AnyElement {
     fn from(icon: Icon) -> Self {
         icon.into_any_element()
     }
+}
+
+/// How far an icon of `icon_size`, centred on a line of the theme's UI font at
+/// `font_size`, moves down to sit centred on the line's capitals, the way SF
+/// Symbols sit next to text.
+///
+/// A line centres the font's ascent and descent, so the middle of its
+/// capitals is half of ascent less descent less cap height below the middle of
+/// the line: 0.33px for SF Pro at 13px, none for Inter. GPUI rounds the text's
+/// baseline and the icon to device pixels separately, so the drop is moved by
+/// at most a quarter point to keep the icon's top a whole number of half points
+/// above the baseline. Both then round the same way wherever the row lands,
+/// and at 2x the icon never jumps a pixel against the letters as rows scroll.
+#[must_use]
+pub fn cap_center_drop(font_size: Pixels, icon_size: Pixels, cx: &App) -> Pixels {
+    let Some(theme) = cx.try_global::<Theme>() else {
+        return Pixels::ZERO;
+    };
+    let text = cx.text_system();
+    let font = text.resolve_font(&font(theme.font_family.clone()));
+    let baseline = (text.ascent(font, font_size) + text.descent(font, font_size)) / 2.0;
+    let icon_top = text.cap_height(font, font_size) / 2.0 + icon_size / 2.0;
+    baseline + icon_size / 2.0 - (icon_top * 2.0).round() / 2.0
 }
 
 /// Every icon zz ships, drawn by [`glyphs`] or a brand mark in `assets/icons/`.

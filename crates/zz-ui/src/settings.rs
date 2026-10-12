@@ -12,7 +12,7 @@ use crate::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
     contact_shadow,
-    icon::Icon,
+    icon::{Icon, cap_center_drop},
     scroll::ScrollableElement as _,
     select::SelectItem,
 };
@@ -940,6 +940,10 @@ impl RenderOnce for SettingsVirtualColumn {
     }
 }
 
+const SETTINGS_GROUP_TITLE_SIZE: f32 = 12.0;
+const SETTINGS_GROUP_TITLE_LINE: f32 = 18.0;
+const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
+
 fn settings_group_header(
     title: SharedString,
     description: Option<SharedString>,
@@ -951,7 +955,12 @@ fn settings_group_header(
         .gap(px(2.0))
         .px(px(2.0))
         .child(
-            crate::StyledExt::font_medium(div().text_size(crate::rems_from_px(12.0))).child(title),
+            crate::StyledExt::font_medium(
+                div()
+                    .text_size(crate::rems_from_px(SETTINGS_GROUP_TITLE_SIZE))
+                    .line_height(px(SETTINGS_GROUP_TITLE_LINE)),
+            )
+            .child(title),
         )
         .when_some(description, |this, description| {
             this.child(
@@ -981,13 +990,28 @@ pub fn settings_list_disclosure_header(
         .gap(px(2.0))
         .cursor_pointer()
         .child(
-            Icon::new(if expanded {
-                crate::IconName::ChevronDown
-            } else {
-                crate::IconName::ChevronRight
-            })
-            .size(px(14.0))
-            .text_color(muted),
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .w(px(SETTINGS_DISCLOSURE_WIDTH))
+                .h(px(SETTINGS_GROUP_TITLE_LINE))
+                .child(
+                    Icon::new(if expanded {
+                        crate::IconName::ChevronDown
+                    } else {
+                        crate::IconName::ChevronRight
+                    })
+                    .size(px(SETTINGS_GROUP_TITLE_SIZE))
+                    .text_color(muted)
+                    .relative()
+                    .top(cap_center_drop(
+                        px(SETTINGS_GROUP_TITLE_SIZE),
+                        px(SETTINGS_GROUP_TITLE_SIZE),
+                        cx,
+                    )),
+                ),
         )
         .child(settings_group_header(
             title.into(),

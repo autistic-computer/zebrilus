@@ -1247,12 +1247,12 @@ impl BlockNode {
         window: &Window,
         cx: &mut App,
     ) -> Div {
-        // First-line strut: the box is sized to the font, then dropped so its
-        // ink sits on the letters. `items_center` on the row would centre the
-        // checkbox on the whole wrapped block; the strut keeps it on line 1.
-        const CHECKBOX_OPTICAL_DROP: f32 = 0.5;
+        // First-line strut: the box is sized to the font, then centred on the
+        // cap height. `items_center` on the row would centre the checkbox on
+        // the whole wrapped block; the strut keeps it on line 1.
         let line_height = window.line_height();
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
+        let drop = crate::icon::cap_center_drop(font_size, font_size, cx);
         h_flex()
             .w_full()
             .flex_1()
@@ -1274,7 +1274,7 @@ impl BlockNode {
                         .child(
                             div()
                                 .relative()
-                                .top(px(CHECKBOX_OPTICAL_DROP))
+                                .top(drop)
                                 .flex()
                                 .size(font_size)
                                 .items_center()

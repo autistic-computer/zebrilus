@@ -33,7 +33,7 @@ const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(13.0);
-const WORKSPACE_STATUS_ICON_DROP: Pixels = px(0.5);
+const WORKSPACE_STATUS_TEXT_SIZE: f32 = 12.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusWindowState {
@@ -121,13 +121,17 @@ pub fn workspace_status_item(
         .gap(px(5.0))
         .overflow_hidden()
         .text_color(cx.theme().foreground.muted())
-        .text_size(rems_from_px(12.0))
+        .text_size(rems_from_px(WORKSPACE_STATUS_TEXT_SIZE))
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
         .children(icon.map(|icon| {
             div()
                 .flex_none()
                 .relative()
-                .top(WORKSPACE_STATUS_ICON_DROP)
+                .top(crate::icon::cap_center_drop(
+                    px(WORKSPACE_STATUS_TEXT_SIZE),
+                    WORKSPACE_STATUS_ICON_SIZE,
+                    cx,
+                ))
                 .child(Icon::new(icon).size(WORKSPACE_STATUS_ICON_SIZE))
         }))
         .child(
