@@ -4,7 +4,7 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName,
+    ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, IconName,
     InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::Button,
@@ -477,7 +477,7 @@ fn text_column(cx: &App) -> impl IntoElement {
 }
 
 fn text(_: &mut Window, cx: &mut App) -> AnyElement {
-    let raised = cx.theme().background.raised(1);
+    let raised = cx.theme().surface(Elevation::Panel).fill;
     h_flex()
         .items_start()
         .gap_6()
@@ -551,7 +551,7 @@ fn ground_samples(cx: &App) -> impl IntoElement {
 }
 
 fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
-    let raised = cx.theme().background.raised(1);
+    let raised = cx.theme().surface(Elevation::Panel).fill;
     h_flex()
         .items_start()
         .gap_6()

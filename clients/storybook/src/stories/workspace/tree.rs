@@ -295,7 +295,7 @@ pub fn guides(depths: Rc<[usize]>, active_row: Option<usize>, cx: &App) -> Works
         px(WORKSPACE_TREE_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
         px(4.0),
         IndentGuideColors {
-            default: color.wash(),
+            default: cx.theme().divider_color(),
             active: color,
         },
     )

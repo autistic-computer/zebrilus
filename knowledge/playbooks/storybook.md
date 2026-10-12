@@ -57,6 +57,12 @@ Edit the component in `crates/zz-ui` or `crates/zz-gpui-kit`, let `just storyboo
 reload, and walk the knobs: light and dark, each interface theme, radius 0 and full, contrast extremes,
 zoom. The sections re-render live as knobs move.
 
+The storybook is its own Cargo workspace, so the root clippy run skips it. `just storybook lint`
+runs clippy on it for the host and for wasm under the root `clippy.toml`, which bans hand-mixed
+colors here too: use the kit's paints and surfaces, and put a scoped
+`#[allow(clippy::disallowed_methods, reason = ..)]` only on a story that shows a raw transform on
+purpose (the Colors story) or on the theme JSON the HTML knob panel paints itself with.
+
 # For agents
 
 - `scripts/storybook-shot.mjs <story>[/<section>][?knobs] out.png [--url ..]` (also

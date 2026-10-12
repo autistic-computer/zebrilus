@@ -10,6 +10,11 @@ run:
 build *args:
     @scripts/build-storybook.sh {{ args }}
 
+# Lint the storybook under the root clippy rules, for the host and for wasm.
+lint:
+    cargo clippy --manifest-path clients/storybook/Cargo.toml --all-targets -- -D warnings
+    cargo clippy --manifest-path clients/storybook/Cargo.toml --target wasm32-unknown-unknown --lib -- -D warnings
+
 # Serve the last build without rebuilding.
 serve:
     @scripts/storybook-serve.py clients/storybook/dist 8097

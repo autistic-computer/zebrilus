@@ -18,7 +18,7 @@ use std::cell::RefCell;
 
 use serde_json::json;
 use zz_gpui::{AnyWindowHandle, App, AppContext as _, WindowOptions};
-use zz_ui::{ActiveTheme as _, Colorize as _, Root, Theme, to_hex};
+use zz_ui::{ActiveTheme as _, Colorize as _, Root, to_hex};
 
 pub use knobs::Knobs;
 pub use stories::STORIES;
@@ -29,36 +29,6 @@ use host::SectionHost;
 thread_local! {
     static KNOBS: RefCell<Knobs> = RefCell::new(Knobs::default());
     static OPEN: RefCell<Vec<AnyWindowHandle>> = const { RefCell::new(Vec::new()) };
-}
-
-fn launch(cx: &mut App) {
-    cx.text_system()
-        .add_fonts(vec![
-            Cow::Borrowed(include_bytes!(
-                "../../web/assets/fonts/inter/InterVariable.ttf"
-            )),
-            Cow::Borrowed(include_bytes!(
-                "../../web/assets/fonts/inter/InterVariable-Italic.ttf"
-            )),
-            Cow::Borrowed(include_bytes!(
-                "../../web/assets/fonts/lilex/Lilex-Regular.ttf"
-            )),
-            Cow::Borrowed(include_bytes!(
-                "../../web/assets/fonts/lilex/Lilex-Bold.ttf"
-            )),
-            Cow::Borrowed(include_bytes!(
-                "../../web/assets/fonts/lilex/Lilex-Italic.ttf"
-            )),
-            Cow::Borrowed(include_bytes!(
-                "../../web/assets/fonts/lilex/Lilex-BoldItalic.ttf"
-            )),
-        ])
-        .expect("failed to load the interface fonts");
-    zz_ui::init(cx);
-    let theme = Theme::global_mut(cx);
-    theme.font_family = knobs::UI_FONT.into();
-    theme.mono_font_family = "Lilex".into();
-    KNOBS.with(|knobs| knobs.borrow().apply(cx));
 }
 
 pub(crate) fn knobs() -> Knobs {
@@ -208,6 +178,10 @@ pub fn set_knobs(query: &str, cx: &mut App) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the HTML knob panel paints itself from the kit's surface steps through CSS variables"
+)]
 pub fn theme_json(cx: &App) -> String {
     let theme = cx.theme();
     json!({
@@ -230,6 +204,36 @@ mod web {
     use std::cell::{Cell, RefCell};
 
     use wasm_bindgen::prelude::*;
+
+    fn launch(cx: &mut zz_gpui::App) {
+        cx.text_system()
+            .add_fonts(vec![
+                super::Cow::Borrowed(include_bytes!(
+                    "../../web/assets/fonts/inter/InterVariable.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../../web/assets/fonts/inter/InterVariable-Italic.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../../web/assets/fonts/lilex/Lilex-Regular.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../../web/assets/fonts/lilex/Lilex-Bold.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../../web/assets/fonts/lilex/Lilex-Italic.ttf"
+                )),
+                super::Cow::Borrowed(include_bytes!(
+                    "../../web/assets/fonts/lilex/Lilex-BoldItalic.ttf"
+                )),
+            ])
+            .expect("failed to load the interface fonts");
+        zz_ui::init(cx);
+        let theme = zz_ui::Theme::global_mut(cx);
+        theme.font_family = super::knobs::UI_FONT.into();
+        theme.mono_font_family = "Lilex".into();
+        super::KNOBS.with(|knobs| knobs.borrow().apply(cx));
+    }
 
     thread_local! {
         static APPLICATION: RefCell<Option<zz_gpui::ApplicationHandle>> = const { RefCell::new(None) };
@@ -254,7 +258,7 @@ mod web {
         zz_gpui_platform::web_init();
         let application = zz_gpui_platform::single_threaded_web().with_assets(zz_ui::Assets);
         let handle = application.run_embedded(|cx| {
-            super::launch(cx);
+            launch(cx);
             READY.with(|ready| ready.set(true));
         });
         APPLICATION.with(|application| application.replace(Some(handle)));

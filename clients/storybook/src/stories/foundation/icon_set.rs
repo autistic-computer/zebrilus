@@ -3,7 +3,8 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, Sizable as _, Size,
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Icon, PaintState, Sizable as _, Size,
+    Tone,
     button::{Button, ButtonVariants as _},
     h_flex,
     icon::glyphs,
@@ -128,7 +129,9 @@ fn sidebar(cx: &App) -> impl IntoElement {
             .text_size(px(13.0))
             .text_color(theme.foreground.muted())
             .when(selected, |item| {
-                item.bg(theme.foreground.wash())
+                item.bg(theme
+                    .paint(Tone::Neutral, Emphasis::Ghost)
+                    .fill_at(PaintState::Current))
                     .text_color(theme.foreground)
             })
             .child(Radius::Theme.icon(icon).with_size(Size::Size(px(16.0))))
