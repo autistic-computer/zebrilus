@@ -33,8 +33,8 @@ share the painter in `crates/zz-ui/src/terminal.rs`; the desktop adapter lives i
 | Dirty rows → `TerminalViewportPatch` | Applied in place to one retained mutable grid; each changed row bumps a row revision that keys the shaped-row cache. |
 | `PackedCell` glyph + `PackedStyle` | Resolved to a GPUI text run; multi-codepoint graphemes and wide glyphs keep their grid reservation. |
 | Connected light box / solid block glyph | Light segments, junctions, rounded corners, and diagonals become device-pixel-snapped geometry; solid block elements fill exact snapped cell fractions. |
-| `foreground`/`background` + palette | Default and palette colors corrected against the resolved cell background when below `minimum-contrast`. |
-| `ATTR_EXPLICIT_RGB` bit | Skips contrast correction for application-chosen truecolor; box/block/Powerline glyphs also skip it so adjacent graphical cells keep identical colors. |
+| `foreground`/`background` + palette | Every text color (default, palette and application truecolor) is corrected against the resolved cell background when below `minimum-contrast` (default 2): its OKLab lightness moves away from the background with hue and chroma kept inside the sRGB gamut, and the result is cached per foreground, background and floor. Box drawing, block, legacy-computing and Powerline glyphs skip it so adjacent graphical cells keep identical colors. |
+| `ATTR_EXPLICIT_RGB` bit | Records application-chosen truecolor. Contrast correction no longer reads it. |
 | `OverlaySpan` plane | Selection, search match/current, link hover, and copy cursor painted from [appearance](/terminal/appearance.md) colors on a separate plane. |
 | `Cursor` record | Derived cursor paint record (see below). |
 

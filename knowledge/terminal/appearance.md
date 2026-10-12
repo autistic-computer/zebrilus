@@ -42,7 +42,7 @@ text and explicit cell backgrounds retain their own colors.
 | Core colors | `foreground`, `background`, `cursor_color` (`Color` = RGB) |
 | Overlay colors | `selection_foreground` (`Color`), `selection_background`, `search_match_color`, `search_current_color`, `link_color`, `copy_cursor_color` (`AppearanceColor` = RGBA) |
 | Palette | `palette: TerminalPalette` (exactly `[Color; 256]`, tuple-serialized) |
-| Policy | `minimum_contrast: f32`, `cursor_blink_policy` (Off/On/Terminal), `cursor_blink_interval_ms`, `rounded_selection`, `background_opacity`, `color_scheme` (Light/Dark) |
+| Policy | `minimum_contrast: f32` (WCAG ratio floor, default 2), `cursor_blink_policy` (Off/On/Terminal), `cursor_blink_interval_ms`, `rounded_selection`, `background_opacity`, `color_scheme` (Light/Dark) |
 
 Supporting types: `AppearanceColor` (compact RGBA), `FontFeature` (`[u8;4]` tag + `u32` value),
 `FontSyntheticStyle` (independent bold / italic / bold-italic permissions), `CellHeightAdjustment`

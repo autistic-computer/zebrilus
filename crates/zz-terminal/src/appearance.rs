@@ -700,7 +700,7 @@ impl Default for TerminalAppearance {
             link_color: Color::rgb(0x4d, 0xa3, 0xeb),
             copy_cursor_color: AppearanceColor::rgba(0xb8, 0xc7, 0xe0, 0x6b),
             palette: TerminalPalette::new(default_palette()),
-            minimum_contrast: 1.0,
+            minimum_contrast: 2.0,
             cursor_blink_policy: CursorBlinkPolicy::Terminal,
             cursor_blink_interval_ms: 500,
             rounded_selection: true,
