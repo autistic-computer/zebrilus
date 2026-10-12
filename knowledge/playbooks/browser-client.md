@@ -112,8 +112,8 @@ menus use the provider's current options. Composer actions, context usage, and G
 the desktop presentation. Reclaimed drafts and PNG, JPEG, and WebP attachments are supported.
 The working-directory picker lists known Agent directories and accepts an absolute path on the
 daemon host; recursive filesystem discovery remains desktop-only. Appearance preferences for the
-browser live in local storage: system/light/dark mode, a desktop chrome preset per mode, the
-three editable palette roots, zoom, corner radius, animations, and shadow strength.
+browser live in local storage: system/light/dark mode, the interface theme (a built-in or one saved
+in the browser by Duplicate or Import), zoom, corner radius, animations, and shadow strength.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
 color pickers, theme previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and

@@ -1,5 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use zz_ui::interface_theme::{self, InterfaceTheme, ThemeModeSetting};
+
+pub const MAX_SAVED_THEMES: usize = 32;
+const MAX_THEME_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -17,8 +20,11 @@ pub struct Preferences {
     pub dark: bool,
     #[serde(default)]
     pub mode: Option<String>,
-    /// The built-in theme by id; `None` is the default theme.
+    /// The built-in or saved theme by id; `None` is the default theme.
     pub theme: Option<String>,
+    /// Themes saved on this device by Duplicate or Import, by id.
+    #[serde(deserialize_with = "saved_themes")]
+    pub themes: Vec<(String, InterfaceTheme)>,
     pub ui_font_family: String,
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
@@ -55,6 +61,7 @@ impl Default for Preferences {
             dark: true,
             mode: Some("system".into()),
             theme: None,
+            themes: Vec::new(),
             ui_font_family: String::new(),
             terminal_font_family: None,
             terminal_font_scale: 1.0,
@@ -86,18 +93,20 @@ impl Preferences {
             640.0,
             zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
         );
-        self.theme = self
-            .theme
-            .filter(|theme| interface_theme::is_builtin_theme(theme));
+        let mut ids = std::collections::HashSet::new();
+        self.themes.retain(|(id, _)| {
+            !id.is_empty() && !interface_theme::is_builtin_theme(id) && ids.insert(id.clone())
+        });
+        self.themes.truncate(MAX_SAVED_THEMES);
+        self.theme = self.theme.take().filter(|id| self.knows_theme(id));
         let look = &self.interface_theme().look;
+        let (radius, shadow) = (look.radius, look.shadow);
         self.shadow_strength = self
             .shadow_strength
-            .map(|strength| bounded(strength, 0.0, 1.0, look.shadow));
+            .map(|strength| bounded(strength, 0.0, 1.0, shadow));
         self.zoom = bounded(self.zoom, 0.5, 3.0, 1.0);
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
-        self.radius = self
-            .radius
-            .map(|radius| bounded(radius, 0.0, 25.0, look.radius));
+        self.radius = self.radius.map(|value| bounded(value, 0.0, 25.0, radius));
         self.contrast = bounded(self.contrast, 0.5, 2.0, 1.0);
         for (value, min, max, fallback) in [
             (&mut self.pane_background_opacity, 0., 1., 0.5),
@@ -113,7 +122,7 @@ impl Preferences {
         if self.palette_host_prefix != "#" {
             self.palette_host_prefix = "~".into();
         }
-        self.ui_font_family = self.ui_font_family.trim().to_owned();
+        self.ui_font_family = self.ui_font_family.trim().into();
         self.terminal_font_family = self
             .terminal_font_family
             .map(|family| family.trim().to_owned())
@@ -152,10 +161,13 @@ impl Preferences {
     }
 
     #[must_use]
-    pub fn interface_theme(&self) -> &'static InterfaceTheme {
+    pub fn interface_theme(&self) -> &InterfaceTheme {
         self.theme
             .as_deref()
-            .and_then(interface_theme::builtin_theme)
+            .and_then(|id| {
+                self.saved_theme(id)
+                    .or_else(|| interface_theme::builtin_theme(id))
+            })
             .unwrap_or_else(|| interface_theme::default_theme())
     }
 
@@ -163,16 +175,95 @@ impl Preferences {
     pub fn theme_id(&self) -> &str {
         self.theme
             .as_deref()
-            .filter(|theme| interface_theme::is_builtin_theme(theme))
+            .filter(|id| self.knows_theme(id))
             .unwrap_or(interface_theme::DEFAULT_THEME)
     }
 
-    /// Selects the built-in theme `id` and drops the radius and shadow
-    /// overrides, so the theme shows as designed.
+    #[must_use]
+    pub fn saved_theme(&self, id: &str) -> Option<&InterfaceTheme> {
+        self.themes
+            .iter()
+            .find(|(saved, _)| saved == id)
+            .map(|(_, theme)| theme)
+    }
+
+    fn knows_theme(&self, id: &str) -> bool {
+        interface_theme::is_builtin_theme(id) || self.saved_theme(id).is_some()
+    }
+
+    /// Selects the built-in or saved theme `id`, or the default for any other
+    /// id, and drops the overrides of what the theme decides: the radius, the
+    /// shadow, and the UI font when it sets one, so it shows as designed.
     pub fn set_interface_theme(&mut self, id: &str) {
-        self.theme = interface_theme::is_builtin_theme(id).then(|| id.to_owned());
+        self.theme = self.knows_theme(id).then(|| id.to_owned());
         self.radius = None;
         self.shadow_strength = None;
+        if self.interface_theme().look.font.is_some() {
+            self.ui_font_family.clear();
+        }
+    }
+
+    /// Saves the active theme as it draws now, with the radius, shadow and UI
+    /// font overrides folded into its look, and selects the copy.
+    pub fn duplicate_theme(&mut self) -> Result<String, String> {
+        let mut theme = self.interface_theme().clone();
+        theme.look.radius = self.widget_corner_radius();
+        theme.look.shadow = self.shadow();
+        if !self.ui_font_family.is_empty() {
+            theme.look.font = Some(self.ui_font_family.clone().into());
+        }
+        self.save_theme(theme)
+    }
+
+    /// Saves the theme file on the clipboard and selects it.
+    pub fn import_theme(&mut self, clipboard: &str) -> Result<String, String> {
+        let theme = if clipboard.len() > MAX_THEME_BYTES {
+            Err(format!("it is over {} KB", MAX_THEME_BYTES / 1024))
+        } else {
+            interface_theme::parse_theme(clipboard)
+        }
+        .map_err(|error| {
+            format!(
+                "The clipboard holds no theme: {error}. Copy one with Copy JSON in the storybook."
+            )
+        })?;
+        self.save_theme(theme)
+    }
+
+    fn save_theme(&mut self, mut theme: InterfaceTheme) -> Result<String, String> {
+        if self.themes.len() >= MAX_SAVED_THEMES {
+            return Err(format!(
+                "This device keeps {MAX_SAVED_THEMES} themes. Delete one to save another."
+            ));
+        }
+        let id = (1..=self.themes.len() + 1)
+            .map(|index| format!("theme-{index}"))
+            .find(|id| self.saved_theme(id).is_none())
+            .expect("one more id than themes holds a free one");
+        theme.name_after(&id);
+        self.themes.push((id.clone(), theme));
+        self.set_interface_theme(&id);
+        Ok(id)
+    }
+
+    /// Deletes the saved theme `id`, and selects the default theme when it
+    /// was the selected one.
+    pub fn delete_theme(&mut self, id: &str) {
+        self.themes.retain(|(saved, _)| saved != id);
+        if self.theme.as_deref() == Some(id) {
+            self.set_interface_theme(interface_theme::DEFAULT_THEME);
+        }
+    }
+
+    /// The UI font: the one picked on this device, else the theme's, or `""`
+    /// for the system font.
+    #[must_use]
+    pub fn shown_ui_font(&self) -> &str {
+        if self.ui_font_family.is_empty() {
+            self.interface_theme().look.font.as_deref().unwrap_or("")
+        } else {
+            &self.ui_font_family
+        }
     }
 
     #[must_use]
@@ -277,6 +368,19 @@ impl Preferences {
     } else {
         "zz-web-preferences"
     };
+}
+
+/// Reads the saved themes, skipping any this build cannot read instead of
+/// losing every preference over one theme.
+fn saved_themes<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<(String, InterfaceTheme)>, D::Error> {
+    Ok(
+        Vec::<(String, serde_json::Value)>::deserialize(deserializer)?
+            .into_iter()
+            .filter_map(|(id, theme)| Some((id, serde_json::from_value(theme).ok()?)))
+            .collect(),
+    )
 }
 
 fn bounded(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
@@ -493,6 +597,158 @@ mod tests {
         );
         tuned.set_interface_theme("vaporwave");
         assert_eq!(tuned.theme_id(), "default");
+    }
+
+    const NEON: &str = r##"{"name":"Neon","look":{"radius":3,"shadow":0.25,"font":"Lilex"},"dark":{"accent":"#ff00ff"}}"##;
+
+    #[test]
+    fn saved_themes_round_trip_and_older_preferences_have_none() {
+        let mut preferences = Preferences::default();
+        assert_eq!(preferences.import_theme(NEON).unwrap(), "theme-1");
+        let restored = Preferences::decode(&serde_json::to_string(&preferences).unwrap()).unwrap();
+        assert_eq!(restored, preferences);
+        assert_eq!(restored.theme_id(), "theme-1");
+        assert_eq!(restored.interface_theme().name, "Neon");
+
+        let mut frosted = Preferences {
+            theme: Some("macos".into()),
+            ..Preferences::default()
+        };
+        frosted.duplicate_theme().unwrap();
+        let restored = Preferences::decode(&serde_json::to_string(&frosted).unwrap()).unwrap();
+        assert_eq!(restored.theme_id(), "theme-1");
+        assert!(restored.interface_theme().look.glass.is_some());
+
+        let older = Preferences::decode(r#"{"theme":"macos","radius":12}"#).unwrap();
+        assert!(older.themes.is_empty());
+        assert_eq!(older.theme_id(), "macos");
+        assert_eq!(older.radius, Some(12.0));
+
+        let unreadable = Preferences::decode(
+            r#"{"theme":"theme-2","themes":[["theme-1",{"name":"Kept"}],["theme-2",{"look":{"glass":"stained"}}]]}"#,
+        )
+        .unwrap();
+        assert_eq!(unreadable.themes.len(), 1);
+        assert_eq!(unreadable.theme_id(), "default");
+    }
+
+    #[test]
+    fn sanitizing_keeps_a_selection_only_while_it_names_a_theme() {
+        let theme = zz_ui::interface_theme::InterfaceTheme::default;
+        let preferences = Preferences {
+            theme: Some("theme-2".into()),
+            themes: vec![
+                ("theme-2".into(), theme()),
+                ("macos".into(), theme()),
+                (String::new(), theme()),
+                ("theme-2".into(), theme()),
+            ],
+            ..Preferences::default()
+        }
+        .sanitized();
+        assert_eq!(preferences.theme.as_deref(), Some("theme-2"));
+        assert_eq!(preferences.themes.len(), 1);
+        let dangling = Preferences {
+            theme: Some("theme-9".into()),
+            ..preferences
+        }
+        .sanitized();
+        assert_eq!(dangling.theme, None);
+        assert_eq!(dangling.theme_id(), "default");
+
+        let crowded = Preferences {
+            themes: (1..=40)
+                .map(|index| (format!("theme-{index}"), theme()))
+                .collect(),
+            ..Preferences::default()
+        }
+        .sanitized();
+        assert_eq!(crowded.themes.len(), super::MAX_SAVED_THEMES);
+    }
+
+    #[test]
+    fn duplicate_keeps_what_is_on_screen() {
+        let mut preferences = Preferences {
+            theme: Some("linear".into()),
+            radius: Some(7.0),
+            shadow_strength: Some(0.3),
+            ui_font_family: "Lilex".into(),
+            ..Preferences::default()
+        };
+        assert_eq!(preferences.duplicate_theme().unwrap(), "theme-1");
+        let copy = preferences.saved_theme("theme-1").unwrap();
+        assert_eq!(copy.name, "theme-1");
+        assert_eq!(
+            (
+                copy.look.radius,
+                copy.look.shadow,
+                copy.look.font.as_deref()
+            ),
+            (7.0, 0.3, Some("Lilex"))
+        );
+        let linear = zz_ui::interface_theme::builtin_theme("linear").unwrap();
+        assert_eq!((&copy.light, &copy.dark), (&linear.light, &linear.dark));
+        assert_eq!(preferences.theme_id(), "theme-1");
+        assert_eq!(
+            (preferences.radius, preferences.shadow_strength),
+            (None, None)
+        );
+        assert!(preferences.ui_font_family.is_empty());
+        assert_eq!(
+            (
+                preferences.widget_corner_radius(),
+                preferences.shadow(),
+                preferences.shown_ui_font()
+            ),
+            (7.0, 0.3, "Lilex")
+        );
+    }
+
+    #[test]
+    fn import_names_built_in_and_nameless_themes_after_their_id() {
+        let mut preferences = Preferences::default();
+        preferences.import_theme(r#"{"name":"macOS"}"#).unwrap();
+        preferences.import_theme("{}").unwrap();
+        preferences.import_theme(NEON).unwrap();
+        let names = preferences
+            .themes
+            .iter()
+            .map(|(id, theme)| (id.as_str(), theme.name.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            [
+                ("theme-1", "theme-1"),
+                ("theme-2", "theme-2"),
+                ("theme-3", "Neon")
+            ]
+        );
+        for source in ["[]", "not json", &" ".repeat(super::MAX_THEME_BYTES + 1)] {
+            let error = preferences.import_theme(source).unwrap_err();
+            assert!(error.contains("Copy JSON"), "{error}");
+        }
+        while preferences.themes.len() < super::MAX_SAVED_THEMES {
+            preferences.import_theme("{}").unwrap();
+        }
+        assert!(preferences.import_theme(NEON).is_err());
+        assert!(preferences.duplicate_theme().is_err());
+        assert_eq!(preferences.themes.len(), super::MAX_SAVED_THEMES);
+    }
+
+    #[test]
+    fn deleting_the_selected_theme_falls_back_to_the_default() {
+        let mut preferences = Preferences::default();
+        preferences.import_theme(NEON).unwrap();
+        preferences.import_theme("{}").unwrap();
+        preferences.radius = Some(4.0);
+        preferences.delete_theme("theme-1");
+        assert_eq!(preferences.theme_id(), "theme-2");
+        assert_eq!(preferences.radius, Some(4.0));
+        preferences.delete_theme("theme-2");
+        assert!(preferences.themes.is_empty());
+        assert_eq!(preferences.theme_id(), "default");
+        assert_eq!(preferences.radius, None);
+        assert_eq!(preferences.import_theme("{}").unwrap(), "theme-1");
     }
 
     #[test]

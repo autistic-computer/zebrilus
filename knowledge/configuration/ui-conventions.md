@@ -344,8 +344,9 @@ GPUI globals (used by settings badges and the detach action, not to color anythi
   match the terminal typeface;
 - `theme.contrast` from `chrome-contrast`, preserved across the same refreshes.
 
-The thin clients keep a built-in theme id in their preferences and apply the same
-`InterfaceTheme` in `Preferences::apply`.
+The thin clients keep the selected theme id and their own saved themes in their preferences and
+apply the same `InterfaceTheme` in `Preferences::apply`, with the UI font taken from the
+preference, else the theme's font, else the bundled Inter.
 
 `chrome-contrast` defaults to 1.0 and accepts 0.5–2.0; other values are reported like any numeric
 key. The Appearance page shows 50–200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and

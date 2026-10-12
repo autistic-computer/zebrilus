@@ -2642,13 +2642,7 @@ fn import_theme_from_clipboard(cx: &mut App) {
 fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
     let saved = config::themes::themes_directory().and_then(|directory| {
         let name = config::themes::next_theme_name(&directory);
-        if theme.name.trim().is_empty()
-            || interface_theme::builtin_themes()
-                .iter()
-                .any(|(_, builtin)| builtin.name == theme.name)
-        {
-            theme.name.clone_from(&name);
-        }
+        theme.name_after(&name);
         let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
         set_interface_theme(&name, theme.look.font.is_some())?;
         Ok(path)
