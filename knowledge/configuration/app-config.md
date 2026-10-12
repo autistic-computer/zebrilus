@@ -112,13 +112,13 @@ The client-local schema includes these scalar settings and chrome colors.
 | `status-update` | `true` | `true` or `false` | Whether an available release appears in the bar with its version and an install action. `check-for-updates` separately controls the release check |
 | `experimental-agent-pane` | `true` | `true` or `false` | Whether new Agent panes can be created at all . picker row, palette completion, and the daemon's `split-window --kind agent` and `select-pane-kind agent` |
 | `experimental-editor-pane` | `false` | `true` or `false` | Whether new Editor panes can be created at all . picker row, palette completion, and the daemon's `select-pane-kind editor` |
-| `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped border, radius, surface ring, and divider treatment |
+| `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped treatment: margin, radius, a glass frame, and no split dividers |
 | `pane-background-opacity` | `0.5` | `0..=1` | Pane and Agent composer background strength; Panes settings display 0–100%. Browser panes apply it only to the toolbar |
-| `pane-glass` | `false` | `true` or `false` | Draw panes in the interface theme's glass. Takes effect only with `pane-gaps` and a theme whose glass draws an effect (`default`, `macos`; not `linear`) |
+| `pane-glow-strength` | `1` | `0..=2` | How brightly the active gapped pane's frame lights its edge in the accent; Panes settings display it as Selected pane edge, 0–200%. `0` lights it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
 | `pane-corner-radius` | `13.5` | `0..=32` | All four corners of every pane, on every platform; applies only with `pane-gaps` |
-| `pane-border-width` | `0.5` | `0..=8` | Border width while pane gaps are enabled; `0` disables the border |
+| `pane-border-width` | `0.5` | `0..=8` | Width of the glint, the bright line along a gapped pane's glass edge; `0` turns it off. Settings calls it Pane edge width |
 | `interface-theme` | `default` | `default`, `macos`, `linear`, or a saved theme's name | The interface theme: a look (corners, outlines, shadows, glass, how rows and primary buttons are filled) and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. It decides the two keys below unless they are set; picking a theme in Settings removes them |
 | `widget-corner-radius` | from the theme (`24`, `10`, `8`) | `0..=25` | Widget corners in pixels through 24; values above 24 enable Full mode for buttons, fields, navigation chips, and picker rows. At 0, menu and tree rows become full-width bands with no gaps |
 | `shadow-strength` | from the theme (`1`) | `0..=1` | Multiplier for every shadow; `0` turns them and the control rings off. The theme's `control-shadow` says how much of it controls cast |
@@ -141,7 +141,8 @@ The client-local schema includes these scalar settings and chrome colors.
 `chrome-foreground`, `chrome-accent`, `chrome-success`, `chrome-warning` and `chrome-danger` are
 retired (`zz_config::RETIRED_APPEARANCE_KEYS`): a line with one of them is reported, skipped and
 hidden from the Terminal page's editor, and picking a theme in Settings removes it. Colors now
-come only from the theme.
+come only from the theme. `pane-glass` is retired the same way (`zz_config::RETIRED_PANE_KEYS`):
+gapped panes always draw a glass frame, so the line is reported and otherwise ignored.
 
 The status settings project directly into `zz_client::StatusBarSettings` and apply through the
 normal watched-config refresh. The clock never shows seconds. `AppShell` aligns its first wake to
@@ -318,20 +319,25 @@ design.
 
 Panes → Appearance → Background opacity controls `pane-background-opacity`, stored as 0–1
 and displayed as 0–100%. Valid edits apply live, and Reset restores 50%. The control works
-with or without pane gaps. The value reaches paints through `Theme::pane_background_opacity`. Each pane content root owns its fill; the shared
-pane frame paints borders, shadows, and focus effects above the continuous app background.
-Terminal, Agent, Editor, picker, and waiting surfaces use this factor. Browser panes apply
-it only to the toolbar; page, blank, loading, and error backgrounds stay opaque.
+with or without pane gaps. The value reaches paints through `Theme::pane_background_opacity`.
+Without gaps each pane content root owns its fill. Terminal, Agent, Editor, picker, and waiting
+surfaces use this factor. Browser panes apply it only to the toolbar; page, blank, loading, and
+error backgrounds stay opaque.
 
-Panes → Appearance → Glass controls `pane-glass`. It needs pane gaps and a theme whose glass
-draws more than a plain fill, and the toggle is disabled otherwise. Under pane glass the pane frame
-owns the single fill: `Theme::pane_background` returns zero alpha, so content roots paint nothing
-under it, and the frame draws the theme's material tinted with the pane's own color. Tiled panes sit
-on the flat app background, so they take the material's lit edge with blur and refraction off (on an
-opaque window it draws in place, with no backdrop copy). Floating panes take the full material and
-frost what is behind them. The inactive hairline gives way to the glass edge; the active pane keeps
-its accent border. Settings previews that are not inside a glass frame use `Theme::pane_color`. It is
-off by default until its cost on weak GPUs is measured.
+With gaps the pane frame owns the single fill and draws it in glass (`Theme::pane_frames`, set
+from `pane-gaps`). `Theme::pane_background` returns zero alpha, so content roots paint nothing
+under the frame, and `Theme::pane_frame(fill, plane, active)` tints the glass with the pane's own
+color over the window plane. The edge comes from the interface theme's glass when it has one, and
+from `GlassMaterial::edge` otherwise (`linear`), always with blur and refraction off: tiled panes
+sit on the flat app background, so there is nothing to frost. On an opaque window the tint is
+solid and the glass draws in place with no backdrop copy, costing about what a bordered fill does.
+There is no border and no focus glow: the glass edge (glint, fresnel, thin contour) is the frame.
+`pane-border-width` sets the glint's width. The active pane lights its glint, fresnel and contour
+in the accent, by `pane-glow-strength`; the colored contour is what shows on a light pane, where
+added light cannot. Where the window cannot sample its backdrop (WebGL, DirectX) glass paints only
+its fill, so `pane_surface` draws a hairline at the glint's width instead: the divider color, the
+accent on the active pane. Floating panes take the theme's full glass like every popover. Settings
+previews that are not inside a glass frame use `Theme::pane_color`.
 
 The Agent main surface uses the chosen opacity; the raised composer card stays opaque.
 The footer inherits the main pane background and adds no fill of its own.
@@ -349,11 +355,6 @@ and the theme background otherwise. Margins, split gaps, and rounded pane corner
 this same root surface. They do not paint separate fills. Pane surfaces and their shadows
 sit above it; the fixed sidebar, titlebar, workspace, and Settings inherit the root fill.
 The slideover sidebar keeps its own background because it overlays pane content.
-
-Active panes add a rounded inset foreground glow above content and below status overlays:
-3.2% opacity, 96px blur, (16px, 24px) offset, and -8px spread. The local Metal, WGPU, and
-DirectX renderers dither the fade to reduce banding. This highlight does not change pane background opacity
-or introduce configuration keys.
 
 Linux window geometry starts from `window-corner-radius` (default 13.5px, targeting the macOS 27
 window radius . ~13.5pt tangent-circle equivalent, measured from a macOS 27 screenshot against the
@@ -379,11 +380,9 @@ segment to the edge the pane touches. With `pane-gaps = true` every value applie
 configured, defaults included . a 6px margin and a 13.5px radius, the window's own corner, so a
 maximized grid reads as one rounded surface. There is
 no second tier of gapped defaults: the number Settings shows is the number the panes use, which is
-what lets the disabled Frame rows stay honest. The border uses `pane-border-width` and the theme
-border color; the active pane keeps that exact width and replaces the color with a washed foreground
-accent. A theme-derived half-pixel inset ring follows the pane's exact curve, matching the Settings
-stack edge without painting outside the pane. Borderless gapped panes keep the ring. This treatment
-is built in; the retired `pane-shadow` key produces the normal unsupported-key diagnostic.
+what lets the disabled Frame rows stay honest. Gapped panes draw their frame in glass, as above,
+and keep the contact shadow. This treatment is built in; the retired `pane-shadow` key produces the
+normal unsupported-key diagnostic.
 Split divider visuals disappear in this mode because the gap is the separator, but the unchanged
 16px drag target still resizes the split.
 
@@ -592,7 +591,7 @@ Pages use `SettingsStack` groups of `SettingEntry` rows. `SettingEntry::disabled
 blocks interaction, which is how the Frame group shows that `pane-margin`,
 `pane-corner-radius`, and `pane-border-width` are all inert while `pane-gaps` is off
 (`config` forces them to `0` there). Layout holds the `pane-gaps` switch alone. Focus holds the
-always-live inactive-opacity factor.
+always-live inactive-opacity factor and the selected pane's edge strength, which needs gaps.
 
 | Page | Groups |
 | --- | --- |
@@ -600,7 +599,7 @@ always-live inactive-opacity factor.
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-show-session`, `status-badges`, `status-agents`, `status-host`, `status-update`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
-| Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`, `pane-glass`) · **Focus** (`pane-inactive-opacity`) · **Frame** (`pane-margin`, `pane-corner-radius`, `pane-border-width` . all disabled without gaps) |
+| Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, `pane-corner-radius`, `pane-border-width` as Pane edge width . all disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
 | System | **Tray** (`tray`, only where the profile has one) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, `experimental-agent-pane`, each row present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
@@ -717,7 +716,7 @@ window-background-blur = true
 # Set every interface transition to its static state.
 animations = false
 
-# The toggle uses a 6px margin, 13.5px radius, 0.5px border, and surface ring.
+# The toggle uses a 6px margin, a 13.5px radius, and a glass frame with a 0.5px glint.
 pane-gaps = true
 
 # Keep inactive pane content at 70% strength. Set 1 to disable dimming.

@@ -2359,7 +2359,6 @@ fn is_pane_setting(key: ConfigKey) -> bool {
     matches!(
         key,
         ConfigKey::PaneGaps
-            | ConfigKey::PaneGlass
             | ConfigKey::PaneBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
@@ -2509,7 +2508,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::ExperimentalAgentPane
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps
-        | ConfigKey::PaneGlass
         | ConfigKey::EditorLineNumbers
         | ConfigKey::EditorRelativeLineNumbers
         | ConfigKey::EditorSoftWrap
