@@ -119,7 +119,7 @@ pub fn permission_card(
             card_header()
                 .child(card_glyph(
                     Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
-                    CARD_TITLE_LINE,
+                    cx,
                 ))
                 .child(div().min_w_0().flex_1().child(title.into()))
                 .when_some(counter, |row, counter| row.child(card_chip(counter)))
@@ -151,7 +151,7 @@ pub(crate) const CARD_GUTTER: f32 = 12.0;
 pub(crate) const CARD_GAP: f32 = 8.0;
 pub(crate) const CARD_GLYPH: f32 = 14.0;
 pub(crate) const CARD_TITLE_LINE: f32 = 18.0;
-pub(crate) const CARD_OPTICAL_DROP: f32 = 0.5;
+const CARD_TITLE_SIZE: f32 = 13.0;
 const CARD_TITLE_TOP: f32 = 8.0;
 const CARD_TITLE_BOTTOM: f32 = 10.0;
 const CARD_TILE_GAP: f32 = 6.0;
@@ -173,18 +173,26 @@ pub(crate) fn card_header() -> Div {
         .px(px(CARD_GUTTER))
         .pt(px(CARD_TITLE_TOP))
         .pb(px(CARD_TITLE_BOTTOM))
-        .text_size(crate::rems_from_px(13.0))
+        .text_size(crate::rems_from_px(CARD_TITLE_SIZE))
         .line_height(px(CARD_TITLE_LINE))
         .font_weight(FontWeight::MEDIUM)
 }
 
-pub(crate) fn card_glyph(icon: Icon, line: f32) -> Div {
-    h_flex().flex_none().w(px(CARD_GLYPH)).h(px(line)).child(
-        div()
-            .relative()
-            .top(px(CARD_OPTICAL_DROP))
-            .child(icon.size(px(CARD_GLYPH))),
-    )
+pub(crate) fn card_glyph(icon: Icon, cx: &App) -> Div {
+    h_flex()
+        .flex_none()
+        .w(px(CARD_GLYPH))
+        .h(px(CARD_TITLE_LINE))
+        .child(
+            div()
+                .relative()
+                .top(crate::icon::cap_center_drop(
+                    px(CARD_TITLE_SIZE),
+                    px(CARD_GLYPH),
+                    cx,
+                ))
+                .child(icon.size(px(CARD_GLYPH))),
+        )
 }
 
 pub(crate) fn card_chip(text: impl Into<SharedString>) -> Badge {

@@ -84,7 +84,12 @@ pub fn agent_directory_button(
         .when(enabled, |button| {
             button.text_color(cx.theme().foreground.muted())
         })
-        .child(Icon::new(IconName::Folder).medium().relative().top(px(0.5)))
+        .child(
+            Icon::new(IconName::Folder)
+                .medium()
+                .relative()
+                .top(crate::icon::cap_center_drop(px(12.0), px(14.0), cx)),
+        )
         .child(
             div()
                 .min_w_0()
@@ -655,7 +660,7 @@ pub fn agent_provider_label(provider: zz_protocol::AgentProvider, cx: &App) -> i
             Icon::new(agent_provider_icon(provider))
                 .medium()
                 .relative()
-                .top(px(0.5)),
+                .top(crate::icon::cap_center_drop(px(12.0), px(14.0), cx)),
         )
         .child(provider.label())
 }
@@ -724,7 +729,9 @@ pub fn git_summary_footer(
             Icon::new(IconName::GitBranch)
                 .small()
                 .flex_none()
-                .text_color(cx.theme().foreground.muted()),
+                .text_color(cx.theme().foreground.muted())
+                .relative()
+                .top(crate::icon::cap_center_drop(px(11.0), px(12.0), cx)),
         )
         .when_some(branch, |this, branch| {
             this.child(

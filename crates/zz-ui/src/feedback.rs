@@ -13,7 +13,8 @@ use zz_gpui::{
 };
 
 const ALERT_LINE: f32 = 16.0;
-const ALERT_OPTICAL_DROP: f32 = 0.5;
+const ALERT_TITLE_SIZE: f32 = 13.0;
+const ALERT_MESSAGE_SIZE: f32 = 12.0;
 
 /// A failure shown in place, in the alert dialog's layout on the popover
 /// surface: a danger icon, an optional title, the message, and
@@ -24,6 +25,11 @@ pub fn inline_alert(
     cx: &App,
 ) -> Div {
     let titled = title.is_some();
+    let first_line = if titled {
+        ALERT_TITLE_SIZE
+    } else {
+        ALERT_MESSAGE_SIZE
+    };
     v_flex()
         .w_full()
         .p(px(12.0))
@@ -40,7 +46,7 @@ pub fn inline_alert(
                             .medium()
                             .text_color(cx.theme().danger)
                             .relative()
-                            .top(px(ALERT_OPTICAL_DROP)),
+                            .top(crate::icon::cap_center_drop(px(first_line), px(14.0), cx)),
                     ),
                 )
                 .child(

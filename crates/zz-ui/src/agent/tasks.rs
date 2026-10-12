@@ -16,7 +16,6 @@ const TASK_ROW_HEIGHT: f32 = 28.0;
 const TASK_ROW_FONT_SIZE: f32 = 12.0;
 const TASK_ROW_LINE_HEIGHT: f32 = 16.0;
 const TASK_ICON_SIZE: f32 = 13.0;
-const TASK_ICON_OPTICAL_DROP: f32 = 0.5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrayPanel {
@@ -67,6 +66,9 @@ pub fn task_tray(
     let on_action: Rc<dyn Fn(TaskTrayAction, &mut Window, &mut App)> = Rc::new(on_action);
     let toggle = Rc::clone(&on_action);
     let foreground = cx.theme().foreground;
+    let task_drop = crate::icon::cap_center_drop(px(TASK_ROW_FONT_SIZE), px(TASK_ICON_SIZE), cx);
+    let chip_drop =
+        crate::icon::cap_center_drop(px(TASK_ROW_FONT_SIZE), px(TASK_ROW_FONT_SIZE), cx);
     let rows = tasks.iter().enumerate().map(|(index, task)| {
         let stop = Rc::clone(&on_action);
         let reveal = Rc::clone(&on_action);
@@ -96,7 +98,7 @@ pub fn task_tray(
                 div()
                     .flex_none()
                     .relative()
-                    .top(px(TASK_ICON_OPTICAL_DROP))
+                    .top(task_drop)
                     .child(Icon::new(task_kind_icon(&task.kind)).size(px(TASK_ICON_SIZE))),
             )
             .child(
@@ -158,7 +160,7 @@ pub fn task_tray(
                 div()
                     .flex_none()
                     .relative()
-                    .top(px(TASK_ICON_OPTICAL_DROP))
+                    .top(chip_drop)
                     .child(Icon::new(IconName::CircleCheck).size(px(TASK_ROW_FONT_SIZE))),
             )
             .child(div().flex_none().child(label))
@@ -177,7 +179,7 @@ pub fn task_tray(
                 div()
                     .flex_none()
                     .relative()
-                    .top(px(TASK_ICON_OPTICAL_DROP))
+                    .top(chip_drop)
                     .text_color(paint.muted_at(state))
                     .child(
                         Icon::new(if open {

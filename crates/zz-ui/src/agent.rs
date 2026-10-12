@@ -50,10 +50,6 @@ const ACTIVITY_ROW_FONT_SIZE: f32 = 13.0;
 /// descender.
 const ACTIVITY_ROW_LINE_HEIGHT: f32 = 16.0;
 const ACTIVITY_DISCLOSURE_SIZE: f32 = 12.0;
-/// zz-gpui centres a glyph on its ascent/descent box, but the ink a reader sees
-/// sits below that centre — 0.33px for caps, 1.49px for x-height at 13px. Drop
-/// the icons by less than either so they never overshoot the letters.
-const ACTIVITY_ICON_OPTICAL_DROP: f32 = 0.5;
 const MERMAID_CACHE_CAPACITY: usize = 16;
 const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
 const MARKDOWN_PREVIEW_MAX_BYTES: usize = 32 * 1024;
@@ -2138,11 +2134,15 @@ fn single_line(text: SharedString) -> SharedString {
         .into()
 }
 
-fn activity_row_glyph(icon: IconName, size: f32) -> Div {
+fn activity_row_glyph(icon: IconName, size: f32, cx: &App) -> Div {
     div()
         .flex_none()
         .relative()
-        .top(px(ACTIVITY_ICON_OPTICAL_DROP))
+        .top(crate::icon::cap_center_drop(
+            px(ACTIVITY_ROW_FONT_SIZE),
+            px(size),
+            cx,
+        ))
         .child(Icon::new(icon).size(px(size)))
 }
 
@@ -2248,6 +2248,8 @@ fn activity_row_marked(
     cx: &App,
 ) -> Stateful<Div> {
     let foreground = cx.theme().foreground;
+    let drop =
+        crate::icon::cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
     let glyph = match (mark.spin, mark.icon) {
         (Some(phase), _) => Some(spinner(phase)),
         (None, Some(icon)) => Some(Icon::new(icon)),
@@ -2286,7 +2288,7 @@ fn activity_row_marked(
                     .debug_selector(|| "agent-activity-glyph".to_owned())
                     .flex_none()
                     .relative()
-                    .top(px(ACTIVITY_ICON_OPTICAL_DROP))
+                    .top(drop)
                     .child(glyph),
             )
         })
@@ -2326,7 +2328,7 @@ fn activity_row_marked(
                         mark.counts
                             .into_iter()
                             .enumerate()
-                            .map(|(slot, count)| trace_count_glyph(slot, count, cx)),
+                            .map(|(slot, count)| trace_count_glyph(slot, count, drop, cx)),
                     ),
             )
         })
@@ -2342,7 +2344,7 @@ fn activity_row_marked(
         })
         .when_some(end_icon, |this, icon| {
             this.child(
-                activity_row_glyph(icon, ACTIVITY_DISCLOSURE_SIZE)
+                activity_row_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
                     .debug_selector(|| "agent-activity-chevron".to_owned()),
             )
         })
@@ -2365,7 +2367,7 @@ const TRACE_COUNT_BADGE_OVERHANG: f32 =
     TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
-fn trace_count_glyph(slot: usize, count: TraceCount, cx: &App) -> Stateful<Div> {
+fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> Stateful<Div> {
     let theme = cx.theme();
     let (badge, number) = if count.failed {
         let solid = theme.paint(Tone::Danger, Emphasis::Solid);
@@ -2380,7 +2382,7 @@ fn trace_count_glyph(slot: usize, count: TraceCount, cx: &App) -> Stateful<Div> 
         .debug_selector(|| "agent-trace-count".to_owned())
         .flex_none()
         .relative()
-        .top(px(ACTIVITY_ICON_OPTICAL_DROP))
+        .top(drop)
         .when(count.failed, |this| this.text_color(theme.danger))
         .child(Icon::new(count.icon).size(px(ACTIVITY_ROW_FONT_SIZE)))
         .child(
@@ -2532,14 +2534,16 @@ pub fn plan_progress(source: &str) -> (usize, usize, Option<&str>) {
 }
 
 pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {
+    const FONT: f32 = 12.0;
     const MARKER: f32 = 12.0;
     const LINE: f32 = 19.0;
+    let drop = crate::icon::cap_center_drop(px(FONT), px(MARKER), cx);
     let foreground = cx.theme().foreground;
     let muted = cx.theme().foreground.muted();
     let accent = cx.theme().accent;
     v_flex()
         .w_full()
-        .text_size(crate::rems_from_px(12.0))
+        .text_size(crate::rems_from_px(FONT))
         .line_height(px(LINE))
         .children(plan_items(source).into_iter().map(|(state, text)| {
             let marker = div()
@@ -2572,7 +2576,7 @@ pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {
                         .flex()
                         .items_center()
                         .relative()
-                        .top(px(ACTIVITY_ICON_OPTICAL_DROP))
+                        .top(drop)
                         .child(marker),
                 )
                 .child(
@@ -2993,7 +2997,9 @@ impl MarkdownPlugin for MermaidPlugin {
                 .child(
                     Icon::new(IconName::Loader)
                         .medium()
-                        .text_color(cx.theme().foreground.muted()),
+                        .text_color(cx.theme().foreground.muted())
+                        .relative()
+                        .top(crate::icon::cap_center_drop(px(11.0), px(14.0), cx)),
                 )
                 .child("Rendering Mermaid…")
                 .into_any_element(),
@@ -3020,7 +3026,12 @@ impl MarkdownPlugin for MermaidPlugin {
                     h_flex()
                         .gap_2()
                         .text_color(cx.theme().danger)
-                        .child(Icon::new(IconName::TriangleAlert).medium())
+                        .child(
+                            Icon::new(IconName::TriangleAlert)
+                                .medium()
+                                .relative()
+                                .top(crate::icon::cap_center_drop(px(11.0), px(14.0), cx)),
+                        )
                         .child("Mermaid could not be rendered"),
                 )
                 .child(
@@ -3664,6 +3675,7 @@ pub fn agent_status_pill(
     };
     let spinning = matches!(status, AgentPaneStatus::Running | AgentPaneStatus::Stopping);
     let divider = theme.divider_color();
+    let drop = crate::icon::cap_center_drop(px(11.0), px(11.0), cx);
     h_flex()
         .id(id)
         .debug_selector(|| "agent-status-pill".to_owned())
@@ -3676,9 +3688,11 @@ pub fn agent_status_pill(
         .text_size(crate::rems_from_px(11.0))
         .line_height(px(14.0))
         .text_color(color)
-        .when(spinning, |pill| pill.child(spinner(phase).size(px(11.0))))
+        .when(spinning, |pill| {
+            pill.child(spinner(phase).size(px(11.0)).relative().top(drop))
+        })
         .when_some(icon, |pill, icon| {
-            pill.child(Icon::new(icon).size(px(11.0)))
+            pill.child(Icon::new(icon).size(px(11.0)).relative().top(drop))
         })
         .child(label)
         .when_some(restart, |pill, restart| {
