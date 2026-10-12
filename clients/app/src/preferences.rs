@@ -625,7 +625,7 @@ mod tests {
         assert_eq!(older.radius, Some(12.0));
 
         let unreadable = Preferences::decode(
-            r#"{"theme":"theme-2","themes":[["theme-1",{"name":"Kept"}],["theme-2",{"look":{"glass":"stained"}}]]}"#,
+            r#"{"theme":"theme-2","themes":[["theme-1",{"name":"Kept"}],["theme-2",{"look":{"glass":"stained"}}],["theme-3",{"look":{"corner_smoothing":2}}]]}"#,
         )
         .unwrap();
         assert_eq!(unreadable.themes.len(), 1);
