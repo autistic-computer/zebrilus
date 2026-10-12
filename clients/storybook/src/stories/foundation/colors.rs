@@ -51,6 +51,10 @@ fn roots(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "this story shows what each Colorize transform produces"
+)]
 fn derived(_: &mut Window, cx: &mut App) -> AnyElement {
     let theme = cx.theme();
     let background = theme.background;
