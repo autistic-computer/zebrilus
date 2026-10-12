@@ -31,10 +31,7 @@ use zz_ui::{
     switch::Switch,
 };
 
-use super::{
-    fixtures::{INACTIVE_OPACITY, PANE_BORDER, PANE_MARGIN, PANE_RADIUS, stateful},
-    tree::sidebar,
-};
+use super::{fixtures::stateful, tree::sidebar};
 use crate::story::{Section, Story, stateless, states};
 
 pub const STORY: Story = Story {
@@ -442,13 +439,14 @@ fn pane_entry(title: &'static str, description: &'static str) -> SettingEntry {
 fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
     let page = |gaps: bool, cx: &App| {
         let reset = |id: &'static str| settings_reset_button(id, "Reset to default", false);
+        let pane = crate::pane();
         panes_page(
             PanesPreview {
                 gaps,
-                margin: PANE_MARGIN,
-                radius: PANE_RADIUS,
-                border_width: PANE_BORDER,
-                inactive_opacity: INACTIVE_OPACITY,
+                margin: pane.margin,
+                radius: pane.radius,
+                border_width: pane.border,
+                inactive_opacity: pane.inactive,
             },
             [
                 pane_entry("Pane gaps", "Separate panes with spacing and borders.")

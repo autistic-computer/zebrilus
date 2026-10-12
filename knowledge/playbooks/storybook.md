@@ -35,8 +35,11 @@ Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`defaul
 `linear`), every look value (`radius`, `smoothing`, `shadow`, `control-shadow`, `elevation`,
 `outline`, `selection`, `primary`, `field`, the glass sliders, ...), each mode's colors
 (`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
-theme's alpha), `contrast`, `zoom`, `pane-opacity`, `pane-glow`, `motion` (`motion=0` turns
-animations off and freezes spinners). The Theme creator story is every surface on one canvas;
+theme's alpha), `contrast`, `zoom`, the pane knobs (`pane-gaps`, `pane-margin`,
+`pane-corner-radius`, `pane-border-width`, `pane-opacity`, `pane-inactive-opacity`, `pane-glow`,
+`pane-glass`, mirroring Settings → Panes; `pane-gaps` drives the Theme creator, while other
+stories show gaps on and off side by side), `motion` (`motion=0` turns animations off and freezes
+spinners). Pane knobs are app config, not theme, so Copy JSON leaves them out; they stay in the URL. The Theme creator story is every surface on one canvas;
 its Copy JSON copies a theme file Settings can Import, and Import loads one back into the knobs.
 
 # Add a story
