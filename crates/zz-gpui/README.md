@@ -141,19 +141,23 @@ window.paint_glass_shapes(&shapes, &material);
 ```
 
 `GlassMaterial` holds every knob: blur (frost), bezel and refraction (the lens), dispersion,
-tint, saturation, brightness, contrast, specular and glint width, light angle, fresnel, edge shadow
-and width, grain, touch glow, merge radius, and opacity. The presets `regular`, `clear`,
-`frosted`, `bubble`, `smoked`, and `tinted(color)` are starting points, and materials
+tint, saturation, brightness, contrast, specular and glint width, light angle and color, fresnel,
+edge shadow and width, grain, touch glow, merge radius, and opacity. The presets `regular`, `clear`,
+`frosted`, `bubble`, `smoked`, `tinted(color)`, and `edge(fill)` (opaque, lit only at its edge)
+are starting points, and materials
 interpolate, so springs and animations can carry one into another; `vanished()` is the identity
 glass appears from.
 `LiquidRect` moves a shape on springs and stretches it along its velocity.
 
 Metal and wgpu draw it from the same WGSL (`crates/zz-gpui/src/glass.wgsl`; Metal translates it with
 naga). Each batch of glass costs one render pass break, a copy of only the glass regions, a dual
-Kawase blur over just those regions down to half resolution, and one analytic draw per body. At
-5344x2964 on Apple silicon the first glass in a frame costs about 0.03 ms and a frosted sidebar
-0.16 ms (`cargo test -p zz-gpui-platform --release bench_glass -- --ignored --nocapture`). Renderers
-that cannot read back their frame (DirectX, WebGL) paint a translucent fill instead.
+Kawase blur over just those regions down to half resolution, and one analytic draw per body; glass
+with an opaque tint reads nothing and draws in the scene's own pass. Past the rim the shader skips
+the distance field, so a large surface costs about what a fill does. At 5344x2964 on an M4 Max the
+first glass in a frame costs about 0.03 ms, a frosted sidebar 0.15 ms, and four window-sized panes
+of `edge` glass 0.22 ms (`cargo test -p zz-gpui-platform --all-features --release bench_glass --
+--ignored --nocapture`). Renderers that cannot read back their frame (DirectX, WebGL) paint a
+translucent fill instead.
 
 Try it with `cargo run -p zz-gpui --example liquid_glass`, or in a browser from the web gallery
 (`/liquid-glass`).
