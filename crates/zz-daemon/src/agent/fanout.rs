@@ -25,7 +25,7 @@ use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::{
     AgentAutoApprove, AgentPaneWire, AgentPermissionWire, AgentProvider, ClientId,
     ClientInstanceId, MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_RESULT_BYTES,
-    MAX_AGENT_UPDATES_BYTES, PaneId,
+    MAX_AGENT_UPDATES_BYTES, PaneId, PaneStatus, PaneStatusKind, PaneStatusState,
 };
 
 use crate::agent::{
@@ -54,6 +54,8 @@ const MAX_TITLE_CHARS: usize = 48;
 /// been named — by the user, by a rename, or by an earlier prompt — so it is
 /// the one title the daemon may overwrite.
 const DEFAULT_AGENT_PANE_TITLE: &str = "agent";
+const MAX_REPLY_HEAD_BYTES: usize = 1024;
+const MAX_STATUS_MESSAGE_BYTES: usize = 240;
 
 #[derive(Clone, Default)]
 pub(crate) struct AgentToolCall {
@@ -97,6 +99,7 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
         also: Option<ClientId>,
     );
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire);
+    fn publish_agent_status(&self, generation: u64, pane: PaneId, status: PaneStatus);
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall);
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply);
     /// The adapter named the session this pane is now speaking to. The daemon
@@ -381,6 +384,10 @@ struct PaneLane {
     replayed_turn: bool,
     prompt_message: Option<String>,
     reply_message: Option<String>,
+    reply_head: String,
+    turn_end: Option<TurnEnd>,
+    external_turn: bool,
+    status: Option<PaneStatus>,
     tool_calls: BTreeMap<String, AgentToolCall>,
     /// Bumped whenever a blob the pane state carries is replaced, so the
     /// per-item comparison never copies a quarter-megabyte of JSON.
@@ -388,6 +395,13 @@ struct PaneLane {
     fingerprint: Option<StateFingerprint>,
     state: Option<AgentPaneWire>,
     sync_next_state: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TurnEnd {
+    Finished,
+    Cancelled,
+    Stopped(String),
 }
 
 #[derive(Clone)]
@@ -401,6 +415,11 @@ fn push_projected_prompt(bytes: &mut Vec<u8>, prompt: &str) {
     bytes.extend_from_slice(b"\x1b]133;A\x07> \x1b]133;B\x07");
     push_projected_text(bytes, prompt);
     bytes.extend_from_slice(b"\x1b]133;C\x07\r\n");
+}
+
+fn push_reply_head(head: &mut String, text: &str) {
+    let room = MAX_REPLY_HEAD_BYTES.saturating_sub(head.len());
+    head.push_str(&text[..text.floor_char_boundary(room)]);
 }
 
 fn push_projected_text(bytes: &mut Vec<u8>, text: &str) {
@@ -427,6 +446,9 @@ impl PaneLane {
                 let prompt = self.pending_prompts.pop_front().unwrap_or_default();
                 push_projected_prompt(&mut bytes, &prompt);
                 self.reply_message = None;
+                self.reply_head.clear();
+                self.turn_end = None;
+                self.external_turn = false;
             }
             AgentStreamPayload::SessionReset { restoring } => {
                 bytes.extend_from_slice(b"\x1b[H\x1b[2J\x1b[3J");
@@ -434,6 +456,9 @@ impl PaneLane {
                 self.replayed_turn = false;
                 self.prompt_message = None;
                 self.reply_message = None;
+                self.reply_head.clear();
+                self.turn_end = None;
+                self.external_turn = false;
             }
             AgentStreamPayload::SessionReady { .. }
             | AgentStreamPayload::SessionSwitched { .. } => {
@@ -464,6 +489,7 @@ impl PaneLane {
                             push_projected_prompt(&mut bytes, text);
                             self.replayed_turn = true;
                             self.reply_message = None;
+                            self.reply_head.clear();
                         }
                         self.prompt_message = message;
                     }
@@ -474,7 +500,11 @@ impl PaneLane {
                         {
                             bytes.extend_from_slice(b"\r\n\r\n");
                         }
+                        if message.is_some() && message != self.reply_message {
+                            self.reply_head.clear();
+                        }
                         push_projected_text(&mut bytes, text);
+                        push_reply_head(&mut self.reply_head, text);
                         if message.is_some() {
                             self.reply_message = message;
                         }
@@ -485,6 +515,24 @@ impl PaneLane {
             AgentStreamPayload::PromptFinished { outcome, .. } => {
                 let status = u8::from(matches!(outcome, AgentPromptOutcome::Failed { .. }));
                 bytes.extend_from_slice(format!("\r\n\x1b]133;D;{status}\x07\x07").as_bytes());
+                self.external_turn = false;
+                if let AgentPromptOutcome::Finished { stop_reason } = outcome {
+                    let reason = stop_reason
+                        .as_str()
+                        .map_or_else(|| stop_reason.to_string(), str::to_owned);
+                    self.turn_end = Some(match reason.as_str() {
+                        "end_turn" => TurnEnd::Finished,
+                        "cancelled" => TurnEnd::Cancelled,
+                        _ => TurnEnd::Stopped(reason),
+                    });
+                }
+            }
+            AgentStreamPayload::Activity { busy } => {
+                if *busy {
+                    self.external_turn = true;
+                } else if std::mem::take(&mut self.external_turn) {
+                    self.turn_end = Some(TurnEnd::Finished);
+                }
             }
             AgentStreamPayload::PermissionRequested { .. } => {
                 bytes.extend_from_slice(b"\r\n[zz] permission requested\r\n\x07");
@@ -583,6 +631,10 @@ impl PaneLane {
             replayed_turn: false,
             prompt_message: None,
             reply_message: None,
+            reply_head: String::new(),
+            turn_end: None,
+            external_turn: false,
+            status: None,
             tool_calls: BTreeMap::new(),
             blobs: 0,
             fingerprint: None,
@@ -636,6 +688,10 @@ impl PaneLane {
         self.replayed_turn = false;
         self.prompt_message = None;
         self.reply_message = None;
+        self.reply_head.clear();
+        self.turn_end = None;
+        self.external_turn = false;
+        self.status = None;
         self.provider = provider;
         self.session_id = session_id;
         self.modes.clear();
@@ -980,6 +1036,7 @@ impl AgentFanout {
             }
         }
         let next_state = lane.refresh_state(state);
+        let next_status = lane.refresh_status(state);
         if lane.sync_next_state
             && let Some(state) = next_state.as_ref()
         {
@@ -1007,6 +1064,9 @@ impl AgentFanout {
         }
         if let Some(next_state) = next_state {
             publisher.publish_agent_state(generation, pane, next_state);
+        }
+        if let Some(status) = next_status {
+            publisher.publish_agent_status(generation, pane, status);
         }
     }
 
@@ -1371,6 +1431,94 @@ impl PaneLane {
         self.state = Some(next.clone());
         Some(next)
     }
+
+    fn refresh_status(&mut self, state: &AgentPaneState) -> Option<PaneStatus> {
+        let status = agent_status(
+            state,
+            self.provider,
+            self.turn_end.as_ref(),
+            &self.reply_head,
+        );
+        if self.status.as_ref() == Some(&status) {
+            return None;
+        }
+        self.status = Some(status.clone());
+        Some(status)
+    }
+}
+
+fn agent_status(
+    state: &AgentPaneState,
+    provider: AgentProvider,
+    turn_end: Option<&TurnEnd>,
+    reply: &str,
+) -> PaneStatus {
+    let (status, kind, message) = match state.phase {
+        AgentConnectionPhase::Starting | AgentConnectionPhase::Restoring => {
+            (PaneStatusState::Idle, None, String::new())
+        }
+        AgentConnectionPhase::Running | AgentConnectionPhase::Cancelling => {
+            match state.pending_permissions.first() {
+                None => (PaneStatusState::Working, None, String::new()),
+                Some(permission) => match permission.questions.first() {
+                    Some(question) => (
+                        PaneStatusState::Blocked,
+                        Some(PaneStatusKind::Question),
+                        status_excerpt(&question.question),
+                    ),
+                    None => (
+                        PaneStatusState::Blocked,
+                        Some(PaneStatusKind::Permission),
+                        status_excerpt(
+                            permission
+                                .tool_call
+                                .get("title")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default(),
+                        ),
+                    ),
+                },
+            }
+        }
+        AgentConnectionPhase::Ready => match turn_end {
+            Some(TurnEnd::Finished) => (PaneStatusState::Done, None, status_excerpt(reply)),
+            Some(TurnEnd::Stopped(reason)) => (
+                PaneStatusState::Error,
+                None,
+                status_excerpt(&format!("Stopped: {reason}")),
+            ),
+            Some(TurnEnd::Cancelled) | None => (PaneStatusState::Idle, None, status_excerpt(reply)),
+        },
+        AgentConnectionPhase::Failed | AgentConnectionPhase::Disconnected => (
+            PaneStatusState::Error,
+            None,
+            status_excerpt(
+                state
+                    .error
+                    .as_deref()
+                    .and_then(|error| error.trim().lines().next())
+                    .unwrap_or("the agent disconnected"),
+            ),
+        ),
+    };
+    PaneStatus {
+        state: status,
+        kind,
+        progress: None,
+        app: provider.as_str().to_owned(),
+        title: String::new(),
+        message,
+    }
+}
+
+fn status_excerpt(text: &str) -> String {
+    let mut excerpt = text
+        .trim_start_matches(['"', '\'', '#', '>', '`', '*', ' ', '\t', '\r', '\n'])
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    excerpt.truncate(excerpt.floor_char_boundary(MAX_STATUS_MESSAGE_BYTES));
+    excerpt
 }
 
 /// The one clock the lane runs. Every window it closes is decided under the
@@ -1551,6 +1699,7 @@ mod tests {
         broadcast: Mutex<Vec<(PaneId, u64, Vec<Vec<u8>>, Option<ClientId>)>>,
         direct: Mutex<Vec<(ClientId, PaneId, u64, Vec<Vec<u8>>)>>,
         states: Mutex<Vec<(PaneId, AgentPaneWire)>>,
+        statuses: Mutex<Vec<(PaneId, PaneStatus)>>,
         replies: Mutex<Vec<(ClientId, PaneId, u64, String)>>,
         sessions: Mutex<Vec<(PaneId, String)>>,
         titles: Mutex<Vec<(PaneId, String)>>,
@@ -1659,6 +1808,10 @@ mod tests {
 
         fn publish_agent_state(&self, _generation: u64, pane: PaneId, state: AgentPaneWire) {
             self.states.lock().push((pane, state));
+        }
+
+        fn publish_agent_status(&self, _generation: u64, pane: PaneId, status: PaneStatus) {
+            self.statuses.lock().push((pane, status));
         }
 
         fn publish_agent_tool_call(&self, _generation: u64, _pane: PaneId, _call: AgentToolCall) {}
@@ -2712,5 +2865,264 @@ mod tests {
         assert_eq!(states.len(), 3);
         assert_eq!(states[1].1.queued_prompts, 1);
         assert_eq!(states[2].1.git, running.git);
+    }
+
+    fn accept_in(fixture: &Fixture, phase: AgentConnectionPhase, payload: AgentStreamPayload) {
+        fixture.fanout.accept(
+            fixture.pane,
+            1,
+            &state(phase),
+            Some(AgentStreamItem { seq: 0, payload }),
+        );
+    }
+
+    fn reply_chunk(message: &str, text: &str) -> AgentStreamPayload {
+        AgentStreamPayload::Update {
+            update: json!({
+                "sessionUpdate": "agent_message_chunk",
+                "messageId": message,
+                "content": { "type": "text", "text": text },
+            }),
+        }
+    }
+
+    fn finished(reason: &str) -> AgentStreamPayload {
+        AgentStreamPayload::PromptFinished {
+            turn_id: 1,
+            outcome: AgentPromptOutcome::Finished {
+                stop_reason: json!(reason),
+            },
+        }
+    }
+
+    fn recorded_statuses(
+        fixture: &Fixture,
+    ) -> Vec<(PaneStatusState, Option<PaneStatusKind>, String)> {
+        fixture
+            .recorder
+            .statuses
+            .lock()
+            .iter()
+            .map(|(_, status)| (status.state, status.kind, status.message.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn statuses_move_on_edges_not_chunks() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            AgentStreamPayload::TurnStarted { turn_id: 1 },
+        );
+        for index in 0..50 {
+            accept_in(
+                &fixture,
+                AgentConnectionPhase::Running,
+                reply_chunk("m-1", &format!("## Fixed  part {index}\n")),
+            );
+        }
+        accept_in(&fixture, AgentConnectionPhase::Ready, finished("end_turn"));
+
+        let statuses = recorded_statuses(&fixture);
+        assert_eq!(statuses.len(), 2, "{statuses:?}");
+        assert_eq!(statuses[0], (PaneStatusState::Working, None, String::new()));
+        assert_eq!(statuses[1].0, PaneStatusState::Done);
+        assert!(
+            statuses[1].2.starts_with("Fixed part 0 ## Fixed part 1 ##"),
+            "{:?}",
+            statuses[1].2
+        );
+        assert!(statuses[1].2.len() <= MAX_STATUS_MESSAGE_BYTES);
+        assert!(
+            fixture
+                .recorder
+                .statuses
+                .lock()
+                .iter()
+                .all(|(pane, status)| *pane == fixture.pane && status.app == "codex")
+        );
+    }
+
+    #[test]
+    fn permission_and_question_block_with_their_label() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        let mut blocked = state(AgentConnectionPhase::Running);
+        blocked
+            .pending_permissions
+            .push(crate::agent::host::AgentPendingPermission {
+                request_id: 7,
+                tool_call: json!({ "title": "Run   `cargo test`" }),
+                options: json!([]),
+                questions: Vec::new(),
+            });
+        fixture.fanout.accept(fixture.pane, 1, &blocked, None);
+        blocked.pending_permissions[0] = crate::agent::host::AgentPendingPermission {
+            request_id: 8,
+            tool_call: json!({}),
+            options: json!([]),
+            questions: vec![crate::agent::stream::AgentQuestion {
+                id: "branch".to_owned(),
+                question: "Which branch?".to_owned(),
+                ..crate::agent::stream::AgentQuestion::default()
+            }],
+        };
+        fixture.fanout.accept(fixture.pane, 1, &blocked, None);
+        fixture
+            .fanout
+            .accept(fixture.pane, 1, &state(AgentConnectionPhase::Running), None);
+
+        assert_eq!(
+            recorded_statuses(&fixture),
+            [
+                (
+                    PaneStatusState::Blocked,
+                    Some(PaneStatusKind::Permission),
+                    "Run `cargo test`".to_owned()
+                ),
+                (
+                    PaneStatusState::Blocked,
+                    Some(PaneStatusKind::Question),
+                    "Which branch?".to_owned()
+                ),
+                (PaneStatusState::Working, None, String::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn failure_message_is_cut_to_the_wire_bound() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        let mut failed = state(AgentConnectionPhase::Failed);
+        failed.error = Some(format!("{}\nsecond line", "é".repeat(150 * 1024)));
+        fixture.fanout.accept(fixture.pane, 1, &failed, None);
+        fixture.fanout.accept(
+            fixture.pane,
+            1,
+            &state(AgentConnectionPhase::Disconnected),
+            None,
+        );
+
+        let statuses = recorded_statuses(&fixture);
+        assert_eq!(statuses.len(), 2);
+        assert_eq!(statuses[0].0, PaneStatusState::Error);
+        assert!(!statuses[0].2.is_empty());
+        assert!(statuses[0].2.len() <= zz_protocol::MAX_PANE_STATUS_MESSAGE_BYTES);
+        assert!(statuses[0].2.chars().all(|character| character == 'é'));
+        assert_eq!(
+            statuses[1],
+            (
+                PaneStatusState::Error,
+                None,
+                "the agent disconnected".to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn turn_endings_pick_done_idle_or_error() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            AgentStreamPayload::TurnStarted { turn_id: 1 },
+        );
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            reply_chunk("m-1", "partial"),
+        );
+        accept_in(&fixture, AgentConnectionPhase::Ready, finished("cancelled"));
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            AgentStreamPayload::TurnStarted { turn_id: 2 },
+        );
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Ready,
+            finished("max_tokens"),
+        );
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Ready,
+            AgentStreamPayload::Activity { busy: false },
+        );
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            AgentStreamPayload::Activity { busy: true },
+        );
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            reply_chunk("m-2", "background"),
+        );
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Ready,
+            AgentStreamPayload::Activity { busy: false },
+        );
+
+        assert_eq!(
+            recorded_statuses(&fixture),
+            [
+                (PaneStatusState::Working, None, String::new()),
+                (PaneStatusState::Idle, None, "partial".to_owned()),
+                (PaneStatusState::Working, None, String::new()),
+                (
+                    PaneStatusState::Error,
+                    None,
+                    "Stopped: max_tokens".to_owned()
+                ),
+                (PaneStatusState::Working, None, String::new()),
+                (PaneStatusState::Done, None, "background".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_restored_session_publishes_its_last_reply_once() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Restoring,
+            AgentStreamPayload::SessionReset { restoring: true },
+        );
+        for (message, reply) in [("m-1", "first reply"), ("m-2", "last reply")] {
+            accept_in(
+                &fixture,
+                AgentConnectionPhase::Restoring,
+                AgentStreamPayload::Update {
+                    update: json!({
+                        "sessionUpdate": "user_message_chunk",
+                        "messageId": format!("u-{message}"),
+                        "content": { "type": "text", "text": "prompt" },
+                    }),
+                },
+            );
+            accept_in(
+                &fixture,
+                AgentConnectionPhase::Restoring,
+                reply_chunk(message, reply),
+            );
+        }
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Ready,
+            AgentStreamPayload::SessionReady {
+                session_id: "s-1".to_owned(),
+                modes: None,
+                config_options: None,
+            },
+        );
+
+        assert_eq!(
+            recorded_statuses(&fixture),
+            [
+                (PaneStatusState::Idle, None, String::new()),
+                (PaneStatusState::Idle, None, "last reply".to_owned()),
+            ]
+        );
     }
 }

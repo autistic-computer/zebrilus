@@ -210,3 +210,48 @@ fn a_shell_hook_keeps_the_agent_inbox_running() {
     }
     runtime.shutdown();
 }
+
+#[test]
+fn agent_status_reaches_the_pane_from_the_current_generation_only() {
+    let (shared, mut inbox, pane) = fixture();
+    let (publisher, runtime, generation) = runtime(&shared, pane);
+    inbox.turn(&shared);
+    let opened = shared
+        .inner
+        .lock()
+        .engine
+        .state
+        .pane(pane)
+        .and_then(|pane| pane.status.clone());
+    assert_eq!(
+        opened.map(|status| (status.state, status.app)),
+        Some((PaneStatusState::Idle, "codex".to_owned()))
+    );
+    let status = |state, message: &str| PaneStatus {
+        state,
+        kind: None,
+        progress: None,
+        app: "codex".to_owned(),
+        title: String::new(),
+        message: message.to_owned(),
+    };
+    publisher.publish_agent_status(generation, pane, status(PaneStatusState::Working, ""));
+    publisher.publish_agent_status(generation, pane, status(PaneStatusState::Done, "shipped"));
+    publisher.publish_agent_status(
+        generation.wrapping_add(1),
+        pane,
+        status(PaneStatusState::Error, "stale"),
+    );
+    inbox.turn(&shared);
+    {
+        let inner = shared.inner.lock();
+        let pane = inner.engine.state.pane(pane).expect("agent pane");
+        assert_eq!(
+            pane.status.as_ref(),
+            Some(&status(PaneStatusState::Done, "shipped"))
+        );
+        assert!(pane.summary.unseen);
+        assert!(pane.summary.changed_at > 0);
+    }
+    runtime.shutdown();
+}

@@ -73,6 +73,10 @@ impl AgentInbox {
                     None
                 }
                 Payload::State(state) => shared.apply_agent_state(pane, state),
+                Payload::Status(status) => {
+                    shared.apply_agent_status(pane, status);
+                    None
+                }
                 Payload::ToolCall(call) => shared.agent_tool_call_event(pane, call),
                 Payload::Reply(reply) => {
                     shared.send_agent_reply(pane, reply);

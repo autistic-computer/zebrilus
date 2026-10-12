@@ -3491,3 +3491,76 @@ mod quiet_socket {
         writer_finished(&mailbox);
     }
 }
+
+#[cfg(feature = "agent")]
+#[test]
+fn an_unattached_tree_client_sees_another_sessions_agent_finish() {
+    let shared = Arc::new(Shared::new(54));
+    let mut context = ExecutionContext::default();
+    let pane = {
+        let mut inner = shared.inner.lock();
+        for command in [
+            CommandInvocation::new("new-session", ["-d", "-s", "elsewhere"]),
+            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
+            CommandInvocation::new("split-window", ["--kind", "picker"]),
+            CommandInvocation::new("select-pane-kind", ["agent"]),
+        ] {
+            inner
+                .engine
+                .execute(&mut context, &command)
+                .expect("agent setup");
+        }
+        context.pane.expect("agent pane")
+    };
+    let (client, mailbox) = compact_registered(
+        &shared,
+        zz_protocol::Subscriptions {
+            tree: zz_protocol::TreeSubscription::All,
+            status: false,
+            options: 0,
+            keys: zz_protocol::KeySubscription::None,
+            pane_stream: false,
+        },
+    );
+    shared.send_compact_state(client, &mailbox, true);
+    reliable_children(&mailbox);
+
+    shared.apply_agent_status(
+        pane,
+        PaneStatus {
+            state: PaneStatusState::Done,
+            kind: None,
+            progress: None,
+            app: "codex".to_owned(),
+            title: String::new(),
+            message: "All tests pass".to_owned(),
+        },
+    );
+    shared.publish_snapshot_state();
+    let ops = reliable_children(&mailbox)
+        .into_iter()
+        .flat_map(|message| match message {
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::TreeDelta(delta),
+                ..
+            }) => delta.ops,
+            _ => Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        ops.iter().any(|op| matches!(
+            op,
+            zz_protocol::TreeOp::PaneStatus { pane: changed, status: Some(status), .. }
+                if *changed == pane && status.state == PaneStatusState::Done
+        )),
+        "{ops:?}"
+    );
+    assert!(
+        ops.iter().any(|op| matches!(
+            op,
+            zz_protocol::TreeOp::PaneSummary { pane: changed, summary, .. }
+                if *changed == pane && summary.unseen && summary.changed_at > 0
+        )),
+        "{ops:?}"
+    );
+}

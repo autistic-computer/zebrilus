@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use zz_protocol::{AgentPaneWire, AgentProvider, ClientId, PaneId};
+use zz_protocol::{AgentPaneWire, AgentProvider, ClientId, PaneId, PaneStatus};
 
 use super::AcceptWake;
 use crate::agent::fanout::{AgentPublisher, AgentRequestReply, AgentToolCall};
@@ -48,6 +48,7 @@ pub(super) enum Payload {
         also: Option<ClientId>,
     },
     State(AgentPaneWire),
+    Status(PaneStatus),
     ToolCall(AgentToolCall),
     Reply(AgentRequestReply),
     Session {
@@ -151,6 +152,10 @@ impl AgentPublisher for Publisher {
 
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire) {
         self.post(generation, pane, Payload::State(state));
+    }
+
+    fn publish_agent_status(&self, generation: u64, pane: PaneId, status: PaneStatus) {
+        self.post(generation, pane, Payload::Status(status));
     }
 
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall) {
