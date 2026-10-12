@@ -35,7 +35,6 @@ const TILE_GLYPH: f32 = 16.0;
 const STACK_DEPTHS: [f32; 2] = [1.0, 2.0];
 const STACK_PEEK: f32 = 3.0;
 const STACK_NARROW: f32 = 3.0;
-const STACK_FADE: f32 = 0.3;
 const TITLE_SIZE: f32 = 13.0;
 const TITLE_LINE: f32 = 17.0;
 const DETAIL_SIZE: f32 = 12.0;
@@ -311,20 +310,17 @@ fn tile_radius(cx: &App) -> Pixels {
     (radius - inset).max(theme.radius * 0.25)
 }
 
-fn tile_card(ink: RowInk, depth: f32, radius: Pixels, cx: &App) -> Div {
+fn tile_card(ink: RowInk, radius: Pixels, cx: &App) -> Div {
     let paint = cx
         .theme()
         .paint_on(ink.ground, Tone::Neutral, Emphasis::Soft)
         .opaque();
-    let fill = paint
-        .hover
-        .mix_oklab(ink.ground.fill, 1.0 - STACK_FADE * depth);
     div()
         .absolute()
         .rounded(radius)
-        .bg(ink.dim(fill))
+        .bg(ink.dim(paint.hover))
         .border(paint.border_width)
-        .border_color(ink.dim(fill.blend(paint.border)))
+        .border_color(ink.dim(paint.hover.blend(paint.border)))
         .text_color(ink.dim(paint.text))
 }
 
@@ -336,14 +332,14 @@ fn tile_stack(tiles: &[PaneTag], ink: RowInk, cx: &App) -> Div {
         .flex_none()
         .size(px(TILE_SLOT))
         .children(STACK_DEPTHS[..behind].iter().rev().map(|&depth| {
-            tile_card(ink, depth, radius, cx)
+            tile_card(ink, radius, cx)
                 .top(px(-STACK_PEEK * depth))
                 .left(px(STACK_NARROW * depth))
                 .right(px(STACK_NARROW * depth))
                 .h(px(TILE_SLOT))
         }))
         .child(
-            tile_card(ink, 0.0, radius, cx)
+            tile_card(ink, radius, cx)
                 .inset_0()
                 .flex()
                 .items_center()
