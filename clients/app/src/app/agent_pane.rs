@@ -1729,12 +1729,12 @@ impl AgentPane {
             .min_w_0()
             .min_h_0()
             .when(self.history_compact, |column| {
-                column.w_full().h(zz_gpui::relative(0.35)).border_b_1()
+                column.w_full().h(zz_gpui::relative(0.35)).border_b(px(0.5))
             })
             .when(!self.history_compact, |column| {
-                column.w(zz_gpui::relative(0.36)).border_r_1()
+                column.w(zz_gpui::relative(0.36)).border_r(px(0.5))
             })
-            .border_color(cx.theme().border())
+            .border_color(cx.theme().divider_color())
             .p(px(zz_ui::CHROME_GAP))
             .pr_0()
             .child(

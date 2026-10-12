@@ -511,12 +511,7 @@ impl TerminalView {
         let content = div()
             .size(px(IMAGE_POPOVER_SIDE))
             .p_1()
-            .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
-            .text_color(cx.theme().foreground)
-            .border_1()
-            .border_color(cx.theme().border())
-            .rounded(cx.theme().radius)
-            .shadow(zz_ui::lifted_shadow(cx))
+            .popover_style(cx)
             .child(
                 img(ImageSource::Image(image))
                     .size_full()

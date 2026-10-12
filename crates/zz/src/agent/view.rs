@@ -2255,20 +2255,14 @@ impl AgentView {
             let cancel_view = view.clone();
             let delete_view = view.clone();
             let confirm_id = session_id.clone();
-            h_flex()
-                .w_full()
+            zz_ui::picker::picker_footer(cx)
                 .min_h(px(52.0))
-                .flex_none()
                 .justify_between()
                 .flex_wrap()
-                .gap(px(CHROME_GAP))
-                .border_t_1()
                 .border_color(cx.theme().paint(Tone::Danger, Emphasis::Outline).border)
                 .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
-                .py(px(CHROME_GAP))
-                .pl_4()
-                .pr(px(CHROME_GAP))
                 .text_size(zz_ui::rems_from_px(11.0))
+                .text_color(cx.theme().foreground)
                 .child(
                     div()
                         .min_w_0()
@@ -2310,19 +2304,8 @@ impl AgentView {
                 .submission_error
                 .clone()
                 .or_else(|| state.session_history.error.clone());
-            h_flex()
-                .w_full()
-                .min_h(px(40.0))
-                .flex_none()
+            zz_ui::picker::picker_footer(cx)
                 .flex_wrap()
-                .gap(px(CHROME_GAP))
-                .border_t_1()
-                .border_color(cx.theme().border())
-                .py(px(CHROME_GAP))
-                .pl_4()
-                .pr(px(CHROME_GAP))
-                .text_size(zz_ui::rems_from_px(10.0))
-                .text_color(cx.theme().foreground.muted())
                 .when_some(error, |this, error| {
                     this.child(
                         div()
@@ -2632,12 +2615,12 @@ impl AgentView {
             .min_w_0()
             .min_h_0()
             .when(self.history_compact, |column| {
-                column.w_full().h(zz_gpui::relative(0.35)).border_b_1()
+                column.w_full().h(zz_gpui::relative(0.35)).border_b(px(0.5))
             })
             .when(!self.history_compact, |column| {
-                column.w(zz_gpui::relative(0.36)).border_r_1()
+                column.w(zz_gpui::relative(0.36)).border_r(px(0.5))
             })
-            .border_color(cx.theme().border())
+            .border_color(cx.theme().divider_color())
             .p(px(CHROME_GAP))
             .pr_0()
             .child(

@@ -165,8 +165,9 @@ impl Notification {
         self.closing = true;
         cx.notify();
 
+        let animation = cx.theme().duration(DISMISS_ANIMATION);
         cx.spawn_in(window, async move |view, cx| {
-            cx.background_executor().timer(DISMISS_ANIMATION).await;
+            cx.background_executor().timer(animation).await;
             let _ = view.update_in(cx, |view, _, cx| {
                 view.closing = false;
                 cx.emit(DismissEvent);
