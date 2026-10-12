@@ -18,7 +18,7 @@ use crate::{FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeColor, ThemeMo
 /// length. Missing keys take [`Look::default`]: the default theme's shape
 /// with plain, glassless surfaces.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case")]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Look {
     pub radius: f32,
     pub corner_smoothing: f32,
@@ -128,7 +128,7 @@ fn deserialize_glass<'de, D: Deserializer<'de>>(
 /// the mode; `on-accent` and `shadow-color` fall back to what the palette
 /// derives.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case")]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ThemeColors {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<Hsla>,
@@ -175,7 +175,7 @@ impl ThemeColors {
 
 /// A look and its colors in both modes: one `themes/<name>.json` file.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case")]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct InterfaceTheme {
     /// What Settings calls it.
     pub name: String,
@@ -224,7 +224,26 @@ pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
     if !value.is_object() {
         return Err("a theme is a JSON object".to_owned());
     }
-    serde_json::from_value(value).map_err(|error| error.to_string())
+    serde_json::from_value(value).map_err(|error| with_spelling_hint(error.to_string()))
+}
+
+fn with_spelling_hint(message: String) -> String {
+    let Some((key, expected)) = message
+        .strip_prefix("unknown field `")
+        .and_then(|rest| rest.split_once("`, expected "))
+    else {
+        return message;
+    };
+    let spelled = |name: &str| name.replace(['-', '_'], "").to_ascii_lowercase();
+    expected
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .find(|name| spelled(name) == spelled(key))
+        .map_or_else(
+            || message.clone(),
+            |name| format!("unknown field `{key}`, did you mean `{name}`?"),
+        )
 }
 
 const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
@@ -406,5 +425,41 @@ mod tests {
         );
         assert!(parse_theme(r#"{"look":{"glass":"stained"}}"#).is_err());
         assert!(parse_theme("[]").is_err());
+    }
+
+    #[test]
+    fn unknown_keys_are_errors_that_name_the_key() {
+        for (source, key, spelling) in [
+            (
+                r#"{"look":{"corner_smoothing":2}}"#,
+                "corner_smoothing",
+                Some("corner-smoothing"),
+            ),
+            (
+                r##"{"look":{"glass":{"preset":"clear","Light-Color":"#ff0000"}}}"##,
+                "Light-Color",
+                Some("light_color"),
+            ),
+            (
+                r##"{"dark":{"onAccent":"#ffffff"}}"##,
+                "onAccent",
+                Some("on-accent"),
+            ),
+            (r#"{"Look":{}}"#, "Look", Some("look")),
+            (r#"{"look":{"sparkle":1}}"#, "sparkle", None),
+            (r#"{"look":{"glass":{"sparkle":1}}}"#, "sparkle", None),
+        ] {
+            let error = parse_theme(source).unwrap_err();
+            match spelling {
+                Some(spelling) => assert_eq!(
+                    error,
+                    format!("unknown field `{key}`, did you mean `{spelling}`?")
+                ),
+                None => assert!(
+                    error.starts_with(&format!("unknown field `{key}`, expected ")),
+                    "{error}"
+                ),
+            }
+        }
     }
 }

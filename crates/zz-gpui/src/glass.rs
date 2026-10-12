@@ -37,6 +37,7 @@ pub const GLASS_MAX_BLUR_LEVELS: u32 = 6;
 /// spring or an animation can carry one material into another; glass
 /// appears best by growing out of [`Self::vanished`] rather than fading in.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GlassMaterial {
     /// Standard deviation of the backdrop blur, the frost. Zero is clear.
     pub blur: Pixels,
