@@ -119,8 +119,11 @@ already resolved, and refusing it would strand the user on stale colors.
 
 An empty override vector is a real update: resolving from a fresh base removes the previous overlay
 and restores built-in defaults. The daemon repeats this fresh-base-plus-overlay sequence
-when it handles `reload-config` and whenever the client reports a new OS color scheme, preventing
-GUI choices from being reverted. Successful sets produce one daemon diagnostic line containing the
+when it handles `reload-config` and whenever the client reports a new color scheme, preventing
+GUI choices from being reverted. The scheme a client reports is its effective light/dark mode, not
+the OS appearance: the desktop and the web/iOS clients send the interface theme's mode, so pinning
+Light or Dark in Settings flips the terminals with the chrome, and they send it only when it changes.
+Successful sets produce one daemon diagnostic line containing the
 entry count and publish `AppearanceChanged` when the effective appearance or provenance changes.
 
 The eight `zz-*` spellings are owned by this native `zz/config` overlay, not by Ghostty. The
@@ -148,7 +151,8 @@ Only one value crosses from terminal appearance into application chrome, and it 
 
 Everything else, including `background_opacity`, stays at the terminal paint boundary. Application
 backgrounds, foregrounds, accents, and semantic families come from zz-ui's own light/dark palettes
-and follow OS appearance. `crates/zz/src/theme.rs` holds the latest immutable `TerminalAppearance`
+and follow the effective light/dark mode (`theme-mode`, pinned or the OS's), which is also the color
+scheme the client reports for the terminals. `crates/zz/src/theme.rs` holds the latest immutable `TerminalAppearance`
 as a GPUI global; it derives no chrome color or alpha from it. The client consumes appearance
 provenance while resolving daemon font stacks against fonts installed on the rendering machine, but
 does not retain provenance as a global. Terminal panes read the localized appearance directly.

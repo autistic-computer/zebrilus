@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use zz_gpui::{App, Global, Hsla, SharedString, Window};
+use zz_gpui::{App, Entity, Global, Hsla, SharedString, Window};
 use zz_terminal::TerminalAppearance;
 use zz_ui::{Theme, ThemeMode};
 
-use crate::config;
+use crate::{config, mux::client::MuxClient};
 
 pub use zz_ui::interface_theme::ThemeModeSetting;
 
@@ -44,6 +44,16 @@ pub fn chrome_background(cx: &App) -> Hsla {
 pub fn app_pane_background(cx: &App) -> Hsla {
     let theme = Theme::global(cx);
     theme.pane_background(theme.background)
+}
+
+pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
+    let mux = mux.downgrade();
+    cx.observe_global::<Theme>(move |cx| {
+        let color_scheme = crate::terminal_color_scheme(Theme::global(cx).mode);
+        mux.update(cx, |mux, _| mux.set_color_scheme(color_scheme))
+            .ok();
+    })
+    .detach();
 }
 
 pub(crate) fn refresh_current_theme(cx: &mut App) {
