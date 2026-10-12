@@ -748,6 +748,7 @@ struct HostConnection {
     in_flight_commands: RwLock<VecDeque<(u64, String)>>,
     watched_commands: RwLock<VecDeque<(u64, bool)>>,
     ssh_auth_declined: bool,
+    color_scheme_sent: Option<TerminalColorScheme>,
     background_core: ClientCore,
 }
 
@@ -776,6 +777,7 @@ impl HostConnection {
             in_flight_commands: RwLock::new(VecDeque::new()),
             watched_commands: RwLock::new(VecDeque::new()),
             ssh_auth_declined: false,
+            color_scheme_sent: None,
             background_core: ClientCore::new(),
         }
     }
@@ -848,6 +850,7 @@ impl HostConnection {
             in_flight_commands: RwLock::new(VecDeque::new()),
             watched_commands: RwLock::new(VecDeque::new()),
             ssh_auth_declined: false,
+            color_scheme_sent: None,
             background_core: ClientCore::new(),
         })
     }
@@ -1253,6 +1256,7 @@ impl MuxClient {
         let connection = HostConnection::connected(client, HostId::LOCAL, cx)
             .map_err(|error| error.to_string())?;
         self.connections.insert(HostId::LOCAL, connection);
+        self.report_color_scheme();
         self.begin_client_focus_attach();
         Ok(())
     }
@@ -1596,6 +1600,7 @@ impl MuxClient {
             _ => None,
         };
         connection.client = None;
+        connection.color_scheme_sent = None;
         connection.reader_thread = None;
         connection.resync_pending = false;
         connection.full_requests_pending.clear();
@@ -1804,6 +1809,7 @@ impl MuxClient {
                         connection.snapshot = snapshot;
                         connection.reconnect_generation = reconnect_generation;
                         self.connections.insert(host, connection);
+                        self.report_color_scheme();
                         if reconnect_attempt.is_some() && self.attached_host == host {
                             self.reattach_after_reconnect(host, cx);
                         }
@@ -2857,10 +2863,25 @@ impl MuxClient {
 
     pub fn set_color_scheme(&mut self, color_scheme: TerminalColorScheme) {
         self.color_scheme = color_scheme;
-        if let Some(client) = &self.attached_connection().client
-            && let Err(error) = client.set_color_scheme(color_scheme)
-        {
-            log::warn!("failed to report system color scheme: {error}");
+        self.report_color_scheme();
+    }
+
+    fn report_color_scheme(&mut self) {
+        let color_scheme = self.color_scheme;
+        let connection = self.attached_connection_mut();
+        if connection.color_scheme_sent == Some(color_scheme) {
+            return;
+        }
+        let Some(sent) = connection
+            .client
+            .as_ref()
+            .map(|client| client.set_color_scheme(color_scheme))
+        else {
+            return;
+        };
+        match sent {
+            Ok(()) => connection.color_scheme_sent = Some(color_scheme),
+            Err(error) => log::warn!("failed to report the color scheme: {error}"),
         }
     }
 
@@ -2993,6 +3014,7 @@ impl MuxClient {
         self.error = None;
         self.error_after_next_attach = None;
         self.attached_host = host;
+        self.report_color_scheme();
         self.ingest_server_hello(hello, cx);
         if let Some(client) = &client {
             crate::config::register_config_override_client(client, host != HostId::LOCAL, cx);
@@ -4995,6 +5017,124 @@ mod tests {
         )
         .expect("connect test client");
         Some((client, server))
+    }
+
+    #[zz_gpui::test]
+    fn terminals_follow_the_theme_mode_even_when_it_is_pinned(cx: &mut TestAppContext) {
+        cx.update(zz_ui::init);
+        let mux = cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new_inner(
+                    None,
+                    zz_daemon_client::default_socket_path(),
+                    TerminalColorScheme::Dark,
+                    cx,
+                )
+            });
+            crate::theme::report_terminal_color_scheme(&mux, cx);
+            mux
+        });
+        let os_is_dark = cx.update(|cx| {
+            matches!(
+                cx.window_appearance(),
+                zz_gpui::WindowAppearance::Dark | zz_gpui::WindowAppearance::VibrantDark
+            )
+        });
+        let (against_the_os, scheme) = if os_is_dark {
+            (
+                crate::theme::ThemeModeSetting::Light,
+                TerminalColorScheme::Light,
+            )
+        } else {
+            (
+                crate::theme::ThemeModeSetting::Dark,
+                TerminalColorScheme::Dark,
+            )
+        };
+        cx.update(|cx| {
+            let mut config = crate::config::AppConfig::default();
+            config.theme_mode.value = against_the_os;
+            cx.set_global(config);
+            crate::theme::refresh_current_theme(cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(mux.read_with(cx, |mux, _| mux.color_scheme), scheme);
+        cx.update(|cx| crate::theme::sync_system_appearance(None, cx));
+        cx.run_until_parked();
+        assert_eq!(mux.read_with(cx, |mux, _| mux.color_scheme), scheme);
+    }
+
+    #[cfg(unix)]
+    #[zz_gpui::test]
+    fn a_connection_hears_each_color_scheme_once(cx: &mut TestAppContext) {
+        use std::os::unix::net::UnixListener;
+
+        cx.executor().allow_parking();
+        let socket = std::env::temp_dir().join(format!(
+            "zcs-{}-{}.sock",
+            std::process::id(),
+            TEST_SOCKET_ID.fetch_add(1, Ordering::Relaxed),
+        ));
+        let _ = std::fs::remove_file(&socket);
+        let listener = match UnixListener::bind(&socket) {
+            Ok(listener) => listener,
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => return,
+            Err(error) => panic!("bind test protocol socket: {error}"),
+        };
+        let server_socket = socket.clone();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test client");
+            assert!(matches!(
+                read_protocol_message(&mut stream).expect("read ClientHello"),
+                ProtocolMessage::ClientHello(_) | ProtocolMessage::Hello(_)
+            ));
+            write_protocol_message(
+                &mut stream,
+                &ProtocolMessage::ServerHello(Box::new(test_server_hello())),
+            )
+            .expect("write ServerHello");
+            stream
+                .set_read_timeout(Some(Duration::from_millis(500)))
+                .expect("set read timeout");
+            let mut schemes = Vec::new();
+            while let Ok(message) = read_protocol_message(&mut stream) {
+                if let ProtocolMessage::SetColorScheme(scheme) = message {
+                    schemes.push(scheme);
+                }
+            }
+            let _ = std::fs::remove_file(server_socket);
+            schemes
+        });
+        let client = InteractiveClient::connect_endpoint(
+            &zz_daemon_client::Endpoint::Local(socket),
+            TerminalColorScheme::Dark,
+        )
+        .expect("connect test client");
+        cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new_inner(
+                    None,
+                    zz_daemon_client::default_socket_path(),
+                    TerminalColorScheme::Light,
+                    cx,
+                )
+            });
+            mux.update(cx, |mux, cx| {
+                let connection = HostConnection::connected(Arc::new(client), HostId::LOCAL, cx)
+                    .expect("install test connection");
+                mux.connections.insert(HostId::LOCAL, connection);
+                mux.report_color_scheme();
+                mux.set_color_scheme(TerminalColorScheme::Light);
+                mux.set_color_scheme(TerminalColorScheme::Dark);
+                mux.set_color_scheme(TerminalColorScheme::Dark);
+            });
+        });
+        assert_eq!(
+            server.join().expect("join test server"),
+            [TerminalColorScheme::Light, TerminalColorScheme::Dark]
+        );
     }
 
     #[zz_gpui::test]

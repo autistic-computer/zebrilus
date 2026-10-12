@@ -44,7 +44,7 @@ mux subsets, layers appearance above built-in defaults (it reads no donor appear
 own; the one external file it opens is the Ghostty theme a `theme` override names, see
 [Terminal appearance](/terminal/appearance.md)), and
 dispatches mux values through the existing global `set-option` grammar. Appearance overrides replay
-after `reload-config` and system color-scheme changes; mux overrides replay after every
+after `reload-config` and color-scheme changes (the effective light/dark mode, pinned or system); mux overrides replay after every
 `zz/mux.conf` load so a reload cannot revert a GUI choice.
 
 The daemon loads only `zz/mux.conf`, or explicit `-f` files that replace it in argument order.

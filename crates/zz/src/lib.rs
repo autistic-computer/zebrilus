@@ -47,12 +47,10 @@ pub(crate) use zz_cli::application_arguments;
 use zz_cli::{CommandLineOrigin, Startup, StartupOptions};
 use zz_daemon_client::{DaemonError, InteractiveClient, default_socket_path};
 use zz_gpui::Styled as _;
-use zz_gpui::{
-    AnyView, App, AppContext, Context, Entity, Window, WindowAppearance, WindowOptions, px, size,
-};
+use zz_gpui::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
 use zz_protocol::CommandInvocation;
 use zz_terminal::TerminalColorScheme;
-use zz_ui::{Assets, Root};
+use zz_ui::{Assets, Root, Theme, ThemeMode};
 
 use agent::{AgentController, AgentPreferences};
 use app_shell::AppShell;
@@ -309,7 +307,7 @@ fn run_app(
                 move |window, cx| {
                     ui_scale::apply_to_new_window(window, cx);
                     theme::sync_system_appearance(Some(window), cx);
-                    let color_scheme = terminal_color_scheme(window.appearance());
+                    let color_scheme = terminal_color_scheme(Theme::global(cx).mode);
                     let mux = cx.new(|cx| {
                         mux::client::MuxClient::new_connecting(
                             socket_path.clone(),
@@ -375,14 +373,10 @@ fn run_app(
 
                     let controller = controller.clone();
                     let mux = mux.clone();
-                    let appearance_mux = mux.clone();
+                    theme::report_terminal_color_scheme(&mux, cx);
                     window
-                        .observe_window_appearance(move |window, cx| {
+                        .observe_window_appearance(|window, cx| {
                             theme::sync_system_appearance(Some(window), cx);
-                            appearance_mux
-                                .update(cx, |mux, _| {
-                                    mux.set_color_scheme(terminal_color_scheme(window.appearance()));
-                                });
                         })
                         .detach();
                     let close_controller = controller.clone();
@@ -499,10 +493,11 @@ fn request_window_close(
     false
 }
 
-pub fn terminal_color_scheme(appearance: WindowAppearance) -> TerminalColorScheme {
-    match appearance {
-        WindowAppearance::Light | WindowAppearance::VibrantLight => TerminalColorScheme::Light,
-        WindowAppearance::Dark | WindowAppearance::VibrantDark => TerminalColorScheme::Dark,
+pub fn terminal_color_scheme(mode: ThemeMode) -> TerminalColorScheme {
+    if mode.is_dark() {
+        TerminalColorScheme::Dark
+    } else {
+        TerminalColorScheme::Light
     }
 }
 
@@ -579,27 +574,19 @@ fn tui_browser_provider() -> Option<Box<dyn zz_tui::browser::BrowserFrameProvide
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::WindowAppearance;
     use zz_terminal::TerminalColorScheme;
+    use zz_ui::ThemeMode;
 
     use super::terminal_color_scheme;
 
     #[test]
-    fn gpui_appearance_maps_to_terminal_theme_variants() {
+    fn the_theme_mode_picks_the_terminal_theme_variant() {
         assert_eq!(
-            terminal_color_scheme(WindowAppearance::Light),
+            terminal_color_scheme(ThemeMode::Light),
             TerminalColorScheme::Light
         );
         assert_eq!(
-            terminal_color_scheme(WindowAppearance::VibrantLight),
-            TerminalColorScheme::Light
-        );
-        assert_eq!(
-            terminal_color_scheme(WindowAppearance::Dark),
-            TerminalColorScheme::Dark
-        );
-        assert_eq!(
-            terminal_color_scheme(WindowAppearance::VibrantDark),
+            terminal_color_scheme(ThemeMode::Dark),
             TerminalColorScheme::Dark
         );
     }

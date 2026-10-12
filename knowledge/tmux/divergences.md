@@ -1863,7 +1863,8 @@ The client theme is a decided divergence, not a hole. Measured before any termin
 omits the name from a `display-message -a` listing entirely, because `c->theme` is `THEME_UNKNOWN`
 and `format_cb_client_theme` returns `NULL` for it; zz answers `dark` from the moment the client
 attaches and always lists the name. Accepted as native in `options.client-terminal-negotiation`: a zz
-client always carries a theme, the desktop from the operating system and the raw TUI dark until the
+client always carries a theme, the desktop its effective light/dark mode (pinned in Settings or the
+operating system's) and the raw TUI dark until the
 terminal answers, so `client_theme` is never empty and the `client-dark-theme` and `client-light-theme`
 hooks fire on the reply rather than on attach. A script that reads an empty `#{client_theme}` as "not
 negotiated yet" has no equivalent here and should branch on the hook. Decided 2026-09-07 by the
