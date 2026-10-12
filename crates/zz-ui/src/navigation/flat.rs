@@ -7,7 +7,7 @@ use zz_client::window_summary::{
     Attention, AttentionRollup, PaneTag, SessionSummary, Tone as DetailTone, WindowSummary,
 };
 use zz_gpui::{
-    App, ClickEvent, CornerRadiusMode, Div, ElementId, FontFeatures, FontWeight, HighlightStyle,
+    App, ClickEvent, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures, FontWeight, HighlightStyle,
     Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString, Stateful, StyledText,
     Window, div, font, prelude::*, px,
 };
@@ -20,9 +20,10 @@ use crate::{
     command::PaletteHostId,
     h_flex,
     icon::cap_center_drop,
+    navigation::workspace_row_fill,
     spinner::Spinner,
     tooltip::Tooltip,
-    touch::{CoarsePointer, TOUCH_TARGET, press_highlight},
+    touch::{CoarsePointer, TOUCH_TARGET},
     v_flex,
 };
 
@@ -31,14 +32,10 @@ const ROW_PADDING: f32 = 10.0;
 const TILE_SLOT: f32 = 28.0;
 const TILE_GAP: f32 = 10.0;
 const TILE_GLYPH: f32 = 16.0;
-const STACK_TILE: f32 = 0.58;
-const STACK_OFFSET: f32 = 0.42;
-const STACK_GLYPH: f32 = 0.6;
-const STACK_RING: f32 = 1.5;
-const STACK_LIMIT: usize = 3;
-const DOT_SIZE: f32 = 8.0;
-const DOT_RING: f32 = 2.0;
-const DOT_OFFSET: f32 = 2.0;
+const STACK_DEPTHS: [f32; 2] = [1.0, 2.0];
+const STACK_PEEK: f32 = 3.0;
+const STACK_NARROW: f32 = 3.0;
+const STACK_FADE: f32 = 0.3;
 const TITLE_SIZE: f32 = 13.0;
 const TITLE_LINE: f32 = 17.0;
 const DETAIL_SIZE: f32 = 12.0;
@@ -51,7 +48,6 @@ const SPINNER_SIZE: f32 = 12.0;
 const ACTIONS_WIDTH: f32 = 20.0;
 const ACTIONS_HEIGHT: f32 = 16.0;
 const ACTIONS_ICON: f32 = 14.0;
-const ACTIONS_RADIUS_MAX: f32 = 8.0;
 const DIMMED: f32 = 0.45;
 const HEADER_INSET: f32 = 16.0;
 const HEADER_TRAILING_INSET: f32 = 12.0;
@@ -273,11 +269,6 @@ impl RowInk {
             DetailTone::Danger => cx.theme().danger,
         })
     }
-
-    fn attention(self, attention: Attention, cx: &App) -> Option<Hsla> {
-        let color = attention_color(attention, cx)?;
-        Some(self.dim(if self.plain { self.text } else { color }))
-    }
 }
 
 pub fn pane_glyph(tag: PaneTag) -> IconName {
@@ -288,16 +279,6 @@ pub fn pane_glyph(tag: PaneTag) -> IconName {
         PaneTag::Browser => IconName::Globe,
         PaneTag::Editor => IconName::File,
         PaneTag::Picker => IconName::Plus,
-    }
-}
-
-pub fn attention_color(attention: Attention, cx: &App) -> Option<Hsla> {
-    let theme = cx.theme();
-    match attention {
-        Attention::Done => Some(theme.accent),
-        Attention::NeedsYou | Attention::Bell => Some(theme.warning),
-        Attention::Failed => Some(theme.danger),
-        Attention::Working | Attention::None => None,
     }
 }
 
@@ -320,115 +301,63 @@ fn row_height(cx: &App) -> Pixels {
     cx.theme().dense(px(ROW_HEIGHT))
 }
 
-fn row_radius(cx: &App) -> Pixels {
-    cx.theme().control_radius().min(row_height(cx) / 2.0)
-}
-
 fn tile_radius(cx: &App) -> Pixels {
-    let inset = (row_height(cx) - px(TILE_SLOT)) / 2.0;
-    (row_radius(cx) - inset)
-        .max(cx.theme().radius * 0.25)
-        .min(px(TILE_SLOT / 2.0))
-}
-
-#[derive(Clone, Copy)]
-struct TileInk {
-    fill: Hsla,
-    border: Hsla,
-    border_width: Pixels,
-    glyph: Hsla,
-}
-
-impl TileInk {
-    fn new(ink: RowInk, cx: &App) -> Self {
-        let paint = cx
-            .theme()
-            .paint_on(ink.ground, Tone::Neutral, Emphasis::Soft)
-            .opaque();
-        let fill = paint.hover;
-        Self {
-            fill: ink.dim(fill),
-            border: ink.dim(fill.blend(paint.border)),
-            border_width: paint.border_width,
-            glyph: ink.dim(paint.text),
-        }
+    let theme = cx.theme();
+    let radius = theme.control_radius();
+    if radius == FULL_CORNER_RADIUS {
+        return radius;
     }
+    let inset = (row_height(cx) - px(TILE_SLOT)) / 2.0;
+    (radius - inset).max(theme.radius * 0.25)
 }
 
-fn tile(tag: Option<PaneTag>, size: f32, radius: Pixels, glyph: f32, ink: TileInk) -> Div {
+fn tile_card(ink: RowInk, depth: f32, radius: Pixels, cx: &App) -> Div {
+    let paint = cx
+        .theme()
+        .paint_on(ink.ground, Tone::Neutral, Emphasis::Soft)
+        .opaque();
+    let fill = paint
+        .hover
+        .mix_oklab(ink.ground.fill, 1.0 - STACK_FADE * depth);
     div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(size))
+        .absolute()
         .rounded(radius)
-        .corner_radius_mode(CornerRadiusMode::Fixed)
-        .bg(ink.fill)
-        .border(ink.border_width)
-        .border_color(ink.border)
-        .text_color(ink.glyph)
-        .children(tag.map(|tag| Icon::new(pane_glyph(tag)).size(px(glyph))))
+        .bg(ink.dim(fill))
+        .border(paint.border_width)
+        .border_color(ink.dim(fill.blend(paint.border)))
+        .text_color(ink.dim(paint.text))
 }
 
 fn tile_stack(tiles: &[PaneTag], ink: RowInk, cx: &App) -> Div {
-    let tile_ink = TileInk::new(ink, cx);
     let radius = tile_radius(cx);
-    let slot = div().relative().flex_none().size(px(TILE_SLOT));
-    let shown = &tiles[..tiles.len().min(STACK_LIMIT)];
-    if shown.len() < 2 {
-        return slot.child(tile(
-            shown.first().copied(),
-            TILE_SLOT,
-            radius,
-            TILE_GLYPH,
-            tile_ink,
-        ));
-    }
-    let offsets: &[(f32, f32)] = if shown.len() == 2 {
-        &[(0.0, 0.0), (STACK_OFFSET, STACK_OFFSET)]
-    } else {
-        &[
-            (0.0, 0.0),
-            (STACK_OFFSET, 0.0),
-            (STACK_OFFSET / 2.0, STACK_OFFSET),
-        ]
-    };
-    let size = TILE_SLOT * STACK_TILE;
-    let radius = radius * STACK_TILE;
-    let glyph = (size * STACK_GLYPH).round();
-    let back_to_front = shown[1..].iter().rev().chain(&shown[..1]);
-    slot.children(back_to_front.zip(offsets).map(|(tag, (x, y))| {
-        div()
-            .absolute()
-            .left(px(x * TILE_SLOT - STACK_RING))
-            .top(px(y * TILE_SLOT - STACK_RING))
-            .p(px(STACK_RING))
-            .rounded(radius + px(STACK_RING))
-            .corner_radius_mode(CornerRadiusMode::Fixed)
-            .bg(ink.ground.fill)
-            .child(tile(Some(*tag), size, radius, glyph, tile_ink))
-    }))
+    let behind = tiles.len().saturating_sub(1).min(STACK_DEPTHS.len());
+    div()
+        .relative()
+        .flex_none()
+        .size(px(TILE_SLOT))
+        .children(STACK_DEPTHS[..behind].iter().rev().map(|&depth| {
+            tile_card(ink, depth, radius, cx)
+                .top(px(-STACK_PEEK * depth))
+                .left(px(STACK_NARROW * depth))
+                .right(px(STACK_NARROW * depth))
+                .h(px(TILE_SLOT))
+        }))
+        .child(
+            tile_card(ink, 0.0, radius, cx)
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .children(
+                    tiles
+                        .first()
+                        .map(|tag| Icon::new(pane_glyph(*tag)).size(px(TILE_GLYPH))),
+                ),
+        )
 }
 
 pub fn flat_tile_stack(tiles: &[PaneTag], state: FlatRowState, cx: &App) -> Div {
     tile_stack(tiles, RowInk::new(state, cx), cx)
-}
-
-fn attention_dot(attention: Attention, ink: RowInk, cx: &App) -> Option<Div> {
-    let color = ink.attention(attention, cx)?;
-    let ring = DOT_SIZE + DOT_RING * 2.0;
-    Some(
-        div()
-            .absolute()
-            .top(px(-DOT_OFFSET - DOT_RING))
-            .right(px(-DOT_OFFSET - DOT_RING))
-            .size(px(ring))
-            .p(px(DOT_RING))
-            .rounded_full()
-            .bg(ink.ground.fill)
-            .child(div().size(px(DOT_SIZE)).rounded_full().bg(color)),
-    )
 }
 
 fn spinner(size: f32, line_font: f32, color: Hsla, cx: &App) -> Div {
@@ -494,7 +423,6 @@ fn icon_button(id: impl Into<ElementId>, icon: IconName, icon_size: f32) -> Butt
     Button::new(id)
         .child(Icon::new(icon).size(px(icon_size)))
         .px_0()
-        .corner_radius_mode(CornerRadiusMode::Fixed)
 }
 
 fn actions_button(
@@ -503,7 +431,6 @@ fn actions_button(
     title: &SharedString,
     ground: Ground,
     handler: &FlatHandler,
-    cx: &App,
 ) -> Button {
     let handler = handler.clone();
     icon_button(
@@ -513,7 +440,6 @@ fn actions_button(
     )
     .w(px(ACTIONS_WIDTH))
     .h(px(ACTIONS_HEIGHT))
-    .rounded((cx.theme().radius / 2.0).min(px(ACTIONS_RADIUS_MAX)))
     .flat()
     .on(ground)
     .hit_slop(
@@ -537,8 +463,6 @@ pub fn flat_window_row(
     let theme = cx.theme();
     let coarse = CoarsePointer::get(cx);
     let state = state.for_pointer(cx);
-    let paint = theme.paint(Tone::Neutral, Emphasis::Ghost);
-    let paint_state = state.paint_state();
     let ink = RowInk::new(state, cx);
     let summary = &window.summary;
     let id = summary.window;
@@ -547,11 +471,10 @@ pub fn flat_window_row(
     let working = summary.attention == Attention::Working && !state.dimmed;
     let busy =
         (working && !state.hovered).then(|| spinner(SPINNER_SIZE, TITLE_SIZE, ink.muted, cx));
-    let actions = (state.hovered || coarse)
-        .then(|| actions_button(host, id, &title, ink.ground, handler, cx));
+    let actions =
+        (state.hovered || coarse).then(|| actions_button(host, id, &title, ink.ground, handler));
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
-    let radius = row_radius(cx);
-    let press = coarse.then(|| press_highlight(row_id.clone(), paint.active, radius));
+    let fill = workspace_row_fill(&row_id, state.paint_state(), None, cx);
     let hover = handler.clone();
     let click = handler.clone();
     div()
@@ -570,21 +493,13 @@ pub fn flat_window_row(
         .items_center()
         .gap(px(TILE_GAP))
         .h(row_height(cx))
-        .mx(theme.row_inset)
-        .px(px(ROW_PADDING))
-        .rounded(radius)
-        .corner_radius_mode(CornerRadiusMode::Fixed)
-        .bg(paint.fill_at(paint_state))
+        .px(theme.row_inset + px(ROW_PADDING))
         .text_color(ink.dim(ink.text))
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::Open(host, id), window, cx))
-        .children(press)
-        .child(tile_stack(&summary.tiles, ink, cx).children(attention_dot(
-            summary.attention,
-            ink,
-            cx,
-        )))
+        .children(fill)
+        .child(tile_stack(&summary.tiles, ink, cx))
         .child(
             v_flex()
                 .flex_1()

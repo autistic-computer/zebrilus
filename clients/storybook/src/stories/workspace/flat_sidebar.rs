@@ -47,13 +47,13 @@ pub const STORY: Story = Story {
         Section {
             id: "rows",
             name: "Window rows",
-            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is; the dot is what needs you, the spinner a turn in progress.",
+            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is, its lead in the tone of what needs you; the spinner is a turn in progress. The tile is the active pane, with a card behind it for each other pane, two at most.",
             build: |_, cx| stateless(rows, cx),
         },
         Section {
             id: "stacks",
             name: "Tile stacks",
-            summary: "flat_tile_stack for one, two and three or more panes, the active pane in front, on the rest, hover, current and selected grounds. Stacked tiles cut a ring of the ground around themselves.",
+            summary: "flat_tile_stack for one to four panes on the rest, hover, current and selected grounds. The active pane's tile is always full size; each other pane adds a card behind it, narrower and fainter than the one in front and peeking out above it, two at most.",
             build: |_, cx| stateless(stacks, cx),
         },
         Section {
@@ -69,6 +69,7 @@ const NOW: u64 = 1_792_000_000;
 const MINUTE: u64 = 60;
 const HOUR: u64 = 3_600;
 const SIDEBAR_HEIGHT: f32 = 800.0;
+const STACK_CELL: f32 = 48.0;
 const MAC: &str = "/Users/fabrico/dev/zz";
 const MACBOOK: PaletteHostId = PaletteHostId(0);
 const UBUNTU: PaletteHostId = PaletteHostId(1);
@@ -433,6 +434,22 @@ fn extras() -> FlatHost {
                         .ago(20 * MINUTE),
                     ],
                 ),
+                window(
+                    24,
+                    None,
+                    vec![
+                        terminal(26, "cargo watch")
+                            .at(MAC, "feat/sidebar-data")
+                            .ago(5 * MINUTE),
+                        claude(27, "Sidebar stacks"),
+                        browser(28, "zz Storybook", "http://localhost:8098/"),
+                        pane(
+                            29,
+                            "flat.rs",
+                            editor_kind("crates/zz-ui/src/navigation/flat.rs"),
+                        ),
+                    ],
+                ),
             ],
         )],
     )
@@ -614,7 +631,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         dimmed: true,
         ..rest
     };
-    let cases: [(&str, PaletteHostId, &FlatWindow, FlatRowState); 19] = [
+    let cases: [(&str, PaletteHostId, &FlatWindow, FlatRowState); 23] = [
         ("working", MACBOOK, find(&mac, 1), rest),
         ("needs approval", MACBOOK, find(&mac, 2), rest),
         ("asked a question", MACBOOK, find(&mac, 3), rest),
@@ -633,15 +650,24 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
             find(&extras, 22),
             rest,
         ),
+        (
+            "split, four panes: still two cards",
+            EXTRAS,
+            find(&extras, 24),
+            rest,
+        ),
         ("current", MACBOOK, find(&mac, 1), current),
+        ("current, three panes", EXTRAS, find(&extras, 22), current),
         (
             "selected: the keyboard cursor, inked for the selection fill",
             MACBOOK,
             find(&mac, 2),
             selected,
         ),
+        ("selected, two panes", MACBOOK, find(&mac, 6), selected),
         ("hover", MACBOOK, find(&mac, 2), hovered),
         ("hover on a working row", MACBOOK, find(&mac, 1), hovered),
+        ("hover, four panes", EXTRAS, find(&extras, 24), hovered),
         (
             "host reconnecting: a stale turn shows no spinner",
             DEVBOX,
@@ -649,7 +675,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
             dimmed,
         ),
         (
-            "host reconnecting: a split with a dot",
+            "host reconnecting: a split, dimmed",
             DEVBOX,
             find(&devbox, 3),
             dimmed,
@@ -693,7 +719,7 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             .flex_none()
             .items_center()
             .justify_center()
-            .size(px(44.0))
+            .size(px(STACK_CELL))
             .rounded(cx.theme().control_radius())
             .bg(flat_row_ground(state, cx).fill)
             .child(flat_tile_stack(tags, state, cx))
@@ -713,16 +739,16 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             on_every_ground(&[claude]),
         )
         .state(
-            "two panes, the active one in front",
-            row()
-                .child(on_every_ground(&[Browser, Terminal]))
-                .child(on_every_ground(&[codex, Terminal])),
+            "two panes: one card behind",
+            on_every_ground(&[Browser, Terminal]),
         )
         .state(
-            "three panes, the active one in front; four show three",
-            row()
-                .child(on_every_ground(&[claude, Terminal, Browser]))
-                .child(on_every_ground(&[Terminal, codex, Browser, Editor])),
+            "three panes: two cards behind",
+            on_every_ground(&[claude, Terminal, Browser]),
+        )
+        .state(
+            "four or more panes: still two cards behind",
+            on_every_ground(&[Terminal, codex, Browser, Editor, claude]),
         )
         .into_any_element()
 }
