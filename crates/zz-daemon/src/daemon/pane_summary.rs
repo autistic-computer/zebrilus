@@ -1,5 +1,6 @@
 use super::*;
-use zz_protocol::{MAX_PANE_NAME_BYTES, ShellCommand};
+use std::collections::btree_map::Entry;
+use zz_protocol::{MAX_PANE_BRANCH_BYTES, MAX_PANE_CWD_BYTES, MAX_PANE_NAME_BYTES, ShellCommand};
 use zz_terminal::{ShellMark, ShellMarkKind};
 
 pub(super) fn pane_window_watched(inner: &ServerState, pane: PaneId) -> bool {
@@ -160,6 +161,152 @@ pub(super) fn stamp_pane(inner: &mut ServerState, pane: PaneId, now: u64) -> boo
         .engine
         .state
         .update_pane_summary(pane, |summary| summary.changed_at = now)
+}
+
+impl Shared {
+    pub(super) fn request_pane_location(self: &Arc<Self>, pane: PaneId) {
+        let Some((reported, live)) = claim_location_job(&mut self.inner.lock(), pane) else {
+            return;
+        };
+        let owner = Arc::downgrade(&self.server_owner());
+        if let Err(error) = self.helpers.submit(helpers::Task::PaneLocation {
+            owner,
+            pane,
+            reported,
+            live,
+        }) {
+            self.inner.lock().location_jobs.remove(&pane);
+            log::debug!("could not resolve the location of {pane}: {error}");
+        }
+    }
+
+    pub(super) fn finish_pane_location(
+        self: &Arc<Self>,
+        pane: PaneId,
+        cwd: String,
+        branch: String,
+    ) {
+        let (changed, again) = {
+            let mut inner = self.inner.lock();
+            let again = inner.location_jobs.remove(&pane).unwrap_or_default();
+            let changed = inner.engine.state.update_pane_summary(pane, |summary| {
+                summary.cwd = cwd;
+                summary.branch = branch;
+            });
+            (changed, again)
+        };
+        if changed {
+            self.request_publish(timers::PublishReason::Tree);
+        }
+        if again {
+            self.request_pane_location(pane);
+        }
+    }
+}
+
+pub(super) fn claim_location_job(
+    inner: &mut ServerState,
+    pane: PaneId,
+) -> Option<(String, PathBuf)> {
+    let source = match &inner.engine.state.pane(pane)?.kind {
+        PaneKind::Terminal => inner
+            .engine
+            .pane_runtime_facts(pane)
+            .map(|facts| {
+                (
+                    facts.reported_path.clone(),
+                    PathBuf::from(&facts.current_path),
+                )
+            })
+            .unwrap_or_default(),
+        PaneKind::Agent(agent) => (String::new(), agent.cwd.clone().unwrap_or_default()),
+        _ => return None,
+    };
+    match inner.location_jobs.entry(pane) {
+        Entry::Occupied(mut job) => {
+            job.insert(true);
+            None
+        }
+        Entry::Vacant(job) => {
+            job.insert(false);
+            Some(source)
+        }
+    }
+}
+
+pub(super) fn resolve_location(
+    reported: &str,
+    live: &Path,
+    home: Option<&Path>,
+) -> (String, String) {
+    let dir = if reported.is_empty() {
+        Some(live.to_path_buf()).filter(|live| live.is_absolute() && live.is_dir())
+    } else {
+        path_listing::osc7_directory(reported)
+    };
+    let Some(dir) = dir else {
+        return (String::new(), String::new());
+    };
+    let mut branch = git_branch(&dir).unwrap_or_default();
+    branch.truncate(branch.floor_char_boundary(MAX_PANE_BRANCH_BYTES));
+    (display_path(&dir, home), branch)
+}
+
+pub(super) fn daemon_home() -> Option<&'static Path> {
+    static HOME: LazyLock<Option<PathBuf>> = LazyLock::new(home_directory);
+    HOME.as_deref()
+}
+
+pub(super) fn display_path(dir: &Path, home: Option<&Path>) -> String {
+    let text = match home.and_then(|home| dir.strip_prefix(home).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
+        Some(rest) => Path::new("~").join(rest).to_string_lossy().into_owned(),
+        None => dir.to_string_lossy().into_owned(),
+    };
+    if text.len() > MAX_PANE_CWD_BYTES {
+        String::new()
+    } else {
+        text
+    }
+}
+
+pub(super) fn git_branch(dir: &Path) -> Option<String> {
+    let mut git_dir = None;
+    for level in dir.ancestors() {
+        let dot = level.join(".git");
+        match fs::metadata(&dot) {
+            Ok(metadata) if metadata.is_dir() => git_dir = Some(dot),
+            Ok(metadata) if metadata.is_file() => {
+                let link = read_capped(&dot)?;
+                git_dir = Some(level.join(link.strip_prefix("gitdir:")?.trim()));
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            _ => return None,
+        }
+        break;
+    }
+    head_branch(&read_capped(&git_dir?.join("HEAD"))?)
+}
+
+fn read_capped(path: &Path) -> Option<String> {
+    let mut text = String::new();
+    fs::File::open(path)
+        .ok()?
+        .take(4096)
+        .read_to_string(&mut text)
+        .ok()?;
+    Some(text)
+}
+
+fn head_branch(head: &str) -> Option<String> {
+    let head = head.trim();
+    if let Some(reference) = head.strip_prefix("ref:") {
+        let reference = reference.trim();
+        let branch = reference.strip_prefix("refs/heads/").unwrap_or(reference);
+        return (!branch.is_empty()).then(|| branch.to_owned());
+    }
+    (head.len() >= 7 && head.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| head[..7].to_owned())
 }
 
 #[cfg(test)]

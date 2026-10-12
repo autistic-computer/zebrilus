@@ -701,3 +701,223 @@ fn a_pane_death_stamps_the_summary() {
     assert!(summary(&shared.inner.lock(), pane).changed_at > 0);
     shared.request_shutdown();
 }
+
+#[cfg(unix)]
+fn git_repo(dir: &Path, head: &str) {
+    fs::create_dir_all(dir.join(".git")).expect("git dir");
+    fs::write(dir.join(".git").join("HEAD"), head).expect("HEAD");
+}
+
+#[cfg(unix)]
+#[test]
+fn git_branch_reads_head_without_git() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let plain = scratch.path().join("plain");
+    git_repo(&plain, "ref: refs/heads/main\n");
+    assert_eq!(git_branch(&plain).as_deref(), Some("main"));
+
+    let nested = plain.join("src").join("deep");
+    fs::create_dir_all(&nested).expect("nested dir");
+    assert_eq!(git_branch(&nested).as_deref(), Some("main"));
+
+    let linked = plain.join(".git").join("worktrees").join("wt");
+    fs::create_dir_all(&linked).expect("worktree git dir");
+    fs::write(linked.join("HEAD"), "ref: refs/heads/feature/sidebar\n").expect("worktree HEAD");
+    let worktree = scratch.path().join("wt");
+    fs::create_dir_all(worktree.join("crates")).expect("worktree");
+    fs::write(
+        worktree.join(".git"),
+        "gitdir: ../plain/.git/worktrees/wt\n",
+    )
+    .expect("gitdir file");
+    assert_eq!(
+        git_branch(&worktree.join("crates")).as_deref(),
+        Some("feature/sidebar")
+    );
+
+    let detached = scratch.path().join("detached");
+    git_repo(&detached, "0123456789abcdef0123456789abcdef01234567\n");
+    assert_eq!(git_branch(&detached).as_deref(), Some("0123456"));
+
+    let remote = scratch.path().join("remote");
+    git_repo(&remote, "ref: refs/remotes/origin/main\n");
+    assert_eq!(
+        git_branch(&remote).as_deref(),
+        Some("refs/remotes/origin/main")
+    );
+
+    let broken = scratch.path().join("broken");
+    fs::create_dir_all(&broken).expect("broken dir");
+    fs::write(broken.join(".git"), "not a link\n").expect("broken file");
+    assert_eq!(git_branch(&broken), None);
+
+    let outside = scratch.path().join("outside");
+    fs::create_dir_all(&outside).expect("plain dir");
+    assert_eq!(git_branch(&outside), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn display_path_folds_home() {
+    let home = Some(Path::new("/home/me"));
+    assert_eq!(display_path(Path::new("/home/me"), home), "~");
+    assert_eq!(display_path(Path::new("/home/me/dev/zz"), home), "~/dev/zz");
+    assert_eq!(display_path(Path::new("/home/meow"), home), "/home/meow");
+    assert_eq!(display_path(Path::new("/srv/app"), None), "/srv/app");
+    let fits = format!("/{}", "a".repeat(MAX_PANE_CWD_BYTES - 1));
+    assert_eq!(display_path(Path::new(&fits), home), fits);
+    let long = format!("/{}", "a".repeat(MAX_PANE_CWD_BYTES));
+    assert_eq!(display_path(Path::new(&long), home), "");
+}
+
+#[cfg(unix)]
+#[test]
+fn location_prefers_the_osc7_report_over_the_live_path() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let repo = scratch.path().join("repo");
+    git_repo(&repo, "ref: refs/heads/main\n");
+    let live = scratch.path().join("live");
+    fs::create_dir_all(&live).expect("live dir");
+    let report = format!("file://host{}", repo.display());
+    let unknown = (String::new(), String::new());
+
+    assert_eq!(
+        resolve_location(&report, &live, Some(scratch.path())),
+        ("~/repo".to_owned(), "main".to_owned())
+    );
+    assert_eq!(
+        resolve_location(&report, &live, None),
+        (repo.display().to_string(), "main".to_owned())
+    );
+    assert_eq!(
+        resolve_location("", &live, Some(scratch.path())),
+        ("~/live".to_owned(), String::new())
+    );
+    assert_eq!(
+        resolve_location("file://host/missing/zz-location", &live, None),
+        unknown
+    );
+    assert_eq!(resolve_location("", Path::new("live"), None), unknown);
+    assert_eq!(resolve_location("", Path::new(""), None), unknown);
+
+    let long = scratch.path().join("long");
+    git_repo(&long, &format!("ref: refs/heads/{}\n", "b".repeat(300)));
+    let (_, branch) = resolve_location("", &long, None);
+    assert_eq!(branch, "b".repeat(MAX_PANE_BRANCH_BYTES));
+}
+
+#[cfg(unix)]
+#[test]
+fn location_jobs_coalesce_while_in_flight() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let repo = scratch.path().join("repo");
+    git_repo(&repo, "ref: refs/heads/main\n");
+    let report = format!("file://host{}", repo.display());
+    let expected = resolve_location(&report, Path::new(""), daemon_home());
+    let shared = Arc::new(Shared::new(1));
+    let (pane, terminal) = empty_terminal_pane(&shared, "located");
+    let location = || {
+        let summary = summary(&shared.inner.lock(), pane);
+        (summary.cwd, summary.branch)
+    };
+
+    shared.inner.lock().location_jobs.insert(pane, false);
+    shared.synchronize_pane_reported_path(pane, &terminal, &report);
+    assert_eq!(shared.inner.lock().location_jobs.get(&pane), Some(&true));
+    assert_eq!(location(), (String::new(), String::new()));
+
+    shared.finish_pane_location(pane, "stale".to_owned(), "old".to_owned());
+    wait_until("the resubmitted location", || location() == expected);
+    assert!(shared.inner.lock().location_jobs.is_empty());
+    assert_eq!(summary(&shared.inner.lock(), pane).changed_at, 0);
+
+    fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
+    shared.request_pane_location(pane);
+    wait_until("the new branch", || location().1 == "next");
+    assert!(shared.inner.lock().location_jobs.is_empty());
+}
+
+#[cfg(all(unix, feature = "agent"))]
+#[test]
+fn agent_panes_locate_their_descriptor_cwd() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let repo = scratch.path().join("agent-repo");
+    git_repo(&repo, "ref: refs/heads/agents\n");
+    let expected = resolve_location("", &repo, daemon_home());
+    let shared = Arc::new(Shared::new(1));
+    let agent = {
+        let mut inner = shared.inner.lock();
+        let mut context = ExecutionContext::default();
+        let cwd = repo.display().to_string();
+        for command in [
+            CommandInvocation::new("new-session", ["-d", "-s", "agent-cwd"]),
+            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
+            CommandInvocation::new("split-window", ["--kind", "picker"]),
+            CommandInvocation::new("select-pane-kind", ["-c", cwd.as_str(), "agent"]),
+        ] {
+            inner
+                .engine
+                .execute(&mut context, &command)
+                .expect("agent setup");
+        }
+        context.pane.expect("agent pane")
+    };
+    let location = || {
+        let summary = summary(&shared.inner.lock(), agent);
+        (summary.cwd, summary.branch)
+    };
+
+    shared.apply_agent_status(agent, status(PaneStatusState::Working, ""));
+    wait_until("the agent location", || location() == expected);
+    assert_eq!(location().1, "agents");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_shell_pane_finds_its_branch_and_follows_cd() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let first = scratch.path().join("first");
+    let second = scratch.path().join("second");
+    git_repo(&first, "ref: refs/heads/main\n");
+    git_repo(&second, "ref: refs/heads/next\n");
+    let shared = Arc::new(Shared::new(1));
+    shared.start_timers().expect("timers");
+    let mut context = ExecutionContext::default();
+    let start = first.display().to_string();
+    shared
+        .execute(
+            ClientId(1),
+            ClientKind::Command,
+            &mut context,
+            &CommandInvocation::new(
+                "new-session",
+                [
+                    "-d",
+                    "-s",
+                    "follows",
+                    "-c",
+                    start.as_str(),
+                    super::super::tests::QUIET_PANE_COMMAND,
+                ],
+            ),
+        )
+        .expect("quiet pane");
+    let pane = context.pane.expect("pane");
+    let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+    let branch = || summary(&shared.inner.lock(), pane).branch;
+
+    wait_until("the first branch", || branch() == "main");
+    terminal.send_text(format!(
+        "cd '{}' && printf 'moved\\n\\033]133;D;0\\007'\n",
+        second.display()
+    ));
+    wait_until("the second branch", || branch() == "next");
+    assert_eq!(
+        summary(&shared.inner.lock(), pane).cwd,
+        display_path(
+            &fs::canonicalize(&second).expect("canonical path"),
+            daemon_home()
+        )
+    );
+    shared.request_shutdown();
+}

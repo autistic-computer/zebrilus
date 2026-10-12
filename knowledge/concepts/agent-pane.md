@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Native Agent pane
-description: The daemon-addressable Agent pane, its daemon-owned ACP v1 runtime, flat transcript, approvals, session controls, and restore metadata.
+description: The daemon-addressable Agent pane, its daemon-owned ACP v1 runtime, flat transcript, approvals, session controls, restore metadata, and the status record every client sees in the tree.
 resource: crates/zz/src/agent/controller.rs
 tags: [agent, gpui, markdown, mermaid, acp, pane, sessions, persistence, keyboard]
-timestamp: 2026-09-16T22:03:45Z
+timestamp: 2026-10-12T15:00:00Z
 ---
 
 # Overview
@@ -989,6 +989,40 @@ process into the temp directory and handed to `afplay` on macOS or the first of 
 only that exact value does. `agent/sound.rs` is compiled unconditionally, even without the
 `agent-pane` feature, because the workspace chrome renders badges in every build . without the
 feature the status map is simply always empty.
+
+## The status record in the tree
+
+Everything above is local to the client that renders the pane, and `AgentPaneWire` only reaches
+clients attached to the pane's session. Every other client, on every host, learns about the pane
+through `PaneSnapshot.status`, the same record OSC 7501 programs and `@agent_state` terminals fill
+([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
+
+The daemon's agent fanout (`crates/zz-daemon/src/agent/fanout.rs`) computes it per pane from the
+phase, the first pending permission, how the last turn ended and the head of the newest reply:
+
+| Phase and turn | `state` | `kind` | `message` |
+|---|---|---|---|
+| `Starting`, `Restoring` | `Idle` | | |
+| `Running` or `Cancelling`, no pending permission | `Working` | | |
+| `Running`, a permission with questions | `Blocked` | `Question` | the first question |
+| `Running`, a permission | `Blocked` | `Permission` | the tool call's title |
+| `Ready`, the turn ended with `end_turn` (or an agent-started turn went idle) | `Done` | | excerpt of the reply |
+| `Ready`, another stop reason | `Error` | | `Stopped: <reason>` |
+| `Ready`, cancelled or no turn yet | `Idle` | | excerpt of the reply, so a restored session shows its last answer |
+| `Failed`, `Disconnected` | `Error` | | the error's first line, or "the agent disconnected" |
+
+`app` is the provider (`claude-code`, `codex`), `title` stays empty since the pane title already
+carries the agent's, and `progress` is unset. Messages trim leading markdown markers, collapse
+whitespace and stop at 240 bytes on a char boundary. The fanout publishes a status only when it
+differs from the last one, and reply chunks only reach it once the phase is `Ready`, so a streaming
+turn costs two tree updates (`Working`, then `Done`), not one per chunk. A reset or restored
+session clears the turn record, so it ends `Idle` instead of raising `Done` again.
+
+On the daemon side the record goes through the same edge rule as every other source: a change of
+state or kind stamps `summary.changed_at`, a finish nobody is watching sets `summary.unseen`, and a
+new turn clears it. A status edge out of `Working`, or any status while the pane has no resolved
+location yet, also re-reads the pane's directory and branch from `AgentDescriptor.cwd` into
+`summary.cwd` and `summary.branch`, since a turn may have switched branches.
 
 # Persistence boundary
 

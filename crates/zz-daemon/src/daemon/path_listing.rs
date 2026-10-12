@@ -566,7 +566,7 @@ fn osc7_candidates(reported: &str) -> Vec<PathBuf> {
     candidates
 }
 
-fn osc7_directory(reported: &str) -> Option<PathBuf> {
+pub(super) fn osc7_directory(reported: &str) -> Option<PathBuf> {
     osc7_candidates(reported)
         .into_iter()
         .find(|path| path.is_dir())

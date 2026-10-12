@@ -29,10 +29,11 @@ fn session_id(shared: &Shared, name: &str) -> SessionId {
         .expect("session")
 }
 
-fn fixture(name: &str) -> (Arc<Shared>, ClientId) {
+fn fixture(name: &str) -> (Arc<Shared>, ClientId, Arc<OutboundMailbox>) {
     let shared = Arc::new(Shared::new(1));
+    let mailbox = OutboundMailbox::new();
     let (control, _) =
-        shared.register_subscribed(ClientKind::Control, None, None, OutboundMailbox::new());
+        shared.register_subscribed(ClientKind::Control, None, None, Arc::clone(&mailbox));
     run(
         &shared,
         control,
@@ -41,7 +42,7 @@ fn fixture(name: &str) -> (Arc<Shared>, ClientId) {
     shared
         .attach(control, session_id(&shared, name))
         .expect("control attach");
-    (shared, control)
+    (shared, control, mailbox)
 }
 
 fn panes(shared: &Shared) -> BTreeSet<PaneId> {
@@ -117,9 +118,11 @@ fn assert_released(shared: &Arc<Shared>, probes: &[Probe]) {
 
 #[test]
 fn removed_panes_release_their_terminals_with_a_control_client_attached() {
-    let (shared, control) = fixture("ptyleak");
+    let (shared, control, mailbox) = fixture("ptyleak");
     let mut probes = Vec::new();
     for _ in 0..5 {
+        shared.turn_control_output(true);
+        mailbox.drain_reliable_into(&mut Vec::new());
         let before = panes(&shared);
         run(
             &shared,

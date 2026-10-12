@@ -1,10 +1,10 @@
 ---
 type: Subsystem
 title: Program status (OSC 7501)
-description: How zz reads the Program Status Protocol from pane output, keeps one record per id for each pane, and shows the most urgent record in formats, the tree, @agent_state, and the desktop sidebar.
+description: How zz reads the Program Status Protocol from pane output, keeps one record per id for each pane, and shows the most urgent record in formats, the tree (whose status record native Agent panes and @agent_state terminals now fill too), @agent_state, and the desktop sidebar.
 resource: crates/zz-terminal/src/program_status.rs
 tags: [osc, osc-7501, program-status, agent-state, sidebar, formats]
-timestamp: 2026-10-09T12:00:00-03:00
+timestamp: 2026-10-12T12:00:00-03:00
 ---
 
 # Overview
@@ -74,7 +74,15 @@ answer first. Surfaces without a PTY (agent pane projections and output views) l
   `#{pane_status_raw_message}`, the unescaped twins, as with `window_raw_flags`.
   `#{pane_status_reported}` is `1` once the pane has reported since its last full reset.
 - The tree: the daemon's pane watcher copies the headline into `Pane::status`, which rides
-  `PaneSnapshot.status` and `TreeOp::PaneStatus` (wire v108).
+  `PaneSnapshot.status` and `TreeOp::PaneStatus` (wire v108). That record is no longer 7501-only:
+  native Agent panes fill it from the agent fanout ([Native Agent pane](/concepts/agent-pane.md)),
+  and a terminal pane that has not reported gets its `@agent_state` mirrored into it (`working`,
+  `blocked`, `needs-approval`, `needs-input`, `failed` or `error`, `done`, `idle` or `starting`),
+  so the OSC 9;4 bridge, the Claude peer sampler and user hooks reach every client's tree too.
+  A pane in `program_status_panes` keeps its 7501 record; the mirror skips it. Every change of
+  state or kind stamps `PaneSnapshot.summary.changed_at` and moves the `unseen` latch
+  ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)). The formats above keep their
+  7501-only meaning: they read the terminal's `ProgramStatus`, not `Pane::status`.
 - `@agent_state`: `working`, `blocked`, `error` as `failed`, and `idle` for `idle`, `done` or
   no record, so `agent-send --wait`, `zz events`, `wait-for '@agent_state@%N'` and
   `agent-state-changed` work for any program that reports. The watcher only sees the latest
@@ -97,5 +105,7 @@ answer first. Surfaces without a PTY (agent pane projections and output views) l
   fast as it writes.
 
 Not yet covered: the shared web and iOS sidebar, the TUI sidebar, the tray, and the status bar
-still read Agent panes only. zz ships no terminfo entry, so there is no `Pst` capability;
+still read Agent panes only. `zz_client::window_summary` already turns the tree record into a
+sidebar row for any pane kind ([flat sidebar data](/designs/flat-sidebar-data.md)), but no client
+draws it yet. zz ships no terminfo entry, so there is no `Pst` capability;
 programs use the query.

@@ -4,7 +4,7 @@ title: zz-client crate
 description: Renderer-free client state, effects, chrome keymaps, and normalized pane geometry shared by native and terminal skins.
 resource: crates/zz-client/src/lib.rs
 tags: [client, core, sans-io, keybindings, crate]
-timestamp: 2026-10-07T00:00:00-03:00
+timestamp: 2026-10-12T12:00:00-03:00
 ---
 
 # Overview
@@ -122,6 +122,7 @@ are not errors because the daemon may supersede an unread terminal frame under b
 | `crates/zz-client/src/chrome.rs` | `ChromeKeymap`, profiles, action names, chord grammar, defaults, and override API. |
 | `crates/zz-client/src/layout.rs` | Recursive split ratios projected into normalized pane rectangles. |
 | `crates/zz-client/src/status_bar.rs` | Pure native status projection from `MuxSnapshot`, an attachment, an optional host, and typed settings. |
+| `crates/zz-client/src/window_summary.rs` | Pure sidebar rows from a host's `MuxSnapshot`: window title, second line with tones, age from `PaneSummary.changed_at`, pane tiles, attention and rollups, plus `DaemonClock` for daemon-time ages. No client draws it yet. |
 | `crates/zz-client/tests/simulator.rs` | Real-daemon deterministic convergence harness. |
 
 # Related
@@ -132,3 +133,5 @@ are not errors because the daemon may supersede an unread terminal frame under b
 - [Client core decision record](/designs/client-core-and-contract.md) records the extraction and its
   remaining ABI scope.
 - [Native status bar](/designs/native-status-bar.md) records the desktop presentation boundary.
+- [Flat sidebar data](/designs/flat-sidebar-data.md) records the sidebar view model and the tree
+  fields it reads.

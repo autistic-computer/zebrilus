@@ -3,7 +3,7 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
-* [Native Agent pane](agent-pane.md) - The daemon-addressable Agent pane, its daemon-owned ACP v1 runtime, flat transcript, approvals, session controls, and restore metadata.
+* [Native Agent pane](agent-pane.md) - The daemon-addressable Agent pane, its daemon-owned ACP v1 runtime, flat transcript, approvals, session controls, restore metadata, and the status record every client sees in the tree.
 * [Unified palette and tmux command completions](command-palette.md) - Desktop session, window, and pane navigation alongside command and host search, with shared zz-ui presentation and preserved tmux prompt behavior.
 * [Daemon-owned PTY worker model](pty-worker.md) - How the daemon spawns and owns one PTY-backed terminal session per pane, the thread/ownership boundary between zz-daemon and the zz-terminal worker, and the paths that carry terminal frames out and send-keys in.
 * [Session persistence & daemon lifecycle](session-persistence.md) - Why mux state and terminals outlive GPUI windows, which GUI state is disk-backed, which browser/Agent descriptors can restore, and how attach, detach, eviction, per-client state, and local transport work when several devices share one session.
