@@ -165,11 +165,24 @@ pub(super) fn stamp_pane(inner: &mut ServerState, pane: PaneId, now: u64) -> boo
         .update_pane_summary(pane, |summary| summary.changed_at = now)
 }
 
+const LOCATION_FRESH: Duration = Duration::from_secs(10);
+const KNOWN_LOCATIONS: usize = 64;
+
+type LocationSource = (String, PathBuf);
+
+struct KnownLocation {
+    source: LocationSource,
+    cwd: String,
+    branch: String,
+    read_at: Instant,
+}
+
 #[derive(Default)]
 pub(super) struct Locations {
     jobs: BTreeMap<PaneId, bool>,
-    queue: VecDeque<(PaneId, String, PathBuf)>,
+    queue: VecDeque<(PaneId, LocationSource)>,
     running: bool,
+    known: VecDeque<KnownLocation>,
 }
 
 impl Shared {
@@ -189,17 +202,26 @@ impl Shared {
         }
     }
 
+    pub(super) fn locate_moved_pane(self: &Arc<Self>, pane: PaneId) -> bool {
+        let (changed, start) = place_pane(&mut self.inner.lock(), pane);
+        if start {
+            self.start_location_worker();
+        }
+        changed
+    }
+
     pub(super) fn finish_pane_location(
         self: &Arc<Self>,
         pane: PaneId,
-        cwd: String,
-        branch: String,
+        source: LocationSource,
+        (cwd, branch): (String, String),
     ) {
         let (changed, start) = {
             let mut inner = self.inner.lock();
             if inner.locations.jobs.remove(&pane) == Some(true) {
                 (false, queue_location(&mut inner, pane))
             } else {
+                remember_location(&mut inner.locations.known, source, &cwd, &branch);
                 let changed = inner.engine.state.update_pane_summary(pane, |summary| {
                     summary.cwd = cwd;
                     summary.branch = branch;
@@ -226,6 +248,7 @@ impl Shared {
                 jobs,
                 queue,
                 running,
+                ..
             } = &mut inner.locations;
             for (pane, ..) in queue.drain(..) {
                 jobs.remove(&pane);
@@ -258,54 +281,97 @@ fn locate_panes(owner: &Weak<Shared>) {
             inner.locations.running = job.is_some();
             job
         };
-        let Some((pane, reported, live)) = job else {
+        let Some((pane, source)) = job else {
             return;
         };
-        let (cwd, branch) = resolve_location(&reported, &live, daemon_home());
+        let location = resolve_location(&source.0, &source.1, daemon_home());
         let Some(shared) = owner.upgrade() else {
             return;
         };
-        shared.finish_pane_location(pane, cwd, branch);
+        shared.finish_pane_location(pane, source, location);
     }
+}
+
+fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool) {
+    let Some(source) = location_source(inner, pane) else {
+        return (false, false);
+    };
+    let mut fresh = false;
+    let mut changed = false;
+    if let Some(known) = inner
+        .locations
+        .known
+        .iter()
+        .find(|known| known.source == source)
+    {
+        fresh = known.read_at.elapsed() < LOCATION_FRESH;
+        changed = inner.engine.state.update_pane_summary(pane, |summary| {
+            summary.cwd.clone_from(&known.cwd);
+            summary.branch.clone_from(&known.branch);
+        });
+    }
+    if fresh && !inner.locations.jobs.contains_key(&pane) {
+        return (changed, false);
+    }
+    (changed, queue_source(inner, pane, source))
 }
 
 fn queue_location(inner: &mut ServerState, pane: PaneId) -> bool {
-    let Some((reported, live)) = claim_location_job(inner, pane) else {
-        return false;
-    };
-    let locations = &mut inner.locations;
-    locations.queue.push_back((pane, reported, live));
-    !std::mem::replace(&mut locations.running, true)
+    location_source(inner, pane).is_some_and(|source| queue_source(inner, pane, source))
 }
 
-fn claim_location_job(inner: &mut ServerState, pane: PaneId) -> Option<(String, PathBuf)> {
-    let source = match &inner.engine.state.pane(pane)?.kind {
-        PaneKind::Terminal => inner
-            .engine
-            .pane_runtime_facts(pane)
-            .map(|facts| {
-                (
-                    facts.reported_path.clone(),
-                    PathBuf::from(&facts.current_path),
-                )
-            })
-            .unwrap_or_default(),
-        PaneKind::Agent(agent) => (String::new(), agent.cwd.clone().unwrap_or_default()),
-        _ => return None,
-    };
-    match inner.locations.jobs.entry(pane) {
+fn queue_source(inner: &mut ServerState, pane: PaneId, source: LocationSource) -> bool {
+    let locations = &mut inner.locations;
+    match locations.jobs.entry(pane) {
         Entry::Occupied(mut job) => {
             job.insert(true);
-            None
+            false
         }
         Entry::Vacant(job) => {
             job.insert(false);
-            Some(source)
+            locations.queue.push_back((pane, source));
+            !std::mem::replace(&mut locations.running, true)
         }
     }
 }
 
-fn resolve_location(reported: &str, live: &Path, home: Option<&Path>) -> (String, String) {
+fn location_source(inner: &ServerState, pane: PaneId) -> Option<LocationSource> {
+    match &inner.engine.state.pane(pane)?.kind {
+        PaneKind::Terminal => Some(
+            inner
+                .engine
+                .pane_runtime_facts(pane)
+                .map(|facts| {
+                    if facts.reported_path.is_empty() {
+                        (String::new(), PathBuf::from(&facts.current_path))
+                    } else {
+                        (facts.reported_path.clone(), PathBuf::new())
+                    }
+                })
+                .unwrap_or_default(),
+        ),
+        PaneKind::Agent(agent) => Some((String::new(), agent.cwd.clone().unwrap_or_default())),
+        _ => None,
+    }
+}
+
+fn remember_location(
+    known: &mut VecDeque<KnownLocation>,
+    source: LocationSource,
+    cwd: &str,
+    branch: &str,
+) {
+    known.retain(|known| known.source != source);
+    known.push_front(KnownLocation {
+        source,
+        cwd: cwd.to_owned(),
+        branch: branch.to_owned(),
+        read_at: Instant::now(),
+    });
+    known.truncate(KNOWN_LOCATIONS);
+}
+
+fn resolve_location(reported: &str, live: &Path, homes: &[PathBuf]) -> (String, String) {
     let dir = if reported.is_empty() {
         Some(live.to_path_buf()).filter(|live| live.is_absolute() && live.is_dir())
     } else {
@@ -316,16 +382,24 @@ fn resolve_location(reported: &str, live: &Path, home: Option<&Path>) -> (String
     };
     let mut branch = git_branch(&dir).unwrap_or_default();
     branch.truncate(branch.floor_char_boundary(MAX_PANE_BRANCH_BYTES));
-    (display_path(&dir, home), branch)
+    (display_path(&dir, homes), branch)
 }
 
-fn daemon_home() -> Option<&'static Path> {
-    static HOME: LazyLock<Option<PathBuf>> = LazyLock::new(home_directory);
-    HOME.as_deref()
+fn daemon_home() -> &'static [PathBuf] {
+    static HOME: LazyLock<Vec<PathBuf>> =
+        LazyLock::new(|| home_directory().map(home_forms).unwrap_or_default());
+    &HOME
 }
 
-pub(super) fn display_path(dir: &Path, home: Option<&Path>) -> String {
-    let text = match home.and_then(|home| dir.strip_prefix(home).ok()) {
+fn home_forms(home: PathBuf) -> Vec<PathBuf> {
+    let resolved = fs::canonicalize(&home)
+        .ok()
+        .filter(|resolved| *resolved != home);
+    std::iter::once(home).chain(resolved).collect()
+}
+
+pub(super) fn display_path(dir: &Path, homes: &[PathBuf]) -> String {
+    let text = match homes.iter().find_map(|home| dir.strip_prefix(home).ok()) {
         Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
         Some(rest) => Path::new("~").join(rest).to_string_lossy().into_owned(),
         None => dir.to_string_lossy().into_owned(),

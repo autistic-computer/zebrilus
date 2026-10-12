@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-12T18:00:00-03:00
+timestamp: 2026-10-12T20:30:00-03:00
 ---
 
 # Overview
@@ -70,6 +70,21 @@ only on phase, permission and turn-end edges.
 location thread of its own that starts when a job arrives and exits when its queue is empty, one
 job per pane in flight. The branch is read from `.git` and `HEAD` directly instead of running git or
 adding a dependency.
+
+**A pane that moves takes a known answer; a finished command reads again.** The location thread's
+last 64 answers are kept by source. A spawn, an OSC 7 change or a live path change fills the
+summary from them under the lock, so the location rides the publish of the move. An answer read in
+the last 10 seconds is taken as is, with no job; an older one is read again in the background, and
+that result publishes only when it differs. Finished shell commands and agent turns always read
+again. Every pane already in a directory shows an answer at least as old as the remembered one, so
+a new pane there is never staler than its neighbours, and the 10 seconds bound how long an answer
+outlives the panes that read it.
+
+**`HOME` folds in both spellings.** The home is kept as given and as it resolves through symlinks
+(computed once, on the location thread), because a pane started in `HOME` reports the given
+spelling while the live path of its process is the resolved one. On macOS a home under `/var` or
+`/tmp` otherwise flipped from `~` to `/private/...` a moment after the spawn, with a publish of its
+own.
 
 # The view model
 
@@ -135,6 +150,17 @@ draws the first as its tile and one card behind it for each of the next two.
 - `.git` is followed through symlinks, since tools such as Android's `repo` link it.
 - `kill-session -C` also clears `unseen`, and `TreeOp::UpsertPane` boxes its pane (the summary made
   the variant large; the wire bytes are unchanged).
+- The daemon perf gate caught every spawn paying for a location job: `spawn.instr.split_empty_P`
+  went from 0.55 to 1.11 Minstr, `split_shell` and `new_window` from about 3.0 to 3.6. Knocking out
+  pieces one at a time showed the publish was not the cost with no client attached: starting and
+  ending the location thread took about 0.15 Minstr and the stats and reads about 0.3. With one
+  client attached the second tree publish added about 2 Minstr per spawn on top. Remembered answers
+  remove all three for a spawn in a known directory, back to 0.55, 3.06 and 3.05. Keeping the
+  thread alive between jobs was tried and dropped: it saved only the thread cost.
+- The attach bytes the gate reported (+192 B for four panes) are the summary itself, about 8 B per
+  pane plus the text of the cwd and branch. The gate's panes start in the directory `run.py` was
+  launched from, outside the gate's `HOME`, so nothing folds there; launched from this worktree the
+  growth is 260 B, from `/` 32 B.
 
 # Not built, on purpose
 
@@ -154,6 +180,8 @@ draws the first as its tile and one card behind it for each of the next two.
   directory that exists locally, so the worst case is a wrong but harmless branch.
 - A stat that blocks on a network mount holds the location thread until it returns, so no pane's
   cwd or branch updates in the meantime.
+- A branch switched outside zz less than 10 seconds after a pane read that directory shows on a new
+  pane there only after its first finished command or its next move.
 
 # Related
 

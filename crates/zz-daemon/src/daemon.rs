@@ -11903,7 +11903,7 @@ impl Shared {
         }
         for (pane, terminal) in terminals_to_watch {
             self.watch_terminal(pane, &terminal)?;
-            self.request_pane_location(pane);
+            snapshot_changed |= self.locate_moved_pane(pane);
         }
         for event in client_events {
             let pane = match &event {
@@ -28425,8 +28425,11 @@ impl Shared {
             inner.engine.set_pane_runtime_facts(pane, runtime)
         };
         if changed {
-            self.request_publish(timers::PublishReason::RuntimeFacts);
-            self.request_pane_location(pane);
+            self.request_publish(if self.locate_moved_pane(pane) {
+                timers::PublishReason::Tree
+            } else {
+                timers::PublishReason::RuntimeFacts
+            });
         }
     }
 
@@ -28515,14 +28518,16 @@ impl Shared {
             self.schedule_window_renames(&mut inner);
             (result, relocated)
         };
+        let changed = if relocated && self.locate_moved_pane(pane) {
+            Some(timers::PublishReason::Tree)
+        } else {
+            changed
+        };
         if (output || changed.is_some()) && pid.is_some() {
             self.request_peer_probe();
         }
         if let Some(reason) = changed {
             self.request_publish(reason);
-        }
-        if relocated {
-            self.request_pane_location(pane);
         }
         events
     }
