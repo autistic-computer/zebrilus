@@ -4,7 +4,7 @@ title: Mux snapshots (snapshot.rs)
 description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-10-12T18:00:00-03:00
+timestamp: 2026-10-12T20:30:00-03:00
 ---
 
 # Overview
@@ -155,7 +155,7 @@ moves on an event, never on output bytes:
 | `unseen` | A finish nobody has looked at |
 | `command` | The last OSC 133 mark on a Terminal pane: `Running` after `C`, `Finished(status)` after `D`; `None` without shell integration |
 | `name` | The pane-scoped `@name` user option, cut to `MAX_PANE_NAME_BYTES` (256) |
-| `cwd` | Working directory for display: absolute, the daemon user's home folded to `~`, with the daemon platform's separators (`\` on Windows); empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
+| `cwd` | Working directory for display: absolute, the daemon user's home folded to `~` (spelled as `HOME` gives it or as it resolves through symlinks), with the daemon platform's separators (`\` on Windows); empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
 | `branch` | The branch checked out at `cwd`, the ref as written when HEAD names something outside `refs/heads/`, or a 7-character commit id when HEAD is detached; empty outside a repository; cut to `MAX_PANE_BRANCH_BYTES` (256) |
 
 `changed_at` is stamped by a status state or kind change, a shell command start (the `C` mark's
@@ -177,11 +177,16 @@ clears it and `changed_at`, as it does the bell.
 foreground process when the shell sends no OSC 7, and from `AgentDescriptor.cwd` for Agent panes.
 The daemon resolves it and the branch on a location thread of its own, never under the server lock
 and never on the helper pool, so a stat that hangs on a network mount delays only other locations.
-At most one job per pane is in flight; a trigger while one runs drops that job's result and runs it
-again with fresh inputs. Jobs start when a
-pane's terminal is spawned or an Agent pane opens, when the OSC 7 path changes, when the live path
-changes on a pane without OSC 7, when a shell command finishes, and on a native agent status edge
-out of `Working` or while the summary has no cwd yet. The branch is read from the `.git` directory
+The daemon remembers the last 64 answers by source (the OSC 7 report, or the live path when there
+is none). When a pane moves (its terminal is spawned or an Agent pane opens, the OSC 7 path
+changes, or the live path changes on a pane without OSC 7), a remembered answer fills the summary
+at once, from memory, so it rides the publish of the move itself. An answer read in the last 10
+seconds is taken as is; an older one is shown and read again in the background. A shell command
+finishing and a native agent status edge out of `Working`, or while the summary has no cwd yet,
+always read again, so a branch switched from a pane shows up there. A background result sends a
+summary op only when it differs from what the pane shows. At most one job per pane is in flight; a
+trigger while one runs drops that job's result, which is neither shown nor remembered, and runs it
+again with fresh inputs. The branch is read from the `.git` directory
 or `gitdir:` file and `HEAD` (4 KiB at most) without running git; bare repositories and `GIT_DIR`
 are not followed, and a reftable repository, whose `HEAD` is the `refs/heads/.invalid` placeholder,
 shows no branch.

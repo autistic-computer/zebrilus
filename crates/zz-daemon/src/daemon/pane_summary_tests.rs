@@ -890,15 +890,38 @@ fn git_branch_reads_head_without_git() {
 #[cfg(unix)]
 #[test]
 fn display_path_folds_home() {
-    let home = Some(Path::new("/home/me"));
+    let home = &[PathBuf::from("/home/me")];
     assert_eq!(display_path(Path::new("/home/me"), home), "~");
     assert_eq!(display_path(Path::new("/home/me/dev/zz"), home), "~/dev/zz");
     assert_eq!(display_path(Path::new("/home/meow"), home), "/home/meow");
-    assert_eq!(display_path(Path::new("/srv/app"), None), "/srv/app");
+    assert_eq!(display_path(Path::new("/srv/app"), &[]), "/srv/app");
     let fits = format!("/{}", "a".repeat(MAX_PANE_CWD_BYTES - 1));
     assert_eq!(display_path(Path::new(&fits), home), fits);
     let long = format!("/{}", "a".repeat(MAX_PANE_CWD_BYTES));
     assert_eq!(display_path(Path::new(&long), home), "");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_home_folds_in_both_spellings() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let real = fs::canonicalize(scratch.path())
+        .expect("resolved temp dir")
+        .join("real");
+    fs::create_dir_all(real.join("dev")).expect("home dir");
+    let link = scratch.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).expect("home symlink");
+
+    let homes = home_forms(link.clone());
+    assert_eq!(homes, [link.clone(), real.clone()]);
+    assert_eq!(display_path(&link.join("dev"), &homes), "~/dev");
+    assert_eq!(display_path(&real.join("dev"), &homes), "~/dev");
+    assert_eq!(display_path(&real, &homes), "~");
+    assert_eq!(
+        resolve_location("", &real.join("dev"), &homes),
+        ("~/dev".to_owned(), String::new())
+    );
+    assert_eq!(home_forms(real.clone()), [real]);
 }
 
 #[cfg(unix)]
@@ -912,28 +935,29 @@ fn location_prefers_the_osc7_report_over_the_live_path() {
     let report = format!("file://host{}", repo.display());
     let unknown = (String::new(), String::new());
 
+    let home = &[scratch.path().to_path_buf()];
     assert_eq!(
-        resolve_location(&report, &live, Some(scratch.path())),
+        resolve_location(&report, &live, home),
         ("~/repo".to_owned(), "main".to_owned())
     );
     assert_eq!(
-        resolve_location(&report, &live, None),
+        resolve_location(&report, &live, &[]),
         (repo.display().to_string(), "main".to_owned())
     );
     assert_eq!(
-        resolve_location("", &live, Some(scratch.path())),
+        resolve_location("", &live, home),
         ("~/live".to_owned(), String::new())
     );
     assert_eq!(
-        resolve_location("file://host/missing/zz-location", &live, None),
+        resolve_location("file://host/missing/zz-location", &live, &[]),
         unknown
     );
-    assert_eq!(resolve_location("", Path::new("live"), None), unknown);
-    assert_eq!(resolve_location("", Path::new(""), None), unknown);
+    assert_eq!(resolve_location("", Path::new("live"), &[]), unknown);
+    assert_eq!(resolve_location("", Path::new(""), &[]), unknown);
 
     let long = scratch.path().join("long");
     git_repo(&long, &format!("ref: refs/heads/{}\n", "b".repeat(300)));
-    let (_, branch) = resolve_location("", &long, None);
+    let (_, branch) = resolve_location("", &long, &[]);
     assert_eq!(branch, "b".repeat(MAX_PANE_BRANCH_BYTES));
 }
 
@@ -957,7 +981,11 @@ fn location_jobs_coalesce_while_in_flight() {
     assert_eq!(shared.inner.lock().locations.jobs.get(&pane), Some(&true));
     assert_eq!(location(), (String::new(), String::new()));
 
-    shared.finish_pane_location(pane, "stale".to_owned(), "old".to_owned());
+    shared.finish_pane_location(
+        pane,
+        (report.clone(), PathBuf::new()),
+        ("stale".to_owned(), "old".to_owned()),
+    );
     assert_ne!(location(), ("stale".to_owned(), "old".to_owned()));
     wait_until("the resubmitted location", || location() == expected);
     assert!(shared.inner.lock().locations.jobs.is_empty());
@@ -1097,5 +1125,110 @@ fn a_shell_pane_finds_its_branch_and_follows_cd() {
             daemon_home()
         )
     );
+    shared.request_shutdown();
+}
+
+#[test]
+fn known_locations_stay_bounded_newest_first() {
+    let source = |index: usize| (String::new(), PathBuf::from(format!("/dir/{index}")));
+    let mut known = VecDeque::new();
+    for index in 0..KNOWN_LOCATIONS + 8 {
+        remember_location(&mut known, source(index), &format!("/dir/{index}"), "main");
+    }
+    assert_eq!(known.len(), KNOWN_LOCATIONS);
+    assert_eq!(known[0].source, source(KNOWN_LOCATIONS + 7));
+    assert_eq!(known[KNOWN_LOCATIONS - 1].source, source(8));
+
+    remember_location(&mut known, source(20), "/dir/20", "next");
+    assert_eq!(known.len(), KNOWN_LOCATIONS);
+    assert_eq!(
+        (&known[0].source, known[0].branch.as_str()),
+        (&source(20), "next")
+    );
+    assert_eq!(
+        known
+            .iter()
+            .filter(|known| known.source == source(20))
+            .count(),
+        1
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_spawn_in_a_known_directory_rides_its_own_publish() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let repo = fs::canonicalize(scratch.path())
+        .expect("resolved temp dir")
+        .join("repo");
+    git_repo(&repo, "ref: refs/heads/main\n");
+    let start = repo.display().to_string();
+    let expected = resolve_location("", &repo, daemon_home());
+    let quiet = super::super::tests::QUIET_PANE_COMMAND;
+    let shared = Arc::new(Shared::new(1));
+    run(&shared, &["set-option", "-g", "automatic-rename", "off"]);
+    run(
+        &shared,
+        &["new-session", "-d", "-s", "known", "-c", &start, quiet],
+    );
+    shared.settle_pane_locations();
+    let age_known = |age: Duration| {
+        let read_at = Instant::now().checked_sub(age).expect("monotonic clock");
+        for known in &mut shared.inner.lock().locations.known {
+            known.read_at = read_at;
+        }
+        read_at
+    };
+    let read_at = || shared.inner.lock().locations.known[0].read_at;
+    let spawn = || {
+        let before = shared
+            .inner
+            .lock()
+            .terminals
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        run(
+            &shared,
+            &["split-window", "-d", "-t", "known", "-c", &start, quiet],
+        );
+        let inner = shared.inner.lock();
+        let pane = inner
+            .terminals
+            .keys()
+            .copied()
+            .find(|pane| !before.contains(pane))
+            .expect("new pane");
+        let summary = summary(&inner, pane);
+        let published = inner.last_published_mux_generation == inner.engine.state.generation();
+        (pane, (summary.cwd, summary.branch), published)
+    };
+    let generation = || shared.inner.lock().engine.state.generation();
+
+    let fresh = age_known(Duration::ZERO);
+    let (_, location, published) = spawn();
+    assert_eq!(location, expected);
+    assert!(published);
+    let after_spawn = generation();
+    shared.settle_pane_locations();
+    assert_eq!(generation(), after_spawn);
+    assert_eq!(read_at(), fresh, "a fresh entry is not read again");
+
+    let stale = age_known(LOCATION_FRESH);
+    let (_, location, published) = spawn();
+    assert_eq!(location, expected);
+    assert!(published);
+    let after_spawn = generation();
+    shared.settle_pane_locations();
+    wait_until("the refresh", || read_at() > stale);
+    assert_eq!(generation(), after_spawn);
+
+    age_known(LOCATION_FRESH);
+    fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
+    let (pane, ..) = spawn();
+    wait_until("the switched branch", || {
+        summary(&shared.inner.lock(), pane).branch == "next"
+    });
+    assert_eq!(shared.inner.lock().locations.known[0].branch, "next");
     shared.request_shutdown();
 }
