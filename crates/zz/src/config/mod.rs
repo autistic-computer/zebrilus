@@ -13,7 +13,10 @@ use zz_gpui::{
     App, Corners, Global, Pixels, SharedString, WindowBackgroundAppearance, WindowDecorations, px,
 };
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};
-use zz_ui::interface_theme::{self, InterfaceTheme};
+use zz_ui::{
+    interface_theme::{self, InterfaceTheme},
+    notification::Notification,
+};
 
 use crate::{
     app_icon::AppIconSetting,
@@ -44,9 +47,10 @@ impl Global for AppConfig {}
 #[derive(Clone, Debug)]
 pub(crate) struct Themes {
     pub(crate) active: InterfaceTheme,
-    /// The built-in id or saved name `interface-theme` selects.
+    /// The built-in id or saved name `active` was loaded from.
     pub(crate) selected: SharedString,
     pub(crate) saved: Vec<(SharedString, InterfaceTheme)>,
+    pub(crate) error: Option<SharedString>,
 }
 impl Default for Themes {
     fn default() -> Self {
@@ -54,6 +58,7 @@ impl Default for Themes {
             active: interface_theme::default_theme().clone(),
             selected: interface_theme::DEFAULT_THEME.into(),
             saved: Vec::new(),
+            error: None,
         }
     }
 }
@@ -241,7 +246,8 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         );
     }
 
-    let themes = load_themes(path, &mut parsed);
+    let loaded = load_themes(path, &mut parsed, themes(cx));
+    let announce = loaded.error.is_some() && loaded.error != themes(cx).error;
     log::info!(
         target: "zz::config",
         "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_corner_radius={} pane_margin={} pane_border_width={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} agent_working_directory={:?} daemon_override_entries={}",
@@ -284,7 +290,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     cx.set_global(AppConfig(parsed.config));
     cx.set_global(BrowserConfig(parsed.browser));
     cx.set_global(UiFontConfig(parsed.ui_font));
-    cx.set_global(themes);
+    cx.set_global(loaded);
     apply_animations(cx);
     apply_window_background_appearance(cx);
     apply_window_decorations(cx);
@@ -294,10 +300,20 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         entries: parsed.daemon_entries,
     });
     send_current_config_overrides(cx);
+    if announce {
+        show_theme_error(cx);
+    }
 }
 
-fn load_themes(config_path: &Path, parsed: &mut ParsedConfig) -> Themes {
+pub(crate) fn show_theme_error(cx: &mut App) {
+    if let Some(error) = themes(cx).error.clone() {
+        crate::window::toast::push(Notification::error(error), cx);
+    }
+}
+
+fn load_themes(config_path: &Path, parsed: &mut ParsedConfig, previous: &Themes) -> Themes {
     let directory = themes::themes_directory_for(config_path);
+    let mut broken = Vec::new();
     let saved = themes::saved_theme_names(&directory)
         .into_iter()
         .filter_map(|name| match read_theme(&directory, &name) {
@@ -308,7 +324,13 @@ fn load_themes(config_path: &Path, parsed: &mut ParsedConfig) -> Themes {
                     "could not load theme path={} error={error}",
                     themes::theme_path(&directory, &name).display(),
                 );
-                None
+                let kept = previous
+                    .saved
+                    .iter()
+                    .find(|(saved, _)| *saved == name)
+                    .cloned();
+                broken.push((name, error));
+                kept
             }
         })
         .collect::<Vec<_>>();
@@ -318,25 +340,43 @@ fn load_themes(config_path: &Path, parsed: &mut ParsedConfig) -> Themes {
             .clone()
             .unwrap_or_else(|| parsed.config.interface_theme.value.to_owned()),
     );
-    let active = match &parsed.theme {
-        None => interface_theme::builtin_theme(parsed.config.interface_theme.value)
-            .unwrap_or_else(|| interface_theme::default_theme())
-            .clone(),
-        Some(name) => saved
+    let reason = parsed.theme.as_ref().and_then(|name| {
+        broken
             .iter()
-            .find(|(saved, _)| saved == name)
-            .map_or_else(
-                || {
-                    log::warn!(
-                        target: "zz::config",
-                        "interface-theme names the theme `{name}`, which {} does not hold; using the default theme",
-                        directory.display(),
-                    );
-                    interface_theme::default_theme().clone()
-                },
-                |(_, theme)| theme.clone(),
-            ),
+            .find(|(broken, _)| broken == name)
+            .map(|(_, reason)| reason)
+    });
+    let (active, selected) = match &parsed.theme {
+        None => (
+            interface_theme::builtin_theme(parsed.config.interface_theme.value)
+                .unwrap_or_else(|| interface_theme::default_theme())
+                .clone(),
+            selected,
+        ),
+        Some(name) => match saved.iter().find(|(saved, _)| saved == name) {
+            Some((_, theme)) => (theme.clone(), selected),
+            None if reason.is_some() => (previous.active.clone(), previous.selected.clone()),
+            None => {
+                log::warn!(
+                    target: "zz::config",
+                    "interface-theme names the theme `{name}`, which {} does not hold; using the default theme",
+                    directory.display(),
+                );
+                (interface_theme::default_theme().clone(), selected)
+            }
+        },
     };
+    let error = parsed.theme.as_ref().zip(reason).map(|(name, reason)| {
+        SharedString::from(format!(
+            "The theme file {} does not load: {reason}. Showing {} until it does.",
+            themes::theme_path(&directory, name).display(),
+            if active.name.is_empty() {
+                selected.as_ref()
+            } else {
+                active.name.as_str()
+            },
+        ))
+    });
     parsed
         .config
         .apply_look_defaults(active.look.radius, active.look.shadow);
@@ -344,6 +384,7 @@ fn load_themes(config_path: &Path, parsed: &mut ParsedConfig) -> Themes {
         active,
         selected,
         saved,
+        error,
     }
 }
 
@@ -903,7 +944,7 @@ mod tests {
         themes::save_theme(&themes_directory, "broken", "[1, 2]").expect("save theme");
 
         let mut parsed = parse_config("interface-theme = square\n");
-        let loaded = load_themes(&path, &mut parsed);
+        let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(loaded.selected.as_ref(), "square");
         assert_eq!(
             loaded
@@ -919,15 +960,15 @@ mod tests {
         assert_f32_eq(parsed.config.shadow_strength.value, 0.25);
 
         let mut parsed = parse_config("interface-theme = square\nwidget-corner-radius = 9\n");
-        load_themes(&path, &mut parsed);
+        load_themes(&path, &mut parsed, &Themes::default());
         assert_f32_eq(parsed.config.widget_corner_radius.value, 9.0);
 
         let mut parsed = parse_config("interface-theme = missing\n");
-        let loaded = load_themes(&path, &mut parsed);
+        let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(&loaded.active, interface_theme::default_theme());
 
         let mut parsed = parse_config("interface-theme = macos\n");
-        let loaded = load_themes(&path, &mut parsed);
+        let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(loaded.selected.as_ref(), "macos");
         assert_eq!(
             Some(&loaded.active),
@@ -940,13 +981,64 @@ mod tests {
     }
 
     #[test]
+    fn a_theme_file_that_stops_parsing_keeps_the_theme_on_screen() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        let themes_directory = themes::themes_directory_for(&path);
+        themes::save_theme(
+            &themes_directory,
+            "neon",
+            r#"{"name": "Neon", "look": {"radius": 3}}"#,
+        )
+        .expect("save theme");
+        let mut parsed = parse_config("interface-theme = neon\n");
+        let loaded = load_themes(&path, &mut parsed, &Themes::default());
+        assert_eq!(loaded.active.name, "Neon");
+        assert_eq!(loaded.error, None);
+
+        themes::save_theme(
+            &themes_directory,
+            "neon",
+            r#"{"name": "Neon", "look": {"corner_smoothing": 2}}"#,
+        )
+        .expect("break theme");
+        let mut parsed = parse_config("interface-theme = neon\n");
+        let kept = load_themes(&path, &mut parsed, &loaded);
+        assert_eq!(kept.active, loaded.active);
+        assert_eq!(kept.selected.as_ref(), "neon");
+        assert_eq!(kept.saved, loaded.saved);
+        assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
+        let error = kept.error.expect("the broken file is reported");
+        assert!(error.contains("neon.json does not load"), "{error}");
+        assert!(error.contains("did you mean `corner-smoothing`"), "{error}");
+        assert!(error.ends_with("Showing Neon until it does."), "{error}");
+
+        let mut parsed = parse_config("interface-theme = macos\n");
+        let macos = load_themes(&path, &mut parsed, &Themes::default());
+        assert_eq!(macos.error, None);
+        let mut parsed = parse_config("interface-theme = neon\n");
+        let switched = load_themes(&path, &mut parsed, &macos);
+        assert_eq!(switched.active, macos.active);
+        assert_eq!(switched.selected.as_ref(), "macos");
+        assert!(switched.saved.is_empty());
+        assert!(switched.error.is_some());
+
+        let mut parsed = parse_config("interface-theme = neon\n");
+        let launched = load_themes(&path, &mut parsed, &Themes::default());
+        assert_eq!(&launched.active, interface_theme::default_theme());
+        assert_eq!(launched.selected.as_ref(), interface_theme::DEFAULT_THEME);
+        let error = launched.error.expect("the broken file is reported");
+        assert!(error.ends_with("Showing Default until it does."), "{error}");
+    }
+
+    #[test]
     fn an_invalid_radius_keeps_the_active_themes_radius() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         let mut parsed = parse_config(
             "interface-theme = macos\nwidget-corner-radius = wide\nshadow-strength = 9\n",
         );
-        let loaded = load_themes(&path, &mut parsed);
+        let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(parsed.diagnostics.len(), 2, "{:?}", parsed.diagnostics);
         assert_f32_eq(loaded.active.look.radius, 10.0);
         assert_eq!(

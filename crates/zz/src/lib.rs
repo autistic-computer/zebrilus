@@ -438,6 +438,7 @@ fn run_app(
             )
             .expect("failed to open zz window");
             window::toast::set_host(main_window, cx);
+            config::show_theme_error(cx);
             cx.activate(true);
         });
 }

@@ -221,7 +221,14 @@ picks which color set applies; the look is the same in both.
 
 Keys a file leaves out take `Look::default()` (the default theme's shape without glass) and the
 built-in palette. Every other color the UI paints (panels, hover and pressed fills, muted text,
-edges, washes) is derived from the roots at paint time, as `design-system` describes.
+edges, washes) is derived from the roots at paint time, as `design-system` describes. A key the
+file does not know, at the top level, in `look`, in a color set or in a `glass` object, is an
+error rather than ignored: the message names it and, when it differs from a real key only in
+case, dashes or underscores, names the key that was meant
+(`` unknown field `corner_smoothing`, did you mean `corner-smoothing`? ``). Look and color keys are
+kebab-case while glass fields keep `GlassMaterial`'s snake_case (`light_color`, `edge_shadow`),
+which is the usual slip. Settings Import, the thin clients' Import and the storybook's import show
+the same message.
 
 Three themes are compiled in from `crates/zz-ui/themes/*.json`:
 
@@ -241,7 +248,14 @@ Saved themes live one per file in a `themes` folder beside the configuration fil
 (`~/.config/zz/themes/<name>.json`; zz Dev keeps its own), named by letters, digits, `-` and `_`;
 a file named after a built-in id is ignored. `interface-theme = <name>` selects one. The config
 poll stamps the folder, so adding, editing or removing a theme applies within half a second. A
-missing or unparsable theme logs a warning and falls back to `default`.
+selected theme whose file is gone logs a warning and falls back to `default`. A selected theme
+whose file stops loading (bad JSON, an unknown key, a bad value) leaves the screen alone: the
+reload keeps the theme as it last loaded, or the theme that was active before when the file never
+loaded (pointing `interface-theme` at a broken file), and shows an error toast with the file's
+path and the parse error. The toast shows once per new error, and the next save that parses
+applies as usual. A broken file that is not selected keeps its last good version as its tile and
+only logs a warning. When zz starts with a broken selected file there is nothing to keep, so it
+draws `default` and says so in the same toast once the window opens.
 
 Settings > Interface > Interface theme shows the built-ins and then the saved themes as tiles.
 Duplicate writes the active theme to the first free `themes/theme-N.json` and selects it, so a
@@ -252,7 +266,8 @@ duplicated or imported theme whose name is empty or a built-in's is saved under 
 theme creator copies one with Copy JSON), saves it the same way and selects it. Thin clients (web,
 iOS) never read this folder: they keep their own saved themes in their preferences, with the same
 Duplicate and Import (Import uses the browser's async clipboard read on web) and a Delete for the
-selected saved theme.
+selected saved theme. A stored theme the build cannot read, one with an unknown key included, is
+skipped without touching the other preferences.
 
 Chrome colors come from the theme alone, never from the terminal's palette: there is no key that
 makes application chrome follow terminal colors.
