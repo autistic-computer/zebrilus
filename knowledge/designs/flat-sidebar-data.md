@@ -17,14 +17,18 @@ timestamp: 2026-10-12T18:00:00-03:00
 # Overview
 
 The flat sidebar shows one row per window on every host: a title, a second line saying what the
-window is doing, an age on the right, a stack of pane tiles, and an attention dot. Every fact it
-needs now rides the mux tree, so a client that subscribes to all sessions can draw every row
+window is doing, an age on the right, and a pane stack: one tile for the active pane with a card
+behind it for each other pane, two at most. Line 2's lead carries what needs you, so the tiles have
+no status dot; folded host and session headers roll attention up. Every fact it needs now rides
+the mux tree, so a client that subscribes to all sessions can draw every row
 without `AgentPaneWire`, without attaching, and without keeping its own "seen" state.
 
 This plan covers the daemon producers, the wire fields, and the view model. The row, header and
 sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`); wiring
 them into the desktop `MuxTreeModel` and the thin-client tree is the next piece of work and is not
-built.
+built. A window row draws its highlight with `navigation::workspace_row_fill`, the same fill as the
+tree rows (outline, corners, inset and press), and its corners and tiles follow the theme's corner
+rule like every other control, so no row or tile forces a pill.
 
 # What every client receives
 
@@ -50,7 +54,7 @@ riding the publish its title change already causes (16 ms coalescing).
 
 **`unseen` lives in the daemon.** It is raised on a finish edge with the bell's suppression rule
 (the window is current in an attached session) and cleared on the same visits that clear the bell.
-Every client on every host sees the same dot, and none keeps a seen store.
+Every client on every host sees the same unseen state, and none keeps a seen store.
 
 **The clock rides the handshake, not every snapshot.** An empty tree diff sends nothing, so a
 per-snapshot clock would refresh no more often than the handshake on an idle host, and it would
@@ -100,14 +104,15 @@ Needs you, Failed, Done, Exit) takes its tone and anything after it follows mute
 the agreed mock; Done is in the foreground only while the finish is unseen.
 
 **Ages** are `short_age`: "now" under a minute, then minutes, hours and days. `age_label` shows
-nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order.
+nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order; the row draws the first as its tile and
+one card behind it for each of the next two.
 **Rollups** count one attention per window and keep the newest change; a host merges its sessions.
 
 # What the source changed in the first draft
 
 - The draft said agent shadow terminals carry OSC 133 marks and ring the bell at turn end. They do
   not: they are PTY-free surfaces that never push shell marks, so `note_shell_mark` only acts on
-  Terminal panes and the Done dot for agents comes from the status record. Whether the projection's
+  Terminal panes and Done for agents comes from the status record. Whether the projection's
   BEL reaches the bell latch at all is unverified.
 - `@agent_state idle` on a pane with no record leaves it without one, because the daemon writes
   `idle` when a 7501 owner leaves or the pane respawns.

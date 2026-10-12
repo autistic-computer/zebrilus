@@ -4,16 +4,16 @@ pub mod status;
 pub mod tree;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
-    TITLE_BAR_HEIGHT, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
+    StyledExt as _, TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     rems_from_px,
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
 };
 use zz_gpui::{
-    App, ElementId, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Window, div, prelude::*, px,
+    AnyElement, App, ElementId, Hsla, IntoElement, ParentElement as _, Pixels, SharedString,
+    Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, prelude::*, px,
 };
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
@@ -311,6 +311,52 @@ pub fn workspace_sidebar_surface(
         )
 }
 
+pub fn workspace_row_fill(
+    id: &ElementId,
+    lit: PaintState,
+    hover_group: Option<SharedString>,
+    cx: &App,
+) -> impl Iterator<Item = AnyElement> + use<> {
+    let theme = cx.theme();
+    let inset = theme.row_inset;
+    let vertical_inset = if theme.inset_rows() {
+        px(WORKSPACE_TREE_FILL_VERTICAL_INSET)
+    } else {
+        px(0.)
+    };
+    let radius = theme.control_radius();
+    let paint = theme.paint(Tone::Neutral, Emphasis::Ghost).opaque();
+    let fill = div()
+        .absolute()
+        .top(vertical_inset)
+        .bottom(vertical_inset)
+        .left(inset)
+        .right(inset)
+        .rounded(radius)
+        .when(theme.outlined(), |this| {
+            this.border(theme.outline_width)
+                .border_color(zz_gpui::transparent_white())
+        })
+        .when_some(hover_group, |this, group| {
+            this.group_hover(group, |this| this.bg(paint.hover).control_highlight(cx))
+        })
+        .when(lit != PaintState::Rest, |this| {
+            this.bg(paint.fill_at(lit)).control_highlight(cx)
+        });
+    let press = CoarsePointer::get(cx).then(|| {
+        crate::touch::press_highlight(
+            id.clone(),
+            theme.paint(Tone::Neutral, Emphasis::Ghost).active,
+            radius,
+        )
+        .top(vertical_inset)
+        .bottom(vertical_inset)
+        .left(inset)
+        .right(inset)
+    });
+    std::iter::once(fill.into_any_element()).chain(press.map(IntoElement::into_any_element))
+}
+
 // Six independent row states, not a config object waiting to be extracted.
 #[must_use]
 #[allow(clippy::fn_params_excessive_bools)]
@@ -329,30 +375,6 @@ pub fn workspace_tree_row(
     actions: impl IntoElement,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let fill_inset = cx.theme().row_inset;
-    let fill_vertical_inset = if cx.theme().inset_rows() {
-        px(WORKSPACE_TREE_FILL_VERTICAL_INSET)
-    } else {
-        px(0.)
-    };
-    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).opaque();
-    let fill = div()
-        .absolute()
-        .top(fill_vertical_inset)
-        .bottom(fill_vertical_inset)
-        .left(fill_inset)
-        .right(fill_inset)
-        .rounded(cx.theme().control_radius())
-        .when(cx.theme().outlined(), |this| {
-            this.border(cx.theme().outline_width)
-                .border_color(zz_gpui::transparent_white())
-        })
-        .group_hover(row_group.clone(), |this| {
-            this.bg(paint.hover).control_highlight(cx)
-        })
-        .when(selected || active && focused, |this| {
-            this.bg(paint.current).control_highlight(cx)
-        });
     let trailing = div()
         .h_full()
         .flex()
@@ -365,22 +387,16 @@ pub fn workspace_tree_row(
         })
         .child(actions);
     let id = id.into();
-    let press = CoarsePointer::get(cx).then(|| {
-        crate::touch::press_highlight(
-            id.clone(),
-            cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active,
-            cx.theme().control_radius(),
-        )
-        .top(fill_vertical_inset)
-        .bottom(fill_vertical_inset)
-        .left(fill_inset)
-        .right(fill_inset)
-    });
+    let lit = if selected || active && focused {
+        PaintState::Current
+    } else {
+        PaintState::Rest
+    };
+    let fill = workspace_row_fill(&id, lit, Some(row_group.clone()), cx);
     workspace_tree_row_frame(id, depth, cx)
-        .pr(fill_inset)
+        .pr(cx.theme().row_inset)
         .group(row_group)
-        .child(fill)
-        .children(press)
+        .children(fill)
         .text_color(if connected {
             cx.theme().foreground
         } else {
