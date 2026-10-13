@@ -157,18 +157,12 @@ fn render_update(show: bool, cx: &App) -> Option<AnyElement> {
         .flex_none()
         .px(px(6.0))
         .rounded(cx.theme().control_radius())
-        .when(cx.theme().control_shadows(), |item| {
-            item.border(px(0.5))
-                .border_color(zz_gpui::transparent_white())
-        })
+        .surface_outline(cx.theme().transparent, cx)
         .cursor_pointer()
         .hover(move |item| {
-            let item = item.bg(highlight).text_color(foreground);
-            if cx.theme().control_shadows() {
-                item.control_highlight(cx)
-            } else {
-                item
-            }
+            item.bg(highlight)
+                .text_color(foreground)
+                .control_highlight(cx)
         })
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .child(

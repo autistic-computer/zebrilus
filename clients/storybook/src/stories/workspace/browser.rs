@@ -20,6 +20,7 @@ use zz_ui::{
 };
 
 use super::fixtures::{chrome, radii, stateful};
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
@@ -333,8 +334,7 @@ fn framed(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
         .w_full()
         .overflow_hidden()
         .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
+        .framed(cx)
         .bg(cx.theme().background.opaque())
         .child(content)
         .into_any_element()
@@ -557,8 +557,7 @@ fn omnibox(inputs: &[Entity<InputState>; 1], _: &mut Window, cx: &mut App) -> An
                 .h(BrowserHeader::HEIGHT + px(160.0))
                 .overflow_hidden()
                 .rounded(cx.theme().radius)
-                .border_1()
-                .border_color(cx.theme().border())
+                .framed(cx)
                 .bg(cx.theme().background.opaque())
                 .child(header(true, 2, 0, &inputs[0], true, cx))
                 .child(browser_omnibox_panel(rows, cx)),
@@ -574,8 +573,7 @@ fn page(id: &'static str, height: f32, content: impl IntoElement, cx: &App) -> A
         .h(px(height))
         .overflow_hidden()
         .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
+        .framed(cx)
         .bg(cx.theme().background.opaque())
         .child(content)
         .into_any_element()

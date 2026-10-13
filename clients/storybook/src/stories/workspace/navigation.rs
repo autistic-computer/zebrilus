@@ -27,6 +27,7 @@ use super::{
         tree_list, workspace_tree,
     },
 };
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
@@ -652,8 +653,7 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
             div()
                 .id("titlebar")
                 .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
-                .border_1()
-                .border_color(cx.theme().border())
+                .framed(cx)
                 .rounded(cx.theme().radius)
                 .child(workspace_sidebar_titlebar(
                     "sidebar-titlebar",
@@ -666,8 +666,7 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
             div()
                 .id("footer")
                 .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
-                .border_1()
-                .border_color(cx.theme().border())
+                .framed(cx)
                 .rounded(cx.theme().radius)
                 .child(workspace_sidebar_footer(
                     "sidebar-footer",

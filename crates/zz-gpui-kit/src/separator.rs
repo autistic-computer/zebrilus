@@ -2,10 +2,10 @@
 
 use zz_gpui::{
     App, Axis, Hsla, IntoElement, ParentElement as _, RenderOnce, StyleRefinement, Styled, Window,
-    div, prelude::FluentBuilder as _, px,
+    div, prelude::FluentBuilder as _,
 };
 
-use crate::{ActiveTheme as _, StyledExt as _};
+use crate::{ActiveTheme as _, RULE_WIDTH, StyledExt as _};
 
 /// A one-pixel divider rule. The rule is an absolutely positioned child, so the
 /// separator takes no space along its own axis; only its margins do.
@@ -70,9 +70,9 @@ impl RenderOnce for Separator {
             .refine_style(&self.style)
             .child(div().absolute().bg(color).map(|this| {
                 if vertical {
-                    this.w(px(1.)).h_full()
+                    this.w(RULE_WIDTH).h_full()
                 } else {
-                    this.h(px(1.)).w_full()
+                    this.h(RULE_WIDTH).w_full()
                 }
             }))
     }

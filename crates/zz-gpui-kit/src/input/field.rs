@@ -66,12 +66,7 @@ pub struct Input {
 
 /// The paint of a field: `tone` at `emphasis`, or at the look's field
 /// emphasis, on `on` or the window.
-pub(crate) fn field_paint(
-    tone: Tone,
-    emphasis: Option<Emphasis>,
-    on: Option<Ground>,
-    cx: &App,
-) -> Paint {
+pub fn field_paint(tone: Tone, emphasis: Option<Emphasis>, on: Option<Ground>, cx: &App) -> Paint {
     let theme = cx.theme();
     theme.paint_on(
         on.unwrap_or_else(|| theme.ground()),
@@ -82,8 +77,9 @@ pub(crate) fn field_paint(
 
 /// A field's fill, border and text in `state`, with the hover fill while it
 /// rests. The border is always at least a pixel wide, clear when the paint
-/// has none, so focusing a field never moves its text.
-pub(crate) fn field_chrome<E: Styled + InteractiveElement>(
+/// has none, so focusing a field never moves its text. A field that holds
+/// more than its text, like the agent composer, draws its shell with this.
+pub fn field_chrome<E: Styled + InteractiveElement>(
     element: E,
     paint: Paint,
     state: PaintState,
@@ -221,12 +217,12 @@ impl Input {
         self
     }
 
-    fn sized<E: Styled>(element: E, size: Size, density: f32) -> E {
-        field_text(element.px(size.input_px()).py(size.input_py(density)), size)
+    fn sized<E: Styled>(element: E, size: Size) -> E {
+        field_text(element.px(size.input_px()).py(size.input_py()), size)
     }
 
-    fn height<E: Styled>(element: E, size: Size, density: f32) -> E {
-        element.h(size.control_h(density))
+    fn height<E: Styled>(element: E, size: Size) -> E {
+        element.h(size.control_h())
     }
 
     fn clear_button(state: &Entity<InputState>, cx: &App) -> Button {
@@ -333,9 +329,9 @@ impl RenderOnce for Input {
             .text_color(paint.text_at(paint_state))
             .when(editable, zz_gpui::Styled::cursor_text);
 
-        element = Self::sized(element, self.size, cx.theme().density);
+        element = Self::sized(element, self.size);
         if !multi_line {
-            element = Self::height(element, self.size, cx.theme().density);
+            element = Self::height(element, self.size);
         }
 
         element

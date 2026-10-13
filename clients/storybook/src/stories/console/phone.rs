@@ -16,7 +16,9 @@ use zz_ui::{
     which_key::WhichKeyRow,
 };
 
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
+use zz_ui::StyledExt as _;
 
 pub const STORY: Story = Story {
     id: "phone",
@@ -81,8 +83,7 @@ fn phone(content: impl IntoElement, cx: &App) -> impl IntoElement {
     div()
         .w(px(PHONE_WIDTH))
         .bg(cx.theme().background)
-        .border_1()
-        .border_color(cx.theme().border())
+        .framed(cx)
         .rounded(cx.theme().radius)
         .overflow_hidden()
         .child(content)
@@ -123,10 +124,7 @@ fn bar(
     );
     let keys = compact_bar_button((id, 1_usize), IconName::Keyboard);
     phone(
-        div()
-            .border_t_1()
-            .border_color(cx.theme().border())
-            .child(compact_bar(pill, keys, held, cx)),
+        div().rule_top(cx).child(compact_bar(pill, keys, held, cx)),
         cx,
     )
 }
@@ -489,8 +487,7 @@ impl Render for Screen {
                 .child(div().id("screen-key-row").child(key_row(&self.keys)))
                 .child(
                     div()
-                        .border_t_1()
-                        .border_color(theme.border())
+                        .rule_top(cx)
                         .child(compact_bar(pill, keyboard, false, cx)),
                 ),
             cx,

@@ -22,7 +22,7 @@ use zz_ui::navigation::{
     WORKSPACE_TREE_CONTENT_INSET as TREE_CONTENT_INSET,
     WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_MARKER_SLOT_WIDTH as TREE_MARKER_SLOT_WIDTH,
-    WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE, WORKSPACE_TREE_ROW_HEIGHT,
+    WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE,
     sidebar::{
         TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
@@ -34,11 +34,12 @@ use zz_ui::navigation::{
     workspace_tree_row,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
-    button::{Button, ButtonVariants as _},
-    rems_from_px,
+    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, rems_from_px,
     scroll::ScrollableElement as _,
-    settings::{settings_navigation_button, settings_navigation_group_label},
+    settings::{
+        settings_navigation_back_button, settings_navigation_back_row, settings_navigation_button,
+        settings_navigation_group_label,
+    },
 };
 
 use crate::{
@@ -636,25 +637,11 @@ impl WorkspaceSidebar {
         };
         let selected = settings.read(cx).section();
         let close_sidebar = sidebar.clone();
-        let back = Button::new("settings-back")
-            .w_full()
-            .px(px(8.0))
-            .ghost()
-            .icon(IconName::ArrowLeft)
-            .label("Back")
-            .child(div().flex_1())
-            .on_click(move |_, window, cx| {
+        let back =
+            settings_navigation_back_button("settings-back").on_click(move |_, window, cx| {
                 close_sidebar.update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
             });
-        let mut items = vec![
-            div()
-                .flex()
-                .flex_none()
-                .h(px(WORKSPACE_TREE_ROW_HEIGHT))
-                .items_center()
-                .child(back)
-                .into_any_element(),
-        ];
+        let mut items = vec![settings_navigation_back_row(back).into_any_element()];
         let mut current_group = None;
         for &section in &crate::profile::profile(cx).settings_sections {
             let group = section.navigation_group();
@@ -679,8 +666,7 @@ impl WorkspaceSidebar {
             .flex()
             .flex_col()
             .w_full()
-            .gap(px(2.0))
-            .px(px(6.0))
+            .list_inset(cx)
             .children(items)
             .into_any_element()
     }
@@ -866,7 +852,7 @@ impl Render for WorkspaceSidebar {
                 .cursor(CursorStyle::ResizeLeftRight)
                 .occlude()
                 .when(divider_hidden, |this| {
-                    this.hover(|this| this.border_r_1().border_color(cx.theme().divider_color()))
+                    this.hover(|this| this.rule_right(cx))
                 })
                 .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
                     cx.new(|_| SidebarResizePreview)

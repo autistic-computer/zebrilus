@@ -200,11 +200,7 @@ pub(crate) fn card_chip(text: impl Into<SharedString>) -> Badge {
 }
 
 pub(crate) fn card_divider(cx: &App) -> Div {
-    div()
-        .mx(px(CARD_GUTTER))
-        .my(px(CARD_GAP))
-        .h(px(0.5))
-        .bg(cx.theme().divider_color())
+    div().mx(px(CARD_GUTTER)).my(px(CARD_GAP)).rule_top(cx)
 }
 
 pub(crate) fn card_tiles() -> Div {
@@ -248,7 +244,7 @@ impl CardTile {
             .items_start()
             .gap(px(CARD_GAP))
             .px(px(CARD_TILE_PADDING_X))
-            .py(cx.theme().dense(px(CARD_TILE_PADDING_Y)))
+            .py(px(CARD_TILE_PADDING_Y))
             .rounded(cx.theme().control_radius())
             .painted_interactive(self.paint, self.selected(), enabled)
             .text_size(crate::rems_from_px(13.0))

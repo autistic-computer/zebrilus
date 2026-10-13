@@ -64,16 +64,7 @@ impl Render for Tooltip {
                 .justify_between()
                 .font_family(cx.theme().font_family.clone())
                 .text_xs()
-                .text_color(cx.theme().foreground)
-                .surface_outline(cx.theme().border(), cx)
-                .surface_fill(
-                    cx.theme().surface(crate::Elevation::Panel).fill.opaque(),
-                    cx,
-                )
-                .rounded(cx.theme().radius)
-                .when(cx.theme().shadow, |this| {
-                    this.shadow(crate::lifted_shadow(cx))
-                })
+                .lifted_style(cx)
                 .refine_style(&self.style)
                 .child(div().child(self.text.clone()))
                 .when_some(key_binding, |this, kbd| {

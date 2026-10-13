@@ -10,14 +10,16 @@ use std::{
 
 use markdown::mdast;
 use zz_gpui::{
-    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    Hsla, InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement,
+    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, HighlightStyle, Hsla,
+    InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement, Pixels,
     ScrollHandle, SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _,
     Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
 };
 
 use crate::{
-    ActiveTheme as _, Icon, IconName, StyledExt, WindowExt as _, h_flex,
+    ActiveTheme as _, RULE_WIDTH, Sizable as _, StyledExt, WindowExt as _,
+    check::Check,
+    h_flex,
     highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
     tooltip::Tooltip,
     v_flex,
@@ -35,6 +37,8 @@ use super::{
     veil::{StreamingVeil, VeilKey},
 };
 use crate::Colorize as _;
+
+const BLOCKQUOTE_BAR_WIDTH: Pixels = px(3.0);
 
 thread_local! {
     static CODE_BLOCK_HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
@@ -729,7 +733,7 @@ impl CodeBlock {
                         px(12.0)
                     })
                     .rounded(cx.theme().radius)
-                    .bg(cx.theme().background.raised(2))
+                    .bg(cx.theme().surface(crate::Elevation::Popover).fill)
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_size(cx.theme().mono_font_size)
                     .relative()
@@ -757,7 +761,7 @@ impl CodeBlock {
                                 .flex()
                                 .items_center()
                                 .justify_end()
-                                .bg(cx.theme().background.raised(2))
+                                .bg(cx.theme().surface(crate::Elevation::Popover).fill)
                                 .rounded(cx.theme().radius)
                                 .child(actions(&self, window, cx)),
                         )
@@ -1007,7 +1011,8 @@ impl Paragraph {
                         });
                     }
                     if style.code {
-                        highlight.background_color = Some(cx.theme().background.raised(2));
+                        highlight.background_color =
+                            Some(cx.theme().surface(crate::Elevation::Popover).fill);
                     }
                     if let Some(color) = style.highlight {
                         highlight.background_color = Some(color);
@@ -1276,19 +1281,7 @@ impl BlockNode {
                                 .relative()
                                 .top(drop)
                                 .flex()
-                                .size(font_size)
-                                .items_center()
-                                .justify_center()
-                                .rounded(cx.theme().radius.half())
-                                .border_1()
-                                .border_color(cx.theme().foreground)
-                                .text_color(cx.theme().foreground.on())
-                                .when(checked, |this| {
-                                    this.bg(cx.theme().foreground).child(
-                                        Icon::new(IconName::Check)
-                                            .size(px(f32::from(font_size) * 0.65)),
-                                    )
-                                }),
+                                .child(Check::checkbox(checked).with_size(font_size)),
                         ),
                 )
             })
@@ -1522,9 +1515,7 @@ impl BlockNode {
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
                         .px_2()
                         .py_1()
-                        .when(!is_last_col, |this| {
-                            this.border_r_1().border_color(cx.theme().border())
-                        })
+                        .when(!is_last_col, |this| this.rule_right(cx))
                         .refine_style(&style.table_cell)
                         .child(cell.children.render(node_cx, window, cx)),
                 );
@@ -1533,8 +1524,7 @@ impl BlockNode {
                 div()
                     .id("row")
                     .w_full()
-                    .when(row_ix < row_count - 1, |this| this.border_b_1())
-                    .border_color(cx.theme().border())
+                    .when(row_ix < row_count - 1, |this| this.rule_bottom(cx))
                     .flex()
                     .flex_row()
                     .children(cells),
@@ -1551,8 +1541,8 @@ impl BlockNode {
                 div()
                     .min_w_full()
                     .w(px(total_w))
-                    .border_1()
-                    .border_color(cx.theme().border())
+                    .border(RULE_WIDTH)
+                    .border_color(cx.theme().divider_color())
                     .rounded(cx.theme().radius)
                     .children(rows),
             ))
@@ -1593,9 +1583,7 @@ impl BlockNode {
                         .w(Length::Definite(relative(len as f32)))
                         .px_2()
                         .py_1()
-                        .when(!is_last_col, |this| {
-                            this.border_r_1().border_color(cx.theme().border())
-                        })
+                        .when(!is_last_col, |this| this.rule_right(cx))
                         .refine_style(&style.table_cell)
                         .child(cell.children.render(node_cx, window, cx)),
                 );
@@ -1605,8 +1593,7 @@ impl BlockNode {
                 div()
                     .id("row")
                     .w_full()
-                    .when(row_ix < row_count - 1, |this| this.border_b_1())
-                    .border_color(cx.theme().border())
+                    .when(row_ix < row_count - 1, |this| this.rule_bottom(cx))
                     .flex()
                     .flex_row()
                     .children(cells),
@@ -1620,8 +1607,8 @@ impl BlockNode {
                 div()
                     .id(("table", options.ix))
                     .w_full()
-                    .border_1()
-                    .border_color(cx.theme().border())
+                    .border(RULE_WIDTH)
+                    .border_color(cx.theme().divider_color())
                     .rounded(cx.theme().radius)
                     .overflow_hidden()
                     .children(rows)
@@ -1694,8 +1681,8 @@ impl BlockNode {
                         .id(("blockquote", ix))
                         .w_full()
                         .text_color(cx.theme().foreground.muted())
-                        .border_l_3()
-                        .border_color(cx.theme().background.raised(2).active())
+                        .border_l(BLOCKQUOTE_BAR_WIDTH)
+                        .border_color(cx.theme().divider_color())
                         .px_4()
                         .children({
                             let children_len = children.len();
@@ -1753,12 +1740,7 @@ impl BlockNode {
             }
             BlockNode::HorizontalRule { .. } => div()
                 .pb(mb)
-                .child(
-                    div()
-                        .id("horizontal-rule")
-                        .bg(cx.theme().border())
-                        .h(px(2.)),
-                )
+                .child(div().id("horizontal-rule").w_full().rule_top(cx))
                 .into_any_element(),
             BlockNode::Break { .. } => div().id("break").into_any_element(),
             BlockNode::Unknown { .. } | BlockNode::Definition { .. } => div().into_any_element(),

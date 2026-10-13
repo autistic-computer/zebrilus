@@ -2140,13 +2140,14 @@ impl AgentView {
                             let is_selected = selected == Some(result_index);
                             let is_current =
                                 current_session.as_deref() == Some(session.session_id.as_str());
-                            let detail_color = if is_selected {
-                                cx.theme()
-                                    .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
-                                    .selected_text
-                            } else {
-                                cx.theme().foreground.muted()
-                            };
+                            let detail_color = cx
+                                .theme()
+                                .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
+                                .muted_at(if is_selected {
+                                    zz_ui::PaintState::Selected
+                                } else {
+                                    zz_ui::PaintState::Rest
+                                });
                             let pointer_view = rows_view.clone();
                             let click_view = rows_view.clone();
                             let delete_view = rows_view.clone();
@@ -2471,7 +2472,8 @@ impl AgentView {
                                     )
                                     .child(
                                         zz_ui::picker::picker_list()
-                                            .p(px(CHROME_GAP))
+                                            .list_inset(cx)
+                                            .pb(px(CHROME_GAP))
                                             .pt_0()
                                             .pr_0()
                                             .child(
@@ -2569,13 +2571,15 @@ impl AgentView {
                                 div()
                                     .flex_none()
                                     .text_size(zz_ui::rems_from_px(11.0))
-                                    .text_color(if highlighted {
+                                    .text_color(
                                         cx.theme()
                                             .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
-                                            .selected_text
-                                    } else {
-                                        cx.theme().foreground.muted()
-                                    })
+                                            .muted_at(if highlighted {
+                                                zz_ui::PaintState::Selected
+                                            } else {
+                                                zz_ui::PaintState::Rest
+                                            }),
+                                    )
                                     .child(directory.sessions.to_string()),
                             )
                         })
@@ -2615,13 +2619,13 @@ impl AgentView {
             .min_w_0()
             .min_h_0()
             .when(self.history_compact, |column| {
-                column.w_full().h(zz_gpui::relative(0.35)).border_b(px(0.5))
+                column.w_full().h(zz_gpui::relative(0.35)).rule_bottom(cx)
             })
             .when(!self.history_compact, |column| {
-                column.w(zz_gpui::relative(0.36)).border_r(px(0.5))
+                column.w(zz_gpui::relative(0.36)).rule_right(cx)
             })
-            .border_color(cx.theme().divider_color())
-            .p(px(CHROME_GAP))
+            .list_inset(cx)
+            .py(px(CHROME_GAP))
             .pr_0()
             .child(
                 zz_ui::v_flex()

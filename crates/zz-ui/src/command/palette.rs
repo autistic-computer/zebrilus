@@ -6,7 +6,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Sizable as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Sizable as _,
+    StyledExt as _, Tone,
     badge::Badge,
     input::{Input, InputState},
     kbd::Keycap,
@@ -27,7 +28,7 @@ impl PaletteStatus {
     fn color(self, cx: &App) -> Hsla {
         match self {
             Self::Online => cx.theme().success,
-            Self::Running => cx.theme().accent,
+            Self::Running => cx.theme().foreground.muted(),
             Self::Waiting => cx.theme().warning,
             Self::Offline => cx.theme().foreground.faint(),
         }
@@ -62,11 +63,7 @@ pub struct PaletteRow {
 }
 
 fn status_dot(status: PaletteStatus, cx: &App) -> Div {
-    div()
-        .size(px(8.0))
-        .flex_none()
-        .rounded_full()
-        .bg(status.color(cx))
+    crate::navigation::status_dot(status.color(cx))
 }
 
 fn pill(pill: PalettePill, cx: &App) -> Badge {
@@ -168,13 +165,15 @@ pub(super) fn palette_entry(
         })
         .collect::<Vec<_>>();
 
+    let height = px(if cx.theme().inset_rows() {
+        command_palette_row_height() - 2.0
+    } else {
+        command_palette_row_height()
+    });
     ListItem::new(id)
         .w_full()
-        .h(px(if cx.theme().inset_rows() {
-            command_palette_row_height(cx) - 2.0
-        } else {
-            command_palette_row_height(cx)
-        }))
+        .h(height)
+        .menu_item_corners(height, cx)
         .pl(px(12.0 + row.indent))
         .pr(px(12.0))
         .py(px(4.0))
@@ -234,8 +233,7 @@ pub(super) fn palette_entry(
                     )
                 })
                 .children(row.status.map(|status| {
-                    status_dot(status, cx)
-                        .when(selected, |dot| dot.border_1().border_color(secondary))
+                    status_dot(status, cx).when(selected, |dot| dot.surface_outline(secondary, cx))
                 }))
                 .child(
                     div()
@@ -286,17 +284,7 @@ pub(super) fn palette_entry(
                 })
                 .children(badge)
                 .when(row.running, |element| {
-                    element.child(
-                        div()
-                            .size(px(8.0))
-                            .flex_none()
-                            .rounded_full()
-                            .bg(if selected {
-                                foreground
-                            } else {
-                                cx.theme().accent
-                            }),
-                    )
+                    element.child(crate::navigation::status_dot(secondary))
                 }),
         )
 }
@@ -307,7 +295,7 @@ pub fn command_palette_section(
     cx: &App,
 ) -> Div {
     div()
-        .h(px(command_palette_row_height(cx)))
+        .h(px(command_palette_row_height()))
         .flex()
         .items_center()
         .justify_between()
@@ -478,7 +466,8 @@ mod tests {
                                 .theme()
                                 .paint(Tone::Neutral, Emphasis::Ghost)
                                 .muted_at(PaintState::Selected)
-                            && quad.bounds.size.width.0 == 8.0 * window.scale_factor()
+                            && quad.bounds.size.width.0
+                                == crate::navigation::STATUS_DOT_SIZE * window.scale_factor()
                             && quad.border_widths.top.0 > 0.0
                     }),
                     "selected running agent remains visible on the accent selection"

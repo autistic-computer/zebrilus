@@ -22,11 +22,14 @@ use zz_gpui::{Context, SharedString, Task};
 use zz_ui::command::palette_shortcut_hint;
 #[cfg(any(feature = "editor-pane", test))]
 use zz_ui::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, IconName, h_flex,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, IconName, StyledExt as _, h_flex,
     input::{InputEvent, InputState, MoveDown, MoveUp},
     scroll::ScrollableElement as _,
     v_flex,
 };
+
+#[cfg(any(feature = "editor-pane", test))]
+const PATH_ROW_HEIGHT: f32 = 26.0;
 
 const MAX_PICKER_ROWS: usize = 500;
 const WORKSPACE_PRIOR: u32 = 1 << 10;
@@ -745,6 +748,7 @@ impl FilePickerView {
                             is_selected,
                             cx,
                         )
+                        .menu_item_corners(px(PATH_ROW_HEIGHT), cx)
                         .on_mouse_move(move |_, _, cx| {
                             pointer_view.update(cx, |picker, cx| {
                                 if picker.selected != Some(index) {
@@ -838,7 +842,8 @@ impl Render for FilePickerView {
                             .flex_1()
                             .min_h_0()
                             .overflow_hidden()
-                            .p(px(CHROME_GAP))
+                            .list_inset(cx)
+                            .py(px(CHROME_GAP))
                             .child(self.render_rows(cx))
                             .child(self.render_notes(cx))
                             .when(empty, |this| {

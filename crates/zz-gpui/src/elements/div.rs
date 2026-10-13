@@ -3519,6 +3519,7 @@ impl Interactivity {
                         scroll_offset.x += delta_x;
                     }
                     if *scroll_offset != old_scroll_offset {
+                        window.prevent_default();
                         cx.notify(current_view);
                     }
                 }

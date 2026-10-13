@@ -918,6 +918,7 @@ impl StateInner {
         let padding = self.last_padding.unwrap_or_default();
         let scroll_max =
             (self.items.summary().height + padding.top + padding.bottom - height).max(px(0.));
+        let old_scroll_top = self.scroll_top(scroll_top);
         let new_scroll_top = match bounce {
             Some(phase) => {
                 let current = self
@@ -928,10 +929,11 @@ impl StateInner {
                     .overscroll
                     .scroll(-current, delta.y, -scroll_max, px(0.), height, phase)
             }
-            None => (self.scroll_top(scroll_top) - delta.y)
-                .max(px(0.))
-                .min(scroll_max),
+            None => (old_scroll_top - delta.y).max(px(0.)).min(scroll_max),
         };
+        if new_scroll_top != old_scroll_top {
+            window.prevent_default();
+        }
 
         if self.alignment == ListAlignment::Bottom && new_scroll_top == scroll_max {
             self.pending_scroll = None;

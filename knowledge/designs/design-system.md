@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Design system: tone, emphasis and ground"
-description: "How zz chrome picks colors: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, planes name an elevation, and clippy rejects hand-mixed washes and opacities outside the kit."
+description: "How zz chrome picks colors and shapes: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, planes name an elevation, edges and shadows come from kit recipes that follow the look, and clippy rejects hand-mixed washes, opacities, borders and shadows outside the kit."
 status: Built
 resource: crates/zz-gpui-kit/src/foundation/variant.rs
 tags:
@@ -10,7 +10,7 @@ tags:
 - design-system
 - zz-gpui-kit
 - design-plan
-timestamp: 2026-10-12T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Why
@@ -88,7 +88,14 @@ Without it, the keycap would compute muted gray against the window.
 
 A surface floating over content takes its fill `.opaque()` (`Ground::opaque` keeps the elevation). `popover_style`, tooltips, sheets and notifications fill from it.
 
-A ground remembers its `elevation`, and `paint.ground_at` passes it on. Controls cast their shadow only on the window: on a panel or a popover they keep the hairline and drop the shadow, so a stepper in a menu or a field on a settings card does not stack a third layer on a surface that already stands off the window. `control_highlight_on(ground)` and `control_surface_on(ground)` apply the rule; `Button` reads its `.on` ground.
+Surfaces take their shape from the kit's recipes in `foundation/styled.rs`, which read the look, so a theme's outline, corners and shadows reach every one of them:
+- `card_style`: a raised panel that sits in the window: the agent's user message bubble, attachment tiles and Mermaid diagrams. The opaque panel fill, `surface_edge`, the theme radius and `contact_shadow`. Settings cards build the same edge themselves, `surface_edge` on the card's ground with `contact_shadow` behind the group.
+- `floating_surface`: what everything floating over the window shares, without a shadow. The popover fill or the look's glass, `surface_edge`, the theme radius and the foreground ink.
+- `popover_style`: `floating_surface` with `floating_shadow`, for menus, popovers, dialogs and sheets.
+- `lifted_style`: `floating_surface` with `lifted_shadow`, for tooltips and toasts.
+- `control_surface` and `control_surface_on(ground)`: a control's hairline at the outline width, and its shadow.
+
+A ground remembers its `elevation`, and `paint.ground_at` passes it on. Controls cast their shadow only on the window, and only when the look's `shadows` is `all`: on a panel or a popover they keep the hairline and drop the shadow, so a stepper in a menu or a field on a settings card does not stack a third layer on a surface that already stands off the window. `control_highlight_on(ground)` and `control_surface_on(ground)` apply the rule; `Button` reads its `.on` ground.
 
 GPUI draws a shadow under the whole box, not only outside it, so a translucent fill over a shadow turns muddy (a 12% wash over a 20% shadow reads as 30%). A control that casts a shadow composites its fill over its ground first.
 
@@ -96,10 +103,13 @@ A pane fills with `theme.pane_background(fill)`: its own fill (the window color,
 
 ## Lines and backdrops
 
-- A rule between sections is `theme.divider_color()`, the border root at the look's `divider` strength. It replaces the separate rule recipes the audit found.
-- The edge of a card or panel is `theme.border()`.
+- A rule between sections is `rule_top`, `rule_bottom`, `rule_left` or `rule_right`: `RULE_WIDTH` (1px) in `theme.divider_color()`, which is now just `theme.border()`. It replaces the separate rule recipes the audit found.
+- The edge of a card or a floating surface is `surface_edge`: `theme.border()` at the look's outline width, and no edge at all when the outline is 0. `surface_outline(color)` is the same edge in another color. Glass draws its own rim, so a floating surface on glass hides the hairline and keeps its width.
+- A focus ring is `focus_ring(&paint)`: `FOCUS_RING_WIDTH` (1.5px) in the paint's focus color. The chosen tile in a picker takes `chosen_ring`, 2px in the accent.
 - Anything that dims the window behind a modal, a sheet or a slide-over fills with `theme.scrim`.
-- Every drop shadow is drawn in `theme.shadow_color`, which the theme sets per mode, so a light theme on a tinted background can tint its shadows instead of graying them. `contact_shadow` is the tight shadow a surface sits on, `control_shadow` the same at the look's `control-shadow` share, and `lifted_shadow` the small one under tooltips, toasts and switch thumbs.
+- Every drop shadow is drawn in `theme.shadow_color`, which the theme sets per mode, so a light theme on a tinted background can tint its shadows instead of graying them.
+- The look's `shadows` (`zz_gpui_kit::Shadows`) says which surfaces cast one. `None` casts nothing. `Surfaces` gives cards, popovers, dialogs and floating panes theirs and keeps controls flat. `All` adds a small one under controls on the window. `Theme::surface_shadows` and `Theme::control_shadows` read it.
+- The shadow recipes check it themselves and return no shadow when the look turns theirs off: `contact_shadow` is the tight shadow a pane or a card sits on, `control_shadow` the same under a control, `floating_shadow` the contact shadow with a deep, soft one under it for anything floating over the window, and `lifted_shadow` the small one under tooltips, toasts and switch thumbs.
 
 ## Text
 
@@ -125,6 +135,8 @@ The shared chrome, `field_chrome` in `input/field.rs`, does three things:
 - it always draws at least a 1px border, clear when the paint has none, so focusing never moves the text;
 - it hovers to the soft hover fill;
 - it focuses to the focus color.
+
+`input::field_chrome` and `input::field_paint` are public, for a field that holds more than its text. The agent composer is a field shell built this way, not a card: the neutral paint at the look's field emphasis around its attachments, input and controls, the theme radius, and the focus border while its input has focus.
 
 **Text inside a field:**
 - placeholders are `faint_at`;
@@ -153,16 +165,27 @@ Kit widgets on the model:
   - On: the tone solid (primary by default), with `.on(ground)`.
   - Corners: a checkbox at half the theme radius, a radio round.
 - **`Button::tone(..)` / `.emphasis(..)`**: `ButtonVariant` is `Paint(Tone, Emphasis)`, `Link` or `Text`. The shorthands name the common pairs: `primary` (primary solid), `secondary` (neutral soft, the default), `ghost` (neutral ghost), `danger`, `warning` and `success` (soft). A dialog's destructive OK is `Paint(Danger, Solid)`.
-- **Tiles and rows** are not widgets. A tile is `painted_interactive(theme.paint(Neutral, Soft), ..)`, a row the same with `Ghost`.
+- **Tiles and rows** are not widgets. A tile is `painted_interactive(theme.paint(Neutral, Soft), ..)`, a row the same with `Ghost`; `zz_ui::picker::list_row` builds a row at a given height. A list of rows takes `list_inset`: padded in by the look's row inset, with a hair of space between rows while they float. Rows round with `menu_item_corners(height)`, which reads `Theme::row_radius(height)` and goes square when the row inset is 0.
+- **`touch::press_highlight`**: the press layer under a control on a touch screen. Without a color it paints the neutral ghost paint's pressed fill, and its corners clamp to its size.
 
 **Corners:**
-- Badges and keycaps round with `control_radius()`, like buttons: pills in full, squircles in modern, square in flat.
+- Badges and keycaps round with `control_radius()`, like buttons: pills when the radius is above 24 (Full), the theme radius below that, square at 0.
 - Checkboxes round at half the theme radius; radios are round.
 
 # Rules
 
 - Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit. Clippy enforces it: the root `clippy.toml` disallows `Hsla::opacity` and the mixing transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`, `hover`, `active`, `on`, `floating`). The kit's own `clippy.toml` leaves them out, since the kit is where the recipes are mixed. `muted()`, `faint()` and `opaque()` stay open.
-- A color that is deliberately not a recipe takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function. Today that is the theme previews in Appearance, the element picker overlay (page CSS), the blurred chrome background, and the pane inactive dimming and drag veil, which scale by their own look knobs.
+- Draw edges and shadows with the kit's recipes. The root `clippy.toml` also disallows, outside the kit, `zz_gpui::Styled::border` and its sized and per-side forms (`border_1` to `border_4`, and `border_t`, `border_b`, `border_l`, `border_r`, `border_x` and `border_y` with their sizes), `shadow_2xs` through `shadow_2xl`, and the type `zz_gpui::BoxShadow`. The recipes (`control_surface`, `surface_edge`, `surface_outline`, `card_style`, `rule_top` and the other rules, `focus_ring`, `chosen_ring`, and the shadow functions) read the look, so a theme's outline and shadows reach every edge. The kit's `clippy.toml` keeps only the raw-color ban, since the recipes are built there.
+- A color, edge or shadow that is deliberately not a recipe takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function, or `clippy::disallowed_types` where it names `BoxShadow`. In chrome, today that is:
+  - the theme previews in Appearance, and the focus halo and selection frame around its tiles;
+  - the element picker overlay (page CSS) and the blurred chrome background;
+  - the pane inactive dimming and drag veil, which scale by their own settings;
+  - a floating pane's own border colour (`forced_edge` in `pane.rs`: the active accent or a tmux `popup-border-style`) and a tmux menu's literal one (`literal_edge` in `command/floating.rs`);
+  - `pane_drop_preview`, which traces the target pane's own border width;
+  - the window's drop shadow under client-side decorations (`window_shadow` in `crates/zz/src/window/frame.rs`);
+  - the ring that cuts the agent trace count badge out of the icon it overlaps.
+
+  The storybook adds `story::Framed::framed`, the edge of a frame that stands in for a window.
 - A widget nested in a painted surface takes that surface's `ground_at(state)`.
 - Secondary text comes from `muted_at`, not from `opacity(..)` on the foreground.
 - A variant that cannot be expressed as a tone and an emphasis is a missing recipe in the kit, not a local one-off.
@@ -175,7 +198,7 @@ Kit widgets on the model:
 | Skip, Cancel, dismiss | neutral · ghost |
 | A secondary action beside the main one | neutral · soft |
 | Option tile in a question or permission card | neutral · soft, selectable |
-| Menu, list and chooser rows | neutral · ghost, selectable |
+| Menu, list and chooser rows | neutral · ghost, selectable (`picker::list_row`) |
 | Digit keycap on a tile | neutral · outline, on the tile's ground |
 | Shortcut hint (`Kbd`) | neutral · soft; text in menus and tooltips |
 | Phone key | neutral · soft opaque; current when latched; neutral · solid when held |
@@ -189,17 +212,23 @@ Kit widgets on the model:
 | Text, number, select field | neutral at the look's field emphasis |
 | Invalid field | danger at the look's field emphasis |
 | Inline field (rename in place) | the look's field emphasis, no focus ring |
+| Agent composer | a field shell: `field_chrome` with the neutral field paint, not a card |
+| User message bubble, attachment tile, Mermaid diagram | a card (`card_style`) |
 | Browser address bar | neutral · ghost field |
 | Browser tab | neutral · soft when active, ghost otherwise |
 | Settings control | its own recipe, on `settings_card_ground` |
 | Switch, slider | primary · solid when on, neutral soft when off |
 | tmux display-menu | a popover menu; neutral · ghost rows; literal tmux colours override |
 | Display-panes chip | popover surface; accent ring and ink when active |
+| Pane status badge, pane overlay lines | `pane_chip`: neutral · soft opaque at the control radius with the control edge, and the focus ring when focused |
+| Status dot (bell, activity, agent state, host) | `navigation::status_dot`: one 6px dot in the state's color; a working agent is the muted ink |
 | A pane's failure (browser, editor, agent) | `inline_alert`: popover surface in the alert layout; primary · solid Try again last |
 
 # Where to look
 
 - `crates/zz-gpui-kit/src/foundation/variant.rs`: `Tone`, `Emphasis`, `Paint`, `Ground`, the recipes.
+- `crates/zz-gpui-kit/src/foundation/styled.rs`: the edge, surface, rule, row, ring and shadow recipes.
+- `crates/zz-gpui-kit/src/foundation/theme.rs`: `Shadows`, `CORNER_SMOOTHING`, and the look helpers (`outlined`, `surface_shadows`, `control_shadows`, `row_radius`, `inner_radius`).
 - `crates/zz-gpui-kit/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
 - The storybook's Foundation → Design system story (`#/design-system`) draws every recipe from the same code. Its sections are:
   - tones;
@@ -227,3 +256,9 @@ One component family at a time, each checked in the storybook and in the app:
    - Rules read `divider_color()`, edges `border()`, quiet text `faint()`, hover and press washes the ghost paint, danger callouts the danger paints, and backdrops the scrim.
    - The browser address bar is a ghost field and its tabs soft or ghost; `Button` and `Select` take a ground, and settings controls paint on the card's.
    - Clippy rejects hand-mixed fills outside the kit (see Rules).
+7. **Shapes** (done, 2026-10-13):
+   - Edges, rules, rings and shadows come from the kit's recipes, which read the look: `surface_edge`, `card_style`, `floating_surface`, `popover_style`, `lifted_style`, the `rule_*` family, `list_inset`, `menu_item_corners`, `focus_ring`, `chosen_ring`, and `contact_shadow`, `control_shadow`, `floating_shadow` and `lifted_shadow`.
+   - Clippy rejects hand-drawn borders, the `shadow_*` presets and `BoxShadow` outside the kit (see Rules).
+   - The agent composer is a field shell; the user message bubble, attachment tiles and Mermaid diagrams are cards.
+   - Rows share `picker::list_row`, dots `navigation::status_dot`, and pane badges and overlay lines `pane_chip`. Menu separators are 1px rules.
+   - The look shrank to nine keys to match (see [interface themes](/designs/interface-themes.md)).

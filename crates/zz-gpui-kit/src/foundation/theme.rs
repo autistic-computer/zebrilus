@@ -3,7 +3,6 @@
 use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
-    time::Duration,
 };
 
 use zz_gpui::{
@@ -93,20 +92,11 @@ pub struct Theme {
     pub mono_font_size: Pixels,
     pub radius: Pixels,
     pub contrast: f32,
-    pub shadow: bool,
-    pub shadow_strength: f32,
-    /// How much of the shadow strength controls cast: buttons, fields,
-    /// highlighted rows. 0 keeps them flat while floating surfaces still
-    /// cast theirs.
-    pub control_shadow: f32,
-    /// Scales the drop shadows under floating surfaces: their offset and
-    /// blur.
-    pub elevation: f32,
-    /// How strongly controls and floating surfaces draw their hairline
-    /// outline: 1 is the usual hairline, 0 none, more is brighter.
-    pub outline: f32,
-    /// The width of that outline.
-    pub outline_width: Pixels,
+    /// The width of the hairline every edged thing draws: controls, cards
+    /// and floating surfaces. Zero draws none.
+    pub outline: Pixels,
+    /// Which surfaces cast drop shadows.
+    pub shadows: Shadows,
     /// How far selected and hovered list rows float in from the list's
     /// edges, and whether they stand apart. Zero makes them full-width bands
     /// that touch.
@@ -117,18 +107,6 @@ pub struct Theme {
     pub primary: PrimaryStyle,
     /// What fields are drawn as at rest.
     pub field: FieldStyle,
-    /// The default corner smoothing windows draw with.
-    pub corner_smoothing: f32,
-    /// Scales the height of controls and list rows: 1 is the usual size,
-    /// less packs them tighter.
-    pub density: f32,
-    /// How much of a control's fill covers what is behind it: 1 is solid,
-    /// less lets glass and backdrops show through.
-    pub control_fill: f32,
-    /// How strongly dividers draw: 1 is the usual rule, 0 none.
-    pub divider: f32,
-    /// How fast transitions play: 1 is the usual pace, 2 twice as fast.
-    pub animation_speed: f32,
     /// Floating surfaces (popovers, menus, tooltips, notifications, dialogs,
     /// sheets, floating panes) become this glass when set, and pane frames
     /// take its edge. Each surface tints it with its own color; the
@@ -153,6 +131,23 @@ impl Default for Theme {
     fn default() -> Self {
         Self::from(&*ThemeColor::light())
     }
+}
+
+/// The corner smoothing every window draws with.
+pub const CORNER_SMOOTHING: f32 = 4.0;
+
+/// Which surfaces cast drop shadows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Shadows {
+    /// Nothing casts a shadow.
+    None,
+    /// Cards, popovers, dialogs and floating panes cast theirs; controls stay
+    /// flat.
+    Surfaces,
+    /// Controls on the window cast a small one too.
+    #[default]
+    All,
 }
 
 /// What fills selected menu and list rows.
@@ -198,13 +193,28 @@ impl Theme {
         }
     }
 
-    /// Whether controls cast shadows and draw the highlight ring.
+    /// Whether controls on the window cast their small shadow.
     pub fn control_shadows(&self) -> bool {
-        self.shadow && self.shadow_strength > 0.0 && self.control_shadow > 0.0
+        self.shadows == Shadows::All
+    }
+
+    /// Whether cards, popovers, dialogs and floating panes cast shadows.
+    pub fn surface_shadows(&self) -> bool {
+        self.shadows != Shadows::None
     }
 
     pub fn menu_radius(&self) -> Pixels {
         (self.radius - px(4.0)).max(px(0.0))
+    }
+
+    /// The corner radius of a list row `row_height` tall: rounded while rows
+    /// float, square when the look's row inset is zero.
+    pub fn row_radius(&self, row_height: Pixels) -> Pixels {
+        if self.inset_rows() {
+            self.menu_radius().min(row_height * 0.40)
+        } else {
+            px(0.0)
+        }
     }
 
     /// Whether list rows float as rounded highlights, inset from the list's
@@ -214,19 +224,9 @@ impl Theme {
         self.row_inset > px(0.0)
     }
 
-    /// Whether controls and floating surfaces draw an outline at all.
+    /// Whether edged things draw their hairline at all.
     pub fn outlined(&self) -> bool {
-        self.outline > 0.0 && self.outline_width > px(0.0)
-    }
-
-    /// `length` at the theme's density.
-    pub fn dense(&self, length: Pixels) -> Pixels {
-        (length * self.density).round()
-    }
-
-    /// `color` as the fill of a control, at the theme's control fill.
-    pub fn control_background(&self, color: Hsla) -> Hsla {
-        color.opacity(self.control_fill)
+        self.outline > px(0.0)
     }
 
     /// The look's glass, when it draws anything a plain fill would not.
@@ -305,12 +305,7 @@ impl Theme {
 
     /// The color of a divider rule.
     pub fn divider_color(&self) -> Hsla {
-        self.border().opacity(self.divider)
-    }
-
-    /// `base` at the theme's animation speed.
-    pub fn duration(&self, base: Duration) -> Duration {
-        base.div_f32(self.animation_speed.clamp(0.1, 10.0))
+        self.border()
     }
 
     /// The radius of a surface whose content sits `inset` inside it, so the
@@ -321,6 +316,12 @@ impl Theme {
         } else {
             px(0.0)
         }
+    }
+
+    /// The radius of content that sits `inset` inside a surface, so the two
+    /// stay concentric. Square corners stay square.
+    pub fn inner_radius(&self, inset: Pixels) -> Pixels {
+        (self.radius - inset).max(px(0.0))
     }
 
     pub fn set_contrast(&mut self, value: f32) {
@@ -414,21 +415,12 @@ impl From<&ThemeColor> for Theme {
             mono_font_size: px(13.),
             radius: px(6.),
             contrast: 1.0,
-            shadow: true,
-            shadow_strength: 1.0,
-            control_shadow: 1.0,
-            elevation: 1.0,
-            outline: 1.0,
-            outline_width: px(0.5),
+            outline: px(0.5),
+            shadows: Shadows::All,
             row_inset: px(4.0),
             selection: SelectionStyle::Accent,
             primary: PrimaryStyle::Foreground,
             field: FieldStyle::Soft,
-            corner_smoothing: 4.0,
-            density: 1.0,
-            control_fill: 1.0,
-            divider: 1.0,
-            animation_speed: 1.0,
             glass: None,
             pane_background_opacity: 0.5,
             pane_frames: false,

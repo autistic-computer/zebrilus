@@ -71,21 +71,15 @@ pub trait StyledExt: Styled + Sized {
             .mr(margins.right.into())
     }
 
-    /// A 1px border in the theme's ring color.
-    #[inline]
-    fn focused_border(self, cx: &App) -> Self {
-        self.border_1().border_color(cx.theme().accent)
-    }
-
     fn control_highlight(self, cx: &App) -> Self {
         self.control_highlight_on(cx.theme().ground(), cx)
     }
 
-    /// The control's hairline, and its shadow when `ground` is the window: a
-    /// control on a panel or a popover stays flat, and so does every control
-    /// when the theme turns control shadows off.
+    /// The control's hairline color, and its shadow when `ground` is the
+    /// window: a control on a panel or a popover stays flat, and so does every
+    /// control unless the look's shadows include controls.
     fn control_highlight_on(self, ground: Ground, cx: &App) -> Self {
-        let this = self.border_color(cx.theme().foreground.opacity(0.1 * cx.theme().outline));
+        let this = self.border_color(cx.theme().foreground.opacity(CONTROL_EDGE_ALPHA));
         if cx.theme().control_shadows() && ground.elevation == Elevation::Window {
             this.shadow(control_shadow(cx))
         } else {
@@ -97,24 +91,88 @@ pub trait StyledExt: Styled + Sized {
         self.control_surface_on(cx.theme().ground(), cx)
     }
 
+    /// A control's hairline at the look's outline width, and its shadow.
     fn control_surface_on(self, ground: Ground, cx: &App) -> Self {
         if cx.theme().outlined() {
-            self.border(cx.theme().outline_width)
+            self.border(cx.theme().outline)
                 .control_highlight_on(ground, cx)
         } else {
             self.control_highlight_on(ground, cx)
         }
     }
 
-    /// The outline of a floating surface drawn in `color`, at the theme's
-    /// outline width and strength.
+    /// An edge in `color` at the look's outline width, or none when the look
+    /// has no outline.
     fn surface_outline(self, color: Hsla, cx: &App) -> Self {
-        let this = self.border_color(color.opacity(cx.theme().outline));
+        let this = self.border_color(color);
         if cx.theme().outlined() {
-            this.border(cx.theme().outline_width)
+            this.border(cx.theme().outline)
         } else {
             this
         }
+    }
+
+    /// The edge of a card or a floating surface: the border color at the
+    /// look's outline width. Glass hides it behind its own rim.
+    fn surface_edge(self, cx: &App) -> Self {
+        self.surface_outline(cx.theme().border(), cx)
+    }
+
+    /// A card: a raised panel that sits in the window with the look's edge,
+    /// corners and contact shadow. A message bubble, an attachment tile, a
+    /// diagram frame.
+    fn card_style(self, cx: &App) -> Self {
+        let theme = cx.theme();
+        self.bg(theme.surface(Elevation::Panel).fill.opaque())
+            .surface_edge(cx)
+            .rounded(theme.radius)
+            .shadow(contact_shadow(cx))
+    }
+
+    /// A rule along the top edge.
+    fn rule_top(self, cx: &App) -> Self {
+        self.border_t(RULE_WIDTH)
+            .border_color(cx.theme().divider_color())
+    }
+
+    /// A rule along the bottom edge.
+    fn rule_bottom(self, cx: &App) -> Self {
+        self.border_b(RULE_WIDTH)
+            .border_color(cx.theme().divider_color())
+    }
+
+    /// A rule along the left edge.
+    fn rule_left(self, cx: &App) -> Self {
+        self.border_l(RULE_WIDTH)
+            .border_color(cx.theme().divider_color())
+    }
+
+    /// A rule along the right edge.
+    fn rule_right(self, cx: &App) -> Self {
+        self.border_r(RULE_WIDTH)
+            .border_color(cx.theme().divider_color())
+    }
+
+    /// A list of rows: padded in from its edges by the look's row inset, with
+    /// a hair of space between rows while they float.
+    fn list_inset(self, cx: &App) -> Self {
+        let this = self.px(cx.theme().row_inset);
+        if cx.theme().inset_rows() {
+            this.gap_y_0p5()
+        } else {
+            this
+        }
+    }
+
+    /// A focus ring in `paint`'s focus color.
+    fn focus_ring(self, paint: &crate::Paint) -> Self {
+        self.border(FOCUS_RING_WIDTH).border_color(paint.focus)
+    }
+
+    /// A ring marking the chosen tile in a picker, in the accent.
+    fn chosen_ring(self, cx: &App) -> Self {
+        self.border(CHOSEN_RING_WIDTH)
+            .border_color(cx.theme().accent)
     }
 
     /// Fills a floating surface with `color`, or with the theme's glass
@@ -129,8 +187,10 @@ pub trait StyledExt: Styled + Sized {
         }
     }
 
+    /// A list row's corners: rounded while rows float, square bands when the
+    /// look's row inset is zero.
     fn menu_item_corners(self, row_height: Pixels, cx: &App) -> Self {
-        self.rounded(cx.theme().menu_radius().min(row_height * 0.40))
+        self.rounded(cx.theme().row_radius(row_height))
             .corner_radius_mode(zz_gpui::CornerRadiusMode::Fixed)
             .corner_smoothing(2.5)
     }
@@ -157,31 +217,29 @@ pub trait StyledExt: Styled + Sized {
     font_weight!(font_extrabold, EXTRA_BOLD);
     font_weight!(font_black, BLACK);
 
-    /// The floating-panel look: popover background, border, shadow and radius.
+    /// The floating-panel look: popover background, edge, shadow and radius.
     #[inline]
     fn popover_style(self, cx: &App) -> Self {
-        let surface = self
-            .text_color(cx.theme().foreground)
-            .control_surface(cx)
+        self.floating_surface(cx).shadow(floating_shadow(cx))
+    }
+
+    /// What every surface floating over the window shares, without its
+    /// shadow: the popover fill (or the look's glass), the edge, the corners
+    /// and the ink.
+    fn floating_surface(self, cx: &App) -> Self {
+        self.text_color(cx.theme().foreground)
+            .surface_edge(cx)
             .surface_fill(
                 cx.theme().surface(crate::Elevation::Popover).fill.opaque(),
                 cx,
             )
-            .rounded(cx.theme().radius);
-        if cx.theme().shadow && cx.theme().shadow_strength > 0.0 {
-            let elevation = cx.theme().elevation;
-            let mut shadows = contact_shadow(cx);
-            shadows.push(BoxShadow {
-                color: cx.theme().shadow_color.opacity(cx.theme().shadow_strength),
-                offset: point(px(0.0), px(12.0 * elevation)),
-                blur_radius: px(32.0 * elevation),
-                spread_radius: px(-4.0 * elevation),
-                inset: false,
-            });
-            surface.shadow(shadows)
-        } else {
-            surface
-        }
+            .rounded(cx.theme().radius)
+    }
+
+    /// A small chip floating over content, like a tooltip or a toast: the
+    /// floating surface with the lifted shadow.
+    fn lifted_style(self, cx: &App) -> Self {
+        self.floating_surface(cx).shadow(lifted_shadow(cx))
     }
 
     fn corner_radii(self, radius: Corners<Pixels>) -> Self {
@@ -194,40 +252,40 @@ pub trait StyledExt: Styled + Sized {
 
 impl<E: Styled> StyledExt for E {}
 
-/// How far the ring reaches past the element's own edge.
-pub const SURFACE_RING_OUTSET: Pixels = px(0.5);
+/// The width of every divider rule.
+pub const RULE_WIDTH: Pixels = px(1.0);
 
-const RING_SPREAD: Pixels = SURFACE_RING_OUTSET;
+/// The width of a focus ring.
+pub const FOCUS_RING_WIDTH: Pixels = px(1.5);
 
-const RING_INK_FLOOR: f32 = 0.12;
+const CHOSEN_RING_WIDTH: Pixels = px(2.0);
 
-fn ring(sink: Pixels, cx: &App) -> BoxShadow {
-    let ink = cx.theme().shadow_color;
-    BoxShadow {
-        color: ink.divide(ink.a.max(RING_INK_FLOOR)),
-        offset: point(px(0.), sink),
-        blur_radius: px(0.),
-        spread_radius: RING_SPREAD,
-        inset: false,
-    }
-}
+/// How strongly a control's hairline shows the foreground.
+const CONTROL_EDGE_ALPHA: f32 = 0.1;
 
 /// The tight shadow a surface sits on: a pane, a card, the edge of a popover.
+/// None when the look's surfaces cast no shadows.
 pub fn contact_shadow(cx: &App) -> Vec<BoxShadow> {
-    tight_shadow(cx.theme().shadow_strength, cx)
-}
-
-/// The tight shadow a control casts, at the theme's share for controls.
-pub fn control_shadow(cx: &App) -> Vec<BoxShadow> {
-    tight_shadow(cx.theme().shadow_strength * cx.theme().control_shadow, cx)
-}
-
-fn tight_shadow(strength: f32, cx: &App) -> Vec<BoxShadow> {
-    if strength <= 0.0 {
-        return Vec::new();
+    if cx.theme().surface_shadows() {
+        tight_shadow(cx)
+    } else {
+        Vec::new()
     }
+}
+
+/// The tight shadow a control casts. None unless the look's shadows include
+/// controls.
+pub fn control_shadow(cx: &App) -> Vec<BoxShadow> {
+    if cx.theme().control_shadows() {
+        tight_shadow(cx)
+    } else {
+        Vec::new()
+    }
+}
+
+fn tight_shadow(cx: &App) -> Vec<BoxShadow> {
     vec![BoxShadow {
-        color: cx.theme().shadow_color.alpha(0.2 * strength),
+        color: cx.theme().shadow_color.alpha(0.2),
         offset: point(px(0.), px(1.)),
         blur_radius: px(2.),
         spread_radius: px(0.),
@@ -235,14 +293,31 @@ fn tight_shadow(strength: f32, cx: &App) -> Vec<BoxShadow> {
     }]
 }
 
+/// The shadow of anything that floats over the window: a popover, a dialog,
+/// a floating pane, a chip being dragged. The contact shadow with a deep,
+/// soft one under it, drawn in the theme's shadow color.
+pub fn floating_shadow(cx: &App) -> Vec<BoxShadow> {
+    if !cx.theme().surface_shadows() {
+        return Vec::new();
+    }
+    let mut shadows = tight_shadow(cx);
+    shadows.push(BoxShadow {
+        color: cx.theme().shadow_color,
+        offset: point(px(0.0), px(12.0)),
+        blur_radius: px(32.0),
+        spread_radius: px(-4.0),
+        inset: false,
+    });
+    shadows
+}
+
 /// The small shadow of a chip that floats over content: a tooltip, a toast,
 /// a switch thumb.
 pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
-    let strength = cx.theme().shadow_strength;
-    if strength <= 0.0 {
+    if !cx.theme().surface_shadows() {
         return Vec::new();
     }
-    let ink = cx.theme().shadow_color.alpha(0.1 * strength);
+    let ink = cx.theme().shadow_color.alpha(0.1);
     vec![
         BoxShadow {
             color: ink,
@@ -261,23 +336,6 @@ pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
     ]
 }
 
-/// The control hairline without the soft falloff. Apply it to a box expanded by
-/// [`SURFACE_RING_OUTSET`], so the inset shadow occupies only that band and lays
-/// no ink beneath translucent content.
-pub fn surface_ring(cx: &App) -> Vec<BoxShadow> {
-    let mut ring = ring(px(0.), cx);
-    ring.inset = true;
-    vec![ring]
-}
-
-/// The ring alone, for a surface assembled from stacked pieces that each paint
-/// their own share of it. Pass `caps_top: false` on a piece that does not own the
-/// top edge, so its stroke sinks under its own background instead of the piece
-/// above.
-pub fn stacked_ring(caps_top: bool, cx: &App) -> Vec<BoxShadow> {
-    vec![ring(if caps_top { px(0.) } else { RING_SPREAD }, cx)]
-}
-
 /// The size scale shared by every widget in the crate: [`Size::Medium`] for
 /// form controls, [`Size::Small`] for toolbars and dense rows.
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
@@ -290,7 +348,7 @@ pub enum Size {
 }
 
 impl Size {
-    /// Control height in pixels before density.
+    /// Control height in pixels.
     pub fn control_px(&self) -> f32 {
         match self {
             Size::Size(value) => value.as_f32(),
@@ -317,22 +375,22 @@ impl Size {
         }
     }
 
-    /// Vertical padding for input-shaped controls at `density`.
-    pub fn input_py(&self, density: f32) -> DefiniteLength {
+    /// Vertical padding for input-shaped controls.
+    pub fn input_py(&self) -> DefiniteLength {
         match self {
-            Size::Medium => rems_from_px(2. * density).into(),
+            Size::Medium => rems_from_px(2.).into(),
             Size::Small => rems_from_px(0.).into(),
             Size::Size(_) => px(2.).into(),
         }
     }
 
-    /// Height of every control that sits on a form row at `density`: text
-    /// fields, selects, and the square of an icon-only button. `Size::Size`
-    /// stays the caller's literal pixels.
-    pub fn control_h(&self, density: f32) -> DefiniteLength {
+    /// Height of every control that sits on a form row: text fields,
+    /// selects, and the square of an icon-only button. `Size::Size` stays the
+    /// caller's literal pixels.
+    pub fn control_h(&self) -> DefiniteLength {
         match self {
             Size::Size(value) => (*value).into(),
-            size => rems_from_px((size.control_px() * density).round()).into(),
+            size => rems_from_px(size.control_px()).into(),
         }
     }
 }
@@ -374,34 +432,23 @@ pub trait Sizable: Sized {
 
 #[cfg(test)]
 mod tests {
-    #[zz_gpui::test]
-    fn control_shadow_strength_scales_ink_without_changing_shape(cx: &mut zz_gpui::TestAppContext) {
-        cx.update(crate::init);
-        cx.update(|cx| {
-            let original = super::control_shadow(cx);
-            assert_eq!(original[0].color.a, 0.2);
-
-            crate::Theme::global_mut(cx).shadow_strength = 0.5;
-            let mut expected = original;
-            expected[0].color.a *= 0.5;
-            assert_eq!(super::control_shadow(cx), expected);
-
-            crate::Theme::change(crate::ThemeMode::Dark, None, cx);
-            assert_eq!(super::control_shadow(cx)[0].color.a, 0.1);
-
-            crate::Theme::global_mut(cx).shadow_strength = 0.0;
-            assert!(super::control_shadow(cx).is_empty());
-        });
-    }
+    use crate::{Shadows, Theme};
 
     #[zz_gpui::test]
-    fn flat_controls_keep_surface_shadows(cx: &mut zz_gpui::TestAppContext) {
+    fn shadows_pick_which_surfaces_cast(cx: &mut zz_gpui::TestAppContext) {
         cx.update(crate::init);
         cx.update(|cx| {
-            crate::Theme::global_mut(cx).control_shadow = 0.0;
-            assert!(super::control_shadow(cx).is_empty());
-            assert!(!crate::Theme::global(cx).control_shadows());
-            assert_eq!(super::contact_shadow(cx).len(), 1);
+            for (shadows, controls, surfaces) in [
+                (Shadows::All, true, true),
+                (Shadows::Surfaces, false, true),
+                (Shadows::None, false, false),
+            ] {
+                Theme::global_mut(cx).shadows = shadows;
+                assert_eq!(!super::control_shadow(cx).is_empty(), controls);
+                assert_eq!(!super::contact_shadow(cx).is_empty(), surfaces);
+                assert_eq!(!super::floating_shadow(cx).is_empty(), surfaces);
+                assert_eq!(!super::lifted_shadow(cx).is_empty(), surfaces);
+            }
         });
     }
 }

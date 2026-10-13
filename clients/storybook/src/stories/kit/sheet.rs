@@ -7,6 +7,7 @@ use zz_ui::{
     h_flex, v_flex,
 };
 
+use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
 
 pub const STORY: Story = Story {
@@ -32,8 +33,7 @@ fn phone(content: impl IntoElement, sheet: impl IntoElement, cx: &App) -> impl I
         .h(px(600.0))
         .overflow_hidden()
         .rounded(px(28.0))
-        .border_1()
-        .border_color(theme.border())
+        .framed(cx)
         .bg(theme.surface(Elevation::Panel).fill)
         .child(content)
         .child(sheet)

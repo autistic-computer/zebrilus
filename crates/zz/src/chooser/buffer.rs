@@ -5,7 +5,7 @@ use zz_protocol::{ChooseBufferAction, ChooseBufferItem, ChooseBufferState, Input
 use zz_terminal::KeyInput;
 
 use crate::{
-    chooser::{Chooser, ChooserHint, ChooserRowTheme, ChooserSearch, ChooserSpec},
+    chooser::{Chooser, ChooserHint, ChooserSearch, ChooserSpec},
     mux::client::MuxClient,
     terminal::view::TERMINAL_FONT,
 };
@@ -96,9 +96,8 @@ impl ChooserSpec for BufferChooser {
         selected: bool,
         show_key_gutter: bool,
         mux: Entity<MuxClient>,
-        theme: ChooserRowTheme,
     ) -> AnyElement {
-        buffer_row(item, index, selected, show_key_gutter, mux, theme)
+        buffer_row(item, index, selected, show_key_gutter, mux)
     }
 
     fn key(input: KeyInput) -> Self::Action {
@@ -124,7 +123,6 @@ fn buffer_row(
     selected: bool,
     show_key_gutter: bool,
     mux: Entity<MuxClient>,
-    theme: ChooserRowTheme,
 ) -> AnyElement {
     let (name, preview, size, age) = buffer_row_text(&item);
     buffer_chooser_row(
@@ -138,7 +136,6 @@ fn buffer_row(
         age,
         item.tagged,
         selected,
-        theme,
         TERMINAL_FONT,
     )
     .on_mouse_down(MouseButton::Left, move |event, _, cx| {

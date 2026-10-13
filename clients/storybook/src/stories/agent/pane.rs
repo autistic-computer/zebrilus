@@ -7,7 +7,7 @@ use zz_gpui::{
 };
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
-    CHROME_GAP, IconName,
+    ActiveTheme as _, CHROME_GAP, IconName,
     agent::{
         AgentPaneStatus, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind,
         AgentToolStatus as Status, TimelineRow, agent_pane_header, agent_status_pill,
@@ -49,10 +49,19 @@ pub struct FullPane {
     list: ListState,
     input: Entity<InputState>,
     tray: Option<TrayPanel>,
+    embedded: bool,
     _observe: Subscription,
 }
 
 pub fn full_pane(window: &mut Window, cx: &mut App) -> AnyView {
+    build(false, window, cx)
+}
+
+pub(crate) fn embedded_pane(window: &mut Window, cx: &mut App) -> AnyView {
+    build(true, window, cx)
+}
+
+fn build(embedded: bool, window: &mut Window, cx: &mut App) -> AnyView {
     let input = composer_input("", window, cx);
     cx.new(|cx| {
         let rows = fold_timeline_rows(&[
@@ -89,6 +98,7 @@ pub fn full_pane(window: &mut Window, cx: &mut App) -> AnyView {
             store,
             input,
             tray: None,
+            embedded,
             _observe: observe,
         }
     })
@@ -179,8 +189,14 @@ impl Render for FullPane {
             window,
             cx,
         );
-        pane_frame(cx)
-            .h(px(720.0))
+        let frame = if self.embedded {
+            div()
+                .size_full()
+                .bg(cx.theme().pane_background(cx.theme().background))
+        } else {
+            pane_frame(cx).h(px(720.0))
+        };
+        frame
             .flex()
             .flex_col()
             .child(agent_pane_header(

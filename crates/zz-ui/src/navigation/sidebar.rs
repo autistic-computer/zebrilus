@@ -85,25 +85,18 @@ pub fn tree_node_marker(
             .child(icon)
             .when(bell, |this| {
                 this.child(
-                    div()
+                    super::status_dot(cx.theme().warning)
                         .absolute()
                         .top(px(-1.0))
-                        .right(px(-1.0))
-                        .size(px(5.0))
-                        .rounded_full()
-                        .bg(cx.theme().warning),
+                        .right(px(-1.0)),
                 )
             })
             .when_some(badge_color, |this, color| {
                 this.child(
-                    div()
+                    super::status_dot(color)
                         .absolute()
                         .bottom(px(-1.0))
-                        .right(px(-1.0))
-                        .flex_none()
-                        .size(px(5.0))
-                        .rounded_full()
-                        .bg(color),
+                        .right(px(-1.0)),
                 )
             }),
     )

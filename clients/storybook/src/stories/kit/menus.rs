@@ -14,6 +14,7 @@ use zz_ui::{
 
 use super::support::{Probe, after_first_frame, dispatch, hover, press, when_visible};
 use crate::story::{Section, Story, row, states};
+use zz_ui::StyledExt as _;
 
 actions!(
     storybook_menu,
@@ -309,9 +310,8 @@ impl Render for Triggers {
             .items_center()
             .justify_center()
             .rounded(theme.radius)
-            .border_1()
+            .surface_edge(cx)
             .border_dashed()
-            .border_color(theme.border())
             .text_sm()
             .text_color(theme.foreground.muted())
             .child("Right click here")

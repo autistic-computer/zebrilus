@@ -1,8 +1,9 @@
 use super::AGENT_CONTENT_MAX_WIDTH;
-use crate::input::{Input, InputState};
-use crate::{ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, h_flex, v_flex};
+use crate::input::{Input, InputState, field_chrome, field_paint};
+use crate::{ActiveTheme as _, CHROME_GAP, PaintState, Tone, h_flex, v_flex};
 use zz_gpui::{
-    AnyElement, App, Entity, IntoElement, RenderOnce, SharedString, Window, div, prelude::*, px,
+    AnyElement, App, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
+    prelude::*, px,
 };
 
 pub const COMPOSER_MIN_HEIGHT: f32 = 86.0;
@@ -27,8 +28,14 @@ pub struct AgentComposer {
 }
 
 impl RenderOnce for AgentComposer {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_prefix = !self.prefix.is_empty();
+        let paint = field_paint(Tone::Neutral, None, None, cx);
+        let state = if self.input.read(cx).focus_handle(cx).is_focused(window) {
+            PaintState::Focused
+        } else {
+            PaintState::Rest
+        };
         v_flex()
             .flex_none()
             .w_full()
@@ -46,59 +53,59 @@ impl RenderOnce for AgentComposer {
                             .gap(px(COMPOSER_SECTION_GAP))
                             .children(self.prefix)
                             .child(
-                                v_flex()
-                                    .w_full()
-                                    .min_h(px(COMPOSER_MIN_HEIGHT))
-                                    .rounded(cx.theme().radius)
-                                    .border_1()
-                                    .border_color(cx.theme().border())
-                                    .bg(cx.theme().surface(Elevation::Panel).fill.opaque())
-                                    .when(cx.theme().shadow, zz_gpui::Styled::shadow_xs)
-                                    .children(self.attachments)
-                                    .child(
-                                        Input::new(&self.input)
-                                            .w_full()
-                                            .min_w_0()
-                                            .pt(px(COMPOSER_INPUT_PADDING_TOP))
-                                            .px(px(COMPOSER_INPUT_PADDING_X))
-                                            .text_size(crate::rems_from_px(13.0))
-                                            .appearance(false)
-                                            .bordered(false)
-                                            .focus_bordered(false),
+                                field_chrome(
+                                    v_flex().w_full().min_h(px(COMPOSER_MIN_HEIGHT)),
+                                    paint,
+                                    state,
+                                    true,
+                                    true,
+                                )
+                                .rounded(cx.theme().radius)
+                                .children(self.attachments)
+                                .child(
+                                    Input::new(&self.input)
+                                        .w_full()
+                                        .min_w_0()
+                                        .pt(px(COMPOSER_INPUT_PADDING_TOP))
+                                        .px(px(COMPOSER_INPUT_PADDING_X))
+                                        .text_size(crate::rems_from_px(13.0))
+                                        .appearance(false)
+                                        .bordered(false)
+                                        .focus_bordered(false),
+                                )
+                                .when_some(self.command_hint, |this, hint| {
+                                    this.child(
+                                        div()
+                                            .px_3()
+                                            .pb_1()
+                                            .text_size(crate::rems_from_px(10.0))
+                                            .text_color(paint.muted_at(state))
+                                            .child(hint),
                                     )
-                                    .when_some(self.command_hint, |this, hint| {
-                                        this.child(
-                                            div()
-                                                .px_3()
-                                                .pb_1()
-                                                .text_size(crate::rems_from_px(10.0))
-                                                .text_color(cx.theme().foreground.muted())
-                                                .child(hint),
+                                })
+                                .child(
+                                    h_flex()
+                                        .w_full()
+                                        .min_h(px(40.0))
+                                        .items_end()
+                                        .justify_between()
+                                        .gap(px(CHROME_GAP))
+                                        .p(px(CHROME_GAP))
+                                        .child(
+                                            h_flex()
+                                                .min_w_0()
+                                                .flex_wrap()
+                                                .gap(px(CHROME_GAP))
+                                                .children(self.settings),
                                         )
-                                    })
-                                    .child(
-                                        h_flex()
-                                            .w_full()
-                                            .min_h(px(40.0))
-                                            .items_end()
-                                            .justify_between()
-                                            .gap(px(CHROME_GAP))
-                                            .p(px(CHROME_GAP))
-                                            .child(
-                                                h_flex()
-                                                    .min_w_0()
-                                                    .flex_wrap()
-                                                    .gap(px(CHROME_GAP))
-                                                    .children(self.settings),
-                                            )
-                                            .child(
-                                                h_flex()
-                                                    .flex_none()
-                                                    .gap(px(CHROME_GAP))
-                                                    .children(self.usage)
-                                                    .child(self.action),
-                                            ),
-                                    ),
+                                        .child(
+                                            h_flex()
+                                                .flex_none()
+                                                .gap(px(CHROME_GAP))
+                                                .children(self.usage)
+                                                .child(self.action),
+                                        ),
+                                ),
                             ),
                     ),
             )

@@ -33,6 +33,7 @@ use super::{
     fixtures::{agent_kind, browser_kind, editor_kind},
     tree::flat_view_sidebar,
 };
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
@@ -45,7 +46,7 @@ pub const STORY: Story = Story {
             id: "sidebar",
             name: "Sidebar",
             summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the actions button and the brighter session label follow the pointer.",
-            build: |_, cx| cx.new(|_| Live::new()).into(),
+            build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
         },
         Section {
             id: "rows",
@@ -539,14 +540,15 @@ fn find(host: &FlatHost, id: u64) -> &FlatWindow {
         .expect("fixture window")
 }
 
-struct Live {
+pub(crate) struct Live {
     hosts: Vec<FlatHost>,
     state: FlatState,
     scroll: ScrollHandle,
+    height: Option<f32>,
 }
 
 impl Live {
-    fn new() -> Self {
+    pub(crate) fn new(height: Option<f32>) -> Self {
         Self {
             hosts: sidebar_hosts(),
             state: FlatState {
@@ -554,6 +556,7 @@ impl Live {
                 ..FlatState::default()
             },
             scroll: ScrollHandle::new(),
+            height,
         }
     }
 
@@ -599,7 +602,10 @@ impl Render for Live {
         div()
             .id("flat-live")
             .flex()
-            .h(px(SIDEBAR_HEIGHT))
+            .map(|this| match self.height {
+                Some(height) => this.h(px(height)),
+                None => this.h_full(),
+            })
             .child(flat_view_sidebar(
                 div()
                     .relative()
@@ -804,8 +810,7 @@ fn host_frame(id: &'static str, content: impl IntoElement, cx: &App) -> AnyEleme
         .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
         .py(px(8.0))
         .rounded(px(12.0))
-        .border(px(1.0))
-        .border_color(cx.theme().divider_color())
+        .framed(cx)
         .overflow_hidden()
         .child(content)
         .into_any_element()

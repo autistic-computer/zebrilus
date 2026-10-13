@@ -16,7 +16,7 @@ pub fn compact_hud(text: impl Into<SharedString>, cx: &App) -> Div {
                 .px(rems_from_px(16.0))
                 .py(rems_from_px(8.0))
                 .popover_style(cx)
-                .rounded_full()
+                .rounded(cx.theme().control_radius())
                 .font_family(cx.theme().font_family.clone())
                 .text_size(rems_from_px(17.0))
                 .line_height(rems_from_px(22.0))

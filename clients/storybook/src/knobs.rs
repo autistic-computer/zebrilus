@@ -1,6 +1,7 @@
 use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
-    Emphasis, FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
+    CORNER_SMOOTHING, Emphasis, FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeColor,
+    ThemeMode, Tone, UiZoom,
     interface_theme::{self, InterfaceTheme, Look, ThemeColors},
 };
 
@@ -63,37 +64,8 @@ type Knob<T> = (&'static str, fn(&T) -> f32, fn(&mut T, f32));
 /// The numeric parts of a [`Look`] other than its glass, by knob name.
 pub const LOOK_KNOBS: &[Knob<Look>] = &[
     ("radius", |l| l.radius, |l, v| l.radius = v),
-    (
-        "smoothing",
-        |l| l.corner_smoothing,
-        |l, v| l.corner_smoothing = v,
-    ),
-    ("shadow", |l| l.shadow, |l, v| l.shadow = v),
-    (
-        "control-shadow",
-        |l| l.control_shadow,
-        |l, v| l.control_shadow = v,
-    ),
-    ("elevation", |l| l.elevation, |l, v| l.elevation = v),
     ("outline", |l| l.outline, |l, v| l.outline = v),
-    (
-        "outline-width",
-        |l| l.outline_width,
-        |l, v| l.outline_width = v,
-    ),
     ("row-inset", |l| l.row_inset, |l, v| l.row_inset = v),
-    ("density", |l| l.density, |l, v| l.density = v),
-    (
-        "control-fill",
-        |l| l.control_fill,
-        |l, v| l.control_fill = v,
-    ),
-    ("divider", |l| l.divider, |l, v| l.divider = v),
-    (
-        "animation-speed",
-        |l| l.animation_speed,
-        |l, v| l.animation_speed = v,
-    ),
 ];
 
 type ColorKnob = (
@@ -250,6 +222,11 @@ impl Knobs {
                         }
                     }
                 }
+                "shadows" => {
+                    knobs.look.shadows = interface_theme::parse_choice(value).ok_or_else(|| {
+                        format!("shadows must be none, surfaces or all, not {value}")
+                    })?;
+                }
                 "selection" => {
                     knobs.look.selection = match value {
                         "accent" => SelectionStyle::Accent,
@@ -368,7 +345,7 @@ impl Knobs {
             window
                 .update(cx, |_, window, _| {
                     window.set_zoom(knobs.zoom);
-                    window.set_default_corner_smoothing(knobs.look.corner_smoothing);
+                    window.set_default_corner_smoothing(CORNER_SMOOTHING);
                     window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
                     window.refresh();
                 })
@@ -384,6 +361,7 @@ pub fn look_knobs(look: &Look) -> serde_json::Map<String, serde_json::Value> {
         .iter()
         .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(look))))
         .collect::<serde_json::Map<_, _>>();
+    knobs.insert("shadows".to_owned(), serde_json::json!(look.shadows));
     knobs.insert("selection".to_owned(), serde_json::json!(look.selection));
     knobs.insert("primary".to_owned(), serde_json::json!(look.primary));
     knobs.insert("field".to_owned(), serde_json::json!(look.field));

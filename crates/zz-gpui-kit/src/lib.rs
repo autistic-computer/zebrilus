@@ -57,12 +57,13 @@ pub mod theme {
 }
 
 pub use foundation::{
-    ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, Colorize, Disableable, ElementExt, Elevation,
-    Emphasis, FieldStyle, Ground, IndexPath, InteractiveElementExt, InteractivePaintExt, Paint,
-    PaintExt, PaintState, PrimaryStyle, SURFACE_RING_OUTSET, ScrollbarShow, Selectable,
-    SelectionStyle, Side, Sizable, Size, StyledExt, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
-    contact_shadow, control_shadow, cubic_ease, h_flex, lifted_shadow, oklab_lightness, parse_hex,
-    rems_from_px, stacked_ring, surface_ring, to_hex, v_flex, window_border, window_paddings,
+    ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING, Colorize, Disableable,
+    ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, FieldStyle, Ground, IndexPath,
+    InteractiveElementExt, InteractivePaintExt, Paint, PaintExt, PaintState, PrimaryStyle,
+    RULE_WIDTH, ScrollbarShow, Selectable, SelectionStyle, Shadows, Side, Sizable, Size, StyledExt,
+    Theme, ThemeColor, ThemeMode, Tone, UiZoom, contact_shadow, control_shadow, cubic_ease,
+    floating_shadow, h_flex, lifted_shadow, oklab_lightness, parse_hex, rems_from_px, to_hex,
+    v_flex, window_border, window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};

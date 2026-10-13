@@ -92,7 +92,9 @@ impl RenderOnce for Icon {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let path = cx
             .try_global::<Theme>()
-            .and_then(|theme| glyphs::path(&self.path, theme.radius.into(), theme.corner_smoothing))
+            .and_then(|theme| {
+                glyphs::path(&self.path, theme.radius.into(), crate::CORNER_SMOOTHING)
+            })
             .unwrap_or(self.path);
         let color = self.text_color.unwrap_or_else(|| window.text_style().color);
         let ambient = window.text_style().font_size.to_pixels(window.rem_size());

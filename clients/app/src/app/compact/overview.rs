@@ -23,12 +23,12 @@ use zz_ui::{
 use super::{AppShell, Page, kind_icon, pages};
 
 const TOP_BAR: f32 = 44.0;
+const NEW_WINDOW_HEIGHT: f32 = 44.0;
 const BUTTON: f32 = 40.0;
 const CARD_WIDTH: f32 = 108.0;
 const CARD_HEIGHT: f32 = 192.0;
 const ADD_WIDTH: f32 = 76.0;
 const CARD_GAP: f32 = 10.0;
-const CARD_RADIUS: f32 = 8.0;
 const CARD_STRIP: f32 = 20.0;
 const PREVIEW_TEXT: f32 = 4.0;
 const PREVIEW_LINE: f32 = 4.8;
@@ -179,19 +179,22 @@ impl AppShell {
         }
         let theme = cx.theme();
         let muted = theme.foreground.muted();
-        let wash = theme.paint(Tone::Neutral, Emphasis::Ghost).active;
-        let radius = theme.radius;
+        let row_radius = theme.row_radius(px(NEW_WINDOW_HEIGHT));
         let new_window = div()
             .id("overview-new-window")
             .relative()
             .flex()
             .items_center()
             .gap(px(10.0))
-            .h(px(44.0))
+            .h(px(NEW_WINDOW_HEIGHT))
             .mx(px(8.0))
             .mt(px(18.0))
             .px(px(12.0))
-            .child(press_highlight("overview-new-window-press", wash, radius))
+            .child(press_highlight(
+                "overview-new-window-press",
+                None,
+                row_radius,
+            ))
             .child(Icon::new(IconName::Plus).size(px(16.0)).text_color(muted))
             .child(div().text_size(px(15.0)).child("New window"))
             .on_click(cx.listener(|this, _, _, cx| {
@@ -291,6 +294,7 @@ impl AppShell {
         let tall = f32::from(stage.size.height);
         let height = (tall + (f32::from(card.size.height) / rest - tall) * settled) * scale;
         let toward = |from: Pixels, to: Pixels| from + (to - from) * progress;
+        let card_radius = cx.theme().radius;
         let theme = cx.theme();
         let muted = theme.foreground.muted();
         let mut background = theme.background;
@@ -390,7 +394,7 @@ impl AppShell {
             .w(stage.size.width * scale)
             .h(px(height))
             .overflow_hidden()
-            .rounded(px(CARD_RADIUS * settled))
+            .rounded(card_radius * settled)
             .bg(background)
             .opacity(((1.0 - progress).abs() / CARD_FADE).min(1.0))
             .children(layers)
@@ -451,8 +455,8 @@ impl AppShell {
             .px(px(8.0))
             .child(press_highlight(
                 "overview-session-press",
-                theme.paint(Tone::Neutral, Emphasis::Ghost).active,
-                theme.radius,
+                None,
+                theme.control_radius(),
             ))
             .child(Icon::new(IconName::Layers).size(px(16.0)).text_color(muted))
             .child(
@@ -533,7 +537,7 @@ impl AppShell {
             .gap(px(8.0))
             .w(px(ADD_WIDTH))
             .h(px(CARD_HEIGHT))
-            .rounded(px(CARD_RADIUS))
+            .rounded(theme.radius)
             .control_surface(cx)
             .painted(tile, PaintState::Rest)
             .text_size(px(12.0))
@@ -543,7 +547,7 @@ impl AppShell {
             .child(press_highlight(
                 ("overview-add-press", id.0),
                 tile.active,
-                px(CARD_RADIUS),
+                theme.radius,
             ))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.command("select-window", vec!["-t".into(), id.to_string()], cx);
@@ -668,11 +672,11 @@ impl AppShell {
             .flex_none()
             .w(px(CARD_WIDTH))
             .h(px(CARD_HEIGHT))
-            .rounded(px(CARD_RADIUS))
+            .rounded(theme.radius)
             .overflow_hidden()
             .bg(background)
             .control_surface(cx)
-            .when(current, |card| card.border_2().border_color(theme.accent))
+            .when(current, |card| card.chosen_ring(cx))
             .child(
                 div()
                     .flex()
@@ -707,8 +711,8 @@ impl AppShell {
             })
             .child(press_highlight(
                 ("overview-card-press", pane_id.0),
-                theme.paint(Tone::Neutral, Emphasis::Ghost).active,
-                px(CARD_RADIUS),
+                None,
+                theme.radius,
             ))
             .child(
                 canvas(
@@ -787,13 +791,7 @@ impl AppShell {
                 .px(px(8.0))
                 .pb(px(8.0))
                 .children(rows)
-                .child(
-                    div()
-                        .h(px(1.0))
-                        .mx(px(12.0))
-                        .my(px(4.0))
-                        .bg(cx.theme().border()),
-                )
+                .child(div().mx(px(12.0)).my(px(4.0)).rule_top(cx))
                 .child(new_session),
             bottom_inset,
             move |_, cx| {

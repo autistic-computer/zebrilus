@@ -12,23 +12,24 @@ use zz_ui::{
 };
 
 use crate::story::{Section, Story, stateless, states};
+use zz_ui::StyledExt as _;
 
 pub const STORY: Story = Story {
     id: "icon-set",
     name: "Icon set",
     group: "Foundation",
-    summary: "Every zz icon drawn from the theme, in the Mac school (crates/zz-gpui-kit/src/icon/mac.json). Corners take half the theme radius in 24-grid units and the theme's corner smoothing, capped at 0.45 of the shorter side like every zz corner. Radius 0 is flat: sharp corners, square caps, miter joins.",
+    summary: "Every zz icon drawn from the theme, in the Mac school (crates/zz-gpui-kit/src/icon/mac.json). Corners take half the theme radius in 24-grid units and the fixed corner smoothing, capped at 0.45 of the shorter side like every zz corner. Radius 0 is flat: sharp corners, square caps, miter joins.",
     sections: &[
         Section {
             id: "follows-the-theme",
             name: "Follows the theme",
-            summary: "The set at 20px for the current Radius and Corner smoothing knobs.",
+            summary: "The set at 20px for the current Radius knob.",
             build: |_, cx| stateless(follows_the_theme, cx),
         },
         Section {
             id: "radius-ramp",
             name: "Radius ramp",
-            summary: "The same glyphs at theme radius 0, 2, 4, 6, 8, 12, 16 and 25, at the current smoothing.",
+            summary: "The same glyphs at theme radius 0, 2, 4, 6, 8, 12, 16 and 25.",
             build: |_, cx| stateless(radius_ramp, cx),
         },
         Section {
@@ -87,8 +88,8 @@ fn follows_the_theme(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn radius_ramp(_: &mut Window, cx: &mut App) -> AnyElement {
-    let smoothing = cx.theme().corner_smoothing;
+fn radius_ramp(_: &mut Window, _: &mut App) -> AnyElement {
+    let smoothing = zz_ui::CORNER_SMOOTHING;
     [0.0, 2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 25.0]
         .into_iter()
         .fold(states(), |states, radius| {
@@ -142,8 +143,7 @@ fn sidebar(cx: &App) -> impl IntoElement {
         .p_1p5()
         .gap_0p5()
         .rounded(theme.radius * 1.5)
-        .border_1()
-        .border_color(theme.border())
+        .surface_edge(cx)
         .bg(theme.surface(Elevation::Panel).fill)
         .child(
             h_flex()

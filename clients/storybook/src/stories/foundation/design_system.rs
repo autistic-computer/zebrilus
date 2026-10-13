@@ -148,8 +148,7 @@ fn tones(_: &mut Window, cx: &mut App) -> AnyElement {
                     div()
                         .h(px(44.0))
                         .rounded(theme.radius)
-                        .border_1()
-                        .border_color(theme.border())
+                        .surface_edge(cx)
                         .bg(theme.tone(tone)),
                 )
                 .child(div().text_size(px(12.0)).child(tone.name()))

@@ -6,7 +6,7 @@ use zz_gpui::{
 };
 use zz_ui::shell::{app_shell_surface, app_titlebar_strip};
 use zz_ui::{
-    ActiveTheme as _, Root, WindowControls, draws_window_controls,
+    ActiveTheme as _, Root, StyledExt as _, WindowControls, draws_window_controls,
     navigation::workspace_chrome_controls_width_for,
 };
 
@@ -288,7 +288,8 @@ impl AppShell {
                     .h_full()
                     .flex()
                     .flex_none()
-                    .bg(crate::theme::chrome_background(cx))
+                    .popover_style(cx)
+                    .rounded(px(0.0))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(self.sidebar.clone()),
             )

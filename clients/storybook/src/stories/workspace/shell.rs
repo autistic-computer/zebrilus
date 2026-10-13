@@ -15,6 +15,7 @@ use super::{
     status_bar::{Bar, titlebar},
     tree::{TreeState, chrome_controls, host_only, sidebar, tree_list, workspace_tree},
 };
+use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
 
 pub const STORY: Story = Story {
@@ -134,8 +135,7 @@ fn window_frame(id: &'static str, height: f32, shell: impl IntoElement, cx: &App
         .h(px(height))
         .overflow_hidden()
         .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
+        .framed(cx)
         .child(shell)
         .into_any_element()
 }
@@ -274,8 +274,7 @@ fn titlebar_strip(_: &mut Window, cx: &mut App) -> AnyElement {
                 .id("strip")
                 .w_full()
                 .rounded(cx.theme().radius)
-                .border_1()
-                .border_color(cx.theme().border())
+                .framed(cx)
                 .child(app_titlebar_strip(
                     "titlebar-strip",
                     div().pr(px(8.0)).child(chrome_controls()),

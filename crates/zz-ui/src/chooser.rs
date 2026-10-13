@@ -33,27 +33,6 @@ pub struct ChooserSearch {
 }
 
 #[derive(Clone, Copy)]
-pub struct ChooserRowTheme {
-    pub selection_background: zz_gpui::Hsla,
-    pub primary: zz_gpui::Hsla,
-    pub foreground: zz_gpui::Hsla,
-    pub secondary_foreground: zz_gpui::Hsla,
-    pub muted_foreground: zz_gpui::Hsla,
-}
-
-impl ChooserRowTheme {
-    pub fn from_theme(cx: &App) -> Self {
-        Self {
-            selection_background: cx.theme().selection_background(),
-            primary: cx.theme().foreground,
-            foreground: cx.theme().foreground,
-            secondary_foreground: cx.theme().foreground,
-            muted_foreground: cx.theme().foreground.muted(),
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
 pub struct ChooserDimensions {
     pub max_width: f32,
     pub row_count: usize,
@@ -186,8 +165,7 @@ impl RenderOnce for ChooserModal {
                         .flex_none()
                         .px(px(12.0))
                         .py(px(9.0))
-                        .border_b_1()
-                        .border_color(cx.theme().border())
+                        .rule_bottom(cx)
                         .bg(cx.theme().surface(Elevation::Popover).fill)
                         .font_family(self.font_family.clone())
                         .text_size(crate::rems_from_px(11.0))
@@ -200,8 +178,7 @@ impl RenderOnce for ChooserModal {
                     .flex_none()
                     .px(px(12.0))
                     .py(px(9.0))
-                    .border_b_1()
-                    .border_color(cx.theme().border())
+                    .rule_bottom(cx)
                     .bg(cx.theme().surface(Elevation::Popover).fill)
                     .font_family(self.font_family.clone())
                     .text_size(crate::rems_from_px(11.0))
@@ -214,7 +191,8 @@ impl RenderOnce for ChooserModal {
                     .flex_1()
                     .overflow_hidden()
                     .min_h_0()
-                    .p(px(8.0))
+                    .py(px(8.0))
+                    .list_inset(cx)
                     .child(self.rows),
             )
             .child(chooser_footer(
@@ -223,7 +201,7 @@ impl RenderOnce for ChooserModal {
                 self.font_family,
                 cx,
             ));
-        zz_gpui_kit::foundation::surface_enter(surface, "chooser-open", px(0.0), cx)
+        zz_gpui_kit::foundation::surface_enter(surface, "chooser-open", px(0.0))
     }
 }
 
@@ -265,8 +243,7 @@ pub fn chooser_footer(
         .items_center()
         .gap(px(12.0))
         .px(px(12.0))
-        .border_t(px(0.5))
-        .border_color(cx.theme().divider_color())
+        .rule_top(cx)
         .children(search)
         .child(div().flex_1())
         .child(
@@ -283,18 +260,12 @@ pub fn chooser_footer(
 }
 
 #[must_use]
-pub fn chooser_row(
-    id: &'static str,
-    index: usize,
-    selected: bool,
-    selection_background: zz_gpui::Hsla,
-) -> ListItem {
+pub fn chooser_row(id: &'static str, index: usize, selected: bool) -> ListItem {
     ListItem::new((id, index))
         .h(px(CHOOSER_ROW_HEIGHT))
         .w_full()
         .cursor(CursorStyle::PointingHand)
         .selected(selected)
-        .when(selected, |row| row.bg(selection_background))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -357,7 +328,6 @@ pub fn tree_chooser_row(
     active: bool,
     tagged: bool,
     selected: bool,
-    theme: ChooserRowTheme,
     font_family: impl Into<SharedString>,
 ) -> ListItem {
     let font_family = font_family.into();
@@ -372,88 +342,86 @@ pub fn tree_chooser_row(
         None if target.starts_with('$') => IconName::Folder,
         None => IconName::PanelsTopLeft,
     };
-    chooser_row(id, index, selected, theme.selection_background)
-        .px(px(8.0))
-        .child(
-            div()
-                .w_full()
-                .min_w_0()
-                .flex()
-                .items_center()
-                .when(show_key_gutter, |row| {
-                    row.child(chooser_key_cell(&key, font_family.clone(), selected))
-                })
-                .child(div().w(px(f32::from(depth) * 16.0)).flex_none())
-                .child(
-                    div()
-                        .w(px(16.0))
-                        .flex_none()
-                        .opacity(if selected { 1.0 } else { 0.8 })
-                        .when(!disclosure.is_empty(), |slot| {
-                            slot.child(
-                                Icon::new(if disclosure == "▾" {
-                                    IconName::ChevronDown
-                                } else {
-                                    IconName::ChevronRight
-                                })
-                                .size(px(12.0)),
-                            )
-                        }),
-                )
-                .child(
-                    Icon::new(icon)
-                        .size(px(14.0))
-                        .flex_none()
-                        .opacity(if active || selected { 1.0 } else { 0.8 }),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
+    chooser_row(id, index, selected).px(px(8.0)).child(
+        div()
+            .w_full()
+            .min_w_0()
+            .flex()
+            .items_center()
+            .when(show_key_gutter, |row| {
+                row.child(chooser_key_cell(&key, font_family.clone(), selected))
+            })
+            .child(div().w(px(f32::from(depth) * 16.0)).flex_none())
+            .child(
+                div()
+                    .w(px(16.0))
+                    .flex_none()
+                    .opacity(if selected { 1.0 } else { 0.8 })
+                    .when(!disclosure.is_empty(), |slot| {
+                        slot.child(
+                            Icon::new(if disclosure == "▾" {
+                                IconName::ChevronDown
+                            } else {
+                                IconName::ChevronRight
+                            })
+                            .size(px(12.0)),
+                        )
+                    }),
+            )
+            .child(
+                Icon::new(icon)
+                    .size(px(14.0))
+                    .flex_none()
+                    .opacity(if active || selected { 1.0 } else { 0.8 }),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .ml(px(8.0))
+                    .truncate()
+                    .text_size(crate::rems_from_px(13.0))
+                    .when(active, crate::StyledExt::font_medium)
+                    .child(label.into()),
+            )
+            .child(
+                div()
+                    .max_w(relative(0.3))
+                    .min_w_0()
+                    .ml(px(12.0))
+                    .truncate()
+                    .text_size(crate::rems_from_px(11.0))
+                    .opacity(if selected { 1.0 } else { 0.8 })
+                    .child(detail.into()),
+            )
+            .child(
+                div()
+                    .ml(px(12.0))
+                    .flex_none()
+                    .font_family(font_family.clone())
+                    .text_size(crate::rems_from_px(10.0))
+                    .opacity(if selected { 1.0 } else { 0.8 })
+                    .child(target),
+            )
+            .when(tagged, |row| {
+                row.child(
+                    Badge::new("Tagged")
+                        .small()
                         .ml(px(8.0))
-                        .truncate()
-                        .text_size(crate::rems_from_px(13.0))
-                        .when(active, crate::StyledExt::font_medium)
-                        .child(label.into()),
+                        .text_size(crate::rems_from_px(9.0)),
                 )
-                .child(
-                    div()
-                        .max_w(relative(0.3))
-                        .min_w_0()
-                        .ml(px(12.0))
-                        .truncate()
-                        .text_size(crate::rems_from_px(11.0))
-                        .opacity(if selected { 1.0 } else { 0.8 })
-                        .child(detail.into()),
-                )
-                .child(
-                    div()
-                        .ml(px(12.0))
-                        .flex_none()
-                        .font_family(font_family.clone())
-                        .text_size(crate::rems_from_px(10.0))
-                        .opacity(if selected { 1.0 } else { 0.8 })
-                        .child(target),
-                )
-                .when(tagged, |row| {
-                    row.child(
-                        Badge::new("Tagged")
-                            .small()
-                            .ml(px(8.0))
-                            .text_size(crate::rems_from_px(9.0)),
-                    )
-                })
-                .child(
-                    div()
-                        .w(px(22.0))
-                        .flex_none()
-                        .flex()
-                        .justify_end()
-                        .when(active, |slot| {
-                            slot.child(Icon::new(IconName::Check).size(px(12.0)))
-                        }),
-                ),
-        )
+            })
+            .child(
+                div()
+                    .w(px(22.0))
+                    .flex_none()
+                    .flex()
+                    .justify_end()
+                    .when(active, |slot| {
+                        slot.child(Icon::new(IconName::Check).size(px(12.0)))
+                    }),
+            ),
+    )
 }
 
 #[allow(clippy::fn_params_excessive_bools)]
@@ -468,12 +436,11 @@ pub fn buffer_chooser_row(
     age: impl Into<SharedString>,
     tagged: bool,
     selected: bool,
-    theme: ChooserRowTheme,
     font_family: impl Into<SharedString>,
 ) -> ListItem {
     let font_family = font_family.into();
     let key = key.into();
-    chooser_row(id, index, selected, theme.selection_background)
+    chooser_row(id, index, selected)
         .gap(px(12.0))
         .px(px(10.0))
         .child(

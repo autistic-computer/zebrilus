@@ -318,7 +318,7 @@ impl<D: SelectDelegate> SelectState<D> {
                 h_flex()
                     .id("select-trigger")
                     .flex_none()
-                    .h(size.control_h(cx.theme().density))
+                    .h(size.control_h())
                     .px(size.input_px())
                     .gap(px(6.0))
                     .justify_between()

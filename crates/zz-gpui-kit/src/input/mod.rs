@@ -25,8 +25,8 @@ pub use actions::{
     SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart, SelectToStartOfLine, SelectUp,
     ShowCharacterPalette, Undo,
 };
-pub use field::{Input, InputContentType};
-pub(crate) use field::{field_chrome, field_paint, field_text};
+pub(crate) use field::field_text;
+pub use field::{Input, InputContentType, field_chrome, field_paint};
 pub use number::NumberInput;
 pub use state::{InputEvent, InputState};
 pub use zz_gpui::TextAlign;

@@ -16,8 +16,8 @@ use super::{
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, PaintExt as _, PaintState, StyledExt as _, Tone,
-    rems_from_px,
+    ActiveTheme as _, Emphasis, Icon, IconName, PaintExt as _, PaintState, RULE_WIDTH,
+    StyledExt as _, Tone, rems_from_px, separator::Separator,
 };
 
 const HOLD: Duration = Duration::from_millis(280);
@@ -284,7 +284,7 @@ impl PopoverKey {
             .min_w_0()
             .h(rems_from_px(ITEM_HEIGHT))
             .px(rems_from_px(8.0))
-            .rounded(theme.menu_radius())
+            .menu_item_corners(px(ITEM_HEIGHT), cx)
             .painted(paint, state)
             .when(!hovered, |row| row.active(move |style| style.bg(pressed)))
             .children(leading)
@@ -341,7 +341,6 @@ impl PopoverKey {
             .as_ref()
             .map(|item| self.item(self.items.len(), item, cx));
         let theme = cx.theme();
-        let rule = theme.border();
         div()
             .id("popover-key-card")
             .debug_selector(|| "popover-key-card".to_owned())
@@ -371,10 +370,9 @@ impl PopoverKey {
             .when_some(footer, |card, footer| {
                 card.child(
                     div()
-                        .h(px(1.0))
-                        .mx(rems_from_px(8.0))
-                        .my(rems_from_px(2.0))
-                        .bg(rule),
+                        .px(rems_from_px(8.0))
+                        .py(rems_from_px(2.0))
+                        .child(Separator::horizontal().h(RULE_WIDTH)),
                 )
                 .child(footer)
             })

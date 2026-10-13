@@ -2,10 +2,13 @@ use std::sync::Arc;
 
 use web_time::{Duration, Instant};
 use zz_gpui::{
-    AnyElement, App, DispatchPhase, ElementId, Entity, EntityId, Global, Hitbox, HitboxBehavior,
-    Hsla, IntoElement, LongPressEvent, MouseButton, MouseDownEvent, MouseExitEvent, MouseUpEvent,
-    Pixels, Point, ScrollWheelEvent, Styled, TouchDragEvent, TouchPhase, Window, canvas, fill,
+    AnyElement, App, Corners, DispatchPhase, ElementId, Entity, EntityId, Global, Hitbox,
+    HitboxBehavior, Hsla, IntoElement, LongPressEvent, MouseButton, MouseDownEvent, MouseExitEvent,
+    MouseUpEvent, Pixels, Point, ScrollWheelEvent, Styled, TouchDragEvent, TouchPhase, Window,
+    canvas, fill,
 };
+
+use crate::{ActiveTheme as _, Emphasis, Tone};
 
 const DELAY: Duration = Duration::from_millis(100);
 const RISE: Duration = Duration::from_millis(120);
@@ -124,43 +127,49 @@ pub fn press_feedback(
 }
 
 /// [`press_feedback`] for builders without a window: a layer that tracks
-/// presses over its own bounds and paints `color` at the press amount. It
-/// fills its parent unless positioned; put it under the content.
+/// presses over its own bounds and paints `color` at the press amount, the
+/// neutral ghost paint's pressed fill when `None`. Its corners are `radius`,
+/// clamped to its size. It fills its parent unless positioned; put it under
+/// the content.
 pub fn press_highlight(
     id: impl Into<ElementId>,
-    color: Hsla,
+    color: impl Into<Option<Hsla>>,
     radius: Pixels,
 ) -> impl IntoElement + Styled {
-    highlight(id.into(), color, radius, DELAY)
+    highlight(id.into(), color.into(), radius, DELAY)
 }
 
 /// [`press_highlight`] that lights at touch-down, for keys that never scroll.
 pub fn instant_press_highlight(
     id: impl Into<ElementId>,
-    color: Hsla,
+    color: impl Into<Option<Hsla>>,
     radius: Pixels,
 ) -> impl IntoElement + Styled {
-    highlight(id.into(), color, radius, Duration::ZERO)
+    highlight(id.into(), color.into(), radius, Duration::ZERO)
 }
 
 fn highlight(
     id: ElementId,
-    color: Hsla,
+    color: Option<Hsla>,
     radius: Pixels,
     delay: Duration,
 ) -> impl IntoElement + Styled {
     canvas(
         move |bounds, window, cx| {
             let (state, amount) = press_state(id, window, cx);
+            let color =
+                color.unwrap_or_else(|| cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active);
             (
                 window.insert_hitbox(bounds, HitboxBehavior::Normal),
                 state,
                 amount,
+                color,
             )
         },
-        move |bounds, (hitbox, state, amount), window, _| {
+        move |bounds, (hitbox, state, amount, color), window, _| {
             if amount > 0.0 {
-                window.paint_quad(fill(bounds, color.opacity(amount)).corner_radii(radius));
+                let corners = Corners::all(radius).clamp_radii_for_quad_size(bounds.size);
+                window.paint_quad(fill(bounds, color.opacity(amount)).corner_radii(corners));
             }
             listen(&state, hitbox, delay, window);
         },

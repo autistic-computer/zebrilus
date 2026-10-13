@@ -10,9 +10,9 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Elevation, Emphasis, Ground, Icon, IconName,
-    Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Tone, control_shadow, h_flex,
-    rems_from_px, tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Disableable, Elevation, Emphasis, FOCUS_RING_WIDTH, Ground,
+    Icon, IconName, Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Tone,
+    control_shadow, h_flex, rems_from_px, tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -416,18 +416,17 @@ impl InteractiveElement for Button {
     }
 }
 
-fn focus_ring<T: ParentElement + Styled + Sized>(
+fn with_focus_ring<T: ParentElement + Styled + Sized>(
     mut this: T,
     is_focused: bool,
     margins: Pixels,
+    paint: &Paint,
     window: &Window,
-    cx: &App,
 ) -> T {
     if !is_focused {
         return this;
     }
 
-    const RING_BORDER_WIDTH: Pixels = px(1.5);
     let rem_size = window.rem_size();
     let style = this.style();
 
@@ -476,7 +475,7 @@ fn focus_ring<T: ParentElement + Styled + Sized>(
             .map(|v| v.to_pixels(rem_size))
             .unwrap_or_default(),
     }
-    .map(|v| *v + RING_BORDER_WIDTH);
+    .map(|v| *v + FOCUS_RING_WIDTH);
 
     let mut inner_style = StyleRefinement::default();
     inner_style.corner_radii.top_left = Some(radius.top_left.into());
@@ -484,7 +483,7 @@ fn focus_ring<T: ParentElement + Styled + Sized>(
     inner_style.corner_radii.bottom_left = Some(radius.bottom_left.into());
     inner_style.corner_radii.bottom_right = Some(radius.bottom_right.into());
 
-    let inset = RING_BORDER_WIDTH + margins;
+    let inset = FOCUS_RING_WIDTH + margins;
 
     this.child(
         div()
@@ -494,8 +493,7 @@ fn focus_ring<T: ParentElement + Styled + Sized>(
             .left(-(inset + border_widths.left))
             .right(-(inset + border_widths.right))
             .bottom(-(inset + border_widths.bottom))
-            .border(RING_BORDER_WIDTH)
-            .border_color(cx.theme().accent)
+            .focus_ring(paint)
             .refine_style(&inner_style),
     )
 }
@@ -512,8 +510,7 @@ impl RenderOnce for Button {
         let paint = style.paint(on, cx);
         let neutral_surface = !self.flat && style.neutral();
         let resting_surface = neutral_surface && normal_style.shadow;
-        let highlight_ring =
-            cx.theme().control_shadows() && neutral_surface && !normal_style.shadow;
+        let highlight_ring = neutral_surface && !normal_style.shadow;
         let casts_shadow = (highlight_ring || resting_surface)
             && cx.theme().control_shadows()
             && ground.elevation == Elevation::Window;
@@ -604,7 +601,7 @@ impl RenderOnce for Button {
                 |this| this.shadow(control_shadow(cx)),
             )
             .when(!style.no_padding(), |this| {
-                let height = self.size.control_h(cx.theme().density);
+                let height = self.size.control_h();
                 if self.label.is_none() && self.children.is_empty() {
                     this.size(height)
                 } else {
@@ -621,7 +618,9 @@ impl RenderOnce for Button {
                 }
             })
             .rounded(rounding)
-            .when(highlight_ring, |this| this.border(px(0.5)))
+            .when(highlight_ring && cx.theme().outlined(), |this| {
+                this.border(cx.theme().outline)
+            })
             .when_some(
                 paint.filter(|paint| paint.border_width > px(0.0)),
                 |this, paint| this.border(paint.border_width),
@@ -763,7 +762,9 @@ impl RenderOnce for Button {
                 this.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
             });
 
-        focus_ring(element, is_focused, px(0.), window, cx)
+        let focus_paint =
+            paint.unwrap_or_else(|| cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Ghost));
+        with_focus_ring(element, is_focused, px(0.), &focus_paint, window)
     }
 }
 

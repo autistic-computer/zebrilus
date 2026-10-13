@@ -1,5 +1,6 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, PaintState, StyledExt as _, Tone,
+    input::{field_chrome, field_paint},
     pane::{
         PaneChrome, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface,
         pane_surface,
@@ -105,8 +106,7 @@ impl RenderOnce for PanesPreview {
             .flex_none()
             .overflow_hidden()
             .rounded(cx.theme().radius)
-            .border_1()
-            .border_color(cx.theme().border())
+            .surface_edge(cx)
             .bg(backdrop)
             .text_color(cx.theme().foreground)
             .text_size(px(11.0))
@@ -203,6 +203,15 @@ fn terminal_sample(cx: &App) -> zz_gpui::Div {
 }
 
 fn agent_sample(cx: &App) -> zz_gpui::Div {
+    let paint = field_paint(Tone::Neutral, None, None, cx);
+    let composer = div()
+        .flex_none()
+        .h(px(24.0))
+        .mx(px(6.0))
+        .mb(px(6.0))
+        .px(px(6.0))
+        .flex()
+        .items_center();
     sample_surface(cx)
         .child(sample_header(IconName::Bot, "Agent", cx))
         .child(
@@ -214,19 +223,9 @@ fn agent_sample(cx: &App) -> zz_gpui::Div {
                 .child("Ready when you are."),
         )
         .child(
-            div()
-                .flex_none()
-                .h(px(24.0))
-                .mx(px(6.0))
-                .mb(px(6.0))
-                .px(px(6.0))
-                .flex()
-                .items_center()
+            field_chrome(composer, paint, PaintState::Rest, true, true)
                 .rounded(cx.theme().radius)
-                .bg(cx.theme().background.opaque())
-                .border_1()
-                .border_color(cx.theme().border())
-                .text_color(cx.theme().foreground.muted())
+                .text_color(paint.faint_at(PaintState::Rest))
                 .child(
                     div()
                         .min_w_0()
@@ -337,9 +336,13 @@ mod tests {
             let browser = cx.debug_bounds("settings-preview-browser").unwrap();
             let terminal_content = cx.debug_bounds("settings-preview-active-0-true").unwrap();
             let gap = px(if gaps { margin } else { 1.0 });
+            let edge = cx.update(|_, cx| cx.theme().outline);
             assert_eq!(agent.origin.x - terminal.right(), gap);
             assert_eq!(browser.origin.y - agent.bottom(), gap);
-            assert_eq!(terminal.origin.x, px(1.0 + if gaps { margin } else { 0.0 }));
+            assert_eq!(
+                terminal.origin.x,
+                edge + px(if gaps { margin } else { 0.0 })
+            );
             assert_eq!(terminal_content.origin, terminal.origin);
             assert!(browser.size.height > px(40.0));
         }

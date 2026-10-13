@@ -1310,13 +1310,14 @@ impl AgentPane {
                         let hover = view.clone();
                         let delete = view.clone();
                         let session_id = session.session_id.clone();
-                        let detail = if selected == index {
-                            cx.theme()
-                                .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
-                                .selected_text
-                        } else {
-                            cx.theme().foreground.muted()
-                        };
+                        let detail = cx
+                            .theme()
+                            .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
+                            .muted_at(if selected == index {
+                                zz_ui::PaintState::Selected
+                            } else {
+                                zz_ui::PaintState::Rest
+                            });
                         Some(
                             picker_row(("agent-history-row", index), selected == index, cx)
                                 .h(px(26.0))
@@ -1532,7 +1533,7 @@ impl AgentPane {
                             .when(self.history_supported, |row| row.child(agent_chrome_button("agent-history-refresh").icon(IconName::Redo2)
                                 .label("Refresh").disabled(loading)
                                 .on_click(cx.listener(|this, _, window, cx| { this.list_sessions(true, window, cx); cx.stop_propagation(); })))))
-                        .child(picker_list().p(px(zz_ui::CHROME_GAP)).pt_0().pr_0()
+                        .child(picker_list().list_inset(cx).pb(px(zz_ui::CHROME_GAP)).pt_0().pr_0()
                             .child(zz_ui::v_flex().relative().flex_1().min_h_0().overflow_hidden()
                                 .pr(zz_ui::scroll::GUTTER_WIDTH).child(rows).vertical_scrollbar(&self.picker_scroll))
                             .when(count == 0, |list| list.child(picker_empty(if loading {
@@ -1687,13 +1688,15 @@ impl AgentPane {
                                 div()
                                     .flex_none()
                                     .text_size(zz_ui::rems_from_px(11.0))
-                                    .text_color(if highlighted {
+                                    .text_color(
                                         cx.theme()
                                             .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
-                                            .selected_text
-                                    } else {
-                                        cx.theme().foreground.muted()
-                                    })
+                                            .muted_at(if highlighted {
+                                                zz_ui::PaintState::Selected
+                                            } else {
+                                                zz_ui::PaintState::Rest
+                                            }),
+                                    )
                                     .child(directory.sessions.to_string()),
                             )
                         })
@@ -1729,13 +1732,13 @@ impl AgentPane {
             .min_w_0()
             .min_h_0()
             .when(self.history_compact, |column| {
-                column.w_full().h(zz_gpui::relative(0.35)).border_b(px(0.5))
+                column.w_full().h(zz_gpui::relative(0.35)).rule_bottom(cx)
             })
             .when(!self.history_compact, |column| {
-                column.w(zz_gpui::relative(0.36)).border_r(px(0.5))
+                column.w(zz_gpui::relative(0.36)).rule_right(cx)
             })
-            .border_color(cx.theme().divider_color())
-            .p(px(zz_ui::CHROME_GAP))
+            .list_inset(cx)
+            .py(px(zz_ui::CHROME_GAP))
             .pr_0()
             .child(
                 zz_ui::v_flex()

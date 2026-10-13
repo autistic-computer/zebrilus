@@ -2,12 +2,12 @@ use std::{collections::HashMap, rc::Rc};
 
 use web_time::Instant;
 use zz_gpui::{
-    AnyElement, App, BoxShadow, Context, DispatchPhase, ElementId, Global, Hitbox, HitboxBehavior,
+    AnyElement, App, Context, DispatchPhase, ElementId, Global, Hitbox, HitboxBehavior,
     IntoElement, ParentElement as _, Pixels, Point, RenderOnce, ScrollHandle, ScrollWheelEvent,
-    Styled as _, TouchPhase, Window, canvas, div, point, prelude::*, px,
+    Styled as _, TouchPhase, Window, canvas, div, prelude::*, px,
 };
 
-use crate::{ActiveTheme as _, Colorize as _};
+use crate::{ActiveTheme as _, Colorize as _, contact_shadow};
 use zz_gpui_kit::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 
 const EDGE: f32 = 20.0;
@@ -15,7 +15,6 @@ const FLING_WIDTHS: f32 = 1.0;
 const COMMIT_FRACTION: f32 = 0.5;
 const PARALLAX: f32 = 1.0 / 3.0;
 const DIM: f32 = 0.094;
-const SHADOW: f32 = 0.3;
 
 type Back = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -259,13 +258,16 @@ impl RenderOnce for SwipeBack {
                     .left(px(offset))
                     .bg(theme.background.opaque())
                     .when(moving, |page| {
-                        page.shadow(vec![BoxShadow {
-                            color: theme.shadow_color.alpha(SHADOW * (1.0 - progress)),
-                            offset: point(px(-1.0), px(1.0)),
-                            blur_radius: px(5.0),
-                            spread_radius: px(0.0),
-                            inset: false,
-                        }])
+                        page.shadow(
+                            contact_shadow(cx)
+                                .into_iter()
+                                .map(|mut shadow| {
+                                    shadow.color =
+                                        shadow.color.alpha(shadow.color.a * (1.0 - progress));
+                                    shadow
+                                })
+                                .collect(),
+                        )
                     })
                     .child(self.page),
             )
@@ -278,7 +280,7 @@ mod tests {
 
     use web_time::Duration;
     use zz_gpui::{
-        Bounds, Context, Modifiers, Render, ScrollDelta, TestAppContext, VisualTestContext,
+        Bounds, Context, Modifiers, Render, ScrollDelta, TestAppContext, VisualTestContext, point,
     };
 
     use super::*;

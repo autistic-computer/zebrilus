@@ -1,0 +1,47 @@
+{
+  "name": "Glass",
+  "look": {
+    "radius": 25,
+    "outline": 0,
+    "shadows": "none",
+    "row-inset": 3,
+    "selection": "wash",
+    "primary": "foreground",
+    "field": "soft",
+    "glass": {
+      "preset": "regular",
+      "blur": 23.2,
+      "tint": "#ffffffb3",
+      "refraction": 40,
+      "bezel": 3,
+      "dispersion": 0.11,
+      "saturation": 1.05,
+      "brightness": 0.04,
+      "specular": 0.25,
+      "fresnel": 0.02,
+      "edge_shadow": 1,
+      "edge_width": 0.8,
+      "noise": 0
+    }
+  },
+  "light": {
+    "background": "#ffffff",
+    "foreground": "#272727",
+    "accent": "#007aff",
+    "success": "#248a3d",
+    "warning": "#c93400",
+    "danger": "#d70015",
+    "on-accent": "#ffffff",
+    "shadow-color": "#00000026"
+  },
+  "dark": {
+    "background": "#1e1e1e",
+    "foreground": "#dddddd",
+    "accent": "#007aff",
+    "success": "#30d158",
+    "warning": "#ff9230",
+    "danger": "#ff4245",
+    "on-accent": "#ffffff",
+    "shadow-color": "#00000066"
+  }
+}

@@ -822,12 +822,9 @@ impl TerminalPane {
             .w(px(460.0))
             .max_w_full()
             .p(px(4.0))
-            .bg(cx.theme().surface(Elevation::Panel).fill)
-            .rounded(cx.theme().radius)
-            .control_surface(cx)
+            .popover_style(cx)
             .occlude()
             .font_family(cx.theme().font_family.clone())
-            .text_color(cx.theme().foreground)
             .text_size(zz_ui::rems_from_px(13.0))
             .line_height(px(16.0))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -856,7 +853,7 @@ impl TerminalPane {
             .child(
                 div().flex_1().min_w(px(110.0)).child(
                     Input::new(self.search_input.as_ref().unwrap())
-                        .appearance(false)
+                        .on(cx.theme().surface(Elevation::Popover).opaque())
                         .prefix(Icon::new(IconName::Search).size(px(13.0))),
                 ),
             )

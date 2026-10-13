@@ -8,8 +8,11 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
         theme: Some("unknown".into()),
         zoom: f32::NAN,
         contrast: f32::INFINITY,
-        radius: Some(-20.0),
-        shadow_strength: Some(10.0),
+        look: zz_ui::interface_theme::LookOverrides {
+            radius: Some(-20.0),
+            row_inset: Some(40.0),
+            ..Default::default()
+        },
         terminal_font_family: Some(" ".into()),
         terminal_font_scale: f32::NAN,
         ..Preferences::default()
@@ -21,10 +24,10 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
         (
             preferences.zoom,
             preferences.contrast,
-            preferences.radius,
-            preferences.shadow_strength
+            preferences.look.radius,
+            preferences.look.row_inset
         ),
-        (1.0, 1.0, Some(0.0), Some(1.0))
+        (1.0, 1.0, Some(0.0), Some(12.0))
     );
     assert_eq!(preferences.terminal_font_family, None);
     assert_eq!(preferences.terminal_font_scale, 1.0);

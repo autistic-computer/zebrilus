@@ -5,6 +5,7 @@ use zz_gpui::{
 use zz_ui::{ActiveTheme as _, Colorize as _, h_flex, to_hex, v_flex};
 
 use crate::story::{Section, Story, stateless, states};
+use zz_ui::StyledExt as _;
 
 pub const STORY: Story = Story {
     id: "colors",
@@ -105,8 +106,7 @@ fn swatch(name: impl Into<SharedString>, color: Hsla, cx: &App) -> impl IntoElem
             div()
                 .h(px(44.0))
                 .rounded(theme.radius)
-                .border_1()
-                .border_color(theme.border())
+                .surface_edge(cx)
                 .bg(color),
         )
         .child(

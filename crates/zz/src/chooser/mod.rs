@@ -6,10 +6,10 @@ use zz_gpui::{
     KeyDownEvent, LayoutId, MouseButton, Pixels, Point, Render, ScrollStrategy, Style,
     UTF16Selection, UniformListScrollHandle, Window, div, prelude::*, uniform_list,
 };
+pub(crate) use zz_ui::chooser::ChooserHint;
 use zz_ui::chooser::{
     ChooserDimensions, ChooserModal, ChooserSearch as ChooserSearchView, chooser_has_key_gutter,
 };
-pub(crate) use zz_ui::chooser::{ChooserHint, ChooserRowTheme};
 use zz_ui::{
     ActiveTheme as _, IconName,
     button::{Button, ButtonVariants as _},
@@ -83,7 +83,6 @@ pub(crate) trait ChooserSpec: Default + 'static {
         selected: bool,
         show_key_gutter: bool,
         mux: Entity<MuxClient>,
-        theme: ChooserRowTheme,
     ) -> AnyElement;
     fn row_with_chooser(
         item: Self::Item,
@@ -93,9 +92,8 @@ pub(crate) trait ChooserSpec: Default + 'static {
         _: usize,
         _: Entity<Chooser<Self>>,
         mux: Entity<MuxClient>,
-        theme: ChooserRowTheme,
     ) -> AnyElement {
-        Self::row(item, index, selected, show_key_gutter, mux, theme)
+        Self::row(item, index, selected, show_key_gutter, mux)
     }
     fn key(input: KeyInput) -> Self::Action;
     fn search_append(text: String) -> Self::Action;
@@ -286,7 +284,6 @@ impl<S: ChooserSpec> Render for Chooser<S> {
         let items: Arc<[S::Item]> = S::render_items(&state, self.mux.read(cx)).into();
         let count = items.len();
         let show_key_gutter = chooser_has_key_gutter(items.iter().map(|item| S::item_key(item)));
-        let row_theme = ChooserRowTheme::from_theme(cx);
         let rows_mux = self.mux.clone();
         let rows_chooser = cx.entity();
         let rows = uniform_list(
@@ -304,7 +301,6 @@ impl<S: ChooserSpec> Render for Chooser<S> {
                                 daemon_item_count,
                                 rows_chooser.clone(),
                                 rows_mux.clone(),
-                                row_theme,
                             )
                         })
                     })

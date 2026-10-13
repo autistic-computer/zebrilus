@@ -16,6 +16,23 @@ use crate::{
 const SHADOW_SIZE: Pixels = px(12.0);
 const RESIZE_HIT_SIZE: Pixels = px(4.0);
 
+#[allow(
+    clippy::disallowed_types,
+    reason = "the window's own drop shadow under client-side decorations, which no surface recipe draws"
+)]
+fn window_shadow(extent: Pixels, cx: &App) -> Vec<zz_gpui::BoxShadow> {
+    if !cx.theme().surface_shadows() {
+        return Vec::new();
+    }
+    vec![zz_gpui::BoxShadow {
+        color: cx.theme().shadow_color,
+        blur_radius: extent / 2.0,
+        spread_radius: px(0.0),
+        offset: point(px(0.0), px(0.0)),
+        inset: false,
+    }]
+}
+
 /// The rounded Linux client-side frame around the complete application shell.
 #[derive(IntoElement)]
 pub(crate) struct RoundedWindowFrame {
@@ -108,13 +125,7 @@ impl RenderOnce for RoundedWindowFrame {
                                         surface.pr(WINDOW_FRAME_BORDER_SIZE)
                                     })
                                     .when(!tiling.is_tiled(), |surface| {
-                                        surface.shadow(vec![zz_gpui::BoxShadow {
-                                            color: cx.theme().shadow_color,
-                                            blur_radius: visual_shadow / 2.0,
-                                            spread_radius: px(0.0),
-                                            offset: point(px(0.0), px(0.0)),
-                                            inset: false,
-                                        }])
+                                        surface.shadow(window_shadow(visual_shadow, cx))
                                     }),
                                 window_radius,
                             ),

@@ -2,10 +2,14 @@ use zz_gpui::{
     App, Div, ElementId, IntoElement, Pixels, SharedString, Stateful, div, prelude::*, px,
 };
 
-use crate::{ActiveTheme as _, Emphasis, StyledExt as _, Tone, h_flex, v_flex};
+use crate::{
+    ActiveTheme as _, Emphasis, InteractivePaintExt as _, PaintState, StyledExt as _, Tone, h_flex,
+    v_flex,
+};
 
 const ROW_HEIGHT: f32 = 52.0;
 const MAX_VISIBLE_ROWS: u8 = 6;
+const LIST_PADDING: f32 = 4.0;
 
 pub fn suggestion_list_height(count: usize) -> Pixels {
     px(ROW_HEIGHT
@@ -23,22 +27,22 @@ pub fn suggestion_row(
     selected: bool,
     cx: &App,
 ) -> Stateful<Div> {
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+    let state = if selected {
+        PaintState::Selected
+    } else {
+        PaintState::Rest
+    };
     h_flex()
         .id(id)
         .w_full()
         .h(px(ROW_HEIGHT))
         .items_center()
         .gap_3()
-        .rounded(cx.theme().menu_radius())
+        .menu_item_corners(px(ROW_HEIGHT), cx)
         .px_3()
         .cursor_pointer()
-        .border(px(0.5))
-        .border_color(zz_gpui::transparent_white())
-        .when(selected, |row| row.selection_highlight(cx))
-        .when(!selected, |row| {
-            let hover = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover;
-            row.hover(move |row| row.bg(hover))
-        })
+        .painted_interactive(paint, selected, true)
         .child(
             v_flex()
                 .flex_1()
@@ -64,7 +68,7 @@ pub fn suggestion_row(
                             .text_ellipsis()
                             .whitespace_nowrap()
                             .text_size(crate::rems_from_px(12.0))
-                            .opacity(if selected { 1.0 } else { 0.8 })
+                            .text_color(paint.muted_at(state))
                             .child(description),
                     )
                 }),
@@ -75,7 +79,8 @@ pub fn suggestion_list(rows: impl IntoElement, cx: &App) -> Div {
     v_flex()
         .w_full()
         .popover_style(cx)
-        .p(px(8.0))
+        .list_inset(cx)
+        .py(px(LIST_PADDING))
         .overflow_hidden()
         .child(rows)
 }

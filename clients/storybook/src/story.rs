@@ -1,6 +1,6 @@
 use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement, Render,
-    RenderOnce, SharedString, Styled as _, Window, div, px,
+    RenderOnce, SharedString, Styled, Window, div, px,
 };
 use zz_ui::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
 
@@ -116,3 +116,17 @@ impl RenderOnce for Row {
             .children(self.children)
     }
 }
+
+/// The edge of a frame that stands in for a window or a device on the page.
+pub trait Framed: Styled + Sized {
+    /// The story's own framing, not part of the look, so every theme draws it.
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a story frame stands in for a window's edge on the page, not for an edge of the look"
+    )]
+    fn framed(self, cx: &App) -> Self {
+        self.border_1().border_color(cx.theme().border())
+    }
+}
+
+impl<E: Styled> Framed for E {}

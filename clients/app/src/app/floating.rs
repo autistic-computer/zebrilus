@@ -69,16 +69,13 @@ impl AppShell {
                 window.scale_factor(),
             );
             let hits = Rc::new(RefCell::new(MenuHits::default()));
-            let surface = menu_enter(
-                display_menu(
-                    &state,
-                    self.menu_selection,
-                    window.viewport_size(),
-                    &hits,
-                    cx,
-                ),
+            let surface = menu_enter(display_menu(
+                &state,
+                self.menu_selection,
+                window.viewport_size(),
+                &hits,
                 cx,
-            );
+            ));
             let state = Rc::new(state);
             let (press_state, press_hits) = (state.clone(), hits.clone());
             let (release_state, release_hits) = (state.clone(), hits.clone());
@@ -273,11 +270,7 @@ impl AppShell {
                 .filter(|_| float.border_status.is_on())
                 .map(|pane| float_title(&pane.border_status_text).left)
                 .unwrap_or_default();
-            let border_color = if active.active_pane == float.pane {
-                cx.theme().accent
-            } else {
-                cx.theme().border()
-            };
+            let border_color = zz_ui::pane::pane_border_color(active.active_pane == float.pane, cx);
             let frame = placed.frame;
             let inset = placed.content.origin - frame.origin;
             layer.push(

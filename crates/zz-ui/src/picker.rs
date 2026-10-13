@@ -1,15 +1,18 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName, Sizable as _,
-    StyledExt as _, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName,
+    InteractivePaintExt as _, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     h_flex,
     input::{Input, InputState},
     v_flex,
 };
 use zz_gpui::{
-    AnimationElement, App, Div, ElementId, Entity, FontWeight, MouseButton, SharedString, Stateful,
-    div, prelude::*, px, relative,
+    AnimationElement, App, Div, ElementId, Entity, FontWeight, MouseButton, Pixels, SharedString,
+    Stateful, div, prelude::*, px, relative,
 };
+
+const PICKER_ROW_HEIGHT: Pixels = px(26.0);
+const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
 
 pub fn picker_overlay(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
     div()
@@ -45,15 +48,14 @@ pub fn picker_modal_sized(
         .overflow_hidden()
         .popover_style(cx)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
-    zz_gpui_kit::foundation::surface_enter(surface, (id, "picker-open"), px(0.0), cx)
+    zz_gpui_kit::foundation::surface_enter(surface, (id, "picker-open"), px(0.0))
 }
 
 pub fn picker_header(cx: &App) -> Div {
     v_flex()
         .flex_none()
         .gap(px(CHROME_GAP))
-        .border_b(px(0.5))
-        .border_color(cx.theme().divider_color())
+        .rule_bottom(cx)
         .p(px(8.0))
 }
 
@@ -61,12 +63,8 @@ pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
     div().w_full().child(
         Input::new(input)
             .on(cx.theme().surface(Elevation::Popover).opaque())
-            .emphasis(Emphasis::Soft)
-            .bordered(false)
-            .h(px(32.0))
             .w_full()
             .min_w_0()
-            .text_size(crate::rems_from_px(12.0))
             .prefix(
                 Icon::new(IconName::Search)
                     .small()
@@ -102,8 +100,7 @@ pub fn picker_footer(cx: &App) -> Div {
         .min_h(px(40.0))
         .flex_none()
         .gap(px(CHROME_GAP))
-        .border_t(px(0.5))
-        .border_color(cx.theme().divider_color())
+        .rule_top(cx)
         .py(px(CHROME_GAP))
         .pl_4()
         .pr(px(CHROME_GAP))
@@ -111,22 +108,40 @@ pub fn picker_footer(cx: &App) -> Div {
         .text_color(cx.theme().foreground.muted())
 }
 
-pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {
+pub fn list_row(
+    id: impl Into<ElementId>,
+    height: Pixels,
+    selected: bool,
+    enabled: bool,
+    cx: &App,
+) -> Stateful<Div> {
     h_flex()
         .id(id)
+        .flex_none()
+        .h(height)
+        .menu_item_corners(height, cx)
+        .painted_interactive(
+            cx.theme().paint(Tone::Neutral, Emphasis::Ghost),
+            selected,
+            enabled,
+        )
+}
+
+pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {
+    sized_picker_row(id, PICKER_ROW_HEIGHT, selected, cx)
+}
+
+fn sized_picker_row(
+    id: impl Into<ElementId>,
+    height: Pixels,
+    selected: bool,
+    cx: &App,
+) -> Stateful<Div> {
+    list_row(id, height, selected, true, cx)
         .w_full()
-        .items_center()
         .gap_2()
-        .rounded(cx.theme().menu_radius())
-        .border(px(0.5))
-        .border_color(zz_gpui::transparent_white())
         .px_2p5()
         .cursor_pointer()
-        .when(selected, |row| row.selection_highlight(cx))
-        .when(!selected, |row| {
-            let hover = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover;
-            row.hover(move |row| row.bg(hover))
-        })
 }
 
 pub fn directory_row(
@@ -146,7 +161,6 @@ pub fn path_row(
     cx: &App,
 ) -> Stateful<Div> {
     picker_row(id, selected, cx)
-        .h(px(26.0))
         .child(
             Icon::new(icon)
                 .small()
@@ -173,7 +187,7 @@ pub fn history_row(
     current: bool,
     cx: &App,
 ) -> Stateful<Div> {
-    picker_row(id, selected, cx).h(px(52.0)).child(
+    sized_picker_row(id, HISTORY_ROW_HEIGHT, selected, cx).child(
         v_flex()
             .flex_1()
             .min_w_0()
@@ -205,14 +219,10 @@ pub fn history_row(
                     )
                     .when(current, |row| {
                         row.child(
-                            div()
-                                .flex_none()
-                                .rounded(px(999.0))
-                                .bg(cx.theme().paint(Tone::Success, Emphasis::Solid).fill)
-                                .px_1()
-                                .text_size(crate::rems_from_px(8.0))
-                                .text_color(cx.theme().paint(Tone::Success, Emphasis::Solid).text)
-                                .child("CURRENT"),
+                            Badge::new("CURRENT")
+                                .small()
+                                .tone(Tone::Success)
+                                .emphasis(Emphasis::Solid),
                         )
                     })
                     .child(div().flex_1())

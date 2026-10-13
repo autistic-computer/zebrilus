@@ -39,6 +39,16 @@ const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(13.0);
 const WORKSPACE_STATUS_TEXT_SIZE: f32 = 12.0;
+pub(crate) const STATUS_DOT_SIZE: f32 = 6.0;
+
+#[must_use]
+pub fn status_dot(color: Hsla) -> zz_gpui::Div {
+    div()
+        .flex_none()
+        .size(rems_from_px(STATUS_DOT_SIZE))
+        .rounded_full()
+        .bg(color)
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusWindowState {
@@ -179,27 +189,16 @@ pub fn workspace_status_window(
         .px(px(9.0))
         .rounded(cx.theme().control_radius())
         .overflow_hidden()
-        .when(cx.theme().control_shadows(), |item| {
-            item.border(px(0.5))
-                .border_color(zz_gpui::transparent_white())
-        })
-        .when(state.active, |item| {
-            item.bg(highlight)
-                .when(cx.theme().control_shadows(), |item| {
-                    item.control_highlight(cx)
-                })
-        })
+        .surface_outline(cx.theme().transparent, cx)
+        .when(state.active, |item| item.bg(highlight).control_surface(cx))
         .text_color(text_color)
         .text_size(rems_from_px(13.0))
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
         .when(state.connected, |item| {
             item.cursor_pointer().hover(move |item| {
-                let item = item.bg(highlight).text_color(foreground);
-                if cx.theme().control_shadows() {
-                    item.control_highlight(cx)
-                } else {
-                    item
-                }
+                item.bg(highlight)
+                    .text_color(foreground)
+                    .control_surface(cx)
             })
         })
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
@@ -226,20 +225,12 @@ pub fn workspace_status_window(
                 .flex_none()
                 .items_center()
                 .gap(px(3.0))
-                .child(
-                    div()
-                        .size(px(5.0))
-                        .rounded_full()
-                        .bg(cx.theme().warning)
-                        .opacity(if state.bell { 1.0 } else { 0.0 }),
-                )
-                .child(
-                    div()
-                        .size(px(5.0))
-                        .rounded_full()
-                        .bg(cx.theme().success)
-                        .opacity(if state.activity { 1.0 } else { 0.0 }),
-                ),
+                .child(status_dot(cx.theme().warning).opacity(if state.bell { 1.0 } else { 0.0 }))
+                .child(status_dot(cx.theme().success).opacity(if state.activity {
+                    1.0
+                } else {
+                    0.0
+                })),
         )
 }
 
@@ -329,8 +320,7 @@ pub fn workspace_sidebar_surface(
         .overflow_hidden()
         .relative()
         .text_color(cx.theme().foreground)
-        .border_r_1()
-        .border_color(cx.theme().divider_color())
+        .rule_right(cx)
         .child(titlebar)
         .child(
             div()
@@ -366,15 +356,12 @@ pub fn workspace_row_fill(
         .left(inset)
         .right(inset)
         .rounded(radius)
-        .when(theme.outlined(), |this| {
-            this.border(theme.outline_width)
-                .border_color(zz_gpui::transparent_white())
-        })
+        .surface_outline(theme.transparent, cx)
         .when_some(hover_group, |this, group| {
-            this.group_hover(group, |this| this.bg(paint.hover).control_highlight(cx))
+            this.group_hover(group, |this| this.bg(paint.hover).control_surface(cx))
         })
         .when(lit != PaintState::Rest, |this| {
-            this.bg(paint.fill_at(lit)).control_highlight(cx)
+            this.bg(paint.fill_at(lit)).control_surface(cx)
         });
     let press = CoarsePointer::get(cx).then(|| {
         crate::touch::press_highlight(
@@ -486,7 +473,7 @@ fn workspace_tree_row_height(cx: &App) -> f32 {
     if CoarsePointer::get(cx) {
         TOUCH_TARGET
     } else {
-        cx.theme().dense(px(WORKSPACE_TREE_ROW_HEIGHT)).as_f32()
+        px(WORKSPACE_TREE_ROW_HEIGHT).as_f32()
     }
 }
 

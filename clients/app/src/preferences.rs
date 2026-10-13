@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use zz_ui::interface_theme::{self, InterfaceTheme, ThemeModeSetting};
+use zz_ui::interface_theme::{self, InterfaceTheme, Look, LookOverrides, ThemeModeSetting};
 
 pub const MAX_SAVED_THEMES: usize = 32;
 const MAX_THEME_BYTES: usize = 64 * 1024;
@@ -13,8 +13,6 @@ pub struct Preferences {
     pub status_badges: bool,
     pub status_agents: bool,
     pub animations: bool,
-    /// Overrides the theme's shadow strength.
-    pub shadow_strength: Option<f32>,
     pub gaps: bool,
     pub agent_enabled: bool,
     pub dark: bool,
@@ -29,8 +27,9 @@ pub struct Preferences {
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
     pub zoom: f32,
-    /// Overrides the theme's widget corner radius.
-    pub radius: Option<f32>,
+    /// Look values set over the theme. Picking a theme clears them.
+    #[serde(flatten)]
+    pub look: LookOverrides,
     pub contrast: f32,
     pub pane_background_opacity: f32,
     pub pane_inactive_opacity: f32,
@@ -55,7 +54,6 @@ impl Default for Preferences {
             status_badges: true,
             status_agents: true,
             animations: true,
-            shadow_strength: None,
             gaps: false,
             agent_enabled: true,
             dark: true,
@@ -66,7 +64,7 @@ impl Default for Preferences {
             terminal_font_family: None,
             terminal_font_scale: 1.0,
             zoom: 1.0,
-            radius: None,
+            look: LookOverrides::default(),
             contrast: 1.0,
             pane_background_opacity: 0.5,
             pane_inactive_opacity: 0.7,
@@ -99,14 +97,28 @@ impl Preferences {
         });
         self.themes.truncate(MAX_SAVED_THEMES);
         self.theme = self.theme.take().filter(|id| self.knows_theme(id));
-        let look = &self.interface_theme().look;
-        let (radius, shadow) = (look.radius, look.shadow);
-        self.shadow_strength = self
-            .shadow_strength
-            .map(|strength| bounded(strength, 0.0, 1.0, shadow));
+        let theme = self.interface_theme().look.clone();
+        self.look.radius = self
+            .look
+            .radius
+            .map(|value| bounded(value, 0.0, 25.0, theme.radius));
+        self.look.outline = self
+            .look
+            .outline
+            .map(|value| bounded(value, 0.0, 2.0, theme.outline));
+        self.look.row_inset = self
+            .look
+            .row_inset
+            .map(|value| bounded(value, 0.0, 12.0, theme.row_inset));
+        self.look.glass = self.look.glass.take().filter(|glass| {
+            zz_ui::settings::appearance::AppearancePageItem::Glass
+                .look_choices()
+                .iter()
+                .skip(1)
+                .any(|(_, choice)| choice == glass)
+        });
         self.zoom = bounded(self.zoom, 0.5, 3.0, 1.0);
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
-        self.radius = self.radius.map(|value| bounded(value, 0.0, 25.0, radius));
         self.contrast = bounded(self.contrast, 0.5, 2.0, 1.0);
         for (value, min, max, fallback) in [
             (&mut self.pane_background_opacity, 0., 1., 0.5),
@@ -191,23 +203,21 @@ impl Preferences {
     }
 
     /// Selects the built-in or saved theme `id`, or the default for any other
-    /// id, and drops the overrides of what the theme decides: the radius, the
-    /// shadow, and the UI font when it sets one, so it shows as designed.
+    /// id, and drops the overrides of what the theme decides: the look, and
+    /// the UI font when it sets one, so it shows as designed.
     pub fn set_interface_theme(&mut self, id: &str) {
         self.theme = self.knows_theme(id).then(|| id.to_owned());
-        self.radius = None;
-        self.shadow_strength = None;
+        self.look = LookOverrides::default();
         if self.interface_theme().look.font.is_some() {
             self.ui_font_family.clear();
         }
     }
 
-    /// Saves the active theme as it draws now, with the radius, shadow and UI
-    /// font overrides folded into its look, and selects the copy.
+    /// Saves the active theme as it draws now, with the look and UI font
+    /// overrides folded into its look, and selects the copy.
     pub fn duplicate_theme(&mut self) -> Result<String, String> {
         let mut theme = self.interface_theme().clone();
-        theme.look.radius = self.widget_corner_radius();
-        theme.look.shadow = self.shadow();
+        theme.look = self.look();
         if !self.ui_font_family.is_empty() {
             theme.look.font = Some(self.ui_font_family.clone().into());
         }
@@ -265,16 +275,17 @@ impl Preferences {
         }
     }
 
+    /// The active theme's look with the overrides set here.
     #[must_use]
-    pub fn widget_corner_radius(&self) -> f32 {
-        self.radius
-            .unwrap_or_else(|| self.interface_theme().look.radius)
+    pub fn look(&self) -> Look {
+        let mut look = self.interface_theme().look.clone();
+        self.look.apply(&mut look);
+        look
     }
 
     #[must_use]
-    pub fn shadow(&self) -> f32 {
-        self.shadow_strength
-            .unwrap_or_else(|| self.interface_theme().look.shadow)
+    pub fn widget_corner_radius(&self) -> f32 {
+        self.look().radius
     }
 
     #[must_use]
@@ -296,8 +307,7 @@ impl Preferences {
             preferences.mode = Some("system".into());
         }
         if source.get("theme").is_none() {
-            preferences.radius = None;
-            preferences.shadow_strength = None;
+            preferences.look = LookOverrides::default();
         }
         Ok(preferences.sanitized())
     }
@@ -393,7 +403,7 @@ fn bounded(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::Preferences;
-    use zz_ui::interface_theme::ThemeModeSetting;
+    use zz_ui::interface_theme::{LookOverrides, ThemeModeSetting};
 
     #[test]
     fn preferences_persist_and_missing_fields_keep_defaults() {
@@ -471,7 +481,7 @@ mod tests {
         let defaults = serde_json::from_str::<Preferences>(r#"{"sidebar":false}"#).unwrap();
         assert!(!defaults.sidebar);
         assert!(defaults.animations);
-        assert_eq!(defaults.shadow(), 1.0);
+        assert_eq!(defaults.look, LookOverrides::default());
         assert_eq!(
             defaults.sidebar_width,
             zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH
@@ -483,7 +493,10 @@ mod tests {
             status_badges: false,
             status_agents: false,
             animations: false,
-            shadow_strength: Some(0.35),
+            look: LookOverrides {
+                shadows: Some(zz_ui::Shadows::None),
+                ..LookOverrides::default()
+            },
             sidebar_width: 320.0,
             ..defaults
         };
@@ -496,12 +509,12 @@ mod tests {
             changed.status_bar_settings()
         );
         assert!(!restored.animations);
-        assert_eq!(restored.shadow(), 0.35);
+        assert_eq!(restored.look().shadows, zz_ui::Shadows::None);
         assert_eq!(restored.sidebar_width, 320.0);
     }
 
     #[test]
-    fn sidebar_and_shadow_values_stay_within_supported_limits() {
+    fn sidebar_and_look_values_stay_within_supported_limits() {
         for (width, available, expected) in [
             (0.0, 1000.0, 160.0),
             (300.0, 1000.0, 300.0),
@@ -518,20 +531,29 @@ mod tests {
         }
         let invalid = Preferences {
             sidebar_width: f32::NAN,
-            shadow_strength: Some(f32::INFINITY),
+            look: LookOverrides {
+                outline: Some(f32::INFINITY),
+                glass: Some("stained".to_owned()),
+                ..LookOverrides::default()
+            },
             ..Preferences::default()
         }
         .sanitized();
         assert_eq!(invalid.sidebar_width, Preferences::default().sidebar_width);
-        assert_eq!(invalid.shadow(), 1.0);
-        for (value, expected) in [(-0.1, 0.0), (1.5, 1.0), (0.4, 0.4)] {
+        assert_eq!(invalid.look().outline, 0.5);
+        assert_eq!(invalid.look.glass, None);
+        for (value, expected) in [(-0.1, 0.0), (3.0, 2.0), (1.5, 1.5)] {
             assert_eq!(
                 Preferences {
-                    shadow_strength: Some(value),
+                    look: LookOverrides {
+                        outline: Some(value),
+                        ..LookOverrides::default()
+                    },
                     ..Preferences::default()
                 }
                 .sanitized()
-                .shadow(),
+                .look()
+                .outline,
                 expected
             );
         }
@@ -561,7 +583,10 @@ mod tests {
     #[test]
     fn full_widget_radius_survives_saved_preferences() {
         let preferences = Preferences {
-            radius: Some(25.0),
+            look: LookOverrides {
+                radius: Some(25.0),
+                ..LookOverrides::default()
+            },
             ..Preferences::default()
         };
         let saved = serde_json::to_string(&preferences).unwrap();
@@ -576,13 +601,13 @@ mod tests {
         let older =
             Preferences::decode(r#"{"radius":12,"shadow_strength":0.3,"style":"flat"}"#).unwrap();
         assert_eq!(older.theme_id(), "default");
-        assert_eq!((older.radius, older.shadow_strength), (None, None));
+        assert_eq!(older.look, LookOverrides::default());
         assert_eq!(older.widget_corner_radius(), 24.0);
 
         let mut tuned = Preferences::decode(r#"{"theme":null,"radius":12}"#).unwrap();
         assert_eq!(tuned.widget_corner_radius(), 12.0);
         let saved = serde_json::to_string(&tuned).unwrap();
-        assert_eq!(Preferences::decode(&saved).unwrap().radius, Some(12.0));
+        assert_eq!(Preferences::decode(&saved).unwrap().look.radius, Some(12.0));
 
         tuned.set_interface_theme("linear");
         let linear = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
@@ -591,14 +616,14 @@ mod tests {
             .unwrap()
             .look;
         assert_eq!(
-            (linear.widget_corner_radius(), linear.shadow()),
-            (look.radius, look.shadow)
+            (linear.widget_corner_radius(), linear.look().shadows),
+            (look.radius, look.shadows)
         );
         tuned.set_interface_theme("vaporwave");
         assert_eq!(tuned.theme_id(), "default");
     }
 
-    const NEON: &str = r##"{"name":"Neon","look":{"radius":3,"shadow":0.25,"font":"Lilex"},"dark":{"accent":"#ff00ff"}}"##;
+    const NEON: &str = r##"{"name":"Neon","look":{"radius":3,"shadows":"surfaces","font":"Lilex"},"dark":{"accent":"#ff00ff"}}"##;
 
     #[test]
     fn saved_themes_round_trip_and_older_preferences_have_none() {
@@ -621,7 +646,7 @@ mod tests {
         let older = Preferences::decode(r#"{"theme":"macos","radius":12}"#).unwrap();
         assert!(older.themes.is_empty());
         assert_eq!(older.theme_id(), "macos");
-        assert_eq!(older.radius, Some(12.0));
+        assert_eq!(older.look.radius, Some(12.0));
 
         let unreadable = Preferences::decode(
             r#"{"theme":"theme-2","themes":[["theme-1",{"name":"Kept"}],["theme-2",{"look":{"glass":"stained"}}],["theme-3",{"look":{"corner_smoothing":2}}]]}"#,
@@ -669,8 +694,11 @@ mod tests {
     fn duplicate_keeps_what_is_on_screen() {
         let mut preferences = Preferences {
             theme: Some("linear".into()),
-            radius: Some(7.0),
-            shadow_strength: Some(0.3),
+            look: LookOverrides {
+                radius: Some(7.0),
+                shadows: Some(zz_ui::Shadows::Surfaces),
+                ..LookOverrides::default()
+            },
             ui_font_family: "Lilex".into(),
             ..Preferences::default()
         };
@@ -680,26 +708,23 @@ mod tests {
         assert_eq!(
             (
                 copy.look.radius,
-                copy.look.shadow,
+                copy.look.shadows,
                 copy.look.font.as_deref()
             ),
-            (7.0, 0.3, Some("Lilex"))
+            (7.0, zz_ui::Shadows::Surfaces, Some("Lilex"))
         );
         let linear = zz_ui::interface_theme::builtin_theme("linear").unwrap();
         assert_eq!((&copy.light, &copy.dark), (&linear.light, &linear.dark));
         assert_eq!(preferences.theme_id(), "theme-1");
-        assert_eq!(
-            (preferences.radius, preferences.shadow_strength),
-            (None, None)
-        );
+        assert_eq!(preferences.look, LookOverrides::default());
         assert!(preferences.ui_font_family.is_empty());
         assert_eq!(
             (
                 preferences.widget_corner_radius(),
-                preferences.shadow(),
+                preferences.look().shadows,
                 preferences.shown_ui_font()
             ),
-            (7.0, 0.3, "Lilex")
+            (7.0, zz_ui::Shadows::Surfaces, "Lilex")
         );
     }
 
@@ -739,14 +764,14 @@ mod tests {
         let mut preferences = Preferences::default();
         preferences.import_theme(NEON).unwrap();
         preferences.import_theme("{}").unwrap();
-        preferences.radius = Some(4.0);
+        preferences.look.radius = Some(4.0);
         preferences.delete_theme("theme-1");
         assert_eq!(preferences.theme_id(), "theme-2");
-        assert_eq!(preferences.radius, Some(4.0));
+        assert_eq!(preferences.look.radius, Some(4.0));
         preferences.delete_theme("theme-2");
         assert!(preferences.themes.is_empty());
         assert_eq!(preferences.theme_id(), "default");
-        assert_eq!(preferences.radius, None);
+        assert_eq!(preferences.look.radius, None);
         assert_eq!(preferences.import_theme("{}").unwrap(), "theme-1");
     }
 
@@ -756,7 +781,7 @@ mod tests {
             .unwrap()
             .sanitized();
         assert!(preferences.gaps);
-        assert_eq!(preferences.radius, Some(8.0));
+        assert_eq!(preferences.look.radius, Some(8.0));
         assert_eq!(preferences.pane_margin, 6.0);
         assert_eq!(preferences.pane_radius, 13.5);
         assert_eq!(preferences.pane_background_opacity, 0.5);
