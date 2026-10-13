@@ -121,7 +121,6 @@ pub enum ConfigKey {
     QuitDaemonOnExit,
     AutoRestartStaleDaemon,
     CheckForUpdates,
-    StatusShowSession,
     StatusBadges,
     StatusAgents,
     StatusHost,
@@ -169,7 +168,6 @@ impl ConfigKey {
             Self::QuitDaemonOnExit => "quit-daemon-on-exit",
             Self::AutoRestartStaleDaemon => "auto-restart-stale-daemon",
             Self::CheckForUpdates => "check-for-updates",
-            Self::StatusShowSession => "status-show-session",
             Self::StatusBadges => "status-badges",
             Self::StatusAgents => "status-agents",
             Self::StatusHost => "status-host",
@@ -217,7 +215,6 @@ impl ConfigKey {
             "quit-daemon-on-exit" => Some(Self::QuitDaemonOnExit),
             "auto-restart-stale-daemon" => Some(Self::AutoRestartStaleDaemon),
             "check-for-updates" => Some(Self::CheckForUpdates),
-            "status-show-session" => Some(Self::StatusShowSession),
             "status-badges" => Some(Self::StatusBadges),
             "status-agents" => Some(Self::StatusAgents),
             "status-host" => Some(Self::StatusHost),
@@ -279,7 +276,6 @@ impl ConfigKey {
             | Self::QuitDaemonOnExit
             | Self::AutoRestartStaleDaemon
             | Self::CheckForUpdates
-            | Self::StatusShowSession
             | Self::StatusBadges
             | Self::StatusAgents
             | Self::StatusHost
@@ -427,7 +423,6 @@ pub struct AppConfig {
     pub quit_daemon_on_exit: ConfigValue<bool>,
     pub auto_restart_stale_daemon: ConfigValue<bool>,
     pub check_for_updates: ConfigValue<bool>,
-    pub status_show_session: ConfigValue<bool>,
     pub status_badges: ConfigValue<bool>,
     pub status_agents: ConfigValue<bool>,
     pub status_host: ConfigValue<bool>,
@@ -474,7 +469,6 @@ impl Default for AppConfig {
             quit_daemon_on_exit: ConfigValue::from_default(DEFAULT_QUIT_DAEMON_ON_EXIT),
             auto_restart_stale_daemon: ConfigValue::from_default(DEFAULT_AUTO_RESTART_STALE_DAEMON),
             check_for_updates: ConfigValue::from_default(DEFAULT_CHECK_FOR_UPDATES),
-            status_show_session: ConfigValue::from_default(status_bar.show_session),
             status_badges: ConfigValue::from_default(status_bar.badges),
             status_agents: ConfigValue::from_default(status_bar.show_agents),
             status_host: ConfigValue::from_default(status_bar.show_host),
@@ -527,7 +521,6 @@ impl AppConfig {
             ConfigKey::QuitDaemonOnExit => Some(&mut self.quit_daemon_on_exit),
             ConfigKey::AutoRestartStaleDaemon => Some(&mut self.auto_restart_stale_daemon),
             ConfigKey::CheckForUpdates => Some(&mut self.check_for_updates),
-            ConfigKey::StatusShowSession => Some(&mut self.status_show_session),
             ConfigKey::StatusBadges => Some(&mut self.status_badges),
             ConfigKey::StatusAgents => Some(&mut self.status_agents),
             ConfigKey::StatusHost => Some(&mut self.status_host),
@@ -902,6 +895,16 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if RETIRED_STATUS_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!(
+                    "`{key}` was removed: the status bar no longer has a session menu; switch sessions from the sidebar"
+                ),
+            });
+            continue;
+        }
+
         if RETIRED_PANE_KEYS.contains(&key) {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
@@ -1100,7 +1103,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::QuitDaemonOnExit
             | ConfigKey::AutoRestartStaleDaemon
             | ConfigKey::CheckForUpdates
-            | ConfigKey::StatusShowSession
             | ConfigKey::StatusBadges
             | ConfigKey::ExperimentalAgentPane
             | ConfigKey::ExperimentalEditorPane
@@ -1426,10 +1428,14 @@ pub const RETIRED_APPEARANCE_KEYS: [&str; 10] = [
 /// Pane keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_PANE_KEYS: [&str; 1] = ["pane-glass"];
 
+/// Status bar keys an older zz read. Parsing reports them and otherwise ignores them.
+pub const RETIRED_STATUS_KEYS: [&str; 1] = ["status-show-session"];
+
 pub fn is_app_config_key(key: &str) -> bool {
     ConfigKey::parse(key).is_some()
         || RETIRED_APPEARANCE_KEYS.contains(&key)
         || RETIRED_PANE_KEYS.contains(&key)
+        || RETIRED_STATUS_KEYS.contains(&key)
         || AgentConfigKey::parse(key).is_some()
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
@@ -2158,6 +2164,23 @@ mod tests {
             parsed.config.interface_theme,
             ConfigValue::from_default(DEFAULT_THEME)
         );
+    }
+
+    #[test]
+    fn a_retired_session_menu_line_is_reported_and_otherwise_ignored() {
+        let source = "status-badges = false\nstatus-show-session = false\n";
+        let parsed = parse_config(source, "monospace");
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(parsed.diagnostics[0].line, 2);
+        assert!(
+            parsed.diagnostics[0]
+                .message
+                .starts_with("`status-show-session` was removed"),
+            "{}",
+            parsed.diagnostics[0].message
+        );
+        assert!(is_app_config_key("status-show-session"));
+        assert!(!parsed.config.status_badges.value);
     }
 
     #[test]

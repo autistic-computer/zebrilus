@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Native status bar for GUI clients
-description: The desktop status bar combines a session switcher, left-aligned window pills, and agent activity from structured state while tmux status rows remain a TUI compatibility surface.
+description: The desktop status bar combines the sidebar toggle, left-aligned window pills, and agent activity from structured state while tmux status rows remain a TUI compatibility surface.
 status: Complete
 resource: crates/zz/src/status_bar.rs
 tags:
@@ -21,7 +21,9 @@ consume `StatusLine`, parse tmux styles, recognize powerline separators, or map 
 icons. The raw-terminal attach client keeps the daemon-expanded tmux rows and renders them with the
 shared cell composer.
 
-Desktop and web share the status widgets, session menus, and activity menus.
+Desktop and web share the status widgets and activity menus. The titlebar's only chrome control is
+the sidebar toggle, with no divider after it; settings sits at the bottom of the sidebar
+(`navigation::workspace_sidebar_footer`), and sessions are switched from the sidebar.
 
 # Data and presentation
 
@@ -31,16 +33,15 @@ bell and activity from each window. Each window also carries its panes in layout
 identity, kind, label, and focus state for its icon deck.
 Automatically named windows show the active agent's session name, or “New session” when unnamed;
 explicit window names and terminal-focused window labels stay in place. The model retains the raw
-window name for rename prompts. The activity list includes only non-dead Agent panes and disappears at zero. Session and
-host values are optional according to settings, and the desktop supplies a host name only for a
-remote attachment.
+window name for rename prompts. The activity list includes only non-dead Agent panes and disappears at zero. The model
+still names the attached session (the iPhone overview shows it); the host value is optional
+according to settings, and the desktop supplies a host name only for a remote attachment.
 
 The model owns no truncation, overflow menu, click action, color, update state, or time source. The
 desktop view owns those concerns:
 
 | Item | Desktop behavior |
 | --- | --- |
-| Session | Session name, Layers icon, and chevron; its dropdown switches directly between sessions on the attached host |
 | Windows | Always left-aligned; index and name for at most five visible windows; the visible range stays centered around the active window, and the overflow menu reaches the rest |
 | Pane deck | A packed fan of pane tiles, the focused pane in front with its Terminal, Browser, Agent provider, Editor, or Picker glyph; pointing at it opens every pane in a row with details on hover; clicking a tile selects that pane |
 | Window markers | Small bell and activity indicators derived from the model; daemon selection clears the latched attention state |
@@ -57,8 +58,8 @@ is visible. They include windows outside the five visible pills and ignore missi
 positions. The `ui` chrome actions `select-window-1` through `select-window-9`
 support rebinding and take priority over pane shortcuts.
 
-Session and agent buttons share the active window pill’s background, theme border, shadow, and
-26px height, with widths sized to their contents.
+The agent button shares the active window pill’s background, theme border, shadow, and 26px
+height, with its width sized to its contents.
 
 Window pills are 26px high and vertically centered inside the 35px titlebar, leaving 4.5px at both edges. They
 start at 240px wide regardless of the title and shrink together only when the window strip runs
@@ -78,7 +79,7 @@ tabs do not increase the pane count. The web client shares the deck, tooltips, a
 Chrome comes from the active zz-ui theme. There is no time/date item or alignment preference.
 Agent activity uses `zz_client::agent_attention_status` from published agent state; missing state
 is never counted as running. `mux::client::AgentStateChanged` notifications refresh the app shell
-without a periodic timer. Session and agent menu actions are disabled while disconnected.
+without a periodic timer. Agent menu actions are disabled while disconnected.
 
 # Settings
 
@@ -88,7 +89,6 @@ same status components and sample pane decks, updating as these preferences chan
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `status-show-session` | `true` | Show the session switcher |
 | `status-badges` | `true` | Show bell and activity window markers |
 | `status-agents` | `true` | Show activity for non-dead Agent panes |
 | `status-host` | `true` | Show the remote host item |

@@ -278,7 +278,7 @@ fn titlebar_strip(_: &mut Window, cx: &mut App) -> AnyElement {
                 .border_color(cx.theme().border())
                 .child(app_titlebar_strip(
                     "titlebar-strip",
-                    chrome_controls(false).pr(px(8.0)),
+                    div().pr(px(8.0)).child(chrome_controls()),
                 )),
         )
         .into_any_element()

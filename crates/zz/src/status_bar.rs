@@ -10,9 +10,9 @@ use zz_ui::{
     navigation::{
         WorkspaceStatusWindowState,
         status::{
-            MAX_VISIBLE_WINDOWS, StatusAgentEntry, StatusPaneEntry, StatusSessionEntry,
-            StatusWindowActions, StatusWindowEntry, status_agents, status_session, status_window,
-            status_window_overflow, visible_window_range,
+            MAX_VISIBLE_WINDOWS, StatusAgentEntry, StatusPaneEntry, StatusWindowActions,
+            StatusWindowEntry, status_agents, status_window, status_window_overflow,
+            visible_window_range,
         },
         workspace_controls_leading_inset, workspace_row_highlight, workspace_status_item,
     },
@@ -73,63 +73,16 @@ pub(crate) fn render_gui_status_bar(
         .collect::<Vec<_>>();
     let overflow = (model.windows.len() > MAX_VISIBLE_WINDOWS)
         .then(|| render_window_overflow(&model.windows, connected, mux, cx));
-    let session = model
-        .session_name
-        .as_deref()
-        .map(|name| render_session(name, &snapshot, attached, attached_host, connected, mux, cx));
     let right = render_right_items(&model, mux, connected, cx);
     workspace_status_bar(
         crate::config::pane_gaps(cx),
         workspace_controls_leading_inset(cx),
         WorkspaceStatusSlots {
-            session,
             windows: visible_windows.into_iter().chain(overflow).collect(),
             right,
             titlebar_controls,
             window_controls,
         },
-        cx,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn render_session(
-    name: &str,
-    snapshot: &zz_protocol::MuxSnapshot,
-    attached: Option<zz_protocol::SessionId>,
-    host: HostId,
-    connected: bool,
-    mux: &Entity<MuxClient>,
-    cx: &App,
-) -> AnyElement {
-    let sessions = snapshot
-        .sessions
-        .iter()
-        .map(|session| {
-            let id = session.id;
-            let mux = mux.clone();
-            StatusSessionEntry {
-                label: format!(
-                    "{} · {} window{}",
-                    session.name,
-                    session.windows.len(),
-                    if session.windows.len() == 1 { "" } else { "s" }
-                )
-                .into(),
-                active: Some(id) == attached,
-                select: Rc::new(move |_, cx| {
-                    mux.update(cx, |mux, cx| {
-                        mux.attach_to_host(host, id, cx);
-                    });
-                }),
-            }
-        })
-        .collect();
-    status_session(
-        "gui-status-session",
-        name.to_owned().into(),
-        sessions,
-        connected,
         cx,
     )
 }

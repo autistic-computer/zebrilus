@@ -26,7 +26,7 @@ use zz_ui::navigation::{
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
         tree_node_marker, tree_row_menu, tree_window_layout_button,
     },
-    workspace_chrome_controls, workspace_layout_button, workspace_settings_button,
+    workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
     workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_tree_action_button,
     workspace_tree_action_row, workspace_tree_disclosure, workspace_tree_row,
 };
@@ -678,23 +678,29 @@ impl WorkspaceSidebar {
             .into_any_element()
     }
 
-    pub(crate) fn render_controls(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
-        let settings_sidebar = sidebar.clone();
-        let settings = workspace_settings_button("workspace-settings")
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |_, window, cx| {
-                cx.stop_propagation();
-                settings_sidebar.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
-            });
-        let mode_sidebar = sidebar.clone();
-        let layout = workspace_layout_button("workspace-layout")
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |_, _, cx| {
-                cx.stop_propagation();
-                mode_sidebar.update(cx, WorkspaceSidebar::toggle_mode);
-            });
-        let layout = (!crate::profile::profile(cx).fixed_window).then(|| layout.into_any_element());
-        workspace_chrome_controls(settings, layout).into_any_element()
+    pub(crate) fn render_controls(sidebar: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        let sidebar = sidebar.clone();
+        (!crate::profile::profile(cx).fixed_window).then(|| {
+            workspace_layout_button("workspace-layout")
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(move |_, _, cx| {
+                    cx.stop_propagation();
+                    sidebar.update(cx, WorkspaceSidebar::toggle_mode);
+                })
+                .into_any_element()
+        })
+    }
+
+    fn render_footer(sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+        let sidebar = sidebar.clone();
+        workspace_sidebar_footer(
+            "workspace-sidebar-footer",
+            workspace_settings_button("workspace-settings").on_click(move |_, window, cx| {
+                sidebar.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+            }),
+            cx,
+        )
+        .into_any_element()
     }
 }
 
@@ -804,12 +810,17 @@ impl Render for WorkspaceSidebar {
                 self.render_navigation(&sidebar, attached_host, attached, window, cx)
             };
             let controls = if settings_route {
-                div().into_any_element()
+                None
             } else {
-                self.render_controls(&sidebar, cx)
+                Self::render_controls(&sidebar, cx)
             };
-            let titlebar = workspace_sidebar_titlebar("workspace-sidebar-titlebar", controls, cx)
-                .window_control_area(WindowControlArea::Drag);
+            let footer = (!settings_route).then(|| Self::render_footer(&sidebar, cx));
+            let titlebar = workspace_sidebar_titlebar(
+                "workspace-sidebar-titlebar",
+                div().children(controls),
+                cx,
+            )
+            .window_control_area(WindowControlArea::Drag);
             let titlebar = if crate::profile::profile(cx).fixed_window {
                 titlebar
             } else {
@@ -824,6 +835,7 @@ impl Render for WorkspaceSidebar {
                 (settings_route || matches!(self.mode(), ChromeMode::Sidebar)) && pane_gaps(cx);
             let shell = corners.round_div(
                 workspace_sidebar_surface("workspace-sidebar", width, titlebar, navigation, cx)
+                    .children(footer)
                     .when(divider_hidden, |this| {
                         this.border_color(zz_gpui::transparent_black())
                     }),

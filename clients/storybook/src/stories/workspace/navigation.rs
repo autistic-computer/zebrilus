@@ -13,9 +13,9 @@ use zz_ui::{
             tree_window_layout_button,
         },
         workspace_layout_button, workspace_palette_button, workspace_settings_button,
-        workspace_sidebar_titlebar, workspace_status_item, workspace_status_window,
-        workspace_tree_action_button, workspace_tree_action_row, workspace_tree_disclosure,
-        workspace_tree_marker, workspace_tree_row,
+        workspace_sidebar_footer, workspace_sidebar_titlebar, workspace_status_item,
+        workspace_status_window, workspace_tree_action_button, workspace_tree_action_row,
+        workspace_tree_disclosure, workspace_tree_marker, workspace_tree_row,
     },
 };
 
@@ -656,21 +656,21 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
                 .rounded(cx.theme().radius)
                 .child(workspace_sidebar_titlebar(
                     "sidebar-titlebar",
-                    chrome_controls(false),
+                    chrome_controls(),
                     cx,
                 )),
         )
         .state(
-            "sidebar titlebar on the settings route",
+            "sidebar footer",
             div()
-                .id("titlebar-settings")
+                .id("footer")
                 .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
                 .border_1()
                 .border_color(cx.theme().border())
                 .rounded(cx.theme().radius)
-                .child(workspace_sidebar_titlebar(
-                    "sidebar-titlebar",
-                    chrome_controls(true),
+                .child(workspace_sidebar_footer(
+                    "sidebar-footer",
+                    workspace_settings_button("footer-settings"),
                     cx,
                 )),
         )

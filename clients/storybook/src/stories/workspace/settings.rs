@@ -524,12 +524,6 @@ fn status_rows(settings: StatusBarSettings) -> SettingsStack {
         .children(
             [
                 (
-                    "session",
-                    "Session",
-                    "Show the session menu in the titlebar.",
-                    settings.show_session,
-                ),
-                (
                     "badges",
                     "Window badges",
                     "Show bell and activity markers on window items.",
@@ -569,11 +563,10 @@ fn status_bar(_: &mut Window, cx: &mut App) -> AnyElement {
             page("status-defaults", StatusBarSettings::default(), false, cx),
         )
         .state(
-            "session, badges and agents off, pane gaps on",
+            "badges and agents off, pane gaps on",
             page(
                 "status-minimal",
                 StatusBarSettings {
-                    show_session: false,
                     badges: false,
                     show_agents: false,
                     ..StatusBarSettings::default()

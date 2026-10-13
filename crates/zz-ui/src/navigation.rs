@@ -28,6 +28,7 @@ const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 pub const WORKSPACE_SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
+const WORKSPACE_SIDEBAR_FOOTER_INSET: f32 = 6.0;
 pub const WORKSPACE_STATUS_CONTENT_HEIGHT: Pixels = px(24.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(26.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(16.0);
@@ -77,24 +78,6 @@ fn workspace_chrome_button(
     Button::compact_icon(id, icon)
         .size(WORKSPACE_STATUS_PILL_HEIGHT)
         .tooltip(tooltip)
-}
-
-#[must_use]
-pub fn workspace_chrome_controls(
-    settings: impl IntoElement,
-    layout: Option<zz_gpui::AnyElement>,
-) -> zz_gpui::Div {
-    div()
-        .flex()
-        .items_center()
-        .gap_1()
-        .child(settings)
-        .children(layout)
-}
-
-#[must_use]
-pub fn workspace_chrome_controls_width(has_layout: bool, window: &Window) -> Pixels {
-    workspace_chrome_controls_width_for(if has_layout { 2 } else { 1 }, window)
 }
 
 #[must_use]
@@ -264,6 +247,25 @@ pub fn workspace_sidebar_titlebar_with_inset(
         .h(TITLE_BAR_HEIGHT)
         .items_center()
         .pl(leading_inset)
+        .child(controls)
+}
+
+/// The strip under the sidebar's navigation: the settings button and any
+/// other control that belongs to the sidebar rather than the titlebar.
+pub fn workspace_sidebar_footer(
+    id: impl Into<ElementId>,
+    controls: impl IntoElement,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .w_full()
+        .h(TITLE_BAR_HEIGHT)
+        .items_center()
+        .gap_1()
+        .pl(cx.theme().row_inset + px(WORKSPACE_SIDEBAR_FOOTER_INSET))
         .child(controls)
 }
 

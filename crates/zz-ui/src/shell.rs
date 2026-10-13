@@ -127,7 +127,6 @@ pub fn app_connection_state(message: impl IntoElement, cx: &App) -> zz_gpui::Div
 
 #[derive(Default)]
 pub struct WorkspaceStatusSlots {
-    pub session: Option<AnyElement>,
     pub windows: Vec<AnyElement>,
     pub right: Vec<AnyElement>,
     pub titlebar_controls: Option<(AnyElement, Pixels)>,
@@ -160,7 +159,6 @@ pub fn workspace_status_bar(
         .gap(px(6.0))
         .px(px(6.0))
         .window_control_area(WindowControlArea::Drag)
-        .children(slots.session)
         .child(window_strip)
         .children(slots.right);
     let leading = div()
@@ -173,17 +171,9 @@ pub fn workspace_status_bar(
             .flex()
             .flex_none()
             .items_center()
-            .w(width + px(7.0))
+            .w(width)
             .h(TITLE_BAR_HEIGHT)
-            .gap(px(6.0))
             .child(controls)
-            .child(
-                div()
-                    .flex_none()
-                    .w(px(1.0))
-                    .h(px(16.0))
-                    .bg(cx.theme().divider_color()),
-            )
             .into_any_element()
     });
     let window_controls = slots.window_controls.map(|controls| {

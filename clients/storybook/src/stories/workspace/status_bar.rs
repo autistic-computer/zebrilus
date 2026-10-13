@@ -7,11 +7,10 @@ use zz_protocol::{AgentProvider, PaneKindSnapshot};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, h_flex,
     navigation::{
-        WorkspaceStatusWindowState,
+        WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState,
         status::{
-            StatusAgentEntry, StatusPaneEntry, StatusSessionEntry, StatusWindowActions,
-            StatusWindowEntry, status_agents, status_pane_deck, status_session, status_window,
-            status_window_overflow,
+            StatusAgentEntry, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
+            status_agents, status_pane_deck, status_window, status_window_overflow,
         },
         workspace_status_item,
     },
@@ -29,19 +28,13 @@ pub const STORY: Story = Story {
     id: "status-bar",
     name: "Status bar",
     group: "Workspace",
-    summary: "The titlebar that replaces the sidebar when it is hidden: session menu, window pills with their pane decks, agent activity and host items.",
+    summary: "The titlebar that replaces the sidebar when it is hidden: the sidebar toggle, window pills with their pane decks, agent activity and host items. Settings lives at the bottom of the sidebar.",
     sections: &[
         Section {
             id: "bar",
             name: "Status bar",
             summary: "workspace_status_bar composed the way the thin client does it. Without pane gaps it draws a bottom rule; with gaps it floats.",
             build: |_, cx| stateless(bars, cx),
-        },
-        Section {
-            id: "session",
-            name: "Session menu",
-            summary: "status_session opens the session list. It disables itself while the client is disconnected.",
-            build: |_, cx| stateless(session, cx),
         },
         Section {
             id: "windows",
@@ -146,17 +139,6 @@ fn window(
     )
 }
 
-fn session_entries() -> Vec<StatusSessionEntry> {
-    [("main · 5 windows", true), ("scratch · 1 window", false)]
-        .into_iter()
-        .map(|(label, active)| StatusSessionEntry {
-            label: label.into(),
-            active,
-            select: noop(),
-        })
-        .collect()
-}
-
 fn agent(
     label: &str,
     provider: AgentProvider,
@@ -210,7 +192,6 @@ fn update_item(cx: &App) -> AnyElement {
 pub struct Bar {
     pub gaps: bool,
     pub connected: bool,
-    pub session: bool,
     pub agents: bool,
     pub host: bool,
     pub windows: usize,
@@ -220,7 +201,6 @@ impl Bar {
     pub const FULL: Self = Self {
         gaps: false,
         connected: true,
-        session: true,
         agents: true,
         host: true,
         windows: 3,
@@ -279,23 +259,16 @@ pub fn titlebar(config: &Bar, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
         );
         right.push(update_item(cx));
     }
-    let session = config.session.then(|| {
-        status_session(
-            "session",
-            "main".into(),
-            session_entries(),
-            config.connected,
-            cx,
-        )
-    });
     workspace_status_bar(
         config.gaps,
         px(8.0),
         WorkspaceStatusSlots {
-            session,
             windows,
             right,
-            titlebar_controls: Some((chrome_controls(false).into_any_element(), px(56.0))),
+            titlebar_controls: Some((
+                chrome_controls().into_any_element(),
+                WORKSPACE_STATUS_PILL_HEIGHT,
+            )),
             window_controls: None,
         },
         cx,
@@ -333,11 +306,10 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "session and agents hidden in settings",
+            "agents hidden in settings",
             bar(
                 "bar-minimal",
                 &Bar {
-                    session: false,
                     agents: false,
                     ..full
                 },
@@ -355,42 +327,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 },
                 cx,
             ),
-        )
-        .into_any_element()
-}
-
-fn session(_: &mut Window, cx: &mut App) -> AnyElement {
-    states()
-        .columns(3)
-        .state(
-            "connected",
-            div().id("session-a").flex().child(status_session(
-                "session",
-                "main".into(),
-                session_entries(),
-                true,
-                cx,
-            )),
-        )
-        .state(
-            "disconnected",
-            div().id("session-b").flex().child(status_session(
-                "session",
-                "main".into(),
-                session_entries(),
-                false,
-                cx,
-            )),
-        )
-        .state(
-            "long name",
-            div().id("session-c").flex().child(status_session(
-                "session",
-                "fabrico-release-candidate-0.17".into(),
-                session_entries(),
-                true,
-                cx,
-            )),
         )
         .into_any_element()
 }
