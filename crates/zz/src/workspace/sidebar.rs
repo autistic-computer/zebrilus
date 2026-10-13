@@ -16,7 +16,7 @@ use zz_protocol::{
     Axis, CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId,
 };
 use zz_ui::navigation::{
-    WORKSPACE_SIDEBAR_DEFAULT_WIDTH as SIDEBAR_DEFAULT_WIDTH,
+    WORKSPACE_SIDEBAR_DEFAULT_WIDTH as SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
     WORKSPACE_TREE_CONTENT_INSET as TREE_CONTENT_INSET,
     WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_MARKER_SLOT_WIDTH as TREE_MARKER_SLOT_WIDTH,
@@ -1181,6 +1181,11 @@ fn render_expanded_navigation(
         .size_full()
         .min_h_0()
         .child(rows)
+        .bottom_fade(
+            scroll_handle,
+            crate::theme::chrome_background(cx),
+            WORKSPACE_SIDEBAR_FADE_HEIGHT,
+        )
         .vertical_scrollbar(scroll_handle)
         .into_any_element()
 }

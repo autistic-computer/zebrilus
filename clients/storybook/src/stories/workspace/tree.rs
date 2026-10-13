@@ -7,7 +7,8 @@ use zz_gpui::{
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     navigation::{
-        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
+        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
+        WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH,
         sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
@@ -328,6 +329,7 @@ pub fn tree_list(
         .size_full()
         .min_h_0()
         .child(list)
+        .bottom_fade(scroll, cx.theme().background, WORKSPACE_SIDEBAR_FADE_HEIGHT)
         .vertical_scrollbar(scroll)
         .into_any_element()
 }

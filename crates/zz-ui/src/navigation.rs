@@ -28,7 +28,8 @@ const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 pub const WORKSPACE_SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
-const WORKSPACE_SIDEBAR_FOOTER_INSET: f32 = 6.0;
+const WORKSPACE_SIDEBAR_EDGE_INSET: f32 = 6.0;
+pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(24.0);
 pub const WORKSPACE_STATUS_CONTENT_HEIGHT: Pixels = px(24.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(26.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(16.0);
@@ -226,18 +227,12 @@ pub fn workspace_status_window(
 }
 
 #[must_use]
+/// The sidebar's top strip: its controls sit at the trailing edge, clear of
+/// the traffic lights.
 pub fn workspace_sidebar_titlebar(
     id: impl Into<ElementId>,
     controls: impl IntoElement,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
-    workspace_sidebar_titlebar_with_inset(id, controls, workspace_controls_leading_inset(cx))
-}
-
-pub fn workspace_sidebar_titlebar_with_inset(
-    id: impl Into<ElementId>,
-    controls: impl IntoElement,
-    leading_inset: Pixels,
 ) -> Stateful<zz_gpui::Div> {
     div()
         .id(id)
@@ -246,8 +241,14 @@ pub fn workspace_sidebar_titlebar_with_inset(
         .w_full()
         .h(TITLE_BAR_HEIGHT)
         .items_center()
-        .pl(leading_inset)
+        .justify_end()
+        .pl(workspace_controls_leading_inset(cx))
+        .pr(workspace_sidebar_edge_inset(cx))
         .child(controls)
+}
+
+fn workspace_sidebar_edge_inset(cx: &App) -> Pixels {
+    cx.theme().row_inset + px(WORKSPACE_SIDEBAR_EDGE_INSET)
 }
 
 /// The strip under the sidebar's navigation: the settings button and any
@@ -265,7 +266,7 @@ pub fn workspace_sidebar_footer(
         .h(TITLE_BAR_HEIGHT)
         .items_center()
         .gap_1()
-        .pl(cx.theme().row_inset + px(WORKSPACE_SIDEBAR_FOOTER_INSET))
+        .pl(workspace_sidebar_edge_inset(cx))
         .child(controls)
 }
 

@@ -4,9 +4,9 @@
 use std::{panic::Location, rc::Rc};
 
 use zz_gpui::{
-    App, Div, Element, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    ScrollHandle, Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder,
+    App, Div, Element, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels,
+    RenderOnce, ScrollHandle, Stateful, StatefulInteractiveElement, StyleRefinement, Styled,
+    Window, div, prelude::FluentBuilder,
 };
 
 use crate::StyledExt as _;
@@ -29,6 +29,22 @@ pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Eleme
             axis: axis.into(),
             scroll_handle: Rc::new(scroll_handle.clone()),
         })
+    }
+
+    /// Fade the bottom edge toward `ground` while there is more to scroll.
+    /// Call it before the scrollbar so the thumb stays on top.
+    #[must_use]
+    fn bottom_fade<H: ScrollbarHandle + Clone>(
+        self,
+        scroll_handle: &H,
+        ground: Hsla,
+        height: Pixels,
+    ) -> Self {
+        self.child(super::bottom_fade(
+            Rc::new(scroll_handle.clone()),
+            ground,
+            height,
+        ))
     }
 
     #[track_caller]
