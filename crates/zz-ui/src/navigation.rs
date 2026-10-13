@@ -29,6 +29,7 @@ const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 pub const WORKSPACE_SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
 const WORKSPACE_SIDEBAR_EDGE_INSET: f32 = 6.0;
+const WORKSPACE_SIDEBAR_FOOTER_TOP: f32 = 4.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_CONTENT_HEIGHT: Pixels = px(24.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(26.0);
@@ -251,6 +252,13 @@ fn workspace_sidebar_edge_inset(cx: &App) -> Pixels {
     cx.theme().row_inset + px(WORKSPACE_SIDEBAR_EDGE_INSET)
 }
 
+/// The trailing inset that centers a tree row's action buttons under the
+/// sidebar toggle in the titlebar above them.
+fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
+    workspace_sidebar_edge_inset(cx)
+        + (WORKSPACE_STATUS_PILL_HEIGHT - px(COMPACT_ICON_BUTTON_SIZE)) / 2.0
+}
+
 /// The strip under the sidebar's navigation: the settings button and any
 /// other control that belongs to the sidebar rather than the titlebar.
 pub fn workspace_sidebar_footer(
@@ -263,10 +271,11 @@ pub fn workspace_sidebar_footer(
         .flex()
         .flex_none()
         .w_full()
-        .h(TITLE_BAR_HEIGHT)
         .items_center()
         .gap_1()
+        .pt(px(WORKSPACE_SIDEBAR_FOOTER_TOP))
         .pl(workspace_sidebar_edge_inset(cx))
+        .pb(workspace_sidebar_edge_inset(cx))
         .child(controls)
 }
 
@@ -398,7 +407,7 @@ pub fn workspace_tree_row(
     };
     let fill = workspace_row_fill(&id, lit, Some(row_group.clone()), cx);
     workspace_tree_row_frame(id, depth, cx)
-        .pr(cx.theme().row_inset)
+        .pr(workspace_tree_trailing_inset(cx))
         .group(row_group)
         .children(fill)
         .text_color(if connected {

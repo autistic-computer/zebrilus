@@ -309,7 +309,8 @@ mod tests {
             let close = cx.debug_bounds("close").expect("close");
             let height = if coarse { 44.0 } else { 32.0 };
             assert_eq!(row.size.height, px(height));
-            assert_eq!(close.right(), row.right() - px(4.0));
+            let trailing = cx.update(|_, cx| super::super::workspace_tree_trailing_inset(cx));
+            assert_eq!(close.right(), row.right() - trailing);
             assert_eq!(add.center().y, row.center().y);
             let pitch = if coarse { 44.0 } else { 24.0 };
             assert_eq!(close.left() - add.left(), px(pitch));
