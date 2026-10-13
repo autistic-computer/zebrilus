@@ -42,7 +42,7 @@ desktop view owns those concerns:
 | --- | --- |
 | Session | Session name, Layers icon, and chevron; its dropdown switches directly between sessions on the attached host |
 | Windows | Always left-aligned; index and name for at most five visible windows; the visible range stays centered around the active window, and the overflow menu reaches the rest |
-| Pane deck | Overlapping cards represent Terminal, Browser, Agent provider, Editor, and Picker panes; hovering lifts a card and shows pane details; clicking selects that pane |
+| Pane deck | A packed fan of pane tiles, the focused pane in front with its Terminal, Browser, Agent provider, Editor, or Picker glyph; pointing at it opens every pane in a row with details on hover; clicking a tile selects that pane |
 | Window markers | Small bell and activity indicators derived from the model; daemon selection clears the latched attention state |
 | Agents | Small status dot and summary; needs input takes priority over failed, running, and idle states; clicking lists agents and selects their panes |
 | Host | Remote host name; absent for the local daemon |
@@ -62,15 +62,14 @@ Session and agent buttons share the active window pill’s background, theme bor
 
 Window pills are 26px high and vertically centered inside the 35px titlebar, leaving 4.5px at both edges. They
 start at 240px wide regardless of the title and shrink together only when the window strip runs
-out of room; titles truncate within the remaining space. Their pane cards are 20px rounded squares with 14px icons, 7px overlap, a fine
-outline, and a directional theme shadow. Up to three pane cards are visible, followed by `+N`
-when more panes exist. Cards stack from left to right, each above its right-hand neighbor; the
-hovered card lifts above inactive cards within a fixed hit area. The focused pane always paints
-last, including while another card or overflow is hovered. It stays visible and
-sits 1px higher at rest. Hover tooltips show the pane name, type, identity, focus state, and available
-URL, browser profile and tab count, or working path. The overflow tooltip lists hidden pane names.
-Pane decks remain visible when attention badges are disabled. Clicking a card selects both its
-window and pane directly, without a popup menu; disconnected cards do not select.
+out of room; titles truncate within the remaining space. Their pane deck is the shared
+`navigation::pane_stack` at its 20px size: the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color, 5px apart, so it is never
+wider than 30px and carries no count. The ring follows the pill's hover fill. Pointing at the deck
+opens every pane, focused first, in a row of tiles on a popover plate; tooltips there show the pane
+name, type, identity, focus state, and available URL, browser profile and tab count, or working
+path. Pane decks remain visible when attention badges are disabled. Clicking a tile selects both
+its window and pane directly, without a popup menu; a disconnected deck still opens but does not
+select.
 
 Browser cards use the active tab URL to retrieve a cached favicon and page title within the
 browser profile. The globe and current URL are fallbacks, with “New tab” for a blank page. Browser

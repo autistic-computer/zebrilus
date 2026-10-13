@@ -17,6 +17,13 @@ pub enum PaneTag {
     Editor,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaneTile {
+    pub pane: PaneId,
+    pub tag: PaneTag,
+    pub label: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
     Normal,
@@ -50,7 +57,7 @@ pub struct WindowSummary {
     pub title: String,
     pub detail: Vec<DetailPart>,
     pub changed_at: u64,
-    pub tiles: Vec<PaneTag>,
+    pub tiles: Vec<PaneTile>,
     pub attention: Attention,
 }
 
@@ -175,7 +182,11 @@ pub fn summarize_window(window: &WindowSnapshot) -> WindowSummary {
                 .copied()
                 .filter(|pane| pane.id != window.active_pane),
         )
-        .map(|pane| pane_tag(&pane.kind))
+        .map(|pane| PaneTile {
+            pane: pane.id,
+            tag: pane_tag(&pane.kind),
+            label: pane_label(pane),
+        })
         .collect();
     WindowSummary {
         window: window.id,
@@ -943,7 +954,11 @@ mod tests {
             .panes
             .insert(PaneId(4), pane(4, PaneKindSnapshot::Picker));
         assert_eq!(
-            summarize_window(&window).tiles,
+            summarize_window(&window)
+                .tiles
+                .into_iter()
+                .map(|tile| tile.tag)
+                .collect::<Vec<_>>(),
             vec![
                 PaneTag::Agent(AgentProvider::ClaudeCode),
                 PaneTag::Terminal,

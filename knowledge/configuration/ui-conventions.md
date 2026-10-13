@@ -130,12 +130,10 @@ Settings > Status bar scrolls its live preview with the controls. The session sw
 a Layers/name/chevron button. Session and agent buttons share the active window pill’s background,
 theme border, shadow, and 26px height, with widths sized to their contents. The 35px titlebar leaves 4.5px above and below each pill. Window pills always align left, and the right edge shows an
 agent status dot and summary with a pane-selection menu. Time/date and alignment controls are absent. Window pills share the
-production pane deck: 20px rounded cards with 14px icons overlap by 7px inside a vertically centered 26px pill, with a theme outline and directional
-shadow. Cards stack left to right above their right-hand neighbors; hovering lifts a card above
-inactive cards, with a fixed hit area to avoid hover flicker. The focused pane always paints last,
-even above a hovered card or overflow, and sits 1px higher at
-rest. Three pane icons plus `+N` bound the width. Tooltips show pane details or hidden pane names;
-clicking a pane card selects it directly. Browser cards use cached favicons with a globe fallback.
+production pane deck, the flat sidebar's stack drawn at 20px (`navigation::pane_stack`): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color,
+5px apart inside a vertically centered 26px pill. Pointing at it opens every pane in a row on a
+popover plate; tooltips show pane details and clicking a tile selects that pane directly. Browser
+tiles use cached favicons with a globe fallback.
 The settings sample allows hover while selection actions remain inert.
 Automatically named window pills use the active browser or agent pane title. Browser labels fall
 back to the active URL and then “browser”; explicitly renamed windows keep their chosen names.

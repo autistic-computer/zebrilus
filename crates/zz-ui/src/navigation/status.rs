@@ -9,7 +9,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Ground, Icon, IconName, Sizable as _,
     StyledExt as _,
     button::{Button, ButtonVariants as _},
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
@@ -125,12 +125,27 @@ pub fn status_window(
     let group: SharedString = format!("status-window-{id:?}").into();
     let close_button = actions.close.clone();
     let tooltip = format!("{index}:{name}").into();
+    let bar = cx.theme().ground();
+    let lit = bar.fill.blend(workspace_row_highlight(cx));
     let deck = status_pane_deck(
         ElementId::Name(format!("status-window-panes-{id:?}").into()),
         panes,
         state.connected,
+        if state.active {
+            Ground { fill: lit, ..bar }
+        } else {
+            bar
+        },
         cx,
-    );
+    )
+    .map(|deck| {
+        if state.connected {
+            deck.group_hover_ground(group.clone(), lit)
+        } else {
+            deck
+        }
+        .into_any_element()
+    });
     let item = workspace_status_window(id.clone(), index, name, tooltip, state, deck, cx)
         .group(group.clone())
         .pr(px(0.0))

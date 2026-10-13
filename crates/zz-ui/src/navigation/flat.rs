@@ -4,14 +4,15 @@ use std::{
 };
 
 use zz_client::window_summary::{
-    Attention, AttentionRollup, PaneTag, SessionSummary, Tone as DetailTone, WindowSummary,
+    Attention, AttentionRollup, PaneTag, PaneTile, SessionSummary, Tone as DetailTone,
+    WindowSummary,
 };
 use zz_gpui::{
-    App, ClickEvent, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures, FontWeight, HighlightStyle,
-    Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString, Stateful, StyledText,
-    Window, div, font, prelude::*, px,
+    App, ClickEvent, Div, ElementId, FontFeatures, FontWeight, HighlightStyle, Hsla, IntoElement,
+    ParentElement as _, Pixels, Role, SharedString, Stateful, StyledText, Window, div, font,
+    prelude::*, px,
 };
-use zz_protocol::{AgentProvider, SessionId, WindowId};
+use zz_protocol::{AgentProvider, PaneId, SessionId, WindowId};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, PaintState, Sizable as _,
@@ -20,7 +21,10 @@ use crate::{
     command::PaletteHostId,
     h_flex,
     icon::cap_center_drop,
-    navigation::workspace_row_fill,
+    navigation::{
+        pane_stack::{PaneStack, StackAction, StackSize, StackTile, stack_radius},
+        workspace_row_fill,
+    },
     spinner::Spinner,
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
@@ -29,12 +33,7 @@ use crate::{
 
 const ROW_HEIGHT: f32 = 48.0;
 const ROW_PADDING: f32 = 10.0;
-const TILE_SLOT: f32 = 28.0;
 const TILE_GAP: f32 = 10.0;
-const TILE_GLYPH: f32 = 16.0;
-const STACK_DEPTHS: [f32; 2] = [1.0, 2.0];
-const STACK_PEEK: f32 = 3.0;
-const STACK_NARROW: f32 = 3.0;
 const TITLE_SIZE: f32 = 13.0;
 const TITLE_LINE: f32 = 17.0;
 const DETAIL_SIZE: f32 = 12.0;
@@ -168,6 +167,7 @@ pub enum FlatTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlatEvent {
     Open(PaletteHostId, WindowId),
+    OpenPane(PaletteHostId, WindowId, PaneId),
     Actions(PaletteHostId, WindowId),
     FoldHost(PaletteHostId),
     FoldSession(PaletteHostId, SessionId),
@@ -300,60 +300,51 @@ fn row_height(cx: &App) -> Pixels {
     cx.theme().dense(px(ROW_HEIGHT))
 }
 
-fn tile_radius(cx: &App) -> Pixels {
-    let theme = cx.theme();
-    let radius = theme.control_radius();
-    if radius == FULL_CORNER_RADIUS {
-        return radius;
-    }
-    let inset = (row_height(cx) - px(TILE_SLOT)) / 2.0;
-    (radius - inset).max(theme.radius * 0.25)
-}
-
-fn tile_card(ink: RowInk, radius: Pixels, cx: &App) -> Div {
-    let paint = cx
-        .theme()
-        .paint_on(ink.ground, Tone::Neutral, Emphasis::Soft)
-        .opaque();
-    div()
-        .absolute()
-        .rounded(radius)
-        .bg(ink.dim(paint.hover))
-        .border(paint.border_width)
-        .border_color(ink.dim(paint.hover.blend(paint.border)))
-        .text_color(ink.dim(paint.text))
-}
-
-fn tile_stack(tiles: &[PaneTag], ink: RowInk, cx: &App) -> Div {
-    let radius = tile_radius(cx);
-    let behind = tiles.len().saturating_sub(1).min(STACK_DEPTHS.len());
-    div()
-        .relative()
-        .flex_none()
-        .size(px(TILE_SLOT))
-        .children(STACK_DEPTHS[..behind].iter().rev().map(|&depth| {
-            tile_card(ink, radius, cx)
-                .top(px(-STACK_PEEK * depth))
-                .left(px(STACK_NARROW * depth))
-                .right(px(STACK_NARROW * depth))
-                .h(px(TILE_SLOT))
-        }))
-        .child(
-            tile_card(ink, radius, cx)
-                .inset_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .children(
-                    tiles
-                        .first()
-                        .map(|tag| Icon::new(pane_glyph(*tag)).size(px(TILE_GLYPH))),
-                ),
+fn tile_stack(
+    host: PaletteHostId,
+    window: WindowId,
+    tiles: &[PaneTile],
+    ink: RowInk,
+    handler: Option<&FlatHandler>,
+    cx: &App,
+) -> Div {
+    let size = StackSize::Row;
+    let tiles = tiles
+        .iter()
+        .map(|tile| StackTile {
+            icon: pane_glyph(tile.tag),
+            favicon: None,
+            label: tile.label.clone().into(),
+            tooltip: tile.label.clone().into(),
+            select: handler.map(|handler| {
+                let handler = handler.clone();
+                let pane = tile.pane;
+                Rc::new(move |window_handle: &mut Window, cx: &mut App| {
+                    handler(FlatEvent::OpenPane(host, window, pane), window_handle, cx);
+                }) as StackAction
+            }),
+        })
+        .collect();
+    div().flex_none().w(px(size.widest())).child(
+        PaneStack::new(
+            ElementId::NamedInteger(format!("flat-stack-{}", host.0).into(), window.0),
+            tiles,
+            size,
+            ink.ground,
+            stack_radius(px(size.tile()), row_height(cx), cx),
         )
+        .dimmed(if ink.dimmed { DIMMED } else { 0.0 }),
+    )
 }
 
-pub fn flat_tile_stack(tiles: &[PaneTag], state: FlatRowState, cx: &App) -> Div {
-    tile_stack(tiles, RowInk::new(state, cx), cx)
+pub fn flat_tile_stack(
+    host: PaletteHostId,
+    window: WindowId,
+    tiles: &[PaneTile],
+    state: FlatRowState,
+    cx: &App,
+) -> Div {
+    tile_stack(host, window, tiles, RowInk::new(state, cx), None, cx)
 }
 
 fn spinner(size: f32, line_font: f32, color: Hsla, cx: &App) -> Div {
@@ -495,7 +486,14 @@ pub fn flat_window_row(
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::Open(host, id), window, cx))
         .children(fill)
-        .child(tile_stack(&summary.tiles, ink, cx))
+        .child(tile_stack(
+            host,
+            id,
+            &summary.tiles,
+            ink,
+            (!state.dimmed).then_some(handler),
+            cx,
+        ))
         .child(
             v_flex()
                 .flex_1()
