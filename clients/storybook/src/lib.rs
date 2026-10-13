@@ -92,7 +92,7 @@ pub fn interface_themes_json() -> String {
                 values.insert("name".to_owned(), json!(theme.name));
                 values.insert(
                     "glass".to_owned(),
-                    json!(theme.look.glass.map(|material| {
+                    json!(theme.materials.glass.map(|material| {
                         knobs::GLASS_KNOBS
                             .iter()
                             .map(|(name, get, _)| ((*name).to_owned(), json!(get(&material))))

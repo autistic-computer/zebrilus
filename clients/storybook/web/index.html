@@ -70,7 +70,7 @@
                 </section>
 
                 <section>
-                    <h3>Shape</h3>
+                    <h3>Materials</h3>
                     <label class="row slider">
                         <span>Radius</span><output name="radius-value"></output>
                         <input type="range" name="radius" min="0" max="25" step="1" value="24" />
@@ -86,22 +86,13 @@
                         <span>Row inset</span><output name="row-inset-value"></output>
                         <input type="range" name="row-inset" min="0" max="12" step="1" value="4" />
                     </label>
-                    <div class="segmented" role="radiogroup" aria-label="Shadows">
-                        <label><input type="radio" name="shadows" value="none" /><span>No shadows</span></label>
-                        <label><input type="radio" name="shadows" value="surfaces" /><span>Surfaces</span></label>
-                        <label><input type="radio" name="shadows" value="all" checked /><span>Everything</span></label>
-                    </div>
-                    <div class="segmented" role="radiogroup" aria-label="Selection">
-                        <label><input type="radio" name="selection" value="accent" checked /><span>Accent rows</span></label>
-                        <label><input type="radio" name="selection" value="wash" /><span>Neutral rows</span></label>
-                    </div>
+                    <label class="row slider">
+                        <span>Shadow strength</span><output name="shadow-strength-value"></output>
+                        <input type="range" name="shadow-strength" min="0" max="2" step="0.1" value="1" />
+                    </label>
                     <div class="segmented" role="radiogroup" aria-label="Primary">
                         <label><input type="radio" name="primary" value="foreground" checked /><span>Ink primary</span></label>
                         <label><input type="radio" name="primary" value="accent" /><span>Accent primary</span></label>
-                    </div>
-                    <div class="segmented" role="radiogroup" aria-label="Fields">
-                        <label><input type="radio" name="field" value="soft" checked /><span>Filled fields</span></label>
-                        <label><input type="radio" name="field" value="outline" /><span>Outlined fields</span></label>
                     </div>
                 </section>
 

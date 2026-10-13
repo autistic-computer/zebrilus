@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use zz_gpui::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
 use super::{
-    Colorize as _, SelectionStyle, Theme,
+    Colorize as _, Theme,
     color::{faint_weight, muted_weight, readable_on},
 };
 
@@ -85,26 +85,6 @@ pub enum PrimaryStyle {
     Accent,
 }
 
-/// What fields (text inputs, select triggers) are drawn as at rest.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FieldStyle {
-    /// A tinted fill.
-    #[default]
-    Soft,
-    /// A border and no fill.
-    Outline,
-}
-
-impl FieldStyle {
-    pub fn emphasis(self) -> Emphasis {
-        match self {
-            Self::Soft => Emphasis::Soft,
-            Self::Outline => Emphasis::Outline,
-        }
-    }
-}
-
 /// The state a painted widget is drawn in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PaintState {
@@ -169,7 +149,7 @@ pub struct Paint {
 }
 
 /// How far a surface stands off the window.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Elevation {
     /// The window itself.
     #[default]
@@ -192,6 +172,8 @@ pub struct Ground {
     /// The surface this ground belongs to. Controls cast a shadow only on the
     /// window: a panel or a popover already stands off it.
     pub elevation: Elevation,
+    /// Whether it is glass, so what sits on it does not become glass too.
+    pub glass: bool,
 }
 
 impl Ground {
@@ -267,7 +249,7 @@ impl Paint {
         Ground {
             fill: self.ground.fill.blend(self.fill_at(state)),
             ink: self.text_at(state),
-            elevation: self.ground.elevation,
+            ..self.ground
         }
     }
 }
@@ -298,9 +280,14 @@ impl Theme {
         }
     }
 
-    /// What a field is drawn as at rest, as the look decides.
+    /// What a field is drawn as at rest, as the theme's field style decides.
     pub fn field_emphasis(&self) -> Emphasis {
-        self.field.emphasis()
+        let style = self.style(super::Kind::Field.role());
+        match style.fill {
+            super::Fill::None if style.outline => Emphasis::Outline,
+            super::Fill::None => Emphasis::Ghost,
+            _ => Emphasis::Soft,
+        }
     }
 
     /// The window: the ground everything sits on unless it is nested in
@@ -310,6 +297,7 @@ impl Theme {
             fill: self.background,
             ink: self.foreground,
             elevation: Elevation::Window,
+            glass: false,
         }
     }
 
@@ -325,6 +313,7 @@ impl Theme {
             fill,
             ink: self.foreground,
             elevation,
+            glass: false,
         }
     }
 
@@ -365,7 +354,7 @@ impl Theme {
         let on_accent = self
             .on_accent
             .unwrap_or_else(|| readable_on(self.accent.opaque()));
-        let accent_selection = neutral && window && self.selection == SelectionStyle::Accent;
+        let accent_selection = neutral && window;
         let readable = |fill: Hsla, text: Hsla| {
             if accent_selection {
                 on_accent
@@ -490,13 +479,12 @@ impl<E: StatefulInteractiveElement + Styled> InteractivePaintExt for E {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SelectionStyle, ThemeColor};
+    use crate::ThemeColor;
     use zz_gpui::hsla;
 
     fn accent_theme(on_accent: Option<Hsla>) -> Theme {
         let mut theme = Theme::from(&*ThemeColor::dark());
         theme.primary = PrimaryStyle::Accent;
-        theme.selection = SelectionStyle::Accent;
         theme.colors.on_accent = on_accent;
         theme
     }

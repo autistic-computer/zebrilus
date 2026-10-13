@@ -1,13 +1,10 @@
 {
   "name": "Glass",
-  "look": {
+  "materials": {
     "radius": 25,
     "outline": 0,
-    "shadows": "none",
     "row-inset": 3,
-    "selection": "wash",
     "primary": "foreground",
-    "field": "soft",
     "glass": {
       "preset": "regular",
       "blur": 23.2,
@@ -22,6 +19,41 @@
       "edge_shadow": 1,
       "edge_width": 0.8,
       "noise": 0
+    },
+    "contact": {
+      "strength": 0
+    },
+    "float": {
+      "strength": 0
+    }
+  },
+  "roles": {
+    "row": {
+      "selected": "tint"
+    },
+    "agent.option": {
+      "selected": "tint"
+    },
+    "button": {
+      "shape": "pill"
+    },
+    "icon-button": {
+      "shape": "pill"
+    },
+    "chip": {
+      "shape": "pill"
+    },
+    "tab": {
+      "shape": "pill"
+    },
+    "field": {
+      "shape": "pill"
+    },
+    "badge": {
+      "shape": "pill"
+    },
+    "keycap": {
+      "shape": "pill"
     }
   },
   "light": {

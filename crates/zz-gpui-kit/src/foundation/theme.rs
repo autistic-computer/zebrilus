@@ -1,6 +1,7 @@
 //! The theme global: one palette, one set of metrics, for the whole process.
 
 use std::{
+    collections::HashMap,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -10,11 +11,11 @@ use zz_gpui::{
     WindowAppearance, px,
 };
 
-use serde::{Deserialize, Serialize};
-
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
 
-use super::{Colorize as _, FieldStyle, PrimaryStyle, ThemeColor, color};
+use super::{
+    Colorize as _, PrimaryStyle, SurfaceRole, ShadowMaterial, StylePatch, ThemeColor, color,
+};
 
 /// The one gap in chrome: how far a control sits from the edge of the bar it
 /// lives in, and from its neighbours. A bar pads by this and spaces its
@@ -95,23 +96,26 @@ pub struct Theme {
     /// The width of the hairline every edged thing draws: controls, cards
     /// and floating surfaces. Zero draws none.
     pub outline: Pixels,
-    /// Which surfaces cast drop shadows.
-    pub shadows: Shadows,
+    /// The tight shadow of things resting on the window.
+    pub contact_shadow: ShadowMaterial,
+    /// The deep shadow of things floating over it.
+    pub float_shadow: ShadowMaterial,
     /// How far selected and hovered list rows float in from the list's
     /// edges, and whether they stand apart. Zero makes them full-width bands
     /// that touch.
     pub row_inset: Pixels,
-    /// What fills selected menu and list rows.
-    pub selection: SelectionStyle,
     /// What the primary tone is drawn in.
     pub primary: PrimaryStyle,
-    /// What fields are drawn as at rest.
-    pub field: FieldStyle,
-    /// Floating surfaces (popovers, menus, tooltips, notifications, dialogs,
-    /// sheets, floating panes) become this glass when set, and pane frames
-    /// take its edge. Each surface tints it with its own color; the
-    /// material's tint alpha says how much of that color covers the glass.
+    /// What a surface whose role takes glass becomes, and the edge pane
+    /// frames take. Each surface tints it with its own color; the material's
+    /// tint alpha says how much of that color covers the glass.
     pub glass: Option<GlassMaterial>,
+    /// The theme's changes to each kind and role, by the name a theme file
+    /// gives it.
+    pub styles: HashMap<SharedString, StylePatch>,
+    /// A role whose every surface draws a marker ring, so a theme editor can
+    /// show where it appears.
+    pub inspect: Option<SharedString>,
     pub pane_background_opacity: f32,
     /// Whether panes draw a [`Self::pane_frame`], which then owns their
     /// fill: set while panes have gaps.
@@ -135,31 +139,6 @@ impl Default for Theme {
 
 /// The corner smoothing every window draws with.
 pub const CORNER_SMOOTHING: f32 = 4.0;
-
-/// Which surfaces cast drop shadows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Shadows {
-    /// Nothing casts a shadow.
-    None,
-    /// Cards, popovers, dialogs and floating panes cast theirs; controls stay
-    /// flat.
-    Surfaces,
-    /// Controls on the window cast a small one too.
-    #[default]
-    All,
-}
-
-/// What fills selected menu and list rows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SelectionStyle {
-    /// The accent color.
-    #[default]
-    Accent,
-    /// A neutral wash of the foreground.
-    Wash,
-}
 
 impl Deref for Theme {
     type Target = ThemeColor;
@@ -186,21 +165,9 @@ impl Theme {
         }
     }
 
+    /// The fill of the row a list's cursor is on.
     pub fn selection_background(&self) -> Hsla {
-        match self.selection {
-            SelectionStyle::Accent => self.accent.opaque(),
-            SelectionStyle::Wash => self.background.washed(3),
-        }
-    }
-
-    /// Whether controls on the window cast their small shadow.
-    pub fn control_shadows(&self) -> bool {
-        self.shadows == Shadows::All
-    }
-
-    /// Whether cards, popovers, dialogs and floating panes cast shadows.
-    pub fn surface_shadows(&self) -> bool {
-        self.shadows != Shadows::None
+        self.accent.opaque()
     }
 
     pub fn menu_radius(&self) -> Pixels {
@@ -229,9 +196,14 @@ impl Theme {
         self.outline > px(0.0)
     }
 
-    /// The look's glass, when it draws anything a plain fill would not.
+    /// The theme's glass, when it draws anything a plain fill would not.
     pub fn glass_effect(&self) -> Option<GlassMaterial> {
         self.glass.filter(|material| !material.is_opaque_fill())
+    }
+
+    /// Whether `role` casts a shadow in this theme.
+    pub fn casts_shadow(&self, role: SurfaceRole) -> bool {
+        !self.shadows_of(self.style(role).shadow).is_empty()
     }
 
     /// The color a pane shows: `fill` over the window color, at the look's
@@ -416,12 +388,13 @@ impl From<&ThemeColor> for Theme {
             radius: px(6.),
             contrast: 1.0,
             outline: px(0.5),
-            shadows: Shadows::All,
+            contact_shadow: ShadowMaterial::CONTACT,
+            float_shadow: ShadowMaterial::FLOAT,
             row_inset: px(4.0),
-            selection: SelectionStyle::Accent,
             primary: PrimaryStyle::Foreground,
-            field: FieldStyle::Soft,
             glass: None,
+            styles: HashMap::default(),
+            inspect: None,
             pane_background_opacity: 0.5,
             pane_frames: false,
             pane_edge_width: px(0.5),

@@ -146,7 +146,8 @@ impl Preferences {
         }
         let theme = Theme::global_mut(cx);
         theme.colors = self.interface_theme().colors(theme.mode);
-        self.look().apply(theme);
+        self.materials().apply(theme);
+        self.interface_theme().apply_roles(theme);
         window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
         Theme::global_mut(cx).set_contrast(contrast);
         Theme::global_mut(cx).pane_background_opacity = self.pane_background_opacity;
@@ -208,8 +209,9 @@ pub(super) struct Controls {
     radius: Entity<InputState>,
     contrast: Entity<InputState>,
     outline: Entity<InputState>,
+    shadow_strength: Entity<InputState>,
     row_inset: Entity<InputState>,
-    look_selects: Vec<(
+    material_selects: Vec<(
         AppearancePageItem,
         Entity<SelectState<Vec<SettingsSelectItem>>>,
     )>,
@@ -254,19 +256,27 @@ impl Controls {
                 .min(50.0)
                 .max(200.0)
         });
-        let look = preferences.look();
+        let materials = preferences.materials();
         let outline = cx.new(|cx| {
             InputState::new(window, cx)
                 .input_mode(TextInputMode::Decimal)
-                .default_value(number_text(look.outline))
+                .default_value(number_text(materials.outline))
                 .step(0.5)
+                .min(0.0)
+                .max(2.0)
+        });
+        let shadow_strength = cx.new(|cx| {
+            InputState::new(window, cx)
+                .input_mode(TextInputMode::Decimal)
+                .default_value(number_text(shadow_strength_of(preferences)))
+                .step(0.1)
                 .min(0.0)
                 .max(2.0)
         });
         let row_inset = cx.new(|cx| {
             InputState::new(window, cx)
                 .input_mode(TextInputMode::Decimal)
-                .default_value(number_text(look.row_inset))
+                .default_value(number_text(materials.row_inset))
                 .step(1.0)
                 .min(0.0)
                 .max(12.0)
@@ -285,6 +295,7 @@ impl Controls {
             (&radius, "radius"),
             (&contrast, "contrast"),
             (&outline, "outline"),
+            (&shadow_strength, "shadow-strength"),
             (&row_inset, "row-inset"),
             (&terminal_scale, "terminal-scale"),
         ] {
@@ -300,8 +311,9 @@ impl Controls {
                     let (min, max, previous) = match key {
                         "zoom" => (50.0, 300.0, this.preferences.zoom * 100.0),
                         "contrast" => (50.0, 200.0, this.preferences.contrast * 100.0),
-                        "outline" => (0.0, 2.0, this.preferences.look().outline),
-                        "row-inset" => (0.0, 12.0, this.preferences.look().row_inset),
+                        "outline" => (0.0, 2.0, this.preferences.materials().outline),
+                        "shadow-strength" => (0.0, 2.0, shadow_strength_of(&this.preferences)),
+                        "row-inset" => (0.0, 12.0, this.preferences.materials().row_inset),
                         "terminal-scale" => {
                             (50.0, 300.0, this.preferences.terminal_font_scale * 100.0)
                         }
@@ -322,20 +334,23 @@ impl Controls {
                     match key {
                         "zoom" => this.preferences.zoom = value / 100.0,
                         "contrast" => this.preferences.contrast = value / 100.0,
-                        "outline" if value != this.preferences.look().outline => {
-                            this.preferences.look.outline = Some(value);
+                        "outline" if value != this.preferences.materials().outline => {
+                            this.preferences.materials.outline = Some(value);
                         }
-                        "row-inset" if value != this.preferences.look().row_inset => {
-                            this.preferences.look.row_inset = Some(value);
+                        "shadow-strength" if value != shadow_strength_of(&this.preferences) => {
+                            this.preferences.materials.shadow_strength = Some(value);
+                        }
+                        "row-inset" if value != this.preferences.materials().row_inset => {
+                            this.preferences.materials.row_inset = Some(value);
                         }
                         "terminal-scale" => this.preferences.terminal_font_scale = value / 100.0,
                         "radius" if value != this.preferences.widget_corner_radius() => {
-                            this.preferences.look.radius = Some(value);
+                            this.preferences.materials.radius = Some(value);
                         }
                         _ => {}
                     }
                     if commit {
-                        let text = if matches!(key, "outline" | "row-inset") {
+                        let text = if matches!(key, "outline" | "shadow-strength" | "row-inset") {
                             number_text(value)
                         } else {
                             format!("{value:.0}")
@@ -349,18 +364,18 @@ impl Controls {
                 },
             ));
         }
-        let look_selects = AppearancePageItem::LOOK
+        let material_selects = AppearancePageItem::MATERIALS
             .into_iter()
-            .filter(|item| !item.look_choices().is_empty())
+            .filter(|item| !item.material_choices().is_empty())
             .map(|item| {
                 let items = item
-                    .look_choices()
+                    .material_choices()
                     .iter()
                     .map(|(title, value)| SettingsSelectItem::new(*title, *value))
                     .collect::<Vec<_>>();
-                let current = look_choice(preferences, item);
+                let current = material_choice(preferences, item);
                 let index = item
-                    .look_choices()
+                    .material_choices()
                     .iter()
                     .position(|(_, value)| *value == current);
                 let select = cx.new(|cx| {
@@ -373,10 +388,10 @@ impl Controls {
                         let SelectEvent::Confirm(Some(value)) = event else {
                             return;
                         };
-                        if look_choice(&this.preferences, item) == *value {
+                        if material_choice(&this.preferences, item) == *value {
                             return;
                         }
-                        set_look_choice(&mut this.preferences, item, value);
+                        set_material_choice(&mut this.preferences, item, value);
                         this.preferences.save();
                         this.preferences.apply(&this.connection, window, cx);
                     },
@@ -526,8 +541,9 @@ impl Controls {
             radius,
             contrast,
             outline,
+            shadow_strength,
             row_inset,
-            look_selects,
+            material_selects,
             panes,
             ui_font,
             terminal_font,
@@ -539,19 +555,23 @@ impl Controls {
         }
     }
 
-    /// Shows the look and UI font the preferences resolve to, after a theme
-    /// change or a reset.
+    /// Shows the materials and UI font the preferences resolve to, after a
+    /// theme change or a reset.
     fn sync_theme_inputs(&self, preferences: &Preferences, window: &mut Window, cx: &mut App) {
-        let look = preferences.look();
+        let materials = preferences.materials();
         for (input, value) in [
-            (&self.radius, format!("{:.0}", look.radius)),
-            (&self.outline, number_text(look.outline)),
-            (&self.row_inset, number_text(look.row_inset)),
+            (&self.radius, format!("{:.0}", materials.radius)),
+            (&self.outline, number_text(materials.outline)),
+            (
+                &self.shadow_strength,
+                number_text(shadow_strength_of(preferences)),
+            ),
+            (&self.row_inset, number_text(materials.row_inset)),
         ] {
             input.update(cx, |input, cx| input.set_value(value, window, cx));
         }
-        for (item, select) in &self.look_selects {
-            let value = look_choice(preferences, *item);
+        for (item, select) in &self.material_selects {
+            let value = material_choice(preferences, *item);
             select.update(cx, |select, cx| {
                 select.set_selected_value(&value, window, cx);
             });
@@ -781,11 +801,9 @@ impl AppShell {
                                 | AppearancePageItem::Animations
                                 | AppearancePageItem::WidgetCornerRadius
                                 | AppearancePageItem::OutlineWidth
-                                | AppearancePageItem::Shadows
+                                | AppearancePageItem::ShadowStrength
                                 | AppearancePageItem::RowInset
-                                | AppearancePageItem::Selection
                                 | AppearancePageItem::Primary
-                                | AppearancePageItem::Field
                                 | AppearancePageItem::Glass
                         )
                     })
@@ -1022,6 +1040,7 @@ impl AppShell {
             AppearancePageItem::ChromeContrast => &controls.contrast,
             AppearancePageItem::WidgetCornerRadius => &controls.radius,
             AppearancePageItem::OutlineWidth => &controls.outline,
+            AppearancePageItem::ShadowStrength => &controls.shadow_strength,
             AppearancePageItem::RowInset => &controls.row_inset,
             _ => return None,
         };
@@ -1264,7 +1283,7 @@ impl AppShell {
                 return settings_list_disclosure_header(
                     "settings-appearance-advanced",
                     "Advanced",
-                    Some("Fonts, zoom, contrast, and the shape the theme sets: corners, outlines, shadows, rows, selection and glass."),
+                    Some("Fonts, zoom, contrast, and the theme's materials: corners, outlines, shadows, rows and glass."),
                     expanded,
                     cx,
                 )
@@ -1276,21 +1295,19 @@ impl AppShell {
             }
             item @ (AppearancePageItem::WidgetCornerRadius
             | AppearancePageItem::OutlineWidth
-            | AppearancePageItem::Shadows
+            | AppearancePageItem::ShadowStrength
             | AppearancePageItem::RowInset
-            | AppearancePageItem::Selection
             | AppearancePageItem::Primary
-            | AppearancePageItem::Field
-            | AppearancePageItem::Glass) => self.look_setting(item, cx),
+            | AppearancePageItem::Glass) => self.material_setting(item, cx),
             _ => return div().into_any_element(),
         };
         entry.position(position).into_any_element()
     }
 
-    /// A look setting: a number field for a length, a select for a choice,
-    /// with a reset back to the theme's value.
-    fn look_setting(&self, item: AppearancePageItem, cx: &mut Context<Self>) -> SettingEntry {
-        let (title, description) = item.look_text().unwrap_or_default();
+    /// A material setting: a number field for a length or a strength, a
+    /// select for a choice, with a reset back to the theme's value.
+    fn material_setting(&self, item: AppearancePageItem, cx: &mut Context<Self>) -> SettingEntry {
+        let (title, description) = item.material_text().unwrap_or_default();
         let title = if item == AppearancePageItem::WidgetCornerRadius
             && self.preferences.widget_corner_radius() > 24.0
         {
@@ -1302,14 +1319,15 @@ impl AppShell {
         let input = match item {
             AppearancePageItem::WidgetCornerRadius => Some(&controls.radius),
             AppearancePageItem::OutlineWidth => Some(&controls.outline),
+            AppearancePageItem::ShadowStrength => Some(&controls.shadow_strength),
             AppearancePageItem::RowInset => Some(&controls.row_inset),
             _ => None,
         };
         let entry = SettingEntry::new(title, description).title_actions(reset_button(
-            SharedString::from(format!("settings-look-{title}-reset")),
-            look_overridden(&self.preferences, item),
+            SharedString::from(format!("settings-material-{title}-reset")),
+            material_overridden(&self.preferences, item),
             move |this, window, cx| {
-                clear_look(&mut this.preferences, item);
+                clear_material(&mut this.preferences, item);
                 this.settings_controls
                     .sync_theme_inputs(&this.preferences, window, cx);
             },
@@ -1319,7 +1337,7 @@ impl AppShell {
             return entry.control(number_control(input, cx));
         }
         match controls
-            .look_selects
+            .material_selects
             .iter()
             .find(|(select_item, _)| *select_item == item)
         {
@@ -1596,30 +1614,29 @@ pub(super) fn finish_field(window: &mut Window, cx: &mut App) {
     }
 }
 
-/// The value a look select shows: the look's choice, or `theme` for glass
-/// nothing overrides.
-fn look_choice(preferences: &Preferences, item: AppearancePageItem) -> String {
-    let look = preferences.look();
+/// The shadow strength the preferences set over the theme, 1 while it
+/// follows the theme.
+fn shadow_strength_of(preferences: &Preferences) -> f32 {
+    preferences.materials.shadow_strength.unwrap_or(1.0)
+}
+
+/// The value a material select shows: the theme's choice, or `theme` for
+/// glass nothing overrides.
+fn material_choice(preferences: &Preferences, item: AppearancePageItem) -> String {
     let name = match item {
-        AppearancePageItem::Shadows => interface_theme::choice_name(look.shadows),
-        AppearancePageItem::Selection => interface_theme::choice_name(look.selection),
-        AppearancePageItem::Primary => interface_theme::choice_name(look.primary),
-        AppearancePageItem::Field => interface_theme::choice_name(look.field),
-        AppearancePageItem::Glass => preferences.look.glass.clone(),
+        AppearancePageItem::Primary => {
+            interface_theme::choice_name(preferences.materials().primary)
+        }
+        AppearancePageItem::Glass => preferences.materials.glass.clone(),
         _ => None,
     };
     name.unwrap_or_else(|| "theme".to_owned())
 }
 
-fn set_look_choice(preferences: &mut Preferences, item: AppearancePageItem, value: &str) {
-    let overrides = &mut preferences.look;
+fn set_material_choice(preferences: &mut Preferences, item: AppearancePageItem, value: &str) {
+    let overrides = &mut preferences.materials;
     match item {
-        AppearancePageItem::Shadows => overrides.shadows = interface_theme::parse_choice(value),
-        AppearancePageItem::Selection => {
-            overrides.selection = interface_theme::parse_choice(value);
-        }
         AppearancePageItem::Primary => overrides.primary = interface_theme::parse_choice(value),
-        AppearancePageItem::Field => overrides.field = interface_theme::parse_choice(value),
         AppearancePageItem::Glass => {
             overrides.glass = (value != "theme").then(|| value.to_owned());
         }
@@ -1627,31 +1644,27 @@ fn set_look_choice(preferences: &mut Preferences, item: AppearancePageItem, valu
     }
 }
 
-fn look_overridden(preferences: &Preferences, item: AppearancePageItem) -> bool {
-    let overrides = &preferences.look;
+fn material_overridden(preferences: &Preferences, item: AppearancePageItem) -> bool {
+    let overrides = &preferences.materials;
     match item {
         AppearancePageItem::WidgetCornerRadius => overrides.radius.is_some(),
         AppearancePageItem::OutlineWidth => overrides.outline.is_some(),
-        AppearancePageItem::Shadows => overrides.shadows.is_some(),
+        AppearancePageItem::ShadowStrength => overrides.shadow_strength.is_some(),
         AppearancePageItem::RowInset => overrides.row_inset.is_some(),
-        AppearancePageItem::Selection => overrides.selection.is_some(),
         AppearancePageItem::Primary => overrides.primary.is_some(),
-        AppearancePageItem::Field => overrides.field.is_some(),
         AppearancePageItem::Glass => overrides.glass.is_some(),
         _ => false,
     }
 }
 
-fn clear_look(preferences: &mut Preferences, item: AppearancePageItem) {
-    let overrides = &mut preferences.look;
+fn clear_material(preferences: &mut Preferences, item: AppearancePageItem) {
+    let overrides = &mut preferences.materials;
     match item {
         AppearancePageItem::WidgetCornerRadius => overrides.radius = None,
         AppearancePageItem::OutlineWidth => overrides.outline = None,
-        AppearancePageItem::Shadows => overrides.shadows = None,
+        AppearancePageItem::ShadowStrength => overrides.shadow_strength = None,
         AppearancePageItem::RowInset => overrides.row_inset = None,
-        AppearancePageItem::Selection => overrides.selection = None,
         AppearancePageItem::Primary => overrides.primary = None,
-        AppearancePageItem::Field => overrides.field = None,
         AppearancePageItem::Glass => overrides.glass = None,
         _ => {}
     }
@@ -2071,7 +2084,9 @@ mod tests {
 
     #[cfg(not(target_family = "wasm"))]
     #[zz_gpui::test]
-    fn apply_draws_a_saved_theme_in_its_colors_and_look(cx: &mut zz_gpui::TestAppContext) {
+    fn apply_draws_a_saved_theme_in_its_colors_materials_and_roles(
+        cx: &mut zz_gpui::TestAppContext,
+    ) {
         use zz_gpui::{AppContext as _, px};
         use zz_ui::{ActiveTheme as _, ThemeMode};
 
@@ -2082,7 +2097,7 @@ mod tests {
         };
         preferences
             .import_theme(
-                r##"{"name":"Neon","look":{"radius":3,"shadows":"surfaces","outline":0.4},"dark":{"accent":"#ff00ff"}}"##,
+                r##"{"name":"Neon","materials":{"radius":3,"outline":0.4,"float":{"strength":0.5}},"roles":{"button":{"shape":"pill"}},"dark":{"accent":"#ff00ff"}}"##,
             )
             .unwrap();
         let expected = preferences.interface_theme().colors(ThemeMode::Dark).accent;
@@ -2093,8 +2108,12 @@ mod tests {
             assert_eq!(theme.mode, ThemeMode::Dark);
             assert_eq!(theme.accent, expected);
             assert_eq!(theme.radius, px(3.0));
-            assert_eq!(theme.shadows, zz_ui::Shadows::Surfaces);
+            assert_eq!(theme.float_shadow.strength, 0.5);
             assert_eq!(theme.outline, px(0.4));
+            assert_eq!(
+                theme.style(zz_ui::Kind::Button.role()).shape,
+                zz_ui::Shape::Pill
+            );
         });
     }
 }

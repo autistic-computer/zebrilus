@@ -1,9 +1,9 @@
-//! Interface themes: a [`Look`] (shape, outlines, shadows, glass) and the
-//! colors it is drawn in for each mode, bundled in one file so a theme can
-//! imitate a whole app instead of pairing a style with an unrelated palette.
-//! The light, dark or system mode only picks which color set applies.
+//! Interface themes: the materials a theme draws with (radius, outlines,
+//! shadows, glass), how each piece of UI uses them (its roles), and the
+//! colors for each mode, bundled in one file so a theme can imitate a whole
+//! app. The light, dark or system mode only picks which color set applies.
 
-use std::sync::LazyLock;
+use std::{collections::BTreeMap, sync::LazyLock};
 
 use serde::{Deserialize, Deserializer, Serialize};
 use zz_gpui::{GlassMaterial, Hsla, SharedString, px};
@@ -12,117 +12,110 @@ pub use zz_client::appearance::{
     BUILTIN_THEMES, DEFAULT_THEME, ThemeModeSetting, is_builtin_theme,
 };
 
-use crate::{FieldStyle, PrimaryStyle, SelectionStyle, Shadows, Theme, ThemeColor, ThemeMode};
+use crate::{PrimaryStyle, ShadowMaterial, StylePatch, Theme, ThemeColor, ThemeMode};
 
-/// Every theme value that is not a color, in logical pixels where it is a
-/// length. Missing keys take [`Look::default`]: the default theme's shape
-/// with plain, glassless surfaces.
+/// What each treatment looks like, in logical pixels where it is a length.
+/// Missing keys take [`Materials::default`]: the Default theme's.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
-pub struct Look {
+pub struct Materials {
     pub radius: f32,
-    /// The width of the hairline controls, cards and floating surfaces draw;
-    /// 0 draws none.
+    /// The width of every outline; 0 draws none.
     pub outline: f32,
-    /// Which surfaces cast drop shadows.
-    pub shadows: Shadows,
+    /// How far list rows sit in from their list's edges; 0 makes them
+    /// square bands that touch.
     pub row_inset: f32,
-    pub selection: SelectionStyle,
     pub primary: PrimaryStyle,
-    pub field: FieldStyle,
     /// The interface font family; `None` keeps the platform's.
     pub font: Option<SharedString>,
-    /// What floating surfaces become; `None` fills them plainly. A theme
-    /// file names a preset, or a preset with the fields it changes.
+    /// What surfaces whose role takes glass become; `None` fills them
+    /// plainly. A theme file names a preset, or a preset with the fields it
+    /// changes.
     #[serde(deserialize_with = "deserialize_glass")]
     pub glass: Option<GlassMaterial>,
+    /// The tight shadow of things resting on the window.
+    #[serde(deserialize_with = "deserialize_contact")]
+    pub contact: ShadowMaterial,
+    /// The deep shadow of things floating over it.
+    #[serde(deserialize_with = "deserialize_float")]
+    pub float: ShadowMaterial,
 }
 
-impl Default for Look {
+impl Default for Materials {
     fn default() -> Self {
         Self {
             radius: 24.0,
             outline: 0.5,
-            shadows: Shadows::All,
             row_inset: 4.0,
-            selection: SelectionStyle::Accent,
             primary: PrimaryStyle::Foreground,
-            field: FieldStyle::Soft,
             font: None,
             glass: None,
+            contact: ShadowMaterial::CONTACT,
+            float: ShadowMaterial::FLOAT,
         }
     }
 }
 
-impl Look {
+impl Materials {
     pub fn apply(&self, theme: &mut Theme) {
         theme.radius = px(self.radius);
         theme.outline = px(self.outline);
-        theme.shadows = self.shadows;
         theme.row_inset = px(self.row_inset);
-        theme.selection = self.selection;
         theme.primary = self.primary;
-        theme.field = self.field;
         if let Some(font) = &self.font {
             theme.font_family = font.clone();
         }
         theme.glass = self.glass;
+        theme.contact_shadow = self.contact;
+        theme.float_shadow = self.float;
     }
 }
 
-/// Look values Settings sets over the active theme, each `None` while it
-/// follows the theme. Picking a theme clears them.
+/// Material values Settings sets over the active theme, each `None` while
+/// it follows the theme. Picking a theme clears them.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-pub struct LookOverrides {
+pub struct MaterialOverrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub radius: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outline: Option<f32>,
+    /// Scales both of the theme's shadows: 1 keeps them, 0 turns them off.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub shadows: Option<Shadows>,
+    pub shadow_strength: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_inset: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub selection: Option<SelectionStyle>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub primary: Option<PrimaryStyle>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub field: Option<FieldStyle>,
     /// `off`, or the name of a glass preset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub glass: Option<String>,
 }
 
-impl LookOverrides {
-    /// `look` with every override set here.
-    pub fn apply(&self, look: &mut Look) {
+impl MaterialOverrides {
+    /// `materials` with every override set here.
+    pub fn apply(&self, materials: &mut Materials) {
         if let Some(radius) = self.radius {
-            look.radius = radius;
+            materials.radius = radius;
         }
         if let Some(outline) = self.outline {
-            look.outline = outline;
+            materials.outline = outline;
         }
-        if let Some(shadows) = self.shadows {
-            look.shadows = shadows;
+        if let Some(strength) = self.shadow_strength {
+            materials.contact.strength *= strength;
+            materials.float.strength *= strength;
         }
         if let Some(row_inset) = self.row_inset {
-            look.row_inset = row_inset;
-        }
-        if let Some(selection) = self.selection {
-            look.selection = selection;
+            materials.row_inset = row_inset;
         }
         if let Some(primary) = self.primary {
-            look.primary = primary;
-        }
-        if let Some(field) = self.field {
-            look.field = field;
+            materials.primary = primary;
         }
         match self.glass.as_deref() {
-            Some("off") => look.glass = None,
+            Some("off") => materials.glass = None,
             Some(name) => {
                 if let Some(material) = GlassMaterial::preset(name) {
-                    look.glass = Some(material);
+                    materials.glass = Some(material);
                 }
             }
             None => {}
@@ -142,6 +135,63 @@ pub fn choice_name<T: Serialize>(value: T) -> Option<String> {
 /// The look setting `name` spells, the inverse of [`choice_name`].
 pub fn parse_choice<T: serde::de::DeserializeOwned>(name: &str) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(name.trim().to_owned())).ok()
+}
+
+/// A JSON object over `base`: the fields it names, `base` for the rest.
+fn over<'de, T, D>(base: T, deserializer: D) -> Result<T, D::Error>
+where
+    T: Serialize + serde::de::DeserializeOwned,
+    D: Deserializer<'de>,
+{
+    use serde::de::Error as _;
+    let fields = serde_json::Map::<String, serde_json::Value>::deserialize(deserializer)?;
+    let mut merged = serde_json::to_value(base).map_err(D::Error::custom)?;
+    if let serde_json::Value::Object(target) = &mut merged {
+        target.extend(fields);
+    }
+    serde_json::from_value(merged).map_err(D::Error::custom)
+}
+
+fn deserialize_contact<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<ShadowMaterial, D::Error> {
+    over(ShadowMaterial::CONTACT, deserializer)
+}
+
+fn deserialize_float<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<ShadowMaterial, D::Error> {
+    over(ShadowMaterial::FLOAT, deserializer)
+}
+
+/// A theme's role styles, keyed by role ids the UI knows.
+fn deserialize_roles<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, StylePatch>, D::Error> {
+    use serde::de::Error as _;
+    let roles = BTreeMap::<String, StylePatch>::deserialize(deserializer)?;
+    for id in roles.keys() {
+        if crate::roles::find(id).is_none() {
+            return Err(D::Error::custom(unknown_role(id)));
+        }
+    }
+    Ok(roles)
+}
+
+fn unknown_role(id: &str) -> String {
+    let spelled = |name: &str| name.replace(['-', '_', '.'], "").to_ascii_lowercase();
+    let near = crate::roles::all()
+        .map(|role| role.id)
+        .find(|known| spelled(known) == spelled(id))
+        .or_else(|| {
+            crate::roles::all()
+                .map(|role| role.id)
+                .find(|known| known.ends_with(&format!(".{id}")))
+        });
+    match near {
+        Some(known) => format!("unknown role `{id}`, did you mean `{known}`?"),
+        None => format!("unknown role `{id}`"),
+    }
 }
 
 fn deserialize_glass<'de, D: Deserializer<'de>>(
@@ -222,13 +272,20 @@ impl ThemeColors {
     }
 }
 
-/// A look and its colors in both modes: one `themes/<name>.json` file.
+/// Materials, roles and colors in both modes: one `themes/<name>.json` file.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct InterfaceTheme {
     /// What Settings calls it.
     pub name: String,
-    pub look: Look,
+    pub materials: Materials,
+    /// How the theme changes each kind and role, by id; what it leaves out
+    /// draws as built in.
+    #[serde(
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "deserialize_roles"
+    )]
+    pub roles: BTreeMap<String, StylePatch>,
     pub light: ThemeColors,
     pub dark: ThemeColors,
 }
@@ -241,11 +298,21 @@ impl InterfaceTheme {
         }
     }
 
-    /// Draws `theme` in this look and in this theme's colors for the mode
-    /// `theme` is already in.
+    /// Draws `theme` in this theme's materials and roles, and in its colors
+    /// for the mode `theme` is already in.
     pub fn apply(&self, theme: &mut Theme) {
         theme.colors = self.colors(theme.mode);
-        self.look.apply(theme);
+        self.materials.apply(theme);
+        self.apply_roles(theme);
+    }
+
+    /// Hands the theme's role styles to `theme`.
+    pub fn apply_roles(&self, theme: &mut Theme) {
+        theme.styles = self
+            .roles
+            .iter()
+            .map(|(id, patch)| (SharedString::from(id.clone()), *patch))
+            .collect();
     }
 
     pub fn to_json(&self) -> String {
@@ -265,8 +332,8 @@ impl InterfaceTheme {
     }
 }
 
-/// Reads a theme file. Missing keys keep [`Look::default`] and the built-in
-/// palette.
+/// Reads a theme file. Missing keys keep [`Materials::default`], the
+/// built-in role styles and the built-in palette.
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
     let value =
         serde_json::from_str::<serde_json::Value>(source).map_err(|error| error.to_string())?;
@@ -298,6 +365,7 @@ fn with_spelling_hint(message: String) -> String {
 const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
     ("default", include_str!("../themes/default.json")),
     ("macos", include_str!("../themes/macos.json")),
+    ("tahoe", include_str!("../themes/tahoe.json")),
     ("linear", include_str!("../themes/linear.json")),
     ("glass", include_str!("../themes/glass.json")),
 ];
@@ -424,14 +492,15 @@ mod tests {
             let once = parse_theme(&theme.to_json()).unwrap();
             let twice = parse_theme(&once.to_json()).unwrap();
             assert_eq!(once, twice, "{id} drifts through JSON");
+            assert_eq!(once.roles, theme.roles, "{id} loses its roles");
             assert_eq!(
-                Look {
+                Materials {
                     glass: None,
-                    ..once.look.clone()
+                    ..once.materials.clone()
                 },
-                Look {
+                Materials {
                     glass: None,
-                    ..theme.look.clone()
+                    ..theme.materials.clone()
                 },
             );
         }
@@ -439,15 +508,22 @@ mod tests {
 
     #[test]
     fn partial_themes_keep_the_defaults_they_leave_out() {
-        let theme =
-            parse_theme(r##"{"look":{"outline":0.4},"dark":{"accent":"#ff0000"}}"##).unwrap();
+        let theme = parse_theme(
+            r##"{"materials":{"outline":0.4,"float":{"y":4}},"dark":{"accent":"#ff0000"}}"##,
+        )
+        .unwrap();
         assert_eq!(
-            theme.look,
-            Look {
+            theme.materials,
+            Materials {
                 outline: 0.4,
-                ..Look::default()
+                float: ShadowMaterial {
+                    y: 4.0,
+                    ..ShadowMaterial::FLOAT
+                },
+                ..Materials::default()
             }
         );
+        assert!(theme.roles.is_empty());
         let dark = theme.colors(ThemeMode::Dark);
         assert_eq!(dark.accent, crate::parse_hex("#ff0000").unwrap());
         assert_eq!(dark.background, ThemeColor::dark().background);
@@ -455,70 +531,94 @@ mod tests {
     }
 
     #[test]
+    fn roles_change_only_what_they_name() {
+        use crate::{Fill, Kind, Shape};
+        let theme = parse_theme(
+            r#"{"roles":{"chrome.button":{"fill":"glass","shape":"pill"},"button":{"outline":false}}}"#,
+        )
+        .unwrap();
+        let mut kit = Theme::default();
+        theme.apply(&mut kit);
+        let chrome = kit.style(crate::roles::CHROME_BUTTON);
+        assert_eq!((chrome.fill, chrome.shape), (Fill::Glass, Shape::Pill));
+        assert_eq!(chrome.hover, Kind::IconButton.base().hover);
+        assert!(!kit.style(Kind::Button.role()).outline);
+        assert!(kit.style(crate::roles::PANE_CHIP).outline);
+    }
+
+    #[test]
+    fn unknown_roles_are_errors_that_suggest_the_role() {
+        let error = parse_theme(r#"{"roles":{"chromebutton":{}}}"#).unwrap_err();
+        assert!(
+            error.contains("did you mean `chrome.button`"),
+            "{error}"
+        );
+        let error = parse_theme(r#"{"roles":{"composer":{}}}"#).unwrap_err();
+        assert!(error.contains("did you mean `agent.composer`"), "{error}");
+        assert!(parse_theme(r#"{"roles":{"sparkle":{}}}"#).is_err());
+        assert!(parse_theme(r#"{"roles":{"row":{"fill":"neon"}}}"#).is_err());
+    }
+
+    #[test]
     fn glass_takes_a_preset_or_a_preset_with_changes() {
-        let named = parse_theme(r#"{"look":{"glass":"frosted"}}"#).unwrap();
-        assert_eq!(named.look.glass, GlassMaterial::preset("frosted"));
-        let changed = parse_theme(r#"{"look":{"glass":{"preset":"clear","blur":3}}}"#).unwrap();
+        let named = parse_theme(r#"{"materials":{"glass":"frosted"}}"#).unwrap();
+        assert_eq!(named.materials.glass, GlassMaterial::preset("frosted"));
+        let changed =
+            parse_theme(r#"{"materials":{"glass":{"preset":"clear","blur":3}}}"#).unwrap();
         let clear = GlassMaterial::preset("clear").unwrap();
         assert_eq!(
-            changed.look.glass,
+            changed.materials.glass,
             Some(GlassMaterial {
                 blur: px(3.0),
                 ..clear
             })
         );
-        let lit = parse_theme(r##"{"look":{"glass":{"preset":"clear","light_color":"#ff0000"}}}"##)
-            .unwrap();
+        let lit = parse_theme(
+            r##"{"materials":{"glass":{"preset":"clear","light_color":"#ff0000"}}}"##,
+        )
+        .unwrap();
         assert_eq!(
-            lit.look.glass.map(|glass| glass.light_color),
+            lit.materials.glass.map(|glass| glass.light_color),
             Some(crate::parse_hex("#ff0000").unwrap())
         );
-        assert!(parse_theme(r#"{"look":{"glass":"stained"}}"#).is_err());
+        assert!(parse_theme(r#"{"materials":{"glass":"stained"}}"#).is_err());
         assert!(parse_theme("[]").is_err());
     }
 
     #[test]
     fn overrides_replace_only_what_they_set() {
-        let theme = builtin_theme("glass").unwrap();
-        let mut look = theme.look.clone();
-        LookOverrides {
+        let theme = builtin_theme("macos").unwrap();
+        let mut materials = theme.materials.clone();
+        MaterialOverrides {
             outline: Some(1.0),
-            shadows: Some(Shadows::Surfaces),
+            shadow_strength: Some(0.5),
             glass: Some("frosted".to_owned()),
-            ..LookOverrides::default()
+            ..MaterialOverrides::default()
         }
-        .apply(&mut look);
-        assert_eq!(look.outline, 1.0);
-        assert_eq!(look.shadows, Shadows::Surfaces);
-        assert_eq!(look.glass, GlassMaterial::preset("frosted"));
-        assert_eq!(look.radius, theme.look.radius);
-        assert_eq!(look.selection, theme.look.selection);
+        .apply(&mut materials);
+        assert_eq!(materials.outline, 1.0);
+        assert_eq!(
+            materials.float.strength,
+            theme.materials.float.strength * 0.5
+        );
+        assert_eq!(materials.glass, GlassMaterial::preset("frosted"));
+        assert_eq!(materials.radius, theme.materials.radius);
+        assert_eq!(materials.primary, theme.materials.primary);
 
-        LookOverrides {
+        MaterialOverrides {
             glass: Some("off".to_owned()),
-            ..LookOverrides::default()
+            ..MaterialOverrides::default()
         }
-        .apply(&mut look);
-        assert_eq!(look.glass, None);
+        .apply(&mut materials);
+        assert_eq!(materials.glass, None);
     }
 
     #[test]
     fn choices_spell_the_way_settings_and_config_do() {
-        use zz_client::appearance::{
-            FIELD_CHOICES, GLASS_CHOICES, PRIMARY_CHOICES, SELECTION_CHOICES, SHADOWS_CHOICES,
-        };
-        for name in SHADOWS_CHOICES {
-            let shadows = parse_choice::<Shadows>(name).unwrap();
-            assert_eq!(choice_name(shadows).as_deref(), Some(name));
-        }
-        for name in SELECTION_CHOICES {
-            assert!(parse_choice::<SelectionStyle>(name).is_some(), "{name}");
-        }
+        use zz_client::appearance::{GLASS_CHOICES, PRIMARY_CHOICES};
         for name in PRIMARY_CHOICES {
-            assert!(parse_choice::<PrimaryStyle>(name).is_some(), "{name}");
-        }
-        for name in FIELD_CHOICES {
-            assert!(parse_choice::<FieldStyle>(name).is_some(), "{name}");
+            let primary = parse_choice::<PrimaryStyle>(name).unwrap();
+            assert_eq!(choice_name(primary).as_deref(), Some(name));
         }
         let presets = GlassMaterial::PRESETS
             .iter()
@@ -531,12 +631,12 @@ mod tests {
     fn unknown_keys_are_errors_that_name_the_key() {
         for (source, key, spelling) in [
             (
-                r#"{"look":{"row_inset":2}}"#,
+                r#"{"materials":{"row_inset":2}}"#,
                 "row_inset",
                 Some("row-inset"),
             ),
             (
-                r##"{"look":{"glass":{"preset":"clear","Light-Color":"#ff0000"}}}"##,
+                r##"{"materials":{"glass":{"preset":"clear","Light-Color":"#ff0000"}}}"##,
                 "Light-Color",
                 Some("light_color"),
             ),
@@ -545,9 +645,10 @@ mod tests {
                 "onAccent",
                 Some("on-accent"),
             ),
-            (r#"{"Look":{}}"#, "Look", Some("look")),
-            (r#"{"look":{"sparkle":1}}"#, "sparkle", None),
-            (r#"{"look":{"glass":{"sparkle":1}}}"#, "sparkle", None),
+            (r#"{"Materials":{}}"#, "Materials", Some("materials")),
+            (r#"{"materials":{"sparkle":1}}"#, "sparkle", None),
+            (r#"{"materials":{"glass":{"sparkle":1}}}"#, "sparkle", None),
+            (r#"{"look":{}}"#, "look", None),
         ] {
             let error = parse_theme(source).unwrap_err();
             match spelling {

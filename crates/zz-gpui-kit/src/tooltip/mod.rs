@@ -64,7 +64,7 @@ impl Render for Tooltip {
                 .justify_between()
                 .font_family(cx.theme().font_family.clone())
                 .text_xs()
-                .lifted_style(cx)
+                .surface(crate::Kind::Tooltip, cx)
                 .refine_style(&self.style)
                 .child(div().child(self.text.clone()))
                 .when_some(key_binding, |this, kbd| {

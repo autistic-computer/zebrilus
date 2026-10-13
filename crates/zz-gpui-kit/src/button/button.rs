@@ -6,13 +6,13 @@ use zz_gpui::{
     AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, Hsla, InteractiveElement,
     Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
     Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _, px, relative, transparent_white,
+    prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Elevation, Emphasis, FOCUS_RING_WIDTH, Ground,
-    Icon, IconName, Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Tone,
-    control_shadow, h_flex, rems_from_px, tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH, Ground, Icon,
+    IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Surface,
+    SurfaceRole, Tone, h_flex, rems_from_px, tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -110,59 +110,44 @@ impl ButtonVariant {
         self.is_link() || self.is_text()
     }
 
-    /// The neutral soft button rests on the look's control surface (its
-    /// hairline and shadow); the neutral ghost one shows it on hover.
-    fn rests_on_surface(&self) -> bool {
-        matches!(self, Self::Paint(Tone::Neutral, Emphasis::Soft))
-    }
-
-    fn neutral(&self) -> bool {
-        matches!(
-            self,
-            Self::Paint(Tone::Neutral, Emphasis::Soft | Emphasis::Ghost)
+    /// The surface a painted button draws: its own role, or the one its
+    /// emphasis implies. A solid button is the prominent one; a ghost one is
+    /// quiet, or an icon button when it shows only an icon.
+    fn surface(&self, role: Option<SurfaceRole>, icon_only: bool, on: Option<Ground>) -> Option<Surface> {
+        let Self::Paint(tone, emphasis) = *self else {
+            return None;
+        };
+        let role = role.unwrap_or(match emphasis {
+            Emphasis::Ghost if icon_only => Kind::IconButton.role(),
+            Emphasis::Ghost | Emphasis::Outline => SurfaceRole::QUIET_BUTTON,
+            Emphasis::Solid | Emphasis::Soft => Kind::Button.role(),
+        });
+        Some(
+            Surface::new(role)
+                .tone(tone)
+                .prominent(emphasis == Emphasis::Solid)
+                .on_maybe(on),
         )
     }
+}
 
-    /// The paint, filled over the window when the button rests on the
-    /// control surface, so the surface's drop shadow does not show through
-    /// a translucent fill.
-    fn paint(&self, on: Option<Ground>, cx: &App) -> Option<Paint> {
-        match self {
-            Self::Paint(tone, emphasis) => {
-                let theme = cx.theme();
-                let paint = theme.paint_on(on.unwrap_or_else(|| theme.ground()), *tone, *emphasis);
-                Some(if self.rests_on_surface() {
-                    paint.opaque()
-                } else {
-                    paint
-                })
-            }
-            _ => None,
-        }
-    }
-
-    fn style_at(&self, state: PaintState, on: Option<Ground>, cx: &App) -> ButtonVariantStyle {
-        if let Some(paint) = self.paint(on, cx) {
-            return ButtonVariantStyle {
-                bg: paint.fill_at(state),
-                border: paint.border_at(state),
-                fg: paint.text_at(state),
-                underline: false,
-                shadow: self.rests_on_surface() && state != PaintState::Disabled,
-            };
-        }
-        let foreground = cx.theme().foreground;
-        ButtonVariantStyle {
-            bg: cx.theme().transparent,
-            border: cx.theme().transparent,
-            fg: match (self, state) {
-                (_, PaintState::Disabled) => foreground.faint(),
-                (Self::Text, PaintState::Active) => foreground.muted(),
-                _ => foreground,
-            },
-            underline: self.is_link(),
-            shadow: false,
-        }
+/// A link or text button in `state`: no fill or edge, just its ink.
+fn text_layer(variant: ButtonVariant, state: PaintState, ground: Ground, cx: &App) -> Layer {
+    let theme = cx.theme();
+    let foreground = theme.foreground;
+    Layer {
+        fill: theme.transparent,
+        glass: None,
+        border: theme.transparent,
+        border_width: px(0.0),
+        shadow: Vec::new(),
+        text: match (variant, state) {
+            (_, PaintState::Disabled) => foreground.faint(),
+            (ButtonVariant::Text, PaintState::Active) => foreground.muted(),
+            _ => foreground,
+        },
+        radius: px(0.0),
+        ground,
     }
 }
 
@@ -177,6 +162,7 @@ pub struct Button {
     disabled: bool,
     selected: bool,
     variant: ButtonVariant,
+    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
     hover_bg: Option<Hsla>,
     rounded: ButtonRounded,
@@ -213,6 +199,7 @@ impl Button {
             disabled: false,
             selected: false,
             variant: ButtonVariant::default(),
+            surface_role: None,
             on: None,
             hover_bg: None,
             rounded: ButtonRounded::Medium,
@@ -354,6 +341,14 @@ impl Button {
             _ => Tone::default(),
         };
         self.variant = ButtonVariant::Paint(tone, emphasis);
+        self
+    }
+
+    /// Draw the button as `role` draws, instead of the role its emphasis
+    /// implies.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
     }
 
@@ -500,27 +495,35 @@ fn with_focus_ring<T: ParentElement + Styled + Sized>(
 
 impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let style: ButtonVariant = self.variant;
-        let on = self.on;
-        let ground = on.unwrap_or_else(|| cx.theme().ground());
+        let variant = self.variant;
+        let ground = self.on.unwrap_or_else(|| cx.theme().ground());
+        let icon_only = self.label.is_none() && self.children.is_empty();
+        let surface = variant.surface(self.surface_role, icon_only, self.on);
+        let flat = self.flat;
+        let layer_at = move |state: PaintState, cx: &App| -> Layer {
+            let Some(surface) = surface else {
+                return text_layer(variant, state, ground, cx);
+            };
+            let mut layer = cx.theme().layer(surface, state);
+            if flat {
+                layer.border = cx.theme().transparent;
+                layer.shadow.clear();
+            }
+            layer
+        };
         let clickable = self.clickable();
         let is_disabled = self.disabled;
         let hoverable = self.hoverable();
-        let normal_style = style.style_at(PaintState::Rest, on, cx);
-        let paint = style.paint(on, cx);
-        let neutral_surface = !self.flat && style.neutral();
-        let resting_surface = neutral_surface && normal_style.shadow;
-        let highlight_ring = neutral_surface && !normal_style.shadow;
-        let casts_shadow = (highlight_ring || resting_surface)
-            && cx.theme().control_shadows()
-            && ground.elevation == Elevation::Window;
-        let lifted = move |fill: Hsla| {
-            if casts_shadow {
-                ground.fill.blend(fill)
+        let rest = layer_at(
+            if self.disabled {
+                PaintState::Disabled
+            } else if self.selected {
+                PaintState::Current
             } else {
-                fill
-            }
-        };
+                PaintState::Rest
+            },
+            cx,
+        );
         let icon_size = match self.size {
             Size::Size(v) => Size::Size(v * 0.75),
             _ => self.size,
@@ -533,7 +536,7 @@ impl RenderOnce for Button {
         let is_focused = focus_handle.is_focused(window);
 
         let rounding = match self.rounded {
-            ButtonRounded::Medium => cx.theme().control_radius(),
+            ButtonRounded::Medium => rest.radius,
             ButtonRounded::Size(px) => px,
         };
         let coarse = crate::touch::CoarsePointer::get(cx);
@@ -542,7 +545,10 @@ impl RenderOnce for Button {
             .then(|| crate::touch::press_feedback(self.id.clone(), window, cx));
         let pressed = press.as_ref().map_or(0.0, |press| press.amount);
         let press_listener = press.map(crate::touch::PressFeedback::listener);
-        let press_fill = style.style_at(PaintState::Active, on, cx).bg;
+        let press_fill = layer_at(PaintState::Active, cx).fill;
+        let hover = layer_at(PaintState::Hover, cx);
+        let active = layer_at(PaintState::Active, cx);
+        let hover_bg = self.hover_bg;
         let on_mouse_down =
             move |_: &zz_gpui::MouseDownEvent, window: &mut Window, cx: &mut App| {
                 if is_disabled {
@@ -590,19 +596,10 @@ impl RenderOnce for Button {
             .flex_shrink_0()
             .items_center()
             .justify_center()
-            .cursor_default()
             .when(self.variant.is_link(), |this| this.cursor_pointer())
-            .when(
-                cx.theme().control_shadows()
-                    && normal_style.shadow
-                    && !self.flat
-                    && !resting_surface
-                    && ground.elevation == Elevation::Window,
-                |this| this.shadow(control_shadow(cx)),
-            )
-            .when(!style.no_padding(), |this| {
+            .when(!variant.no_padding(), |this| {
                 let height = self.size.control_h();
-                if self.label.is_none() && self.children.is_empty() {
+                if icon_only {
                     this.size(height)
                 } else {
                     let this = this.h(height);
@@ -618,75 +615,39 @@ impl RenderOnce for Button {
                 }
             })
             .rounded(rounding)
-            .when(highlight_ring && cx.theme().outlined(), |this| {
-                this.border(cx.theme().outline)
+            .border(rest.border_width)
+            .border_color(rest.border)
+            .shadow(rest.shadow.clone())
+            .text_color(rest.text)
+            .map(|this| match rest.glass {
+                Some(material) => this.glass(material),
+                None => this.bg(rest.fill),
             })
-            .when_some(
-                paint.filter(|paint| paint.border_width > px(0.0)),
-                |this, paint| this.border(paint.border_width),
-            )
-            .text_color(normal_style.fg)
-            .when(self.selected, |this| {
-                let selected_style = style.style_at(PaintState::Current, on, cx);
-                this.bg(lifted(selected_style.bg))
-                    .border_color(selected_style.border)
-                    .text_color(selected_style.fg)
-                    .when(highlight_ring || resting_surface, |this| {
-                        this.control_highlight_on(ground, cx)
-                    })
+            .when(variant.is_link() && !self.disabled, |this| {
+                this.text_decoration_1()
             })
-            .when(!self.disabled && !self.selected, |this| {
-                this.border_color(if highlight_ring {
-                    transparent_white()
-                } else {
-                    normal_style.border
+            .when(!self.disabled && !self.selected && !coarse, |this| {
+                this.hover(move |style| {
+                    let style = style
+                        .border_color(hover.border)
+                        .shadow(hover.shadow.clone())
+                        .text_color(hover.text);
+                    match (hover_bg, hover.glass) {
+                        (Some(bg), _) => style.bg(bg),
+                        (None, Some(_)) => style,
+                        (None, None) => style.bg(hover.fill),
+                    }
                 })
-                .bg(if resting_surface {
-                    lifted(normal_style.bg)
-                } else {
-                    normal_style.bg
+                .active(move |style| {
+                    let style = style
+                        .border_color(active.border)
+                        .shadow(active.shadow.clone())
+                        .text_color(active.text);
+                    match active.glass {
+                        Some(_) => style,
+                        None => style.bg(active.fill),
+                    }
                 })
-                .when(normal_style.underline, |this| this.text_decoration_1())
-                .when(!coarse, |this| {
-                    this.hover(|this| {
-                        let hover_style = style.style_at(PaintState::Hover, on, cx);
-                        let this = this
-                            .bg(self.hover_bg.unwrap_or(lifted(hover_style.bg)))
-                            .border_color(hover_style.border)
-                            .text_color(hover_style.fg);
-                        if highlight_ring || resting_surface {
-                            this.control_highlight_on(ground, cx)
-                        } else {
-                            this
-                        }
-                    })
-                })
-                .when(!coarse, |this| {
-                    this.active(|this| {
-                        let active_style = style.style_at(PaintState::Active, on, cx);
-                        let this = this
-                            .bg(lifted(active_style.bg))
-                            .border_color(active_style.border)
-                            .text_color(active_style.fg);
-                        if highlight_ring || resting_surface {
-                            this.control_highlight_on(ground, cx)
-                        } else {
-                            this
-                        }
-                    })
-                })
-            })
-            .when(resting_surface, |this| this.control_surface_on(ground, cx))
-            .when(self.disabled, |this| {
-                let disabled_style = style.style_at(PaintState::Disabled, on, cx);
-                this.bg(disabled_style.bg)
-                    .text_color(disabled_style.fg)
-                    .border_color(if highlight_ring {
-                        transparent_white()
-                    } else {
-                        disabled_style.border
-                    })
-                    .shadow_none()
             })
             .refine_style(&self.style)
             .when(pressed > 0.0, |this| {
@@ -746,34 +707,29 @@ impl RenderOnce for Button {
                         this.justify_between().child(
                             Icon::new(IconName::ChevronDown).small().text_color(
                                 match self.disabled {
-                                    true => normal_style.fg.opacity(0.3),
-                                    false => normal_style.fg.opacity(0.5),
+                                    true => rest.text.opacity(0.3),
+                                    false => rest.text.opacity(0.5),
                                 },
                             ),
                         )
                     })
             })
             .when(self.loading && !self.disabled, |this| {
-                this.bg(normal_style.bg.opacity(0.8))
-                    .border_color(normal_style.border.opacity(0.8))
-                    .text_color(normal_style.fg.opacity(0.8))
+                this.bg(rest.fill.opacity(0.8))
+                    .border_color(rest.border.opacity(0.8))
+                    .text_color(rest.text.opacity(0.8))
             })
             .when_some(self.tooltip, |this, tooltip| {
                 this.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
             });
 
-        let focus_paint =
-            paint.unwrap_or_else(|| cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Ghost));
+        let tone = match variant {
+            ButtonVariant::Paint(tone, _) => tone,
+            _ => Tone::Neutral,
+        };
+        let focus_paint = cx.theme().paint_on(ground, tone, Emphasis::Ghost);
         with_focus_ring(element, is_focused, px(0.), &focus_paint, window)
     }
-}
-
-struct ButtonVariantStyle {
-    bg: Hsla,
-    border: Hsla,
-    fg: Hsla,
-    underline: bool,
-    shadow: bool,
 }
 
 #[cfg(test)]
@@ -821,7 +777,20 @@ mod tests {
         assert!(ButtonVariant::Link.no_padding());
         assert!(ButtonVariant::Text.no_padding());
         assert!(!ButtonVariant::default().no_padding());
-        assert!(ButtonVariant::default().rests_on_surface());
+        assert_eq!(
+            ButtonVariant::default()
+                .surface(None, false, None)
+                .map(|surface| surface.role),
+            Some(Kind::Button.role())
+        );
+        assert_eq!(
+            Button::new("b")
+                .ghost()
+                .variant
+                .surface(None, true, None)
+                .map(|surface| surface.role),
+            Some(Kind::IconButton.role())
+        );
     }
 
     #[zz_gpui::test]
