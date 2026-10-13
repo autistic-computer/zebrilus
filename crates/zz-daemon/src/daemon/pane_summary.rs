@@ -166,6 +166,7 @@ pub(super) fn stamp_pane(inner: &mut ServerState, pane: PaneId, now: u64) -> boo
 }
 
 const LOCATION_FRESH: Duration = Duration::from_secs(10);
+const LOCATION_RECHECK: Duration = Duration::from_secs(2);
 const KNOWN_LOCATIONS: usize = 64;
 
 type LocationSource = (String, PathBuf);
@@ -183,6 +184,8 @@ pub(super) struct Locations {
     queue: VecDeque<(PaneId, LocationSource)>,
     running: bool,
     known: VecDeque<KnownLocation>,
+    unread: BTreeSet<PaneId>,
+    recheck: bool,
 }
 
 impl Shared {
@@ -203,11 +206,43 @@ impl Shared {
     }
 
     pub(super) fn locate_moved_pane(self: &Arc<Self>, pane: PaneId) -> bool {
-        let (changed, start) = place_pane(&mut self.inner.lock(), pane);
+        let (changed, start, recheck) = place_pane(&mut self.inner.lock(), pane);
         if start {
             self.start_location_worker();
         }
+        if recheck {
+            let owner = Arc::downgrade(&self.server_owner());
+            let _ = self.timer_tx.send(timers::TimerInput::Callback {
+                deadline: Some(Instant::now() + LOCATION_RECHECK),
+                callback: Box::new(move || {
+                    if let Some(shared) = owner.upgrade() {
+                        shared.recheck_pane_locations();
+                    }
+                }),
+            });
+        }
         changed
+    }
+
+    fn recheck_pane_locations(self: &Arc<Self>) {
+        let start = {
+            let mut inner = self.inner.lock();
+            inner.locations.recheck = false;
+            let mut sources = Vec::new();
+            let mut start = false;
+            for pane in std::mem::take(&mut inner.locations.unread) {
+                if let Some(source) = location_source(&inner, pane)
+                    && !sources.contains(&source)
+                {
+                    sources.push(source.clone());
+                    start |= queue_source(&mut inner, pane, source);
+                }
+            }
+            start
+        };
+        if start {
+            self.start_location_worker();
+        }
     }
 
     pub(super) fn finish_pane_location(
@@ -222,7 +257,8 @@ impl Shared {
                 (false, queue_location(&mut inner, pane))
             } else {
                 remember_location(&mut inner.locations.known, source, &cwd, &branch);
-                let changed = inner.engine.state.update_pane_summary(pane, |summary| {
+                let mut changed = share_branch(&mut inner, &cwd, &branch);
+                changed |= inner.engine.state.update_pane_summary(pane, |summary| {
                     summary.cwd = cwd;
                     summary.branch = branch;
                 });
@@ -292,9 +328,9 @@ fn locate_panes(owner: &Weak<Shared>) {
     }
 }
 
-fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool) {
+fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool, bool) {
     let Some(source) = location_source(inner, pane) else {
-        return (false, false);
+        return (false, false, false);
     };
     let mut fresh = false;
     let mut changed = false;
@@ -310,10 +346,16 @@ fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool) {
             summary.branch.clone_from(&known.branch);
         });
     }
-    if fresh && !inner.locations.jobs.contains_key(&pane) {
-        return (changed, false);
+    let locations = &mut inner.locations;
+    if fresh && !locations.jobs.contains_key(&pane) {
+        locations.unread.insert(pane);
+        return (
+            changed,
+            false,
+            !std::mem::replace(&mut locations.recheck, true),
+        );
     }
-    (changed, queue_source(inner, pane, source))
+    (changed, queue_source(inner, pane, source), false)
 }
 
 fn queue_location(inner: &mut ServerState, pane: PaneId) -> bool {
@@ -361,14 +403,45 @@ fn remember_location(
     cwd: &str,
     branch: &str,
 ) {
+    let read_at = Instant::now();
     known.retain(|known| known.source != source);
+    for alias in known
+        .iter_mut()
+        .filter(|known| !cwd.is_empty() && known.cwd == cwd)
+    {
+        branch.clone_into(&mut alias.branch);
+        alias.read_at = read_at;
+    }
     known.push_front(KnownLocation {
         source,
         cwd: cwd.to_owned(),
         branch: branch.to_owned(),
-        read_at: Instant::now(),
+        read_at,
     });
     known.truncate(KNOWN_LOCATIONS);
+}
+
+fn share_branch(inner: &mut ServerState, cwd: &str, branch: &str) -> bool {
+    if cwd.is_empty() {
+        return false;
+    }
+    let panes = inner
+        .engine
+        .state
+        .windows
+        .values()
+        .flat_map(|window| &window.panes)
+        .filter(|(_, pane)| pane.summary.cwd == cwd && pane.summary.branch != branch)
+        .map(|(&pane, _)| pane)
+        .collect::<Vec<_>>();
+    let mut changed = false;
+    for pane in panes {
+        changed |= inner
+            .engine
+            .state
+            .update_pane_summary(pane, |summary| branch.clone_into(&mut summary.branch));
+    }
+    changed
 }
 
 fn resolve_location(reported: &str, live: &Path, homes: &[PathBuf]) -> (String, String) {

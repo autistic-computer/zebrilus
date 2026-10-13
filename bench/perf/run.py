@@ -348,6 +348,7 @@ def main():
         sys.exit(targets(args))
 
     zz_bin = os.path.abspath(args.zz)
+    args.headless = os.path.abspath(args.headless) if args.headless else args.headless
     if not os.access(zz_bin, os.X_OK):
         sys.exit(f"zz binary not found: {zz_bin} (cargo build --release -p zz-cli)")
     tmux_bin, refused = isolate.resolve_tmux(args.tmux, zz_bin)
@@ -430,6 +431,8 @@ def main():
         signal.signal(sig, on_signal)
     interrupted = False
     started_mono = time.monotonic()
+    launched = os.getcwd()
+    os.chdir(env.env["HOME"])
     try:
         for name in groups:
             ctx.group = name
@@ -451,6 +454,7 @@ def main():
         interrupted = True
         errors.append({"group": ctx.group, "error": f"interrupted: {exc}"})
     finally:
+        os.chdir(launched)
         strays = env.cleanup()
 
     meta["loadavg_end"] = timing.loadavg()

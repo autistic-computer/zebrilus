@@ -1232,3 +1232,181 @@ fn a_spawn_in_a_known_directory_rides_its_own_publish() {
     assert_eq!(shared.inner.lock().locations.known[0].branch, "next");
     shared.request_shutdown();
 }
+
+#[test]
+fn a_read_renews_every_answer_for_its_directory() {
+    let live = (String::new(), PathBuf::from("/repo"));
+    let report = ("file://host/repo".to_owned(), PathBuf::new());
+    let other = (String::new(), PathBuf::from("/other"));
+    let gone = (String::new(), PathBuf::from("/gone"));
+    let mut known = VecDeque::new();
+    remember_location(&mut known, live.clone(), "/repo", "main");
+    remember_location(&mut known, other.clone(), "/other", "main");
+    remember_location(&mut known, gone.clone(), "", "");
+    let old = Instant::now()
+        .checked_sub(Duration::from_mins(1))
+        .expect("monotonic clock");
+    for known in &mut known {
+        known.read_at = old;
+    }
+
+    remember_location(&mut known, report.clone(), "/repo", "next");
+    remember_location(&mut known, (String::new(), PathBuf::from("/void")), "", "");
+    let entry = |source: &LocationSource| {
+        let known = known
+            .iter()
+            .find(|known| known.source == *source)
+            .expect("known");
+        (known.branch.as_str(), known.read_at > old)
+    };
+    assert_eq!(entry(&report), ("next", true));
+    assert_eq!(entry(&live), ("next", true));
+    assert_eq!(entry(&other), ("main", false));
+    assert_eq!(entry(&gone), ("", false));
+}
+
+#[cfg(unix)]
+fn new_pane(shared: &Arc<Shared>, args: &[&str]) -> PaneId {
+    let before = shared
+        .inner
+        .lock()
+        .terminals
+        .keys()
+        .copied()
+        .collect::<Vec<_>>();
+    run(shared, args);
+    shared
+        .inner
+        .lock()
+        .terminals
+        .keys()
+        .copied()
+        .find(|pane| !before.contains(pane))
+        .expect("new pane")
+}
+
+#[cfg(unix)]
+#[test]
+fn a_read_reaches_every_pane_and_answer_for_its_directory() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let repo = fs::canonicalize(scratch.path())
+        .expect("resolved temp dir")
+        .join("repo");
+    git_repo(&repo, "ref: refs/heads/main\n");
+    let start = repo.display().to_string();
+    let quiet = super::super::tests::QUIET_PANE_COMMAND;
+    let shared = Arc::new(Shared::new(1));
+    run(&shared, &["set-option", "-g", "automatic-rename", "off"]);
+    let split = ["split-window", "-d", "-t", "alias", "-c", &start, quiet];
+    let first = new_pane(
+        &shared,
+        &["new-session", "-d", "-s", "alias", "-c", &start, quiet],
+    );
+    shared.settle_pane_locations();
+    let second = new_pane(&shared, &split);
+    let branch = |pane| summary(&shared.inner.lock(), pane).branch;
+    assert_eq!(
+        (branch(first), branch(second)),
+        ("main".into(), "main".into())
+    );
+
+    fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
+    let terminal = Arc::clone(&shared.inner.lock().terminals[&first]);
+    let report = format!("file://host{}", repo.display());
+    shared.synchronize_pane_reported_path(first, &terminal, &report);
+    shared.settle_pane_locations();
+    assert_eq!(
+        (branch(first), branch(second)),
+        ("next".into(), "next".into())
+    );
+
+    let third = new_pane(&shared, &split);
+    assert_eq!(branch(third), "next");
+    assert!(shared.inner.lock().locations.jobs.is_empty());
+    shared.request_shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_reused_answer_is_read_again_within_the_window() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let repo = fs::canonicalize(scratch.path())
+        .expect("resolved temp dir")
+        .join("repo");
+    git_repo(&repo, "ref: refs/heads/main\n");
+    let start = repo.display().to_string();
+    let quiet = super::super::tests::QUIET_PANE_COMMAND;
+    let shared = Arc::new(Shared::new(1));
+    shared.start_timers().expect("timers");
+    run(&shared, &["set-option", "-g", "automatic-rename", "off"]);
+    let first = new_pane(
+        &shared,
+        &["new-session", "-d", "-s", "recheck", "-c", &start, quiet],
+    );
+    shared.settle_pane_locations();
+    let branch = |pane| summary(&shared.inner.lock(), pane).branch;
+    assert_eq!(branch(first), "main");
+
+    fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
+    let second = new_pane(
+        &shared,
+        &["split-window", "-d", "-t", "recheck", "-c", &start, quiet],
+    );
+    let taken = Instant::now();
+    assert_eq!(branch(second), "main");
+    assert!(shared.inner.lock().locations.jobs.is_empty());
+    wait_until("the recheck", || {
+        branch(first) == "next" && branch(second) == "next"
+    });
+    assert!(taken.elapsed() < LOCATION_FRESH);
+    assert!(shared.inner.lock().locations.unread.is_empty());
+    shared.request_shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_move_into_a_known_directory_publishes_the_tree() {
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let repo = fs::canonicalize(scratch.path())
+        .expect("resolved temp dir")
+        .join("repo");
+    fs::create_dir_all(&repo).expect("repo dir");
+    let report = format!("file://host{}", repo.display());
+    let shared = Arc::new(Shared::new(1));
+    let (pane, terminal) = empty_terminal_pane(&shared, "moves");
+    for (source, cwd, branch) in [
+        ((String::new(), repo.clone()), "~/live", "main"),
+        ((report.clone(), PathBuf::new()), "~/report", "next"),
+    ] {
+        remember_location(
+            &mut shared.inner.lock().locations.known,
+            source,
+            cwd,
+            branch,
+        );
+    }
+    let location = || {
+        let inner = shared.inner.lock();
+        let summary = summary(&inner, pane);
+        (
+            summary.cwd,
+            summary.branch,
+            inner.last_published_mux_generation == inner.engine.state.generation(),
+            inner.locations.jobs.is_empty(),
+        )
+    };
+
+    shared.apply_pane_runtime(
+        pane,
+        &terminal,
+        "",
+        Some(repo.display().to_string()),
+        false,
+        Instant::now(),
+    );
+    assert_eq!(location(), ("~/live".into(), "main".into(), true, true));
+
+    shared.publish_flush.lock().frozen = Some(Instant::now() + Duration::from_hours(1));
+    shared.synchronize_pane_reported_path(pane, &terminal, &report);
+    assert_eq!(location(), ("~/report".into(), "next".into(), true, true));
+}

@@ -12,7 +12,7 @@ tags:
 - benchmark
 - campaign
 - design-plan
-timestamp: 2026-10-04T11:00:00Z
+timestamp: 2026-10-13T00:30:00Z
 ---
 
 # Campaign status
@@ -477,7 +477,8 @@ noise policy; this section records what the lanes rely on.
   resolved path, version, linked libraries, and the zz binary's sha256 and mtime.
 - Isolation: fresh HOME / XDG_* / ZZ_DATA_DIR / ZZ_LOG_DIR, `ZZ_SOCKET=/tmp/zzpf-<pid>.sock`,
   `ZZ_TRAY=0`, `ZZ_UPDATE_CHECK=0`, `SHELL=/bin/bash` with no rc files; TMUX, TMUX_PANE, ZZ_PANE,
-  ZZ_SESSION unset; both servers start with `-f <root>/perf.conf` holding
+  ZZ_SESSION unset; groups run with that HOME as the working directory, so panes start there
+  wherever the gate is launched from; both servers start with `-f <root>/perf.conf` holding
   `set -g history-limit 10000` (zz's default; tmux defaults to 2000), checked per group; both
   servers and every descendant killed after each group and on exit; zz and tmux runs alternate.
 - Probes: CPU (macOS `RUSAGE_INFO_V4` user+system x timebase; Linux `clock_getcpuclockid` in ns,

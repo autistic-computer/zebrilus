@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-12T20:30:00-03:00
+timestamp: 2026-10-12T21:30:00-03:00
 ---
 
 # Overview
@@ -74,11 +74,13 @@ adding a dependency.
 **A pane that moves takes a known answer; a finished command reads again.** The location thread's
 last 64 answers are kept by source. A spawn, an OSC 7 change or a live path change fills the
 summary from them under the lock, so the location rides the publish of the move. An answer read in
-the last 10 seconds is taken as is, with no job; an older one is read again in the background, and
-that result publishes only when it differs. Finished shell commands and agent turns always read
-again. Every pane already in a directory shows an answer at least as old as the remembered one, so
-a new pane there is never staler than its neighbours, and the 10 seconds bound how long an answer
-outlives the panes that read it.
+the last 10 seconds is taken with no job of its own; an older one is shown and read again at once.
+Every pane that took an answer without reading is read again 2 seconds after the first such take,
+once per source for the whole burst, so an answer that went stale just before the take is put
+right within 2 seconds.
+A read also renews every remembered answer and every pane that shows the same directory, so the
+OSC 7 and live path answers for one directory, and the panes in it, agree. Finished shell commands
+and agent turns always read again. A result publishes only when it changes a summary.
 
 **`HOME` folds in both spellings.** The home is kept as given and as it resolves through symlinks
 (computed once, on the location thread), because a pane started in `HOME` reports the given
@@ -158,9 +160,20 @@ draws the first as its tile and one card behind it for each of the next two.
   remove all three for a spawn in a known directory, back to 0.55, 3.06 and 3.05. Keeping the
   thread alive between jobs was tried and dropped: it saved only the thread cost.
 - The attach bytes the gate reported (+192 B for four panes) are the summary itself, about 8 B per
-  pane plus the text of the cwd and branch. The gate's panes start in the directory `run.py` was
-  launched from, outside the gate's `HOME`, so nothing folds there; launched from this worktree the
-  growth is 260 B, from `/` 32 B.
+  pane plus the text of the cwd and branch. The gate's panes started in the directory `run.py` was
+  launched from, so the result depended on who ran it: from this worktree +260 B, which failed the
+  256 B floor, from `/` +32 B. `run.py` now runs its groups in the gate's `HOME`, where every pane
+  shows `~` and no branch: about +32 B for four panes.
+- Review of the remembered answers: a new pane took a fresh answer and nothing read it again, so a
+  command pane opened right after a branch switch outside zz kept the old branch for good, and the
+  OSC 7 and live path answers for one directory disagreed after a shell's finished command. The
+  2 second re-read and the shared renewal fix both. The re-read waits for the burst instead of
+  following each spawn, and runs at 2 seconds rather than at the end of the 10 second window so
+  that it is over before the gate's idle group starts measuring (at 10 seconds it showed there as
+  0.05 Minstr/s and 0.1 wakeups/s against zero on main).
+- Spawns more than 10 seconds apart still read at once: with one client attached a lone spawn costs
+  about 0.6 to 0.9 Minstr more than on main, while spawns in a burst match main. The gate's spawn
+  group measures the burst.
 
 # Not built, on purpose
 
@@ -180,8 +193,11 @@ draws the first as its tile and one card behind it for each of the next two.
   directory that exists locally, so the worst case is a wrong but harmless branch.
 - A stat that blocks on a network mount holds the location thread until it returns, so no pane's
   cwd or branch updates in the meantime.
-- A branch switched outside zz less than 10 seconds after a pane read that directory shows on a new
-  pane there only after its first finished command or its next move.
+- A pane shows a branch switched outside zz only when something reads its directory again: its own
+  next move or finished command, any read of the same directory, or the 2 second re-read after it
+  took a remembered answer. An editor left open in a repository keeps the branch it started with,
+  as before remembered answers.
+- One directory reached through a symlink has two spellings, and their answers renew separately.
 
 # Related
 
