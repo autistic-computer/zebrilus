@@ -789,12 +789,6 @@ impl AppShell {
                 ];
                 for (id, title, description, checked) in [
                     (
-                        "session",
-                        "Session",
-                        "Show the session menu in the titlebar.",
-                        self.preferences.status_show_session,
-                    ),
-                    (
                         "badges",
                         "Window badges",
                         "Show bell and activity markers on window items.",
@@ -1499,7 +1493,6 @@ fn reset_button(
 
 fn status_field<'a>(preferences: &'a mut Preferences, id: &str) -> &'a mut bool {
     match id {
-        "session" => &mut preferences.status_show_session,
         "badges" => &mut preferences.status_badges,
         _ => &mut preferences.status_agents,
     }

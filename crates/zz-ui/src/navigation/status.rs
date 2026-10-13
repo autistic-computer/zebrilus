@@ -9,7 +9,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Ground, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Ground, IconName, Sizable as _,
     StyledExt as _,
     button::{Button, ButtonVariants as _},
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
@@ -30,12 +30,6 @@ pub struct StatusWindowActions {
 }
 
 pub struct StatusWindowEntry {
-    pub label: SharedString,
-    pub active: bool,
-    pub select: StatusAction,
-}
-
-pub struct StatusSessionEntry {
     pub label: SharedString,
     pub active: bool,
     pub select: StatusAction,
@@ -69,47 +63,6 @@ fn status_menu_button(id: impl Into<ElementId>, cx: &App) -> Button {
         .when(cx.theme().control_shadows(), |button| {
             button.border(px(0.5)).control_highlight(cx)
         })
-}
-
-pub fn status_session(
-    id: impl Into<ElementId>,
-    name: SharedString,
-    sessions: Vec<StatusSessionEntry>,
-    connected: bool,
-    cx: &App,
-) -> AnyElement {
-    status_menu_button(id, cx)
-        .flex_none()
-        .max_w(px(180.0))
-        .px(px(7.0))
-        .icon(Icon::new(IconName::Layers).size(px(13.0)).top(px(0.5)))
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(name),
-        )
-        .child(Icon::new(IconName::ChevronDown).size(px(11.0)))
-        .tooltip("Switch session")
-        .disabled(!connected)
-        .dropdown_menu(move |menu, _, _| {
-            sessions.iter().fold(menu.label("Sessions"), |menu, entry| {
-                let select = entry.select.clone();
-                menu.item(
-                    PopupMenuItem::new(entry.label.clone())
-                        .icon(if entry.active {
-                            IconName::Check
-                        } else {
-                            IconName::Layers
-                        })
-                        .checked(entry.active)
-                        .on_click(move |_, window, cx| select(window, cx)),
-                )
-            })
-        })
-        .into_any_element()
 }
 
 pub fn status_window(
@@ -366,40 +319,20 @@ mod tests {
 
     impl Render for StatusTest {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let session_selected = self.selected.clone();
             let agent_selected = self.selected.clone();
             let mut entry = agent(Some(AgentAttentionStatus::Working));
             entry.select = Rc::new(move |_, _| agent_selected.set(2));
-            div()
-                .flex()
-                .gap(px(12.0))
-                .child(
-                    div()
-                        .h(px(30.0))
-                        .debug_selector(|| "session-trigger".into())
-                        .child(status_session(
-                            "test-session",
-                            "current".into(),
-                            vec![StatusSessionEntry {
-                                label: "other".into(),
-                                active: false,
-                                select: Rc::new(move |_, _| session_selected.set(1)),
-                            }],
-                            self.connected,
-                            cx,
-                        )),
-                )
-                .child(
-                    div()
-                        .h(px(30.0))
-                        .debug_selector(|| "agents-trigger".into())
-                        .child(status_agents(
-                            "test-agents",
-                            vec![entry],
-                            self.connected,
-                            cx,
-                        )),
-                )
+            div().flex().gap(px(12.0)).child(
+                div()
+                    .h(px(30.0))
+                    .debug_selector(|| "agents-trigger".into())
+                    .child(status_agents(
+                        "test-agents",
+                        vec![entry],
+                        self.connected,
+                        cx,
+                    )),
+            )
         }
     }
 
@@ -411,7 +344,7 @@ mod tests {
     }
 
     #[zz_gpui::test]
-    fn menus_select_their_targets_and_disable_when_disconnected(cx: &mut TestAppContext) {
+    fn the_agent_menu_selects_its_target_and_disables_when_disconnected(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let selected = Rc::new(Cell::new(0));
         let (view, cx) = cx.add_window_view({
@@ -421,29 +354,25 @@ mod tests {
                 connected: true,
             }
         });
-        for (selector, target) in [("session-trigger", 1), ("agents-trigger", 2)] {
-            draw(cx);
-            let center = cx.debug_bounds(selector).unwrap().center();
-            cx.simulate_click(center, Modifiers::none());
-            draw(cx);
-            cx.update(|window, cx| assert!(window.focused(cx).is_some()));
-            cx.simulate_keystrokes("down down enter");
-            draw(cx);
-            assert_eq!(selected.get(), target);
-        }
+        draw(cx);
+        let center = cx.debug_bounds("agents-trigger").unwrap().center();
+        cx.simulate_click(center, Modifiers::none());
+        draw(cx);
+        cx.update(|window, cx| assert!(window.focused(cx).is_some()));
+        cx.simulate_keystrokes("down down enter");
+        draw(cx);
+        assert_eq!(selected.get(), 2);
         selected.set(0);
         view.update(cx, |view, cx| {
             view.connected = false;
             cx.notify();
         });
-        for selector in ["session-trigger", "agents-trigger"] {
-            draw(cx);
-            let center = cx.debug_bounds(selector).unwrap().center();
-            cx.simulate_click(center, Modifiers::none());
-            draw(cx);
-            cx.simulate_keystrokes("down down enter");
-            draw(cx);
-            assert_eq!(selected.get(), 0);
-        }
+        draw(cx);
+        let center = cx.debug_bounds("agents-trigger").unwrap().center();
+        cx.simulate_click(center, Modifiers::none());
+        draw(cx);
+        cx.simulate_keystrokes("down down enter");
+        draw(cx);
+        assert_eq!(selected.get(), 0);
     }
 }

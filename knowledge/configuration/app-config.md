@@ -105,7 +105,6 @@ The client-local schema includes these scalar settings and chrome colors.
 | `quit-daemon-on-exit` | `false` | `true` or `false` | Whether quitting the app stops the daemon even while sessions are live |
 | `auto-restart-stale-daemon` | `false` | `true` or `false` | Whether a protocol-mismatched local daemon is terminated and replaced on connect. Off by default because it ends every running session |
 | `check-for-updates` | `true` | `true` or `false` | Whether the GUI fetches the GitHub release list ten seconds after launch and daily after that, offering a newer release as a toast. The channel follows the running build (a `-beta.N` version takes prereleases). One anonymous request; nothing else is sent. Release builds only unless `ZZ_UPDATE_CHECK=1`; `ZZ_UPDATE_CHECK=0` silences every build. Surfaced in Settings under About |
-| `status-show-session` | `true` | `true` or `false` | Whether the native desktop status bar shows the attached session menu |
 | `status-badges` | `true` | `true` or `false` | Whether window entries show bell and activity markers. Window names and pane icon decks remain visible when this is off |
 | `status-agents` | `true` | `true` or `false` | Whether the bar shows Agent activity in the attached session |
 | `status-host` | `true` | `true` or `false` | Whether the bar shows the host name while attached to a remote host. Local attachment has no host item |
@@ -620,7 +619,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Page | Groups |
 | --- | --- |
 | Interface | **Theme** (`theme-mode` as three drawn window previews, `interface-theme` as a sideways-scrolling tile strip with Duplicate and Import) · **Advanced**, collapsed until opened (`UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `chrome-contrast`, `animations`, `widget-corner-radius`, `shadow-strength`, `window-background-blur` as "Window blur", Linux `window-corner-radius` and `use-system-titlebar`) |
-| Status bar | Title-bar items shown when the sidebar is retracted (`status-show-session`, `status-badges`, `status-agents`, `status-host`, `status-update`) |
+| Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-agents`, `status-host`, `status-update`; `status-show-session` was removed with the session menu and is reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, `pane-corner-radius`, `pane-border-width` as Pane edge width . all disabled without gaps) |

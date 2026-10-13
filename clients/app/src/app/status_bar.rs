@@ -7,8 +7,8 @@ use zz_ui::{
         WorkspaceStatusWindowState,
         status::{
             MAX_VISIBLE_WINDOWS, StatusAction, StatusAgentEntry, StatusPaneEntry,
-            StatusSessionEntry, StatusWindowActions, StatusWindowEntry, status_agents,
-            status_session, status_window, status_window_overflow, visible_window_range,
+            StatusWindowActions, StatusWindowEntry, status_agents, status_window,
+            status_window_overflow, visible_window_range,
         },
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
@@ -154,36 +154,10 @@ pub(super) fn render(
             .collect();
         right.push(status_agents("web-status-agents", agents, connected, cx));
     }
-    let session = model.session_name.map(|name| {
-        let sessions = core
-            .snapshot()
-            .sessions
-            .iter()
-            .map(|session| {
-                let id = session.id;
-                let connection = view.connection.clone();
-                StatusSessionEntry {
-                    label: format!(
-                        "{} · {} window{}",
-                        session.name,
-                        session.windows.len(),
-                        if session.windows.len() == 1 { "" } else { "s" }
-                    )
-                    .into(),
-                    active: Some(id) == core.attached_session(),
-                    select: Rc::new(move |_, cx| {
-                        connection.update(cx, |connection, cx| connection.attach(id, cx));
-                    }),
-                }
-            })
-            .collect();
-        status_session("web-status-session", name.into(), sessions, connected, cx)
-    });
     workspace_status_bar(
         view.preferences.gaps,
         px(8.0),
         WorkspaceStatusSlots {
-            session,
             windows,
             right,
             titlebar_controls: Some((view.controls(cx), AppShell::controls_width(window))),

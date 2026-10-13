@@ -4,7 +4,6 @@ use crate::navigation::{ordered_panes, pane_label};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StatusBarSettings {
-    pub show_session: bool,
     pub badges: bool,
     pub show_agents: bool,
     pub show_host: bool,
@@ -14,7 +13,6 @@ pub struct StatusBarSettings {
 impl Default for StatusBarSettings {
     fn default() -> Self {
         Self {
-            show_session: true,
             badges: true,
             show_agents: true,
             show_host: true,
@@ -156,9 +154,7 @@ impl StatusBarModel {
         });
 
         Self {
-            session_name: session
-                .filter(|_| settings.show_session)
-                .map(|session| session.name.clone()),
+            session_name: session.map(|session| session.name.clone()),
             windows,
             agents,
             host_name: host_name.filter(|_| settings.show_host).map(str::to_owned),
@@ -343,7 +339,6 @@ mod tests {
         assert_eq!(
             StatusBarSettings::default(),
             StatusBarSettings {
-                show_session: true,
                 badges: true,
                 show_agents: true,
                 show_host: true,
@@ -556,7 +551,6 @@ mod tests {
     fn settings_hide_presentational_items_without_hiding_windows() {
         let snapshot = snapshot();
         let settings = StatusBarSettings {
-            show_session: false,
             badges: false,
             show_agents: false,
             show_host: false,
@@ -576,7 +570,6 @@ mod tests {
                 .iter()
                 .all(|window| !window.bell && !window.activity && window.agent_provider.is_none())
         );
-        assert_eq!(model.session_name, None);
         assert!(model.agents.is_empty());
         assert_eq!(model.host_name, None);
         assert!(!model.show_update);

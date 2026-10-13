@@ -5,7 +5,7 @@ use zz_gpui::{
     Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _,
+    ActiveTheme as _, Colorize as _, Icon, IconName,
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH,
@@ -14,7 +14,7 @@ use zz_ui::{
             tree_node_marker, tree_row_menu, tree_window_layout_button,
         },
         tree::{IndentGuideColors, WorkspaceIndentGuides},
-        workspace_chrome_controls, workspace_layout_button, workspace_settings_button,
+        workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
         workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_tree_action_button,
         workspace_tree_disclosure, workspace_tree_row,
     },
@@ -332,11 +332,8 @@ pub fn tree_list(
         .into_any_element()
 }
 
-pub fn chrome_controls(settings_selected: bool) -> zz_gpui::Div {
-    workspace_chrome_controls(
-        workspace_settings_button("settings").selected(settings_selected),
-        Some(workspace_layout_button("layout").into_any_element()),
-    )
+pub fn chrome_controls() -> zz_ui::button::Button {
+    workspace_layout_button("layout")
 }
 
 pub fn sidebar(
@@ -347,8 +344,15 @@ pub fn sidebar(
     workspace_sidebar_surface(
         "sidebar",
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
-        workspace_sidebar_titlebar("sidebar-titlebar", chrome_controls(settings_selected), cx),
+        workspace_sidebar_titlebar("sidebar-titlebar", chrome_controls(), cx),
         navigation,
         cx,
     )
+    .when(!settings_selected, |surface| {
+        surface.child(workspace_sidebar_footer(
+            "sidebar-footer",
+            workspace_settings_button("settings"),
+            cx,
+        ))
+    })
 }

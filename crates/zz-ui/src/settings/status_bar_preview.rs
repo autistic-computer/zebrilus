@@ -8,8 +8,7 @@ use crate::{
     navigation::{
         WorkspaceStatusWindowState,
         status::{
-            StatusAgentEntry, StatusPaneEntry, StatusSessionEntry, StatusWindowActions,
-            status_agents, status_session, status_window,
+            StatusAgentEntry, StatusPaneEntry, StatusWindowActions, status_agents, status_window,
         },
         workspace_status_item,
     },
@@ -53,19 +52,6 @@ pub fn status_bar_page(
 }
 
 fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_gpui::Div {
-    let session = settings.show_session.then(|| {
-        status_session(
-            "settings-preview-session",
-            "dev".into(),
-            vec![StatusSessionEntry {
-                label: "dev · 2 windows".into(),
-                active: true,
-                select: Rc::new(|_, _| {}),
-            }],
-            true,
-            cx,
-        )
-    });
     let windows = ["workspace", "logs"]
         .into_iter()
         .enumerate()
@@ -191,7 +177,6 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
                 gaps,
                 px(0.0),
                 WorkspaceStatusSlots {
-                    session,
                     windows,
                     right,
                     ..Default::default()

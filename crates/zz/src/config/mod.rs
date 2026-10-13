@@ -653,7 +653,6 @@ pub fn resolved_config(cx: &App) -> AppConfig {
 pub(crate) fn status_bar_settings(cx: &App) -> StatusBarSettings {
     let config = resolved_config(cx);
     StatusBarSettings {
-        show_session: config.status_show_session.value,
         badges: config.status_badges.value,
         show_agents: config.status_agents.value,
         show_host: config.status_host.value,
@@ -1373,28 +1372,24 @@ mod tests {
     #[test]
     fn status_bar_settings_parse_with_typed_defaults() {
         let defaults = AppConfig::default();
-        assert!(defaults.status_show_session.value);
         assert!(defaults.status_badges.value);
         assert!(defaults.status_agents.value);
         assert!(defaults.status_host.value);
         assert!(defaults.status_update.value);
 
         let parsed = parse_config(
-            "status-show-session = false\n\
-             status-badges = false\n\
+            "status-badges = false\n\
              status-agents = false\n\
              status-host = false\n\
              status-update = false\n",
         );
 
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert!(!parsed.config.status_show_session.value);
         assert!(!parsed.config.status_badges.value);
         assert!(!parsed.config.status_agents.value);
         assert!(!parsed.config.status_host.value);
         assert!(!parsed.config.status_update.value);
         for provenance in [
-            parsed.config.status_show_session.provenance,
             parsed.config.status_badges.provenance,
             parsed.config.status_agents.provenance,
             parsed.config.status_host.provenance,
@@ -2709,8 +2704,7 @@ mod tests {
     #[zz_gpui::test]
     fn status_bar_settings_project_from_the_live_app_config(cx: &mut zz_gpui::TestAppContext) {
         let config = parse_config(
-            "status-show-session = false\n\
-             status-badges = false\n\
+            "status-badges = false\n\
              status-agents = false\n\
              status-host = false\n\
              status-update = false\n",
@@ -2721,7 +2715,6 @@ mod tests {
         assert_eq!(
             cx.update(|cx| status_bar_settings(cx)),
             StatusBarSettings {
-                show_session: false,
                 badges: false,
                 show_agents: false,
                 show_host: false,
@@ -3173,7 +3166,6 @@ mod tests {
             "quit-daemon-on-exit",
             "auto-restart-stale-daemon",
             "check-for-updates",
-            "status-show-session",
             "status-badges",
             "status-agents",
             "status-host",
@@ -3206,7 +3198,11 @@ mod tests {
         for key in named {
             assert_eq!(ConfigKey::parse(key).map(ConfigKey::as_str), Some(key));
         }
-        for key in RETIRED_APPEARANCE_KEYS.into_iter().chain(RETIRED_PANE_KEYS) {
+        for key in RETIRED_APPEARANCE_KEYS
+            .into_iter()
+            .chain(RETIRED_PANE_KEYS)
+            .chain(RETIRED_STATUS_KEYS)
+        {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }
     }

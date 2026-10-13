@@ -1146,13 +1146,6 @@ impl SettingsView {
             resolved.pane_gaps.value,
             SettingsStack::new()
                 .child(Self::boolean_setting(
-                    ConfigKey::StatusShowSession,
-                    "Session",
-                    "Show the session menu in the titlebar.",
-                    resolved.status_show_session,
-                    cx,
-                ))
-                .child(Self::boolean_setting(
                     ConfigKey::StatusBadges,
                     "Window badges",
                     "Show bell and activity markers on window items.",
@@ -2379,7 +2372,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::PaletteShowKeys
                 | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
-                | ConfigKey::StatusShowSession
                 | ConfigKey::StatusBadges
                 | ConfigKey::StatusAgents
                 | ConfigKey::StatusHost
@@ -2500,7 +2492,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::QuitDaemonOnExit
         | ConfigKey::AutoRestartStaleDaemon
         | ConfigKey::CheckForUpdates
-        | ConfigKey::StatusShowSession
         | ConfigKey::StatusBadges
         | ConfigKey::StatusAgents
         | ConfigKey::StatusHost

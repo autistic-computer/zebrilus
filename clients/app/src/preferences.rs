@@ -9,7 +9,6 @@ const MAX_THEME_BYTES: usize = 64 * 1024;
 pub struct Preferences {
     pub sidebar: bool,
     pub sidebar_width: f32,
-    pub status_show_session: bool,
     pub status_badges: bool,
     pub status_agents: bool,
     pub animations: bool,
@@ -51,7 +50,6 @@ impl Default for Preferences {
         Self {
             sidebar: true,
             sidebar_width: zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
-            status_show_session: true,
             status_badges: true,
             status_agents: true,
             animations: true,
@@ -133,7 +131,6 @@ impl Preferences {
     #[must_use]
     pub fn status_bar_settings(&self) -> zz_client::StatusBarSettings {
         zz_client::StatusBarSettings {
-            show_session: self.status_show_session,
             badges: self.status_badges,
             show_agents: self.status_agents,
             show_host: false,
@@ -477,10 +474,9 @@ mod tests {
             zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH
         );
         let status = defaults.status_bar_settings();
-        assert!(status.show_session && status.badges && status.show_agents);
+        assert!(status.badges && status.show_agents);
         assert!(!status.show_host && !status.show_update);
         let changed = Preferences {
-            status_show_session: false,
             status_badges: false,
             status_agents: false,
             animations: false,

@@ -7,7 +7,7 @@ use zz_gpui::{
 use zz_ui::shell::{app_shell_surface, app_titlebar_strip};
 use zz_ui::{
     ActiveTheme as _, Root, WindowControls, draws_window_controls,
-    navigation::workspace_chrome_controls_width,
+    navigation::workspace_chrome_controls_width_for,
 };
 
 #[cfg(target_os = "macos")]
@@ -252,12 +252,11 @@ impl AppShell {
     }
 
     fn render_status_bar(&self, window: &mut Window, cx: &mut App) -> AnyElement {
-        let has_layout = !crate::profile::profile(cx).fixed_window;
-        let width = workspace_chrome_controls_width(has_layout, window);
-        let controls = self.sidebar.read(cx).render_controls(&self.sidebar, cx);
+        let width = workspace_chrome_controls_width_for(1, window);
+        let controls = WorkspaceSidebar::render_controls(&self.sidebar, cx);
         let bar = render_gui_status_bar(
             &self.mux,
-            Some((controls, width)),
+            controls.map(|controls| (controls, width)),
             Some(self.window_controls().into_any_element()),
             window,
             cx,

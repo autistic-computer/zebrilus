@@ -35,7 +35,7 @@ use zz_protocol::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Elevation, Icon, IconName,
-    Root, Selectable as _,
+    Root,
     button::{Button, ButtonVariants as _},
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserRowTheme,
@@ -43,7 +43,7 @@ use zz_ui::{
         tree_chooser_row,
     },
     navigation::{
-        workspace_chrome_controls, workspace_layout_button, workspace_settings_button,
+        workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
         workspace_sidebar_surface, workspace_sidebar_titlebar,
     },
     pane::{
@@ -892,20 +892,14 @@ impl AppShell {
     }
 
     fn controls(&self, cx: &Context<Self>) -> AnyElement {
-        let settings = workspace_settings_button("web-settings")
-            .selected(self.settings.is_some())
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.settings = if this.settings.is_some() {
-                    None
-                } else {
-                    Some(SettingsSection::Appearance)
-                };
-                this.focused_pane = None;
-                cx.notify();
-            }));
-        let layout = workspace_layout_button("web-sidebar")
-            .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx)));
-        workspace_chrome_controls(settings, Some(layout.into_any_element()))
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(
+                workspace_layout_button("web-sidebar")
+                    .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx))),
+            )
             .when(cfg!(target_os = "ios"), |controls| {
                 controls.child(
                     zz_ui::navigation::workspace_palette_button("web-palette").on_click(
@@ -918,7 +912,7 @@ impl AppShell {
 
     pub(super) fn controls_width(window: &Window) -> Pixels {
         zz_ui::navigation::workspace_chrome_controls_width_for(
-            if cfg!(target_os = "ios") { 3 } else { 2 },
+            if cfg!(target_os = "ios") { 2 } else { 1 },
             window,
         )
     }
@@ -998,6 +992,19 @@ impl AppShell {
                 cx,
             )
         };
+        let footer = self.settings.is_none().then(|| {
+            workspace_sidebar_footer(
+                "web-sidebar-footer",
+                workspace_settings_button("web-settings").on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.settings = Some(SettingsSection::Appearance);
+                        this.focused_pane = None;
+                        cx.notify();
+                    },
+                )),
+                cx,
+            )
+        });
         let divider_hidden = self.preferences.gaps && self.inline_sidebar(window);
         workspace_sidebar_surface(
             "web-sidebar-surface",
@@ -1006,6 +1013,7 @@ impl AppShell {
             navigation,
             cx,
         )
+        .children(footer)
         .when(divider_hidden, |surface| {
             surface.border_color(zz_gpui::transparent_black())
         })

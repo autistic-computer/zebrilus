@@ -126,8 +126,8 @@ The Browser sample keeps its page opaque; its toolbar follows pane background op
 Agent sample keeps its composer opaque. Desktop pane edits and resets refresh the saved configuration
 immediately, including valid numeric input while typing; the file watcher still handles external edits.
 
-Settings > Status bar scrolls its live preview with the controls. The session switcher uses
-a Layers/name/chevron button. Session and agent buttons share the active window pill’s background,
+Settings > Status bar scrolls its live preview with the controls. The titlebar holds only the
+sidebar toggle, with no divider; settings lives in the sidebar footer. The agent button shares the active window pill’s background,
 theme border, shadow, and 26px height, with widths sized to their contents. The 35px titlebar leaves 4.5px above and below each pill. Window pills always align left, and the right edge shows an
 agent status dot and summary with a pane-selection menu. Time/date and alignment controls are absent. Window pills share the
 production pane deck, the flat sidebar's stack drawn at 20px (`navigation::pane_stack`): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color,
