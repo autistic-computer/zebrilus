@@ -38,6 +38,14 @@ pub enum HostState {
     Connected,
     Unreachable { reason: String },
     Incompatible { local: u16, remote: u16 },
+    Missing,
+    Installing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstallOffer {
+    Install,
+    Update,
 }
 
 impl HostState {
@@ -49,6 +57,16 @@ impl HostState {
             Self::Connected => "connected",
             Self::Unreachable { .. } => "unreachable",
             Self::Incompatible { .. } => "incompatible",
+            Self::Missing => "not installed",
+            Self::Installing => "installing",
+        }
+    }
+
+    pub const fn install_offer(&self) -> Option<InstallOffer> {
+        match self {
+            Self::Missing => Some(InstallOffer::Install),
+            Self::Incompatible { local, remote } if *local > *remote => Some(InstallOffer::Update),
+            _ => None,
         }
     }
 
@@ -65,9 +83,15 @@ impl HostState {
                 "This zz speaks protocol v{local}; that machine speaks v{remote}.\nUpgrade \
                  whichever side is older, then reconnect."
             )),
-            Self::Disconnected | Self::Connecting | Self::Reconnecting { .. } | Self::Connected => {
-                None
-            }
+            Self::Missing => Some(
+                "zz is not installed on that machine.\nRight-click it and choose Install zz."
+                    .to_owned(),
+            ),
+            Self::Disconnected
+            | Self::Connecting
+            | Self::Reconnecting { .. }
+            | Self::Connected
+            | Self::Installing => None,
         }
     }
 }
@@ -237,6 +261,39 @@ mod tests {
             [(HostId(1), "desktop")]
         );
         assert_eq!(registry.local_socket_path(), Path::new("/tmp/local.sock"));
+    }
+
+    #[test]
+    fn only_a_missing_or_older_remote_offers_an_install() {
+        assert_eq!(
+            HostState::Missing.install_offer(),
+            Some(InstallOffer::Install)
+        );
+        assert_eq!(
+            HostState::Incompatible {
+                local: 108,
+                remote: 107,
+            }
+            .install_offer(),
+            Some(InstallOffer::Update)
+        );
+        for state in [
+            HostState::Incompatible {
+                local: 107,
+                remote: 108,
+            },
+            HostState::Incompatible {
+                local: 108,
+                remote: 108,
+            },
+            HostState::Unreachable {
+                reason: "no route".to_owned(),
+            },
+            HostState::Installing,
+            HostState::Connected,
+        ] {
+            assert_eq!(state.install_offer(), None, "{state:?}");
+        }
     }
 
     #[test]

@@ -349,6 +349,7 @@ impl MuxTreeModel {
                         | HostState::Reconnecting { .. }
                         | HostState::Unreachable { .. }
                         | HostState::Incompatible { .. }
+                        | HostState::Missing
                 ) =>
             {
                 Some(NavActivation::Reconnect(id))
@@ -431,12 +432,14 @@ impl MuxTreeHost {
     pub fn indicator(&self) -> Option<HostIndicator> {
         match self.state {
             HostState::Connected if self.snapshot_loaded => None,
-            HostState::Connected | HostState::Connecting | HostState::Reconnecting { .. } => {
-                Some(HostIndicator::Connecting)
-            }
+            HostState::Connected
+            | HostState::Connecting
+            | HostState::Reconnecting { .. }
+            | HostState::Installing => Some(HostIndicator::Connecting),
             HostState::Disconnected
             | HostState::Unreachable { .. }
-            | HostState::Incompatible { .. } => Some(HostIndicator::Failed {
+            | HostState::Incompatible { .. }
+            | HostState::Missing => Some(HostIndicator::Failed {
                 detail: self.state.failure_detail().map(SharedString::from),
             }),
         }

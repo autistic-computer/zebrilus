@@ -4,7 +4,7 @@ title: zz-daemon crate
 description: The persistent local daemon. Sole authority for mux state, owner of PTY-backed terminal sessions and Agent-pane ACP adapter children, and the fan-out engine that streams coalesced terminal frames and agent transcripts to attached and short-lived clients over a socket or named pipe.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [crate, daemon, ipc, fanout, transport, agent]
-timestamp: 2026-10-09T00:00:00-03:00
+timestamp: 2026-10-13T00:00:00-03:00
 ---
 
 # Overview
@@ -212,6 +212,35 @@ auto-spawn: a remote host with zz installed but no daemon running now just works
 typed `EndpointError` variants (`RemoteBinaryMissing`, `RemoteDaemonUnavailable`, `ForwardExited`,
 `ForwardTimeout`, …), and `ssh_reason()` turns each into the sentence the unreachable host row shows;
 `ssh_failure_hint` reads ssh's stderr because ssh collapses every failure of its own into exit 255.
+
+## Installing zz on a remote
+
+`install_remote` handles the host the probe calls `missing`, and one whose zz is older. It runs one
+more ssh child, `ssh … <host> sh -lc '<remote_install_script()>'`, on the same control master, and
+writes this build's own `install.sh` (embedded with `include_str!`) to its stdin. The script:
+
+1. Resolves `$zz_cli` with the usual fallback. A `zz` that is anything but a regular file at
+   `~/.local/bin/zz` prints `zz-install-elsewhere=<path>` and exits 4: a deb, Homebrew, or app
+   bundle install is left to whatever installed it.
+2. Runs `sh -s -- --headless --version <this build's version>`. install.sh picks the tarball from
+   the remote's own `uname`, so a Mac adding a Linux host gets the Linux build. A failure exits 5,
+   and install.sh's `error:` line becomes the reason.
+3. Runs the new binary's `protocol-version`. A binary that cannot start there (an older glibc, say)
+   exits 6 with its stderr.
+4. With `restart_daemon`, runs `zz kill-server` only when that protocol matches this build, then
+   prints `zz-install-protocol=<n>`.
+
+A different protocol after a clean install is `RemoteInstallMismatch`: this build has no published
+release, which is normal for builds from main. Dev builds refuse before dialing, because their
+remote scripts look for `zz-dev` and no release ships it. The remote needs `sh`, `curl`, and access to
+GitHub releases. The Linux headless build targets glibc 2.28 (see [zz-cli](/crates/zz-cli.md)).
+
+The GUI maps `RemoteBinaryMissing` to `HostState::Missing`. The first time a host lands in `Missing`,
+or in `Incompatible` with an older remote, `MuxClient` emits `RemoteInstallOffer` and the workspace
+opens a dialog. The host row's menu keeps **Install zz** / **Update zz** for later, and Reconnect
+arms the dialog again. Update always confirms, because restarting the remote daemon ends the
+sessions on that host. `zz fleet install [--restart-daemon] <name>` runs the same function from a
+shell, with ssh prompting on the terminal.
 
 ## Connection sharing
 

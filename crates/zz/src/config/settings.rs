@@ -1269,12 +1269,12 @@ impl SettingsView {
                     .unwrap_or(HostState::Disconnected);
                 let (glyph, color) = match &state {
                     HostState::Connected => (IconName::Globe, cx.theme().success),
-                    HostState::Unreachable { .. } | HostState::Incompatible { .. } => {
-                        (IconName::Globe, cx.theme().danger)
-                    }
-                    HostState::Connecting | HostState::Reconnecting { .. } => {
-                        (IconName::Globe, cx.theme().warning)
-                    }
+                    HostState::Unreachable { .. }
+                    | HostState::Incompatible { .. }
+                    | HostState::Missing => (IconName::Globe, cx.theme().danger),
+                    HostState::Connecting
+                    | HostState::Reconnecting { .. }
+                    | HostState::Installing => (IconName::Globe, cx.theme().warning),
                     HostState::Disconnected => (IconName::Globe, cx.theme().foreground.muted()),
                 };
                 let remove_name = name.clone();

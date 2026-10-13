@@ -64,13 +64,15 @@ impl PaletteBackend for MuxPalette {
                         HostState::Connecting => "connecting…".to_owned(),
                         HostState::Reconnecting { .. } => "reconnecting…".to_owned(),
                         HostState::Incompatible { .. } => "incompatible version".to_owned(),
+                        HostState::Missing => "zz not installed · ↵ to install".to_owned(),
+                        HostState::Installing => "installing zz…".to_owned(),
                         _ => "offline · ↵ to connect".to_owned(),
                     },
                     status: match host.state {
                         HostState::Connected => PaletteStatus::Online,
-                        HostState::Connecting | HostState::Reconnecting { .. } => {
-                            PaletteStatus::Waiting
-                        }
+                        HostState::Connecting
+                        | HostState::Reconnecting { .. }
+                        | HostState::Installing => PaletteStatus::Waiting,
                         _ => PaletteStatus::Offline,
                     },
                     sessions: host

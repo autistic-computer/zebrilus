@@ -4,7 +4,7 @@ title: zz crate (the GPUI client)
 description: The long-lived GPUI desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser, and native Agent panes.
 resource: crates/zz/src/lib.rs
 tags: [gpui, crate, client, terminal, browser, agent, ui]
-timestamp: 2026-10-12T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Overview
@@ -220,6 +220,8 @@ Browser, Terminal, Hosts, System, About:
 A **Devices** pairing page sat in this list until 2026-08-01 and was deleted with QUIC pairing.
 Fleet hosts are plain `host-<name>` config lines, added from Settings › Hosts, the sidebar's final
 **Add host** row, or `zz fleet add`, and removed by **Close host** or `zz fleet remove`.
+A host without zz offers to install it over ssh, and one with an older zz offers to update it; see
+[installing zz on a remote](/crates/zz-daemon.md#installing-zz-on-a-remote).
 
 The ordinary controls, including Terminal, retain the typed comment-preserving writer.
 Multiplexer's code editor saves its bounded file atomically; a clean editor reloads on navigation,
@@ -754,7 +756,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/main.rs` | Process entrypoint; calls `zz::run()` |
 | `crates/zz/src/lib.rs` | `zz::run()` . CEF-subprocess/daemon/CLI/GUI mode dispatch, final-leaf routing for prepared alias groups, window creation, app-quit/window-close shutdown wiring |
 | `crates/zz-cli/src/control_mode.rs` | `-C` preparation and command loop, direct and per-child guard framing, source events, deferred output/exit ordering, sticky return status |
-| `crates/zz-cli/src/fleet.rs` | `zz fleet add <name> <ssh-destination>` / `list` / `remove` . each one config-file edit, sharing `Endpoint::parse` and `config::validate_fleet_host` with the GUI dialog |
+| `crates/zz-cli/src/fleet.rs` | `zz fleet add <name> <ssh-destination>` / `list` / `remove` . each one config-file edit, plus `install [--restart-daemon] <name>`, which runs install.sh on the host over ssh, sharing `Endpoint::parse` and `config::validate_fleet_host` with the GUI dialog |
 | `crates/zz/src/macos_app.rs` | macOS application/window actions, native app menu, and standard command-key bindings |
 | `crates/zz/src/config/mod.rs` | Platform-aware bounded `zz/config` discovery/parsing, `host-<name>` fleet entries and their add/remove/republish helpers, the client-side ACP working directory, ordered daemon overrides (the three agent adapter keys among them), per-knob provenance, and comment-preserving atomic edits |
 | `crates/zz/src/keymap.rs` | Bridges `ChromeKeymap` defaults and `chrome-keybind`/`chrome-unbind` overrides into GPUI bindings and action resolution |
