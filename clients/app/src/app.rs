@@ -44,7 +44,7 @@ use zz_ui::{
     },
     navigation::{
         workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
-        workspace_sidebar_surface, workspace_sidebar_titlebar,
+        workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_sidebar_view_button,
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneChrome, PaneDrag, PaneDragOverlayState, PaneSplitAxis,
@@ -155,6 +155,7 @@ pub struct AppShell {
     sidebar_selection: Option<sidebar::Target>,
     sidebar_pointer_selection: bool,
     sidebar_active: Option<sidebar::Target>,
+    flat: sidebar::Flat,
     unseen_agents: BTreeSet<PaneId>,
     chrome: ChromeKeymap,
     prompt: Option<Entity<CommandPaletteView>>,
@@ -237,6 +238,12 @@ impl AppShell {
                         #[cfg(target_os = "ios")]
                         if matches!(event, zz_client::CoreEvent::HelloReceived) {
                             this.remember_host(cx);
+                        }
+                        if matches!(event, zz_client::CoreEvent::HelloReceived) {
+                            this.flat.clock = zz_client::window_summary::DaemonClock::from_hello(
+                                connection.read(cx).core.server_clock(),
+                                unix_seconds(),
+                            );
                         }
                         if matches!(event, zz_client::CoreEvent::Attached { .. }) {
                             connection.update(cx, Connection::set_color_scheme);
@@ -371,6 +378,7 @@ impl AppShell {
             sidebar_selection: None,
             sidebar_pointer_selection: false,
             sidebar_active: None,
+            flat: sidebar::Flat::default(),
             unseen_agents: BTreeSet::new(),
             chrome: ChromeKeymap::for_profile(if cfg!(target_os = "ios") {
                 ChromeProfile::DesktopApple
@@ -972,6 +980,8 @@ impl AppShell {
                 ))
                 .children(rows)
                 .into_any_element()
+        } else if self.preferences.flat_sidebar {
+            sidebar::flat_tree(self, cx)
         } else {
             let core = &self.connection.read(cx).core;
             sidebar::session_tree(
@@ -1002,6 +1012,18 @@ impl AppShell {
                         cx.notify();
                     },
                 )),
+                Some(
+                    workspace_sidebar_view_button(
+                        "web-sidebar-view",
+                        self.preferences.flat_sidebar,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.preferences.flat_sidebar = !this.preferences.flat_sidebar;
+                        this.preferences.save();
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+                ),
                 cx,
             )
         });

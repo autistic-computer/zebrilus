@@ -1,3 +1,5 @@
+mod flat;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
@@ -27,8 +29,9 @@ use zz_ui::navigation::{
         tree_node_marker, tree_row_menu, tree_window_layout_button,
     },
     workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
-    workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_tree_action_button,
-    workspace_tree_action_row, workspace_tree_disclosure, workspace_tree_row,
+    workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_sidebar_view_button,
+    workspace_tree_action_button, workspace_tree_action_row, workspace_tree_disclosure,
+    workspace_tree_row,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
@@ -170,6 +173,8 @@ pub struct WorkspaceSidebar {
     local_hostname: SharedString,
     badges: Rc<BTreeMap<(HostId, PaneId), AgentBadge>>,
     tracker: AgentAttentionTracker<(HostId, PaneId)>,
+    flat: bool,
+    flat_view: flat::FlatView,
 }
 
 impl WorkspaceSidebar {
@@ -214,6 +219,8 @@ impl WorkspaceSidebar {
             local_hostname: sidebar_hostname(sysinfo::System::host_name().as_deref()),
             badges: Rc::new(BTreeMap::new()),
             tracker: AgentAttentionTracker::default(),
+            flat: crate::config::resolved_config(cx).flat_sidebar.value,
+            flat_view: flat::FlatView::default(),
         }
     }
 
@@ -691,13 +698,19 @@ impl WorkspaceSidebar {
         })
     }
 
-    fn render_footer(sidebar: &Entity<Self>, cx: &App) -> AnyElement {
-        let sidebar = sidebar.clone();
+    fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+        let settings = sidebar.clone();
+        let view = sidebar.clone();
         workspace_sidebar_footer(
             "workspace-sidebar-footer",
             workspace_settings_button("workspace-settings").on_click(move |_, window, cx| {
-                sidebar.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+                settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
             }),
+            Some(
+                workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+                    .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat))
+                    .into_any_element(),
+            ),
             cx,
         )
         .into_any_element()
@@ -806,6 +819,8 @@ impl Render for WorkspaceSidebar {
             let settings_route = self.route == WorkspaceRoute::Settings;
             let navigation = if settings_route {
                 self.render_settings_navigation(&sidebar, cx)
+            } else if self.flat {
+                self.render_flat_navigation(&sidebar, cx)
             } else {
                 self.render_navigation(&sidebar, attached_host, attached, window, cx)
             };
@@ -814,7 +829,7 @@ impl Render for WorkspaceSidebar {
             } else {
                 Self::render_controls(&sidebar, cx)
             };
-            let footer = (!settings_route).then(|| Self::render_footer(&sidebar, cx));
+            let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
             let titlebar = workspace_sidebar_titlebar(
                 "workspace-sidebar-titlebar",
                 div().children(controls),

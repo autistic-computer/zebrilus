@@ -8,9 +8,9 @@ use zz_client::window_summary::{
     WindowSummary,
 };
 use zz_gpui::{
-    App, ClickEvent, Div, ElementId, FontFeatures, FontWeight, HighlightStyle, Hsla, IntoElement,
-    ParentElement as _, Pixels, Role, SharedString, Stateful, StyledText, Window, div, font,
-    prelude::*, px,
+    Anchor, AnyElement, App, ClickEvent, Context, Div, ElementId, FontFeatures, FontWeight,
+    HighlightStyle, Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString, Stateful,
+    StyledText, Window, div, font, prelude::*, px,
 };
 use zz_protocol::{AgentProvider, PaneId, SessionId, WindowId};
 
@@ -21,6 +21,7 @@ use crate::{
     command::PaletteHostId,
     h_flex,
     icon::cap_center_drop,
+    menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu},
     navigation::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile, stack_radius},
         workspace_row_fill,
@@ -168,7 +169,6 @@ pub enum FlatTarget {
 pub enum FlatEvent {
     Open(PaletteHostId, WindowId),
     OpenPane(PaletteHostId, WindowId, PaneId),
-    Actions(PaletteHostId, WindowId),
     FoldHost(PaletteHostId),
     FoldSession(PaletteHostId, SessionId),
     NewWindow(PaletteHostId, SessionId),
@@ -178,6 +178,12 @@ pub enum FlatEvent {
 }
 
 pub type FlatHandler = Rc<dyn Fn(FlatEvent, &mut Window, &mut App)>;
+
+/// Fills a window row's menu, opened from its actions button or a right
+/// click.
+pub type FlatMenu = Rc<
+    dyn Fn(PaletteHostId, WindowId, PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu,
+>;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FlatState {
@@ -412,14 +418,15 @@ fn icon_button(id: impl Into<ElementId>, icon: IconName, icon_size: f32) -> Butt
         .px_0()
 }
 
-fn actions_button(
+fn actions_menu(
     host: PaletteHostId,
     window: WindowId,
     title: &SharedString,
     ground: Ground,
-    handler: &FlatHandler,
-) -> Button {
-    let handler = handler.clone();
+    visible: bool,
+    menu: &FlatMenu,
+) -> impl IntoElement {
+    let menu = menu.clone();
     icon_button(
         ("flat-window-actions", window.0),
         IconName::Ellipsis,
@@ -434,9 +441,9 @@ fn actions_button(
         (TOUCH_TARGET - ACTIONS_HEIGHT) / 2.0,
     )
     .tooltip(format!("Actions for {title}"))
-    .on_click(move |_: &ClickEvent, window_handle, cx| {
-        cx.stop_propagation();
-        handler(FlatEvent::Actions(host, window), window_handle, cx);
+    .when(!visible, Styled::invisible)
+    .dropdown_menu_with_anchor(Anchor::TopRight, move |popup, window_handle, cx| {
+        menu(host, window, popup, window_handle, cx)
     })
 }
 
@@ -445,8 +452,9 @@ pub fn flat_window_row(
     window: &FlatWindow,
     state: FlatRowState,
     handler: &FlatHandler,
+    menu: &FlatMenu,
     cx: &App,
-) -> Stateful<Div> {
+) -> AnyElement {
     let theme = cx.theme();
     let coarse = CoarsePointer::get(cx);
     let state = state.for_pointer(cx);
@@ -458,8 +466,32 @@ pub fn flat_window_row(
     let working = summary.attention == Attention::Working && !state.dimmed;
     let busy =
         (working && !state.hovered).then(|| spinner(SPINNER_SIZE, TITLE_SIZE, ink.muted, cx));
-    let actions =
-        (state.hovered || coarse).then(|| actions_button(host, id, &title, ink.ground, handler));
+    let actions = div()
+        .relative()
+        .flex_none()
+        .w(px(ACTIONS_WIDTH))
+        .h(px(TITLE_LINE))
+        .flex()
+        .items_center()
+        .justify_center()
+        .children(busy)
+        .child(
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(actions_menu(
+                    host,
+                    id,
+                    &title,
+                    ink.ground,
+                    state.hovered || coarse,
+                    menu,
+                )),
+        );
+    let context = menu.clone();
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
     let fill = workspace_row_fill(&row_id, state.paint_state(), None, cx);
     let hover = handler.clone();
@@ -516,8 +548,7 @@ pub fn flat_window_row(
                                 .font_medium()
                                 .child(title),
                         )
-                        .children(busy)
-                        .children(actions),
+                        .child(actions),
                 )
                 .child(
                     h_flex()
@@ -549,6 +580,8 @@ pub fn flat_window_row(
                         })),
                 ),
         )
+        .context_menu(move |popup, window_handle, cx| context(host, id, popup, window_handle, cx))
+        .into_any_element()
 }
 
 pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
@@ -847,7 +880,13 @@ pub fn flat_session_header(
         )
 }
 
-pub fn flat_sidebar(hosts: &[FlatHost], state: FlatState, handler: &FlatHandler, cx: &App) -> Div {
+pub fn flat_sidebar(
+    hosts: &[FlatHost],
+    state: FlatState,
+    handler: &FlatHandler,
+    menu: &FlatMenu,
+    cx: &App,
+) -> Div {
     let mut list = v_flex().w_full().flex_none();
     for (index, host) in hosts.iter().enumerate() {
         list = list.child(
@@ -895,6 +934,7 @@ pub fn flat_sidebar(hosts: &[FlatHost], state: FlatState, handler: &FlatHandler,
                         dimmed,
                     },
                     handler,
+                    menu,
                     cx,
                 )
             }));

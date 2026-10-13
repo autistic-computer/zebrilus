@@ -4,17 +4,24 @@ use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     AgentAttentionStatus, ChromeAction,
     navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
+    window_summary::{DaemonClock, age_label, summarize_host},
 };
 use zz_gpui::{
     AnyElement, App, Context, Entity, FocusHandle, Hsla, ListSizingBehavior, MouseButton,
-    ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
+    uniform_list,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
+    command::PaletteHostId,
+    menu::PopupMenuItem,
     navigation::{
-        WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
+        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH,
+        flat::{
+            FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatState, HostConnection, flat_sidebar,
+        },
         sidebar::{
             TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
             tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
@@ -403,6 +410,152 @@ pub(super) fn session_tree(
         )
         .vertical_scrollbar(scroll)
         .into_any_element()
+}
+
+const HOST: PaletteHostId = PaletteHostId(0);
+
+#[derive(Default)]
+pub(super) struct Flat {
+    pub clock: DaemonClock,
+    state: FlatState,
+    folded_host: bool,
+    folded_sessions: BTreeSet<SessionId>,
+    scroll: ScrollHandle,
+}
+
+fn host_connection(connection: &Connection) -> HostConnection {
+    match connection.status.as_str() {
+        _ if connection.connected => HostConnection::Connected,
+        "Connecting…" => HostConnection::Connecting,
+        "" | "Not connected" => HostConnection::Disconnected,
+        reason => HostConnection::Unreachable(reason.to_owned().into()),
+    }
+}
+
+fn writable(connection: &Connection) -> bool {
+    connection.connected && !connection.core.attached_read_only()
+}
+
+pub(super) fn flat_tree(view: &AppShell, cx: &mut Context<AppShell>) -> AnyElement {
+    let connection = view.connection.read(cx);
+    let core = &connection.core;
+    let snapshot = core.snapshot();
+    let now = view.flat.clock.now(super::unix_seconds());
+    let mut host = FlatHost::new(
+        HOST,
+        "zz daemon",
+        false,
+        host_connection(connection),
+        summarize_host(snapshot),
+        |changed_at| age_label(changed_at, now),
+    );
+    host.folded = view.flat.folded_host;
+    for session in &mut host.sessions {
+        session.folded = view.flat.folded_sessions.contains(&session.id);
+    }
+    let current = snapshot
+        .sessions
+        .iter()
+        .find(|session| connection.connected && Some(session.id) == core.attached_session())
+        .map(|session| (HOST, snapshot.focused_window_for(session)));
+    let state = FlatState {
+        current,
+        ..view.flat.state
+    };
+    let shell = cx.entity().downgrade();
+    let handler: FlatHandler = Rc::new(move |event, window, cx| {
+        let _ = shell.update(cx, |view, cx| flat_event(view, event, window, cx));
+    });
+    let connection = view.connection.clone();
+    let menu: FlatMenu = Rc::new(move |_, id, menu, _, cx| {
+        let disabled = !writable(connection.read(cx));
+        let rename = rename_command(connection.read(cx).core.snapshot(), Target::Window(id))
+            .map(|(_, command)| command);
+        let (rename_connection, close_connection) = (connection.clone(), connection.clone());
+        menu.item(
+            PopupMenuItem::new("Rename window")
+                .disabled(disabled || rename.is_none())
+                .on_click(move |_, _, cx| {
+                    if let Some(command) = &rename {
+                        execute(&rename_connection, command, cx);
+                    }
+                }),
+        )
+        .item(
+            PopupMenuItem::new("Close window")
+                .disabled(disabled)
+                .on_click(move |_, _, cx| {
+                    close_connection.update(cx, |connection, cx| {
+                        connection.command("kill-window", vec!["-t".into(), id.to_string()], cx);
+                    });
+                }),
+        )
+    });
+    let list = flat_sidebar(&[host], state, &handler, &menu, cx);
+    let scroll = &view.flat.scroll;
+    div()
+        .id("web-flat-sidebar")
+        .relative()
+        .size_full()
+        .min_h_0()
+        .child(
+            div()
+                .id("web-flat-sidebar-rows")
+                .size_full()
+                .overflow_y_scroll()
+                .track_scroll(scroll)
+                .child(list),
+        )
+        .bottom_fade(scroll, cx.theme().background, WORKSPACE_SIDEBAR_FADE_HEIGHT)
+        .vertical_scrollbar(scroll)
+        .into_any_element()
+}
+
+fn flat_event(
+    view: &mut AppShell,
+    event: FlatEvent,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) {
+    let connection = view.connection.clone();
+    let target = match event {
+        FlatEvent::Open(_, id) => Target::Window(id),
+        FlatEvent::OpenPane(_, _, pane) => Target::Pane(pane),
+        FlatEvent::FoldHost(_) => {
+            view.flat.folded_host = !view.flat.folded_host;
+            cx.notify();
+            return;
+        }
+        FlatEvent::FoldSession(_, session) => {
+            if !view.flat.folded_sessions.remove(&session) {
+                view.flat.folded_sessions.insert(session);
+            }
+            cx.notify();
+            return;
+        }
+        FlatEvent::NewWindow(_, session) => {
+            if writable(connection.read(cx)) {
+                connection.update(cx, |connection, cx| {
+                    connection.command("new-window", vec!["-t".into(), session.to_string()], cx);
+                });
+            }
+            return;
+        }
+        FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => {
+            connection.update(cx, Connection::reconnect);
+            return;
+        }
+        FlatEvent::Hover(target, hovered) => {
+            if view.flat.state.hover(target, hovered) {
+                cx.notify();
+            }
+            return;
+        }
+    };
+    if view.slideover && connection.read(cx).connected {
+        view.release_sidebar_focus(window, cx);
+    }
+    activate(&connection, target, cx);
 }
 
 fn tree_rows(

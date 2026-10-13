@@ -6,7 +6,7 @@ pub mod tree;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    StyledExt as _, TITLE_BAR_HEIGHT, Tone,
+    Selectable as _, StyledExt as _, TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     rems_from_px,
     tooltip::Tooltip,
@@ -70,6 +70,22 @@ pub fn workspace_palette_button(id: impl Into<ElementId>) -> Button {
 #[must_use]
 pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
     workspace_chrome_button(id, IconName::Settings, "Settings")
+}
+
+/// Switches the sidebar between the session tree and the flat window list;
+/// it reads as pressed while the flat list shows.
+#[must_use]
+pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
+    workspace_chrome_button(
+        id,
+        IconName::Eye,
+        if flat {
+            "Show the session tree"
+        } else {
+            "Show the flat window list"
+        },
+    )
+    .selected(flat)
 }
 
 fn workspace_chrome_button(
@@ -259,24 +275,28 @@ fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
         + (WORKSPACE_STATUS_PILL_HEIGHT - px(COMPACT_ICON_BUTTON_SIZE)) / 2.0
 }
 
-/// The strip under the sidebar's navigation: the settings button and any
-/// other control that belongs to the sidebar rather than the titlebar.
+/// The strip under the sidebar's navigation: settings on the leading edge,
+/// the view switch on the trailing edge under the sidebar toggle.
 pub fn workspace_sidebar_footer(
     id: impl Into<ElementId>,
-    controls: impl IntoElement,
+    leading: impl IntoElement,
+    trailing: Option<zz_gpui::AnyElement>,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
+    let inset = workspace_sidebar_edge_inset(cx);
     div()
         .id(id)
         .flex()
         .flex_none()
         .w_full()
         .items_center()
-        .gap_1()
+        .justify_between()
         .pt(px(WORKSPACE_SIDEBAR_FOOTER_TOP))
-        .pl(workspace_sidebar_edge_inset(cx))
-        .pb(workspace_sidebar_edge_inset(cx))
-        .child(controls)
+        .pl(inset)
+        .pr(inset)
+        .pb(inset)
+        .child(leading)
+        .children(trailing)
 }
 
 /// The fill that says "this one" in the workspace tree: a row under the

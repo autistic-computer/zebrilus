@@ -16,8 +16,8 @@ use zz_ui::{
         },
         tree::{IndentGuideColors, WorkspaceIndentGuides},
         workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
-        workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_tree_action_button,
-        workspace_tree_disclosure, workspace_tree_row,
+        workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_sidebar_view_button,
+        workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_row,
     },
     scroll::ScrollableElement as _,
 };
@@ -343,6 +343,19 @@ pub fn sidebar(
     settings_selected: bool,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
+    sidebar_in_view(navigation, settings_selected, false, cx)
+}
+
+pub fn flat_view_sidebar(navigation: impl IntoElement, cx: &App) -> Stateful<zz_gpui::Div> {
+    sidebar_in_view(navigation, false, true, cx)
+}
+
+fn sidebar_in_view(
+    navigation: impl IntoElement,
+    settings_selected: bool,
+    flat: bool,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
     workspace_sidebar_surface(
         "sidebar",
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
@@ -354,6 +367,7 @@ pub fn sidebar(
         surface.child(workspace_sidebar_footer(
             "sidebar-footer",
             workspace_settings_button("settings"),
+            Some(workspace_sidebar_view_button("sidebar-view", flat).into_any_element()),
             cx,
         ))
     })

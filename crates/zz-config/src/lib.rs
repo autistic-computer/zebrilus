@@ -125,6 +125,7 @@ pub enum ConfigKey {
     StatusAgents,
     StatusHost,
     StatusUpdate,
+    FlatSidebar,
     ExperimentalAgentPane,
     ExperimentalEditorPane,
     PaneGaps,
@@ -172,6 +173,7 @@ impl ConfigKey {
             Self::StatusAgents => "status-agents",
             Self::StatusHost => "status-host",
             Self::StatusUpdate => "status-update",
+            Self::FlatSidebar => "flat-sidebar",
             Self::ExperimentalAgentPane => "experimental-agent-pane",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
@@ -219,6 +221,7 @@ impl ConfigKey {
             "status-agents" => Some(Self::StatusAgents),
             "status-host" => Some(Self::StatusHost),
             "status-update" => Some(Self::StatusUpdate),
+            "flat-sidebar" => Some(Self::FlatSidebar),
             "experimental-agent-pane" => Some(Self::ExperimentalAgentPane),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
@@ -280,6 +283,7 @@ impl ConfigKey {
             | Self::StatusAgents
             | Self::StatusHost
             | Self::StatusUpdate
+            | Self::FlatSidebar
             | Self::ExperimentalAgentPane
             | Self::ExperimentalEditorPane
             | Self::PaneGaps
@@ -427,6 +431,7 @@ pub struct AppConfig {
     pub status_agents: ConfigValue<bool>,
     pub status_host: ConfigValue<bool>,
     pub status_update: ConfigValue<bool>,
+    pub flat_sidebar: ConfigValue<bool>,
     pub experimental_agent_pane: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
@@ -473,6 +478,7 @@ impl Default for AppConfig {
             status_agents: ConfigValue::from_default(status_bar.show_agents),
             status_host: ConfigValue::from_default(status_bar.show_host),
             status_update: ConfigValue::from_default(status_bar.show_update),
+            flat_sidebar: ConfigValue::from_default(false),
             experimental_agent_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_AGENT_PANE),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
@@ -525,6 +531,7 @@ impl AppConfig {
             ConfigKey::StatusAgents => Some(&mut self.status_agents),
             ConfigKey::StatusHost => Some(&mut self.status_host),
             ConfigKey::StatusUpdate => Some(&mut self.status_update),
+            ConfigKey::FlatSidebar => Some(&mut self.flat_sidebar),
             ConfigKey::ExperimentalAgentPane => Some(&mut self.experimental_agent_pane),
             ConfigKey::ExperimentalEditorPane => Some(&mut self.experimental_editor_pane),
             ConfigKey::PaneGaps => Some(&mut self.pane_gaps),
@@ -1118,6 +1125,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::StatusAgents
             | ConfigKey::StatusHost
             | ConfigKey::StatusUpdate
+            | ConfigKey::FlatSidebar
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
             | ConfigKey::UiFontFamily
