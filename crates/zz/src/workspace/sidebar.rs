@@ -64,7 +64,7 @@ use crate::{
 #[cfg(test)]
 use crate::mux::nav::{
     MuxTreePane, NavActivation as SidebarActivation, activation_for_target, rename_prompt_command,
-    select_pane_commands, select_window_command, session_label,
+    select_pane_commands, select_window_command,
 };
 
 const SIDEBAR_MIN_WIDTH: f32 = 160.0;
@@ -896,6 +896,7 @@ struct VisibleTreeEntry {
     node: TreeNode,
     parent: Option<TreeNode>,
     label: SharedString,
+    index: Option<SharedString>,
     depth: u8,
     kind: TreeNodeKind,
     expandable: bool,
@@ -934,6 +935,7 @@ impl TreeProjection {
                     node: host_node,
                     parent: None,
                     label: host.name.clone().into(),
+                    index: None,
                     depth: 0,
                     kind: TreeNodeKind::Host,
                     expandable: true,
@@ -955,7 +957,8 @@ impl TreeProjection {
                     VisibleTreeEntry {
                         node: session_node,
                         parent: Some(host_node),
-                        label: session.label().into(),
+                        label: session.label.text.clone().into(),
+                        index: session.label.index.clone().map(Into::into),
                         depth: 1,
                         kind: TreeNodeKind::Session,
                         expandable: session_expandable,
@@ -978,6 +981,7 @@ impl TreeProjection {
                             node: window_node,
                             parent: Some(session_node),
                             label: window.label().into(),
+                            index: None,
                             depth: 2,
                             kind: TreeNodeKind::Window {
                                 active_pane: window.active_pane,
@@ -999,6 +1003,7 @@ impl TreeProjection {
                                 node: TreeNode::Target(host.id, pane.target()),
                                 parent: Some(window_node),
                                 label: pane.label.clone().into(),
+                                index: None,
                                 depth: 3,
                                 kind: TreeNodeKind::Pane { kind: pane.kind },
                                 expandable: false,
@@ -1266,7 +1271,13 @@ fn render_tree_row(
                 } else {
                     entry.label.clone()
                 }),
-        );
+        )
+        .children(entry.index.clone().map(|index| {
+            div()
+                .flex_none()
+                .text_color(cx.theme().foreground.faint())
+                .child(index)
+        }));
     let actions = render_node_actions(entry, runtime, cx);
     let actions = if is_host {
         div()
@@ -2120,12 +2131,6 @@ mod tests {
             node_agent_badge(&model, &badges, TreeNode::Host(remote)),
             None
         );
-    }
-
-    #[test]
-    fn session_labels_keep_unnamed_sessions_readable() {
-        assert_eq!(session_label("builds", SessionId(3)), "builds");
-        assert_eq!(session_label("   ", SessionId(3)), "session $3");
     }
 
     #[test]

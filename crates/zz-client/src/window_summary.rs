@@ -6,7 +6,7 @@ use zz_protocol::{
     PaneStatusState, SessionId, SessionSnapshot, ShellCommand, WindowId, WindowSnapshot,
 };
 
-use crate::navigation::{ordered_panes, pane_label, session_label};
+use crate::navigation::{SessionLabel, last_component, ordered_panes, pane_label, session_label};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneTag {
@@ -112,7 +112,7 @@ impl AttentionRollup {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionSummary {
     pub session: SessionId,
-    pub label: String,
+    pub label: SessionLabel,
     pub windows: Vec<WindowSummary>,
     pub rollup: AttentionRollup,
 }
@@ -217,7 +217,7 @@ pub fn summarize_session(session: &SessionSnapshot) -> SessionSummary {
     }
     SessionSummary {
         session: session.id,
-        label: session_label(&session.name, session.id),
+        label: session_label(session),
         windows,
         rollup,
     }
@@ -431,12 +431,6 @@ fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) -> Vec
             Tone::Muted,
         )],
     }
-}
-
-fn last_component(path: &str) -> &str {
-    path.rsplit(['/', '\\'])
-        .find(|component| !component.is_empty())
-        .unwrap_or(path)
 }
 
 fn location(pane: &PaneSnapshot) -> Option<String> {
@@ -1033,8 +1027,8 @@ mod tests {
             focused_window: None,
         };
         let (sessions, host) = summarize_host(&snapshot);
-        assert_eq!(sessions[0].label, "session $1");
-        assert_eq!(sessions[1].label, "other");
+        assert_eq!(sessions[0].label.to_string(), "session $1");
+        assert_eq!(sessions[1].label.to_string(), "other");
         assert_eq!(
             sessions[0].rollup,
             AttentionRollup {
@@ -1095,5 +1089,34 @@ mod tests {
             age_label(1_000_200, behind.now(1_000_150)),
             Some("now".to_owned())
         );
+    }
+
+    #[test]
+    fn numbered_sessions_take_the_name_of_where_their_panes_are() {
+        let at = |id, cwd: &str, repo: &str| {
+            let mut pane = terminal(id, "zsh");
+            pane.summary.cwd = cwd.to_owned();
+            pane.summary.repo = repo.to_owned();
+            pane
+        };
+        let label = |name: &str, panes: Vec<PaneSnapshot>| {
+            session_label(&SessionSnapshot {
+                id: SessionId(1),
+                name: name.to_owned(),
+                active_window: WindowId(1),
+                windows: vec![window(1, panes)],
+                viewers: Vec::new(),
+            })
+            .to_string()
+        };
+        let site = || at(1, "~/dev/site", "~/dev/site");
+        let zz = |id| at(id, "~/dev/zz/crates", "~/dev/zz");
+        assert_eq!(label("0", vec![site(), zz(2), zz(3)]), "zz 0");
+        assert_eq!(label("0", vec![site(), zz(2)]), "site 0");
+        assert_eq!(label("3", vec![at(1, "~", ""), at(2, "/tmp", "")]), "~ 3");
+        assert_eq!(label("0", vec![terminal(1, "zsh")]), "0");
+        assert_eq!(label("api", vec![zz(1)]), "api");
+        assert_eq!(label("", vec![zz(1)]), "zz");
+        assert_eq!(label("", Vec::new()), "session $1");
     }
 }

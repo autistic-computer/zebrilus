@@ -938,13 +938,13 @@ ignores the fields keeps the old drawing.
 v108 also carries the sidebar's pane summary and the daemon clock
 ([design](/designs/flat-sidebar-data.md), [snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
 `PaneSnapshot` appends `summary: PaneSummary { changed_at, unseen, command: Option<ShellCommand>,
-name, cwd, branch }` after `status`, and `TreeOp` appends `PaneSummary { session, window, pane,
+name, cwd, repo, branch }` after `status`, and `TreeOp` appends `PaneSummary { session, window, pane,
 summary }` at tag 18, which the tree diff sends when only the summary moved. `ShellCommand` is
 `Running` or `Finished(u8)`. `Welcome` and `ServerHello` append `clock: u64`, the daemon's wall
 clock in Unix seconds when the handshake was sent; `materialize_welcome` copies it into the
 `ServerHello` it builds, and clients compute ages against it. Every new field is
 `#[serde(default)]`. The new strings decode bounded: `name` at `MAX_PANE_NAME_BYTES` (256), `cwd`
-at `MAX_PANE_CWD_BYTES` (4096) and `branch` at `MAX_PANE_BRANCH_BYTES` (256). `PaneStatus` keeps its
+and `repo` at `MAX_PANE_CWD_BYTES` (4096) and `branch` at `MAX_PANE_BRANCH_BYTES` (256). `PaneStatus` keeps its
 encoding but now decodes `app`, `title` and `message` bounded at 64, 256 and 2048 bytes
 (`MAX_PANE_STATUS_*`). `TreeOp::UpsertPane` now holds a `Box<PaneSnapshot>`; postcard encodes a box
 as its contents, so its bytes are unchanged. `pane_summary_wire_tests` pins the layout and the tag.

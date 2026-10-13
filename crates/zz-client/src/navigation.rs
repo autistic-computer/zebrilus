@@ -1,7 +1,8 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt};
 
 use zz_protocol::{
-    CommandInvocation, PaneKindSnapshot, PaneSnapshot, SessionId, WindowId, WindowSnapshot,
+    CommandInvocation, PaneKindSnapshot, PaneSnapshot, SessionId, SessionSnapshot, WindowId,
+    WindowSnapshot,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,10 +75,76 @@ pub fn pane_label(pane: &PaneSnapshot) -> String {
     }
 }
 
-pub fn session_label(name: &str, id: SessionId) -> String {
-    if name.trim().is_empty() {
-        format!("session {id}")
-    } else {
-        name.to_owned()
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SessionLabel {
+    pub text: String,
+    pub index: Option<String>,
+}
+
+impl fmt::Display for SessionLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.index {
+            Some(index) => write!(f, "{} {index}", self.text),
+            None => f.write_str(&self.text),
+        }
     }
+}
+
+#[must_use]
+pub fn session_label(session: &SessionSnapshot) -> SessionLabel {
+    let name = session.name.trim();
+    let numbered = name.bytes().all(|byte| byte.is_ascii_digit());
+    match numbered.then(|| session_place(session)).flatten() {
+        Some(place) => SessionLabel {
+            text: last_component(place).to_owned(),
+            index: (!name.is_empty()).then(|| name.to_owned()),
+        },
+        None if name.is_empty() => SessionLabel {
+            text: format!("session {}", session.id),
+            index: None,
+        },
+        None => SessionLabel {
+            text: session.name.clone(),
+            index: None,
+        },
+    }
+}
+
+fn session_place(session: &SessionSnapshot) -> Option<&str> {
+    let active = session
+        .windows
+        .iter()
+        .find(|window| window.id == session.active_window)
+        .and_then(|window| window.panes.get(&window.active_pane))
+        .and_then(pane_place);
+    let mut places: Vec<(&str, usize)> = Vec::new();
+    for place in session
+        .windows
+        .iter()
+        .flat_map(|window| window.panes.values())
+        .filter_map(pane_place)
+    {
+        match places.iter_mut().find(|(seen, _)| *seen == place) {
+            Some((_, count)) => *count += 1,
+            None => places.push((place, 1)),
+        }
+    }
+    places
+        .into_iter()
+        .rev()
+        .max_by_key(|&(place, count)| (count, Some(place) == active))
+        .map(|(place, _)| place)
+}
+
+fn pane_place(pane: &PaneSnapshot) -> Option<&str> {
+    [&pane.summary.repo, &pane.summary.cwd]
+        .into_iter()
+        .map(String::as_str)
+        .find(|place| !place.is_empty())
+}
+
+pub(crate) fn last_component(path: &str) -> &str {
+    path.rsplit(['/', '\\'])
+        .find(|component| !component.is_empty())
+        .unwrap_or(path)
 }

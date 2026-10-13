@@ -78,7 +78,7 @@ impl PaletteBackend for MuxPalette {
                         .iter()
                         .map(|session| PaletteTreeSession {
                             id: session.id,
-                            name: session.name.clone(),
+                            name: session.label.to_string(),
                             active: session.active,
                             windows: session
                                 .windows

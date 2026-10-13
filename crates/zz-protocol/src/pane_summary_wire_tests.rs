@@ -27,6 +27,7 @@ fn filled() -> PaneSummary {
         command: Some(ShellCommand::Finished(2)),
         name: "rv".to_owned(),
         cwd: "~".to_owned(),
+        repo: "~".to_owned(),
         branch: "main".to_owned(),
     }
 }
@@ -80,8 +81,8 @@ fn status(app: String, title: String, message: String) -> PaneStatus {
     }
 }
 
-const SUMMARY_TAIL: [u8; 17] = [
-    0, 172, 2, 1, 1, 1, 2, 2, b'r', b'v', 1, b'~', 4, b'm', b'a', b'i', b'n',
+const SUMMARY_TAIL: [u8; 19] = [
+    0, 172, 2, 1, 1, 1, 2, 2, b'r', b'v', 1, b'~', 1, b'~', 4, b'm', b'a', b'i', b'n',
 ];
 
 #[test]
@@ -148,9 +149,10 @@ fn a_summary_change_alone_sends_one_pane_summary_op() {
 
 #[test]
 fn pane_summary_text_decode_is_bounded() {
-    let cases: [(usize, fn(&mut PaneSummary, String)); 3] = [
+    let cases: [(usize, fn(&mut PaneSummary, String)); 4] = [
         (MAX_PANE_NAME_BYTES, |summary, text| summary.name = text),
         (MAX_PANE_CWD_BYTES, |summary, text| summary.cwd = text),
+        (MAX_PANE_CWD_BYTES, |summary, text| summary.repo = text),
         (MAX_PANE_BRANCH_BYTES, |summary, text| summary.branch = text),
     ];
     for (limit, set) in cases {

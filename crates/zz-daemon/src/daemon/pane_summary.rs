@@ -174,6 +174,7 @@ type LocationSource = (String, PathBuf);
 struct KnownLocation {
     source: LocationSource,
     cwd: String,
+    repo: String,
     branch: String,
     read_at: Instant,
 }
@@ -249,17 +250,18 @@ impl Shared {
         self: &Arc<Self>,
         pane: PaneId,
         source: LocationSource,
-        (cwd, branch): (String, String),
+        (cwd, repo, branch): (String, String, String),
     ) {
         let (changed, start) = {
             let mut inner = self.inner.lock();
             if inner.locations.jobs.remove(&pane) == Some(true) {
                 (false, queue_location(&mut inner, pane))
             } else {
-                remember_location(&mut inner.locations.known, source, &cwd, &branch);
-                let mut changed = share_branch(&mut inner, &cwd, &branch);
+                remember_location(&mut inner.locations.known, source, &cwd, &repo, &branch);
+                let mut changed = share_branch(&mut inner, &cwd, &repo, &branch);
                 changed |= inner.engine.state.update_pane_summary(pane, |summary| {
                     summary.cwd = cwd;
+                    summary.repo = repo;
                     summary.branch = branch;
                 });
                 (changed, false)
@@ -343,6 +345,7 @@ fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool, bool) {
         fresh = known.read_at.elapsed() < LOCATION_FRESH;
         changed = inner.engine.state.update_pane_summary(pane, |summary| {
             summary.cwd.clone_from(&known.cwd);
+            summary.repo.clone_from(&known.repo);
             summary.branch.clone_from(&known.branch);
         });
     }
@@ -401,6 +404,7 @@ fn remember_location(
     known: &mut VecDeque<KnownLocation>,
     source: LocationSource,
     cwd: &str,
+    repo: &str,
     branch: &str,
 ) {
     let read_at = Instant::now();
@@ -409,19 +413,21 @@ fn remember_location(
         .iter_mut()
         .filter(|known| !cwd.is_empty() && known.cwd == cwd)
     {
+        repo.clone_into(&mut alias.repo);
         branch.clone_into(&mut alias.branch);
         alias.read_at = read_at;
     }
     known.push_front(KnownLocation {
         source,
         cwd: cwd.to_owned(),
+        repo: repo.to_owned(),
         branch: branch.to_owned(),
         read_at,
     });
     known.truncate(KNOWN_LOCATIONS);
 }
 
-fn share_branch(inner: &mut ServerState, cwd: &str, branch: &str) -> bool {
+fn share_branch(inner: &mut ServerState, cwd: &str, repo: &str, branch: &str) -> bool {
     if cwd.is_empty() {
         return false;
     }
@@ -431,31 +437,35 @@ fn share_branch(inner: &mut ServerState, cwd: &str, branch: &str) -> bool {
         .windows
         .values()
         .flat_map(|window| &window.panes)
-        .filter(|(_, pane)| pane.summary.cwd == cwd && pane.summary.branch != branch)
+        .filter(|(_, pane)| {
+            pane.summary.cwd == cwd && (pane.summary.repo != repo || pane.summary.branch != branch)
+        })
         .map(|(&pane, _)| pane)
         .collect::<Vec<_>>();
     let mut changed = false;
     for pane in panes {
-        changed |= inner
-            .engine
-            .state
-            .update_pane_summary(pane, |summary| branch.clone_into(&mut summary.branch));
+        changed |= inner.engine.state.update_pane_summary(pane, |summary| {
+            repo.clone_into(&mut summary.repo);
+            branch.clone_into(&mut summary.branch);
+        });
     }
     changed
 }
 
-fn resolve_location(reported: &str, live: &Path, homes: &[PathBuf]) -> (String, String) {
+fn resolve_location(reported: &str, live: &Path, homes: &[PathBuf]) -> (String, String, String) {
     let dir = if reported.is_empty() {
         Some(live.to_path_buf()).filter(|live| live.is_absolute() && live.is_dir())
     } else {
         path_listing::osc7_directory(reported)
     };
     let Some(dir) = dir else {
-        return (String::new(), String::new());
+        return Default::default();
     };
-    let mut branch = git_branch(&dir).unwrap_or_default();
+    let (repo, mut branch) = find_repo(&dir).map_or_else(Default::default, |(root, branch)| {
+        (display_path(root, homes), branch.unwrap_or_default())
+    });
     branch.truncate(branch.floor_char_boundary(MAX_PANE_BRANCH_BYTES));
-    (display_path(&dir, homes), branch)
+    (display_path(&dir, homes), repo, branch)
 }
 
 fn daemon_home() -> &'static [PathBuf] {
@@ -484,22 +494,22 @@ pub(super) fn display_path(dir: &Path, homes: &[PathBuf]) -> String {
     }
 }
 
-pub(super) fn git_branch(dir: &Path) -> Option<String> {
-    let mut git_dir = None;
+pub(super) fn find_repo(dir: &Path) -> Option<(&Path, Option<String>)> {
     for level in dir.ancestors() {
         let dot = level.join(".git");
-        match fs::metadata(&dot) {
-            Ok(metadata) if metadata.is_dir() => git_dir = Some(dot),
+        let git_dir = match fs::metadata(&dot) {
+            Ok(metadata) if metadata.is_dir() => dot,
             Ok(metadata) if metadata.is_file() => {
                 let link = read_capped(&dot)?;
-                git_dir = Some(level.join(link.strip_prefix("gitdir:")?.trim()));
+                level.join(link.strip_prefix("gitdir:")?.trim())
             }
             Err(error) if error.kind() == ErrorKind::NotFound => continue,
             _ => return None,
-        }
-        break;
+        };
+        let branch = read_capped(&git_dir.join("HEAD")).and_then(|head| head_branch(&head));
+        return Some((level, branch));
     }
-    head_branch(&read_capped(&git_dir?.join("HEAD"))?)
+    None
 }
 
 fn read_capped(path: &Path) -> Option<String> {
