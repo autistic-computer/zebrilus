@@ -7,9 +7,13 @@ use zz_gpui::{
 
 use super::ScrollbarHandle;
 
+const SOLID_FROM: f32 = 0.7;
+const REACH: f32 = 2.0;
+
 /// A fade over the bottom edge of a scroll area, toward `ground`, while there
-/// is content below. It weakens over the last `height` of scroll so reaching
-/// the end clears it smoothly, and it takes no pointer events.
+/// is content below. Its last 30% is solid so clipped content never shows a
+/// cut edge, and it is never taller than twice what is left to scroll, so it
+/// shrinks away as the end arrives. It takes no pointer events.
 pub fn bottom_fade<H: ScrollbarHandle>(
     handle: Rc<H>,
     ground: Hsla,
@@ -19,8 +23,8 @@ pub fn bottom_fade<H: ScrollbarHandle>(
         |_, _, _| {},
         move |bounds: Bounds<Pixels>, _, window, _| {
             let below = handle.content_size().height - bounds.size.height + handle.offset().y;
-            let strength = (below / height).clamp(0.0, 1.0);
-            if strength <= 0.0 {
+            let height = height.min(below * REACH);
+            if height <= Pixels::ZERO {
                 return;
             }
             let strip = Bounds::new(
@@ -32,7 +36,7 @@ pub fn bottom_fade<H: ScrollbarHandle>(
                 linear_gradient(
                     180.0,
                     linear_color_stop(ground.alpha(0.0), 0.0),
-                    linear_color_stop(ground.alpha(ground.a * strength), 1.0),
+                    linear_color_stop(ground, SOLID_FROM),
                 ),
             ));
         },
