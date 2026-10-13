@@ -225,12 +225,18 @@ fn build_vendored(link_mode: LinkMode, target: &str) {
             .arg(&zig_global_cache_dir);
     }
 
-    // Pass -Dtarget only for non-iOS cross targets; native builds let zig
+    // Pass -Dtarget for non-iOS cross targets and for any target cargo-zigbuild
+    // resolved (it carries the glibc version); other native builds let zig
     // auto-detect the host. iOS builds run host-native inside the xcframework
     // emit, so they must not pass -Dtarget or a global --sysroot.
-    if target != host && ios_platform.is_none() {
-        let zig_target = zig_target(target);
-        build.arg(format!("-Dtarget={zig_target}"));
+    let zigbuild_key = format!("CARGO_ZIGBUILD_TARGET_{}", target.replace('-', "_"));
+    println!("cargo:rerun-if-env-changed={zigbuild_key}");
+    if ios_platform.is_none() {
+        if let Ok(resolved) = env::var(&zigbuild_key) {
+            build.arg(format!("-Dtarget={resolved}"));
+        } else if target != host {
+            build.arg(format!("-Dtarget={}", zig_target(target)));
+        }
     }
 
     run(build, "zig build");
