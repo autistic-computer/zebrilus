@@ -18,7 +18,7 @@ const GLASS_KNOBS = [
     "glass-edge-width",
     "glass-noise",
 ];
-const LOOK_KNOBS = ["radius", "outline", "row-inset", "shadows", "selection", "primary", "field", "font"];
+const MATERIAL_KNOBS = ["radius", "outline", "row-inset", "shadow-strength", "primary", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],
@@ -31,7 +31,7 @@ const COLORS = [
 ];
 const MODES = ["light", "dark"];
 const COLOR_KNOBS = MODES.flatMap((mode) => COLORS.map(([name]) => `${mode}-${name}`));
-const SHUFFLED = ["radius", "outline", "row-inset"];
+const SHUFFLED = ["radius", "outline", "row-inset", "shadow-strength"];
 const KNOBS = [
     "theme",
     "contrast",
@@ -46,7 +46,7 @@ const KNOBS = [
     "motion",
     "backdrop",
     "interface-theme",
-    ...LOOK_KNOBS,
+    ...MATERIAL_KNOBS,
     ...COLOR_KNOBS,
     "glass",
     ...GLASS_KNOBS,
@@ -109,7 +109,7 @@ function glassMaterial(glass = knobValue("glass"), theme = knobValue("interface-
 }
 
 function knobDefault(name, glass = knobValue("glass"), theme = knobValue("interface-theme")) {
-    if (LOOK_KNOBS.includes(name) || COLOR_KNOBS.includes(name)) {
+    if (MATERIAL_KNOBS.includes(name) || COLOR_KNOBS.includes(name)) {
         return String(themes[theme]?.[name] ?? "");
     }
     if (!GLASS_KNOBS.includes(name)) return DEFAULTS[name];
@@ -143,7 +143,7 @@ function resetGlassSliders() {
 }
 
 function resetThemeKnobs() {
-    for (const name of [...LOOK_KNOBS, ...COLOR_KNOBS]) setKnobValue(name, knobDefault(name));
+    for (const name of [...MATERIAL_KNOBS, ...COLOR_KNOBS]) setKnobValue(name, knobDefault(name));
     setKnobValue("glass", "theme");
     resetGlassSliders();
 }
@@ -371,10 +371,7 @@ function shuffle() {
         setKnobValue(name, String(Number(value.toFixed(4))));
     };
     for (const name of SHUFFLED) pick(name);
-    setKnobValue("shadows", ["none", "surfaces", "all"][Math.floor(Math.random() * 3)]);
-    setKnobValue("selection", Math.random() < 0.5 ? "accent" : "wash");
     setKnobValue("primary", Math.random() < 0.5 ? "foreground" : "accent");
-    setKnobValue("field", Math.random() < 0.5 ? "soft" : "outline");
     const glasses = ["theme", "off", ...Object.keys(glassPresets)];
     setKnobValue("glass", glasses[Math.floor(Math.random() * glasses.length)]);
     resetGlassSliders();

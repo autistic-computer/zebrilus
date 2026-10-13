@@ -1,13 +1,10 @@
 {
   "name": "Linear",
-  "look": {
+  "materials": {
     "radius": 24,
     "outline": 0.5,
-    "shadows": "all",
     "row-inset": 4,
-    "selection": "accent",
     "primary": "accent",
-    "field": "soft",
     "glass": null
   },
   "light": {

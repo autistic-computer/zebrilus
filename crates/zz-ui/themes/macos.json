@@ -1,13 +1,10 @@
 {
   "name": "macOS",
-  "look": {
+  "materials": {
     "radius": 10,
     "outline": 0.5,
-    "shadows": "surfaces",
     "row-inset": 5,
-    "selection": "accent",
     "primary": "accent",
-    "field": "soft",
     "glass": {
       "preset": "regular",
       "blur": 19.7,
@@ -21,6 +18,44 @@
       "fresnel": 0.03,
       "edge_shadow": 0.45,
       "noise": 0
+    }
+  },
+  "roles": {
+    "button": {
+      "shadow": "none"
+    },
+    "chip": {
+      "shadow": "none"
+    },
+    "icon-button": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "button.quiet": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "tab": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "sidebar.row": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "sidebar.entry": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "agent.control": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "agent.send": {
+      "shadow": "none"
+    },
+    "phone.key": {
+      "shadow": "none"
     }
   },
   "light": {

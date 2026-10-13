@@ -115,12 +115,12 @@ fn apply_zz_overrides(cx: &mut App) {
         .map(SharedString::from)
         .or_else(|| {
             (ui_font.provenance == config::ConfigProvenance::Default)
-                .then(|| active.look.font.clone())
+                .then(|| active.materials.font.clone())
                 .flatten()
         })
         .unwrap_or_else(|| zz_gpui::Font::default().family);
-    let mut look = active.look.clone();
-    config::look_overrides(cx).apply(&mut look);
+    let mut materials = active.materials.clone();
+    config::material_overrides(cx).apply(&mut materials);
     let chrome_contrast = config::chrome_contrast(cx);
     let pane_background_opacity = config::pane_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
@@ -129,7 +129,8 @@ fn apply_zz_overrides(cx: &mut App) {
     let theme = Theme::global_mut(cx);
 
     theme.colors = active.colors(theme.mode);
-    look.apply(theme);
+    materials.apply(theme);
+    active.apply_roles(theme);
     theme.font_family = ui_font_family;
     if let Some(font_family) = terminal_mono_font_family {
         theme.mono_font_family = font_family;

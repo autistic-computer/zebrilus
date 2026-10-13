@@ -57,11 +57,9 @@ pub enum AppearancePageItem {
     Animations,
     WidgetCornerRadius,
     OutlineWidth,
-    Shadows,
+    ShadowStrength,
     RowInset,
-    Selection,
     Primary,
-    Field,
     Glass,
     WindowBackgroundBlur,
     #[cfg(target_os = "linux")]
@@ -78,64 +76,50 @@ impl AppearancePageItem {
         )
     }
 
-    /// The look settings that override the active theme, in the order the
-    /// page lists them.
-    pub const LOOK: [Self; 8] = [
+    /// The material settings that override the active theme, in the order
+    /// the page lists them.
+    pub const MATERIALS: [Self; 6] = [
         Self::WidgetCornerRadius,
         Self::OutlineWidth,
-        Self::Shadows,
+        Self::ShadowStrength,
         Self::RowInset,
-        Self::Selection,
         Self::Primary,
-        Self::Field,
         Self::Glass,
     ];
 
-    /// The title and description of a look setting.
-    pub const fn look_text(self) -> Option<(&'static str, &'static str)> {
+    /// The title and description of a material setting.
+    pub const fn material_text(self) -> Option<(&'static str, &'static str)> {
         Some(match self {
-            Self::WidgetCornerRadius => (
-                "Corner radius",
-                "Round corners from 0 to 24px. At 25, buttons, fields and rows become pills.",
-            ),
+            Self::WidgetCornerRadius => ("Corner radius", "How round corners are, from 0 to 25px."),
             Self::OutlineWidth => (
                 "Outline",
-                "The hairline around controls, cards and menus, from 0 (none) to 2px.",
+                "The width of every outline the theme draws, from 0 (none) to 2px.",
             ),
-            Self::Shadows => ("Shadows", "Which surfaces cast a shadow."),
+            Self::ShadowStrength => (
+                "Shadow strength",
+                "How dark the theme's shadows are. 0 turns them off, 2 doubles them.",
+            ),
             Self::RowInset => (
                 "Row inset",
                 "How far list rows float in from the edges. At 0 they become full-width bands.",
-            ),
-            Self::Selection => (
-                "Selection",
-                "What fills the selected row in menus, lists and pickers.",
             ),
             Self::Primary => (
                 "Primary buttons",
                 "What the main action of a view is drawn in.",
             ),
-            Self::Field => ("Fields", "How text fields look at rest."),
             Self::Glass => (
                 "Glass",
-                "What menus, popovers and dialogs are made of. Theme keeps the theme's own.",
+                "What glass surfaces are made of. Theme keeps the theme's own.",
             ),
             _ => return None,
         })
     }
 
-    /// The choices of a look setting that is a choice, as title and value.
-    /// The values are what theme files and `zz/config` spell.
-    pub const fn look_choices(self) -> &'static [(&'static str, &'static str)] {
+    /// The choices of a material setting that is a choice, as title and
+    /// value. The values are what theme files and `zz/config` spell.
+    pub const fn material_choices(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            Self::Shadows => &[
-                ("None", "none"),
-                ("Cards and popovers", "surfaces"),
-                ("Everything", "all"),
-            ],
-            Self::Selection => &[("Accent", "accent"), ("Gray", "wash")],
             Self::Primary => &[("Text color", "foreground"), ("Accent", "accent")],
-            Self::Field => &[("Filled", "soft"), ("Outlined", "outline")],
             Self::Glass => &[
                 ("Theme", "theme"),
                 ("Off", "off"),
@@ -187,10 +171,12 @@ pub fn appearance_page_items(
         AppearancePageItem::UseSystemTitlebar,
     ]);
     items.push(AppearancePageItem::Group {
-        title: "Look",
-        description: Some("Change the theme's shape here. Picking a theme resets these."),
+        title: "Materials",
+        description: Some(
+            "Change what the theme's corners, outlines, shadows and glass look like. Which piece uses which is up to the theme. Picking a theme resets these.",
+        ),
     });
-    items.extend(AppearancePageItem::LOOK);
+    items.extend(AppearancePageItem::MATERIALS);
     items
 }
 
@@ -518,14 +504,18 @@ pub fn interface_theme_preview(
     _: &App,
 ) -> zz_gpui::Div {
     let colors = theme.colors(mode);
-    let look = &theme.look;
-    let surface_radius = (look.radius / 3.0).min(10.0);
+    let materials = &theme.materials;
+    let mut kit = crate::Theme::from(&colors);
+    theme.apply(&mut kit);
+    let popover = kit.style(crate::Kind::Popover.role());
+    let surface_radius = (materials.radius / 3.0).min(10.0);
     let row_radius = surface_radius / 2.0;
-    let inset = look.row_inset.min(3.0);
-    let frosted = look.glass.is_some_and(|glass| glass.blur > px(0.0));
-    let (selection, selected_text) = match look.selection {
-        crate::SelectionStyle::Accent => (colors.accent.opaque(), accent_ink(&colors)),
-        crate::SelectionStyle::Wash => (colors.background.washed(3), colors.foreground),
+    let inset = materials.row_inset.min(3.0);
+    let frosted = popover.fill == crate::Fill::Glass
+        && materials.glass.is_some_and(|glass| glass.blur > px(0.0));
+    let (selection, selected_text) = match kit.style(crate::Kind::Row.role()).selected {
+        crate::Highlight::Accent => (colors.accent.opaque(), accent_ink(&colors)),
+        _ => (colors.background.washed(3), colors.foreground),
     };
     let text = colors.foreground.muted();
     let row = |width: f32, selected: bool| {
@@ -558,11 +548,11 @@ pub fn interface_theme_preview(
         } else {
             surface
         })
-        .when(look.outline > 0.0, |menu| {
+        .when(materials.outline > 0.0 && popover.outline, |menu| {
             menu.border(px(0.5))
                 .border_color(colors.foreground.opacity(0.15))
         })
-        .when(look.shadows != crate::Shadows::None, |menu| {
+        .when(kit.casts_shadow(crate::Kind::Popover.role()) && materials.float.strength > 0.0, |menu| {
             menu.shadow(vec![zz_gpui::BoxShadow {
                 color: colors.shadow_color,
                 offset: zz_gpui::point(px(0.0), px(3.0)),
@@ -572,7 +562,7 @@ pub fn interface_theme_preview(
             }])
         })
         .children([row(24.0, false), row(18.0, true), row(21.0, false)]);
-    let (primary, primary_text) = match look.primary {
+    let (primary, primary_text) = match materials.primary {
         crate::PrimaryStyle::Accent => (colors.accent, accent_ink(&colors)),
         crate::PrimaryStyle::Foreground => (colors.foreground, colors.background),
     };

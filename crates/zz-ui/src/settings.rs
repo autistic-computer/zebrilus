@@ -11,7 +11,6 @@ use crate::{
     Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    contact_shadow,
     icon::{Icon, cap_center_drop},
     scroll::ScrollableElement as _,
     select::SelectItem,
@@ -1369,7 +1368,7 @@ impl RenderOnce for SettingEntry {
             .flex()
             .flex_col()
             .w_full()
-            .when(cx.theme().surface_shadows(), |this| {
+            .when(cx.theme().casts_shadow(crate::roles::SETTINGS_CARD), |this| {
                 let extent = px(8.0);
                 this.child(
                     div()
@@ -1408,7 +1407,11 @@ impl RenderOnce for SettingEntry {
                                 .when(position.rounds_bottom(), |this| {
                                     this.rounded_b(cx.theme().radius)
                                 })
-                                .shadow(contact_shadow(cx)),
+                                .shadow(
+                                    cx.theme().shadows_of(
+                                        cx.theme().style(crate::roles::SETTINGS_CARD).shadow,
+                                    ),
+                                ),
                         ),
                 )
             })

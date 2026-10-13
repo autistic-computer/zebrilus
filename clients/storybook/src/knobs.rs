@@ -1,8 +1,10 @@
+use std::collections::BTreeMap;
+
 use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
-    CORNER_SMOOTHING, Emphasis, FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeColor,
-    ThemeMode, Tone, UiZoom,
-    interface_theme::{self, InterfaceTheme, Look, ThemeColors},
+    CORNER_SMOOTHING, Emphasis, PrimaryStyle, StylePatch, Theme, ThemeColor, ThemeMode, Tone,
+    UiZoom,
+    interface_theme::{self, InterfaceTheme, Materials, ThemeColors},
 };
 
 const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
@@ -16,7 +18,11 @@ pub struct Knobs {
     pub theme: Option<ThemeMode>,
     /// The built-in theme the knobs start from.
     pub interface: &'static str,
-    pub look: Look,
+    pub materials: Materials,
+    /// Scales both of the theme's shadows: 1 keeps them, 0 turns them off.
+    pub shadow_strength: f32,
+    /// The roles of the theme the knobs start from, which no knob changes.
+    pub roles: BTreeMap<String, StylePatch>,
     pub light: ThemeColors,
     pub dark: ThemeColors,
     pub contrast: f32,
@@ -61,11 +67,11 @@ pub enum Backdrop {
 
 type Knob<T> = (&'static str, fn(&T) -> f32, fn(&mut T, f32));
 
-/// The numeric parts of a [`Look`] other than its glass, by knob name.
-pub const LOOK_KNOBS: &[Knob<Look>] = &[
-    ("radius", |l| l.radius, |l, v| l.radius = v),
-    ("outline", |l| l.outline, |l, v| l.outline = v),
-    ("row-inset", |l| l.row_inset, |l, v| l.row_inset = v),
+/// The lengths of [`Materials`], by knob name.
+pub const MATERIAL_KNOBS: &[Knob<Materials>] = &[
+    ("radius", |m| m.radius, |m, v| m.radius = v),
+    ("outline", |m| m.outline, |m, v| m.outline = v),
+    ("row-inset", |m| m.row_inset, |m, v| m.row_inset = v),
 ];
 
 type ColorKnob = (
@@ -159,7 +165,9 @@ impl Knobs {
         Self {
             theme: None,
             interface: id,
-            look: theme.look.clone(),
+            materials: theme.materials.clone(),
+            shadow_strength: 1.0,
+            roles: theme.roles.clone(),
             light: theme.light.clone(),
             dark: theme.dark.clone(),
             contrast: 1.0,
@@ -171,7 +179,7 @@ impl Knobs {
     }
 
     /// Reads a knob query. The interface theme comes first, wherever it sits
-    /// in the query, and every look and color knob then overrides it.
+    /// in the query, and every material and color knob then overrides it.
     pub fn parse(query: &str) -> Result<Self, String> {
         let pairs = query
             .trim_start_matches('?')
@@ -198,8 +206,8 @@ impl Knobs {
             None => Self::default(),
         };
         if let Some((_, value)) = pairs.iter().find(|(key, _)| *key == "glass") {
-            knobs.look.glass = match *value {
-                "" | "theme" => knobs.look.glass,
+            knobs.materials.glass = match *value {
+                "" | "theme" => knobs.materials.glass,
                 "off" => None,
                 name => Some(
                     GlassMaterial::preset(name)
@@ -222,20 +230,9 @@ impl Knobs {
                         }
                     }
                 }
-                "shadows" => {
-                    knobs.look.shadows = interface_theme::parse_choice(value).ok_or_else(|| {
-                        format!("shadows must be none, surfaces or all, not {value}")
-                    })?;
-                }
-                "selection" => {
-                    knobs.look.selection = match value {
-                        "accent" => SelectionStyle::Accent,
-                        "wash" => SelectionStyle::Wash,
-                        _ => return Err(format!("selection must be accent or wash, not {value}")),
-                    }
-                }
+                "shadow-strength" => knobs.shadow_strength = number(key, value)?,
                 "primary" => {
-                    knobs.look.primary = match value {
+                    knobs.materials.primary = match value {
                         "foreground" => PrimaryStyle::Foreground,
                         "accent" => PrimaryStyle::Accent,
                         _ => {
@@ -245,16 +242,9 @@ impl Knobs {
                         }
                     }
                 }
-                "field" => {
-                    knobs.look.field = match value {
-                        "soft" => FieldStyle::Soft,
-                        "outline" => FieldStyle::Outline,
-                        _ => return Err(format!("field must be soft or outline, not {value}")),
-                    }
-                }
                 "font" => {
                     let family = decode(value);
-                    knobs.look.font = (!family.is_empty()).then(|| family.into());
+                    knobs.materials.font = (!family.is_empty()).then(|| family.into());
                 }
                 "contrast" => knobs.contrast = number(key, value)?,
                 "zoom" => knobs.zoom = number(key, value)?,
@@ -279,13 +269,14 @@ impl Knobs {
                     }
                 }
                 _ => {
-                    if let Some((_, _, set)) = LOOK_KNOBS.iter().find(|(name, ..)| *name == key) {
-                        set(&mut knobs.look, number(key, value)?);
+                    if let Some((_, _, set)) = MATERIAL_KNOBS.iter().find(|(name, ..)| *name == key)
+                    {
+                        set(&mut knobs.materials, number(key, value)?);
                     } else if let Some((_, _, set)) =
                         GLASS_KNOBS.iter().find(|(name, ..)| *name == key)
                     {
                         let value = number(key, value)?;
-                        if let Some(material) = knobs.look.glass.as_mut() {
+                        if let Some(material) = knobs.materials.glass.as_mut() {
                             set(material, value);
                         }
                     } else if let Some((colors, mode, name)) = key
@@ -310,13 +301,22 @@ impl Knobs {
         Ok(knobs)
     }
 
+    /// The materials the knobs describe, with the shadow strength applied.
+    pub fn materials(&self) -> Materials {
+        let mut materials = self.materials.clone();
+        materials.contact.strength *= self.shadow_strength;
+        materials.float.strength *= self.shadow_strength;
+        materials
+    }
+
     /// The theme the knobs describe, as a theme file would hold it.
     pub fn interface_theme(&self) -> InterfaceTheme {
         InterfaceTheme {
             name: interface_theme::builtin_theme(self.interface)
                 .map(|theme| theme.name.clone())
                 .unwrap_or_default(),
-            look: self.look.clone(),
+            materials: self.materials(),
+            roles: self.roles.clone(),
             light: self.light.clone(),
             dark: self.dark.clone(),
         }
@@ -331,7 +331,7 @@ impl Knobs {
         cx.set_reduce_motion(!self.motion);
         let theme = Theme::global_mut(cx);
         self.interface_theme().apply(theme);
-        if self.look.font.is_none() {
+        if self.materials.font.is_none() {
             theme.font_family = UI_FONT.into();
         }
         theme.pane_background_opacity = self.pane.background;
@@ -354,22 +354,21 @@ impl Knobs {
     }
 }
 
-/// The knob values that reproduce `look`, by knob name, for the page to
-/// load: every look knob, the selection, the font and the glass.
-pub fn look_knobs(look: &Look) -> serde_json::Map<String, serde_json::Value> {
-    let mut knobs = LOOK_KNOBS
+/// The knob values that reproduce `materials`, by knob name, for the page to
+/// load: every length, the shadow strength, the primary style, the font and
+/// the glass. The shadow strength is 1: the materials' shadows as they are.
+pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_json::Value> {
+    let mut knobs = MATERIAL_KNOBS
         .iter()
-        .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(look))))
+        .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(materials))))
         .collect::<serde_json::Map<_, _>>();
-    knobs.insert("shadows".to_owned(), serde_json::json!(look.shadows));
-    knobs.insert("selection".to_owned(), serde_json::json!(look.selection));
-    knobs.insert("primary".to_owned(), serde_json::json!(look.primary));
-    knobs.insert("field".to_owned(), serde_json::json!(look.field));
+    knobs.insert("shadow-strength".to_owned(), serde_json::json!(1.0));
+    knobs.insert("primary".to_owned(), serde_json::json!(materials.primary));
     knobs.insert(
         "font".to_owned(),
-        serde_json::json!(look.font.as_ref().map_or("", |font| font.as_ref())),
+        serde_json::json!(materials.font.as_ref().map_or("", |font| font.as_ref())),
     );
-    match look.glass {
+    match materials.glass {
         None => {
             knobs.insert("glass".to_owned(), serde_json::json!("off"));
         }
@@ -383,11 +382,11 @@ pub fn look_knobs(look: &Look) -> serde_json::Map<String, serde_json::Value> {
     knobs
 }
 
-/// The knob values that reproduce `theme`: its look and both modes' colors,
-/// each color as the `#rrggbb` a color input takes. A color the theme leaves
-/// to the palette comes out as what the palette resolves it to.
+/// The knob values that reproduce `theme`: its materials and both modes'
+/// colors, each color as the `#rrggbb` a color input takes. A color the
+/// theme leaves to the palette comes out as what the palette resolves it to.
 pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json::Value> {
-    let mut knobs = look_knobs(&theme.look);
+    let mut knobs = material_knobs(&theme.materials);
     for (mode, prefix) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
         for (name, value) in resolved_colors(theme, mode) {
             knobs.insert(format!("{prefix}-{name}"), serde_json::json!(value));
@@ -479,7 +478,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(knobs.theme, Some(ThemeMode::Dark));
-        assert_eq!(knobs.look.radius, 12.0);
+        assert_eq!(knobs.materials.radius, 12.0);
         assert_eq!(knobs.zoom, 1.25);
         assert_eq!(knobs.interface, "linear");
         assert!(!knobs.motion);
@@ -501,17 +500,20 @@ mod tests {
     #[test]
     fn glass_sliders_override_the_preset_in_any_order() {
         let knobs = Knobs::parse("glass-blur=30&glass=frosted&glass-tint=0.5").unwrap();
-        let glass = knobs.look.glass.unwrap();
+        let glass = knobs.materials.glass.unwrap();
         assert_eq!(glass.blur, px(30.0));
         assert_eq!(glass.tint.a, 0.5);
         assert_eq!(glass.bezel, GlassMaterial::frosted().bezel);
         assert_eq!(
-            Knobs::parse("glass=off&glass-blur=30").unwrap().look.glass,
+            Knobs::parse("glass=off&glass-blur=30")
+                .unwrap()
+                .materials
+                .glass,
             None
         );
         assert!(Knobs::parse("glass=lava").is_err());
         let lit = Knobs::parse("glass-light=90&glass-glint-width=3").unwrap();
-        let glass = lit.look.glass.unwrap();
+        let glass = lit.materials.glass.unwrap();
         assert!((glass.light_angle - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
         assert_eq!(glass.glint_width, px(3.0));
     }
@@ -522,15 +524,37 @@ mod tests {
         let knobs = Knobs::parse("interface-theme=linear").unwrap();
         assert_eq!(knobs.interface_theme(), *linear);
         let tuned = Knobs::parse(
-            "radius=12&selection=accent&dark-on-accent=%23112233&interface-theme=linear",
+            "radius=12&primary=foreground&dark-on-accent=%23112233&interface-theme=linear",
         )
         .unwrap();
-        assert_eq!(tuned.look.radius, 12.0);
-        assert_eq!(tuned.look.selection, SelectionStyle::Accent);
+        assert_eq!(tuned.materials.radius, 12.0);
+        assert_eq!(tuned.materials.primary, PrimaryStyle::Foreground);
         assert_eq!(tuned.dark.on_accent, zz_ui::parse_hex("#112233").ok());
         assert_eq!(tuned.light, linear.light);
-        assert!(Knobs::parse("selection=loud").is_err());
+        assert!(Knobs::parse("primary=loud").is_err());
+        assert!(Knobs::parse("shadow-strength=dark").is_err());
         assert!(Knobs::parse("light-accent=blue").is_err());
+    }
+
+    #[test]
+    fn shadow_strength_scales_the_themes_shadows_and_keeps_its_roles() {
+        let tahoe = interface_theme::builtin_theme("tahoe").unwrap();
+        let theme = Knobs::parse("interface-theme=tahoe&shadow-strength=0.5")
+            .unwrap()
+            .interface_theme();
+        assert_eq!(
+            theme.materials.contact.strength,
+            tahoe.materials.contact.strength * 0.5
+        );
+        assert_eq!(
+            theme.materials.float.strength,
+            tahoe.materials.float.strength * 0.5
+        );
+        assert_eq!(theme.materials.float.blur, tahoe.materials.float.blur);
+        assert!(!theme.roles.is_empty());
+        assert_eq!(theme.roles, tahoe.roles);
+        let file = interface_theme::parse_theme(&theme.to_json()).unwrap();
+        assert_eq!(file, theme);
     }
 
     #[test]
@@ -562,16 +586,17 @@ mod tests {
                 .join("&");
             let parsed = Knobs::parse(&format!("interface-theme={id}&{query}")).unwrap();
             assert_eq!(
-                Look {
+                Materials {
                     glass: None,
-                    ..parsed.look.clone()
+                    ..parsed.materials()
                 },
-                Look {
+                Materials {
                     glass: None,
-                    ..theme.look.clone()
+                    ..theme.materials.clone()
                 },
                 "{id}"
             );
+            assert_eq!(parsed.interface_theme().roles, theme.roles, "{id}");
             for mode in [ThemeMode::Light, ThemeMode::Dark] {
                 assert_eq!(
                     resolved_colors(&parsed.interface_theme(), mode),
@@ -579,9 +604,9 @@ mod tests {
                     "{id} {mode:?}"
                 );
             }
-            if let (Some(parsed), Some(look)) = (parsed.look.glass, theme.look.glass) {
+            if let (Some(parsed), Some(theirs)) = (parsed.materials.glass, theme.materials.glass) {
                 for (name, get, _) in GLASS_KNOBS {
-                    assert!((get(&parsed) - get(&look)).abs() < 1e-3, "{id} {name}");
+                    assert!((get(&parsed) - get(&theirs)).abs() < 1e-3, "{id} {name}");
                 }
             }
         }

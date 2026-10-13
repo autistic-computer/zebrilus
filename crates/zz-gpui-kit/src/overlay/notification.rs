@@ -203,7 +203,7 @@ impl Render for Notification {
             .w(self.width)
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
-            .lifted_style(cx)
+            .surface(crate::Kind::Toast, cx)
             .p(CONTENT_PADDING)
             .gap_2()
             .child(

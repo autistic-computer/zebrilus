@@ -6,11 +6,13 @@ use zz_gpui::{
     div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, IndexPath, SelectionStyle,
-    Sizable as _, ThemeMode, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Highlight, Icon, IconName, IndexPath, Kind,
+    Sizable as _, StylePatch, ThemeMode, Tone,
     button::{Button, ButtonVariants as _},
     input::{InputState, NumberInput},
-    interface_theme::{InterfaceTheme, Look, ThemeModeSetting, builtin_themes, pinned_theme_mode},
+    interface_theme::{
+        InterfaceTheme, Materials, ThemeModeSetting, builtin_themes, pinned_theme_mode,
+    },
     select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsNavigationGroup, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -330,11 +332,15 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
     let mode = cx.theme().mode;
     let saved = InterfaceTheme {
         name: "theme-1".to_owned(),
-        look: Look {
+        materials: Materials {
             radius: 4.0,
-            selection: SelectionStyle::Wash,
-            ..builtin_themes()[1].1.look.clone()
+            ..builtin_themes()[1].1.materials.clone()
         },
+        roles: [(
+            Kind::Row.name().to_owned(),
+            StylePatch::EMPTY.selected(Highlight::Tint),
+        )]
+        .into(),
         ..builtin_themes()[1].1.clone()
     };
     states()

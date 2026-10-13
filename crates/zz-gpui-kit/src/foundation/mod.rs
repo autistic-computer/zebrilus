@@ -10,6 +10,7 @@ mod geometry;
 mod index_path;
 mod palette;
 mod styled;
+mod surface;
 mod theme;
 mod theme_color;
 mod units;
@@ -26,15 +27,16 @@ pub use styled::{
     Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, Selectable, Sizable, Size, StyledExt,
     contact_shadow, control_shadow, floating_shadow, h_flex, lifted_shadow, v_flex,
 };
-pub use theme::{
-    ActiveTheme, CHROME_GAP, CORNER_SMOOTHING, ScrollbarShow, SelectionStyle, Shadows, Theme,
-    ThemeMode,
+pub use surface::{
+    Edge, Fill, Highlight, InteractiveSurfaceExt, Kind, Layer, Shadow, ShadowMaterial, Shape,
+    StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole,
 };
+pub use theme::{ActiveTheme, CHROME_GAP, CORNER_SMOOTHING, ScrollbarShow, Theme, ThemeMode};
 pub use theme_color::ThemeColor;
 pub use units::{BASE_UI_FONT_SIZE, UiZoom, rems_from_px};
 pub use variant::{
-    Elevation, Emphasis, FieldStyle, Ground, InteractivePaintExt, Paint, PaintExt, PaintState,
-    PrimaryStyle, Tone,
+    Elevation, Emphasis, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, PrimaryStyle,
+    Tone,
 };
 pub use window_border::{window_border, window_paddings};
 

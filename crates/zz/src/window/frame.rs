@@ -21,7 +21,7 @@ const RESIZE_HIT_SIZE: Pixels = px(4.0);
     reason = "the window's own drop shadow under client-side decorations, which no surface recipe draws"
 )]
 fn window_shadow(extent: Pixels, cx: &App) -> Vec<zz_gpui::BoxShadow> {
-    if !cx.theme().surface_shadows() {
+    if !cx.theme().casts_shadow(zz_ui::Kind::Popover.role()) {
         return Vec::new();
     }
     vec![zz_gpui::BoxShadow {

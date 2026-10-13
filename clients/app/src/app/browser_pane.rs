@@ -163,7 +163,7 @@ impl BrowserPane {
                 preview_foreground: zz_ui::to_hex(theme.foreground),
                 preview_border: zz_ui::to_hex(theme.border()),
                 shadow: theme
-                    .surface_shadows()
+                    .casts_shadow(zz_ui::Kind::Popover.role())
                     .then(|| zz_ui::to_hex(theme.shadow_color)),
                 radius: f32::from(theme.radius),
                 font_family: theme.mono_font_family.to_string(),

@@ -125,8 +125,9 @@ pub(crate) struct SettingsView {
     pane_border_width: Entity<InputState>,
     widget_corner_radius: Entity<InputState>,
     widget_outline_width: Entity<InputState>,
+    widget_shadow_strength: Entity<InputState>,
     widget_row_inset: Entity<InputState>,
-    look_selects: Vec<(ConfigKey, Entity<SelectState<Vec<SettingsSelectItem>>>)>,
+    material_selects: Vec<(ConfigKey, Entity<SelectState<Vec<SettingsSelectItem>>>)>,
     chrome_contrast: Entity<InputState>,
     window_corner_radius: Entity<InputState>,
     mux_config_editor: Option<ConfigFileEditor>,
@@ -151,7 +152,7 @@ impl SettingsView {
         let observed = config::resolved_config(cx);
         let observed_browser = config::browser_config(cx);
         let observed_ui_font = config::ui_font_family(cx);
-        let observed_theme_font = config::themes(cx).active.look.font.clone();
+        let observed_theme_font = config::themes(cx).active.materials.font.clone();
         let ui_font_family = ui_font_select(
             Some(&shown_ui_font(
                 &observed_ui_font,
@@ -242,6 +243,13 @@ impl SettingsView {
             window,
             cx,
         );
+        let widget_shadow_strength = numeric_value_input(
+            ConfigKey::WidgetShadowStrength,
+            observed.widget_shadow_strength.value,
+            0.1,
+            window,
+            cx,
+        );
         let widget_row_inset = numeric_value_input(
             ConfigKey::WidgetRowInset,
             observed.widget_row_inset.value,
@@ -249,14 +257,14 @@ impl SettingsView {
             window,
             cx,
         );
-        let look_selects = AppearancePageItem::LOOK
+        let material_selects = AppearancePageItem::MATERIALS
             .into_iter()
             .filter_map(|item| {
-                let key = look_key(item)?;
+                let key = material_key(item)?;
                 let selected = observed.choice_value(key)?;
                 Some((
                     key,
-                    settings_select_state(item.look_choices(), selected, window, cx),
+                    settings_select_state(item.material_choices(), selected, window, cx),
                 ))
             })
             .collect::<Vec<_>>();
@@ -315,6 +323,12 @@ impl SettingsView {
                 window,
                 cx,
             ),
+            numeric_input_subscription(
+                &widget_shadow_strength,
+                ConfigKey::WidgetShadowStrength,
+                window,
+                cx,
+            ),
             numeric_input_subscription(&widget_row_inset, ConfigKey::WidgetRowInset, window, cx),
             numeric_input_subscription(
                 &window_corner_radius,
@@ -324,9 +338,9 @@ impl SettingsView {
             ),
         ];
         subscriptions.extend(
-            look_selects
+            material_selects
                 .iter()
-                .map(|(key, select)| look_select_subscription(select, *key, window, cx)),
+                .map(|(key, select)| material_select_subscription(select, *key, window, cx)),
         );
         let observed_appearance_overrides = config::daemon_config_overrides(cx);
         let settings = Self {
@@ -350,8 +364,9 @@ impl SettingsView {
             pane_border_width,
             widget_corner_radius,
             widget_outline_width,
+            widget_shadow_strength,
             widget_row_inset,
-            look_selects,
+            material_selects,
             chrome_contrast,
             window_corner_radius,
             mux_config_editor: None,
@@ -594,12 +609,18 @@ impl SettingsView {
                 cx,
             );
             synchronize_f32_input(
+                &self.widget_shadow_strength,
+                resolved.widget_shadow_strength.value,
+                window,
+                cx,
+            );
+            synchronize_f32_input(
                 &self.widget_row_inset,
                 resolved.widget_row_inset.value,
                 window,
                 cx,
             );
-            for (key, select) in &self.look_selects {
+            for (key, select) in &self.material_selects {
                 if let Some(value) = resolved.choice_value(*key) {
                     let value = value.to_owned();
                     select.update(cx, |select, cx| {
@@ -671,7 +692,7 @@ impl SettingsView {
 
     fn synchronize_ui_font(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let resolved = config::ui_font_family(cx);
-        let theme_font = config::themes(cx).active.look.font.clone();
+        let theme_font = config::themes(cx).active.materials.font.clone();
         if resolved == self.observed_ui_font && theme_font == self.observed_theme_font {
             return;
         }
@@ -882,20 +903,22 @@ impl SettingsView {
             .control(numeric_control(input, cx))
     }
 
-    /// A look setting: a number field for a length, a select for a choice.
-    fn look_setting(
+    /// A material setting: a number field for a length or a strength, a
+    /// select for a choice.
+    fn material_setting(
         &self,
         item: AppearancePageItem,
         resolved: &AppConfig,
         cx: &Context<Self>,
     ) -> SettingEntry {
-        let (title, description) = item.look_text().unwrap_or_default();
-        let Some(key) = look_key(item) else {
+        let (title, description) = item.material_text().unwrap_or_default();
+        let Some(key) = material_key(item) else {
             return SettingEntry::new(title, description);
         };
         let input = match key {
             ConfigKey::WidgetCornerRadius => Some(&self.widget_corner_radius),
             ConfigKey::WidgetOutlineWidth => Some(&self.widget_outline_width),
+            ConfigKey::WidgetShadowStrength => Some(&self.widget_shadow_strength),
             ConfigKey::WidgetRowInset => Some(&self.widget_row_inset),
             _ => None,
         };
@@ -922,7 +945,7 @@ impl SettingsView {
         let entry =
             SettingEntry::new(title, description).title_actions(key_annotations(key, provenance));
         match self
-            .look_selects
+            .material_selects
             .iter()
             .find(|(select_key, _)| *select_key == key)
         {
@@ -971,7 +994,7 @@ impl SettingsView {
                 return settings_list_disclosure_header(
                     "settings-appearance-advanced",
                     "Advanced",
-                    Some("Fonts, zoom, contrast, and the shape the theme sets: corners, outlines, shadows, rows, selection and glass."),
+                    Some("Fonts, zoom, contrast, and the theme's materials: corners, outlines, shadows, rows and glass."),
                     expanded,
                     cx,
                 )
@@ -1012,12 +1035,10 @@ impl SettingsView {
             ),
             AppearancePageItem::WidgetCornerRadius
             | AppearancePageItem::OutlineWidth
-            | AppearancePageItem::Shadows
+            | AppearancePageItem::ShadowStrength
             | AppearancePageItem::RowInset
-            | AppearancePageItem::Selection
             | AppearancePageItem::Primary
-            | AppearancePageItem::Field
-            | AppearancePageItem::Glass => self.look_setting(item, resolved, cx),
+            | AppearancePageItem::Glass => self.material_setting(item, resolved, cx),
             AppearancePageItem::WindowBackgroundBlur => Self::boolean_setting(
                 ConfigKey::WindowBackgroundBlur,
                 "Window blur",
@@ -1112,7 +1133,7 @@ impl SettingsView {
             .unwrap_or(0);
         let ids = choices
             .iter()
-            .map(|(id, theme)| (id.clone(), theme.look.font.is_some()))
+            .map(|(id, theme)| (id.clone(), theme.materials.font.is_some()))
             .collect::<Vec<_>>();
         let strip = PickerStrip::new("settings-interface-theme", selected)
             .tiles(choices.iter().map(|(id, theme)| {
@@ -1145,10 +1166,10 @@ impl SettingsView {
                         .tooltip("Save a copy of this theme to edit and use it")
                         .on_click(|_, _, cx| {
                             let mut theme = config::themes(cx).active.clone();
-                            config::look_overrides(cx).apply(&mut theme.look);
+                            config::material_overrides(cx).apply(&mut theme.materials);
                             let font = config::ui_font_family(cx);
                             if font.provenance == ConfigProvenance::Override {
-                                theme.look.font = font.value.map(SharedString::from);
+                                theme.materials.font = font.value.map(SharedString::from);
                             }
                             save_and_select_theme(theme, cx);
                         }),
@@ -2313,24 +2334,22 @@ fn search_provider_subscription(
     )
 }
 
-/// The config key a look setting edits.
-fn look_key(item: AppearancePageItem) -> Option<ConfigKey> {
+/// The config key a material setting edits.
+fn material_key(item: AppearancePageItem) -> Option<ConfigKey> {
     Some(match item {
         AppearancePageItem::WidgetCornerRadius => ConfigKey::WidgetCornerRadius,
         AppearancePageItem::OutlineWidth => ConfigKey::WidgetOutlineWidth,
-        AppearancePageItem::Shadows => ConfigKey::WidgetShadows,
+        AppearancePageItem::ShadowStrength => ConfigKey::WidgetShadowStrength,
         AppearancePageItem::RowInset => ConfigKey::WidgetRowInset,
-        AppearancePageItem::Selection => ConfigKey::WidgetSelection,
         AppearancePageItem::Primary => ConfigKey::WidgetPrimary,
-        AppearancePageItem::Field => ConfigKey::WidgetField,
         AppearancePageItem::Glass => ConfigKey::WidgetGlass,
         _ => return None,
     })
 }
 
-/// Writes a look choice. Glass's Theme follows the theme again, so it drops
-/// the key instead of writing it.
-fn look_select_subscription(
+/// Writes a material choice. Glass's Theme follows the theme again, so it
+/// drops the key instead of writing it.
+fn material_select_subscription(
     select: &Entity<SelectState<Vec<SettingsSelectItem>>>,
     key: ConfigKey,
     window: &mut Window,
@@ -2462,6 +2481,7 @@ fn numeric_input_subscription(
                     ConfigKey::ChromeContrast
                         | ConfigKey::WidgetCornerRadius
                         | ConfigKey::WidgetOutlineWidth
+                        | ConfigKey::WidgetShadowStrength
                         | ConfigKey::WidgetRowInset
                 ))
                 && matches!(event, InputEvent::Change)
@@ -2491,11 +2511,9 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
             key,
             ConfigKey::WidgetCornerRadius
                 | ConfigKey::WidgetOutlineWidth
-                | ConfigKey::WidgetShadows
+                | ConfigKey::WidgetShadowStrength
                 | ConfigKey::WidgetRowInset
-                | ConfigKey::WidgetSelection
                 | ConfigKey::WidgetPrimary
-                | ConfigKey::WidgetField
                 | ConfigKey::WidgetGlass
                 | ConfigKey::InterfaceTheme
                 | ConfigKey::PaletteWindowLayout
@@ -2602,6 +2620,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::PaneBorderWidth => config.pane_border_width,
         ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
         ConfigKey::WidgetOutlineWidth => config.widget_outline_width,
+        ConfigKey::WidgetShadowStrength => config.widget_shadow_strength,
         ConfigKey::WidgetRowInset => config.widget_row_inset,
         ConfigKey::ChromeContrast => config.chrome_contrast,
         ConfigKey::WindowCornerRadius => config.window_corner_radius,
@@ -2638,10 +2657,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
-        | ConfigKey::WidgetShadows
-        | ConfigKey::WidgetSelection
         | ConfigKey::WidgetPrimary
-        | ConfigKey::WidgetField
         | ConfigKey::WidgetGlass => {
             unreachable!("only numeric settings use numeric inputs")
         }
@@ -2767,7 +2783,7 @@ fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
         let name = config::themes::next_theme_name(&directory);
         theme.name_after(&name);
         let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
-        set_interface_theme(&name, theme.look.font.is_some())?;
+        set_interface_theme(&name, theme.materials.font.is_some())?;
         Ok(path)
     });
     match saved {

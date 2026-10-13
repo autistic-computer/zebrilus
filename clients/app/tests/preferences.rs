@@ -8,8 +8,9 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
         theme: Some("unknown".into()),
         zoom: f32::NAN,
         contrast: f32::INFINITY,
-        look: zz_ui::interface_theme::LookOverrides {
+        materials: zz_ui::interface_theme::MaterialOverrides {
             radius: Some(-20.0),
+            shadow_strength: Some(-1.0),
             row_inset: Some(40.0),
             ..Default::default()
         },
@@ -24,10 +25,11 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
         (
             preferences.zoom,
             preferences.contrast,
-            preferences.look.radius,
-            preferences.look.row_inset
+            preferences.materials.radius,
+            preferences.materials.shadow_strength,
+            preferences.materials.row_inset
         ),
-        (1.0, 1.0, Some(0.0), Some(12.0))
+        (1.0, 1.0, Some(0.0), Some(0.0), Some(12.0))
     );
     assert_eq!(preferences.terminal_font_family, None);
     assert_eq!(preferences.terminal_font_scale, 1.0);
