@@ -63,7 +63,7 @@ impl PaletteBackend for ConnectionPalette {
                     let focused = snapshot.focused_window_for(session);
                     PaletteTreeSession {
                         id: session.id,
-                        name: session_label(&session.name, session.id),
+                        name: session_label(session).to_string(),
                         active,
                         windows: session
                             .windows

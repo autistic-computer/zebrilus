@@ -60,7 +60,7 @@ deserializer so hostile nesting is rejected before it can exhaust the receiving 
 | `PaneStatus` | `state: PaneStatusState`, `kind: Option<PaneStatusKind>`, `progress: Option<u8>`, `app: String`, `title: String`, `message: String` |
 | `PaneStatusState` | `Idle` \| `Working` \| `Done` \| `Blocked` \| `Error` |
 | `PaneStatusKind` | `Permission` \| `Question` \| `Auth` |
-| `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `branch: String` |
+| `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `repo: String`, `branch: String` |
 | `ShellCommand` | `Running` \| `Finished(u8)` |
 | `PaneMode` | `Clock { .. }` \| `Switch { .. }` \| `Customize { .. }` \| `Panes { .. }` |
 | `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Agent(AgentDescriptor)` \| `Editor(EditorDescriptor)` |
@@ -156,12 +156,13 @@ moves on an event, never on output bytes:
 | `command` | The last OSC 133 mark on a Terminal pane: `Running` after `C`, `Finished(status)` after `D`; `None` without shell integration |
 | `name` | The pane-scoped `@name` user option, cut to `MAX_PANE_NAME_BYTES` (256) |
 | `cwd` | Working directory for display: absolute, the daemon user's home folded to `~` (spelled as `HOME` gives it or as it resolves through symlinks), with the daemon platform's separators (`\` on Windows); empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
+| `repo` | The root of the git repository holding `cwd` (the folder with the `.git` directory or `gitdir:` file, so a linked worktree's own folder), written like `cwd`; empty outside a repository. Clients name a numbered session after it |
 | `branch` | The branch checked out at `cwd`, the ref as written when HEAD names something outside `refs/heads/`, or a 7-character commit id when HEAD is detached; empty outside a repository; cut to `MAX_PANE_BRANCH_BYTES` (256) |
 
 `changed_at` is stamped by a status state or kind change, a shell command start (the `C` mark's
 start time) or finish (the `D` mark's end time), a bell latch going from false to true, and pane
 death. Output, title writes, a status message, title or progress change within the same state and
-kind, cwd, branch, `@name`, browser navigation and pane creation never stamp it, and neither does a
+kind, cwd, repo, branch, `@name`, browser navigation and pane creation never stamp it, and neither does a
 pane's first record when it is `Idle` (an Agent pane opening or restoring).
 
 `unseen` is raised on a status edge into `Done` from anything else, or from `Working` or `Blocked`

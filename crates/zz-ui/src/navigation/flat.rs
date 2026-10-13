@@ -93,6 +93,7 @@ pub struct FlatWindow {
 pub struct FlatSession {
     pub id: SessionId,
     pub label: SharedString,
+    pub index: Option<SharedString>,
     pub rollup: AttentionRollup,
     pub folded: bool,
     pub windows: Vec<FlatWindow>,
@@ -102,7 +103,8 @@ impl FlatSession {
     pub fn new(summary: SessionSummary, age: impl Fn(u64) -> Option<String>) -> Self {
         Self {
             id: summary.session,
-            label: summary.label.into(),
+            label: summary.label.text.into(),
+            index: summary.label.index.map(Into::into),
             rollup: summary.rollup,
             folded: false,
             windows: summary
@@ -875,6 +877,13 @@ pub fn flat_session_header(
                         .text_ellipsis()
                         .child(session.label.clone()),
                 )
+                .children(session.index.clone().map(|index| {
+                    div()
+                        .flex_none()
+                        .font_weight(FontWeight::NORMAL)
+                        .text_color(theme.foreground.faint())
+                        .child(index)
+                }))
                 .children(chevron(session.folded, hovered, SESSION_SIZE, cx))
                 .child(div().flex_1())
                 .children(rollup)

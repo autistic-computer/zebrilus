@@ -339,6 +339,7 @@ struct TreeRow {
     depth: u8,
     icon: IconName,
     label: String,
+    index: Option<String>,
     on_active_path: bool,
     expanded: bool,
     expandable: bool,
@@ -571,6 +572,7 @@ fn tree_rows(
         depth: 0,
         icon: IconName::HardDrive,
         label: "zz daemon".into(),
+        index: None,
         on_active_path: attached.is_some(),
         expanded,
         expandable: true,
@@ -598,11 +600,13 @@ fn tree_rows(
         let active_session = attached == Some(session.id);
         let target = Target::Session(session.id);
         let expanded = !collapsed.contains(&target);
+        let label = session_label(session);
         rows.push(TreeRow {
             target,
             depth: 1,
             icon: IconName::Layers,
-            label: session_label(&session.name, session.id),
+            label: label.text,
+            index: label.index,
             on_active_path: active_session,
             expanded,
             expandable: !session.windows.is_empty(),
@@ -633,6 +637,7 @@ fn tree_rows(
                 depth: 2,
                 icon: IconName::AppWindow,
                 label: window.name.clone(),
+                index: None,
                 on_active_path: active_window,
                 expanded,
                 expandable: !window.panes.is_empty(),
@@ -648,6 +653,7 @@ fn tree_rows(
                 depth: 3,
                 icon: super::pane_icon(&pane.kind),
                 label: pane_label(pane),
+                index: None,
                 on_active_path: active_window && window.active_pane == pane.id,
                 expanded: false,
                 expandable: false,
@@ -809,7 +815,25 @@ fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) ->
         !is_host,
         group.into(),
         marker,
-        div().text_color(color).child(entry.label.clone()),
+        div()
+            .flex()
+            .min_w_0()
+            .items_baseline()
+            .gap_2()
+            .text_color(color)
+            .child(
+                div()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(entry.label.clone()),
+            )
+            .children(entry.index.clone().map(|index| {
+                div()
+                    .flex_none()
+                    .text_color(cx.theme().foreground.faint())
+                    .child(index)
+            })),
         actions,
         cx,
     )

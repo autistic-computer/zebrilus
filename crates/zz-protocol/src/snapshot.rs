@@ -494,6 +494,8 @@ pub struct PaneSummary {
     pub name: String,
     #[serde(deserialize_with = "deserialize_pane_cwd")]
     pub cwd: String,
+    #[serde(deserialize_with = "deserialize_pane_cwd")]
+    pub repo: String,
     #[serde(deserialize_with = "deserialize_pane_branch")]
     pub branch: String,
 }

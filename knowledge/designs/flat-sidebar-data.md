@@ -40,8 +40,8 @@ rule like every other control, so neither becomes a pill until the theme's radiu
   ([program status](/terminal/program-status.md)), native Agent panes (computed by the agent fanout,
   see [Native Agent pane](/concepts/agent-pane.md)), and terminal panes without a 7501 record through
   a mirror of their `@agent_state` option.
-- `PaneSnapshot.summary: PaneSummary` holds `changed_at`, `unseen`, `command`, `name`, `cwd` and
-  `branch`, with its own `TreeOp::PaneSummary` at tag 18.
+- `PaneSnapshot.summary: PaneSummary` holds `changed_at`, `unseen`, `command`, `name`, `cwd`,
+  `repo` and `branch`, with its own `TreeOp::PaneSummary` at tag 18.
 - `Welcome.clock` and `ServerHello.clock` carry the daemon wall clock once per connection.
 
 Field meanings, bounds and the exact stamping rules live in
@@ -129,6 +129,13 @@ nothing while `changed_at` is 0. **Tiles** put the active pane first, then layou
 its pane id and label; the row draws the first with its glyph and a blank tile for each of the next
 two, and the open row offers every pane (`FlatEvent::OpenPane`).
 **Rollups** count one attention per window and keep the newest change; a host merges its sessions.
+
+**Session headers** come from `navigation::session_label`, which every sidebar, the palettes and the
+TUI share. A session the user named keeps its name. A numbered one (tmux's default `0`, `1`, ...)
+is labeled with the place most of its panes are in: the last folder of their `repo`, else of their
+`cwd` (`~` at home), ties going to the active pane. Its number follows, faint, as `zz 0`, so the
+target to type stays visible and two sessions in one repo still differ. The name itself never
+changes, so `-t 0` and `#S` behave as in tmux.
 
 # What the source changed in the first draft
 

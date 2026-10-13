@@ -140,6 +140,7 @@ impl MuxTreeModel {
                         MuxTreeSession {
                             id: session.id,
                             name: session.name.clone(),
+                            label: session_label(session),
                             active,
                             windows,
                         }
@@ -446,6 +447,7 @@ impl MuxTreeHost {
 pub struct MuxTreeSession {
     pub id: SessionId,
     pub name: String,
+    pub label: SessionLabel,
     pub active: bool,
     pub windows: Vec<MuxTreeWindow>,
 }
@@ -454,11 +456,6 @@ impl MuxTreeSession {
     #[must_use]
     pub const fn target(&self) -> TreeTarget {
         TreeTarget::Session(self.id)
-    }
-
-    #[must_use]
-    pub fn label(&self) -> String {
-        session_label(&self.name, self.id)
     }
 
     fn has_pending_bell(&self) -> bool {
@@ -561,9 +558,9 @@ pub fn active_tree_target(
     }
 }
 
-/// A session's label as every navigation surface writes it: its name, or a
-/// stand-in when the daemon has none.
-pub use zz_client::navigation::session_label;
+/// A session's label as every navigation surface writes it: its name, or for
+/// a numbered session, where its panes are.
+pub use zz_client::navigation::{SessionLabel, session_label};
 
 /// Open every ancestor of `node`, so attaching anywhere in the fleet reveals
 /// the row the mux moved to.

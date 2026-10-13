@@ -837,15 +837,22 @@ fn git_repo(dir: &Path, head: &str) {
 
 #[cfg(unix)]
 #[test]
-fn git_branch_reads_head_without_git() {
+fn find_repo_reads_the_root_and_head_without_git() {
     let scratch = tempfile::tempdir().expect("temp dir");
+    let branch = |dir: &Path| find_repo(dir).and_then(|(_, branch)| branch);
     let plain = scratch.path().join("plain");
     git_repo(&plain, "ref: refs/heads/main\n");
-    assert_eq!(git_branch(&plain).as_deref(), Some("main"));
+    assert_eq!(
+        find_repo(&plain),
+        Some((plain.as_path(), Some("main".to_owned())))
+    );
 
     let nested = plain.join("src").join("deep");
     fs::create_dir_all(&nested).expect("nested dir");
-    assert_eq!(git_branch(&nested).as_deref(), Some("main"));
+    assert_eq!(
+        find_repo(&nested),
+        Some((plain.as_path(), Some("main".to_owned())))
+    );
 
     let linked = plain.join(".git").join("worktrees").join("wt");
     fs::create_dir_all(&linked).expect("worktree git dir");
@@ -858,33 +865,30 @@ fn git_branch_reads_head_without_git() {
     )
     .expect("gitdir file");
     assert_eq!(
-        git_branch(&worktree.join("crates")).as_deref(),
-        Some("feature/sidebar")
+        find_repo(&worktree.join("crates")),
+        Some((worktree.as_path(), Some("feature/sidebar".to_owned())))
     );
 
     let detached = scratch.path().join("detached");
     git_repo(&detached, "0123456789abcdef0123456789abcdef01234567\n");
-    assert_eq!(git_branch(&detached).as_deref(), Some("0123456"));
+    assert_eq!(branch(&detached).as_deref(), Some("0123456"));
 
     let remote = scratch.path().join("remote");
     git_repo(&remote, "ref: refs/remotes/origin/main\n");
-    assert_eq!(
-        git_branch(&remote).as_deref(),
-        Some("refs/remotes/origin/main")
-    );
+    assert_eq!(branch(&remote).as_deref(), Some("refs/remotes/origin/main"));
 
     let broken = scratch.path().join("broken");
     fs::create_dir_all(&broken).expect("broken dir");
     fs::write(broken.join(".git"), "not a link\n").expect("broken file");
-    assert_eq!(git_branch(&broken), None);
+    assert_eq!(find_repo(&broken), None);
 
     let reftable = scratch.path().join("reftable");
     git_repo(&reftable, "ref: refs/heads/.invalid\n");
-    assert_eq!(git_branch(&reftable), None);
+    assert_eq!(find_repo(&reftable), Some((reftable.as_path(), None)));
 
     let outside = scratch.path().join("outside");
     fs::create_dir_all(&outside).expect("plain dir");
-    assert_eq!(git_branch(&outside), None);
+    assert_eq!(find_repo(&outside), None);
 }
 
 #[cfg(unix)]
@@ -919,7 +923,7 @@ fn a_symlinked_home_folds_in_both_spellings() {
     assert_eq!(display_path(&real, &homes), "~");
     assert_eq!(
         resolve_location("", &real.join("dev"), &homes),
-        ("~/dev".to_owned(), String::new())
+        ("~/dev".to_owned(), String::new(), String::new())
     );
     assert_eq!(home_forms(real.clone()), [real]);
 }
@@ -933,20 +937,24 @@ fn location_prefers_the_osc7_report_over_the_live_path() {
     let live = scratch.path().join("live");
     fs::create_dir_all(&live).expect("live dir");
     let report = format!("file://host{}", repo.display());
-    let unknown = (String::new(), String::new());
+    let unknown = (String::new(), String::new(), String::new());
 
     let home = &[scratch.path().to_path_buf()];
     assert_eq!(
         resolve_location(&report, &live, home),
-        ("~/repo".to_owned(), "main".to_owned())
+        ("~/repo".to_owned(), "~/repo".to_owned(), "main".to_owned())
     );
     assert_eq!(
         resolve_location(&report, &live, &[]),
-        (repo.display().to_string(), "main".to_owned())
+        (
+            repo.display().to_string(),
+            repo.display().to_string(),
+            "main".to_owned()
+        )
     );
     assert_eq!(
         resolve_location("", &live, home),
-        ("~/live".to_owned(), String::new())
+        ("~/live".to_owned(), String::new(), String::new())
     );
     assert_eq!(
         resolve_location("file://host/missing/zz-location", &live, &[]),
@@ -957,7 +965,7 @@ fn location_prefers_the_osc7_report_over_the_live_path() {
 
     let long = scratch.path().join("long");
     git_repo(&long, &format!("ref: refs/heads/{}\n", "b".repeat(300)));
-    let (_, branch) = resolve_location("", &long, &[]);
+    let (.., branch) = resolve_location("", &long, &[]);
     assert_eq!(branch, "b".repeat(MAX_PANE_BRANCH_BYTES));
 }
 
@@ -973,27 +981,30 @@ fn location_jobs_coalesce_while_in_flight() {
     let (pane, terminal) = empty_terminal_pane(&shared, "located");
     let location = || {
         let summary = summary(&shared.inner.lock(), pane);
-        (summary.cwd, summary.branch)
+        (summary.cwd, summary.repo, summary.branch)
     };
 
     shared.inner.lock().locations.jobs.insert(pane, false);
     shared.synchronize_pane_reported_path(pane, &terminal, &report);
     assert_eq!(shared.inner.lock().locations.jobs.get(&pane), Some(&true));
-    assert_eq!(location(), (String::new(), String::new()));
+    assert_eq!(location(), Default::default());
 
     shared.finish_pane_location(
         pane,
         (report.clone(), PathBuf::new()),
-        ("stale".to_owned(), "old".to_owned()),
+        ("stale".to_owned(), "stale".to_owned(), "old".to_owned()),
     );
-    assert_ne!(location(), ("stale".to_owned(), "old".to_owned()));
+    assert_ne!(
+        location(),
+        ("stale".to_owned(), "stale".to_owned(), "old".to_owned())
+    );
     wait_until("the resubmitted location", || location() == expected);
     assert!(shared.inner.lock().locations.jobs.is_empty());
     assert_eq!(summary(&shared.inner.lock(), pane).changed_at, 0);
 
     fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
     shared.request_pane_location(pane);
-    wait_until("the new branch", || location().1 == "next");
+    wait_until("the new branch", || location().2 == "next");
     assert!(shared.inner.lock().locations.jobs.is_empty());
 }
 
@@ -1070,12 +1081,12 @@ fn agent_panes_locate_their_descriptor_cwd() {
     };
     let location = || {
         let summary = summary(&shared.inner.lock(), agent);
-        (summary.cwd, summary.branch)
+        (summary.cwd, summary.repo, summary.branch)
     };
 
     shared.apply_agent_status(agent, status(PaneStatusState::Working, ""));
     wait_until("the agent location", || location() == expected);
-    assert_eq!(location().1, "agents");
+    assert_eq!(location().2, "agents");
 }
 
 #[cfg(unix)]
@@ -1133,13 +1144,19 @@ fn known_locations_stay_bounded_newest_first() {
     let source = |index: usize| (String::new(), PathBuf::from(format!("/dir/{index}")));
     let mut known = VecDeque::new();
     for index in 0..KNOWN_LOCATIONS + 8 {
-        remember_location(&mut known, source(index), &format!("/dir/{index}"), "main");
+        remember_location(
+            &mut known,
+            source(index),
+            &format!("/dir/{index}"),
+            "",
+            "main",
+        );
     }
     assert_eq!(known.len(), KNOWN_LOCATIONS);
     assert_eq!(known[0].source, source(KNOWN_LOCATIONS + 7));
     assert_eq!(known[KNOWN_LOCATIONS - 1].source, source(8));
 
-    remember_location(&mut known, source(20), "/dir/20", "next");
+    remember_location(&mut known, source(20), "/dir/20", "", "next");
     assert_eq!(known.len(), KNOWN_LOCATIONS);
     assert_eq!(
         (&known[0].source, known[0].branch.as_str()),
@@ -1201,7 +1218,7 @@ fn a_spawn_in_a_known_directory_rides_its_own_publish() {
             .expect("new pane");
         let summary = summary(&inner, pane);
         let published = inner.last_published_mux_generation == inner.engine.state.generation();
-        (pane, (summary.cwd, summary.branch), published)
+        (pane, (summary.cwd, summary.repo, summary.branch), published)
     };
     let generation = || shared.inner.lock().engine.state.generation();
 
@@ -1240,9 +1257,9 @@ fn a_read_renews_every_answer_for_its_directory() {
     let other = (String::new(), PathBuf::from("/other"));
     let gone = (String::new(), PathBuf::from("/gone"));
     let mut known = VecDeque::new();
-    remember_location(&mut known, live.clone(), "/repo", "main");
-    remember_location(&mut known, other.clone(), "/other", "main");
-    remember_location(&mut known, gone.clone(), "", "");
+    remember_location(&mut known, live.clone(), "/repo", "/repo", "main");
+    remember_location(&mut known, other.clone(), "/other", "/other", "main");
+    remember_location(&mut known, gone.clone(), "", "", "");
     let old = Instant::now()
         .checked_sub(Duration::from_mins(1))
         .expect("monotonic clock");
@@ -1250,8 +1267,14 @@ fn a_read_renews_every_answer_for_its_directory() {
         known.read_at = old;
     }
 
-    remember_location(&mut known, report.clone(), "/repo", "next");
-    remember_location(&mut known, (String::new(), PathBuf::from("/void")), "", "");
+    remember_location(&mut known, report.clone(), "/repo", "/repo", "next");
+    remember_location(
+        &mut known,
+        (String::new(), PathBuf::from("/void")),
+        "",
+        "",
+        "",
+    );
     let entry = |source: &LocationSource| {
         let known = known
             .iter()
@@ -1382,6 +1405,7 @@ fn a_move_into_a_known_directory_publishes_the_tree() {
             &mut shared.inner.lock().locations.known,
             source,
             cwd,
+            "",
             branch,
         );
     }

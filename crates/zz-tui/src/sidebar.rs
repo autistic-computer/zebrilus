@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use zz_client::navigation::session_label;
 use zz_daemon_client::{Endpoint, HostEntry};
 use zz_protocol::{
     MAX_COMMAND_PROMPT_BYTES, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, SessionId,
@@ -230,7 +231,7 @@ pub(crate) fn flatten(
                 ' '
             };
             rows.push(Row {
-                text: format!("  {marker} {}", session.name),
+                text: format!("  {marker} {}", session_label(session)),
                 target: Some(Target::Session(session.id)),
             });
         }

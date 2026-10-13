@@ -118,6 +118,7 @@ impl PaneFixture for PaneSnapshot {
 
     fn at(mut self, cwd: &str, branch: &str) -> Self {
         cwd.clone_into(&mut self.summary.cwd);
+        cwd.clone_into(&mut self.summary.repo);
         branch.clone_into(&mut self.summary.branch);
         self
     }
@@ -312,7 +313,7 @@ fn macbook() -> FlatHost {
             ),
             session(
                 3,
-                "site",
+                "1",
                 vec![
                     window(
                         7,
