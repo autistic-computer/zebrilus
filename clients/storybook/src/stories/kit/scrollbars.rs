@@ -10,6 +10,7 @@ use zz_ui::{
 };
 
 use super::support::{Probe, hover, when_visible};
+use crate::story::Framed as _;
 use crate::story::{Section, Story, states};
 
 pub const STORY: Story = Story {
@@ -76,8 +77,7 @@ fn area(
         .w_full()
         .h(px(180.0))
         .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
+        .framed(cx)
         .overflow_hidden()
         .child(scroll.child(lines(cx)))
         .child(

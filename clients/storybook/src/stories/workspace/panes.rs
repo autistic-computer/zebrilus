@@ -20,6 +20,7 @@ use zz_ui::{
 use super::fixtures::{
     BUILD, LOGS, SERVER, TerminalPane, gap, pane_background, placeholder_pane, radii, terminal_body,
 };
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
@@ -152,8 +153,7 @@ fn header_box(
         .id(id)
         .when_some(width, |this, width| this.w(px(width)))
         .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
+        .framed(cx)
         .bg(pane_background(cx))
         .overflow_hidden()
         .child(header)

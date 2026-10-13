@@ -7,8 +7,8 @@ use zz_ui::{
     button::{Button, ButtonVariants as _},
     chooser::{
         CHOOSER_ROW_HEIGHT, ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind,
-        ChooserRowTheme, ChooserSearch, buffer_chooser_row, chooser_has_key_gutter,
-        chooser_subtitle, tree_chooser_row,
+        ChooserSearch, buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle,
+        tree_chooser_row,
     },
     v_flex,
 };
@@ -231,7 +231,6 @@ fn close(id: &'static str) -> Button {
 }
 
 fn tree_rows(id: &'static str, rows: &[TreeRow], selected: usize, cx: &App) -> impl IntoElement {
-    let theme = ChooserRowTheme::from_theme(cx);
     let font = cx.theme().mono_font_family.clone();
     let gutter = chooser_has_key_gutter(rows.iter().map(|row| row.key));
     v_flex()
@@ -251,7 +250,6 @@ fn tree_rows(id: &'static str, rows: &[TreeRow], selected: usize, cx: &App) -> i
                 row.active,
                 row.tagged,
                 index == selected,
-                theme,
                 font.clone(),
             )
         }))
@@ -468,7 +466,6 @@ const BUFFERS: &[(&str, &str, &str, &str, &str, bool)] = &[
 
 fn buffers(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let theme = ChooserRowTheme::from_theme(cx);
     let font = cx.theme().mono_font_family.clone();
     let gutter = chooser_has_key_gutter(BUFFERS.iter().map(|buffer| buffer.0));
     let rows = v_flex().w_full().children(BUFFERS.iter().enumerate().map(
@@ -484,7 +481,6 @@ fn buffers(_: &mut Window, cx: &mut App) -> AnyElement {
                 *age,
                 *tagged,
                 index == 1,
-                theme,
                 font.clone(),
             )
         },

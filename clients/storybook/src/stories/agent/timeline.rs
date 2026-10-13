@@ -13,6 +13,7 @@ use zz_ui::{
     },
 };
 
+use crate::story::Framed as _;
 use crate::story::states;
 
 const BOTTOM_PADDING: f32 = 4.0;
@@ -27,8 +28,7 @@ pub fn pane_frame(cx: &App) -> Div {
         .min_w_0()
         .overflow_hidden()
         .rounded(theme.radius)
-        .border_1()
-        .border_color(theme.border())
+        .framed(cx)
         .bg(theme.pane_color(theme.background))
 }
 

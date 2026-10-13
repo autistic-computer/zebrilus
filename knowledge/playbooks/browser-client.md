@@ -9,7 +9,7 @@ tags:
 - client
 - websocket
 - gpui
-timestamp: 2026-10-12T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Overview
@@ -113,7 +113,9 @@ the desktop presentation. Reclaimed drafts and PNG, JPEG, and WebP attachments a
 The working-directory picker lists known Agent directories and accepts an absolute path on the
 daemon host; recursive filesystem discovery remains desktop-only. Appearance preferences for the
 browser live in local storage: system/light/dark mode, the interface theme (a built-in or one saved
-in the browser by Duplicate or Import), zoom, corner radius, animations, and shadow strength.
+in the browser by Duplicate or Import), zoom, animations, and the look overrides from Interface ›
+Advanced › Look (corner radius, outline, shadows, row inset, selection, primary buttons, fields and
+glass), which picking a theme clears.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
 color pickers, theme previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and

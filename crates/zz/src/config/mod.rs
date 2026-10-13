@@ -379,7 +379,7 @@ fn load_themes(config_path: &Path, parsed: &mut ParsedConfig, previous: &Themes)
     });
     parsed
         .config
-        .apply_look_defaults(active.look.radius, active.look.shadow);
+        .apply_look_defaults(&look_defaults(&active.look));
     Themes {
         active,
         selected,
@@ -490,17 +490,61 @@ pub(crate) fn pane_border_width(cx: &App) -> Pixels {
     ))
 }
 
-/// The corner every widget turns. `zz::theme` pushes it onto the zz-ui theme.
-pub(crate) fn widget_corner_radius(cx: &App) -> Pixels {
-    px(resolved_config(cx).widget_corner_radius.value)
+/// The look values `zz/config` sets over the active theme: each look key
+/// the file sets, and nothing for the keys it leaves to the theme.
+pub(crate) fn look_overrides(cx: &App) -> interface_theme::LookOverrides {
+    look_overrides_from(&resolved_config(cx))
+}
+
+fn look_overrides_from(config: &AppConfig) -> interface_theme::LookOverrides {
+    fn set<T: Copy>(value: ConfigValue<T>) -> Option<T> {
+        (value.provenance == ConfigProvenance::Override).then_some(value.value)
+    }
+    fn choice<T: serde::de::DeserializeOwned>(value: ConfigValue<&'static str>) -> Option<T> {
+        set(value).and_then(interface_theme::parse_choice)
+    }
+    interface_theme::LookOverrides {
+        radius: set(config.widget_corner_radius),
+        outline: set(config.widget_outline_width),
+        shadows: choice(config.widget_shadows),
+        row_inset: set(config.widget_row_inset),
+        selection: choice(config.widget_selection),
+        primary: choice(config.widget_primary),
+        field: choice(config.widget_field),
+        glass: set(config.widget_glass)
+            .filter(|glass| *glass != "theme")
+            .map(str::to_owned),
+    }
+}
+
+/// `look` spelled as the look keys spell it, to show in every key nothing
+/// overrides.
+fn look_defaults(look: &interface_theme::Look) -> zz_config::LookDefaults {
+    use zz_client::appearance::{
+        FIELD_CHOICES, PRIMARY_CHOICES, SELECTION_CHOICES, SHADOWS_CHOICES,
+    };
+    fn spelled<T: serde::Serialize>(choices: &[&'static str], value: T) -> &'static str {
+        let name = interface_theme::choice_name(value).unwrap_or_default();
+        choices
+            .iter()
+            .copied()
+            .find(|choice| *choice == name)
+            .unwrap_or(choices[0])
+    }
+    zz_config::LookDefaults {
+        radius: look.radius,
+        outline_width: look.outline,
+        shadows: spelled(&SHADOWS_CHOICES, look.shadows),
+        row_inset: look.row_inset,
+        selection: spelled(&SELECTION_CHOICES, look.selection),
+        primary: spelled(&PRIMARY_CHOICES, look.primary),
+        field: spelled(&FIELD_CHOICES, look.field),
+        glass: zz_config::DEFAULT_WIDGET_GLASS,
+    }
 }
 
 pub(crate) fn chrome_contrast(cx: &App) -> f32 {
     resolved_config(cx).chrome_contrast.value
-}
-
-pub(crate) fn shadow_strength(cx: &App) -> f32 {
-    resolved_config(cx).shadow_strength.value
 }
 
 /// Editor pane type size. The family is not a knob: the editor inherits the
@@ -937,7 +981,7 @@ mod tests {
         themes::save_theme(
             &themes_directory,
             "square",
-            r##"{"name": "Square", "look": {"radius": 3, "shadow": 0.25}, "dark": {"accent": "#ff0000"}}"##,
+            r##"{"name": "Square", "look": {"radius": 3, "shadows": "none"}, "dark": {"accent": "#ff0000"}}"##,
         )
         .expect("save theme");
         themes::save_theme(&themes_directory, "broken", "[1, 2]").expect("save theme");
@@ -956,7 +1000,7 @@ mod tests {
         assert_eq!(loaded.active.name, "Square");
         assert_f32_eq(loaded.active.look.radius, 3.0);
         assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
-        assert_f32_eq(parsed.config.shadow_strength.value, 0.25);
+        assert_eq!(parsed.config.widget_shadows.value, "none");
 
         let mut parsed = parse_config("interface-theme = square\nwidget-corner-radius = 9\n");
         load_themes(&path, &mut parsed, &Themes::default());
@@ -998,7 +1042,7 @@ mod tests {
         themes::save_theme(
             &themes_directory,
             "neon",
-            r#"{"name": "Neon", "look": {"corner_smoothing": 2}}"#,
+            r#"{"name": "Neon", "look": {"row_inset": 2}}"#,
         )
         .expect("break theme");
         let mut parsed = parse_config("interface-theme = neon\n");
@@ -1009,7 +1053,7 @@ mod tests {
         assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
         let error = kept.error.expect("the broken file is reported");
         assert!(error.contains("neon.json does not load"), "{error}");
-        assert!(error.contains("did you mean `corner-smoothing`"), "{error}");
+        assert!(error.contains("did you mean `row-inset`"), "{error}");
         assert!(error.ends_with("Showing Neon until it does."), "{error}");
 
         let mut parsed = parse_config("interface-theme = macos\n");
@@ -1045,16 +1089,27 @@ mod tests {
             ConfigValue::from_default(loaded.active.look.radius)
         );
         assert_eq!(
-            parsed.config.shadow_strength,
-            ConfigValue::from_default(loaded.active.look.shadow)
+            parsed.config.widget_shadows,
+            ConfigValue::from_default("surfaces")
         );
     }
 
     #[test]
     fn config_defaults_match_the_default_theme() {
         let look = &interface_theme::default_theme().look;
-        assert_f32_eq(zz_config::DEFAULT_WIDGET_CORNER_RADIUS, look.radius);
-        assert_f32_eq(zz_config::DEFAULT_SHADOW_STRENGTH, look.shadow);
+        assert_eq!(
+            look_defaults(look),
+            zz_config::LookDefaults {
+                radius: zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
+                outline_width: zz_config::DEFAULT_WIDGET_OUTLINE_WIDTH,
+                shadows: zz_config::DEFAULT_WIDGET_SHADOWS,
+                row_inset: zz_config::DEFAULT_WIDGET_ROW_INSET,
+                selection: zz_config::DEFAULT_WIDGET_SELECTION,
+                primary: zz_config::DEFAULT_WIDGET_PRIMARY,
+                field: zz_config::DEFAULT_WIDGET_FIELD,
+                glass: zz_config::DEFAULT_WIDGET_GLASS,
+            }
+        );
     }
 
     fn assert_f32_eq(actual: f32, expected: f32) {
@@ -2402,50 +2457,43 @@ mod tests {
         });
     }
 
-    #[test]
-    fn shadow_strength_defaults_to_full_and_validates_finite_factors() {
-        let default = parse_config("").config.shadow_strength;
-        assert_f32_eq(default.value, 1.0);
-        assert_eq!(default.provenance, ConfigProvenance::Default);
-        for (source, expected) in [("0", 0.0), ("0.35", 0.35), ("1", 1.0)] {
-            let parsed = parse_config(&format!("shadow-strength = {source}\n"));
-            assert!(parsed.diagnostics.is_empty());
-            assert_f32_eq(parsed.config.shadow_strength.value, expected);
-            assert_eq!(
-                parsed.config.shadow_strength.provenance,
-                ConfigProvenance::Override
-            );
-        }
-        for value in ["-0.01", "1.01", "NaN", "inf", "nope"] {
-            let parsed = parse_config(&format!("shadow-strength = {value}\n"));
-            assert_eq!(parsed.diagnostics.len(), 1, "{value}");
-            assert_f32_eq(parsed.config.shadow_strength.value, 1.0);
-        }
-    }
-
     #[zz_gpui::test]
-    fn shadow_strength_writes_reload_the_theme_and_reset_to_full(cx: &mut zz_gpui::TestAppContext) {
+    fn look_keys_redraw_the_theme_and_reset_to_it(cx: &mut zz_gpui::TestAppContext) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
 
-        for (value, expected, provenance) in [
-            (Some("0.5"), 0.5, ConfigProvenance::Override),
-            (Some("0"), 0.0, ConfigProvenance::Override),
-            (None, 1.0, ConfigProvenance::Default),
+        for (shadows, outline, glass, expected) in [
+            (
+                Some("none"),
+                Some("0"),
+                Some("off"),
+                (zz_ui::Shadows::None, 0.0, false),
+            ),
+            (
+                Some("surfaces"),
+                Some("1"),
+                Some("theme"),
+                (zz_ui::Shadows::Surfaces, 1.0, true),
+            ),
+            (None, None, None, (zz_ui::Shadows::All, 0.5, true)),
         ] {
-            write_config_edit_at(&path, ConfigKey::ShadowStrength.as_str(), value)
-                .expect("write shadow strength");
-            assert!(
-                !write_config_edit_at(&path, ConfigKey::ShadowStrength.as_str(), value)
-                    .expect("unchanged shadow strength is not rewritten")
-            );
+            for (key, value) in [
+                (ConfigKey::WidgetShadows, shadows),
+                (ConfigKey::WidgetOutlineWidth, outline),
+                (ConfigKey::WidgetGlass, glass),
+            ] {
+                write_config_edit_at(&path, key.as_str(), value).expect("write look key");
+            }
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                assert_f32_eq(shadow_strength(cx), expected);
-                assert_f32_eq(zz_ui::Theme::global(cx).shadow_strength, expected);
-                assert_eq!(resolved_config(cx).shadow_strength.provenance, provenance);
+                let theme = zz_ui::Theme::global(cx);
+                assert_eq!(theme.shadows, expected.0);
+                assert_eq!(theme.outline, px(expected.1));
+                assert_eq!(theme.glass.is_some(), expected.2);
+                let provenance = resolved_config(cx).widget_shadows.provenance;
+                assert_eq!(provenance == ConfigProvenance::Override, shadows.is_some());
             });
         }
     }
@@ -2506,8 +2554,8 @@ mod tests {
         }
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
-        write_config_edit_at(&path, ConfigKey::ShadowStrength.as_str(), Some("0.4"))
-            .expect("write shadow strength");
+        write_config_edit_at(&path, ConfigKey::WidgetShadows.as_str(), Some("surfaces"))
+            .expect("write shadows");
         cx.update(zz_ui::init);
         let shadows = cx.update(|cx| {
             install_config(Some(&path), Some(load_config(&path)), cx);
@@ -3180,8 +3228,14 @@ mod tests {
             "pane-margin",
             "pane-border-width",
             "widget-corner-radius",
+            "widget-outline-width",
+            "widget-shadows",
+            "widget-row-inset",
+            "widget-selection",
+            "widget-primary",
+            "widget-field",
+            "widget-glass",
             "chrome-contrast",
-            "shadow-strength",
             "editor-font-size",
             "editor-line-numbers",
             "editor-relative-line-numbers",
@@ -3202,6 +3256,7 @@ mod tests {
             .into_iter()
             .chain(RETIRED_PANE_KEYS)
             .chain(RETIRED_STATUS_KEYS)
+            .chain(zz_config::RETIRED_LOOK_KEYS)
         {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }

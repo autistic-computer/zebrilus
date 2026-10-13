@@ -10,6 +10,7 @@ use zz_ui::{
 
 use super::support::after_first_frame;
 use crate::story::{Section, Story, states};
+use zz_ui::StyledExt as _;
 
 pub const STORY: Story = Story {
     id: "inputs",
@@ -130,8 +131,7 @@ impl Render for FieldStates {
                 "appearance(false)",
                 div()
                     .px_2()
-                    .border_b_1()
-                    .border_color(cx.theme().border())
+                    .rule_bottom(cx)
                     .child(Input::new(&self.bare).appearance(false)),
             )
             .state(

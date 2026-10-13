@@ -12,7 +12,7 @@ use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
     kbd::Kbd,
 };
@@ -23,6 +23,7 @@ const DEFAULT_PREFIX: &str = "C-b";
 const KEY_COLUMN_WIDTH: f32 = 92.0;
 const KEY_LABEL_GAP: f32 = 10.0;
 const PANEL_WIDTH: f32 = 340.0;
+const HINT_ROW_HEIGHT: f32 = 32.0;
 
 struct Hint {
     prefixed: bool,
@@ -321,10 +322,10 @@ impl Render for NewSessionView {
                             cx,
                         )
                         .id("new-session-activate")
-                        .h(px(32.0))
+                        .h(px(HINT_ROW_HEIGHT))
                         .px(px(12.0))
                         .cursor_pointer()
-                        .rounded(cx.theme().radius)
+                        .menu_item_corners(px(HINT_ROW_HEIGHT), cx)
                         .hover(|style| {
                             style.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover)
                         })
@@ -345,10 +346,10 @@ impl Render for NewSessionView {
                             cx,
                         )
                         .id("new-session-settings")
-                        .h(px(32.0))
+                        .h(px(HINT_ROW_HEIGHT))
                         .px(px(12.0))
                         .cursor_pointer()
-                        .rounded(cx.theme().radius)
+                        .menu_item_corners(px(HINT_ROW_HEIGHT), cx)
                         .hover(|style| {
                             style.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover)
                         })

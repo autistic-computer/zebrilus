@@ -636,7 +636,7 @@ impl PathPickerView {
             click.update(cx, |picker, cx| picker.insert(index, false, cx));
             cx.stop_propagation();
         })
-        .map(|row| div().h(px(command_palette_row_height(cx))).child(row))
+        .map(|row| div().h(px(command_palette_row_height())).child(row))
     }
 }
 
@@ -665,7 +665,7 @@ impl Render for PathPickerView {
                     .collect::<Vec<_>>()
             }),
         )
-        .h(px(command_palette_row_height(cx) * visible))
+        .h(px(command_palette_row_height() * visible))
         .track_scroll(&self.scroll_handle);
         let input = command_palette_input(
             &self.input,

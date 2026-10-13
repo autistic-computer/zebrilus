@@ -16,7 +16,7 @@ use crate::{
 };
 
 use super::{
-    WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, workspace_row_highlight,
+    WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, status_dot, workspace_row_highlight,
     workspace_status_window, workspace_tree_action_button,
 };
 
@@ -60,9 +60,7 @@ fn status_menu_button(id: impl Into<ElementId>, cx: &App) -> Button {
         .h(WORKSPACE_STATUS_PILL_HEIGHT)
         .bg(workspace_row_highlight(cx))
         .hover_bg(workspace_row_highlight(cx))
-        .when(cx.theme().control_shadows(), |button| {
-            button.border(px(0.5)).control_highlight(cx)
-        })
+        .control_surface(cx)
 }
 
 pub fn status_window(
@@ -241,7 +239,6 @@ pub fn status_agents(
     let color = match status {
         Some(AgentAttentionStatus::NeedsInput) => cx.theme().warning,
         Some(AgentAttentionStatus::Failed) => cx.theme().danger,
-        Some(AgentAttentionStatus::Working) => cx.theme().success,
         _ => cx.theme().foreground.muted(),
     };
     status_menu_button(id, cx)
@@ -252,7 +249,7 @@ pub fn status_agents(
                 .flex()
                 .items_center()
                 .gap(px(6.0))
-                .child(div().flex_none().size(px(5.0)).rounded_full().bg(color))
+                .child(status_dot(color))
                 .child(label),
         )
         .tooltip("Agent activity")

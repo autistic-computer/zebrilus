@@ -1,9 +1,12 @@
 use zz_gpui::{
-    App, Entity, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, RenderOnce,
-    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,
+    App, Corners, Entity, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
+    RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, StyledExt as _};
+use crate::{
+    ActiveTheme as _, PaintState, StyledExt as _, Tone,
+    input::{field_chrome, field_paint},
+};
 
 use super::{
     CodeEditorState,
@@ -74,11 +77,19 @@ impl Styled for CodeEditor {
 
 impl RenderOnce for CodeEditor {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let framed = self.bordered || self.focus_bordered;
+        let paint = field_paint(Tone::Neutral, None, None, cx);
+        let edge = paint.border_width.max(px(1.0));
+        let radius = cx.theme().radius;
+        let inner = Corners::all(cx.theme().inner_radius(edge));
         self.state.update(cx, |state, cx| {
             state.disabled = self.disabled;
             if state.background_opacity != self.background_opacity {
                 state.background_opacity = self.background_opacity;
                 cx.notify();
+            }
+            if framed {
+                state.set_corner_radii(inner, cx);
             }
         });
         let focus_handle = self.state.read(cx).focus_handle_ref().clone();
@@ -88,10 +99,12 @@ impl RenderOnce for CodeEditor {
         } else {
             CONTEXT
         };
-        let border = if focused && self.focus_bordered {
-            cx.theme().foreground.outline()
+        let paint_state = if self.disabled {
+            PaintState::Disabled
+        } else if focused {
+            PaintState::Focused
         } else {
-            cx.theme().border()
+            PaintState::Rest
         };
 
         div()
@@ -105,8 +118,8 @@ impl RenderOnce for CodeEditor {
             .key_context(key_context)
             .track_focus(&focus_handle)
             .tab_index(self.tab_index)
-            .when(self.bordered || self.focus_bordered, |this| {
-                this.border_1().border_color(border)
+            .when(framed, |this| {
+                field_chrome(this, paint, paint_state, true, self.focus_bordered).rounded(radius)
             })
             .when(!self.disabled, |this| {
                 this.on_action(window.listener_for(&self.state, CodeEditorState::backspace))

@@ -9,7 +9,6 @@ use zz_gpui::{
 };
 
 use super::dialog::{CONTENT_PADDING, DEFAULT_WIDTH, DESCRIPTION_TEXT_SIZE, TITLE_TEXT_SIZE};
-use crate::Colorize as _;
 use crate::{
     ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _,
     button::{Button, ButtonVariants as _},
@@ -165,7 +164,7 @@ impl Notification {
         self.closing = true;
         cx.notify();
 
-        let animation = cx.theme().duration(DISMISS_ANIMATION);
+        let animation = DISMISS_ANIMATION;
         cx.spawn_in(window, async move |view, cx| {
             cx.background_executor().timer(animation).await;
             let _ = view.update_in(cx, |view, _, cx| {
@@ -204,15 +203,7 @@ impl Render for Notification {
             .w(self.width)
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
-            .surface_outline(cx.theme().border(), cx)
-            .surface_fill(
-                cx.theme().surface(crate::Elevation::Panel).fill.opaque(),
-                cx,
-            )
-            .rounded(cx.theme().radius)
-            .when(cx.theme().shadow, |this| {
-                this.shadow(crate::lifted_shadow(cx))
-            })
+            .lifted_style(cx)
             .p(CONTENT_PADDING)
             .gap_2()
             .child(
@@ -280,8 +271,7 @@ impl Render for Notification {
             }))
             .with_animation(
                 ElementId::NamedInteger("slide".into(), u64::from(closing)),
-                Animation::new(cx.theme().duration(SLIDE_ANIMATION))
-                    .with_easing(cubic_ease(0., 1.)),
+                Animation::new(SLIDE_ANIMATION).with_easing(cubic_ease(0., 1.)),
                 move |this, delta| slide(this, placement, closing, delta),
             )
     }

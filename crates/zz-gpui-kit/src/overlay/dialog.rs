@@ -5,7 +5,7 @@ use std::{rc::Rc, time::Duration};
 use crate::foundation::{SURFACE_ENTER_DURATION, surface_enter};
 use crate::window_paddings;
 use zz_gpui::{
-    Animation, AnimationExt as _, AnyElement, App, BoxShadow, ClickEvent, Div, FocusHandle,
+    Animation, AnimationExt as _, AnyElement, App, ClickEvent, Div, FocusHandle,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role,
     SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
     WindowControlArea, anchored, div, ease_out_quint, point, prelude::FluentBuilder as _, px,
@@ -353,8 +353,7 @@ impl RenderOnce for Dialog {
         let top_room = (view_size.height / 10. - EDGE_MARGIN).max(px(0.));
         let max_height = (view_size.height - EDGE_MARGIN * 2. - layer_offset).max(px(0.));
 
-        let animation =
-            Animation::new(cx.theme().duration(ANIMATION_DURATION)).with_easing(ease_out_quint());
+        let animation = Animation::new(ANIMATION_DURATION).with_easing(ease_out_quint());
         let scrim = cx.theme().scrim;
 
         let body = dialog_surface(cx)
@@ -450,7 +449,7 @@ impl RenderOnce for Dialog {
                         on_close(&ClickEvent::default(), window, cx);
                     })
             }));
-        let body = surface_enter(body, "dialog-open", px(0.), cx);
+        let body = surface_enter(body, "dialog-open", px(0.));
 
         anchored()
             .position(point(paddings.left, paddings.top))
@@ -498,33 +497,11 @@ impl RenderOnce for Dialog {
 /// A dialog's floating surface: its outline, fill, corners, vertical padding
 /// and shadow. Content sits in [`dialog_gutter`]s inside it.
 pub fn dialog_surface(cx: &App) -> Div {
-    let shadow_color = cx.theme().shadow_color;
     v_flex()
-        .surface_outline(cx.theme().border(), cx)
-        .surface_fill(cx.theme().background.opaque(), cx)
-        .rounded(cx.theme().radius)
+        .popover_style(cx)
         .pt(CONTENT_PADDING)
         .pb(CONTENT_PADDING)
         .gap(CONTENT_PADDING)
-        .when(cx.theme().shadow, |this| {
-            let elevation = cx.theme().elevation;
-            this.shadow(vec![
-                BoxShadow {
-                    color: shadow_color,
-                    offset: point(px(0.), px(20. * elevation)),
-                    blur_radius: px(25. * elevation),
-                    spread_radius: px(-5. * elevation),
-                    inset: false,
-                },
-                BoxShadow {
-                    color: shadow_color,
-                    offset: point(px(0.), px(8. * elevation)),
-                    blur_radius: px(10. * elevation),
-                    spread_radius: px(-6. * elevation),
-                    inset: false,
-                },
-            ])
-        })
 }
 
 /// The horizontal inset of a dialog's title, body and footer.

@@ -18,24 +18,7 @@ const GLASS_KNOBS = [
     "glass-edge-width",
     "glass-noise",
 ];
-const LOOK_KNOBS = [
-    "radius",
-    "smoothing",
-    "outline",
-    "outline-width",
-    "divider",
-    "shadow",
-    "control-shadow",
-    "elevation",
-    "density",
-    "row-inset",
-    "control-fill",
-    "selection",
-    "primary",
-    "field",
-    "font",
-    "animation-speed",
-];
+const LOOK_KNOBS = ["radius", "outline", "row-inset", "shadows", "selection", "primary", "field", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],
@@ -48,18 +31,7 @@ const COLORS = [
 ];
 const MODES = ["light", "dark"];
 const COLOR_KNOBS = MODES.flatMap((mode) => COLORS.map(([name]) => `${mode}-${name}`));
-const SHUFFLED = [
-    "radius",
-    "smoothing",
-    "outline",
-    "outline-width",
-    "divider",
-    "shadow",
-    "elevation",
-    "density",
-    "row-inset",
-    "control-fill",
-];
+const SHUFFLED = ["radius", "outline", "row-inset"];
 const KNOBS = [
     "theme",
     "contrast",
@@ -289,6 +261,7 @@ function paintSliders() {
 
 function applyKnobs() {
     form.querySelector("#glass-knobs").hidden = glassMaterial() === null;
+    form.querySelector("#outline-note").hidden = glassMaterial() === null;
     const mode = shownMode();
     for (const each of MODES) form.querySelector(`#colors-${each}`).hidden = each !== mode;
     for (const name of KNOBS) {
@@ -398,6 +371,7 @@ function shuffle() {
         setKnobValue(name, String(Number(value.toFixed(4))));
     };
     for (const name of SHUFFLED) pick(name);
+    setKnobValue("shadows", ["none", "surfaces", "all"][Math.floor(Math.random() * 3)]);
     setKnobValue("selection", Math.random() < 0.5 ? "accent" : "wash");
     setKnobValue("primary", Math.random() < 0.5 ? "foreground" : "accent");
     setKnobValue("field", Math.random() < 0.5 ? "soft" : "outline");

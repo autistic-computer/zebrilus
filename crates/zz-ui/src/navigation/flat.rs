@@ -65,7 +65,7 @@ const CHEVRON_SIZE: f32 = 10.0;
 const NOTE_SIZE: f32 = 11.0;
 const NOTE_LINE: f32 = 15.0;
 const HEADER_BUTTON_HEIGHT: f32 = 20.0;
-const ROLLUP_DOT: f32 = 7.0;
+const ROLLUP_DOT: f32 = super::STATUS_DOT_SIZE;
 const ROLLUP_SPINNER: f32 = 10.0;
 const ROLLUP_GAP: f32 = 8.0;
 const ROLLUP_ITEM_GAP: f32 = 4.0;
@@ -306,8 +306,8 @@ fn header_inset(cx: &App) -> Pixels {
     cx.theme().row_inset + px(ROW_PADDING)
 }
 
-fn row_height(cx: &App) -> Pixels {
-    cx.theme().dense(px(ROW_HEIGHT))
+fn row_height() -> Pixels {
+    px(ROW_HEIGHT)
 }
 
 fn tile_stack(
@@ -341,7 +341,7 @@ fn tile_stack(
             tiles,
             size,
             ink.ground,
-            stack_radius(px(size.tile()), row_height(cx), cx),
+            stack_radius(px(size.tile()), row_height(), cx),
         )
         .dimmed(if ink.dimmed { DIMMED } else { 0.0 }),
     )
@@ -516,7 +516,7 @@ pub fn flat_window_row(
         .flex_none()
         .items_center()
         .gap(px(TILE_GAP))
-        .h(row_height(cx))
+        .h(row_height())
         .px(theme.row_inset + px(ROW_PADDING))
         .text_color(ink.dim(ink.text))
         .cursor_pointer()
@@ -620,15 +620,11 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
                 .map(|(value, color)| {
                     h_flex()
                         .gap(px(ROLLUP_ITEM_GAP))
-                        .child(
-                            div()
-                                .flex_none()
-                                .relative()
-                                .top(cap_center_drop(px(NOTE_SIZE), px(ROLLUP_DOT), cx))
-                                .size(px(ROLLUP_DOT))
-                                .rounded_full()
-                                .bg(color),
-                        )
+                        .child(super::status_dot(color).relative().top(cap_center_drop(
+                            px(NOTE_SIZE),
+                            px(ROLLUP_DOT),
+                            cx,
+                        )))
                         .child(count(value))
                 }),
         )
@@ -760,7 +756,7 @@ pub fn flat_host_header(
             this.aria_description(description)
         })
         .flex_none()
-        .h(theme.dense(px(HOST_HEIGHT)))
+        .h(px(HOST_HEIGHT))
         .px(header_inset(cx))
         .gap(px(HOST_SPACING))
         .text_color(theme.foreground)

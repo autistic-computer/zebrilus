@@ -164,7 +164,7 @@ impl Render for MenuView {
             menu.pointer(MenuPointerKind::Wheel, WHEEL_BUTTONS, event.position, cx);
             cx.stop_propagation();
         }));
-        menu_enter(surface, cx)
+        menu_enter(surface)
     }
 }
 

@@ -65,7 +65,7 @@ fn key(id: &str, label: &str, group: &str) -> WhichKeyRow {
     binding(id, &[id], id, label, group, false, false)
 }
 
-pub(super) fn prefix_rows() -> Vec<WhichKeyRow> {
+pub(crate) fn prefix_rows() -> Vec<WhichKeyRow> {
     const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
     vec![
         key("c", "New window", "Windows"),
@@ -156,7 +156,7 @@ pub(super) fn prefix_rows() -> Vec<WhichKeyRow> {
     ]
 }
 
-fn prefix_header() -> WhichKeyHeader {
+pub(crate) fn prefix_header() -> WhichKeyHeader {
     WhichKeyHeader {
         table: "prefix".into(),
         prefix: Keystroke::parse("ctrl-b").ok(),

@@ -511,6 +511,12 @@ form fieldset[hidden] {
     background: var(--zz-foreground);
 }
 
+.knob-note {
+    margin: -2px 4px 8px;
+    font-size: 11px;
+    color: var(--zz-muted);
+}
+
 .hint {
     margin: 24px 4px 0;
     font-size: 12px;

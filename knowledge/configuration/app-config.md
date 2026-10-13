@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-12T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Overview
@@ -119,9 +119,15 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
 | `pane-corner-radius` | `13.5` | `0..=32` | All four corners of every pane, on every platform; applies only with `pane-gaps` |
 | `pane-border-width` | `0.5` | `0..=8` | Width of the glint, the bright line along a gapped pane's glass edge; `0` turns it off. Settings calls it Pane edge width |
-| `interface-theme` | `default` | `default`, `macos`, `linear`, or a saved theme's name | The interface theme: a look (corners, outlines, shadows, glass, how rows and primary buttons are filled) and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. It decides the two keys below unless they are set; picking a theme in Settings removes them |
-| `widget-corner-radius` | from the theme (`24`, `10`, `8`) | `0..=25` | Widget corners in pixels through 24; values above 24 enable Full mode for buttons, fields, navigation chips, and picker rows. At 0, menu and tree rows become full-width bands with no gaps |
-| `shadow-strength` | from the theme (`1`) | `0..=1` | Multiplier for every shadow; `0` turns them and the control rings off. The theme's `control-shadow` says how much of it controls cast |
+| `interface-theme` | `default` | `default`, `macos`, `linear`, `glass`, or a saved theme's name | The interface theme: a look (corners, outlines, shadows, glass, how rows and primary buttons are filled) and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. It decides the eight `widget-*` look keys below unless they are set; picking a theme in Settings removes them |
+| `widget-corner-radius` | from the theme (`24`; macOS `10`, Glass `25`) | `0..=25` | Widget corners in pixels through 24; values above 24 enable Full mode for buttons, fields, navigation chips, and picker rows |
+| `widget-outline-width` | from the theme (`0.5`; Glass `0`) | `0..=2` | Width in pixels of the hairline around controls, cards and floating surfaces; `0` draws none. While the theme has glass, menus, popovers and dialogs draw the glass rim instead |
+| `widget-shadows` | from the theme (`all`; macOS `surfaces`, Glass `none`) | `none`, `surfaces`, `all` | Which surfaces cast drop shadows: `surfaces` gives cards, popovers, dialogs and floating panes theirs and keeps controls flat, `all` adds a small one under controls on the window |
+| `widget-row-inset` | from the theme (`4`; macOS `5`, Glass `3`) | `0..=12` | How far list rows float in from the list's edges, in pixels. At `0`, menu and tree rows become full-width bands with no gaps, and menu rows lose their corners |
+| `widget-selection` | from the theme (`accent`; Glass `wash`) | `accent`, `wash` | What fills the selected row in menus, lists and pickers: the accent or a gray wash |
+| `widget-primary` | from the theme (`foreground`; macOS and Linear `accent`) | `foreground`, `accent` | What the primary tone, the main action of a view, is drawn in |
+| `widget-field` | from the theme (`soft`) | `soft`, `outline` | How text fields look at rest: filled or outlined |
+| `widget-glass` | `theme` | `theme`, `off`, `regular`, `clear`, `frosted`, `bubble`, `smoked` | What floating surfaces are made of: `theme` keeps the theme's own glass, `off` fills them plainly, and the rest name a glass preset |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
 | `which-key-delay` | `400` | `0..=2000` | Milliseconds after the prefix, or inside a `switch-client -T` table, before the which-key sheet lists the next keys; `0` turns the sheet off. Read when the timer starts |
 | `editor-line-numbers` | `true` | `true` or `false` | Whether editor panes draw the line-number rail |
@@ -143,14 +149,19 @@ retired (`zz_config::RETIRED_APPEARANCE_KEYS`): a line with one of them is repor
 hidden from the Terminal page's editor, and picking a theme in Settings removes it. Colors now
 come only from the theme. `pane-glass` is retired the same way (`zz_config::RETIRED_PANE_KEYS`):
 gapped panes always draw a glass frame, so the line is reported and otherwise ignored.
+`shadow-strength` is retired too (`zz_config::RETIRED_LOOK_KEYS`): the line is reported with
+`` `shadow-strength` was removed: set `widget-shadows` to none, surfaces or all ``, otherwise
+ignored, and removed when a theme is picked.
 
 The status settings project directly into `zz_client::StatusBarSettings` and apply through the
 normal watched-config refresh. The clock never shows seconds. `AppShell` aligns its first wake to
 the next minute boundary, then requests one redraw per minute while the bar and clock are visible;
 `time-date` renders `%H:%M · %b %d`.
 
-`interface-theme`, `widget-corner-radius`, `chrome-contrast`, `shadow-strength`, `pane-background-opacity`, and `theme-mode` land on the **zz-ui theme** rather than being read
-per-frame by a renderer: `zz::theme::apply_zz_overrides` pushes them onto the `Theme` global, and
+`interface-theme`, the eight `widget-*` look keys, `chrome-contrast`, `pane-background-opacity`, and `theme-mode` land on the **zz-ui theme** rather than being read
+per-frame by a renderer: `zz::theme::apply_zz_overrides` folds the look keys the file sets into the
+active theme's look (`config::look_overrides` returns them as a
+`zz_ui::interface_theme::LookOverrides`), pushes the result onto the `Theme` global, and
 every widget already reads from there, so no component is plumbed individually. Because the theme
 and the overrides are reapplied on every theme rebuild, they survive a light/dark switch, the same
 treatment `mono_font_family` gets. `widget-corner-radius` is distinct
@@ -158,9 +169,11 @@ from `pane-corner-radius`, which is pane *geometry* and is resolved per corner i
 `config::pane_content_radii`.
 
 Every rounded surface is a **squircle** . iOS-style continuous corners, set once as the GPUI window
-default (`theme::CORNER_SMOOTHING`) rather than plumbed per widget. This is not configurable: the
-retired `corner-shape` key offered a `round` circular arc alongside it and produced two nearly
-identical windows. Shapes whose radius reaches half their shorter side . switch tracks and thumbs,
+default (`zz_ui::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) rather than plumbed
+per widget. Neither a key nor a theme changes it: the retired `corner-shape` key offered a `round`
+circular arc alongside it and produced two nearly identical windows, and themes lost their
+`corner-smoothing` key on 2026-10-13.
+Shapes whose radius reaches half their shorter side . switch tracks and thumbs,
 status dots, avatars, scrollbar thumbs . stay circular regardless: a pill or a circle is a shape in
 its own right, and smoothing one turns it into a lozenge. The squircle therefore reads on rounded
 rectangles, and the larger `widget-corner-radius` is, the more visible it gets (the corner departs
@@ -172,7 +185,7 @@ font even under a theme that names its own; Reset removes the current override. 
 select shows the active theme's font when it sets one. The 500 ms config watcher reapplies the family
 to `Theme.font_family` and redraws open windows. Quoted names preserve spaces, Unicode, quotes, and
 backslashes. Picking or importing a theme that sets `look.font` drops `ui-font-family`, like the
-radius and shadow it decides; other theme changes keep the chosen font. Terminal, editor, and
+look keys it decides; other theme changes keep the chosen font. Terminal, editor, and
 code-block fonts use their existing monospace settings.
 
 `browser-element-selector-hotkey` lives in a separate `BrowserConfig` GPUI global so `AppConfig`
@@ -205,13 +218,15 @@ An interface theme is one JSON object (`zz_ui::interface_theme::InterfaceTheme`)
 and a `light` and a `dark` color set. The mode (`theme-mode`, or the OS appearance on System) only
 picks which color set applies; the look is the same in both.
 
-- `look` is `zz_ui::interface_theme::Look` in kebab-case: `radius`, `corner-smoothing`, `shadow`,
-  `control-shadow` (how much of the shadow controls cast; `0` keeps buttons, fields and rows flat
-  while popovers keep theirs), `elevation`, `outline`, `outline-width`, `row-inset`, `selection`
-  (`accent` or `wash`), `primary` (`foreground` or `accent`), `field` (`soft` or `outline`),
-  `density`, `control-fill`, `divider`, `animation-speed`, `font` and `glass`. `glass` is `null`
-  for plain surfaces, a preset name (`regular`, `clear`, `frosted`, `bubble`, `smoked`), or an
-  object with a `preset` and the fields it changes.
+- `look` is `zz_ui::interface_theme::Look` in kebab-case, nine keys: `radius`; `outline`, the
+  width in pixels of the hairline controls, cards and floating surfaces draw (`0` draws none);
+  `shadows`, which surfaces cast drop shadows (`none`; `surfaces`, where cards, popovers, dialogs
+  and floating panes cast theirs and controls stay flat; or `all`, which adds controls on the
+  window); `row-inset`; `selection` (`accent` or `wash`); `primary` (`foreground` or `accent`);
+  `field` (`soft` or `outline`); `font`; and `glass`. `glass` is `null` for plain surfaces, a
+  preset name (`regular`, `clear`, `frosted`, `bubble`, `smoked`), or an object with a `preset`
+  and the fields it changes. Corner smoothing is not a look key; every window draws
+  `CORNER_SMOOTHING`.
 - Each color set holds the six roots (`background`, `foreground`, `accent`, `success`, `warning`,
   `danger`) and two optional colors: `on-accent`, the text on an accent fill (a solid primary
   button in the accent, an accent selection), and `shadow-color`, the ink of every drop shadow,
@@ -225,20 +240,30 @@ edges, washes) is derived from the roots at paint time, as `design-system` descr
 file does not know, at the top level, in `look`, in a color set or in a `glass` object, is an
 error rather than ignored: the message names it and, when it differs from a real key only in
 case, dashes or underscores, names the key that was meant
-(`` unknown field `corner_smoothing`, did you mean `corner-smoothing`? ``). Look and color keys are
+(`` unknown field `row_inset`, did you mean `row-inset`? ``). Look and color keys are
 kebab-case while glass fields keep `GlassMaterial`'s snake_case (`light_color`, `edge_shadow`),
 which is the usual slip. Settings Import, the thin clients' Import and the storybook's import show
-the same message.
+the same message. The look keys removed on 2026-10-13 (`corner-smoothing`, `shadow`,
+`control-shadow`, `elevation`, `outline-width`, `density`, `control-fill`, `divider`,
+`animation-speed`) are unknown the same way, so a theme file written for the older look loads only
+once they are taken out. `outline` kept its name but is now the width, not a strength.
 
-Three themes are compiled in from `crates/zz-ui/themes/*.json`:
+Four themes are compiled in from `crates/zz-ui/themes/*.json`:
 
-- `default`: the zz look (24px corners, opaque glass edge, foreground primary, accent selection)
-  on the macOS system colors: window `#ffffff` / `#1e1e1e`, label ink, system blue, and the
-  system status colors (the higher-contrast variants in light).
-- `macos`: 10px corners, flat controls (`control-shadow` 0) under shadowed frosted popovers,
-  inset rows, accent selection and accent primary with white text on it.
-- `linear`: 8px plain corners, opaque surfaces with ring-shadow outlines, gray (wash) selection,
-  indigo primary, and a cool tinted shadow in light.
+- `default`: the zz look (24px corners, 0.5px outlines, shadows on everything, an opaque glass
+  edge, foreground primary, accent selection) on the macOS system colors: window `#ffffff` /
+  `#1e1e1e`, label ink, system blue, and the system status colors (the higher-contrast variants
+  in light).
+- `macos`: 10px corners, 0.5px outlines, flat controls (`shadows: surfaces`) under shadowed
+  frosted popovers, inset rows, accent selection and accent primary with white text on it.
+- `linear`: 24px corners, 0.5px outlines, shadows on everything, opaque surfaces with no glass,
+  accent selection, indigo primary, and a cool tinted shadow in light.
+- `glass`: 25px corners (pill controls) with no outlines or shadows (`outline: 0`,
+  `shadows: none`), heavily frosted glass with a dark contour, inset rows, gray (wash) selection
+  and foreground primary, on the macOS system colors.
+
+While the look has glass, menus, popovers, dialogs and the other floating surfaces draw the glass
+rim in place of the outline; controls and cards keep the hairline.
 
 A test in `crates/zz-ui/src/interface_theme.rs` holds every built-in to contrast floors in both
 modes: foreground at least 7:1 on the background and on a popover, the accent and status colors
@@ -259,9 +284,9 @@ draws `default` and says so in the same toast once the window opens.
 
 Settings > Interface > Interface theme shows the built-ins and then the saved themes as tiles.
 Duplicate writes the active theme to the first free `themes/theme-N.json` and selects it, so a
-theme is customized by editing that file. The copy takes the effective widget corner radius and
-shadow strength and an explicit UI font into its look first, so nothing on screen changes. A
-duplicated or imported theme whose name is empty or a built-in's is saved under its file name
+theme is customized by editing that file. The copy folds every look key the file sets
+(`config::look_overrides`) and an explicit UI font into its look first, so nothing on screen
+changes. A duplicated or imported theme whose name is empty or a built-in's is saved under its file name
 (`theme-N`), so Settings never shows two tiles called Default. Import reads a theme from the clipboard (the storybook's
 theme creator copies one with Copy JSON), saves it the same way and selects it. Thin clients (web,
 iOS) never read this folder: they keep their own saved themes in their preferences, with the same
@@ -356,10 +381,11 @@ its fill, so `pane_surface` draws a hairline at the glint's width instead: the d
 accent on the active pane. Floating panes take the theme's full glass like every popover. Settings
 previews that are not inside a glass frame use `Theme::pane_color`.
 
-The Agent main surface uses the chosen opacity; the raised composer card stays opaque.
+The Agent main surface uses the chosen opacity. The composer is a field shell (`field_chrome` with
+the neutral field paint), so at rest it draws the look's field, a soft wash or an outline, rather
+than an opaque raised card.
 The footer inherits the main pane background and adds no fill of its own.
-Shadow strength remains independent.
-The input card overlaps the transcript by 12 px, hiding content as it scrolls behind the top edge.
+The composer overlaps the transcript by 12 px.
 The transcript clips before the footer. Prefix cards disable the overlap. Text keeps its own opacity.
 
 A terminal first blends its Ghostty background color with the theme base using
@@ -544,8 +570,11 @@ loaded file contains no assignment for that key and `Override` when the key is p
 recorded even when its value is invalid; the diagnostic still follows the warn-and-keep rule, so an
 invalid override can display the preceding/default effective value with an `Overridden` badge. This
 definition lets Reset remove a stale invalid line instead of incorrectly presenting it as absent.
-`widget-corner-radius` and `shadow-strength` are the exception: their default is the active theme's,
-so only a line that parses marks them `Override`, and an invalid one leaves the theme's value in place.
+The eight look keys (`ConfigKey::LOOK`) are the exception. Their default is the active theme's:
+`AppConfig::apply_look_defaults` writes the theme's `LookDefaults` into every look key nothing
+overrides, and `widget-glass` shows `theme`. Only a line that parses marks one `Override`, and an
+invalid one leaves the theme's value in place; for a choice key, the diagnostic lists the values it
+accepts.
 
 Appearance provenance is resolved by the daemon and arrives with `ServerHello` and
 `AppearanceChanged` as a complete per-key map. `AppearanceSource` has four tiers . `default`,
@@ -619,7 +648,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Theme** (`theme-mode` as three drawn window previews, `interface-theme` as a sideways-scrolling tile strip with Duplicate and Import) · **Advanced**, collapsed until opened (`UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `chrome-contrast`, `animations`, `widget-corner-radius`, `shadow-strength`, `window-background-blur` as "Window blur", Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Theme** (`theme-mode` as three drawn window previews, `interface-theme` as a sideways-scrolling tile strip with Duplicate and Import) · **Advanced**, collapsed until opened (`UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `chrome-contrast`, `animations`, `window-background-blur` as "Window blur", Linux `window-corner-radius` and `use-system-titlebar`, then the **Look** group: `widget-corner-radius` as Corner radius, `widget-outline-width` as Outline, `widget-shadows` as Shadows, `widget-row-inset` as Row inset, `widget-selection` as Selection, `widget-primary` as Primary buttons, `widget-field` as Fields, `widget-glass` as Glass) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-agents`, `status-host`, `status-update`; `status-show-session` was removed with the session menu and is reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
@@ -665,9 +694,9 @@ under their existing pane-local controls.
 The interface theme strip is a `PickerStrip`: a sideways-scrolling row of tiles that bleeds to the
 row's edges, keeps its own scroll offset and focus handle keyed on its id in window state, and
 moves the selection with the left and right arrows once focused. Picking a tile writes
-`interface-theme` through `zz_config::set_interface_theme`, which also drops
-`widget-corner-radius`, `shadow-strength` and every retired appearance key so the theme shows as
-designed.
+`interface-theme` through `zz_config::set_interface_theme`, which also drops every look key
+(`ConfigKey::LOOK`), `ui-font-family` when the theme sets its own font, and every retired
+appearance and look key, so the theme shows as designed.
 
 Terminal reads saved appearance entries into its controls and writes edits back through the
 bounded, comment-preserving `zz/config` writer. Multiplexer mounts the native rope-backed
@@ -713,12 +742,18 @@ The first-run prompt (`crates/zz/src/config/import_prompt.rs`) uses marker
 read those files on its own. Accepting imports the found donors; Cancel imports nothing. Settings
 accepts other paths. Existing installs receive this offer once more after the ownership change.
 
-Shadow strength appears in Interface's Tweaks group beside Widget corner radius. The numeric control
-shows 0–100%, steps by five percentage points, and stores a 0–1 factor. Valid edits save as they are
-typed; partial or invalid values stay in the field until Enter or blur restores the effective value.
-Enter or blur on a numeric field with no override writes nothing while its value is unchanged, so
-visiting Widget corner radius or Shadow strength does not pin the theme's value.
-Reset removes the override and restores 100% through the normal config watcher.
+The Look group ends Interface's Advanced section. The desktop and the thin clients build that page
+from the same item list (`zz_ui::settings::appearance::appearance_page_items`); the thin clients
+keep the values in their own preferences instead of `zz/config` (see
+[interface themes](/designs/interface-themes.md)). On desktop, Corner radius, Outline and Row inset
+are number fields, stepping by 1, 0.5 and 1 pixels. Shadows, Selection, Primary buttons, Fields and
+Glass are selects whose values are what `zz/config` spells (`AppearancePageItem::look_choices`).
+Valid numbers save as they are typed; partial or invalid values stay in the field until Enter or
+blur restores the effective value. Enter or blur on a look field with no override writes nothing
+while its value is unchanged, so visiting one does not pin the theme's value. Picking a select item
+writes its key, except Glass's Theme, which removes `widget-glass` so the theme's own glass shows.
+Each row's Reset removes its key and shows the theme's value again through the normal config
+watcher.
 
 Structured control callbacks, including Terminal, only write `zz/config`; they never mutate the
 GPUI config global directly. Multiplexer writes `zz/mux.conf` and requests a daemon reload. The

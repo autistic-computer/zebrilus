@@ -7,14 +7,15 @@ use std::rc::Rc;
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable as _, Elevation, Emphasis, Ground, Selectable as _, Sizable as _,
-    Tone,
+    ActiveTheme as _, Disableable as _, Elevation, Emphasis, Ground, RULE_WIDTH, Selectable as _,
+    Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     contact_shadow,
     icon::{Icon, cap_center_drop},
     scroll::ScrollableElement as _,
     select::SelectItem,
+    separator::Separator,
 };
 use zz_gpui::{
     AnyElement, App, Bounds, ElementId, FocusHandle, IntoElement, ListAlignment,
@@ -208,7 +209,7 @@ pub fn settings_section_index(
     }
     let muted = cx.theme().foreground.muted();
     let faint = cx.theme().foreground.faint();
-    let radius = cx.theme().radius;
+    let radius = cx.theme().menu_radius();
     let pressed = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active;
     let mut column = settings_scroll_column("settings-index");
     for (group, members) in groups {
@@ -226,7 +227,7 @@ pub fn settings_section_index(
                     .gap(px(12.0))
                     .h(px(SECTION_ROW_HEIGHT))
                     .px(px(10.0))
-                    .rounded(radius)
+                    .menu_item_corners(px(SECTION_ROW_HEIGHT), cx)
                     .cursor_pointer()
                     .child(press)
                     .child(Icon::new(section.icon()).medium().text_color(muted))
@@ -255,6 +256,7 @@ pub fn settings_section_index(
             div()
                 .flex()
                 .flex_col()
+                .list_inset(cx)
                 .child(
                     div()
                         .px(px(6.0))
@@ -1343,22 +1345,21 @@ impl RenderOnce for SettingEntry {
             .flex_col()
             .w_full()
             .bg(settings_card_ground(cx).fill)
-            .border_color(cx.theme().border())
-            .border_l(px(0.5))
-            .border_r(px(0.5))
+            .surface_edge(cx)
             .when(position.rounds_top(), |this| {
-                this.border_t(px(0.5)).rounded_t(cx.theme().radius)
+                this.rounded_t(cx.theme().radius)
             })
+            .when(!position.rounds_top(), zz_gpui::Styled::border_t_0)
             .when(position.rounds_bottom(), |this| {
-                this.border_b(px(0.5)).rounded_b(cx.theme().radius)
+                this.rounded_b(cx.theme().radius)
             })
+            .when(!position.rounds_bottom(), zz_gpui::Styled::border_b_0)
             .when(position.rules_above(), |this| {
                 this.child(
                     div()
                         .flex_none()
-                        .h(px(1.0))
-                        .mx(px(SETTINGS_STACK_PADDING))
-                        .bg(cx.theme().divider_color()),
+                        .px(px(SETTINGS_STACK_PADDING))
+                        .child(Separator::horizontal().h(RULE_WIDTH)),
                 )
             })
             .child(body);
@@ -1368,7 +1369,7 @@ impl RenderOnce for SettingEntry {
             .flex()
             .flex_col()
             .w_full()
-            .when(cx.theme().shadow, |this| {
+            .when(cx.theme().surface_shadows(), |this| {
                 let extent = px(8.0);
                 this.child(
                     div()

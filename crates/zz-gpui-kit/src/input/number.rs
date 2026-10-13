@@ -230,7 +230,7 @@ impl RenderOnce for NumberInput {
             .on_action(window.listener_for(&self.state, InputState::on_increment))
             .on_action(window.listener_for(&self.state, InputState::on_decrement))
             .w_full()
-            .h(self.size.control_h(cx.theme().density))
+            .h(self.size.control_h())
             .items_center()
             .when(self.appearance, |this| {
                 field_chrome(this, paint, state, true, true).rounded(cx.theme().control_radius())

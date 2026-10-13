@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, gpui, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-12T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Overview
@@ -34,20 +34,25 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    `crates/zz-gpui-kit/src/foundation/color.rs`. Outside the kit, chrome names what it draws
    instead of mixing it (see [Design system](/designs/design-system.md)): a filled, tinted or
    outlined widget draws `theme.paint(tone, emphasis)`, a plane `theme.surface(elevation)`, a rule
-   `theme.divider_color()`, an edge `theme.border()`, a pane `theme.pane_background(fill)`, and
-   quieter text `foreground.muted()` or `.faint()`. Do not color-match an old literal.
+   `rule_top` (or `rule_bottom`, `rule_left`, `rule_right`), an edge `surface_edge` or
+   `control_surface`, a card `card_style`, a floating surface `popover_style` or `lifted_style`, a
+   pane `theme.pane_background(fill)`, and quieter text `foreground.muted()` or `.faint()`. Do not
+   color-match an old literal.
 2. Check the zz-ui widget set before hand-rolling a control. A custom GPUI
    element is appropriate only when a component cannot preserve required input routing,
    rendering, or interaction behavior. When a fork-local widget must diverge from upstream, record
    why in `crates/zz-gpui-kit/UPSTREAM.md`.
 3. `clippy.toml` enforces the chrome-color rule by disallowing calls to `zz_gpui::rgb`, `zz_gpui::rgba`,
-   and `zz_gpui::hsla`, and the design-system rule by disallowing `Hsla::opacity` and the mixing
+   and `zz_gpui::hsla`, the design-system rule by disallowing `Hsla::opacity` and the mixing
    transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`,
-   `hover`, `active`, `on`, `floating`). The kit mixes its recipes from them, so
-   `crates/zz-gpui-kit/clippy.toml` keeps only the raw-color ban. Keep any exemption narrowly
-   scoped, as an `#[allow(clippy::disallowed_methods, reason = ..)]` on the one function, and say
-   why the color is not application chrome: a preview of another look, page CSS, a pane effect
-   with its own strength knob.
+   `hover`, `active`, `on`, `floating`), and the shape rule by disallowing
+   `zz_gpui::Styled::border` with its sized and per-side forms, `shadow_2xs` through `shadow_2xl`,
+   and the type `zz_gpui::BoxShadow`, so edges and shadows come from the kit's recipes and follow
+   the look. The kit builds its recipes from them, so `crates/zz-gpui-kit/clippy.toml` keeps only
+   the raw-color ban. Keep any exemption narrowly scoped, as an
+   `#[allow(clippy::disallowed_methods, reason = ..)]` (or `clippy::disallowed_types`) on the one
+   function, and say why the color or shape is not application chrome: a preview of another look,
+   page CSS, a pane effect with its own strength knob, a border colour tmux configured.
 4. Do not scatter branding or palette literals through views, fixtures that model application
    chrome, or component state branches.
 5. **Menu, picker, and list highlights use the same control treatment.** A selected row is the
@@ -57,8 +62,10 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    menu rows, select rows, and file/history picker rows use `Theme::menu_radius()`: the
    container radius minus 4px, without a fixed cap or Full-mode radius sentinel.
    Highlights use native row backgrounds and corner rounding. PopupMenu, model picker,
-   and directory/session picker rows use `StyledExt::menu_item_corners`: fixed radii with
-   smoothing 2.5, capped at 40% of their row height. Directory and session rows share
+   and directory/session picker rows use `StyledExt::menu_item_corners`, which reads
+   `Theme::row_radius`: fixed radii with smoothing 2.5, capped at 40% of their row height, and
+   square when the look's row inset is 0. `zz_ui::picker::list_row` builds such a row at a given
+   height with the neutral ghost paint. Directory and session rows share
    26px heights and 12px labels. Custom menu content receives the highlight state so
    descriptions, counts, and timestamps brighten to the normal foreground.
    Their requested radius reaches the renderer without adaptive compression; the cap keeps
@@ -66,8 +73,10 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    accent. Selected shortcut labels and icons brighten to the full foreground. The command palette matches dropdown typography with 12px medium labels, 10px descriptions, 16px line heights,
    26px selectable rows, and 2px gaps. It is at most 560px wide, with 8px list gutters,
    a 40px bare Input, 12px search text and inline Badge pills, and a 10px footer. Matched characters
-   use semibold foreground; breadcrumb prefixes stay muted until selected. Host status dots
-   use success, warning, or muted foreground; session/window running-agent summaries use accent dots.
+   use semibold foreground; breadcrumb prefixes stay muted until selected. Status dots are the
+   shared 6px `navigation::status_dot`: a host's is success when online, warning while waiting,
+   muted while running and faint when offline, and a session or window with a running agent shows
+   one in the row's muted ink.
    Agent pane rows use shared vendor icons and text status without a duplicate dot. All palette
    colors and corners follow the current Chroma theme. `PaletteRow::icon` and
    `PaletteRow::expanded` supply tree icons and disclosure state; `command_palette_tree_entry`
@@ -81,16 +90,21 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    fill, one step stronger than hover and never the accent: the accent belongs to the cursor in
    a list you pick from (rule 5). Neutral buttons (Default, Secondary, and Ghost) take hover,
    pressed, and current from the shared Button style. This covers toolbar icons, Back, and agent
-   footer controls without per-button fills. A control that casts a shadow composites its fill
-   over its ground, and casts none on a panel or a popover (see the design-system doc).
+   footer controls without per-button fills. A control casts a shadow only on the window and only
+   when the look's `shadows` is `all`; one that does composites its fill over its ground (see the
+   design-system doc).
    Tree fills keep a 1px vertical inset,
    so adjacent rounded rows never merge into one slab. The final Add host action is the exception:
    its row stays unpainted and only its label moves from muted to foreground on hover.
-7. The shared control edge is a 0.5px border at 10% foreground opacity with a small soft shadow.
-   `StyledExt::control_surface` applies it to inputs, number fields, select triggers, dropdown
-   surfaces. Settings stacks draw it around the whole group, with flat
-   separators between entries. Reserve border width before hover or focus; change only its color
-   between states. Inputs and number fields reserve a 1px border, using the accent color when focused.
+7. The shared control edge is a hairline at the look's outline width (0.5px in the built-ins that
+   draw one, none at 0) in 10% foreground, with a small soft shadow when the look's `shadows` is
+   `all` and the control sits on the window. `StyledExt::control_surface` applies it to resting
+   buttons, the active browser tab, the active window pill, lit tree rows and pane chips. Fields
+   draw their own border from the field paint (`field_chrome`), and cards and floating surfaces
+   take `surface_edge`, the border color at the same width. Settings stacks draw `surface_edge`
+   around the whole group, with 1px separators between entries. Reserve border width before hover
+   or focus; change only its color between states. Inputs and number fields reserve at least a
+   1px border, in the paint's focus color when focused.
    Settings value pickers use Button triggers and PopupMenu rows, including font, search engine,
    and multiplexer options. The shared Select API keeps their values and confirmation events;
    it has no separate trigger or row styling.
@@ -99,8 +113,9 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
    reset buttons. These retain the keyboard focus indicator without another raised edge. Tree-row
    actions and browser tab close buttons also use `Button::text()` so hover only brightens their
    foreground, without a button fill. Other embedded actions keep their wash.
-   Gapped panes keep the same soft shadow and draw their frame only in glass: no border, the glass
-   edge (glint, fresnel, thin contour) is the frame, tinted with the pane's own color. The
+   Gapped panes cast `contact_shadow`, which follows the look's `shadows`, and draw their frame
+   only in glass: no border, the glass edge (glint, fresnel, thin contour) is the frame, tinted
+   with the pane's own color. The
    continuous app background sits beneath both pane and shadow. Flush panes have no
    outer shadow. Only shared divider segments touching the active flush pane use the accent
    color; exterior edges stay unoutlined. The settings preview follows the same rule.
@@ -123,7 +138,7 @@ Settings > Panes scrolls its three-pane preview with the controls, like the Term
 theme's pane frames. A neutral backdrop makes pane transparency visible. Clicking a sample changes
 only the preview selection and moves the accent edge.
 The Browser sample keeps its page opaque; its toolbar follows pane background opacity, and the
-Agent sample keeps its composer opaque. Desktop pane edits and resets refresh the saved configuration
+Agent sample draws its composer as a field, like the real one. Desktop pane edits and resets refresh the saved configuration
 immediately, including valid numeric input while typing; the file watcher still handles external edits.
 
 Settings > Status bar scrolls its live preview with the controls. The titlebar holds only the
@@ -160,25 +175,33 @@ stored page favicons, with a globe fallback.
 # Control density
 
 Menus, select dropdowns, command palettes, and file/history/tree pickers share
-`StyledExt::popover_style`: an opaque `theme.surface(Elevation::Popover)` fill, the shared half-pixel edge,
-and a soft outer shadow in the theme's `shadow_color`, scaled by the shadow-strength setting and `Theme.elevation`. Menus use
-`Theme.row_inset` gutters (4px by default), 26px rows, 12px text, and
-half-pixel separators inset from the surface edge. At a 0 row inset (`Theme::inset_rows` is false)
-the gutters, the gaps between rows, and the separator inset go away, and rows become full-width
-bands; the workspace tree and command palette follow the same rule. `Theme.outline` scales the
-hairline of `control_surface`, tooltips, notifications and dialogs (0 drops it) and
-`Theme.outline_width` sets its width. Shadows come in three sizes, all in the theme's shadow
-color: `contact_shadow` is the tight shadow a surface sits on (panes, cards, a popover's edge),
-`control_shadow` is the same shadow at the theme's `control_shadow` share (0 keeps buttons,
-fields and highlighted rows flat while popovers keep theirs; `Theme::control_shadows` says
-whether they draw at all), and `lifted_shadow` is the small shadow under a tooltip, a toast or a
-switch thumb. All three scale with `Theme.shadow_strength` and vanish at 0.
+`StyledExt::popover_style`: `floating_surface` (an opaque `theme.surface(Elevation::Popover)`
+fill or the look's glass, `surface_edge`, the theme radius and the foreground ink) with
+`floating_shadow` in the theme's `shadow_color`. Tooltips and toasts take `lifted_style`, the same
+surface with `lifted_shadow`. Menus use `Theme.row_inset` gutters (4px by default, through
+`list_inset`), 26px rows, 12px text, and 1px rule separators inset from the surface edge. At a 0
+row inset (`Theme::inset_rows` is false) the gutters, the gaps between rows, and the separator
+inset go away, and rows become full-width bands with square corners (`Theme::row_radius`); the
+workspace tree and command palette follow the same rule. `Theme.outline` is the width of the
+hairline `control_surface`, `surface_edge`, cards, tooltips, notifications and dialogs draw; 0
+draws none, and the rings follow it.
+
+`Theme.shadows` picks which surfaces cast drop shadows, all drawn in the theme's shadow color:
+`contact_shadow` is the tight shadow a surface sits on (panes, cards), `control_shadow` the same
+under a control, `floating_shadow` the contact shadow with a deep, soft one under it (popovers,
+dialogs, floating panes, a dragged pane chip), and `lifted_shadow` the small shadow under a
+tooltip, a toast or a switch thumb. `Shadows::None` empties all four, `Shadows::Surfaces` empties
+only `control_shadow`, and `Shadows::All` keeps every one; `Theme::control_shadows` and
+`Theme::surface_shadows` read it.
 
 The rest of a look reaches widgets through `Theme` helpers, so new widgets should use them rather
-than literals: `dense(px)` for row and control heights (`Size::control_h` and `input_py` take the
-density too), `control_background(color)` for the fill of a field, stepper, slider track or
-default button, `divider_color()` (or `divider` as an alpha factor) for rules between things, and
-`duration(base)` for transitions, timers that wait for one included.
+than literals: `control_radius()` for anything clickable (a pill above 24), `menu_radius()` and
+`row_radius(height)` for rows, `outer_radius(inset)` and `inner_radius(inset)` to keep nested
+corners concentric, and `outlined()`, `inset_rows()`, `control_shadows()` and `surface_shadows()`
+for the look's switches. Control heights, fills, rules and transitions no longer change per
+theme: `Theme::dense`, `Theme::control_background` and `Theme::duration` are gone,
+`Size::control_h()` and `input_py()` take no density, and `divider_color()` is just `border()`.
+
 Picker search fields draw the soft field paint on the popover ground with no border and no focus
 ring, since they are always focused. Command palettes embed a bare shared Input
 inside their raised container, with inline mode, host, and command Badge pills. They use 8px list
@@ -332,20 +355,21 @@ GPUI globals (used by settings badges and the detach action, not to color anythi
 `apply_zz_overrides` layers these values over the zz-ui base:
 
 - the active theme (`config::themes(cx).active`, a built-in or a saved file from the `themes`
-  folder), applied with `InterfaceTheme::apply`: its colors for the effective mode, then its look
-  (radius and corner smoothing, shadow strength, control shadow and elevation, outline strength
-  and width, divider strength, density, row inset, control fill, selection fill, primary and field
-  emphasis, animation speed, the interface font and the glass of floating surfaces); then
-  `theme.radius` from `widget-corner-radius` and `shadow_strength` from `shadow-strength` when
-  those are set, so one radius reaches every widget and survives a light/dark switch;
+  folder): its colors for the effective mode (`InterfaceTheme::colors`), then its look with the
+  `widget-*` keys `zz/config` sets folded in (`config::look_overrides`, a `LookOverrides`), applied
+  with `Look::apply`: radius, outline width, shadows, row inset, selection fill, primary and field
+  emphasis, the interface font and the glass of floating surfaces. One radius therefore reaches
+  every widget and survives a light/dark switch. Corner smoothing is not part of the look: every
+  window draws `CORNER_SMOOTHING` (4);
 - `font_family` from `ui-font-family` when present (a System default line keeps the system UI
   font even under a theme with its own), else the look's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
 - `theme.contrast` from `chrome-contrast`, preserved across the same refreshes.
 
-The thin clients keep the selected theme id and their own saved themes in their preferences and
-apply the same `InterfaceTheme` in `Preferences::apply`, with the UI font taken from the
+The thin clients keep the selected theme id, their own saved themes and their look overrides in
+their preferences, and `Preferences::apply` draws the theme's colors and `Preferences::look()`
+(the theme's look with the device's `LookOverrides`), with the UI font taken from the
 preference, else the theme's font, else the bundled Inter.
 
 `chrome-contrast` defaults to 1.0 and accepts 0.5–2.0; other values are reported like any numeric
@@ -432,7 +456,8 @@ border instead of exposing the shadow at the join, without stacking translucent 
 titlebar, Settings, margins, split gaps, and rounded pane corners inherit that fill. The slideover
 sidebar paints its own overlay surface. App-owned pane roots use `theme::app_pane_background`
 with `Theme::pane_background_opacity`, controlled by Panes settings and defaulting to 50%.
-The Agent composer card stays opaque and overlaps the transcript by 12 px at its top edge.
+The Agent composer is a field shell (`field_chrome` with the look's field paint) and overlaps the
+transcript by 12 px at its top edge.
 Prefix cards disable this overlap. The transcript clips before the footer, which inherits the pane background, and
 the shared pane frame adds no background fill. The terminal blends its Ghostty tint with the
 theme base before applying the factor. Browser pages remain opaque.

@@ -363,12 +363,13 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | Key | Default | Does |
 | --- | --- | --- |
 | `theme-mode` | `system` | `system`, `light`, or `dark` |
-| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, `macos` (flat controls, frosted popovers, blue accent), `linear` (opaque surfaces with ring outlines, indigo accent), or the name of a theme saved as `themes/<name>.json` next to the config file |
+| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, `macos` (flat controls, frosted popovers, blue accent), `linear` (opaque surfaces with hairline outlines, indigo accent), `glass` (frosted glass with no outlines or shadows), or the name of a theme saved as `themes/<name>.json` next to the config file |
 | `pane-gaps` | `false` | The card treatment: spaced panes framed in glass. Off pins the next three to zero |
 | `pane-margin` | `6` | Gap between panes and at the window edge, 0–32 |
 | `pane-corner-radius` | `13.5` | 0–32 |
 | `pane-border-width` | `0.5` | 0–8, the bright line along a gapped pane's glass edge; zero turns it off |
 | `widget-corner-radius` | from the theme | Widget corners, 0–24px; set 25 for fully rounded buttons, fields, and rows |
+| `widget-shadows` | from the theme | Which surfaces cast shadows: `none`, `surfaces` (cards, popovers, dialogs), or `all` (controls too) |
 | `animations` | `true` | Interface transitions, loading indicators, scrollbars, and animated UI images |
 | `theme` | unset | A Ghostty theme file by name, or `light:a,dark:b` |
 | `font-family` | platform default | Terminal font stack. `font-size` is `13` |
@@ -382,6 +383,13 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `quit-daemon-on-exit` | `false` | Kill sessions when the app quits |
 | `browser-search-provider` | `google` | `google`, `duckduckgo`, or `brave` |
 | `browser-egress` | `true` | Route a remote pane's traffic through its host |
+
+`widget-corner-radius` and `widget-shadows` are two of the eight look keys,
+each of which overrides one part of the interface theme until you remove it.
+The others are `widget-outline-width` (0–2px, 0 for no outlines),
+`widget-row-inset`, `widget-selection`, `widget-primary`, `widget-field`, and
+`widget-glass`. Settings edits all eight under Interface → Advanced → Look, and
+picking a theme clears them.
 
 Terminal appearance uses Ghostty's spellings, so `theme`, `font-family`,
 `font-feature`, `palette`, `cursor-style`, `minimum-contrast`, and per-edge

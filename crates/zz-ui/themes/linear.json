@@ -1,21 +1,13 @@
 {
   "name": "Linear",
   "look": {
-    "radius": 8,
-    "corner-smoothing": 0,
-    "shadow": 1,
-    "control-shadow": 1,
-    "elevation": 0.8,
-    "outline": 1,
-    "outline-width": 0.5,
+    "radius": 24,
+    "outline": 0.5,
+    "shadows": "all",
     "row-inset": 4,
-    "selection": "wash",
+    "selection": "accent",
     "primary": "accent",
     "field": "soft",
-    "density": 1,
-    "control-fill": 1,
-    "divider": 1,
-    "animation-speed": 1,
     "glass": null
   },
   "light": {

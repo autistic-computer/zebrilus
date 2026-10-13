@@ -8,7 +8,9 @@ use zz_gpui::{
 };
 
 use crate::Colorize as _;
-use crate::{ActiveTheme as _, Disableable, Emphasis, Selectable, StyledExt as _, Tone, h_flex};
+use crate::{
+    ActiveTheme as _, Disableable, Emphasis, Selectable, Size, StyledExt as _, Tone, h_flex,
+};
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 type MouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
@@ -143,7 +145,7 @@ impl RenderOnce for ListItem {
             .px_3()
             .text_base()
             .text_color(foreground)
-            .rounded(cx.theme().menu_radius())
+            .menu_item_corners(px(Size::Medium.control_px()), cx)
             .border(px(0.5))
             .border_color(zz_gpui::transparent_white())
             .when(highlighted, |this| this.selection_highlight(cx))

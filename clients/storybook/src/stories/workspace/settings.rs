@@ -32,6 +32,7 @@ use zz_ui::{
 };
 
 use super::{fixtures::stateful, tree::sidebar};
+use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
 
 pub const STORY: Story = Story {
@@ -176,8 +177,7 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
                 .w(px(360.0))
                 .h(px(660.0))
                 .rounded(cx.theme().radius)
-                .border_1()
-                .border_color(cx.theme().border())
+                .framed(cx)
                 .child(index),
         )
         .into_any_element()

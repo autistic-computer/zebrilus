@@ -30,8 +30,8 @@ pub const COMMAND_PALETTE_INSET: f32 = 8.0;
 pub const COMMAND_PALETTE_ROW_HEIGHT: f32 = 28.0;
 
 /// The height of a palette row at the theme's density.
-pub fn command_palette_row_height(cx: &App) -> f32 {
-    cx.theme().dense(px(COMMAND_PALETTE_ROW_HEIGHT)).as_f32()
+pub fn command_palette_row_height() -> f32 {
+    px(COMMAND_PALETTE_ROW_HEIGHT).as_f32()
 }
 
 /// The palette surface's radius: the theme's, opened by
@@ -179,9 +179,7 @@ impl RenderOnce for CommandPaletteSurface {
             }))
             .children(self.rows.map(|rows| {
                 div()
-                    .when(cx.theme().inset_rows(), |this| {
-                        this.px(px(COMMAND_PALETTE_INSET))
-                    })
+                    .list_inset(cx)
                     .pt(px(2.0))
                     .pb(px(COMMAND_PALETTE_INSET))
                     .child(rows)
@@ -197,8 +195,7 @@ impl RenderOnce for CommandPaletteSurface {
                     .gap(px(14.0))
                     .px(px(18.0))
                     .py(px(8.0))
-                    .border_t(px(0.5))
-                    .border_color(cx.theme().divider_color())
+                    .rule_top(cx)
                     .text_size(crate::rems_from_px(10.0))
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())
@@ -208,7 +205,6 @@ impl RenderOnce for CommandPaletteSurface {
             surface,
             ElementId::NamedInteger("command-palette-open".into(), self.revision),
             px(0.0),
-            cx,
         )
     }
 }

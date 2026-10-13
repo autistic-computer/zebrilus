@@ -18,7 +18,7 @@ const LIST_PADDING: Pixels = px(4.0);
 const ROW_PADDING: Pixels = px(8.0);
 const LINE_HEIGHT: Pixels = px(16.0);
 const TITLE_HEIGHT: Pixels = px(21.0);
-const SEPARATOR_HEIGHT: Pixels = px(4.5);
+const SEPARATOR_HEIGHT: Pixels = px(5.0);
 const WINDOW_MARGIN: Pixels = px(8.0);
 
 #[derive(Debug, Default)]
@@ -84,7 +84,7 @@ pub fn display_menu(
                 .flex_none()
                 .my(px(2.0))
                 .mx(theme.row_inset)
-                .border_b(px(0.5))
+                .rule_bottom(cx)
                 .border_color(inks.rule)
                 .on_prepaint(record)
                 .into_any_element(),
@@ -99,8 +99,7 @@ pub fn display_menu(
             Pixels::ZERO
         })
         .pb(LIST_PADDING)
-        .px(theme.row_inset)
-        .when(theme.inset_rows(), Styled::gap_y_0p5)
+        .list_inset(cx)
         .on_prepaint(move |bounds, _, _| rows_hits.borrow_mut().rows = bounds)
         .children(rows);
     v_flex()
@@ -113,9 +112,7 @@ pub fn display_menu(
         .when_some(fill, |surface, fill| surface.surface_fill(fill, cx))
         .when_some(text, Styled::text_color)
         .when_some(outline.filter(|_| outlined), |surface, outline| {
-            surface
-                .border(theme.outline_width.max(px(1.0)))
-                .border_color(outline)
+            literal_edge(surface, outline, cx)
         })
         .when(!outlined, Styled::border_0)
         .min_w(rems(8.0))
@@ -134,8 +131,18 @@ pub fn display_menu(
         .child(list)
 }
 
-pub fn menu_enter(surface: Stateful<Div>, cx: &App) -> AnimationElement<Stateful<Div>> {
-    zz_gpui_kit::foundation::surface_enter(surface, "display-menu-open", Pixels::ZERO, cx)
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a literal popup-border-style colour the user configured wins over the look's edge"
+)]
+fn literal_edge(surface: Stateful<Div>, color: Hsla, cx: &App) -> Stateful<Div> {
+    surface
+        .border(cx.theme().outline.max(px(1.0)))
+        .border_color(color)
+}
+
+pub fn menu_enter(surface: Stateful<Div>) -> AnimationElement<Stateful<Div>> {
+    zz_gpui_kit::foundation::surface_enter(surface, "display-menu-open", Pixels::ZERO)
 }
 
 fn menu_row(
@@ -168,11 +175,9 @@ fn menu_row(
         .px(ROW_PADDING)
         .gap_3()
         .justify_between()
-        .border(px(0.5))
-        .border_color(cx.theme().transparent)
         .menu_item_corners(row_height, cx)
         .when(highlighted, |row| match inks.selected {
-            Some((fill, _)) => row.bg(fill).border_color(fill),
+            Some((fill, _)) => row.bg(fill),
             None => row.selection_highlight(cx),
         })
         .text_color(ink)
@@ -222,7 +227,7 @@ fn menu_row_height(state: &MenuState, titled: bool, room: Size<Pixels>, cx: &App
     let natural = if CoarsePointer::get(cx) {
         px(TOUCH_TARGET)
     } else {
-        theme.dense(px(26.0))
+        px(26.0)
     };
     let rows = state.items.iter().flatten().count();
     if rows == 0 {

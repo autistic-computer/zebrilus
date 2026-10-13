@@ -1,6 +1,6 @@
 use zz_gpui::{
     App, Div, ElementId, IntoElement, MouseButton, ParentElement as _, SharedString, Stateful,
-    Styled as _, div, prelude::*,
+    Styled as _, div, prelude::*, px,
 };
 
 use crate::{
@@ -20,7 +20,6 @@ const GRABBER_TOP: f32 = 5.0;
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 4.0;
 const TILE: f32 = 28.0;
-const TILE_RADIUS: f32 = 4.0;
 
 pub fn compact_bar(
     pill: impl IntoElement,
@@ -112,7 +111,7 @@ pub fn compact_bar_pill(
         .pl(rems_from_px(8.0))
         .pr(rems_from_px(12.0))
         .gap(rems_from_px(10.0))
-        .rounded(theme.radius)
+        .rounded(theme.control_radius())
         .control_surface(cx)
         .painted(pill, PaintState::Rest)
         .surface_fill(pill.fill, cx)
@@ -124,7 +123,7 @@ pub fn compact_bar_pill(
                 .items_center()
                 .justify_center()
                 .size(rems_from_px(TILE))
-                .rounded(rems_from_px(TILE_RADIUS))
+                .rounded(theme.inner_radius(px((BUTTON - TILE) / 2.0)))
                 .bg(badge.fill)
                 .text_color(if warning {
                     badge.text
@@ -174,6 +173,6 @@ pub fn compact_bar_pill(
         .child(crate::touch::press_highlight(
             "compact-bar-pill-press",
             pill.active,
-            theme.radius,
+            theme.control_radius(),
         ))
 }

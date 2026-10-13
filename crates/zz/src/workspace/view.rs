@@ -3141,8 +3141,7 @@ impl AppView {
             pane_drop_preview(radius, border, cx)
                 .with_animation(
                     ("pane-drop-preview", preview.sequence),
-                    Animation::new(cx.theme().duration(preview.duration))
-                        .with_easing(ease_out_quint()),
+                    Animation::new(preview.duration).with_easing(ease_out_quint()),
                     move |element, delta| {
                         let frame = preview.at(delta);
                         rendered.set(frame);

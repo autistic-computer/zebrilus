@@ -648,7 +648,6 @@ impl WebWindowInner {
         let this = Rc::clone(self);
         self.listen_non_passive("wheel", move |event: JsValue| {
             let event: web_sys::WheelEvent = event.unchecked_into();
-            event.prevent_default();
 
             let mouse_event: &web_sys::MouseEvent = event.as_ref();
             let position = mouse_position_in_element(mouse_event);
@@ -669,12 +668,17 @@ impl WebWindowInner {
                 current_state.modifiers = modifiers;
             }
 
-            this.dispatch_input(PlatformInput::ScrollWheel(ScrollWheelEvent {
+            let result = this.dispatch_input(PlatformInput::ScrollWheel(ScrollWheelEvent {
                 position,
                 delta,
                 modifiers,
                 touch_phase: TouchPhase::Moved,
             }));
+            // A window mounted into a page hands the wheel back to the page
+            // when nothing under the pointer scrolled, so the page can scroll.
+            if this.mount.is_none() || result.is_none_or(|result| result.default_prevented) {
+                event.prevent_default();
+            }
         })
     }
 

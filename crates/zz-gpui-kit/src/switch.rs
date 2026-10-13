@@ -145,7 +145,7 @@ fn thumb(
                 return this.left(x).into_any_element();
             }
 
-            let duration = cx.theme().duration(TOGGLE_ANIMATION);
+            let duration = TOGGLE_ANIMATION;
             cx.spawn({
                 let toggle_state = toggle_state.clone();
                 async move |cx| {

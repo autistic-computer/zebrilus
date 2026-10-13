@@ -12,7 +12,7 @@ pub use zz_client::appearance::{
     BUILTIN_THEMES, DEFAULT_THEME, ThemeModeSetting, is_builtin_theme,
 };
 
-use crate::{FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeColor, ThemeMode};
+use crate::{FieldStyle, PrimaryStyle, SelectionStyle, Shadows, Theme, ThemeColor, ThemeMode};
 
 /// Every theme value that is not a color, in logical pixels where it is a
 /// length. Missing keys take [`Look::default`]: the default theme's shape
@@ -21,23 +21,15 @@ use crate::{FieldStyle, PrimaryStyle, SelectionStyle, Theme, ThemeColor, ThemeMo
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Look {
     pub radius: f32,
-    pub corner_smoothing: f32,
-    /// How strong every shadow is; 0 turns them off.
-    pub shadow: f32,
-    /// How much of that strength controls cast; 0 keeps buttons, fields and
-    /// rows flat while popovers and cards keep theirs.
-    pub control_shadow: f32,
-    pub elevation: f32,
+    /// The width of the hairline controls, cards and floating surfaces draw;
+    /// 0 draws none.
     pub outline: f32,
-    pub outline_width: f32,
+    /// Which surfaces cast drop shadows.
+    pub shadows: Shadows,
     pub row_inset: f32,
     pub selection: SelectionStyle,
     pub primary: PrimaryStyle,
     pub field: FieldStyle,
-    pub density: f32,
-    pub control_fill: f32,
-    pub divider: f32,
-    pub animation_speed: f32,
     /// The interface font family; `None` keeps the platform's.
     pub font: Option<SharedString>,
     /// What floating surfaces become; `None` fills them plainly. A theme
@@ -50,20 +42,12 @@ impl Default for Look {
     fn default() -> Self {
         Self {
             radius: 24.0,
-            corner_smoothing: 4.0,
-            shadow: 1.0,
-            control_shadow: 1.0,
-            elevation: 1.0,
-            outline: 1.0,
-            outline_width: 0.5,
+            outline: 0.5,
+            shadows: Shadows::All,
             row_inset: 4.0,
             selection: SelectionStyle::Accent,
             primary: PrimaryStyle::Foreground,
             field: FieldStyle::Soft,
-            density: 1.0,
-            control_fill: 1.0,
-            divider: 1.0,
-            animation_speed: 1.0,
             font: None,
             glass: None,
         }
@@ -73,26 +57,91 @@ impl Default for Look {
 impl Look {
     pub fn apply(&self, theme: &mut Theme) {
         theme.radius = px(self.radius);
-        theme.corner_smoothing = self.corner_smoothing;
-        theme.shadow = self.shadow > 0.0;
-        theme.shadow_strength = self.shadow;
-        theme.control_shadow = self.control_shadow;
-        theme.elevation = self.elevation;
-        theme.outline = self.outline;
-        theme.outline_width = px(self.outline_width);
+        theme.outline = px(self.outline);
+        theme.shadows = self.shadows;
         theme.row_inset = px(self.row_inset);
         theme.selection = self.selection;
         theme.primary = self.primary;
         theme.field = self.field;
-        theme.density = self.density;
-        theme.control_fill = self.control_fill;
-        theme.divider = self.divider;
-        theme.animation_speed = self.animation_speed;
         if let Some(font) = &self.font {
             theme.font_family = font.clone();
         }
         theme.glass = self.glass;
     }
+}
+
+/// Look values Settings sets over the active theme, each `None` while it
+/// follows the theme. Picking a theme clears them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct LookOverrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outline: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shadows: Option<Shadows>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub row_inset: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectionStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary: Option<PrimaryStyle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<FieldStyle>,
+    /// `off`, or the name of a glass preset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub glass: Option<String>,
+}
+
+impl LookOverrides {
+    /// `look` with every override set here.
+    pub fn apply(&self, look: &mut Look) {
+        if let Some(radius) = self.radius {
+            look.radius = radius;
+        }
+        if let Some(outline) = self.outline {
+            look.outline = outline;
+        }
+        if let Some(shadows) = self.shadows {
+            look.shadows = shadows;
+        }
+        if let Some(row_inset) = self.row_inset {
+            look.row_inset = row_inset;
+        }
+        if let Some(selection) = self.selection {
+            look.selection = selection;
+        }
+        if let Some(primary) = self.primary {
+            look.primary = primary;
+        }
+        if let Some(field) = self.field {
+            look.field = field;
+        }
+        match self.glass.as_deref() {
+            Some("off") => look.glass = None,
+            Some(name) => {
+                if let Some(material) = GlassMaterial::preset(name) {
+                    look.glass = Some(material);
+                }
+            }
+            None => {}
+        }
+    }
+}
+
+/// A look setting spelled as a theme file and `zz/config` spell it, such as
+/// `surfaces` for [`Shadows::Surfaces`].
+pub fn choice_name<T: Serialize>(value: T) -> Option<String> {
+    match serde_json::to_value(value) {
+        Ok(serde_json::Value::String(name)) => Some(name),
+        _ => None,
+    }
+}
+
+/// The look setting `name` spells, the inverse of [`choice_name`].
+pub fn parse_choice<T: serde::de::DeserializeOwned>(name: &str) -> Option<T> {
+    serde_json::from_value(serde_json::Value::String(name.trim().to_owned())).ok()
 }
 
 fn deserialize_glass<'de, D: Deserializer<'de>>(
@@ -250,6 +299,7 @@ const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
     ("default", include_str!("../themes/default.json")),
     ("macos", include_str!("../themes/macos.json")),
     ("linear", include_str!("../themes/linear.json")),
+    ("glass", include_str!("../themes/glass.json")),
 ];
 
 static BUILTINS: LazyLock<Vec<(&'static str, InterfaceTheme)>> = LazyLock::new(|| {
@@ -428,12 +478,62 @@ mod tests {
     }
 
     #[test]
+    fn overrides_replace_only_what_they_set() {
+        let theme = builtin_theme("glass").unwrap();
+        let mut look = theme.look.clone();
+        LookOverrides {
+            outline: Some(1.0),
+            shadows: Some(Shadows::Surfaces),
+            glass: Some("frosted".to_owned()),
+            ..LookOverrides::default()
+        }
+        .apply(&mut look);
+        assert_eq!(look.outline, 1.0);
+        assert_eq!(look.shadows, Shadows::Surfaces);
+        assert_eq!(look.glass, GlassMaterial::preset("frosted"));
+        assert_eq!(look.radius, theme.look.radius);
+        assert_eq!(look.selection, theme.look.selection);
+
+        LookOverrides {
+            glass: Some("off".to_owned()),
+            ..LookOverrides::default()
+        }
+        .apply(&mut look);
+        assert_eq!(look.glass, None);
+    }
+
+    #[test]
+    fn choices_spell_the_way_settings_and_config_do() {
+        use zz_client::appearance::{
+            FIELD_CHOICES, GLASS_CHOICES, PRIMARY_CHOICES, SELECTION_CHOICES, SHADOWS_CHOICES,
+        };
+        for name in SHADOWS_CHOICES {
+            let shadows = parse_choice::<Shadows>(name).unwrap();
+            assert_eq!(choice_name(shadows).as_deref(), Some(name));
+        }
+        for name in SELECTION_CHOICES {
+            assert!(parse_choice::<SelectionStyle>(name).is_some(), "{name}");
+        }
+        for name in PRIMARY_CHOICES {
+            assert!(parse_choice::<PrimaryStyle>(name).is_some(), "{name}");
+        }
+        for name in FIELD_CHOICES {
+            assert!(parse_choice::<FieldStyle>(name).is_some(), "{name}");
+        }
+        let presets = GlassMaterial::PRESETS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>();
+        assert_eq!(GLASS_CHOICES[2..], presets[..]);
+    }
+
+    #[test]
     fn unknown_keys_are_errors_that_name_the_key() {
         for (source, key, spelling) in [
             (
-                r#"{"look":{"corner_smoothing":2}}"#,
-                "corner_smoothing",
-                Some("corner-smoothing"),
+                r#"{"look":{"row_inset":2}}"#,
+                "row_inset",
+                Some("row-inset"),
             ),
             (
                 r##"{"look":{"glass":{"preset":"clear","Light-Color":"#ff0000"}}}"##,

@@ -34,13 +34,12 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Elevation, Icon, IconName,
-    Root,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Icon, IconName, Root,
+    StyledExt as _,
     button::{Button, ButtonVariants as _},
     chooser::{
-        ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserRowTheme,
-        ChooserSearch, buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle,
-        tree_chooser_row,
+        ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserSearch,
+        buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
     },
     navigation::{
         workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
@@ -517,7 +516,8 @@ impl AppShell {
                     .h_full()
                     .flex()
                     .flex_none()
-                    .bg(cx.theme().background.opaque())
+                    .popover_style(cx)
+                    .rounded(px(0.0))
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(sidebar),
@@ -967,8 +967,7 @@ impl AppShell {
                 .flex()
                 .flex_col()
                 .w_full()
-                .gap(px(2.0))
-                .px(px(6.0))
+                .list_inset(cx)
                 .child(zz_ui::settings::settings_navigation_back_row(
                     zz_ui::settings::settings_navigation_back_button("web-settings-back").on_click(
                         cx.listener(|this, _, _, cx| {
@@ -1051,9 +1050,7 @@ impl AppShell {
                 .cursor(zz_gpui::CursorStyle::ResizeLeftRight)
                 .occlude()
                 .when(divider_hidden, |handle| {
-                    handle.hover(|handle| {
-                        handle.border_r_1().border_color(cx.theme().divider_color())
-                    })
+                    handle.hover(|handle| handle.rule_right(cx))
                 })
                 .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
                     cx.new(|_| SidebarResizePreview)
@@ -2039,11 +2036,11 @@ impl AppShell {
             overlays.push(
                 div()
                     .absolute()
-                    .left_0()
-                    .right_0()
-                    .top_0()
+                    .left(px(8.0))
+                    .right(px(8.0))
+                    .top(px(8.0))
                     .p(px(8.0))
-                    .bg(cx.theme().surface(Elevation::Popover).fill)
+                    .popover_style(cx)
                     .text_size(px(12.0))
                     .text_color(cx.theme().warning)
                     .child(self.connection.read(cx).status.clone())
@@ -2412,7 +2409,6 @@ impl AppShell {
             self.chooser_selection = selection;
             let show_key_gutter =
                 chooser_has_key_gutter(state.items.iter().map(|item| item.key.as_str()));
-            let theme = ChooserRowTheme::from_theme(cx);
             let font = cx.theme().mono_font_family.clone();
             let connection = self.connection.clone();
             chooser_rows = Some(
@@ -2455,7 +2451,6 @@ impl AppShell {
                                         item.active(),
                                         item.tagged(),
                                         index == selected,
-                                        theme,
                                         font.clone(),
                                     )
                                     .on_mouse_down(MouseButton::Left, move |event, _, cx| {
@@ -2516,7 +2511,6 @@ impl AppShell {
             self.chooser_selection = selection;
             let show_key_gutter =
                 chooser_has_key_gutter(state.items.iter().map(|item| item.key.as_str()));
-            let theme = ChooserRowTheme::from_theme(cx);
             let font = cx.theme().mono_font_family.clone();
             let connection = self.connection.clone();
             let now = unix_seconds();
@@ -2542,7 +2536,6 @@ impl AppShell {
                                         age,
                                         item.tagged,
                                         index == selected,
-                                        theme,
                                         font.clone(),
                                     )
                                     .on_mouse_down(MouseButton::Left, move |event, _, cx| {

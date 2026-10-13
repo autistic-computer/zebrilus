@@ -65,7 +65,7 @@ pub fn task_tray(
     }
     let on_action: Rc<dyn Fn(TaskTrayAction, &mut Window, &mut App)> = Rc::new(on_action);
     let toggle = Rc::clone(&on_action);
-    let foreground = cx.theme().foreground;
+    let row_paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
     let task_drop = crate::icon::cap_center_drop(px(TASK_ROW_FONT_SIZE), px(TASK_ICON_SIZE), cx);
     let chip_drop =
         crate::icon::cap_center_drop(px(TASK_ROW_FONT_SIZE), px(TASK_ROW_FONT_SIZE), cx);
@@ -81,19 +81,19 @@ pub fn task_tray(
             .flex_none()
             .gap_2()
             .px((px(super::presentation::CARD_GUTTER) - cx.theme().row_inset).max(px(0.0)))
-            .rounded(cx.theme().menu_radius())
+            .menu_item_corners(px(TASK_ROW_HEIGHT), cx)
             .overflow_hidden()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
-            .text_color(cx.theme().foreground.muted())
             .when_some(tool_call, |row, tool_call| {
-                row.cursor_pointer()
-                    .hover(move |row| row.text_color(foreground))
+                row.painted_interactive(row_paint, false, true)
+                    .cursor_pointer()
                     .on_click(move |_, window, cx| {
                         reveal(TaskTrayAction::Reveal(tool_call.clone()), window, cx);
                         cx.stop_propagation();
                     })
             })
+            .text_color(row_paint.muted_at(PaintState::Rest))
             .child(
                 div()
                     .flex_none()
@@ -151,7 +151,7 @@ pub fn task_tray(
             .h(px(24.0))
             .px_2()
             .gap_1p5()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().control_radius())
             .cursor_pointer()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
@@ -218,13 +218,7 @@ pub fn task_tray(
             .w_full()
             .gap_1()
             .when_some(panel, |tray, panel| {
-                tray.child(
-                    panel
-                        .w_full()
-                        .py(px(4.0))
-                        .px(cx.theme().row_inset)
-                        .popover_style(cx),
-                )
+                tray.child(panel.w_full().list_inset(cx).py(px(4.0)).popover_style(cx))
             })
             .child(
                 h_flex()

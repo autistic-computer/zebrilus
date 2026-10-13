@@ -4,13 +4,13 @@ pub use zz_client::StatusBarSettings;
 use zz_gpui::{App, IntoElement, div, prelude::*, px};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, IconName,
+    ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
     navigation::{
         WorkspaceStatusWindowState,
         status::{
             StatusAgentEntry, StatusPaneEntry, StatusWindowActions, status_agents, status_window,
         },
-        workspace_status_item,
+        status_dot, workspace_status_item,
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
 };
@@ -149,17 +149,8 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
                 .flex_none()
                 .px(px(6.0))
                 .rounded(cx.theme().control_radius())
-                .when(cx.theme().control_shadows(), |item| {
-                    item.border(px(0.5))
-                        .border_color(zz_gpui::transparent_white())
-                })
-                .child(
-                    div()
-                        .flex_none()
-                        .size(px(5.0))
-                        .rounded_full()
-                        .bg(cx.theme().success),
-                )
+                .surface_outline(cx.theme().transparent, cx)
+                .child(status_dot(cx.theme().success))
                 .into_any_element(),
         );
     }
@@ -169,8 +160,7 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
         .flex_none()
         .overflow_hidden()
         .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
+        .surface_edge(cx)
         .bg(cx.theme().background.opaque())
         .child(
             workspace_status_bar(

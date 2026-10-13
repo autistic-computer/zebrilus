@@ -278,6 +278,9 @@ const FOCUS_ALPHA: f32 = 0.8;
 const SOFT_ALPHA: [f32; 3] = [0.12, 0.18, 0.24];
 const NEUTRAL_OUTLINE_ALPHA: f32 = 0.3;
 const TONE_OUTLINE_ALPHA: f32 = 0.55;
+/// How much of the outline emphasis's border a soft paint keeps as its
+/// hairline.
+const SOFT_OUTLINE_SHARE: f32 = 1.0 / 3.0;
 const TONE_TEXT_WEIGHT: f32 = 0.7;
 
 impl Theme {
@@ -349,7 +352,7 @@ impl Theme {
         .opacity(FOCUS_ALPHA);
         let soft = |step: u8| {
             if neutral {
-                self.control_background(ground.fill.washed(step + 1))
+                ground.fill.washed(step + 1)
             } else {
                 color.opacity(SOFT_ALPHA[usize::from(step)])
             }
@@ -410,15 +413,11 @@ impl Theme {
                     selected,
                     current: soft(2),
                     border: if hairline {
-                        outline.opacity(self.outline / 3.0)
+                        outline.opacity(SOFT_OUTLINE_SHARE)
                     } else {
                         clear
                     },
-                    border_width: if hairline {
-                        self.outline_width
-                    } else {
-                        px(0.0)
-                    },
+                    border_width: if hairline { self.outline } else { px(0.0) },
                     focus,
                     text,
                     selected_text: readable(selected, text),

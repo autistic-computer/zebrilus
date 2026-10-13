@@ -10,12 +10,11 @@ use zz_gpui::{
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
 };
 
 const ENTER: Duration = Duration::from_millis(240);
-const CORNER: f32 = 28.0;
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 5.0;
 const HEADER_HEIGHT: f32 = 44.0;
@@ -102,7 +101,7 @@ pub fn sheet_close(id: impl Into<ElementId>) -> Button {
 }
 
 /// One choice in a picker sheet: the desktop menu row at touch height, with
-/// the check in front and the accent under a press.
+/// the check in front and the row's press wash under a press.
 pub fn sheet_option(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -144,8 +143,8 @@ fn sheet_row(
         .cursor_pointer()
         .child(crate::touch::instant_press_highlight(
             id,
-            theme.accent,
-            theme.radius,
+            None,
+            theme.row_radius(px(OPTION_HEIGHT)),
         ))
         .child(
             div()
@@ -303,8 +302,14 @@ impl RenderOnce for BottomSheet {
             )
         };
         let theme = cx.theme();
-        let enter = theme.duration(ENTER);
-        let corner = px(CORNER);
+        let enter = ENTER;
+        let grabber = theme
+            .paint_on(
+                theme.surface(crate::Elevation::Popover).opaque(),
+                Tone::Neutral,
+                Emphasis::Outline,
+            )
+            .border;
         let on_dismiss = self.on_dismiss;
         let scrim = div()
             .id("bottom-sheet-scrim")
@@ -358,10 +363,9 @@ impl RenderOnce for BottomSheet {
             .flex()
             .flex_col()
             .occlude()
-            .rounded_tl(corner)
-            .rounded_tr(corner)
-            .surface_fill(theme.surface(crate::Elevation::Panel).fill.opaque(), cx)
-            .text_color(theme.foreground)
+            .popover_style(cx)
+            .rounded_bl(px(0.0))
+            .rounded_br(px(0.0))
             .font_family(theme.font_family.clone())
             .pb(self.bottom_inset)
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -374,7 +378,7 @@ impl RenderOnce for BottomSheet {
                         .w(px(GRABBER_WIDTH))
                         .h(px(GRABBER_HEIGHT))
                         .rounded_full()
-                        .bg(theme.foreground.opacity(0.25)),
+                        .bg(grabber),
                 ),
             )
             .child(

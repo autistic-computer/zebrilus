@@ -5,7 +5,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, PaintState, Tone, h_flex, tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Emphasis, PaintState, Size, StyledExt as _, Tone, h_flex,
+    tooltip::Tooltip,
 };
 
 type ChangeHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -46,10 +47,7 @@ impl RenderOnce for DiscreteSlider {
         let focused = focus.is_focused(window);
         let foreground = cx.theme().foreground;
         let filled = cx.theme().paint(Tone::Primary, Emphasis::Solid);
-        let track = cx
-            .theme()
-            .paint(Tone::Neutral, Emphasis::Soft)
-            .fill_at(PaintState::Active);
+        let track = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
         let value = self.labels.get(selected).cloned().unwrap_or_default();
         let mut pills = h_flex()
             .flex_1()
@@ -63,30 +61,33 @@ impl RenderOnce for DiscreteSlider {
             let focus = focus.clone();
             let tooltip = label.clone();
             let selector = format!("{}:pill-{index}", self.id);
+            let group = SharedString::from(selector.clone());
+            let (fill, hover) = if index <= selected {
+                (filled.fill, filled.hover)
+            } else {
+                (track.fill_at(PaintState::Active), track.hover)
+            };
             pills = pills.child(
                 h_flex()
                     .id(index)
+                    .group(group.clone())
                     .debug_selector(move || selector.clone())
                     .role(Role::Button)
                     .aria_label(label.clone())
                     .flex_1()
                     .min_w_0()
-                    .h(px(28.0))
+                    .h(Size::Medium.control_h())
                     .cursor_pointer()
-                    .hover(|this| this.opacity(0.8))
                     .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
                     .child(
                         div()
                             .w_full()
                             .h(px(6.0))
                             .rounded(cx.theme().control_radius())
-                            .bg(if index <= selected {
-                                filled.fill
-                            } else {
-                                track
-                            })
+                            .bg(fill)
+                            .group_hover(group, move |this| this.bg(hover))
                             .when(focused && index == selected, |this| {
-                                this.border_1().border_color(filled.focus)
+                                this.focus_ring(&filled)
                             }),
                     )
                     .on_click(move |_, window, cx| {

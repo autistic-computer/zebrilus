@@ -481,7 +481,7 @@ fn element_picker_appearance(theme: &zz_ui::Theme, page_zoom: f64) -> ElementPic
         preview_background: to_hex(theme.surface(Elevation::Panel).fill.opaque()),
         preview_foreground: to_hex(theme.foreground),
         preview_border: to_hex(theme.border()),
-        shadow: theme.shadow.then(|| to_hex(theme.shadow_color)),
+        shadow: theme.surface_shadows().then(|| to_hex(theme.shadow_color)),
         radius: f32::from(theme.radius),
         font_family: theme.mono_font_family.to_string(),
         page_zoom,
@@ -4210,7 +4210,7 @@ mod tests {
         theme.colors.foreground = zz_ui::parse_hex("#abcdef").unwrap();
         theme.colors.shadow_color = zz_ui::parse_hex("#01020366").unwrap();
         theme.radius = px(17.0);
-        theme.shadow = true;
+        theme.shadows = zz_ui::Shadows::All;
         theme.mono_font_family = "Iosevka".into();
 
         let appearance = element_picker_appearance(&theme, 1.25);
@@ -4229,7 +4229,7 @@ mod tests {
         assert_eq!(appearance.font_family, "Iosevka");
         assert_eq!(appearance.page_zoom, 1.25);
 
-        theme.shadow = false;
+        theme.shadows = zz_ui::Shadows::None;
         assert_eq!(element_picker_appearance(&theme, 1.0).shadow, None);
     }
 

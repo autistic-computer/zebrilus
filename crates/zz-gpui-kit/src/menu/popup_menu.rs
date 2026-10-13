@@ -886,7 +886,7 @@ impl PopupMenu {
         let item_height = if crate::touch::CoarsePointer::get(cx) {
             px(crate::touch::TOUCH_TARGET)
         } else {
-            cx.theme().dense(px(26.))
+            px(26.)
         };
 
         let coarse = crate::touch::CoarsePointer::get(cx);
@@ -895,8 +895,8 @@ impl PopupMenu {
             .when(coarse && item.is_clickable(), |this| {
                 this.child(crate::touch::press_highlight(
                     zz_gpui::ElementId::NamedInteger(group_name.clone().into(), 0),
-                    cx.theme().foreground.opacity(0.1),
-                    cx.theme().menu_radius(),
+                    None,
+                    cx.theme().row_radius(item_height),
                 ))
             })
             .text_size(crate::rems_from_px(if coarse { 13.0 } else { 12.0 }))
@@ -926,8 +926,7 @@ impl PopupMenu {
                 .mx(cx.theme().row_inset)
                 .rounded(px(0.0))
                 .border_0()
-                .border_b(px(0.5))
-                .border_color(cx.theme().divider_color())
+                .rule_bottom(cx)
                 .disabled(true),
             PopupMenuItem::Label(label) => this
                 .disabled(true)
@@ -978,7 +977,7 @@ impl PopupMenu {
                             this.adjust_stepper(action, window, cx);
                         }))
                 };
-                this.h(item_height.max(cx.theme().dense(px(26.0))))
+                this.h(item_height.max(px(26.0)))
                     .aria_label(format!(
                         "{label}: {value}; Left and Right adjust, Enter resets"
                     ))
@@ -1202,8 +1201,7 @@ impl Render for PopupMenu {
                 v_flex()
                     .id("items")
                     .py(px(4.0))
-                    .px(cx.theme().row_inset)
-                    .when(cx.theme().inset_rows(), |this| this.gap_y_0p5())
+                    .list_inset(cx)
                     .min_w(rems(8.))
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
                     .max_w(max_width)
@@ -1237,7 +1235,7 @@ impl Render for PopupMenu {
                 // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu will cannot be displayed.
                 this.vertical_scrollbar(&self.scroll_handle)
             });
-        crate::foundation::surface_enter(surface, "menu-open", px(0.0), cx)
+        crate::foundation::surface_enter(surface, "menu-open", px(0.0))
     }
 }
 

@@ -9,7 +9,7 @@ tags:
 - zz-gpui-kit
 - wasm
 - agents
-timestamp: 2026-10-12T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # What it is
@@ -32,9 +32,10 @@ just storybook serve    # serve the last build
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&interface-theme=macos`.
 Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`, `macos`,
-`linear`), every look value (`radius`, `smoothing`, `shadow`, `control-shadow`, `elevation`,
-`outline`, `selection`, `primary`, `field`, the glass sliders, ...), each mode's colors
-(`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
+`linear`, `glass`), the look values (`radius`, `outline`, `row-inset`, `shadows` as `none`,
+`surfaces` or `all`, `selection`, `primary`, `field`, `font`, and `glass` with its sliders; while
+glass is on, a note under Outline says menus, popovers and dialogs draw the glass rim instead),
+each mode's colors (`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
 theme's alpha, or the palette's when the theme sets none), `contrast`, `zoom`, the pane knobs
 (`pane-gaps`, `pane-margin`, `pane-corner-radius`, `pane-border-width`, `pane-opacity`,
 `pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes; `pane-gaps` drives the Theme
@@ -58,14 +59,15 @@ authoring rules; the short version:
 # Check a change
 
 Edit the component in `crates/zz-ui` or `crates/zz-gpui-kit`, let `just storybook run` rebuild,
-reload, and walk the knobs: light and dark, each interface theme, radius 0 and full, contrast extremes,
-zoom. The sections re-render live as knobs move.
+reload, and walk the knobs: light and dark, each interface theme, radius 0 and full, outline 0,
+each shadows choice, row inset 0, contrast extremes, zoom. The sections re-render live as knobs move.
 
 The storybook is its own Cargo workspace, so the root clippy run skips it. `just storybook lint`
 runs clippy on it for the host and for wasm under the root `clippy.toml`, which bans hand-mixed
-colors here too: use the kit's paints and surfaces, and put a scoped
-`#[allow(clippy::disallowed_methods, reason = ..)]` only on a story that shows a raw transform on
-purpose (the Colors story) or on the theme JSON the HTML knob panel paints itself with.
+colors and hand-drawn borders and shadows here too: use the kit's paints, surfaces, edges and
+shadows, and put a scoped `#[allow(clippy::disallowed_methods, reason = ..)]` only on a story that
+shows a raw transform on purpose (the Colors story), on the theme JSON the HTML knob panel paints
+itself with, or on `story::Framed::framed`, the edge of a frame that stands in for a window.
 
 # For agents
 

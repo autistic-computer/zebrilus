@@ -22,6 +22,7 @@ use super::{
     fixtures::{agent_kind, browser_kind, editor_kind, noop, status_pane, workspace_panes},
     tree::chrome_controls,
 };
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
@@ -281,8 +282,7 @@ fn bar(id: &'static str, config: &Bar, cx: &App) -> AnyElement {
         .w_full()
         .overflow_hidden()
         .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
+        .framed(cx)
         .bg(cx.theme().background.opaque())
         .child(titlebar(config, cx))
         .into_any_element()

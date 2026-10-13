@@ -7,7 +7,7 @@ use zz_terminal::KeyInput;
 use zz_ui::chooser::{ChooserPaneKind, chooser_subtitle, tree_chooser_row};
 
 use crate::{
-    chooser::{Chooser, ChooserHint, ChooserRowTheme, ChooserSearch, ChooserSpec},
+    chooser::{Chooser, ChooserHint, ChooserSearch, ChooserSpec},
     mux::client::MuxClient,
     terminal::view::TERMINAL_FONT,
 };
@@ -107,9 +107,8 @@ impl ChooserSpec for TreeChooser {
         selected: bool,
         show_key_gutter: bool,
         mux: Entity<MuxClient>,
-        theme: ChooserRowTheme,
     ) -> AnyElement {
-        tree_row(item, index, selected, show_key_gutter, mux, theme)
+        tree_row(item, index, selected, show_key_gutter, mux)
     }
 
     fn key(input: KeyInput) -> Self::Action {
@@ -135,9 +134,8 @@ fn tree_row(
     selected: bool,
     show_key_gutter: bool,
     mux: Entity<MuxClient>,
-    theme: ChooserRowTheme,
 ) -> AnyElement {
-    tree_row_element(item, index, selected, show_key_gutter, theme)
+    tree_row_element(item, index, selected, show_key_gutter)
         .on_mouse_down(MouseButton::Left, move |event, _, cx| {
             let index = u32::try_from(index).unwrap_or(u32::MAX);
             TreeChooser::send(
@@ -158,7 +156,6 @@ fn tree_row_element(
     index: usize,
     selected: bool,
     show_key_gutter: bool,
-    theme: ChooserRowTheme,
 ) -> zz_ui::list::ListItem {
     let target = item.target.to_string();
     let disclosure = if item.has_children() {
@@ -189,7 +186,6 @@ fn tree_row_element(
         active,
         tagged,
         selected,
-        theme,
         TERMINAL_FONT,
     )
 }

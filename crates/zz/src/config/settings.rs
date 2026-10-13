@@ -17,7 +17,7 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Sizable as _,
-    ThemeMode, WindowExt as _,
+    StyledExt as _, ThemeMode, WindowExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
@@ -124,8 +124,10 @@ pub(crate) struct SettingsView {
     which_key_delay: Entity<InputState>,
     pane_border_width: Entity<InputState>,
     widget_corner_radius: Entity<InputState>,
+    widget_outline_width: Entity<InputState>,
+    widget_row_inset: Entity<InputState>,
+    look_selects: Vec<(ConfigKey, Entity<SelectState<Vec<SettingsSelectItem>>>)>,
     chrome_contrast: Entity<InputState>,
-    shadow_strength: Entity<InputState>,
     window_corner_radius: Entity<InputState>,
     mux_config_editor: Option<ConfigFileEditor>,
     mux_split_controls: Option<multiplexer::SplitControls>,
@@ -233,13 +235,31 @@ impl SettingsView {
             window,
             cx,
         );
-        let shadow_strength = numeric_value_input(
-            ConfigKey::ShadowStrength,
-            observed.shadow_strength.value,
-            5.0,
+        let widget_outline_width = numeric_value_input(
+            ConfigKey::WidgetOutlineWidth,
+            observed.widget_outline_width.value,
+            0.5,
             window,
             cx,
         );
+        let widget_row_inset = numeric_value_input(
+            ConfigKey::WidgetRowInset,
+            observed.widget_row_inset.value,
+            1.0,
+            window,
+            cx,
+        );
+        let look_selects = AppearancePageItem::LOOK
+            .into_iter()
+            .filter_map(|item| {
+                let key = look_key(item)?;
+                let selected = observed.choice_value(key)?;
+                Some((
+                    key,
+                    settings_select_state(item.look_choices(), selected, window, cx),
+                ))
+            })
+            .collect::<Vec<_>>();
         let window_corner_radius = numeric_value_input(
             ConfigKey::WindowCornerRadius,
             observed.window_corner_radius.value,
@@ -247,7 +267,7 @@ impl SettingsView {
             window,
             cx,
         );
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             cx.observe(&mux, |_, _, cx| cx.notify()),
             cx.observe_global::<config::FleetHosts>(|_, cx| cx.notify()),
             cx.observe_global::<crate::update::UpdateState>(|_, cx| cx.notify()),
@@ -289,7 +309,13 @@ impl SettingsView {
                 cx,
             ),
             numeric_input_subscription(&chrome_contrast, ConfigKey::ChromeContrast, window, cx),
-            numeric_input_subscription(&shadow_strength, ConfigKey::ShadowStrength, window, cx),
+            numeric_input_subscription(
+                &widget_outline_width,
+                ConfigKey::WidgetOutlineWidth,
+                window,
+                cx,
+            ),
+            numeric_input_subscription(&widget_row_inset, ConfigKey::WidgetRowInset, window, cx),
             numeric_input_subscription(
                 &window_corner_radius,
                 ConfigKey::WindowCornerRadius,
@@ -297,6 +323,11 @@ impl SettingsView {
                 cx,
             ),
         ];
+        subscriptions.extend(
+            look_selects
+                .iter()
+                .map(|(key, select)| look_select_subscription(select, *key, window, cx)),
+        );
         let observed_appearance_overrides = config::daemon_config_overrides(cx);
         let settings = Self {
             mux,
@@ -318,8 +349,10 @@ impl SettingsView {
             which_key_delay,
             pane_border_width,
             widget_corner_radius,
+            widget_outline_width,
+            widget_row_inset,
+            look_selects,
             chrome_contrast,
-            shadow_strength,
             window_corner_radius,
             mux_config_editor: None,
             mux_split_controls: None,
@@ -554,17 +587,25 @@ impl SettingsView {
                     cx,
                 );
             }
-            if !numeric_input_matches_value(
-                ConfigKey::ShadowStrength,
-                &self.shadow_strength.read(cx).value(),
-                resolved.shadow_strength.value,
-            ) {
-                synchronize_text_input(
-                    &self.shadow_strength,
-                    &numeric_input_text(ConfigKey::ShadowStrength, resolved.shadow_strength.value),
-                    window,
-                    cx,
-                );
+            synchronize_f32_input(
+                &self.widget_outline_width,
+                resolved.widget_outline_width.value,
+                window,
+                cx,
+            );
+            synchronize_f32_input(
+                &self.widget_row_inset,
+                resolved.widget_row_inset.value,
+                window,
+                cx,
+            );
+            for (key, select) in &self.look_selects {
+                if let Some(value) = resolved.choice_value(*key) {
+                    let value = value.to_owned();
+                    select.update(cx, |select, cx| {
+                        select.set_selected_value(&value, window, cx);
+                    });
+                }
             }
             if !numeric_input_matches_value(
                 ConfigKey::PaneBackgroundOpacity,
@@ -836,14 +877,58 @@ impl SettingsView {
         input: &Entity<InputState>,
         cx: &Context<Self>,
     ) -> SettingEntry {
-        let title = if key == ConfigKey::WidgetCornerRadius && setting.value > 24.0 {
-            "Widget corner radius (Full)"
-        } else {
-            title
-        };
         SettingEntry::new(title, description)
             .title_actions(key_annotations(key, setting.provenance))
             .control(numeric_control(input, cx))
+    }
+
+    /// A look setting: a number field for a length, a select for a choice.
+    fn look_setting(
+        &self,
+        item: AppearancePageItem,
+        resolved: &AppConfig,
+        cx: &Context<Self>,
+    ) -> SettingEntry {
+        let (title, description) = item.look_text().unwrap_or_default();
+        let Some(key) = look_key(item) else {
+            return SettingEntry::new(title, description);
+        };
+        let input = match key {
+            ConfigKey::WidgetCornerRadius => Some(&self.widget_corner_radius),
+            ConfigKey::WidgetOutlineWidth => Some(&self.widget_outline_width),
+            ConfigKey::WidgetRowInset => Some(&self.widget_row_inset),
+            _ => None,
+        };
+        if let Some(input) = input {
+            let title = if key == ConfigKey::WidgetCornerRadius
+                && resolved.widget_corner_radius.value > 24.0
+            {
+                "Corner radius (Full)"
+            } else {
+                title
+            };
+            return Self::numeric_setting(
+                key,
+                title,
+                description,
+                numeric_config_value(resolved, key),
+                input,
+                cx,
+            );
+        }
+        let provenance = resolved
+            .choice_setting(key)
+            .map_or(ConfigProvenance::Default, |setting| setting.provenance);
+        let entry =
+            SettingEntry::new(title, description).title_actions(key_annotations(key, provenance));
+        match self
+            .look_selects
+            .iter()
+            .find(|(select_key, _)| *select_key == key)
+        {
+            Some((_, select)) => entry.control(select_control(select, cx)),
+            None => entry,
+        }
     }
 }
 
@@ -886,7 +971,7 @@ impl SettingsView {
                 return settings_list_disclosure_header(
                     "settings-appearance-advanced",
                     "Advanced",
-                    Some("Fonts, zoom, contrast, and the corner and shadow sizes the theme sets."),
+                    Some("Fonts, zoom, contrast, and the shape the theme sets: corners, outlines, shadows, rows, selection and glass."),
                     expanded,
                     cx,
                 )
@@ -925,22 +1010,14 @@ impl SettingsView {
                 resolved.animations,
                 cx,
             ),
-            AppearancePageItem::WidgetCornerRadius => Self::numeric_setting(
-                ConfigKey::WidgetCornerRadius,
-                "Widget corner radius",
-                "Set corners from 0 to 24px. At 25, Full mode rounds buttons, fields, and rows into pills.",
-                resolved.widget_corner_radius,
-                &self.widget_corner_radius,
-                cx,
-            ),
-            AppearancePageItem::ShadowStrength => Self::numeric_setting(
-                ConfigKey::ShadowStrength,
-                "Shadow strength",
-                "Strength of shadows around controls and gapped panes, from 0% (off) to 100%.",
-                resolved.shadow_strength,
-                &self.shadow_strength,
-                cx,
-            ),
+            AppearancePageItem::WidgetCornerRadius
+            | AppearancePageItem::OutlineWidth
+            | AppearancePageItem::Shadows
+            | AppearancePageItem::RowInset
+            | AppearancePageItem::Selection
+            | AppearancePageItem::Primary
+            | AppearancePageItem::Field
+            | AppearancePageItem::Glass => self.look_setting(item, resolved, cx),
             AppearancePageItem::WindowBackgroundBlur => Self::boolean_setting(
                 ConfigKey::WindowBackgroundBlur,
                 "Window blur",
@@ -1068,8 +1145,7 @@ impl SettingsView {
                         .tooltip("Save a copy of this theme to edit and use it")
                         .on_click(|_, _, cx| {
                             let mut theme = config::themes(cx).active.clone();
-                            theme.look.radius = config::widget_corner_radius(cx).as_f32();
-                            theme.look.shadow = config::shadow_strength(cx);
+                            config::look_overrides(cx).apply(&mut theme.look);
                             let font = config::ui_font_family(cx);
                             if font.provenance == ConfigProvenance::Override {
                                 theme.look.font = font.value.map(SharedString::from);
@@ -1339,7 +1415,6 @@ impl SettingsView {
                 .child(
                     Button::new("settings-add-host")
                         .primary()
-                        .text_color(cx.theme().foreground)
                         .label("Add")
                         .on_click(cx.listener(|settings, _, window, cx| {
                             settings.submit_add_host(window, cx);
@@ -1690,8 +1765,8 @@ impl SettingsView {
                             .h(px(320.0))
                             .overflow_hidden()
                             .p(px(CONFIG_EDITOR_PADDING))
-                            .border_1()
-                            .border_color(cx.theme().border())
+                            .surface_edge(cx)
+                            .rounded(cx.theme().menu_radius())
                             .bg(cx.theme().editor_background())
                             .font_family(cx.theme().mono_font_family.clone())
                             .text_size(px(CONFIG_EDITOR_FONT_SIZE))
@@ -2238,6 +2313,54 @@ fn search_provider_subscription(
     )
 }
 
+/// The config key a look setting edits.
+fn look_key(item: AppearancePageItem) -> Option<ConfigKey> {
+    Some(match item {
+        AppearancePageItem::WidgetCornerRadius => ConfigKey::WidgetCornerRadius,
+        AppearancePageItem::OutlineWidth => ConfigKey::WidgetOutlineWidth,
+        AppearancePageItem::Shadows => ConfigKey::WidgetShadows,
+        AppearancePageItem::RowInset => ConfigKey::WidgetRowInset,
+        AppearancePageItem::Selection => ConfigKey::WidgetSelection,
+        AppearancePageItem::Primary => ConfigKey::WidgetPrimary,
+        AppearancePageItem::Field => ConfigKey::WidgetField,
+        AppearancePageItem::Glass => ConfigKey::WidgetGlass,
+        _ => return None,
+    })
+}
+
+/// Writes a look choice. Glass's Theme follows the theme again, so it drops
+/// the key instead of writing it.
+fn look_select_subscription(
+    select: &Entity<SelectState<Vec<SettingsSelectItem>>>,
+    key: ConfigKey,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) -> Subscription {
+    cx.subscribe_in(
+        select,
+        window,
+        move |_, _, event: &SelectEvent<Vec<SettingsSelectItem>>, _, cx| {
+            let SelectEvent::Confirm(Some(value)) = event else {
+                return;
+            };
+            if config::resolved_config(cx).choice_value(key) == Some(value.as_str()) {
+                return;
+            }
+            let result =
+                if key == ConfigKey::WidgetGlass && value == zz_config::DEFAULT_WIDGET_GLASS {
+                    remove_config_key(key)
+                } else {
+                    set_config_key(key, value)
+                };
+            if let Err(error) = result {
+                report_write_error("set", key.as_str(), &error, cx);
+            } else {
+                refresh_settings_preview(key, cx);
+            }
+        },
+    )
+}
+
 /// The family the UI font select shows: the configured one, or the theme's
 /// font while nothing is configured, or `""` for the system font.
 fn shown_ui_font(
@@ -2336,9 +2459,10 @@ fn numeric_input_subscription(
             } else if (is_pane_setting(key)
                 || matches!(
                     key,
-                    ConfigKey::ShadowStrength
-                        | ConfigKey::ChromeContrast
+                    ConfigKey::ChromeContrast
                         | ConfigKey::WidgetCornerRadius
+                        | ConfigKey::WidgetOutlineWidth
+                        | ConfigKey::WidgetRowInset
                 ))
                 && matches!(event, InputEvent::Change)
             {
@@ -2366,6 +2490,13 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
         && !matches!(
             key,
             ConfigKey::WidgetCornerRadius
+                | ConfigKey::WidgetOutlineWidth
+                | ConfigKey::WidgetShadows
+                | ConfigKey::WidgetRowInset
+                | ConfigKey::WidgetSelection
+                | ConfigKey::WidgetPrimary
+                | ConfigKey::WidgetField
+                | ConfigKey::WidgetGlass
                 | ConfigKey::InterfaceTheme
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteHostPrefix
@@ -2424,10 +2555,7 @@ fn numeric_range(key: ConfigKey) -> (f32, f32) {
 fn numeric_input_scale(key: ConfigKey) -> f32 {
     if matches!(
         key,
-        ConfigKey::ShadowStrength
-            | ConfigKey::PaneGlowStrength
-            | ConfigKey::PaneBackgroundOpacity
-            | ConfigKey::ChromeContrast
+        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity | ConfigKey::ChromeContrast
     ) {
         100.0
     } else {
@@ -2438,10 +2566,7 @@ fn numeric_input_scale(key: ConfigKey) -> f32 {
 fn numeric_input_text(key: ConfigKey, value: f32) -> String {
     if matches!(
         key,
-        ConfigKey::ShadowStrength
-            | ConfigKey::PaneGlowStrength
-            | ConfigKey::PaneBackgroundOpacity
-            | ConfigKey::ChromeContrast
+        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity | ConfigKey::ChromeContrast
     ) {
         format!("{:.2}", value * numeric_input_scale(key))
             .trim_end_matches('0')
@@ -2476,8 +2601,9 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::PaneMargin => config.pane_margin,
         ConfigKey::PaneBorderWidth => config.pane_border_width,
         ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
+        ConfigKey::WidgetOutlineWidth => config.widget_outline_width,
+        ConfigKey::WidgetRowInset => config.widget_row_inset,
         ConfigKey::ChromeContrast => config.chrome_contrast,
-        ConfigKey::ShadowStrength => config.shadow_strength,
         ConfigKey::WindowCornerRadius => config.window_corner_radius,
         ConfigKey::EditorFontSize => config.editor_font_size,
         ConfigKey::WhichKeyDelay => config.which_key_delay,
@@ -2511,7 +2637,12 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::ThemeMode
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
-        | ConfigKey::AppIcon => {
+        | ConfigKey::AppIcon
+        | ConfigKey::WidgetShadows
+        | ConfigKey::WidgetSelection
+        | ConfigKey::WidgetPrimary
+        | ConfigKey::WidgetField
+        | ConfigKey::WidgetGlass => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }
@@ -2692,7 +2823,6 @@ mod tests {
     #[test]
     fn percentage_inputs_convert_and_reject_invalid_edits() {
         for (key, default, max) in [
-            (ConfigKey::ShadowStrength, "100", 100.0),
             (ConfigKey::PaneBackgroundOpacity, "50", 100.0),
             (ConfigKey::PaneGlowStrength, "100", 200.0),
         ] {

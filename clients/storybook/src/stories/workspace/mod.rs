@@ -2,7 +2,7 @@ use crate::story::Story;
 
 mod browser;
 pub(super) mod fixtures;
-mod flat_sidebar;
+pub(super) mod flat_sidebar;
 mod navigation;
 mod panes;
 mod settings;

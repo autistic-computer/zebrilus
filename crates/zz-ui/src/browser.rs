@@ -1,13 +1,14 @@
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintExt as _,
-    PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
+    Selectable as _, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     feedback::{alert_actions, inline_alert},
-    input::{Input, InputContentType, InputState},
+    input::{Input, InputContentType, InputState, field_chrome, field_paint},
     menu::{PopupMenu, PopupMenuItem},
+    separator::Separator,
     tooltip::Tooltip,
 };
 use zz_gpui::{
@@ -21,6 +22,8 @@ const BROWSER_CONTROL_HEIGHT: f32 = 28.0;
 const BROWSER_HEADER_PADDING: f32 = 8.0;
 const BROWSER_TAB_MIN_WIDTH: f32 = 112.0;
 const BROWSER_TAB_MAX_WIDTH: f32 = 180.0;
+const SITE_CONTROLS_INSET: Pixels = px(1.5);
+const ADDRESS_EDGE_WIDTH: Pixels = px(1.0);
 
 #[derive(IntoElement)]
 pub struct BrowserHeader {
@@ -49,7 +52,7 @@ impl BrowserHeader {
 }
 
 impl RenderOnce for BrowserHeader {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         let show_separator = self.toolbar.show_separator;
         div()
             .id("browser-pane-header")
@@ -87,12 +90,10 @@ impl RenderOnce for BrowserHeader {
             .child(self.toolbar.show_separator(false))
             .when(show_separator, |header| {
                 header.child(
-                    div()
+                    Separator::horizontal()
                         .absolute()
                         .bottom_0()
-                        .w_full()
-                        .h(px(1.0))
-                        .bg(cx.theme().border()),
+                        .h(crate::RULE_WIDTH),
                 )
             })
     }
@@ -152,9 +153,7 @@ impl RenderOnce for BrowserToolbar {
             .items_center()
             .gap_1()
             .px_2()
-            .when(self.show_separator, |toolbar| {
-                toolbar.border_b_1().border_color(cx.theme().border())
-            })
+            .when(self.show_separator, |toolbar| toolbar.rule_bottom(cx))
             .text_color(cx.theme().foreground)
             .child(
                 browser_toolbar_cluster()
@@ -181,7 +180,7 @@ pub fn browser_address(
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let focus_handle = address.read(cx).focus_handle(cx);
-    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+    let paint = field_paint(Tone::Neutral, Some(Emphasis::Ghost), None, cx);
     let input = Input::new(address)
         .small()
         .h(px(BROWSER_CONTROL_HEIGHT))
@@ -194,7 +193,7 @@ pub fn browser_address(
         .appearance(false)
         .content_type(InputContentType::Url);
 
-    div()
+    let shell = div()
         .id(("browser-address", address.entity_id()))
         .debug_selector(|| "browser-address".into())
         .track_focus(&focus_handle)
@@ -203,16 +202,10 @@ pub fn browser_address(
         .flex()
         .flex_1()
         .min_w_0()
-        .items_center()
+        .items_center();
+    field_chrome(shell, paint, PaintState::Rest, true, true)
         .rounded(cx.theme().control_radius())
-        .painted(paint, PaintState::Rest)
-        .border(px(1.0))
-        .hover(move |style| style.bg(paint.hover))
-        .focus(move |style| {
-            style
-                .bg(paint.fill_at(PaintState::Focused))
-                .border_color(paint.focus)
-        })
+        .focus(move |style| style.border_color(paint.focus))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             focus_handle.focus(window, cx);
             cx.stop_propagation();
@@ -221,7 +214,7 @@ pub fn browser_address(
             div()
                 .id(("browser-site-controls-slot", address.entity_id()))
                 .flex_none()
-                .pl(px(1.5))
+                .pl(SITE_CONTROLS_INSET)
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(site_controls),
         )
@@ -232,11 +225,8 @@ pub fn browser_site_controls_button(cx: &App) -> Button {
     Button::compact_icon("browser-site-controls", IconName::SiteControls)
         .flat()
         .rounded(
-            if cx.theme().control_radius() == zz_gpui::FULL_CORNER_RADIUS {
-                zz_gpui::FULL_CORNER_RADIUS
-            } else {
-                px(12.0)
-            },
+            cx.theme()
+                .inner_radius(SITE_CONTROLS_INSET + ADDRESS_EDGE_WIDTH),
         )
         .text_color(cx.theme().foreground.muted())
         .tooltip("Site controls")
@@ -487,15 +477,14 @@ fn browser_tab_shell(
         .pl(px(12.0))
         .min_w(px(BROWSER_TAB_MIN_WIDTH))
         .rounded(cx.theme().control_radius())
-        .border(px(0.5))
-        .border_color(cx.theme().transparent)
+        .surface_outline(cx.theme().transparent, cx)
         .bg(paint.fill)
         .text_color(if active {
             paint.text
         } else {
             paint.muted_at(PaintState::Rest)
         })
-        .when(active, |tab| tab.control_highlight(cx))
+        .when(active, |tab| tab.control_surface(cx))
         .hover(move |style| style.bg(paint.hover))
         .child(
             div()
@@ -678,7 +667,8 @@ pub fn browser_omnibox_panel(rows: Vec<AnyElement>, cx: &App) -> impl IntoElemen
             .occlude()
             .overflow_hidden()
             .popover_style(cx)
-            .p(px(4.0))
+            .py(px(4.0))
+            .list_inset(cx)
             .children(rows),
     )
     .with_priority(2)
@@ -694,66 +684,66 @@ pub fn browser_omnibox_row(
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let title = title.into();
     let url = url.into();
-    let highlight = crate::navigation::workspace_row_highlight(cx);
-    div()
-        .id(("browser-omnibox-suggestion", index))
-        .debug_selector(move || format!("browser-omnibox-suggestion-{index}"))
-        .h(px(32.0))
-        .w_full()
-        .flex()
-        .items_center()
-        .gap(px(8.0))
-        .px(px(8.0))
-        .rounded(cx.theme().menu_radius())
-        .overflow_hidden()
-        .text_size(crate::rems_from_px(13.0))
-        .line_height(px(16.0))
-        .text_color(cx.theme().foreground)
-        .cursor_pointer()
-        .when(selected, |this| this.bg(highlight))
-        .hover(move |style| style.bg(highlight))
-        .child(
-            div()
-                .flex_none()
-                .relative()
-                .top(px(0.5))
-                .child(browser_favicon(favicon, cx)),
-        )
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .when(!title.is_empty(), |this| {
-                    this.child(
-                        div()
-                            .min_w_0()
-                            .max_w(zz_gpui::relative(0.55))
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .overflow_hidden()
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_color(cx.theme().foreground.muted())
-                            .child("–"),
-                    )
-                })
-                .child(
+    let muted = cx
+        .theme()
+        .paint(Tone::Neutral, Emphasis::Ghost)
+        .muted_at(if selected {
+            PaintState::Selected
+        } else {
+            PaintState::Rest
+        });
+    crate::picker::list_row(
+        ("browser-omnibox-suggestion", index),
+        px(32.0),
+        selected,
+        true,
+        cx,
+    )
+    .debug_selector(move || format!("browser-omnibox-suggestion-{index}"))
+    .w_full()
+    .gap(px(8.0))
+    .px(px(8.0))
+    .overflow_hidden()
+    .text_size(crate::rems_from_px(13.0))
+    .line_height(px(16.0))
+    .cursor_pointer()
+    .child(
+        div()
+            .flex_none()
+            .relative()
+            .top(px(0.5))
+            .child(browser_favicon(favicon, cx)),
+    )
+    .child(
+        div()
+            .min_w_0()
+            .flex_1()
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .when(!title.is_empty(), |this| {
+                this.child(
                     div()
-                        .flex_1()
                         .min_w_0()
+                        .max_w(zz_gpui::relative(0.55))
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .overflow_hidden()
-                        .text_color(cx.theme().foreground.muted())
-                        .child(url),
-                ),
-        )
+                        .child(title),
+                )
+                .child(div().flex_none().text_color(muted).child("–"))
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .overflow_hidden()
+                    .text_color(muted)
+                    .child(url),
+            ),
+    )
 }
 
 #[derive(Clone)]

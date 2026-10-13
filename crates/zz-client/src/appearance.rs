@@ -4,10 +4,22 @@
 /// The interface themes compiled into every client, by the id
 /// `interface-theme` names. Each one bundles a look with its light and dark
 /// colors.
-pub const BUILTIN_THEMES: [&str; 3] = ["default", "macos", "linear"];
+pub const BUILTIN_THEMES: [&str; 4] = ["default", "macos", "linear", "glass"];
 
 /// The theme a fresh install uses.
 pub const DEFAULT_THEME: &str = "default";
+
+/// What each look setting that is a choice accepts, spelled as theme files
+/// and `zz/config` spell them.
+pub const SHADOWS_CHOICES: [&str; 3] = ["none", "surfaces", "all"];
+pub const SELECTION_CHOICES: [&str; 2] = ["accent", "wash"];
+pub const PRIMARY_CHOICES: [&str; 2] = ["foreground", "accent"];
+pub const FIELD_CHOICES: [&str; 2] = ["soft", "outline"];
+/// `theme` keeps the theme's own glass, `off` drops it, and the rest name a
+/// glass preset.
+pub const GLASS_CHOICES: [&str; 7] = [
+    "theme", "off", "regular", "clear", "frosted", "bubble", "smoked",
+];
 
 pub fn is_builtin_theme(id: &str) -> bool {
     BUILTIN_THEMES.contains(&id.trim())

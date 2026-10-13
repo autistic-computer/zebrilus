@@ -7,7 +7,7 @@ use zz_gpui::{
     Size, Style, TextAlign, TextRun, Window, WrappedLine, fill, point, px, relative, size,
 };
 
-use crate::{ActiveTheme as _, Colorize as _};
+use crate::{ActiveTheme as _, Colorize as _, RULE_WIDTH};
 
 use super::{CodeEditorState, RopeExt as _, blink_cursor::CURSOR_WIDTH};
 
@@ -546,7 +546,7 @@ impl Element for TextElement {
         let selection = cx.theme().foreground.wash();
         let caret = cx.theme().foreground;
         let gutter = background.raised(1).opaque();
-        let divider = cx.theme().border();
+        let divider = cx.theme().divider_color();
         let radii = self.state.read(cx).corner_radii;
         let background_opacity = self.state.read(cx).background_opacity;
         let text_radii = if layout.gutter_width > Pixels::ZERO {
@@ -586,8 +586,11 @@ impl Element for TextElement {
                     );
                     window.paint_quad(fill(
                         Bounds {
-                            origin: point(gutter_bounds.right() - px(1.0), gutter_bounds.origin.y),
-                            size: size(px(1.0), gutter_bounds.size.height),
+                            origin: point(
+                                gutter_bounds.right() - RULE_WIDTH,
+                                gutter_bounds.origin.y,
+                            ),
+                            size: size(RULE_WIDTH, gutter_bounds.size.height),
                         },
                         divider,
                     ));

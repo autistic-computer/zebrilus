@@ -198,7 +198,7 @@ impl Root {
             let depth = self.active_dialogs.len();
             self.pending_focus_restore = Some(handle.downgrade());
 
-            let duration = cx.theme().duration(ANIMATION_DURATION);
+            let duration = ANIMATION_DURATION;
             cx.spawn_in(window, async move |this, cx| {
                 cx.background_executor().timer(duration).await;
                 let _ = this.update_in(cx, |this, window, cx| {

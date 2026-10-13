@@ -879,7 +879,7 @@ impl CommandPaletteView {
         let available = (f32::from(window.viewport_size().height) * 0.88
             - if usage.is_some() { 175.0 } else { 140.0 })
         .max(40.0);
-        let list_height = (entries.len() as f32 * command_palette_row_height(cx))
+        let list_height = (entries.len() as f32 * command_palette_row_height())
             .min(440.0)
             .min(available);
         let rows = uniform_list(
@@ -890,7 +890,7 @@ impl CommandPaletteView {
                     .filter_map(|index| {
                         entries.get(index).map(|entry| {
                             if entry.action.is_none() {
-                                return div().h(px(command_palette_row_height(cx))).child(
+                                return div().h(px(command_palette_row_height())).child(
                                     command_palette_section(
                                         entry.row.label.clone(),
                                         entry.hint,
@@ -902,7 +902,7 @@ impl CommandPaletteView {
                             let click_palette = rows_palette.clone();
                             let toggle_palette = rows_palette.clone();
                             let expanded = entry.row.expanded;
-                            div().h(px(command_palette_row_height(cx))).child(
+                            div().h(px(command_palette_row_height())).child(
                                 command_palette_tree_entry(
                                     ("unified-palette-row", index),
                                     &entry.row,
@@ -1443,7 +1443,7 @@ impl CommandPaletteView {
             });
             cx.stop_propagation();
         })
-        .map(|row| div().h(px(command_palette_row_height(cx))).child(row))
+        .map(|row| div().h(px(command_palette_row_height())).child(row))
     }
 }
 
@@ -1487,7 +1487,7 @@ impl Render for CommandPaletteView {
                     .collect::<Vec<_>>()
             }),
         )
-        .h(px(command_palette_row_height(cx) * row_count))
+        .h(px(command_palette_row_height() * row_count))
         .track_scroll(&self.scroll_handle);
 
         let input = command_palette_input(

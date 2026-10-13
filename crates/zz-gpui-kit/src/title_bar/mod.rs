@@ -10,9 +10,11 @@ use zz_gpui::{
     WindowControlArea, div, point, prelude::FluentBuilder as _, px,
 };
 
-use crate::Colorize as _;
 use crate::UiZoom;
-use crate::{ActiveTheme as _, Icon, IconName, InteractiveElementExt as _, StyledExt as _, h_flex};
+use crate::{
+    ActiveTheme as _, Emphasis, Icon, IconName, InteractiveElementExt as _, Paint, PaintState,
+    StyledExt as _, Tone, h_flex,
+};
 
 /// Height of the title bar, and of every strip that has to line up with it
 /// (the sidebar headers in zz-ui's navigation and settings).
@@ -209,28 +211,29 @@ impl ControlIcon {
         matches!(self, Self::Close { .. })
     }
 
-    fn hover_fg(&self, cx: &App) -> Hsla {
+    fn paint(&self, cx: &App) -> Paint {
         if self.is_close() {
-            cx.theme().danger.on()
+            cx.theme().paint(Tone::Danger, Emphasis::Solid)
         } else {
-            cx.theme().foreground
+            cx.theme().paint(Tone::Neutral, Emphasis::Ghost)
         }
     }
 
+    fn hover_fg(&self, cx: &App) -> Hsla {
+        self.paint(cx).text_at(PaintState::Hover)
+    }
+
     fn hover_bg(&self, cx: &App) -> Hsla {
+        let paint = self.paint(cx);
         if self.is_close() {
-            cx.theme().danger
+            paint.fill
         } else {
-            cx.theme().background.washed(2)
+            paint.hover
         }
     }
 
     fn active_bg(&self, cx: &App) -> Hsla {
-        if self.is_close() {
-            cx.theme().danger.active()
-        } else {
-            cx.theme().background.washed(2)
-        }
+        self.paint(cx).active
     }
 }
 
@@ -389,8 +392,7 @@ impl RenderOnce for TitleBar {
                 .justify_between()
                 .h(TITLE_BAR_HEIGHT)
                 .pl(title_bar_left_padding(cx))
-                .border_b_1()
-                .border_color(cx.theme().border())
+                .rule_bottom(cx)
                 .bg(cx.theme().background)
                 .refine_style(&self.style)
                 .when(is_linux, |this| {

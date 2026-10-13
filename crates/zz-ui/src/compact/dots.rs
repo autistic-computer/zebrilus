@@ -2,7 +2,6 @@ use zz_gpui::{App, Div, ParentElement as _, Styled as _, div, prelude::*};
 
 use crate::{ActiveTheme as _, Colorize as _, rems_from_px};
 
-const DOT: f32 = 5.0;
 const ACTIVE_DOT: f32 = 12.0;
 const DOT_GAP: f32 = 3.0;
 const GROUP_GAP: f32 = 6.0;
@@ -35,13 +34,9 @@ pub fn page_dots(groups: &[Vec<PageDot>], cx: &App) -> Div {
                     } else {
                         theme.foreground.faint()
                     };
-                    div()
+                    crate::navigation::status_dot(color)
                         .debug_selector(move || selector)
-                        .flex_none()
-                        .h(rems_from_px(DOT))
-                        .w(rems_from_px(if dot.active { ACTIVE_DOT } else { DOT }))
-                        .rounded_full()
-                        .bg(color)
+                        .when(dot.active, |dot| dot.w(rems_from_px(ACTIVE_DOT)))
                 }))
         }))
 }

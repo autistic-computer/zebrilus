@@ -16,7 +16,7 @@ use zz_gpui::{
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName,
+    ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
     compact::{
         ArrowPadEvent, COMPACT_BAR_HEIGHT, COMPACT_PANE_HEADER_HEIGHT, Instant, KEY_ROW_HEIGHT,
         KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent, PopoverKey, PopoverKeyEvent,
@@ -37,7 +37,6 @@ mod overview;
 const PAGE_GAP: f32 = 12.0;
 const SCRIM_ALPHA: f32 = 0.8;
 const SCRIM_FADE: f32 = 12.0;
-const CARD_RADIUS: f32 = 22.0;
 const PINCH_STEPS: f32 = 20.0;
 const SCALE_HUD_LINGER: Duration = Duration::from_secs(1);
 const LANDING_WAIT: Duration = Duration::from_secs(1);
@@ -616,7 +615,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let radius = px(CARD_RADIUS * motion);
+        let radius = cx.theme().radius * motion;
         let pane_id = slot.pane;
         let snapshot = self
             .connection
@@ -1038,8 +1037,7 @@ impl AppShell {
                         .opacity((1.0 - drop.min(1.0) * BAR_FADE).max(0.0))
                         .pb(safe_bottom)
                         .bg(cx.theme().background)
-                        .border_t_1()
-                        .border_color(cx.theme().border())
+                        .rule_top(cx)
                         .child(compact_bar(pill, keys, self.compact.lift.is_dragging(), cx)),
                 )
                 .into_any_element()
@@ -1150,8 +1148,7 @@ impl AppShell {
             .h(px(KEY_ROW_HEIGHT) + bottom)
             .pb(bottom)
             .bg(cx.theme().background)
-            .border_t_1()
-            .border_color(cx.theme().border())
+            .rule_top(cx)
             .child(row)
             .into_any_element()
     }

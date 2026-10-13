@@ -6,18 +6,23 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName,
+    InteractivePaintExt as _, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
     pane::agent_provider_icon,
     popover::Popover,
+    separator::Separator,
     tooltip::Tooltip,
     v_flex,
 };
 
 use super::composer::COMPOSER_FOOTER_HEIGHT;
+
+const PICKER_ROW_HEIGHT: f32 = 32.0;
+const PICKER_ROW_GAP: f32 = 2.0;
+const PICKER_LIST_PADDING: f32 = 4.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComposerAction {
@@ -47,7 +52,6 @@ pub fn composer_action_button(
     Button::compact_icon(id, icon)
         .when(action == ComposerAction::Send, ButtonVariants::primary)
         .when(action == ComposerAction::Queue, ButtonVariants::secondary)
-        .rounded_full()
         .tooltip(tooltip)
         .disabled(!enabled)
 }
@@ -136,6 +140,11 @@ pub fn agent_config_picker(
                 let on_select = on_select.clone();
                 menu.item(
                     PopupMenuItem::element(move |highlighted, _, cx| {
+                        let state = if highlighted {
+                            PaintState::Selected
+                        } else {
+                            PaintState::Rest
+                        };
                         v_flex()
                             .min_w_0()
                             .ml_1()
@@ -151,13 +160,11 @@ pub fn agent_config_picker(
                                     div()
                                         .max_w(px(300.0))
                                         .text_size(crate::rems_from_px(10.0))
-                                        .text_color(if highlighted {
+                                        .text_color(
                                             cx.theme()
                                                 .paint(Tone::Neutral, Emphasis::Ghost)
-                                                .selected_text
-                                        } else {
-                                            cx.theme().foreground.muted()
-                                        })
+                                                .muted_at(state),
+                                        )
                                         .child(description),
                                 )
                             })
@@ -200,37 +207,25 @@ fn agent_picker_row(
         .read(cx)
         .clone();
     let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
-    let highlight = if parent && selected {
-        zz_gpui::StyleRefinement::default()
-            .bg(paint.hover)
-            .text_color(paint.text)
-    } else {
-        zz_gpui::StyleRefinement::default().selection_highlight(cx)
-    };
     h_flex()
         .id(id)
         .role(Role::Button)
         .aria_selected(selected)
         .flex_none()
-        .min_h(px(32.0))
+        .min_h(px(PICKER_ROW_HEIGHT))
         .px_2()
         .py_1()
-        .border(px(0.5))
-        .border_color(zz_gpui::transparent_white())
-        .menu_item_corners(px(32.0), cx)
+        .menu_item_corners(px(PICKER_ROW_HEIGHT), cx)
         .text_size(crate::rems_from_px(12.0))
         .line_height(px(16.0))
-        .text_color(cx.theme().foreground)
-        .when(enabled, |this| {
-            this.track_focus(&focus.tab_stop(true))
-                .when(selected, |this| this.refine_style(&highlight))
-                .when(!selected, |this| {
-                    this.hover(move |this| this.bg(paint.hover))
-                })
+        .map(|this| {
+            if enabled && parent && selected {
+                this.painted(paint, PaintState::Hover)
+            } else {
+                this.painted_interactive(paint, selected, enabled)
+            }
         })
-        .when(!enabled, |this| {
-            this.text_color(cx.theme().foreground.muted())
-        })
+        .when(enabled, |this| this.track_focus(&focus.tab_stop(true)))
         .on_mouse_down(zz_gpui::MouseButton::Left, move |_, window, cx| {
             if !enabled {
                 cx.stop_propagation();
@@ -459,14 +454,21 @@ pub fn agent_model_picker(
             });
             let width = px(400.0).min((window.viewport_size().width - px(16.0)).max(px(240.0)));
             let height = px(320.0).min((window.viewport_size().height - px(170.0)).max(px(100.0)));
+            let row_gap = if cx.theme().inset_rows() {
+                PICKER_ROW_GAP
+            } else {
+                0.0
+            };
             let panel_height =
-                px(rows as f32 * 36.0 + 4.0).min(height) + px(if has_effort { 45.0 } else { 0.0 });
+                px(rows as f32 * (PICKER_ROW_HEIGHT + row_gap) + PICKER_LIST_PADDING * 2.0)
+                    .min(height)
+                    + px(if has_effort { 45.0 } else { 0.0 });
             let muted = cx.theme().foreground.muted();
             let mut vendors = v_flex()
                 .w(px(if width < px(400.0) { 112.0 } else { 124.0 }))
                 .flex_none()
-                .p_1()
-                .gap_1();
+                .list_inset(cx)
+                .py(px(PICKER_LIST_PADDING));
             for vendor in zz_protocol::AgentProvider::ALL {
                 let state = state.clone();
                 let on_load = on_load.clone();
@@ -512,8 +514,8 @@ pub fn agent_model_picker(
                 .min_w_0()
                 .max_h(height)
                 .overflow_y_scroll()
-                .p_1()
-                .gap_1();
+                .list_inset(cx)
+                .py(px(PICKER_LIST_PADDING));
             if let Some(catalog) = &catalog {
                 for choice in &catalog.model.choices {
                     let value = choice.value.clone();
@@ -589,7 +591,7 @@ pub fn agent_model_picker(
                         .min_h_0()
                         .items_stretch()
                         .child(vendors)
-                        .child(div().w(px(1.0)).flex_none().bg(cx.theme().border()))
+                        .child(Separator::vertical())
                         .child(models),
                 );
             if let Some(effort) = catalog
@@ -607,15 +609,9 @@ pub fn agent_model_picker(
                     .map(|choice| choice.name.clone().into())
                     .collect();
                 let state = state.clone();
-                content = content.child(
-                    v_flex()
-                        .w_full()
-                        .px_3()
-                        .py_2()
-                        .gap_1()
-                        .border_t_1()
-                        .border_color(cx.theme().border())
-                        .child(crate::slider::DiscreteSlider::new(
+                content =
+                    content.child(v_flex().w_full().px_3().py_2().gap_1().rule_top(cx).child(
+                        crate::slider::DiscreteSlider::new(
                             "agent-effort",
                             "Effort",
                             labels,
@@ -639,8 +635,8 @@ pub fn agent_model_picker(
                                 });
                                 window.refresh();
                             },
-                        )),
-                );
+                        ),
+                    ));
             }
             content
         })

@@ -8,7 +8,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Sizable, Size,
+    ActiveTheme as _, Colorize as _, Disableable, Sizable, Size, StyledExt as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -187,8 +187,7 @@ impl ColorPicker {
                             .flex_none()
                             .rounded(cx.theme().radius)
                             .bg(shown)
-                            .border_1()
-                            .border_color(cx.theme().border()),
+                            .surface_edge(cx),
                     ),
             )
             .on_click(move |_, _, cx| state.update(cx, |picker, cx| picker.set_sheet(true, cx)))
@@ -223,9 +222,9 @@ impl ColorPicker {
                                 .bg(color)
                                 .map(|swatch| {
                                     if picked {
-                                        swatch.border_2().border_color(theme.foreground)
+                                        swatch.chosen_ring(cx)
                                     } else {
-                                        swatch.border_1().border_color(theme.border())
+                                        swatch.surface_edge(cx)
                                     }
                                 })
                                 .on_click(move |_, window, cx| {
@@ -237,7 +236,7 @@ impl ColorPicker {
         let clear = state.clone();
         let close = state.clone();
         let dismiss = state.clone();
-        let field = Size::Medium.control_h(cx.theme().density);
+        let field = Size::Medium.control_h();
         floating_sheet(
             bottom_sheet(
                 ("zz-color-picker-sheet", self.state.entity_id()),
@@ -261,8 +260,7 @@ impl ColorPicker {
                                     .flex_none()
                                     .rounded(theme.radius)
                                     .bg(shown)
-                                    .border_1()
-                                    .border_color(theme.border()),
+                                    .surface_edge(cx),
                             )
                             .child(Input::new(&hex).flex_1().min_w_0())
                             .child(
@@ -304,8 +302,7 @@ impl ColorPicker {
                                     .flex_none()
                                     .rounded(radius)
                                     .bg(color)
-                                    .border_1()
-                                    .border_color(cx.theme().border())
+                                    .surface_edge(cx)
                                     .cursor_pointer()
                                     .hover(|this| this.border_color(cx.theme().foreground))
                                     .tooltip(move |window, cx| {
@@ -372,8 +369,7 @@ impl RenderOnce for ColorPicker {
                     .size(TRIGGER_SWATCH_SIZE)
                     .rounded(cx.theme().radius)
                     .bg(shown)
-                    .border_1()
-                    .border_color(cx.theme().border()),
+                    .surface_edge(cx),
             );
 
         Popover::new(("zz-color-picker-popover", self.state.entity_id()))

@@ -18,9 +18,11 @@ use web_time::{Duration, Instant};
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName,
-    PaintExt as _, PaintState, StyledExt as _, Tone,
+    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
+    badge::Badge,
     button::{Button, ButtonVariants as _},
+    check::Check,
     h_flex,
     mend::{PENDING_LINK_URL, mend},
     text::{
@@ -1023,8 +1025,7 @@ impl StickSpring {
 pub fn agent_jump_to_bottom_button(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::compact_icon(id, IconName::ArrowDown)
         .secondary()
-        .rounded_full()
-        .control_surface(cx)
+        .shadow(crate::lifted_shadow(cx))
         .tooltip("Jump to latest")
 }
 
@@ -1789,8 +1790,7 @@ fn render_trace_steps(
         .w_full()
         .ml_1()
         .pl_4()
-        .border_l_1()
-        .border_color(cx.theme().border())
+        .rule_left(cx)
         .children(trace.steps.iter().map(|index| {
             match &trace.members[*index] {
                 AgentEntry::Reasoning { id, markdown, .. } => {
@@ -2107,10 +2107,8 @@ pub fn agent_attachment_thumbnail(
         .size(side)
         .flex_none()
         .overflow_hidden()
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
-        .bg(cx.theme().surface(Elevation::Popover).fill)
+        .card_style(cx)
+        .bg(cx.theme().surface(Elevation::Popover).fill.opaque())
         .cursor_pointer()
         .child(
             img(ImageSource::Image(image))
@@ -2153,7 +2151,7 @@ struct ActivityMark {
     label_color: Option<Hsla>,
     detail: Option<SharedString>,
     counts: Vec<TraceCount>,
-    tag: Option<(SharedString, Hsla)>,
+    tag: Option<(SharedString, Tone)>,
     trailing: Option<SharedString>,
 }
 
@@ -2214,16 +2212,15 @@ fn tool_mark(
         }
         AgentToolStatus::NeedsApproval => mark.tint = Some(cx.theme().warning),
         AgentToolStatus::Failed => {
-            let danger = cx.theme().danger;
-            mark.tint = Some(danger);
+            mark.tint = Some(cx.theme().danger);
             let tag = tool
                 .exit_code
                 .filter(|code| *code != 0)
                 .map_or_else(|| "failed".to_owned(), |code| format!("exit {code}"));
-            mark.tag = Some((tag.into(), danger));
+            mark.tag = Some((tag.into(), Tone::Danger));
         }
         AgentToolStatus::Canceled => {
-            mark.tag = Some(("canceled".into(), timeline_affordance_color(cx)));
+            mark.tag = Some(("canceled".into(), Tone::Neutral));
         }
         _ => {}
     }
@@ -2247,7 +2244,6 @@ fn activity_row_marked(
     end: RowEnd,
     cx: &App,
 ) -> Stateful<Div> {
-    let foreground = cx.theme().foreground;
     let drop =
         crate::icon::cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
     let glyph = match (mark.spin, mark.icon) {
@@ -2278,10 +2274,7 @@ fn activity_row_marked(
         .text_size(crate::rems_from_px(ACTIVITY_ROW_FONT_SIZE))
         .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
         .text_color(timeline_affordance_color(cx))
-        .when(end != RowEnd::None, |this| {
-            this.cursor_pointer()
-                .hover(move |this| this.text_color(foreground))
-        })
+        .when(end != RowEnd::None, zz_gpui::Styled::cursor_pointer)
         .when_some(glyph, |this, glyph| {
             this.child(
                 div()
@@ -2332,14 +2325,12 @@ fn activity_row_marked(
                     ),
             )
         })
-        .when_some(mark.tag, |this, (tag, color)| {
+        .when_some(mark.tag, |this, (tag, tone)| {
             this.child(
                 div()
                     .debug_selector(|| "agent-activity-tag".to_owned())
                     .flex_none()
-                    .text_size(crate::rems_from_px(12.0))
-                    .text_color(color)
-                    .child(tag),
+                    .child(Badge::new(tag).tone(tone)),
             )
         })
         .when_some(end_icon, |this, icon| {
@@ -2367,6 +2358,10 @@ const TRACE_COUNT_BADGE_OVERHANG: f32 =
     TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the ring is a cutout in the window color that parts the badge from the icon it overlaps, not an edge"
+)]
 fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> Stateful<Div> {
     let theme = cx.theme();
     let (badge, number) = if count.failed {
@@ -2395,9 +2390,9 @@ fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> 
                 .h(px(TRACE_COUNT_BADGE))
                 .px(px(3.0))
                 .justify_center()
-                .rounded_full()
+                .rounded(theme.control_radius())
                 .border(px(TRACE_COUNT_RING))
-                .border_color(theme.background)
+                .border_color(theme.ground().fill)
                 .bg(badge)
                 .text_color(number)
                 .text_size(crate::rems_from_px(8.5))
@@ -2424,10 +2419,7 @@ fn render_user_entry(
         .gap_2()
         .px_3()
         .py_2()
-        .rounded(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border())
-        .bg(cx.theme().surface(Elevation::Panel).fill)
+        .card_style(cx)
         .text_size(crate::rems_from_px(13.0))
         .when(!images.is_empty(), |this| {
             this.child(
@@ -2538,32 +2530,28 @@ pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {
     const MARKER: f32 = 12.0;
     const LINE: f32 = 19.0;
     let drop = crate::icon::cap_center_drop(px(FONT), px(MARKER), cx);
-    let foreground = cx.theme().foreground;
     let muted = cx.theme().foreground.muted();
-    let accent = cx.theme().accent;
+    let ring = cx.theme().paint(Tone::Primary, Emphasis::Outline);
+    let dot = cx.theme().paint(Tone::Primary, Emphasis::Solid).fill;
     v_flex()
         .w_full()
         .text_size(crate::rems_from_px(FONT))
         .line_height(px(LINE))
         .children(plan_items(source).into_iter().map(|(state, text)| {
-            let marker = div()
-                .size(px(MARKER))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(cx.theme().radius / 2.0)
-                .border_1();
             let marker = match state {
-                PlanItemState::Pending => marker.border_color(muted),
-                PlanItemState::InProgress => marker
-                    .border_color(accent)
-                    .child(div().size(px(6.0)).rounded(px(1.5)).bg(accent)),
-                PlanItemState::Done => marker.border_color(foreground).bg(foreground).child(
-                    Icon::new(IconName::Check)
-                        .size(px(MARKER * 0.65))
-                        .text_color(cx.theme().paint(Tone::Neutral, Emphasis::Solid).text),
-                ),
+                PlanItemState::Pending | PlanItemState::Done => {
+                    Check::checkbox(state == PlanItemState::Done)
+                        .with_size(px(MARKER))
+                        .into_any_element()
+                }
+                PlanItemState::InProgress => h_flex()
+                    .size(px(MARKER))
+                    .flex_none()
+                    .justify_center()
+                    .rounded(cx.theme().radius / 2.0)
+                    .painted(ring, PaintState::Rest)
+                    .child(div().size(px(6.0)).rounded(px(1.5)).bg(dot))
+                    .into_any_element(),
             };
             h_flex()
                 .w_full()
@@ -3046,10 +3034,8 @@ impl MarkdownPlugin for MermaidPlugin {
             .relative()
             .w_full()
             .p_3()
-            .rounded(cx.theme().radius)
-            .border_1()
-            .border_color(cx.theme().border())
-            .bg(cx.theme().background)
+            .card_style(cx)
+            .bg(cx.theme().surface(Elevation::Window).fill.opaque())
             .overflow_hidden()
             .child(content)
             .child(
@@ -3621,9 +3607,7 @@ pub fn agent_pane_header(
         .justify_between()
         .gap_3()
         .px(px(CHROME_GAP))
-        .when(show_separator, |header| {
-            header.border_b_1().border_color(cx.theme().border())
-        })
+        .when(show_separator, |header| header.rule_bottom(cx))
         .child(div().flex_1().min_w_0().overflow_hidden().child(leading))
         .children(status)
         .child(
@@ -3668,49 +3652,35 @@ pub fn agent_status_pill(
         AgentPaneStatus::Offline => (None, "Offline", Tone::Neutral, true),
     };
     let paint = theme.paint(tone, Emphasis::Soft);
-    let color = if quiet {
-        paint.muted_at(PaintState::Rest)
-    } else {
-        paint.text
+    let icon = match status {
+        AgentPaneStatus::Running | AgentPaneStatus::Stopping => Some(spinner(phase)),
+        _ => icon.map(Icon::new),
     };
-    let spinning = matches!(status, AgentPaneStatus::Running | AgentPaneStatus::Stopping);
-    let divider = theme.divider_color();
-    let drop = crate::icon::cap_center_drop(px(11.0), px(11.0), cx);
-    h_flex()
-        .id(id)
-        .debug_selector(|| "agent-status-pill".to_owned())
-        .flex_none()
-        .h(px(22.0))
-        .px_2()
-        .gap_1()
-        .rounded(theme.control_radius())
-        .painted(paint, PaintState::Rest)
-        .text_size(crate::rems_from_px(11.0))
-        .line_height(px(14.0))
-        .text_color(color)
-        .when(spinning, |pill| {
-            pill.child(spinner(phase).size(px(11.0)).relative().top(drop))
+    let badge = Badge::new(label)
+        .tone(tone)
+        .when_some(icon, Badge::icon)
+        .when(quiet, |badge| {
+            badge.text_color(paint.muted_at(PaintState::Rest))
         })
-        .when_some(icon, |pill, icon| {
-            pill.child(Icon::new(icon).size(px(11.0)).relative().top(drop))
-        })
-        .child(label)
-        .when_some(restart, |pill, restart| {
-            pill.child(
+        .when_some(restart, |badge, restart| {
+            badge.child(
                 div()
                     .id("agent-status-restart")
                     .debug_selector(|| "agent-status-restart".to_owned())
                     .pl_1p5()
                     .ml_0p5()
-                    .border_l_1()
-                    .border_color(divider)
+                    .rule_left(cx)
                     .text_color(paint.text)
                     .cursor_pointer()
-                    .hover(zz_gpui::Styled::underline)
                     .child("Restart")
                     .on_click(move |_, window, cx| restart(window, cx)),
             )
-        })
+        });
+    div()
+        .id(id)
+        .debug_selector(|| "agent-status-pill".to_owned())
+        .flex_none()
+        .child(badge)
 }
 
 #[cfg(test)]

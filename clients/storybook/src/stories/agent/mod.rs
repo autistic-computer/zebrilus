@@ -4,7 +4,7 @@ pub(super) mod cards;
 mod chrome;
 mod composer;
 mod fixtures;
-mod pane;
+pub(super) mod pane;
 mod timeline;
 mod transcript;
 

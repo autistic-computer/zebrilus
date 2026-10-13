@@ -1,5 +1,6 @@
 use crate::ActiveTheme as _;
 use crate::Colorize as _;
+use crate::StyledExt as _;
 use zz_gpui::{
     AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
     Pixels, Stateful, Styled as _, WindowControlArea, div, prelude::FluentBuilder as _, px,
@@ -194,9 +195,7 @@ pub fn workspace_status_bar(
         .h(TITLE_BAR_HEIGHT)
         .overflow_hidden()
         .text_color(cx.theme().foreground)
-        .when(!gaps, |bar| {
-            bar.border_b_1().border_color(cx.theme().divider_color())
-        })
+        .when(!gaps, |bar| bar.rule_bottom(cx))
         .child(leading)
         .children(titlebar_controls)
         .child(content)

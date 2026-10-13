@@ -38,7 +38,7 @@ pub fn page_row(element: AnyElement, ends_run: bool) -> AnyElement {
         .into_any_element()
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum AppearancePageItem {
     Description,
     Group {
@@ -56,7 +56,13 @@ pub enum AppearancePageItem {
     ChromeContrast,
     Animations,
     WidgetCornerRadius,
-    ShadowStrength,
+    OutlineWidth,
+    Shadows,
+    RowInset,
+    Selection,
+    Primary,
+    Field,
+    Glass,
     WindowBackgroundBlur,
     #[cfg(target_os = "linux")]
     WindowCornerRadius,
@@ -70,6 +76,77 @@ impl AppearancePageItem {
             self,
             Self::Description | Self::Group { .. } | Self::Advanced { .. }
         )
+    }
+
+    /// The look settings that override the active theme, in the order the
+    /// page lists them.
+    pub const LOOK: [Self; 8] = [
+        Self::WidgetCornerRadius,
+        Self::OutlineWidth,
+        Self::Shadows,
+        Self::RowInset,
+        Self::Selection,
+        Self::Primary,
+        Self::Field,
+        Self::Glass,
+    ];
+
+    /// The title and description of a look setting.
+    pub const fn look_text(self) -> Option<(&'static str, &'static str)> {
+        Some(match self {
+            Self::WidgetCornerRadius => (
+                "Corner radius",
+                "Round corners from 0 to 24px. At 25, buttons, fields and rows become pills.",
+            ),
+            Self::OutlineWidth => (
+                "Outline",
+                "The hairline around controls, cards and menus, from 0 (none) to 2px.",
+            ),
+            Self::Shadows => ("Shadows", "Which surfaces cast a shadow."),
+            Self::RowInset => (
+                "Row inset",
+                "How far list rows float in from the edges. At 0 they become full-width bands.",
+            ),
+            Self::Selection => (
+                "Selection",
+                "What fills the selected row in menus, lists and pickers.",
+            ),
+            Self::Primary => (
+                "Primary buttons",
+                "What the main action of a view is drawn in.",
+            ),
+            Self::Field => ("Fields", "How text fields look at rest."),
+            Self::Glass => (
+                "Glass",
+                "What menus, popovers and dialogs are made of. Theme keeps the theme's own.",
+            ),
+            _ => return None,
+        })
+    }
+
+    /// The choices of a look setting that is a choice, as title and value.
+    /// The values are what theme files and `zz/config` spell.
+    pub const fn look_choices(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::Shadows => &[
+                ("None", "none"),
+                ("Cards and popovers", "surfaces"),
+                ("Everything", "all"),
+            ],
+            Self::Selection => &[("Accent", "accent"), ("Gray", "wash")],
+            Self::Primary => &[("Text color", "foreground"), ("Accent", "accent")],
+            Self::Field => &[("Filled", "soft"), ("Outlined", "outline")],
+            Self::Glass => &[
+                ("Theme", "theme"),
+                ("Off", "off"),
+                ("Regular", "regular"),
+                ("Clear", "clear"),
+                ("Frosted", "frosted"),
+                ("Bubble", "bubble"),
+                ("Smoked", "smoked"),
+            ],
+            _ => &[],
+        }
     }
 }
 
@@ -100,8 +177,6 @@ pub fn appearance_page_items(
     items.extend([
         AppearancePageItem::ChromeContrast,
         AppearancePageItem::Animations,
-        AppearancePageItem::WidgetCornerRadius,
-        AppearancePageItem::ShadowStrength,
     ]);
     if has_window_blur {
         items.push(AppearancePageItem::WindowBackgroundBlur);
@@ -111,6 +186,11 @@ pub fn appearance_page_items(
         AppearancePageItem::WindowCornerRadius,
         AppearancePageItem::UseSystemTitlebar,
     ]);
+    items.push(AppearancePageItem::Group {
+        title: "Look",
+        description: Some("Change the theme's shape here. Picking a theme resets these."),
+    });
+    items.extend(AppearancePageItem::LOOK);
     items
 }
 
@@ -180,6 +260,10 @@ pub fn picker_tile(
     tile(id, label, preview, selected, false, cx)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the focus halo and the selection frame are rings around the tile, 1px in every look"
+)]
 fn tile(
     id: SharedString,
     label: impl Into<SharedString>,
@@ -474,13 +558,13 @@ pub fn interface_theme_preview(
         } else {
             surface
         })
-        .when(look.outline > 0.0 && look.outline_width > 0.0, |menu| {
+        .when(look.outline > 0.0, |menu| {
             menu.border(px(0.5))
-                .border_color(colors.foreground.opacity(0.15 * look.outline.min(1.0)))
+                .border_color(colors.foreground.opacity(0.15))
         })
-        .when(look.shadow > 0.0, |menu| {
+        .when(look.shadows != crate::Shadows::None, |menu| {
             menu.shadow(vec![zz_gpui::BoxShadow {
-                color: colors.shadow_color.opacity(look.shadow),
+                color: colors.shadow_color,
                 offset: zz_gpui::point(px(0.0), px(3.0)),
                 blur_radius: px(8.0),
                 spread_radius: px(-1.0),
@@ -572,6 +656,10 @@ pub fn palette_preview(colors: &ThemeColor, cx: &App) -> zz_gpui::Div {
         .child(theme_preview_contents(colors))
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "previews draw another palette's colors and lines, not the live one's"
+)]
 fn theme_preview_contents(colors: &ThemeColor) -> zz_gpui::Div {
     let text = colors.foreground.muted();
     let text_bar = move |width: f32| div().w(px(width)).h(px(3.0)).rounded_full().bg(text);

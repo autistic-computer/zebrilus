@@ -47,16 +47,33 @@ pane-border-width = 0.5
 # The interface theme: a look (corners, outlines, shadows, glass, how rows and
 # primary buttons are filled) bundled with its colors for light and for dark.
 # Built in: default (zz's look on the macOS system colors), macos (flat
-# controls, frosted popovers, blue accent) and linear (opaque surfaces with
-# ring outlines, indigo accent). Any other name selects themes/<name>.json next
-# to this file; Settings -> Interface -> Duplicate saves a copy to edit there.
+# controls, frosted popovers, blue accent), linear (opaque surfaces, indigo
+# accent) and glass (frosted glass, no outlines or shadows). Any other name
+# selects themes/<name>.json next to this file; Settings -> Interface ->
+# Duplicate saves a copy to edit there.
 interface-theme = default
 
-# The corner every widget turns (buttons, inputs, tags, menus, dialogs) in
-# logical pixels (0..=24; 25 rounds controls into pills). The theme decides it;
-# set it to override. 0 squares the chrome off.
+# The theme's look, overridden one setting at a time. Each follows the theme
+# until set; picking a theme in Settings removes them.
 #
+# The corner every widget turns, in logical pixels (0..=24; 25 rounds controls
+# into pills). 0 squares the chrome off.
 # widget-corner-radius = 6
+# The hairline around controls, cards and menus (0..=2; 0 draws none).
+# widget-outline-width = 0.5
+# Which surfaces cast a shadow: none, surfaces (cards, popovers, dialogs) or all.
+# widget-shadows = all
+# How far list rows float in from the list's edges (0..=12; 0 makes bands).
+# widget-row-inset = 4
+# What fills the selected row: accent or wash.
+# widget-selection = accent
+# What the main action is drawn in: foreground or accent.
+# widget-primary = foreground
+# How text fields look at rest: soft or outline.
+# widget-field = soft
+# What menus and dialogs are made of: theme, off, regular, clear, frosted,
+# bubble or smoked.
+# widget-glass = theme
 
 # Animate interface transitions, loading indicators, scrollbars, and image
 # frames. Turning this off settles each interface state immediately.

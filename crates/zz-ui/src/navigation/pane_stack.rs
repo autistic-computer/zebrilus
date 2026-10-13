@@ -168,7 +168,7 @@ fn glyph(tile: &StackTile, size: f32, color: Hsla) -> AnyElement {
     }
 }
 
-fn tile_box(size: StackSize, radius: Pixels, fill: Hsla, border: Hsla, width: Pixels) -> Div {
+fn tile_box(size: StackSize, radius: Pixels, fill: Hsla, border: Hsla, cx: &App) -> Div {
     div()
         .flex()
         .flex_none()
@@ -177,8 +177,7 @@ fn tile_box(size: StackSize, radius: Pixels, fill: Hsla, border: Hsla, width: Pi
         .size(px(size.tile()))
         .rounded(radius)
         .bg(fill)
-        .border(width)
-        .border_color(border)
+        .surface_outline(border, cx)
 }
 
 fn update(pointer: &Entity<Pointer>, view: EntityId, cx: &mut App, f: impl FnOnce(&mut Pointer)) {
@@ -195,14 +194,14 @@ impl PaneStack {
         }
     }
 
-    fn resting(&self, slot: usize, shown: usize, paint: &Paint) -> Div {
+    fn resting(&self, slot: usize, shown: usize, paint: &Paint, cx: &App) -> Div {
         let size = self.size;
         let tile = tile_box(
             size,
             self.radius,
             self.dim(paint.hover),
             self.dim(paint.hover.blend(paint.border)),
-            paint.border_width,
+            cx,
         )
         .when(slot == 0, |tile| {
             tile.children(
@@ -238,7 +237,7 @@ impl PaneStack {
         let pad = size.gap();
         let travel = size.tile() + size.gap();
         let animate = !cx.reduce_motion();
-        let duration = theme.duration(OPEN_DURATION);
+        let duration = OPEN_DURATION;
         let id = self.id.clone();
         let tiles = self.tiles.iter().enumerate().rev().map(|(index, tile)| {
             let front = index == 0;
@@ -255,35 +254,29 @@ impl PaneStack {
             let select = tile.select.clone();
             let tooltip = tile.tooltip.clone();
             let hovered = paint.hover;
-            let element = tile_box(
-                size,
-                self.radius,
-                paint.fill_at(state),
-                paint.border,
-                paint.border_width,
-            )
-            .id(("pane-stack-tile", index))
-            .debug_selector(move || format!("pane-stack-tile-{index}"))
-            .role(Role::Button)
-            .aria_label(tile.label.clone())
-            .aria_selected(front)
-            .relative()
-            .when(!front, |tile| tile.hover(move |style| style.bg(hovered)))
-            .tooltip(move |window, cx| {
-                Tooltip::new(tooltip.clone())
-                    .max_w(px(360.0))
-                    .build(window, cx)
-            })
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .when_some(select, |element, select| {
-                let pointer = pointer.clone();
-                element.cursor_pointer().on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    update(&pointer, view, cx, |pointer| *pointer = Pointer::default());
-                    select(window, cx);
+            let element = tile_box(size, self.radius, paint.fill_at(state), paint.border, cx)
+                .id(("pane-stack-tile", index))
+                .debug_selector(move || format!("pane-stack-tile-{index}"))
+                .role(Role::Button)
+                .aria_label(tile.label.clone())
+                .aria_selected(front)
+                .relative()
+                .when(!front, |tile| tile.hover(move |style| style.bg(hovered)))
+                .tooltip(move |window, cx| {
+                    Tooltip::new(tooltip.clone())
+                        .max_w(px(360.0))
+                        .build(window, cx)
                 })
-            })
-            .child(glyph(tile, size.glyph(), ink));
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .when_some(select, |element, select| {
+                    let pointer = pointer.clone();
+                    element.cursor_pointer().on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        update(&pointer, view, cx, |pointer| *pointer = Pointer::default());
+                        select(window, cx);
+                    })
+                })
+                .child(glyph(tile, size.glyph(), ink));
             let from = index.min(RESTING - 1) as f32 * size.step() - index as f32 * travel;
             if animate {
                 element
@@ -377,7 +370,7 @@ impl RenderOnce for PaneStack {
             .children(
                 (0..shown)
                     .rev()
-                    .map(|slot| self.resting(slot, shown, &paint)),
+                    .map(|slot| self.resting(slot, shown, &paint, cx)),
             )
             .children(row)
     }

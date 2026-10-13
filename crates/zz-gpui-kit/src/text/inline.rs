@@ -214,7 +214,7 @@ impl Inline {
         if self.code_ranges.is_empty() {
             return;
         }
-        let fill_color = cx.theme().background.raised(2);
+        let fill_color = cx.theme().surface(crate::Elevation::Popover).fill;
         let radius = cx.theme().radius.min(px(CODE_FILL_RADIUS_MAX));
         let line_height = layout.line_height();
         let bounds = layout.bounds();

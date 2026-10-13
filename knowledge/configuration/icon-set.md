@@ -4,7 +4,7 @@ title: zz icon set
 description: zz's own icons, drawn from skeletons in the Mac school so their corners follow the theme radius and superellipse smoothing, how the app and the site get them, and how to draw, preview and review a new one.
 resource: crates/zz-gpui-kit/src/icon/mac.json
 tags: [ui, icons, zz-gpui-kit, storybook, site, theme]
-timestamp: 2026-10-10T12:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Overview
@@ -28,8 +28,9 @@ JSON, 1.75). Corners are the only thing the theme changes:
 - **Corner radius** = theme radius × 0.5 grid units × the vertex's corner scale, capped at 0.45 of the
   shorter adjacent edge. That cap is the same rule `Window::set_adaptive_corner_fraction` applies to
   chrome, so no icon turns into a pill.
-- **Corner shape** is a superellipse with the theme's `corner_smoothing` exponent (2 is a circular arc;
-  zz uses 4, a squircle), sampled 16 steps per corner.
+- **Corner shape** is a superellipse with the exponent `CORNER_SMOOTHING` (4, a squircle; 2 would be
+  a circular arc), the default corner every window draws, sampled 16 steps per corner. No theme
+  changes it.
 - **Radius 0 is flat**: sharp corners, square caps, mitered joins. Above 0, caps and joins are round.
 
 Two renderers implement the same math and must stay in step when a part kind changes:
@@ -39,10 +40,11 @@ Two renderers implement the same math and must stay in step when a part kind cha
 # How it ships
 
 `IconName::path` stays `icons/<name>.svg`. When it renders, `Icon` rewrites a path the set draws to
-`icons/<theme radius>-<corner smoothing>/<name>.svg` from `cx.theme()`, and the kit's `Assets` draws
-that path on load. The radius and smoothing travel in the path because gpui's sprite atlas caches
-rasters by path and size; a new radius has to be a new path or the old raster stays on screen. Changing
-the radius or the interface style refreshes the windows, so every icon redraws. A plain
+`icons/<radius>-<smoothing>/<name>.svg`, with the radius from `cx.theme()` and the smoothing from
+`CORNER_SMOOTHING`, and the kit's `Assets` draws that path on load. The radius and smoothing travel
+in the path because gpui's sprite atlas caches rasters by path and size; a new radius has to be a new
+path or the old raster stays on screen. Changing the radius or the interface theme refreshes the
+windows, so every icon redraws. A plain
 `icons/<name>.svg` load, outside any theme, draws at radius 6 and smoothing 4. Nothing has to be wired
 per client: every app that uses the kit's `Assets` and `Icon` gets the set.
 
@@ -50,8 +52,8 @@ The bijection tests in `crates/zz-gpui-kit/src/icon/mod.rs` hold `IconName` to t
 files: every variant loads, every file in `assets/icons` has a variant, and every icon in `mac.json`
 names its variant and has no file shadowing it.
 
-The site inlines static copies from `site/src/icons`, exported at the app's default look (Modern,
-radius 24, smoothing 4) next to the brand marks. Re-export after changing the set:
+The site inlines static copies from `site/src/icons`, exported at the default theme's look (radius 24,
+smoothing 4) next to the brand marks. Re-export after changing the set:
 
 ```sh
 cargo run -p zz-gpui-kit --example export_icons -- site/src/icons 24 4
@@ -100,8 +102,8 @@ a missing scale means a sharp vertex.
    `crates/zz-gpui-kit/src/icon/mod.rs`. Only brand marks get a file in `assets/icons`.
 2. Add one line to `mac.json` with `name` equal to the path's stem, its `variant`, a `group` and its
    `parts`. Draw it with the rules above.
-3. Preview it with `just storybook run`: Foundation › Icon set shows the set at the current Radius and
-   Corner smoothing knobs, a radius ramp, chrome sizes and 48px construction. Check radius 0, 6 and 25,
+3. Preview it with `just storybook run`: Foundation › Icon set shows the set at the current Radius
+   knob and the fixed smoothing, a radius ramp, chrome sizes and 48px construction. Check radius 0, 6 and 25,
    and 12 to 16px. `include_str!` reads the JSON, so touch a file under `crates/zz-gpui-kit/src` if the
    watcher does not rebuild after a JSON edit.
 4. `cargo test -p zz-gpui-kit --lib icon` draws every icon at radius 0, 6 and 25 and checks the

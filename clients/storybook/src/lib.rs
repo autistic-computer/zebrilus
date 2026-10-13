@@ -161,7 +161,7 @@ pub fn show_story(story: &'static Story, cx: &mut App) -> Result<(), String> {
                 |window, cx| {
                     window.set_window_title(section.name);
                     window.set_zoom(knobs.zoom);
-                    window.set_default_corner_smoothing(knobs.look.corner_smoothing);
+                    window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
                     window.set_adaptive_corner_fraction(Some(0.45));
                     let content = (section.build)(window, cx);
                     let floats = backdrop::floats(story.id, section.id);

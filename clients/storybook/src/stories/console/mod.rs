@@ -8,7 +8,7 @@ mod path_picker;
 mod phone;
 mod terminal;
 mod tmux_styles;
-mod which_key;
+pub(super) mod which_key;
 
 pub const STORIES: &[Story] = &[
     palette::STORY,
