@@ -6,7 +6,7 @@ use zz_client::window_summary::{
 };
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
-    Styled as _, Window, div, prelude::*, px,
+    ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
 use zz_protocol::{
     AgentProvider, Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators, PaneBorderLines,
@@ -18,12 +18,13 @@ use zz_ui::{
     ActiveTheme as _,
     command::PaletteHostId,
     navigation::{
-        WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
+        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
         flat::{
             FlatEvent, FlatHandler, FlatHost, FlatRowState, FlatState, FlatTarget, FlatWindow,
             HostConnection, flat_row_ground, flat_sidebar, flat_tile_stack, flat_window_row,
         },
     },
+    scroll::ScrollableElement as _,
 };
 
 use super::{
@@ -531,6 +532,7 @@ fn find(host: &FlatHost, id: u64) -> &FlatWindow {
 struct Live {
     hosts: Vec<FlatHost>,
     state: FlatState,
+    scroll: ScrollHandle,
 }
 
 impl Live {
@@ -541,6 +543,7 @@ impl Live {
                 current: Some((MACBOOK, WindowId(1))),
                 ..FlatState::default()
             },
+            scroll: ScrollHandle::new(),
         }
     }
 
@@ -592,10 +595,23 @@ impl Render for Live {
             .h(px(SIDEBAR_HEIGHT))
             .child(sidebar(
                 div()
-                    .id("flat-live-scroll")
+                    .relative()
                     .size_full()
-                    .overflow_y_scroll()
-                    .child(list),
+                    .min_h_0()
+                    .child(
+                        div()
+                            .id("flat-live-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll)
+                            .child(list),
+                    )
+                    .bottom_fade(
+                        &self.scroll,
+                        cx.theme().background,
+                        WORKSPACE_SIDEBAR_FADE_HEIGHT,
+                    )
+                    .vertical_scrollbar(&self.scroll),
                 false,
                 cx,
             ))

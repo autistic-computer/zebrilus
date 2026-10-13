@@ -396,6 +396,11 @@ pub(super) fn session_tree(
         .size_full()
         .min_h_0()
         .child(list)
+        .bottom_fade(
+            scroll,
+            cx.theme().background,
+            zz_ui::navigation::WORKSPACE_SIDEBAR_FADE_HEIGHT,
+        )
         .vertical_scrollbar(scroll)
         .into_any_element()
 }
