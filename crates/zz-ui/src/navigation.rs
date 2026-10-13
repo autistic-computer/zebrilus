@@ -1,4 +1,5 @@
 pub mod flat;
+pub mod pane_stack;
 pub mod sidebar;
 pub mod status;
 pub mod tree;

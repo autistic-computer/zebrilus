@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use zz_client::window_summary::{
     PaneTag::{self, Agent, Browser, Editor, Picker, Terminal},
-    age_label, summarize_host,
+    PaneTile, age_label, summarize_host,
 };
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
@@ -47,13 +47,13 @@ pub const STORY: Story = Story {
         Section {
             id: "rows",
             name: "Window rows",
-            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is, its lead in the tone of what needs you; the spinner is a turn in progress. The tile is the active pane, with a card behind it for each other pane, two at most.",
+            summary: "flat_window_row in every state the summary can produce. Line 1 names the window, line 2 says what it is doing or where it is, its lead in the tone of what needs you; the spinner is a turn in progress. The stack is the active pane's tile with up to two blank tiles fanned out behind it; point at it to open every pane.",
             build: |_, cx| stateless(rows, cx),
         },
         Section {
             id: "stacks",
             name: "Tile stacks",
-            summary: "flat_tile_stack for one to four panes on the rest, hover, current and selected grounds. The active pane's tile is always full size; each other pane adds a card behind it, a little narrower than the one in front and peeking out above it, two at most.",
+            summary: "flat_tile_stack for one to five panes on the rest, hover, current and selected grounds. The active pane's tile leads with its glyph; up to two blank tiles fan out behind it, 7px apart, each cut out of the one behind by a ring in the row's color. Point at a stack to open every pane in a row.",
             build: |_, cx| stateless(stacks, cx),
         },
         Section {
@@ -546,7 +546,7 @@ impl Live {
 
     fn handle(&mut self, event: FlatEvent, cx: &mut Context<Self>) {
         let changed = match event {
-            FlatEvent::Open(host, window) => {
+            FlatEvent::Open(host, window) | FlatEvent::OpenPane(host, window, _) => {
                 self.state.current = Some((host, window));
                 true
             }
@@ -713,7 +713,16 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             ..FlatRowState::default()
         },
     ];
-    let cell = |tags: &[PaneTag], state: FlatRowState| {
+    let cell = |id: u64, tags: &[PaneTag], state: FlatRowState| {
+        let tiles = tags
+            .iter()
+            .enumerate()
+            .map(|(index, tag)| PaneTile {
+                pane: PaneId(index as u64),
+                tag: *tag,
+                label: format!("{tag:?}"),
+            })
+            .collect::<Vec<_>>();
         div()
             .flex()
             .flex_none()
@@ -722,33 +731,44 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             .size(px(STACK_CELL))
             .rounded(cx.theme().control_radius())
             .bg(flat_row_ground(state, cx).fill)
-            .child(flat_tile_stack(tags, state, cx))
+            .child(flat_tile_stack(MACBOOK, WindowId(id), &tiles, state, cx))
     };
     let claude = Agent(AgentProvider::ClaudeCode);
     let codex = Agent(AgentProvider::Codex);
     let kinds = [claude, codex, Terminal, Browser, Editor, Picker];
-    let on_every_ground =
-        |tags: &[PaneTag]| row().children(grounds.iter().map(|state| cell(tags, *state)));
+    let on_every_ground = |id: u64, tags: &[PaneTag]| {
+        row().children(
+            grounds
+                .iter()
+                .enumerate()
+                .map(|(index, state)| cell(id * 10 + index as u64, tags, *state)),
+        )
+    };
     states()
         .state(
             "one pane, every kind",
-            row().children(kinds.iter().map(|kind| cell(&[*kind], grounds[0]))),
+            row().children(
+                kinds
+                    .iter()
+                    .enumerate()
+                    .map(|(index, kind)| cell(index as u64, &[*kind], grounds[0])),
+            ),
         )
         .state(
             "one pane on rest, hover, current and selected",
-            on_every_ground(&[claude]),
+            on_every_ground(1, &[claude]),
         )
         .state(
-            "two panes: one card behind",
-            on_every_ground(&[Browser, Terminal]),
+            "two panes: one tile behind",
+            on_every_ground(2, &[Browser, Terminal]),
         )
         .state(
-            "three panes: two cards behind",
-            on_every_ground(&[claude, Terminal, Browser]),
+            "three panes: two tiles behind",
+            on_every_ground(3, &[claude, Terminal, Browser]),
         )
         .state(
-            "four or more panes: still two cards behind",
-            on_every_ground(&[Terminal, codex, Browser, Editor, claude]),
+            "five panes: still two behind, all five when open",
+            on_every_ground(5, &[Terminal, codex, Browser, Editor, claude]),
         )
         .into_any_element()
 }

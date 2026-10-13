@@ -17,8 +17,9 @@ timestamp: 2026-10-12T21:30:00-03:00
 # Overview
 
 The flat sidebar shows one row per window on every host: a title, a second line saying what the
-window is doing, an age on the right, and a pane stack: one tile for the active pane with a card
-behind it for each other pane, two at most. Line 2's lead carries what needs you, so the tiles have
+window is doing, an age on the right, and a pane stack (`navigation::pane_stack`, shared with the
+titlebar's pane deck): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color. Pointing at it opens every pane in a row you can
+click. Line 2's lead carries what needs you, so the tiles have
 no status dot; folded host and session headers roll attention up. Every fact it needs now rides
 the mux tree, so a client that subscribes to all sessions can draw every row without
 `AgentPaneWire`, without attaching, and without keeping its own "seen" state.
@@ -121,8 +122,9 @@ Needs you, Failed, Done, Exit) takes its tone and anything after it follows mute
 the agreed mock; Done is in the foreground only while the finish is unseen.
 
 **Ages** are `short_age`: "now" under a minute, then minutes, hours and days. `age_label` shows
-nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order; the row
-draws the first as its tile and one card behind it for each of the next two.
+nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order, each with
+its pane id and label; the row draws the first with its glyph and a blank tile for each of the next
+two, and the open row offers every pane (`FlatEvent::OpenPane`).
 **Rollups** count one attention per window and keep the newest change; a host merges its sessions.
 
 # What the source changed in the first draft
