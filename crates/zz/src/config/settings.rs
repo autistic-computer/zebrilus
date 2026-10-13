@@ -2496,6 +2496,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::StatusAgents
         | ConfigKey::StatusHost
         | ConfigKey::StatusUpdate
+        | ConfigKey::FlatSidebar
         | ConfigKey::ExperimentalAgentPane
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps

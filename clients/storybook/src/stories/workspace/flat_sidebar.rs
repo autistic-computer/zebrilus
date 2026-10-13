@@ -17,11 +17,13 @@ use zz_protocol::{
 use zz_ui::{
     ActiveTheme as _,
     command::PaletteHostId,
+    menu::PopupMenuItem,
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
         flat::{
-            FlatEvent, FlatHandler, FlatHost, FlatRowState, FlatState, FlatTarget, FlatWindow,
-            HostConnection, flat_row_ground, flat_sidebar, flat_tile_stack, flat_window_row,
+            FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatRowState, FlatState, FlatTarget,
+            FlatWindow, HostConnection, flat_row_ground, flat_sidebar, flat_tile_stack,
+            flat_window_row,
         },
     },
     scroll::ScrollableElement as _,
@@ -29,7 +31,7 @@ use zz_ui::{
 
 use super::{
     fixtures::{agent_kind, browser_kind, editor_kind},
-    tree::sidebar,
+    tree::flat_view_sidebar,
 };
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -517,6 +519,13 @@ fn sidebar_hosts() -> Vec<FlatHost> {
     vec![macbook(), ubuntu()]
 }
 
+fn window_menu() -> FlatMenu {
+    Rc::new(|_, _, menu, _, _| {
+        menu.item(PopupMenuItem::new("Rename window"))
+            .item(PopupMenuItem::new("Close window"))
+    })
+}
+
 fn noop() -> FlatHandler {
     Rc::new(|_, _, _| {})
 }
@@ -571,10 +580,7 @@ impl Live {
                 true
             }
             FlatEvent::Hover(target, hovered) => self.state.hover(target, hovered),
-            FlatEvent::Actions(..)
-            | FlatEvent::NewWindow(..)
-            | FlatEvent::Connect(_)
-            | FlatEvent::Upgrade(_) => false,
+            FlatEvent::NewWindow(..) | FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => false,
         };
         if changed {
             cx.notify();
@@ -588,12 +594,12 @@ impl Render for Live {
         let handler: FlatHandler = Rc::new(move |event, _, cx| {
             let _ = view.update(cx, |this, cx| this.handle(event, cx));
         });
-        let list = flat_sidebar(&self.hosts, self.state, &handler, cx);
+        let list = flat_sidebar(&self.hosts, self.state, &handler, &window_menu(), cx);
         div()
             .id("flat-live")
             .flex()
             .h(px(SIDEBAR_HEIGHT))
-            .child(sidebar(
+            .child(flat_view_sidebar(
                 div()
                     .relative()
                     .size_full()
@@ -612,7 +618,6 @@ impl Render for Live {
                         WORKSPACE_SIDEBAR_FADE_HEIGHT,
                     )
                     .vertical_scrollbar(&self.scroll),
-                false,
                 cx,
             ))
     }
@@ -705,7 +710,10 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
             |list, (index, (label, host, window, state))| {
                 list.state(
                     label,
-                    row_frame(index, flat_window_row(host, window, state, &handler, cx)),
+                    row_frame(
+                        index,
+                        flat_window_row(host, window, state, &handler, &window_menu(), cx),
+                    ),
                 )
             },
         )
@@ -839,7 +847,7 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
             "folding: session zz hovered, the rest folded to their rollups",
             host_frame(
                 "flat-hosts-folding",
-                flat_sidebar(&folding, folding_state, &handler, cx),
+                flat_sidebar(&folding, folding_state, &handler, &window_menu(), cx),
                 cx,
             ),
         )
@@ -847,7 +855,13 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
             "connection states",
             host_frame(
                 "flat-hosts-connections",
-                flat_sidebar(&connections, FlatState::default(), &handler, cx),
+                flat_sidebar(
+                    &connections,
+                    FlatState::default(),
+                    &handler,
+                    &window_menu(),
+                    cx,
+                ),
                 cx,
             ),
         )
@@ -855,7 +869,7 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
             "folded while not connected: no spinner; a host with an action drops its rollup",
             host_frame(
                 "flat-hosts-folded-stale",
-                flat_sidebar(&folded, FlatState::default(), &handler, cx),
+                flat_sidebar(&folded, FlatState::default(), &handler, &window_menu(), cx),
                 cx,
             ),
         )

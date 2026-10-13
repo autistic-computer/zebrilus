@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Flat sidebar data: pane summaries, attention and time"
-description: "The data layer for a flat, two-line-per-window sidebar on every client: one PaneSummary per pane in the tree (last change time, unseen finish latch, last shell command, @name, display cwd and git branch), one status record for every agent kind, the daemon clock on the handshake, and a renderer-free view model in zz-client. Both data slices are built; no client draws the sidebar yet."
+description: "The data layer for a flat, two-line-per-window sidebar on every client: one PaneSummary per pane in the tree (last change time, unseen finish latch, last shell command, @name, display cwd and git branch), one status record for every agent kind, the daemon clock on the handshake, and a renderer-free view model in zz-client. Both data slices are built, and the desktop, web and iPad sidebars draw it when the footer's eye switch is on."
 status: Complete
 resource: crates/zz-client/src/window_summary.rs
 tags:
@@ -25,9 +25,12 @@ the mux tree, so a client that subscribes to all sessions can draw every row wit
 `AgentPaneWire`, without attaching, and without keeping its own "seen" state.
 
 This plan covers the daemon producers, the wire fields, and the view model. The row, header and
-sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`); wiring
-them into the desktop `MuxTreeModel` and the thin-client tree is the next piece of work and is not
-built. A window row draws its highlight with `navigation::workspace_row_fill`, the same fill as the
+sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`). The eye
+button at the bottom right of the sidebar footer switches between the session tree and this list:
+the desktop draws every fleet host from `MuxClient::fleet_hosts` and remembers the choice as
+`flat-sidebar` in `zz/config` (`crates/zz/src/workspace/sidebar/flat.rs`); the web and iPad clients
+draw their one host and keep it in their saved preferences. Row actions open a rename and close menu
+(`FlatMenu`), from the actions button or a right click. A window row draws its highlight with `navigation::workspace_row_fill`, the same fill as the
 tree rows (outline, corners, inset and press), and its corners and tiles follow the theme's corner
 rule like every other control, so neither becomes a pill until the theme's radius asks for pills.
 
@@ -179,8 +182,8 @@ two, and the open row offers every pane (`FlatEvent::OpenPane`).
 
 # Not built, on purpose
 
-- Drawing the rows: wiring `summarize_window` into the desktop `MuxTreeModel` and the thin-client
-  tree, a `DaemonClock` per host connection, and a once-a-minute repaint for ages.
+- A `DaemonClock` per host connection (the desktop reads ages against the local clock) and a
+  once-a-minute repaint for ages; keyboard navigation in the flat list.
 - A live "what the agent is doing" line while Working, agent diff stats on line 2, an `Auth` kind
   for native agents, `#{pane_unseen}` and `#{pane_changed_at}` formats, chimes for every host from
   `unseen` edges, and retiring `AgentAttentionTracker`, `AgentBadge` and the thin client's

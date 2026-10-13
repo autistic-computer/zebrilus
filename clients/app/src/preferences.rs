@@ -8,6 +8,7 @@ const MAX_THEME_BYTES: usize = 64 * 1024;
 #[serde(default)]
 pub struct Preferences {
     pub sidebar: bool,
+    pub flat_sidebar: bool,
     pub sidebar_width: f32,
     pub status_badges: bool,
     pub status_agents: bool,
@@ -49,6 +50,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             sidebar: true,
+            flat_sidebar: false,
             sidebar_width: zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
             status_badges: true,
             status_agents: true,
@@ -411,6 +413,7 @@ mod tests {
         let expected = Preferences {
             mode: Some("light".into()),
             animations: false,
+            flat_sidebar: true,
             ui_font_family: "Inter Variable".into(),
             terminal_font_family: Some("Lilex".into()),
             terminal_font_scale: 1.25,

@@ -13,9 +13,10 @@ use zz_ui::{
             tree_window_layout_button,
         },
         workspace_layout_button, workspace_palette_button, workspace_settings_button,
-        workspace_sidebar_footer, workspace_sidebar_titlebar, workspace_status_item,
-        workspace_status_window, workspace_tree_action_button, workspace_tree_action_row,
-        workspace_tree_disclosure, workspace_tree_marker, workspace_tree_row,
+        workspace_sidebar_footer, workspace_sidebar_titlebar, workspace_sidebar_view_button,
+        workspace_status_item, workspace_status_window, workspace_tree_action_button,
+        workspace_tree_action_row, workspace_tree_disclosure, workspace_tree_marker,
+        workspace_tree_row,
     },
 };
 
@@ -671,6 +672,7 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(workspace_sidebar_footer(
                     "sidebar-footer",
                     workspace_settings_button("footer-settings"),
+                    Some(workspace_sidebar_view_button("footer-view", false).into_any_element()),
                     cx,
                 )),
         )
