@@ -436,9 +436,9 @@ fn actions_menu(
     )
     .w(px(ACTIONS_WIDTH))
     .h(px(ACTIONS_HEIGHT))
-    .ghost()
+    .text()
     .flat()
-    .on(ground)
+    .text_color(ground.ink)
     .hit_slop(
         (TOUCH_TARGET - ACTIONS_WIDTH) / 2.0,
         (TOUCH_TARGET - ACTIONS_HEIGHT) / 2.0,
@@ -768,28 +768,17 @@ pub fn flat_host_header(
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
-        .child(
-            div()
-                .flex_none()
-                .w(px(StackSize::Row.widest() + TILE_GAP - HOST_SPACING))
-                .child(
-                    div()
-                        .w(px(StackSize::Row.tile()))
-                        .flex()
-                        .justify_center()
-                        .child(glyph(
-                            if host.remote {
-                                IconName::Server
-                            } else {
-                                IconName::Laptop
-                            },
-                            HOST_GLYPH,
-                            HOST_NAME_SIZE,
-                            muted,
-                            cx,
-                        )),
-                ),
-        )
+        .child(glyph(
+            if host.remote {
+                IconName::Server
+            } else {
+                IconName::Laptop
+            },
+            HOST_GLYPH,
+            HOST_NAME_SIZE,
+            muted,
+            cx,
+        ))
         .child(
             div()
                 .min_w_0()
@@ -834,7 +823,7 @@ pub fn flat_session_header(
             IconName::Plus,
             NEW_WINDOW_ICON,
         )
-        .ghost()
+        .text()
         .flat()
         .size(px(NEW_WINDOW_SIZE))
         .hit_slop(
