@@ -4,7 +4,7 @@ title: zz-cli crate
 description: Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
 resource: crates/zz-cli/src/lib.rs
 tags: [crate, cli, daemon, tui, headless, packaging]
-timestamp: 2026-10-04T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Overview
@@ -17,6 +17,10 @@ daemon spawning, and terminal attach through the `zz-tui` library.
 Desktop bundles install `zz_cli` as `cli`: `lib/zz/cli` on Linux and
 `Contents/MacOS/cli` on macOS. The `zz` symlink on PATH points to that `cli` file.
 Headless archives instead ship the same binary as `zz`, alongside the MIT and Apache licenses.
+The release workflow (`.github/workflows/release.yml`) builds the Linux headless binary with
+`cargo zigbuild --target <arch>-unknown-linux-gnu.2.28`, so it needs glibc 2.28 or newer
+(Debian 10, RHEL 8) and only `libc`, `libm`, `libpthread`, `libdl` and `librt`. The desktop
+tarball, AppImage and deb are still built natively on Ubuntu 24.04.
 
 The `daemon_executable` rule makes a GUI spawn the sibling `cli` and the headless
 binary spawn itself. Sessions survive when the desktop client quits.
