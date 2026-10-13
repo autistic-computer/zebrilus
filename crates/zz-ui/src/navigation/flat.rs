@@ -44,12 +44,10 @@ const LINE_GAP: f32 = 1.0;
 const TITLE_TRAILING_GAP: f32 = 6.0;
 const DETAIL_AGE_GAP: f32 = 8.0;
 const SPINNER_SIZE: f32 = 12.0;
-const ACTIONS_WIDTH: f32 = 20.0;
+const ACTIONS_WIDTH: f32 = 18.0;
 const ACTIONS_HEIGHT: f32 = 16.0;
 const ACTIONS_ICON: f32 = 14.0;
 const DIMMED: f32 = 0.45;
-const HEADER_INSET: f32 = 16.0;
-const HEADER_TRAILING_INSET: f32 = 12.0;
 const HOST_HEIGHT: f32 = 30.0;
 const HOST_GAP: f32 = 18.0;
 const HOST_GLYPH: f32 = 16.0;
@@ -302,6 +300,10 @@ pub fn flat_row_ground(state: FlatRowState, cx: &App) -> Ground {
     RowInk::new(state, cx).ground
 }
 
+fn header_inset(cx: &App) -> Pixels {
+    cx.theme().row_inset + px(ROW_PADDING)
+}
+
 fn row_height(cx: &App) -> Pixels {
     cx.theme().dense(px(ROW_HEIGHT))
 }
@@ -434,6 +436,7 @@ fn actions_menu(
     )
     .w(px(ACTIONS_WIDTH))
     .h(px(ACTIONS_HEIGHT))
+    .ghost()
     .flat()
     .on(ground)
     .hit_slop(
@@ -756,8 +759,7 @@ pub fn flat_host_header(
         })
         .flex_none()
         .h(theme.dense(px(HOST_HEIGHT)))
-        .pl(px(HEADER_INSET))
-        .pr(px(HEADER_TRAILING_INSET))
+        .px(header_inset(cx))
         .gap(px(HOST_SPACING))
         .text_color(theme.foreground)
         .text_size(px(HOST_NAME_SIZE))
@@ -766,17 +768,28 @@ pub fn flat_host_header(
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
-        .child(glyph(
-            if host.remote {
-                IconName::Server
-            } else {
-                IconName::Laptop
-            },
-            HOST_GLYPH,
-            HOST_NAME_SIZE,
-            muted,
-            cx,
-        ))
+        .child(
+            div()
+                .flex_none()
+                .w(px(StackSize::Row.widest() + TILE_GAP - HOST_SPACING))
+                .child(
+                    div()
+                        .w(px(StackSize::Row.tile()))
+                        .flex()
+                        .justify_center()
+                        .child(glyph(
+                            if host.remote {
+                                IconName::Server
+                            } else {
+                                IconName::Laptop
+                            },
+                            HOST_GLYPH,
+                            HOST_NAME_SIZE,
+                            muted,
+                            cx,
+                        )),
+                ),
+        )
         .child(
             div()
                 .min_w_0()
@@ -822,6 +835,7 @@ pub fn flat_session_header(
             NEW_WINDOW_ICON,
         )
         .ghost()
+        .flat()
         .size(px(NEW_WINDOW_SIZE))
         .hit_slop(
             (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,
@@ -846,8 +860,7 @@ pub fn flat_session_header(
         .flex_none()
         .pt(px(SESSION_TOP))
         .pb(px(SESSION_BOTTOM))
-        .pl(px(HEADER_INSET))
-        .pr(px(HEADER_TRAILING_INSET))
+        .px(header_inset(cx))
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| {
