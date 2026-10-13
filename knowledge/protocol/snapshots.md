@@ -4,7 +4,7 @@ title: Mux snapshots (snapshot.rs)
 description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-10-12T20:30:00-03:00
+timestamp: 2026-10-12T21:30:00-03:00
 ---
 
 # Overview
@@ -181,10 +181,12 @@ The daemon remembers the last 64 answers by source (the OSC 7 report, or the liv
 is none). When a pane moves (its terminal is spawned or an Agent pane opens, the OSC 7 path
 changes, or the live path changes on a pane without OSC 7), a remembered answer fills the summary
 at once, from memory, so it rides the publish of the move itself. An answer read in the last 10
-seconds is taken as is; an older one is shown and read again in the background. A shell command
-finishing and a native agent status edge out of `Working`, or while the summary has no cwd yet,
-always read again, so a branch switched from a pane shows up there. A background result sends a
-summary op only when it differs from what the pane shows. At most one job per pane is in flight; a
+seconds is taken without a job, and every pane that took one is read again 2 seconds after the
+first such take, once per source for the burst; an older answer is shown and read again at once. A
+shell command finishing and a native agent status edge out of `Working`, or while the summary has
+no cwd yet, always read again, so a branch switched from a pane shows up there. A read renews
+every remembered answer and every pane summary with the same `cwd`, and sends summary ops only for
+the panes it changes. At most one job per pane is in flight; a
 trigger while one runs drops that job's result, which is neither shown nor remembered, and runs it
 again with fresh inputs. The branch is read from the `.git` directory
 or `gitdir:` file and `HEAD` (4 KiB at most) without running git; bare repositories and `GIT_DIR`

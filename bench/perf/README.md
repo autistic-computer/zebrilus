@@ -86,7 +86,10 @@ environment from scratch: `HOME`, every `XDG_*`, `TMPDIR`, `ZZ_DATA_DIR` and
 `ZZ_LOG_DIR` point inside it; `ZZ_SOCKET=/tmp/zzpf-<pid>.sock`, `ZZ_TRAY=0`,
 `ZZ_UPDATE_CHECK=0`, `SHELL=/bin/bash`, `TERM=xterm-256color`. `TMUX`,
 `TMUX_PANE`, `ZZ_PANE`, `ZZ_SESSION`, `TERM_PROGRAM` and `COLORTERM` are not
-passed. The empty `HOME` means bash reads no rc files. tmux runs as
+passed. The empty `HOME` means bash reads no rc files. The groups run with
+`HOME` as the working directory, so every server and pane starts there and the
+directory zz reports for a pane (`~`, no branch) does not depend on where the
+gate was launched. tmux runs as
 `tmux -L zzpf-<pid> -f <root>/perf.conf` with `TMUX_TMPDIR` in the root, and
 zz as `zz_cli -f <root>/perf.conf`.
 
