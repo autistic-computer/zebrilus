@@ -88,7 +88,7 @@ use crate::{
     mux::{
         client::{
             AttachmentPreviewRequest, ClientNotification, ClientNotificationCleared,
-            KeyTableChanged, MuxClient, PathPickerUpdate, SshPromptRequest,
+            KeyTableChanged, MuxClient, PathPickerUpdate, RemoteInstallOffer, SshPromptRequest,
         },
         hosts::HostId,
         nav::{TreeTarget, kill_target_command, picker_split_command, select_window_command},
@@ -1017,6 +1017,14 @@ impl AppView {
             window,
             |_, mux, event: &SshPromptRequest, window, cx| {
                 super::ssh_prompt::open(mux, event, window, cx);
+            },
+        )
+        .detach();
+        cx.subscribe_in(
+            &mux,
+            window,
+            |_, mux, event: &RemoteInstallOffer, window, cx| {
+                super::remote_install::open(mux, event.host, &event.name, event.offer, window, cx);
             },
         )
         .detach();

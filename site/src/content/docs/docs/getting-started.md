@@ -308,6 +308,20 @@ host-gpu     = ssh://gpu-box:2222
 Click a session in the tree to attach, or target the host from a shell with
 `zz --host desktop list-sessions`.
 
+The other machine needs zz too. If it has none, the app offers to install it on
+the spot: it runs the installer there over ssh and puts the headless zz in
+`~/.local/bin`, picking the right build for that machine. A host with an older
+zz offers **Update zz** from its menu in the sidebar, which also restarts its
+daemon. From a shell:
+
+```sh
+zz fleet install desktop
+zz fleet install --restart-daemon desktop
+```
+
+The remote needs `curl` and access to GitHub. Linux builds run on glibc 2.28 or
+newer.
+
 The transport is plain OpenSSH. zz shells out to `ssh`, probes for the remote
 socket, starts a daemon over the same connection if none is running, and
 forwards the socket with `ssh -L`. (Windows cannot forward a unix socket, so it

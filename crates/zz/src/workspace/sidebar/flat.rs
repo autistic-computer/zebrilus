@@ -40,10 +40,13 @@ pub(super) struct FlatView {
 fn connection(state: &HostState, loaded: bool) -> HostConnection {
     match state {
         HostState::Connected if loaded => HostConnection::Connected,
-        HostState::Connected | HostState::Connecting => HostConnection::Connecting,
+        HostState::Connected | HostState::Connecting | HostState::Installing => {
+            HostConnection::Connecting
+        }
         HostState::Reconnecting { .. } => HostConnection::Reconnecting,
         HostState::Disconnected => HostConnection::Disconnected,
         HostState::Unreachable { reason } => HostConnection::Unreachable(reason.clone().into()),
+        HostState::Missing => HostConnection::Unreachable("zz is not installed".into()),
         HostState::Incompatible { remote, .. } => {
             HostConnection::Incompatible(format!("protocol v{remote}").into())
         }

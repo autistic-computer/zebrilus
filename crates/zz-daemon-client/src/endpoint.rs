@@ -91,6 +91,14 @@ pub(crate) const REMOTE_ZZ_MISSING_STATUS: i32 = 127;
 #[cfg(any(unix, windows, test))]
 pub(crate) const REMOTE_DAEMON_TIMEOUT_STATUS: i32 = 3;
 #[cfg(any(unix, windows, test))]
+const REMOTE_INSTALL_ELSEWHERE_STATUS: i32 = 4;
+#[cfg(any(unix, windows, test))]
+const REMOTE_INSTALL_FAILED_STATUS: i32 = 5;
+#[cfg(any(unix, windows, test))]
+const REMOTE_INSTALL_BROKEN_STATUS: i32 = 6;
+#[cfg(any(unix, windows, test))]
+const INSTALL_SCRIPT: &str = include_str!("../../../install.sh");
+#[cfg(any(unix, windows, test))]
 const REMOTE_DAEMON_POLL_ATTEMPTS: u32 = 50;
 #[cfg(any(unix, windows, test))]
 const REMOTE_DAEMON_POLL_INTERVAL: &str = "0.1";
@@ -168,6 +176,16 @@ pub enum EndpointError {
     },
     #[error("zz on {target} predates protocol version reporting; update it, then reconnect")]
     RemoteProtocolUnknown { target: String },
+    #[error("zz on {target} is {path}, which installing over ssh does not manage")]
+    RemoteInstallElsewhere { target: String, path: String },
+    #[error("installing zz on {target} failed: {reason}")]
+    RemoteInstallFailed { target: String, reason: String },
+    #[error("the zz installed on {target} speaks protocol v{remote}; this zz speaks v{client}")]
+    RemoteInstallMismatch {
+        target: String,
+        remote: u16,
+        client: u16,
+    },
     #[error(
         "ssh forward to {target} exited with {status} before creating {local_socket}",
         local_socket = local_socket.display()
@@ -267,6 +285,25 @@ impl EndpointError {
                     zz_protocol::app_identity::DIRECTORY,
                 )
             }
+            Self::RemoteInstallElsewhere { target, path } => format!(
+                "{name} on {target} is {path}, which installing over ssh does not manage.\nUpdate \
+                 it the way it was installed, then reconnect.",
+                name = zz_protocol::app_identity::DIRECTORY,
+            ),
+            Self::RemoteInstallFailed { target, reason } => format!(
+                "Could not install {} on {target}: {reason}",
+                zz_protocol::app_identity::DIRECTORY,
+            ),
+            Self::RemoteInstallMismatch {
+                target,
+                remote,
+                client,
+            } => format!(
+                "Installed {name} {version} on {target}, but it speaks protocol v{remote} and this \
+                 {name} speaks v{client}.\nThis build has no matching release.",
+                name = zz_protocol::app_identity::DIRECTORY,
+                version = env!("CARGO_PKG_VERSION"),
+            ),
             Self::ForwardExited { target, status, .. } => format!(
                 "The ssh forward to {target} exited ({status}).\nDoes its sshd allow local \
                  forwarding?"
@@ -571,6 +608,112 @@ pub(crate) fn remote_daemon_start_script(remote_socket: &Path) -> String {
          exit {REMOTE_DAEMON_TIMEOUT_STATUS}",
         fallback = remote_path_fallback(),
     )
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon: bool) -> String {
+    let installed = format!(
+        "\"$HOME/.local/bin/{}\"",
+        zz_protocol::app_identity::DIRECTORY
+    );
+    let restart = if restart_daemon {
+        let socket = remote_socket.map_or_else(String::new, |socket| {
+            format!("--socket {} ", shell_quote(&socket.to_string_lossy()))
+        });
+        format!(
+            "if [ \"$zz_protocol\" = {protocol} ]; then {installed} {socket}kill-server \
+             >/dev/null 2>&1; fi; ",
+            protocol = zz_protocol::PROTOCOL_VERSION,
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "{fallback}zz_found=$(command -v \"$zz_cli\" 2>/dev/null); \
+         if [ -n \"$zz_found\" ] && {{ [ \"$zz_found\" != {installed} ] || [ -L \"$zz_found\" ]; }}; \
+         then printf 'zz-install-elsewhere=%s\\n' \"$zz_found\"; exit {REMOTE_INSTALL_ELSEWHERE_STATUS}; fi; \
+         sh -s -- --headless --version {version} || exit {REMOTE_INSTALL_FAILED_STATUS}; \
+         zz_protocol=$({installed} protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
+         {restart}printf 'zz-install-protocol=%s\\n' \"$zz_protocol\"",
+        fallback = remote_path_fallback(),
+        version = env!("CARGO_PKG_VERSION"),
+    )
+}
+
+#[cfg(any(unix, windows, test))]
+fn ssh_install_command(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    restart_daemon: bool,
+) -> Command {
+    let mut command = Command::new("ssh");
+    append_ssh_options(&mut command, endpoint, session);
+    command
+        .arg("--")
+        .arg(&endpoint.host)
+        .arg("sh")
+        .arg("-lc")
+        .arg(shell_quote(&remote_install_script(
+            endpoint.remote_socket.as_deref(),
+            restart_daemon,
+        )));
+    command
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn parse_remote_install_output(
+    target: &str,
+    code: Option<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+    status: &str,
+) -> Result<(), EndpointError> {
+    let stdout = String::from_utf8_lossy(stdout);
+    let value = |prefix: &str| {
+        stdout
+            .lines()
+            .find_map(|line| line.strip_prefix(prefix))
+            .map(|value| value.trim().to_owned())
+    };
+    let stderr = String::from_utf8_lossy(stderr);
+    let target = target.to_owned();
+    match code {
+        Some(0) => match value("zz-install-protocol=").map(|value| value.parse::<u16>()) {
+            Some(Ok(zz_protocol::PROTOCOL_VERSION)) => Ok(()),
+            Some(Ok(remote)) => Err(EndpointError::RemoteInstallMismatch {
+                target,
+                remote,
+                client: zz_protocol::PROTOCOL_VERSION,
+            }),
+            _ => Err(EndpointError::RemoteInstallFailed {
+                target,
+                reason: "the installed binary did not report its protocol version".to_owned(),
+            }),
+        },
+        Some(REMOTE_INSTALL_ELSEWHERE_STATUS)
+            if let Some(path) = value("zz-install-elsewhere=") =>
+        {
+            Err(EndpointError::RemoteInstallElsewhere { target, path })
+        }
+        Some(REMOTE_INSTALL_FAILED_STATUS) => {
+            let reason = ssh_failure_reason(&stderr, status);
+            Err(EndpointError::RemoteInstallFailed {
+                target,
+                reason: reason.strip_prefix("error: ").unwrap_or(&reason).to_owned(),
+            })
+        }
+        Some(REMOTE_INSTALL_BROKEN_STATUS) => Err(EndpointError::RemoteInstallFailed {
+            target,
+            reason: format!(
+                "the installed binary does not run there: {}",
+                ssh_failure_reason(&stderr, status)
+            ),
+        }),
+        _ => Err(EndpointError::SshFailed {
+            target,
+            reason: ssh_failure_reason(&stderr, status),
+        }),
+    }
 }
 
 /// The remote half of an attach that cannot forward a Unix socket: `zz proxy` on its stdio.
@@ -917,6 +1060,95 @@ fn ensure_remote_daemon(
     }
 }
 
+#[cfg(any(unix, windows))]
+fn start_askpass(endpoint: &SshEndpoint, prompts: Option<SshPrompts>) -> Option<AskpassListener> {
+    prompts.and_then(|prompts| match AskpassListener::start(prompts) {
+        Ok(listener) => Some(listener),
+        Err(error) => {
+            log::warn!(
+                target: "zz_daemon::askpass",
+                "ssh prompts are unavailable for {endpoint}: {error}",
+            );
+            None
+        }
+    })
+}
+
+#[cfg(any(unix, windows))]
+fn session_askpass(askpass: Option<&AskpassListener>) -> Option<SshAskpass<'_>> {
+    askpass.map(|listener| SshAskpass {
+        helper: listener.helper(),
+        socket: listener.socket(),
+    })
+}
+
+#[cfg(unix)]
+fn shared_control_path(endpoint: &SshEndpoint) -> Option<PathBuf> {
+    match control_master_path(endpoint) {
+        Ok(path) => {
+            discard_dead_control_master(endpoint, &path);
+            Some(path)
+        }
+        Err(error) => {
+            log::warn!(
+                target: "zz_daemon::diagnostics",
+                "ssh connection sharing is unavailable for {endpoint}: {error}",
+            );
+            None
+        }
+    }
+}
+
+#[cfg(any(unix, windows))]
+pub fn install_remote(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    restart_daemon: bool,
+) -> Result<(), EndpointError> {
+    let target = endpoint.to_string();
+    if zz_protocol::app_identity::DEVELOPMENT {
+        return Err(EndpointError::RemoteInstallFailed {
+            target,
+            reason: format!(
+                "{} looks for {} there, and no release ships it",
+                zz_protocol::app_identity::DISPLAY_NAME,
+                zz_protocol::app_identity::DIRECTORY,
+            ),
+        });
+    }
+    let askpass = start_askpass(endpoint, prompts);
+    #[cfg(unix)]
+    let control_path = shared_control_path(endpoint);
+    let session = SshSession {
+        #[cfg(unix)]
+        control_path: control_path.as_deref(),
+        askpass: session_askpass(askpass.as_ref()),
+    };
+    let spawn_failed = |source| EndpointError::SshSpawn {
+        operation: "remote install",
+        source,
+    };
+    let mut child = ssh_install_command(endpoint, session, restart_daemon)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn_unmasked()
+        .map_err(spawn_failed)?;
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(error) = stdin.write_all(INSTALL_SCRIPT.as_bytes())
+    {
+        log::debug!("the remote install for {endpoint} stopped reading its script: {error}");
+    }
+    let output = child.wait_with_output().map_err(spawn_failed)?;
+    parse_remote_install_output(
+        &target,
+        output.status.code(),
+        &output.stdout,
+        &output.stderr,
+        &output.status.to_string(),
+    )
+}
+
 #[cfg(unix)]
 fn forwarded_local_socket_path() -> PathBuf {
     let counter = FORWARD_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -950,35 +1182,11 @@ impl SshForward {
         endpoint: &SshEndpoint,
         prompts: Option<SshPrompts>,
     ) -> Result<Self, EndpointError> {
-        let askpass = prompts.and_then(|prompts| match AskpassListener::start(prompts) {
-            Ok(listener) => Some(listener),
-            Err(error) => {
-                log::warn!(
-                    target: "zz_daemon::askpass",
-                    "ssh prompts are unavailable for {endpoint}: {error}",
-                );
-                None
-            }
-        });
-        let control_path = match control_master_path(endpoint) {
-            Ok(path) => {
-                discard_dead_control_master(endpoint, &path);
-                Some(path)
-            }
-            Err(error) => {
-                log::warn!(
-                    target: "zz_daemon::diagnostics",
-                    "ssh connection sharing is unavailable for {endpoint}: {error}",
-                );
-                None
-            }
-        };
+        let askpass = start_askpass(endpoint, prompts);
+        let control_path = shared_control_path(endpoint);
         let session = SshSession {
             control_path: control_path.as_deref(),
-            askpass: askpass.as_ref().map(|listener| SshAskpass {
-                helper: listener.helper(),
-                socket: listener.socket(),
-            }),
+            askpass: session_askpass(askpass.as_ref()),
         };
 
         let probed_socket = probe_remote_socket(endpoint, session)?;
@@ -1049,10 +1257,7 @@ impl SshForward {
             endpoint,
             SshSession {
                 control_path: self.control_path.as_deref(),
-                askpass: self.askpass.as_ref().map(|listener| SshAskpass {
-                    helper: listener.helper(),
-                    socket: listener.socket(),
-                }),
+                askpass: session_askpass(self.askpass.as_ref()),
             },
             &self.local_socket,
             remote_socket,
@@ -1274,21 +1479,9 @@ impl SshForward {
         endpoint: &SshEndpoint,
         prompts: Option<SshPrompts>,
     ) -> Result<Self, EndpointError> {
-        let askpass = prompts.and_then(|prompts| match AskpassListener::start(prompts) {
-            Ok(listener) => Some(listener),
-            Err(error) => {
-                log::warn!(
-                    target: "zz_daemon::askpass",
-                    "ssh prompts are unavailable for {endpoint}: {error}",
-                );
-                None
-            }
-        });
+        let askpass = start_askpass(endpoint, prompts);
         let session = SshSession {
-            askpass: askpass.as_ref().map(|listener| SshAskpass {
-                helper: listener.helper(),
-                socket: listener.socket(),
-            }),
+            askpass: session_askpass(askpass.as_ref()),
         };
 
         let probed_socket = probe_remote_socket(endpoint, session)?;
@@ -1912,6 +2105,166 @@ mod tests {
             assert!(output.status.success());
             assert!(String::from_utf8_lossy(&output.stdout).ends_with(&expected));
         }
+    }
+
+    #[cfg(unix)]
+    fn fake_installer(protocol: &str) -> String {
+        format!(
+            "case \"$*\" in \"--headless --version {version}\") ;; \
+             *) echo \"error: unexpected arguments $*\" >&2; exit 1 ;; esac\n\
+             mkdir -p \"$HOME/.local/bin\"\n\
+             rm -f \"$HOME/.local/bin/{name}\"\n\
+             printf '#!/bin/sh\\nif [ \"$1\" = protocol-version ]; then echo {protocol}; \
+             else echo \"$*\" >> \"$HOME/calls\"; fi\\n' > \"$HOME/.local/bin/{name}\"\n\
+             chmod 755 \"$HOME/.local/bin/{name}\"\n",
+            version = env!("CARGO_PKG_VERSION"),
+            name = zz_protocol::app_identity::DIRECTORY,
+        )
+    }
+
+    #[cfg(unix)]
+    fn run_install_script(
+        shell: &str,
+        home: &Path,
+        path: &str,
+        installer: &str,
+        restart: bool,
+    ) -> Result<(), EndpointError> {
+        let script = shell_quote(&remote_install_script(
+            Some(Path::new("/run/zz.sock")),
+            restart,
+        ));
+        let mut child = Command::new(shell)
+            .args(["-c", &format!("sh -c {script}")])
+            .env("HOME", home)
+            .env("PATH", path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn_unmasked()
+            .expect("run install script");
+        let _ = child
+            .stdin
+            .take()
+            .expect("install stdin")
+            .write_all(installer.as_bytes());
+        let output = child.wait_with_output().expect("install output");
+        parse_remote_install_output(
+            "ssh://desk",
+            output.status.code(),
+            &output.stdout,
+            &output.stderr,
+            &output.status.to_string(),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_replaces_its_own_binary_and_restarts_the_daemon() {
+        let shells = ["/bin/sh", "/bin/tcsh"]
+            .into_iter()
+            .filter(|shell| Path::new(shell).exists());
+        for shell in shells {
+            let home = tempfile::tempdir().expect("temporary home");
+            let bin = home.path().join(".local/bin");
+            fs::create_dir_all(&bin).unwrap();
+            let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
+            fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
+            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+            let path = format!("{}:/usr/bin:/bin", bin.display());
+            let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
+            run_install_script(shell, home.path(), &path, &installer, true)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(
+                fs::read_to_string(home.path().join("calls")).unwrap(),
+                "--socket /run/zz.sock kill-server\n",
+                "{shell}",
+            );
+
+            fs::remove_file(home.path().join("calls")).unwrap();
+            run_install_script(shell, home.path(), &path, &installer, false).unwrap();
+            assert!(!home.path().join("calls").exists(), "{shell}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_leaves_a_zz_it_did_not_install_alone() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let other = tempfile::tempdir().expect("other prefix");
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let foreign = other.path().join(name);
+        fs::write(&foreign, "#!/bin/sh\necho 1\n").unwrap();
+        fs::set_permissions(&foreign, fs::Permissions::from_mode(0o755)).unwrap();
+        let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
+        let path = format!("{}:/usr/bin:/bin", other.path().display());
+        let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
+            .expect_err("a zz elsewhere on PATH is not ours to replace");
+        let EndpointError::RemoteInstallElsewhere { path: found, .. } = error else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(found, foreign.display().to_string());
+
+        let bin = home.path().join(".local/bin");
+        fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(&foreign, bin.join(name)).unwrap();
+        let path = format!("{}:/usr/bin:/bin", bin.display());
+        let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
+            .expect_err("a link in ~/.local/bin points at someone else's install");
+        assert!(
+            matches!(error, EndpointError::RemoteInstallElsewhere { .. }),
+            "{error}"
+        );
+        assert!(!home.path().join("calls").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_reports_why_it_failed() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let bin = home.path().join(".local/bin");
+        fs::create_dir_all(&bin).unwrap();
+        let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
+        fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+        let path = format!("{}:/usr/bin:/bin", bin.display());
+
+        let error = run_install_script(
+            "/bin/sh",
+            home.path(),
+            &path,
+            "echo 'error: curl is missing' >&2; exit 1\n",
+            true,
+        )
+        .expect_err("the installer failed");
+        let EndpointError::RemoteInstallFailed { reason, .. } = error else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(reason, "curl is missing");
+
+        let broken = format!(
+            "printf '#!/bin/sh\\necho \"GLIBC_2.39 not found\" >&2; exit 1\\n' > \"{}\"\n",
+            binary.display()
+        );
+        let error = run_install_script("/bin/sh", home.path(), &path, &broken, true)
+            .expect_err("the installed binary cannot run");
+        let EndpointError::RemoteInstallFailed { reason, .. } = error else {
+            panic!("unexpected error: {error}");
+        };
+        assert!(reason.ends_with("GLIBC_2.39 not found"), "{reason}");
+
+        let error = run_install_script("/bin/sh", home.path(), &path, &fake_installer("1"), true)
+            .expect_err("the release speaks another protocol");
+        assert!(
+            matches!(
+                error,
+                EndpointError::RemoteInstallMismatch { remote: 1, .. }
+            ),
+            "{error}"
+        );
+        assert!(!home.path().join("calls").exists());
     }
 
     #[cfg(unix)]

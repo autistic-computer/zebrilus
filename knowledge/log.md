@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-10-13
+* **Update**: Documented installing zz on a remote over ssh: install_remote pipes the embedded install.sh to the host, the Missing host state and install/update offer, zz fleet install, and the glibc 2.28 Linux headless build.
 * **Update**: Numbered sessions show where they are instead of a bare number. `PaneSummary` gains `repo`, the root of the git repository holding the pane's `cwd` (wire v108, still unreleased, so restart dev daemons), found on the same `.git` walk that reads the branch. `zz_client::navigation::session_label` now takes the session: a name made only of digits is labeled with the repo or folder most of its panes are in, ties going to the active pane, and the number follows faint, as `zz 0`. Named sessions keep their names, and the real name never changes, so `-t 0` and `#S` behave as in tmux. The flat sidebar, the desktop and thin-client trees, both palettes and the TUI sidebar use it; the menu bar and tray still list raw names. See [flat sidebar data](/designs/flat-sidebar-data.md) and [snapshots](/protocol/snapshots.md).
 
 ## 2026-10-12

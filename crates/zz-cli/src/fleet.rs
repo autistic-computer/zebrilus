@@ -1,7 +1,10 @@
 use zz_config::{remove_fleet_host, write_fleet_host};
-use zz_daemon_client::{Endpoint, RejectedHost, configured_fleet_hosts, validate_fleet_host};
+use zz_daemon_client::{
+    Endpoint, RejectedHost, configured_fleet_hosts, install_remote, validate_fleet_host,
+};
 
-const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet list [-F <format>]\n       zz fleet remove <name>";
+const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] <name>\n       zz fleet list [-F <format>]\n       zz fleet remove <name>";
+const FLEET_INSTALL_USAGE: &str = "usage: zz fleet install [--restart-daemon] <name>";
 const FLEET_ADD_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>";
 const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format>]";
 const FLEET_REMOVE_USAGE: &str = "usage: zz fleet remove <name>";
@@ -13,6 +16,10 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String,
     };
     match command.as_str() {
         "add" => fleet_add(&parse_fleet_add(arguments)?),
+        "install" => {
+            let (name, restart_daemon) = parse_fleet_install(arguments)?;
+            fleet_install(name, restart_daemon)
+        }
         "list" => fleet_list(parse_fleet_list(arguments)?),
         "remove" => {
             let [name] = arguments else {
@@ -170,6 +177,31 @@ fn parse_fleet_add(arguments: &[String]) -> Result<FleetAddArguments, String> {
     })
 }
 
+fn parse_fleet_install(arguments: &[String]) -> Result<(&str, bool), String> {
+    match arguments {
+        [name] if !name.starts_with('-') => Ok((name, false)),
+        [flag, name] if flag == "--restart-daemon" && !name.starts_with('-') => Ok((name, true)),
+        _ => Err(FLEET_INSTALL_USAGE.to_owned()),
+    }
+}
+
+fn fleet_install(name: &str, restart_daemon: bool) -> Result<String, String> {
+    let (hosts, _) =
+        configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
+    let Some(host) = hosts.iter().find(|host| host.name == name) else {
+        return Err(format!("unknown fleet host `{name}`"));
+    };
+    let Endpoint::Ssh(endpoint) = &host.endpoint else {
+        return Err(format!("host-{name} is not an ssh host"));
+    };
+    install_remote(endpoint, None, restart_daemon)
+        .map_err(|error| error.ssh_reason().unwrap_or_else(|| error.to_string()))?;
+    Ok(format!(
+        "installed zz {} on {name}",
+        env!("CARGO_PKG_VERSION")
+    ))
+}
+
 fn fleet_add(arguments: &FleetAddArguments) -> Result<String, String> {
     write_fleet_host(&arguments.name, &arguments.endpoint)
         .map_err(|error| format!("could not write zz/config: {error}"))?;
@@ -181,6 +213,31 @@ mod tests {
     use std::{fs, path::PathBuf, process::Command};
 
     use super::*;
+
+    #[test]
+    fn install_takes_one_host_and_an_optional_restart_flag() {
+        let arguments = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            parse_fleet_install(&arguments(&["desk"])),
+            Ok(("desk", false))
+        );
+        assert_eq!(
+            parse_fleet_install(&arguments(&["--restart-daemon", "desk"])),
+            Ok(("desk", true))
+        );
+        for rejected in [&[][..], &["-x"], &["desk", "--restart-daemon"], &["a", "b"]] {
+            assert_eq!(
+                parse_fleet_install(&arguments(rejected)),
+                Err(FLEET_INSTALL_USAGE.to_owned()),
+                "{rejected:?}"
+            );
+        }
+    }
 
     #[test]
     fn list_rows_align_on_the_name_column() {

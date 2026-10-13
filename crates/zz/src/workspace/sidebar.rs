@@ -50,7 +50,7 @@ use crate::{
     keymap::ChromeChord,
     mux::{
         client::MuxClient,
-        hosts::{HostId, HostState},
+        hosts::{HostId, HostState, InstallOffer},
         nav::{
             HostIndicator, MuxTreeHost, MuxTreeModel, MuxTreePaneKind, MuxTreeWindow, TreeNode,
             TreeNodeKind, TreeTarget, activate_nav as activate_sidebar, active_tree_target,
@@ -1402,6 +1402,30 @@ fn render_tree_row_context_menu(
         && host != HostId::LOCAL
     {
         let name = entry.label.to_string();
+        if let Some(offer) = runtime
+            .tree_model
+            .host(host)
+            .and_then(|tree_host| tree_host.state.install_offer())
+        {
+            let install_mux = runtime.mux.clone();
+            let install_name = name.clone();
+            items.push(TreeRowMenuItem::new(
+                crate::workspace::remote_install::menu_label(offer),
+                move |window, cx| match offer {
+                    InstallOffer::Install => {
+                        install_mux.update(cx, |mux, cx| mux.install_zz_on_host(host, cx));
+                    }
+                    InstallOffer::Update => crate::workspace::remote_install::open(
+                        &install_mux,
+                        host,
+                        &install_name,
+                        offer,
+                        window,
+                        cx,
+                    ),
+                },
+            ));
+        }
         let close_mux = runtime.mux.clone();
         items.push(TreeRowMenuItem::new("Remove host", move |_, cx| {
             close_host(&close_mux, host, &name, cx);
