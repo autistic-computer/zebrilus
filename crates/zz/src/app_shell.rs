@@ -6,7 +6,7 @@ use zz_gpui::{
 };
 use zz_ui::shell::{app_shell_surface, app_titlebar_strip};
 use zz_ui::{
-    Root, StyledExt as _, Surface, WindowControls, draws_window_controls,
+    ActiveTheme as _, Root, StyledExt as _, Surface, WindowControls, draws_window_controls,
     navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover},
     roles,
 };
@@ -257,7 +257,7 @@ impl AppShell {
 
     fn render_status_bar(&self, window: &mut Window, cx: &mut App) -> AnyElement {
         let width = workspace_chrome_controls_width_for(1, window);
-        let controls = WorkspaceSidebar::render_controls(&self.sidebar, cx);
+        let controls = WorkspaceSidebar::render_controls(&self.sidebar, cx.theme().ground(), cx);
         let bar = render_gui_status_bar(
             &self.mux,
             controls.map(|controls| (controls, width)),

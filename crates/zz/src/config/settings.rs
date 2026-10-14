@@ -923,13 +923,6 @@ impl SettingsView {
             _ => None,
         };
         if let Some(input) = input {
-            let title = if key == ConfigKey::WidgetCornerRadius
-                && resolved.widget_corner_radius.value > 24.0
-            {
-                "Corner radius (Full)"
-            } else {
-                title
-            };
             return Self::numeric_setting(
                 key,
                 title,

@@ -54,6 +54,9 @@
     },
     "keycap": {
       "shape": "pill"
+    },
+    "figure": {
+      "fill": "solid"
     }
   },
   "light": {

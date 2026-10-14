@@ -21,7 +21,7 @@ const RESIZE_HIT_SIZE: Pixels = px(4.0);
     reason = "the window's own drop shadow under client-side decorations, which no surface recipe draws"
 )]
 fn window_shadow(extent: Pixels, cx: &App) -> Vec<zz_gpui::BoxShadow> {
-    if !cx.theme().casts_shadow(zz_ui::Kind::Popover.role()) {
+    if !cx.theme().casts_shadow(zz_ui::roles::WINDOW) {
         return Vec::new();
     }
     vec![zz_gpui::BoxShadow {
@@ -133,10 +133,12 @@ impl RenderOnce for RoundedWindowFrame {
                     .on_mouse_move(|_, _, cx| cx.stop_propagation())
                     .children(self.children)
                     .map(|surface| match decorations {
-                        Decorations::Server => surface,
-                        Decorations::Client { tiling } => {
+                        Decorations::Client { tiling }
+                            if cx.theme().style(zz_ui::roles::WINDOW).outline =>
+                        {
                             surface.child(border_ring(tiling, window_radius, cx.theme().border()))
                         }
+                        _ => surface,
                     }),
             )
             .when(matches!(decorations, Decorations::Client { .. }), |frame| {

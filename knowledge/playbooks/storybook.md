@@ -55,8 +55,8 @@ as segmented controls. A prop left on inherit shows the value it inherits and wh
 kind's built-in, the theme's patch for the kind, or the role's built-in. Setting a prop writes only
 what differs from that into the theme's `roles` patch for the role, and an entry in Kinds patches
 the kind. Picking or pointing at a role sets the kit theme's `inspect`, which rings every surface
-drawn through that role in magenta; roles whose call sites still use the older recipes are listed
-but show no ring until they move to `.surface(role)`. Roles also go to `localStorage`, keyed by the
+drawn through that role in magenta, just inside its edge; `window` is the one role nothing draws
+through yet, so it never rings. Roles also go to `localStorage`, keyed by the
 start theme, so they survive a reload when the address drops them for length.
 
 # Add a story
@@ -74,13 +74,14 @@ authoring rules; the short version:
 # Check a change
 
 Edit the component in `crates/zz-ui` or `crates/zz-gpui-kit`, let `just storybook run` rebuild,
-reload, and walk the knobs: light and dark, each interface theme, radius 0 and full, outline 0,
-each shadows choice, row inset 0, contrast extremes, zoom. The sections re-render live as knobs move.
+reload, and walk the knobs: light and dark, each interface theme, radius 0 and 25, outline 0,
+both shadow strengths at 0, row inset 0, contrast extremes, zoom. The sections re-render live as
+knobs move.
 
 The storybook is its own Cargo workspace, so the root clippy run skips it. `just storybook lint`
 runs clippy on it for the host and for wasm under the root `clippy.toml`, which bans hand-mixed
-colors and hand-drawn borders and shadows here too: use the kit's paints, surfaces, edges and
-shadows, and put a scoped `#[allow(clippy::disallowed_methods, reason = ..)]` only on a story that
+colors and hand-drawn borders and shadows here too: use the kit's paints and surface roles, and
+put a scoped `#[allow(clippy::disallowed_methods, reason = ..)]` only on a story that
 shows a raw transform on purpose (the Colors story), on the theme JSON the HTML knob panel paints
 itself with, or on `story::Framed::framed`, the edge of a frame that stands in for a window.
 

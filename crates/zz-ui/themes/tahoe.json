@@ -65,8 +65,7 @@
       "fill": "tint",
       "outline": false,
       "shadow": "none",
-      "shape": "pill",
-      "selected": "accent"
+      "shape": "pill"
     },
     "pane.chip": {
       "fill": "glass",
@@ -102,6 +101,9 @@
     },
     "card": {
       "outline": false
+    },
+    "figure": {
+      "outline": true
     },
     "rule.bar": {
       "outline": false

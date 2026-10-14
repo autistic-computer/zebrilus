@@ -278,6 +278,7 @@ mod tests {
                     div(),
                     div().child("label"),
                     actions,
+                    cx.theme().ground(),
                     cx,
                 )
                 .debug_selector(|| "row".to_owned()),

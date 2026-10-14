@@ -480,6 +480,7 @@ impl EditorView {
                         alert_actions(cx).child(
                             Button::new(format!("editor-retry-{}", self.pane.0))
                                 .primary()
+                                .on(zz_ui::feedback::alert_ground(cx))
                                 .label("Try again")
                                 .on_click(move |_, window, cx| {
                                     view.update(cx, |view, cx| {

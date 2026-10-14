@@ -123,8 +123,8 @@ impl MaterialOverrides {
     }
 }
 
-/// A look setting spelled as a theme file and `zz/config` spell it, such as
-/// `surfaces` for [`Shadows::Surfaces`].
+/// A material setting spelled as a theme file and `zz/config` spell it, such
+/// as `accent` for [`PrimaryStyle::Accent`].
 pub fn choice_name<T: Serialize>(value: T) -> Option<String> {
     match serde_json::to_value(value) {
         Ok(serde_json::Value::String(name)) => Some(name),
@@ -132,7 +132,7 @@ pub fn choice_name<T: Serialize>(value: T) -> Option<String> {
     }
 }
 
-/// The look setting `name` spells, the inverse of [`choice_name`].
+/// The material setting `name` spells, the inverse of [`choice_name`].
 pub fn parse_choice<T: serde::de::DeserializeOwned>(name: &str) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(name.trim().to_owned())).ok()
 }

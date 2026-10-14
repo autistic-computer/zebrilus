@@ -1183,6 +1183,7 @@ impl AppShell {
                 });
             },
         )
+        .header_role(roles::PHONE_BAR)
         .into_any_element()
     }
 }

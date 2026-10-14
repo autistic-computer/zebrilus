@@ -10,8 +10,8 @@ use zz_gpui::{
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, PaintState, StyledExt as _,
-    SurfaceRole, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, Layer, PaintState,
+    StyledExt as _, Surface, SurfaceRole, Tone,
     button::{Button, ButtonVariants as _},
     foundation::{row_corners, row_radius},
 };
@@ -40,6 +40,7 @@ pub struct BottomSheet {
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
     surface_role: Option<SurfaceRole>,
+    header_role: Option<SurfaceRole>,
 }
 
 pub fn bottom_sheet(
@@ -59,6 +60,7 @@ pub fn bottom_sheet(
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
         surface_role: None,
+        header_role: None,
     }
 }
 
@@ -73,6 +75,14 @@ impl BottomSheet {
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
+        self
+    }
+
+    /// Draw the header, with the title and actions, as `role` draws,
+    /// instead of as a bar.
+    #[must_use]
+    pub fn header_role(mut self, role: SurfaceRole) -> Self {
+        self.header_role = Some(role);
         self
     }
 }
@@ -333,13 +343,19 @@ impl RenderOnce for BottomSheet {
         };
         let theme = cx.theme();
         let enter = ENTER;
-        let grabber = theme
-            .paint_on(
-                theme.surface(crate::Elevation::Popover).opaque(),
-                Tone::Neutral,
-                Emphasis::Outline,
+        let sheet = self.surface_role.unwrap_or(Kind::Sheet.role());
+        let ground = theme.ground_of(sheet);
+        let grabber = Layer {
+            fill: theme
+                .paint_on(ground, Tone::Neutral, Emphasis::Outline)
+                .border,
+            glass: None,
+            ..theme.layer(
+                Surface::new(SurfaceRole::GRABBER).on(ground),
+                PaintState::Rest,
             )
-            .border;
+        };
+        let header = Surface::new(self.header_role.unwrap_or(Kind::Bar.role())).on(ground);
         let on_dismiss = self.on_dismiss;
         let scrim = div()
             .id("bottom-sheet-scrim")
@@ -393,7 +409,7 @@ impl RenderOnce for BottomSheet {
             .flex()
             .flex_col()
             .occlude()
-            .surface(self.surface_role.unwrap_or(Kind::Sheet.role()), cx)
+            .surface(sheet, cx)
             .rounded_bl(px(0.0))
             .rounded_br(px(0.0))
             .font_family(theme.font_family.clone())
@@ -407,8 +423,7 @@ impl RenderOnce for BottomSheet {
                     div()
                         .w(px(GRABBER_WIDTH))
                         .h(px(GRABBER_HEIGHT))
-                        .rounded_full()
-                        .bg(grabber),
+                        .layer(&grabber),
                 ),
             )
             .child(
@@ -420,6 +435,7 @@ impl RenderOnce for BottomSheet {
                     .h(px(HEADER_HEIGHT))
                     .pl(px(PADDING_X))
                     .pr(px(8.0))
+                    .surface(header, cx)
                     .child(
                         div()
                             .flex_1()

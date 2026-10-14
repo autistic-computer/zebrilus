@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, PaintState, StyledExt as _,
-    Tone, rems_from_px,
+    Tone, rems_from_px, roles,
 };
 
 const THRESHOLD: f32 = 10.0;
@@ -120,7 +120,11 @@ impl ArrowPad {
     fn bubble(&self, cx: &App) -> AnyElement {
         let theme = cx.theme();
         let muted = theme
-            .paint_on(theme.ground_of(Kind::Row), Tone::Neutral, Emphasis::Ghost)
+            .paint_on(
+                theme.ground_of(roles::ARROW_PAD),
+                Tone::Neutral,
+                Emphasis::Ghost,
+            )
             .muted_at(PaintState::Rest);
         let cell = |slot: Option<ArrowDirection>, hub: bool| {
             let active = slot.is_some() && slot == self.direction;
@@ -133,7 +137,7 @@ impl ArrowPad {
                     let selector = format!("arrow-pad-cell-{}", direction.key());
                     cell.debug_selector(move || selector)
                         .surface_at(
-                            Kind::Row,
+                            roles::ARROW_PAD,
                             if active {
                                 PaintState::Selected
                             } else {

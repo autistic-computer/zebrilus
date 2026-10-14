@@ -10,7 +10,7 @@ tags:
 - overlays
 - protocol
 - design-plan
-timestamp: 2026-09-27T00:00:00Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Summary
@@ -351,7 +351,7 @@ pub trait PathPickerBackend {
   `? all keys` hint. The desktop catches the key bound to `list-keys -N` while the prefix is armed and
   shows every row instead, without sending it to the daemon, so the prefix stays armed and the next key
   runs its binding. With `which-key-delay` at 0 `?` keeps tmux's `list-keys` output.
-- `WhichKeyView` (zz-ui): a passive, occluding bottom sheet over the workspace with `popover_style`.
+- `WhichKeyView` (zz-ui): a passive, occluding bottom sheet over the workspace, drawn as the `sheet` kind.
   Groups that fit stack under each other in one column, so the sheet is as narrow as the tallest group
   allows; the key column is measured from the widest cap. It is never focused and never counted in
   `overlay_open`, and it never sends `CancelPrefix`.

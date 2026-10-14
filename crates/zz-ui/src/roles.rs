@@ -11,8 +11,9 @@ pub const WINDOW: SurfaceRole = SurfaceRole::new(
     "window",
     Kind::Panel,
     "Window",
-    "The plane everything sits on, solid or blurred",
-);
+    "The edge and drop shadow of the window frame zz draws on Linux",
+)
+.with(P.outline(true).shadow(Shadow::Float));
 pub const TITLEBAR: SurfaceRole = SurfaceRole::new(
     "titlebar",
     Kind::Bar,
@@ -70,6 +71,20 @@ pub const SIDEBAR_ENTRY: SurfaceRole = SurfaceRole::new(
     "Two-line window rows in the flat sidebar",
 )
 .with(P.hover(Highlight::Lift).selected(Highlight::Lift));
+pub const SIDEBAR_CURSOR: SurfaceRole = SurfaceRole::new(
+    "sidebar.cursor",
+    Kind::Row,
+    "Sidebar cursor",
+    "The flat sidebar row the keyboard is on",
+)
+.with(P.outline(true).shadow(Shadow::Contact));
+pub const HOST_ACTION: SurfaceRole = SurfaceRole::new(
+    "sidebar.host-action",
+    Kind::Button,
+    "Host actions",
+    "Connect, Retry and Upgrade on a host in the flat sidebar",
+)
+.with(P.outline(false).shadow(Shadow::None));
 pub const ROW_ACTION: SurfaceRole = SurfaceRole::new(
     "sidebar.row-action",
     Kind::IconButton,
@@ -121,16 +136,11 @@ pub const PANE_CHIP: SurfaceRole = SurfaceRole::new(
 );
 pub const DISPLAY_PANES: SurfaceRole = SurfaceRole::new(
     "pane.display-panes",
-    Kind::Chip,
+    Kind::Popover,
     "Pane numbers",
     "The big chips display-panes shows on every pane",
 )
-.with(
-    P.fill(Fill::Glass)
-        .shadow(Shadow::Float)
-        .hover(Highlight::Ring)
-        .selected(Highlight::Ring),
-);
+.with(P.hover(Highlight::Ring).selected(Highlight::Ring));
 pub const FIND_BAR: SurfaceRole = SurfaceRole::new(
     "pane.find-bar",
     Kind::Popover,
@@ -151,11 +161,10 @@ pub const DROP_ZONE: SurfaceRole = SurfaceRole::new(
 );
 pub const DRAG_CHIP: SurfaceRole = SurfaceRole::new(
     "pane.drag-chip",
-    Kind::Chip,
+    Kind::Popover,
     "Drag chips",
     "The chip that follows the pointer while you drag a pane",
-)
-.with(P.fill(Fill::Glass).shadow(Shadow::Float));
+);
 
 pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "agent.bubble",
@@ -168,7 +177,8 @@ pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::new(
     Kind::Field,
     "Composer",
     "The box you write to the agent in",
-);
+)
+.with(P.shape(Shape::Round));
 pub const AGENT_SEND: SurfaceRole = SurfaceRole::new(
     "agent.send",
     Kind::IconButton,
@@ -280,6 +290,13 @@ pub const BROWSER_SUGGESTION: SurfaceRole = SurfaceRole::new(
     "Recent pages on a blank browser page",
 )
 .with(P.fill(Fill::Tint));
+pub const BROWSER_EMPTY_ICON: SurfaceRole = SurfaceRole::new(
+    "browser.empty-icon",
+    Kind::Badge,
+    "Blank page icon",
+    "The disc behind the globe on a blank browser page",
+)
+.with(P.shape(Shape::Pill).outline(false));
 
 pub const SETTINGS_CARD: SurfaceRole = SurfaceRole::new(
     "settings.card",
@@ -325,6 +342,12 @@ pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
     Kind::Button,
     "Phone pill",
     "The pane pill in the phone's bottom bar",
+);
+pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::new(
+    "phone.pill.icon",
+    Kind::Badge,
+    "Pill icon",
+    "The icon tile at the start of the phone pill",
 )
 .with(P.outline(false));
 pub const PHONE_BUTTON: SurfaceRole = SurfaceRole::new(
@@ -337,13 +360,19 @@ pub const PHONE_KEY: SurfaceRole = SurfaceRole::new(
     "phone.key",
     Kind::Keycap,
     "Keys",
-    "Keys in the phone's key row and the arrow pad",
+    "Keys in the phone's key row",
 )
 .with(
     P.fill(Fill::Solid)
         .shadow(Shadow::Contact)
         .hover(Highlight::Tint)
         .selected(Highlight::Tint),
+);
+pub const ARROW_PAD: SurfaceRole = SurfaceRole::new(
+    "phone.arrow-pad",
+    Kind::Row,
+    "Arrow pad",
+    "The directions in the phone's arrow pad, lit while held",
 );
 pub const PHONE_CARD: SurfaceRole = SurfaceRole::new(
     "phone.card",
@@ -359,13 +388,7 @@ pub const PHONE_ROW: SurfaceRole = SurfaceRole::new(
     "Rows in phone sheets, the bindings list and the Settings index",
 )
 .with(P.selected(Highlight::None));
-pub const GRABBER: SurfaceRole = SurfaceRole::new(
-    "grabber",
-    Kind::Badge,
-    "Grabbers",
-    "The handles on the phone bar and on sheets",
-)
-.with(P.shape(Shape::Pill).outline(false));
+pub const GRABBER: SurfaceRole = SurfaceRole::GRABBER;
 
 pub const PALETTE: SurfaceRole = SurfaceRole::new(
     "palette",
@@ -433,7 +456,15 @@ pub const REGIONS: &[(&str, &[SurfaceRole])] = &[
     ),
     (
         "Sidebar",
-        &[SIDEBAR, SIDEBAR_ROW, SIDEBAR_ENTRY, ROW_ACTION, PANE_STACK],
+        &[
+            SIDEBAR,
+            SIDEBAR_ROW,
+            SIDEBAR_ENTRY,
+            SIDEBAR_CURSOR,
+            HOST_ACTION,
+            ROW_ACTION,
+            PANE_STACK,
+        ],
     ),
     (
         "Panes",
@@ -466,7 +497,13 @@ pub const REGIONS: &[(&str, &[SurfaceRole])] = &[
     ("Reading", &[CODE, FIGURE]),
     (
         "Browser",
-        &[BROWSER_TAB, BROWSER_BUTTON, ADDRESS_BAR, BROWSER_SUGGESTION],
+        &[
+            BROWSER_TAB,
+            BROWSER_BUTTON,
+            ADDRESS_BAR,
+            BROWSER_SUGGESTION,
+            BROWSER_EMPTY_ICON,
+        ],
     ),
     (
         "Settings",
@@ -477,8 +514,10 @@ pub const REGIONS: &[(&str, &[SurfaceRole])] = &[
         &[
             PHONE_BAR,
             PHONE_PILL,
+            PHONE_PILL_ICON,
             PHONE_BUTTON,
             PHONE_KEY,
+            ARROW_PAD,
             PHONE_CARD,
             PHONE_ROW,
             GRABBER,
@@ -492,8 +531,9 @@ pub const REGIONS: &[(&str, &[SurfaceRole])] = &[
     ("Kinds", &KINDS),
 ];
 
-/// The kit's roles other than panes, which the Panes region lists.
-const KINDS: [SurfaceRole; 19] = [
+/// The kit's roles other than panes and grabbers, which the Panes and Phone
+/// regions list.
+const KINDS: [SurfaceRole; 21] = [
     Kind::Bar.role(),
     Kind::Panel.role(),
     Kind::Card.role(),
@@ -504,7 +544,9 @@ const KINDS: [SurfaceRole; 19] = [
     Kind::Button.role(),
     SurfaceRole::QUIET_BUTTON,
     Kind::IconButton.role(),
+    SurfaceRole::FLAT_ICON_BUTTON,
     Kind::Field.role(),
+    SurfaceRole::TEXT_AREA,
     Kind::Badge.role(),
     Kind::Keycap.role(),
     Kind::Popover.role(),

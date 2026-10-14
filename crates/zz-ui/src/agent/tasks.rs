@@ -112,16 +112,19 @@ pub fn task_tray(
                     .child(task.description.clone()),
             )
             .child(
-                Button::new((SharedString::from(format!("{id}-task-stop")), index))
-                    .debug_selector(move || format!("agent-task-stop-{index}"))
-                    .ghost()
-                    .small()
-                    .label("Stop")
-                    .disabled(!enabled)
-                    .on_click(move |_, window, cx| {
-                        stop(TaskTrayAction::Stop(task_id.clone()), window, cx);
-                        cx.stop_propagation();
-                    }),
+                super::presentation::card_button(
+                    Button::new((SharedString::from(format!("{id}-task-stop")), index)),
+                    cx,
+                )
+                .debug_selector(move || format!("agent-task-stop-{index}"))
+                .ghost()
+                .small()
+                .label("Stop")
+                .disabled(!enabled)
+                .on_click(move |_, window, cx| {
+                    stop(TaskTrayAction::Stop(task_id.clone()), window, cx);
+                    cx.stop_propagation();
+                }),
             )
     });
     let plan_toggle = Rc::clone(&on_action);

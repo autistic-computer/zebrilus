@@ -621,7 +621,7 @@ pub fn agent_model_picker(
                         .min_h_0()
                         .items_stretch()
                         .child(vendors)
-                        .child(Separator::vertical())
+                        .child(Separator::vertical().surface_role(roles::LIST_RULE))
                         .child(models),
                 );
             if let Some(effort) = catalog
@@ -713,7 +713,6 @@ pub fn agent_thread_title(title: &str) -> String {
 pub fn agent_thread_button(id: impl Into<ElementId>, title: &str, cx: &App) -> Button {
     agent_chrome_button(id)
         .text()
-        .flat()
         .text_color(cx.theme().foreground.faint())
         .flex_shrink_1()
         .min_w_0()

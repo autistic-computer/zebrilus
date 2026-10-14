@@ -1,7 +1,7 @@
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Icon,
-    IconName, InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _, Surface,
-    Tone, button::Button, roles,
+    IconName, InteractiveSurfaceExt as _, Kind, Layer, PaintState, Sizable as _, StyledExt as _,
+    Surface, Tone, button::Button, roles,
 };
 use zz_gpui::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, FontWeight,
@@ -207,7 +207,7 @@ pub fn pane_surface(
 ) -> Stateful<zz_gpui::Div> {
     let theme = cx.theme();
     let glass = theme.style(roles::PANE).fill == Fill::Glass;
-    let lit = chrome.active && theme.pane_glow_strength > 0.0;
+    let lit = chrome.active && theme.lights_active_pane();
     let rest = theme.layer(roles::PANE, PaintState::Rest);
     let shadow = if chrome.shadow {
         rest.shadow.clone()
@@ -484,7 +484,10 @@ pub fn pane_drag_overlay(
         .occlude()
         .cursor(cursor)
         .map(|veil| match state {
-            PaneDragOverlayState::Armed => veil.surface_at(roles::DROP_ZONE, PaintState::Hover, cx),
+            PaneDragOverlayState::Armed => veil.layer(&Layer {
+                border_width: Pixels::ZERO,
+                ..cx.theme().layer(roles::DROP_ZONE, PaintState::Hover)
+            }),
             PaneDragOverlayState::Source => veil.bg(pane_drag_source_veil(cx)),
         })
         .rounded_tl(radii.top_left)
@@ -1060,22 +1063,22 @@ pub fn pane_picker_row(
     enabled: bool,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
     let state = match (enabled, selected) {
         (false, _) => PaintState::Disabled,
         (true, true) => PaintState::Selected,
         (true, false) => PaintState::Rest,
     };
+    let ground = cx.theme().layer(Kind::Row, state).ground;
+    let ink = cx
+        .theme()
+        .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
+        .muted_at(PaintState::Rest);
     crate::picker::list_row(id, px(40.0), selected, enabled, cx)
         .w_full()
         .gap(px(10.0))
         .px(px(12.0))
         .when(enabled, zz_gpui::Styled::cursor_pointer)
-        .child(
-            crate::Icon::new(icon)
-                .with_size(px(16.0))
-                .text_color(paint.muted_at(state)),
-        )
+        .child(crate::Icon::new(icon).with_size(px(16.0)).text_color(ink))
         .child(
             div()
                 .flex_1()
@@ -1092,7 +1095,7 @@ pub fn pane_picker_row(
                 zz_gpui::Keystroke::parse(shortcut).expect("static pane picker shortcut"),
             )
             .lowercase()
-            .on(paint.ground_at(state)),
+            .on(ground),
         )
 }
 

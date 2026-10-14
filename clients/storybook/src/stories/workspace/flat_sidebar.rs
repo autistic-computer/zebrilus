@@ -598,7 +598,14 @@ impl Render for Live {
         let handler: FlatHandler = Rc::new(move |event, _, cx| {
             let _ = view.update(cx, |this, cx| this.handle(event, cx));
         });
-        let list = flat_sidebar(&self.hosts, self.state, &handler, &window_menu(), cx);
+        let list = flat_sidebar(
+            &self.hosts,
+            self.state,
+            &handler,
+            &window_menu(),
+            cx.theme().ground(),
+            cx,
+        );
         div()
             .id("flat-live")
             .flex()
@@ -853,7 +860,14 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
             "folding: session zz hovered, the rest folded to their rollups",
             host_frame(
                 "flat-hosts-folding",
-                flat_sidebar(&folding, folding_state, &handler, &window_menu(), cx),
+                flat_sidebar(
+                    &folding,
+                    folding_state,
+                    &handler,
+                    &window_menu(),
+                    cx.theme().ground(),
+                    cx,
+                ),
                 cx,
             ),
         )
@@ -866,6 +880,7 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
                     FlatState::default(),
                     &handler,
                     &window_menu(),
+                    cx.theme().ground(),
                     cx,
                 ),
                 cx,
@@ -875,7 +890,14 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
             "folded while not connected: no spinner; a host with an action drops its rollup",
             host_frame(
                 "flat-hosts-folded-stale",
-                flat_sidebar(&folded, FlatState::default(), &handler, &window_menu(), cx),
+                flat_sidebar(
+                    &folded,
+                    FlatState::default(),
+                    &handler,
+                    &window_menu(),
+                    cx.theme().ground(),
+                    cx,
+                ),
                 cx,
             ),
         )

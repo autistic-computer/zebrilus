@@ -58,8 +58,8 @@ interface-theme = default
 # theme until set; picking a theme in Settings removes them. Which pieces use
 # which material (shadows, glass, selection fills) is up to the theme.
 #
-# The corner every widget turns, in logical pixels (0..=24; 25 rounds controls
-# into pills). 0 squares the chrome off.
+# The corner every rounded piece turns, in logical pixels (0..=25). 0 squares
+# the chrome off. Which pieces are pills at any radius is up to the theme.
 # widget-corner-radius = 6
 # The width of every outline the theme draws (0..=2; 0 draws none).
 # widget-outline-width = 0.5

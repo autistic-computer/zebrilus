@@ -427,6 +427,7 @@ impl QuestionCardState {
                                 close(QuestionCardAction::Dismiss, window, cx);
                                 cx.stop_propagation();
                             }),
+                        cx,
                     )
                     .into_any_element(),
                 ))
@@ -476,6 +477,7 @@ impl QuestionCardState {
                         card_button(
                             Button::new(SharedString::from(format!("{id}-skip")))
                                 .emphasis(Emphasis::Ghost),
+                            cx,
                         )
                         .label("Skip")
                         .disabled(!enabled)
@@ -489,6 +491,7 @@ impl QuestionCardState {
                             Button::new(SharedString::from(format!("{id}-submit")))
                                 .tone(Tone::Primary)
                                 .emphasis(Emphasis::Solid),
+                            cx,
                         )
                         .label("Submit")
                         .child(Keycap::new("↵").on(submit_ground))

@@ -462,8 +462,42 @@ impl SurfaceRole {
             .selected(Highlight::Lift),
     );
 
-    /// The roles the kit itself names: every kind, and quiet buttons.
-    pub const KIT: [Self; 20] = [
+    /// A field that holds more than one line. It keeps the theme's radius
+    /// where a single-line field may be a pill.
+    pub const TEXT_AREA: Self = Self::new(
+        "field.multiline",
+        Kind::Field,
+        "Text areas",
+        "Fields that hold more than one line, and framed code editors",
+    )
+    .with(StylePatch::EMPTY.shape(Shape::Round));
+
+    /// An icon button set into a bar, a field or a row: it washes while
+    /// pointed at but never rises.
+    pub const FLAT_ICON_BUTTON: Self = Self::new(
+        "icon-button.flat",
+        Kind::IconButton,
+        "Flat icon buttons",
+        "Icon buttons set into a bar, a field or a row, that wash but never rise",
+    )
+    .with(
+        StylePatch::EMPTY
+            .hover(Highlight::Tint)
+            .selected(Highlight::Tint),
+    );
+
+    /// The handle a sheet or a bar is dragged by, filled with ink.
+    pub const GRABBER: Self = Self::new(
+        "grabber",
+        Kind::Badge,
+        "Grabbers",
+        "The handles on the phone bar and on sheets",
+    )
+    .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
+
+    /// The roles the kit itself names: every kind, quiet and flat buttons,
+    /// text areas and grabbers.
+    pub const KIT: [Self; 23] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
         Kind::Pane.role(),
@@ -475,7 +509,9 @@ impl SurfaceRole {
         Kind::Button.role(),
         Self::QUIET_BUTTON,
         Kind::IconButton.role(),
+        Self::FLAT_ICON_BUTTON,
         Kind::Field.role(),
+        Self::TEXT_AREA,
         Kind::Badge.role(),
         Kind::Keycap.role(),
         Kind::Popover.role(),
@@ -484,6 +520,7 @@ impl SurfaceRole {
         Kind::Toast.role(),
         Kind::Tooltip.role(),
         Kind::Rule.role(),
+        Self::GRABBER,
     ];
 }
 
@@ -720,8 +757,9 @@ impl Theme {
         };
 
         let soft = self.paint_on(ground, tone, Emphasis::Soft);
+        let solid = self.paint_on(ground, tone, Emphasis::Solid);
         let paint = if surface.prominent && fill != Fill::Glass {
-            self.paint_on(ground, tone, Emphasis::Solid)
+            solid
         } else if kind.is_control() {
             match fill {
                 Fill::None => self.paint_on(ground, tone, Emphasis::Ghost),
@@ -755,6 +793,15 @@ impl Theme {
                 current: over(2),
                 ..self.paint_on(ground, tone, Emphasis::Ghost)
             }
+        };
+        let paint = if surface.prominent {
+            super::Paint {
+                text: solid.text,
+                selected_text: solid.selected_text,
+                ..paint
+            }
+        } else {
+            paint
         };
 
         let highlight = match state {
@@ -946,7 +993,7 @@ pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui
         .shadow(layer.shadow.clone())
         .text_color(layer.text);
     match layer.glass {
-        Some(_) => style,
+        Some(material) => style.glass(material),
         None => style.bg(layer.fill),
     }
 }
@@ -1002,6 +1049,29 @@ mod tests {
         let nested = theme.layer(Surface::new(popover).on(frosted.ground), PaintState::Rest);
         assert!(nested.glass.is_none());
         assert!(nested.fill.a < 1.0);
+    }
+
+    #[test]
+    fn a_prominent_glass_surface_takes_the_ink_of_its_tone() {
+        let mut theme = theme();
+        theme.glass = Some(GlassMaterial::frosted());
+        let role = SurfaceRole::new("test.send", Kind::Button, "Test", "")
+            .with(StylePatch::EMPTY.fill(Fill::Glass));
+        let layer = theme.layer(Surface::new(role).prominent(true), PaintState::Rest);
+        assert!(layer.glass.is_some());
+        assert_eq!(layer.text, theme.paint(Tone::Primary, Emphasis::Solid).text);
+    }
+
+    #[test]
+    fn restyling_a_glass_layer_carries_its_glass() {
+        let mut theme = theme();
+        theme.glass = Some(GlassMaterial::frosted());
+        let hover = theme.layer(Kind::Popover.role(), PaintState::Hover);
+        assert!(hover.glass.is_some());
+        assert_eq!(
+            restyle(zz_gpui::StyleRefinement::default(), &hover).glass,
+            hover.glass
+        );
     }
 
     #[test]

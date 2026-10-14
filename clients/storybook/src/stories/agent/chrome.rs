@@ -408,18 +408,21 @@ impl Render for EmptyStates {
                 .child(
                     alert_actions(cx)
                         .child(
-                            card_button(Button::new("error-auth").secondary())
+                            card_button(Button::new("error-auth").secondary(), cx)
                                 .label("Log in with Claude")
                                 .tooltip("Open the browser to sign in"),
                         )
-                        .child(card_button(Button::new("error-retry").primary()).label("Try again")),
+                        .child(
+                            card_button(Button::new("error-retry").primary(), cx)
+                                .label("Try again"),
+                        ),
                 ),
             )
             .state(
                 "error card, restarting",
                 error_card("Codex exited with status 1.", true, cx).child(
                     alert_actions(cx).child(
-                        card_button(Button::new("error-restarting").primary())
+                        card_button(Button::new("error-restarting").primary(), cx)
                             .label("Restarting…")
                             .disabled(true),
                     ),

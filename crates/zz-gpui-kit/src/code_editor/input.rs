@@ -3,7 +3,7 @@ use zz_gpui::{
     RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{ActiveTheme as _, Kind, PaintState, StyledExt as _, SurfaceRole, input::field_chrome};
+use crate::{ActiveTheme as _, PaintState, StyledExt as _, SurfaceRole, input::field_chrome};
 
 use super::{
     CodeEditorState,
@@ -84,7 +84,7 @@ impl Styled for CodeEditor {
 impl RenderOnce for CodeEditor {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let framed = self.bordered || self.focus_bordered;
-        let role = self.surface_role.unwrap_or(Kind::Field.role());
+        let role = self.surface_role.unwrap_or(SurfaceRole::TEXT_AREA);
         let frame = cx.theme().layer(role, PaintState::Rest);
         let edge = frame.border_width.max(px(1.0));
         let inner = Corners::all((frame.radius - edge).max(px(0.0)));

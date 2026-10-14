@@ -36,11 +36,10 @@ pub fn history_session_row(
     delete: Option<Button>,
     cx: &App,
 ) -> Stateful<Div> {
-    let detail = muted_on(
-        &cx.theme()
-            .layer(Kind::Row, crate::picker::row_state(selected, true)),
-        cx,
-    );
+    let row = cx
+        .theme()
+        .layer(Kind::Row, crate::picker::row_state(selected, true));
+    let detail = muted_on(&row, cx);
     let deletable = delete.is_some();
     picker_row(id, selected, cx)
         .h(px(ROW_HEIGHT))
@@ -72,6 +71,7 @@ pub fn history_session_row(
         })
         .children(delete.map(|delete| {
             delete
+                .on(row.ground)
                 .icon(IconName::Xmark)
                 .label("Delete")
                 .tooltip("Delete this session")
@@ -179,17 +179,15 @@ pub fn history_hints(can_delete: bool) -> Div {
 /// The confirmation that takes the footer's place before a session is
 /// deleted, in the danger tone.
 pub fn history_delete_banner(compact: bool, cancel: Button, confirm: Button, cx: &App) -> Div {
-    let ground = cx.theme().ground_of(roles::PICKER);
+    let notice = Surface::new(roles::PICKER_NOTICE)
+        .tone(Tone::Danger)
+        .on(cx.theme().ground_of(roles::PICKER));
+    let ground = cx.theme().ground_of(notice);
     picker_footer(cx)
         .min_h(px(52.0))
         .justify_between()
         .flex_wrap()
-        .surface(
-            Surface::new(roles::PICKER_NOTICE)
-                .tone(Tone::Danger)
-                .on(ground),
-            cx,
-        )
+        .surface(notice, cx)
         .rule_on(roles::BAR_RULE, Edge::Top, cx)
         .text_size(crate::rems_from_px(11.0))
         .text_color(cx.theme().foreground)
@@ -204,8 +202,8 @@ pub fn history_delete_banner(compact: bool, cancel: Button, confirm: Button, cx:
             h_flex()
                 .flex_none()
                 .gap(px(CHROME_GAP))
-                .child(cancel.label("Cancel"))
-                .child(confirm.label("Delete")),
+                .child(cancel.on(ground).label("Cancel"))
+                .child(confirm.on(ground).label("Delete")),
         )
 }
 

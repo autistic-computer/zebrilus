@@ -263,7 +263,7 @@ fn tile(
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let frame = cx.theme().layer(
-        crate::roles::SETTINGS_TILE,
+        crate::Surface::new(crate::roles::SETTINGS_TILE).on(super::settings_card_ground(cx)),
         if selected {
             crate::PaintState::Selected
         } else {

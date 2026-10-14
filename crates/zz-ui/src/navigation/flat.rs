@@ -15,8 +15,8 @@ use zz_gpui::{
 use zz_protocol::{AgentProvider, PaneId, SessionId, WindowId};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Kind, PaintState,
-    Sizable as _, StyledExt as _, SurfaceRole, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, PaintState, Sizable as _,
+    StyledExt as _, Surface, Tone,
     button::Button,
     command::PaletteHostId,
     h_flex,
@@ -206,12 +206,14 @@ impl FlatState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct FlatRowState {
     pub current: bool,
     pub selected: bool,
     pub hovered: bool,
     pub dimmed: bool,
+    /// What the row sits on; the window when unset.
+    pub ground: Option<Ground>,
 }
 
 impl FlatRowState {
@@ -227,11 +229,12 @@ impl FlatRowState {
         }
     }
 
-    fn surface(self) -> (SurfaceRole, PaintState) {
-        match self.paint_state() {
-            PaintState::Selected => (Kind::Row.role(), PaintState::Selected),
+    fn surface(self) -> (Surface, PaintState) {
+        let (role, state) = match self.paint_state() {
+            PaintState::Selected => (roles::SIDEBAR_CURSOR, PaintState::Selected),
             state => (roles::SIDEBAR_ENTRY, state),
-        }
+        };
+        (Surface::new(role).on_maybe(self.ground), state)
     }
 
     fn for_pointer(self, cx: &App) -> Self {
@@ -254,8 +257,8 @@ struct RowInk {
 impl RowInk {
     fn new(state: FlatRowState, cx: &App) -> Self {
         let theme = cx.theme();
-        let (role, paint_state) = state.surface();
-        let layer = theme.layer(role, paint_state);
+        let (surface, paint_state) = state.surface();
+        let layer = theme.layer(surface, paint_state);
         Self {
             ground: layer.ground,
             text: layer.text,
@@ -512,8 +515,15 @@ pub fn flat_window_row(
         );
     let context = menu.clone();
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
-    let (role, paint_state) = state.surface();
-    let fill = workspace_row_fill(&row_id, role, paint_state, None, cx);
+    let (surface, paint_state) = state.surface();
+    let fill = workspace_row_fill(
+        &row_id,
+        surface.role,
+        paint_state,
+        None,
+        surface.ground.unwrap_or_else(|| theme.ground()),
+        cx,
+    );
     let hover = handler.clone();
     let click = handler.clone();
     div()
@@ -668,7 +678,7 @@ fn header_button(
         .small()
         .h(px(HEADER_BUTTON_HEIGHT))
         .font_weight(FontWeight::NORMAL)
-        .flat()
+        .surface_role(roles::HOST_ACTION)
         .on_click(move |_: &ClickEvent, window, cx| {
             cx.stop_propagation();
             handler(event, window, cx);
@@ -910,6 +920,7 @@ pub fn flat_sidebar(
     state: FlatState,
     handler: &FlatHandler,
     menu: &FlatMenu,
+    ground: Ground,
     cx: &App,
 ) -> Div {
     let mut list = v_flex().w_full().flex_none();
@@ -957,6 +968,7 @@ pub fn flat_sidebar(
                         hovered: state.hovered
                             == Some(FlatTarget::Window(host.id, window.summary.window)),
                         dimmed,
+                        ground: Some(ground),
                     },
                     handler,
                     menu,

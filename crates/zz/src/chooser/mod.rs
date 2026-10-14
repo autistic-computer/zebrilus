@@ -322,7 +322,8 @@ impl<S: ChooserSpec> Render for Chooser<S> {
         let close_mux = self.mux.clone();
         let close = Button::compact_icon(S::CLOSE_ID, IconName::Xmark)
             .ghost()
-            .flat()
+            .surface_role(zz_ui::SurfaceRole::FLAT_ICON_BUTTON)
+            .on(cx.theme().ground_of(zz_ui::roles::PICKER))
             .tooltip("Close")
             .on_click(move |_, _, cx| {
                 S::send(close_mux.read(cx), S::close());

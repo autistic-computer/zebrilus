@@ -3429,17 +3429,18 @@ mod overlays {
         let enabled = status.is_some_and(|status| {
             status.total > 0 && !status.pending() && !status.invalid_pattern()
         });
+        let bar = cx.theme().layer(roles::FIND_BAR, PaintState::Rest);
         let button = |id: &'static str, icon: IconName, action: FindBarAction| {
             let on_action = std::rc::Rc::clone(&on_action);
             Button::compact_icon(id, icon)
                 .ghost()
-                .flat()
+                .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
+                .on(bar.ground)
                 .on_click(move |_, window, cx| {
                     on_action(action, window, cx);
                     cx.stop_propagation();
                 })
         };
-        let bar = cx.theme().layer(roles::FIND_BAR, PaintState::Rest);
         div()
             .id("terminal-search")
             .debug_selector(|| "terminal-search".to_owned())

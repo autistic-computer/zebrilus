@@ -2307,6 +2307,7 @@ impl AgentPane {
                     card_button(
                         Button::new(format!("web-agent-authenticate-{}-{index}", self.pane.0))
                             .secondary(),
+                        cx,
                     )
                     .label(name)
                     .tooltip(description)
@@ -2329,16 +2330,19 @@ impl AgentPane {
                 .when(failed, |card| {
                     card.child(
                         alert_actions(cx).children(auth).child(
-                            card_button(Button::new(("web-agent-retry", self.pane.0)).primary())
-                                .label(if self.lifecycle_pending {
-                                    "Restarting…"
-                                } else {
-                                    "Try again"
-                                })
-                                .disabled(!writable || self.lifecycle_pending)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.lifecycle_command(None, cx);
-                                })),
+                            card_button(
+                                Button::new(("web-agent-retry", self.pane.0)).primary(),
+                                cx,
+                            )
+                            .label(if self.lifecycle_pending {
+                                "Restarting…"
+                            } else {
+                                "Try again"
+                            })
+                            .disabled(!writable || self.lifecycle_pending)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.lifecycle_command(None, cx);
+                            })),
                         ),
                     )
                 })

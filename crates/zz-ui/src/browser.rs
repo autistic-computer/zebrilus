@@ -1,8 +1,8 @@
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Icon, IconName, Kind,
-    PaintState, Selectable as _, Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, Kind, PaintState,
+    Selectable as _, Sizable as _, StatefulSurfaceExt as _, StyledExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     feedback::{alert_actions, inline_alert},
@@ -231,7 +231,7 @@ pub fn browser_site_controls_button(cx: &App) -> Button {
         .layer(crate::roles::ADDRESS_BAR, PaintState::Rest)
         .radius;
     Button::compact_icon("browser-site-controls", IconName::SiteControls)
-        .flat()
+        .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
         .rounded(if address >= zz_gpui::FULL_CORNER_RADIUS {
             address
         } else {
@@ -516,7 +516,6 @@ fn browser_tab_close_button(id: u64, on_close: &BrowserTabAction, cx: &App) -> i
             Button::compact_icon(("browser-tab-close", id), IconName::Xmark)
                 .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
                 .text()
-                .flat()
                 .text_color(cx.theme().foreground.muted())
                 .debug_selector(move || format!("browser-tab-close-{id}"))
                 .on_click(move |_, window, cx| {
@@ -577,8 +576,7 @@ impl RenderOnce for BrowserEmptyHint {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded_full()
-                    .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
+                    .surface(crate::roles::BROWSER_EMPTY_ICON, cx)
                     .child(
                         Icon::new(IconName::Globe)
                             .small()

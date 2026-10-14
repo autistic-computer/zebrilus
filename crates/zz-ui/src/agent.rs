@@ -2838,6 +2838,7 @@ fn agent_code_block_chrome(
         .child(
             div().debug_selector(|| "agent-code-copy".to_owned()).child(
                 Button::compact_icon(("agent-copy-code", source_offset), IconName::Copy)
+                    .on(cx.theme().ground_of(crate::roles::CODE))
                     .tooltip("Copy code")
                     .on_click(move |_, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(code.to_string()));
@@ -2938,7 +2939,9 @@ impl MarkdownPlugin for RichMarkdownPlugin {
             highlight_theme: Arc::clone(&cx.theme().highlight_theme),
             is_dark: cx.theme().is_dark(),
             ..TextViewStyle::default()
-        };
+        }
+        .code_role(crate::roles::CODE)
+        .figure_role(crate::roles::FIGURE);
 
         div().w_full().min_w_0().child(AgentMarkdownView {
             state,

@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, div, prelude::*,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, rems_from_px};
+use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, rems_from_px, roles};
 
 pub const COMPACT_PANE_HEADER_HEIGHT: f32 = 36.0;
 
@@ -36,6 +36,7 @@ pub fn compact_pane_header(
         .font_family(cx.theme().font_family.clone())
         .text_size(rems_from_px(15.0))
         .line_height(rems_from_px(20.0))
+        .surface(roles::PANE_HEADER, cx)
         .text_color(cx.theme().foreground.muted())
         .child(
             div()
