@@ -30,20 +30,24 @@ use zz_protocol::{
     agent_stream::{AgentQuestion, AgentSessionSummary},
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, IconName,
-    Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Disableable as _, IconName,
     agent::{
         AgentEntry, AgentMarkdown, AgentPaneStatus, AgentTimeline, AgentTimelineStore,
         AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText,
-        COMPOSER_ATTACHMENT, MarkdownSlot, TimelineRow, TimelineStick, agent_attachment_thumbnail,
-        agent_jump_to_bottom_button, agent_pane_header, agent_status_pill,
-        composer::{AgentComposer, COMPOSER_OUTER_PADDING},
+        MarkdownSlot, TimelineRow, TimelineStick, agent_jump_to_bottom_button, agent_pane_header,
+        agent_status_pill,
+        composer::{AgentComposer, COMPOSER_OUTER_PADDING, composer_ground},
+        composer_attachment,
         controls::{
             AgentControlChoice, AgentControlSelection, ComposerAction, agent_chrome_button,
-            agent_config_picker, agent_directory_button, agent_model_picker, composer_action,
-            composer_action_button, context_usage_meter, git_summary_footer,
+            agent_config_picker, agent_directory_button, agent_model_picker, agent_queue_chip,
+            composer_action, composer_action_button, context_usage_meter, git_summary_footer,
         },
         fold_timeline_rows,
+        history::{
+            HistoryPicker, history_delete_banner, history_directories, history_directory_heading,
+            history_directory_row, history_hints, history_session_row,
+        },
         presentation::{
             card_button, empty_state, error_card, permission_card, permission_option, welcome_state,
         },
@@ -56,7 +60,7 @@ use zz_ui::{
     feedback::alert_actions,
     input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
     pane::{PaneDrag, pane_drag_button, pane_header_icon_button},
-    scroll::{ScrollableElement as _, Scrollbar},
+    scroll::Scrollbar,
 };
 
 use crate::connection::Connection;
@@ -1274,11 +1278,6 @@ impl AgentPane {
     }
 
     fn history(&self, ready: bool, cx: &mut Context<Self>) -> AnyElement {
-        use zz_ui::command::palette_shortcut_hint;
-        use zz_ui::picker::{
-            picker_empty, picker_footer, picker_header, picker_list, picker_modal_sized,
-            picker_overlay, picker_row, picker_search,
-        };
         let results = self.history_results(cx);
         let count = results.len();
         let sessions = self.sessions.clone();
@@ -1310,97 +1309,55 @@ impl AgentPane {
                         let hover = view.clone();
                         let delete = view.clone();
                         let session_id = session.session_id.clone();
-                        let detail = cx
-                            .theme()
-                            .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
-                            .muted_at(if selected == index {
-                                zz_ui::PaintState::Selected
-                            } else {
-                                zz_ui::PaintState::Rest
-                            });
-                        Some(
-                            picker_row(("agent-history-row", index), selected == index, cx)
-                                .h(px(26.0))
-                                .menu_item_corners(px(26.0), cx)
-                                .px_2()
-                                .text_size(zz_ui::rems_from_px(12.0))
-                                .line_height(px(16.0))
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .overflow_hidden()
-                                        .text_ellipsis()
-                                        .whitespace_nowrap()
-                                        .child(
-                                            session
-                                                .title
-                                                .clone()
-                                                .unwrap_or_else(|| directory_label(&session.cwd)),
-                                        ),
-                                )
-                                .when(current, |row| {
-                                    row.child(
-                                        zz_ui::Icon::new(IconName::Check)
-                                            .size(px(12.0))
-                                            .text_color(detail),
-                                    )
-                                })
-                                .when(!(can_delete && !current && selected == index), |row| {
-                                    row.when_some(
-                                        session.updated_at.as_deref().map(history_timestamp),
-                                        |row, timestamp| {
-                                            row.child(
-                                                div()
-                                                    .flex_none()
-                                                    .text_size(zz_ui::rems_from_px(11.0))
-                                                    .text_color(detail)
-                                                    .child(timestamp),
-                                            )
-                                        },
-                                    )
-                                })
-                                .on_mouse_move(move |_, _, cx| {
-                                    hover.update(cx, |this, cx| {
-                                        if this.history_selected != index || this.project_focus {
-                                            this.history_selected = index;
-                                            this.project_focus = false;
-                                            cx.notify();
+                        let delete = (can_delete && !current && selected == index).then(|| {
+                            agent_chrome_button(("agent-history-delete", index))
+                                .disabled(loading || !ready)
+                                .on_click(move |_, _, cx| {
+                                    delete.update(cx, |this, cx| {
+                                        if this.session_is_open(&session_id, cx) {
+                                            this.history_error =
+                                                Some("This conversation is already open.".into());
+                                        } else {
+                                            this.history_delete = Some(session_id.clone());
                                         }
+                                        cx.notify();
                                     });
-                                })
-                                .on_click(move |_, window, cx| {
-                                    if ready {
-                                        open.update(cx, |this, cx| {
-                                            this.open_history_result(index, window, cx);
-                                        });
-                                    }
                                     cx.stop_propagation();
                                 })
-                                .when(can_delete && !current && selected == index, |row| {
-                                    row.child(
-                                        agent_chrome_button(("agent-history-delete", index))
-                                            .icon(IconName::Xmark)
-                                            .label("Delete")
-                                            .tooltip("Delete this session")
-                                            .disabled(loading || !ready)
-                                            .on_click(move |_, _, cx| {
-                                                delete.update(cx, |this, cx| {
-                                                    if this.session_is_open(&session_id, cx) {
-                                                        this.history_error = Some(
-                                                            "This conversation is already open."
-                                                                .into(),
-                                                        );
-                                                    } else {
-                                                        this.history_delete =
-                                                            Some(session_id.clone());
-                                                    }
-                                                    cx.notify();
-                                                });
-                                                cx.stop_propagation();
-                                            }),
-                                    )
-                                }),
+                        });
+                        Some(
+                            history_session_row(
+                                ("agent-history-row", index),
+                                session
+                                    .title
+                                    .clone()
+                                    .unwrap_or_else(|| directory_label(&session.cwd)),
+                                session
+                                    .updated_at
+                                    .as_deref()
+                                    .map(|value| history_timestamp(value).into()),
+                                selected == index,
+                                current,
+                                delete,
+                                cx,
+                            )
+                            .on_mouse_move(move |_, _, cx| {
+                                hover.update(cx, |this, cx| {
+                                    if this.history_selected != index || this.project_focus {
+                                        this.history_selected = index;
+                                        this.project_focus = false;
+                                        cx.notify();
+                                    }
+                                });
+                            })
+                            .on_click(move |_, window, cx| {
+                                if ready {
+                                    open.update(cx, |this, cx| {
+                                        this.open_history_result(index, window, cx);
+                                    });
+                                }
+                                cx.stop_propagation();
+                            }),
                         )
                     })
                     .collect::<Vec<_>>()
@@ -1410,49 +1367,35 @@ impl AgentPane {
         .w_full()
         .track_scroll(&self.picker_scroll);
         let footer = if self.history_delete.is_some() {
-            picker_footer(cx)
-                .min_h(px(52.0))
-                .flex_wrap()
-                .border_color(cx.theme().paint(Tone::Danger, Emphasis::Outline).border)
-                .bg(cx.theme().paint(Tone::Danger, Emphasis::Soft).fill)
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .when(compact, |this| this.w_full().flex_none())
-                        .child("Permanently delete this session from the agent’s local store?"),
-                )
-                .child(
-                    zz_ui::h_flex()
-                        .flex_none()
-                        .gap(px(zz_ui::CHROME_GAP))
-                        .child(
-                            agent_chrome_button("agent-history-delete-cancel")
-                                .label("Cancel")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.history_delete = None;
-                                    cx.notify();
-                                    cx.stop_propagation();
-                                })),
-                        )
-                        .child(
-                            agent_chrome_button("agent-history-delete-confirm")
-                                .danger()
-                                .label("Delete")
-                                .disabled(loading)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.delete_history(cx);
-                                    cx.stop_propagation();
-                                })),
-                        ),
-                )
+            history_delete_banner(
+                compact,
+                agent_chrome_button("agent-history-delete-cancel").on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.history_delete = None;
+                        cx.notify();
+                        cx.stop_propagation();
+                    },
+                )),
+                agent_chrome_button("agent-history-delete-confirm")
+                    .danger()
+                    .disabled(loading)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.delete_history(cx);
+                        cx.stop_propagation();
+                    })),
+                cx,
+            )
+            .into_any_element()
         } else {
-            picker_footer(cx)
+            zz_ui::picker::picker_footer(cx)
                 .flex_wrap()
                 .when_some(self.history_error.as_deref(), |footer, error| {
                     footer.child(
                         div()
                             .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
                             .text_color(cx.theme().danger)
                             .child(rendered_error(error)),
                     )
@@ -1460,16 +1403,7 @@ impl AgentPane {
                 .when(loading, |footer| footer.child("Loading sessions…"))
                 .when(
                     !compact && !loading && self.history_error.is_none(),
-                    |footer| {
-                        footer
-                            .child(palette_shortcut_hint(["up", "down"], "select"))
-                            .child(palette_shortcut_hint(["enter"], "open"))
-                            .child(palette_shortcut_hint(["tab"], "column"))
-                            .when(can_delete, |footer| {
-                                footer.child(palette_shortcut_hint(["delete"], "delete"))
-                            })
-                            .child(palette_shortcut_hint(["escape"], "close"))
-                    },
+                    |footer| footer.child(history_hints(can_delete)),
                 )
                 .child(div().flex_1())
                 .when(self.next_cursor.is_some(), |footer| {
@@ -1507,42 +1441,62 @@ impl AgentPane {
                             cx.stop_propagation();
                         })),
                 )
+                .into_any_element()
         };
-        picker_overlay(("agent-history-overlay", pane.0), cx).p_2()
-            .track_focus(&self.history_input.read(cx).focus_handle(cx))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                this.close_history(window, cx); cx.stop_propagation();
-            }))
-            .child(picker_modal_sized(("agent-history-modal", pane.0), 920.0, cx)
-                .map_element(|modal| modal.w_full().min_w_0().min_h_0())
-                .child(picker_header(cx).child(picker_search(&self.history_input, cx)))
-                .child(zz_ui::h_flex().relative().flex_1().min_h_0().min_w_0().items_stretch()
-                    .when(compact, zz_gpui::Styled::flex_col)
-                    .on_prepaint(move |bounds, _, cx| {
-                        layout_view.update(cx, |this, cx| {
-                            let compact = bounds.size.width < px(560.0);
-                            if this.history_compact != compact { this.history_compact = compact; cx.notify(); }
-                        });
-                    })
-                    .child(self.project_directories(cx))
-                    .child(zz_ui::v_flex().flex_1().min_w_0().min_h_0().pt(px(zz_ui::CHROME_GAP))
-                        .child(zz_ui::h_flex().h(px(26.0)).flex_none().gap_2().px_3()
-                            .text_size(zz_ui::rems_from_px(11.0)).line_height(px(16.0)).text_color(cx.theme().foreground.muted())
-                            .child(div().flex_1().min_w_0().overflow_hidden().text_ellipsis().whitespace_nowrap()
-                                .child(self.project_directory.as_ref().map_or_else(String::new, |path| path.display().to_string())))
-                            .when(self.history_supported, |row| row.child(agent_chrome_button("agent-history-refresh").icon(IconName::Redo2)
-                                .label("Refresh").disabled(loading)
-                                .on_click(cx.listener(|this, _, window, cx| { this.list_sessions(true, window, cx); cx.stop_propagation(); })))))
-                        .child(picker_list().list_inset(cx).pb(px(zz_ui::CHROME_GAP)).pt_0().pr_0()
-                            .child(zz_ui::v_flex().relative().flex_1().min_h_0().overflow_hidden()
-                                .pr(zz_ui::scroll::GUTTER_WIDTH).child(rows).vertical_scrollbar(&self.picker_scroll))
-                            .when(count == 0, |list| list.child(picker_empty(if loading {
-                                "Loading sessions…"
-                            } else if !self.history_supported { "This agent does not provide session history."
-                            } else if self.project_directory.is_none() { "Choose a directory or enter a full path."
-                            } else if self.history_input.read(cx).value().is_empty() { "No sessions in this directory."
-                            } else { "No sessions match that search." }, cx))))))
-                .child(footer)).into_any_element()
+        HistoryPicker {
+            pane: pane.0,
+            input: self.history_input.clone(),
+            compact,
+            on_layout: Box::new(move |compact, cx| {
+                layout_view.update(cx, |this, cx| {
+                    if this.history_compact != compact {
+                        this.history_compact = compact;
+                        cx.notify();
+                    }
+                });
+            }),
+            directories: self.project_directories(cx),
+            directory: self
+                .project_directory
+                .as_ref()
+                .map_or_else(String::new, |path| path.display().to_string())
+                .into(),
+            refresh: self.history_supported.then(|| {
+                agent_chrome_button("agent-history-refresh")
+                    .disabled(loading)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.list_sessions(true, window, cx);
+                        cx.stop_propagation();
+                    }))
+            }),
+            sessions: rows.into_any_element(),
+            sessions_scroll: self.picker_scroll.clone(),
+            empty: (count == 0).then(|| {
+                if loading {
+                    "Loading sessions…"
+                } else if !self.history_supported {
+                    "This agent does not provide session history."
+                } else if self.project_directory.is_none() {
+                    "Choose a directory or enter a full path."
+                } else if self.history_input.read(cx).value().is_empty() {
+                    "No sessions in this directory."
+                } else {
+                    "No sessions match that search."
+                }
+                .into()
+            }),
+            footer,
+        }
+        .render(cx)
+        .track_focus(&self.history_input.read(cx).focus_handle(cx))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _, window, cx| {
+                this.close_history(window, cx);
+                cx.stop_propagation();
+            }),
+        )
+        .into_any_element()
     }
 
     fn directory_results(&self, cx: &App) -> Vec<ProjectDirectory> {
@@ -1651,19 +1605,7 @@ impl AgentPane {
                 range
                     .map(|index| {
                         let Some(directory_index) = entries[index] else {
-                            return div()
-                                .h(px(26.0))
-                                .flex()
-                                .items_center()
-                                .px_2p5()
-                                .text_size(zz_ui::rems_from_px(11.0))
-                                .line_height(px(16.0))
-                                .text_color(cx.theme().foreground.muted())
-                                .child(if index == 0 && recent > 0 {
-                                    "Recent"
-                                } else {
-                                    "All directories"
-                                })
+                            return history_directory_heading(index, index == 0 && recent > 0, cx)
                                 .into_any_element();
                         };
                         let directory = &directories[directory_index];
@@ -1673,33 +1615,13 @@ impl AgentPane {
                         let pointer_path = path.clone();
                         let hover = view.clone();
                         let click = view.clone();
-                        zz_ui::picker::directory_row(
-                            ("agent-project-directory", directory_index),
+                        history_directory_row(
+                            directory_index,
                             directory.label.clone(),
+                            directory.sessions,
                             highlighted,
                             cx,
                         )
-                        .h(px(26.0))
-                        .menu_item_corners(px(26.0), cx)
-                        .px_2()
-                        .line_height(px(16.0))
-                        .when(directory.sessions > 0, |row| {
-                            row.child(
-                                div()
-                                    .flex_none()
-                                    .text_size(zz_ui::rems_from_px(11.0))
-                                    .text_color(
-                                        cx.theme()
-                                            .paint(zz_ui::Tone::Neutral, zz_ui::Emphasis::Ghost)
-                                            .muted_at(if highlighted {
-                                                zz_ui::PaintState::Selected
-                                            } else {
-                                                zz_ui::PaintState::Rest
-                                            }),
-                                    )
-                                    .child(directory.sessions.to_string()),
-                            )
-                        })
                         .on_hover(move |hovered, _, cx| {
                             hover.update(cx, |this, cx| {
                                 let next = if *hovered {
@@ -1727,29 +1649,7 @@ impl AgentPane {
         .flex_1()
         .w_full()
         .track_scroll(&self.project_scroll);
-        zz_ui::v_flex()
-            .flex_none()
-            .min_w_0()
-            .min_h_0()
-            .when(self.history_compact, |column| {
-                column.w_full().h(zz_gpui::relative(0.35)).rule_bottom(cx)
-            })
-            .when(!self.history_compact, |column| {
-                column.w(zz_gpui::relative(0.36)).rule_right(cx)
-            })
-            .list_inset(cx)
-            .py(px(zz_ui::CHROME_GAP))
-            .pr_0()
-            .child(
-                zz_ui::v_flex()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_hidden()
-                    .pr(zz_ui::scroll::GUTTER_WIDTH)
-                    .child(rows)
-                    .vertical_scrollbar(&self.project_scroll),
-            )
+        history_directories(self.history_compact, rows, &self.project_scroll, None, cx)
             .into_any_element()
     }
 
@@ -2544,30 +2444,21 @@ impl Render for AgentPane {
             }
         }
         if state.queued_prompts > 0 {
+            let connection = self.connection.clone();
+            let pane = self.pane;
             prefix.push(
-                zz_ui::h_flex()
-                    .w_full()
-                    .justify_end()
-                    .child(
-                        Button::new(("agent-unqueue", self.pane.0))
-                            .ghost()
-                            .small()
-                            .icon(IconName::Undo2)
-                            .label(format!("{} queued", state.queued_prompts))
-                            .tooltip("Return the queued prompts to the composer")
-                            .text_color(cx.theme().foreground.muted())
-                            .disabled(!writable)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.connection.update(cx, |connection, cx| {
-                                    connection.send(
-                                        ProtocolMessage::AgentUnqueue { pane: this.pane },
-                                        cx,
-                                    );
-                                });
-                                cx.stop_propagation();
-                            })),
-                    )
-                    .into_any_element(),
+                agent_queue_chip(
+                    ("agent-unqueue", self.pane.0),
+                    state.queued_prompts,
+                    writable,
+                    move |_, cx| {
+                        connection.update(cx, |connection, cx| {
+                            connection.send(ProtocolMessage::AgentUnqueue { pane }, cx);
+                        });
+                    },
+                    cx,
+                )
+                .into_any_element(),
             );
         }
         let plan = self.current_plan(running);
@@ -2610,7 +2501,8 @@ impl Render for AgentPane {
                         && self.settings_apply.is_none()
                 }
             },
-        );
+        )
+        .on(composer_ground(cx));
         let action = if action_kind == ComposerAction::Stop {
             let connection = self.connection.clone();
             let pane = self.pane;
@@ -2725,33 +2617,22 @@ impl Render for AgentPane {
                         .children(self.attachments.iter().enumerate().filter_map(
                             |(index, image)| {
                                 let preview = preview_image(image)?;
-                                Some(
-                                    div()
-                                        .relative()
-                                        .child(agent_attachment_thumbnail(
-                                            ("web-agent-image", index),
-                                            preview,
-                                            COMPOSER_ATTACHMENT,
-                                            cx,
-                                        ))
-                                        .child(
-                                            div().absolute().top(px(-6.0)).right(px(-6.0)).child(
-                                                Button::compact_icon(
-                                                    ("web-agent-remove-image", index),
-                                                    IconName::Xmark,
-                                                )
-                                                .tooltip("Remove this image")
-                                                .on_click(cx.listener(move |this, _, _, cx| {
-                                                    if index < this.attachments.len() {
-                                                        this.attachments.remove(index);
-                                                    }
-                                                    this.draft_error = None;
-                                                    cx.notify();
-                                                    cx.stop_propagation();
-                                                })),
-                                            ),
-                                        ),
-                                )
+                                let view = cx.entity();
+                                Some(composer_attachment(
+                                    ("web-agent-image", index),
+                                    ("web-agent-remove-image", index),
+                                    preview,
+                                    move |_, cx| {
+                                        view.update(cx, |this, cx| {
+                                            if index < this.attachments.len() {
+                                                this.attachments.remove(index);
+                                            }
+                                            this.draft_error = None;
+                                            cx.notify();
+                                        });
+                                    },
+                                    cx,
+                                ))
                             },
                         ))
                         .into_any_element()

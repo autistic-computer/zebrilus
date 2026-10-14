@@ -1,8 +1,8 @@
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    Selectable as _, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Icon, IconName, Kind,
+    PaintState, Selectable as _, Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     feedback::{alert_actions, inline_alert},
@@ -52,7 +52,7 @@ impl BrowserHeader {
 }
 
 impl RenderOnce for BrowserHeader {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let show_separator = self.toolbar.show_separator;
         div()
             .id("browser-pane-header")
@@ -63,6 +63,7 @@ impl RenderOnce for BrowserHeader {
             .w_full()
             .h(Self::HEIGHT)
             .flex_none()
+            .surface(crate::roles::PANE_HEADER, cx)
             .py(px(BROWSER_HEADER_PADDING))
             .gap(px(BROWSER_HEADER_PADDING))
             .child(
@@ -91,6 +92,7 @@ impl RenderOnce for BrowserHeader {
             .when(show_separator, |header| {
                 header.child(
                     Separator::horizontal()
+                        .surface_role(crate::roles::BAR_RULE)
                         .absolute()
                         .bottom_0()
                         .h(crate::RULE_WIDTH),
@@ -153,7 +155,9 @@ impl RenderOnce for BrowserToolbar {
             .items_center()
             .gap_1()
             .px_2()
-            .when(self.show_separator, |toolbar| toolbar.rule_bottom(cx))
+            .when(self.show_separator, |toolbar| {
+                toolbar.rule_on(crate::roles::BAR_RULE, Edge::Bottom, cx)
+            })
             .text_color(cx.theme().foreground)
             .child(
                 browser_toolbar_cluster()
@@ -205,7 +209,6 @@ pub fn browser_address(
         .min_w_0()
         .items_center();
     field_chrome(shell, role, PaintState::Rest, true, true, cx)
-        .rounded(cx.theme().control_radius())
         .focus(move |style| style.border_color(paint.focus))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             focus_handle.focus(window, cx);
@@ -223,12 +226,17 @@ pub fn browser_address(
 }
 
 pub fn browser_site_controls_button(cx: &App) -> Button {
+    let address = cx
+        .theme()
+        .layer(crate::roles::ADDRESS_BAR, PaintState::Rest)
+        .radius;
     Button::compact_icon("browser-site-controls", IconName::SiteControls)
         .flat()
-        .rounded(
-            cx.theme()
-                .inner_radius(SITE_CONTROLS_INSET + ADDRESS_EDGE_WIDTH),
-        )
+        .rounded(if address >= zz_gpui::FULL_CORNER_RADIUS {
+            address
+        } else {
+            (address - SITE_CONTROLS_INSET - ADDRESS_EDGE_WIDTH).max(px(0.0))
+        })
         .text_color(cx.theme().foreground.muted())
         .tooltip("Site controls")
         .debug_selector(|| "browser-site-controls".into())
@@ -458,14 +466,11 @@ fn browser_tab_shell(
     favicon: Option<Arc<[u8]>>,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let paint = cx.theme().paint(
-        Tone::Neutral,
-        if active {
-            Emphasis::Soft
-        } else {
-            Emphasis::Ghost
-        },
-    );
+    let state = if active {
+        PaintState::Current
+    } else {
+        PaintState::Rest
+    };
     div()
         .id(("browser-tab", id))
         .debug_selector(move || format!("browser-tab-{id}"))
@@ -477,16 +482,13 @@ fn browser_tab_shell(
         .gap(px(6.0))
         .pl(px(12.0))
         .min_w(px(BROWSER_TAB_MIN_WIDTH))
-        .rounded(cx.theme().control_radius())
-        .surface_outline(cx.theme().transparent, cx)
-        .bg(paint.fill)
-        .text_color(if active {
-            paint.text
-        } else {
-            paint.muted_at(PaintState::Rest)
+        .surface_interactive(crate::roles::BROWSER_TAB, state, cx)
+        .when(!active, |tab| {
+            tab.text_color(crate::picker::muted_on(
+                &cx.theme().layer(crate::roles::BROWSER_TAB, state),
+                cx,
+            ))
         })
-        .when(active, |tab| tab.control_surface(cx))
-        .hover(move |style| style.bg(paint.hover))
         .child(
             div()
                 .flex_none()
@@ -533,6 +535,7 @@ pub fn browser_toolbar_button(
     selected: bool,
 ) -> Button {
     Button::compact_icon(id, icon)
+        .surface_role(crate::roles::BROWSER_BUTTON)
         .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
         .when(!disabled, |this| {
             this.text_color(cx.theme().foreground.muted())
@@ -627,7 +630,6 @@ pub fn browser_recent_row(
     favicon: Option<Arc<[u8]>>,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
     let url = url.into();
     div()
         .id(id)
@@ -638,10 +640,8 @@ pub fn browser_recent_row(
         .items_center()
         .gap(px(8.0))
         .px(px(12.0))
-        .rounded(cx.theme().menu_radius())
-        .bg(paint.fill)
+        .surface_interactive(crate::roles::BROWSER_SUGGESTION, PaintState::Rest, cx)
         .cursor_pointer()
-        .hover(move |style| style.bg(paint.hover))
         .text_size(crate::rems_from_px(12.0))
         .font_medium()
         .child(browser_favicon(favicon, cx))
@@ -667,7 +667,7 @@ pub fn browser_omnibox_panel(rows: Vec<AnyElement>, cx: &App) -> impl IntoElemen
             .right(px(8.0))
             .occlude()
             .overflow_hidden()
-            .popover_style(cx)
+            .surface(Kind::Popover, cx)
             .py(px(4.0))
             .list_inset(cx)
             .children(rows),
@@ -685,14 +685,17 @@ pub fn browser_omnibox_row(
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let title = title.into();
     let url = url.into();
-    let muted = cx
-        .theme()
-        .paint(Tone::Neutral, Emphasis::Ghost)
-        .muted_at(if selected {
-            PaintState::Selected
-        } else {
-            PaintState::Rest
-        });
+    let muted = crate::picker::muted_on(
+        &cx.theme().layer(
+            Kind::Row,
+            if selected {
+                PaintState::Selected
+            } else {
+                PaintState::Rest
+            },
+        ),
+        cx,
+    );
     crate::picker::list_row(
         ("browser-omnibox-suggestion", index),
         px(32.0),
@@ -1151,7 +1154,7 @@ impl BrowserPickStatus {
 }
 
 impl RenderOnce for BrowserPickStatus {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut zz_gpui::Window, _: &mut App) -> impl IntoElement {
         div()
             .absolute()
             .left(px(16.0))
@@ -1161,9 +1164,8 @@ impl RenderOnce for BrowserPickStatus {
             .justify_center()
             .child(
                 Badge::empty()
-                    .opaque()
+                    .surface_role(crate::roles::PANE_CHIP)
                     .font_weight(zz_gpui::FontWeight::NORMAL)
-                    .control_surface(cx)
                     .max_w_full()
                     .h(px(28.0))
                     .px(px(10.0))

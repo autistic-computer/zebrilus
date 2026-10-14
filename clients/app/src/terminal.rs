@@ -9,12 +9,11 @@ use zz_client::{
     scrollback::RetainedTerminalViewport,
 };
 use zz_gpui::{
-    Anchor, AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, Context, Corners,
-    ElementInputHandler, Entity, EntityInputHandler, FocusHandle, Focusable, Font, Hsla,
-    ImageSource, KeyDownEvent, KeyUpEvent, Keystroke, ModifiersChangedEvent, MouseButton,
-    MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Pixels, Point, Render,
-    ScrollDelta, ScrollWheelEvent, Subscription, Task, TextInputAction, TextInputConfiguration,
-    UTF16Selection, Window, anchored, canvas, deferred, div, img, prelude::*, px,
+    AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, Context, Corners, ElementInputHandler,
+    Entity, EntityInputHandler, FocusHandle, Focusable, Font, Hsla, KeyDownEvent, KeyUpEvent,
+    Keystroke, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Subscription, Task,
+    TextInputAction, TextInputConfiguration, UTF16Selection, Window, canvas, div, prelude::*, px,
 };
 use zz_protocol::{InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
@@ -24,17 +23,15 @@ use zz_terminal::{
     TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
-    ActiveTheme, Colorize as _, Disableable as _, Elevation, Icon, IconName, Selectable as _,
-    StyledExt as _,
-    button::{Button, ButtonVariants as _},
-    input::{Input, InputEvent, InputState},
+    ActiveTheme, IconName,
+    input::{InputEvent, InputState},
     pane::{
         PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
         pane_unzoom_control, terminal_link_popup, terminal_mode_indicator, terminal_status_popup,
     },
     terminal::{
-        GridSize, PaintState, RowRenderCache, TerminalRenderInput, cursor_should_blink,
-        selection_autoscroll_lines, terminal_font_for_style,
+        FindBarAction, GridSize, PaintState, RowRenderCache, TerminalRenderInput,
+        cursor_should_blink, selection_autoscroll_lines, terminal_font_for_style,
     },
 };
 
@@ -471,28 +468,7 @@ impl TerminalPane {
         let bounds = self.link_hover_bounds?;
         let number = pasted_image_number(self.hovered_image_uri.as_deref()?)?;
         let image = self.connection.read(cx).pasted_image(self.pane, number)?;
-        let (anchor, position) = if bounds.origin.y >= px(308.0) {
-            (Anchor::BottomLeft, bounds.origin)
-        } else {
-            (Anchor::TopLeft, bounds.bottom_left())
-        };
-        Some(
-            deferred(
-                anchored()
-                    .anchor(anchor)
-                    .position(position)
-                    .snap_to_window_with_margin(px(8.0))
-                    .child(
-                        div().size(px(300.0)).p_1().popover_style(cx).child(
-                            img(ImageSource::Image(image))
-                                .size_full()
-                                .object_fit(ObjectFit::ScaleDown),
-                        ),
-                    ),
-            )
-            .with_priority(1)
-            .into_any_element(),
-        )
+        Some(zz_ui::terminal::pasted_image_preview(bounds, image, cx))
     }
 
     fn viewport<'a>(&self, core: &'a zz_client::ClientCore) -> Option<&'a TerminalViewport> {
@@ -745,147 +721,54 @@ impl TerminalPane {
 
     fn search_bar(&self, status: Option<SearchStatus>, cx: &mut Context<Self>) -> AnyElement {
         let query = self.search.as_ref().unwrap();
-        let enabled = status.is_some_and(|status| {
-            status.total > 0 && !status.pending() && !status.invalid_pattern()
-        });
-        let regex = Button::compact_icon("terminal-search-regex", IconName::Asterisk)
-            .ghost()
-            .flat()
-            .selected(query.mode == SearchMode::Regex)
-            .tooltip("Regular expression")
-            .on_click(cx.listener(|view, _, _, cx| {
-                if let Some(query) = view.search.as_mut() {
-                    query.mode = match query.mode {
-                        SearchMode::Literal => SearchMode::Regex,
-                        SearchMode::Regex => SearchMode::Literal,
-                    };
-                    let query = query.clone();
-                    view.view(TerminalViewAction::SearchUpdate(query), cx);
-                    cx.notify();
-                }
-                cx.stop_propagation();
-            }));
-        let case = Button::compact_icon("terminal-search-case", IconName::CaseSensitive)
-            .ghost()
-            .flat()
-            .selected(query.case == SearchCase::Sensitive)
-            .tooltip(match query.case {
-                SearchCase::Smart => "Smart case",
-                SearchCase::Sensitive => "Match case",
-                SearchCase::Insensitive => "Ignore case",
-            })
-            .on_click(cx.listener(|view, _, _, cx| {
-                if let Some(query) = view.search.as_mut() {
-                    query.case = match query.case {
-                        SearchCase::Sensitive => SearchCase::Insensitive,
-                        _ => SearchCase::Sensitive,
-                    };
-                    let query = query.clone();
-                    view.view(TerminalViewAction::SearchUpdate(query), cx);
-                    cx.notify();
-                }
-                cx.stop_propagation();
-            }));
-        let previous = Button::compact_icon("terminal-search-previous", IconName::ChevronUp)
-            .ghost()
-            .flat()
-            .disabled(!enabled)
-            .tooltip("Previous match")
-            .on_click(cx.listener(|view, _, _, cx| {
-                view.step_search(true, cx);
-                cx.stop_propagation();
-            }));
-        let next = Button::compact_icon("terminal-search-next", IconName::ChevronDown)
-            .ghost()
-            .flat()
-            .disabled(!enabled)
-            .tooltip("Next match")
-            .on_click(cx.listener(|view, _, _, cx| {
-                view.step_search(false, cx);
-                cx.stop_propagation();
-            }));
-        let close = Button::compact_icon("terminal-search-close", IconName::Xmark)
-            .ghost()
-            .flat()
-            .tooltip("Close search")
-            .on_click(cx.listener(|view, _, window, cx| {
-                view.close_search(window, cx);
-                cx.stop_propagation();
-            }));
-        div()
-            .id("terminal-search")
-            .debug_selector(|| "terminal-search".to_owned())
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap(px(4.0))
-            .w(px(460.0))
-            .max_w_full()
-            .p(px(4.0))
-            .popover_style(cx)
-            .occlude()
-            .font_family(cx.theme().font_family.clone())
-            .text_size(zz_ui::rems_from_px(13.0))
-            .line_height(px(16.0))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
-            .on_mouse_up(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .on_mouse_up(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
-            .on_mouse_move(|_, _, cx| cx.stop_propagation())
-            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-            .capture_key_down(cx.listener(|view, event: &KeyDownEvent, _, cx| {
-                if let Some(query) = view.search.as_mut()
-                    && let Some(action) = search_key_action(query, &key_input(event))
-                {
-                    view.view(action, cx);
-                    cx.notify();
-                    cx.stop_propagation();
-                }
-            }))
-            .on_action(cx.listener(|view, _: &zz_ui::input::Escape, window, cx| {
-                view.close_search(window, cx);
-                view.swallowed_search_key = Some(KeyCode::Escape);
-                cx.stop_propagation();
-            }))
-            .on_action(|_: &zz_ui::input::Enter, _, cx| cx.stop_propagation())
-            .child(
-                div().flex_1().min_w(px(110.0)).child(
-                    Input::new(self.search_input.as_ref().unwrap())
-                        .on(cx.theme().surface(Elevation::Popover).opaque())
-                        .prefix(Icon::new(IconName::Search).size(px(13.0))),
-                ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(2.0))
-                    .ml_auto()
-                    .child(
-                        div()
-                            .px(px(4.0))
-                            .text_size(zz_ui::rems_from_px(11.0))
-                            .text_color(if status.is_some_and(SearchStatus::invalid_pattern) {
-                                cx.theme().danger
+        let view = cx.entity();
+        zz_ui::terminal::terminal_find_bar(
+            self.search_input.as_ref().unwrap(),
+            query,
+            status,
+            move |action, window, cx| {
+                view.update(cx, |view, cx| match action {
+                    FindBarAction::ToggleRegex | FindBarAction::ToggleCase => {
+                        if let Some(query) = view.search.as_mut() {
+                            if action == FindBarAction::ToggleRegex {
+                                query.mode = match query.mode {
+                                    SearchMode::Literal => SearchMode::Regex,
+                                    SearchMode::Regex => SearchMode::Literal,
+                                };
                             } else {
-                                cx.theme().foreground.muted()
-                            })
-                            .child(if query.text.is_empty() {
-                                String::new()
-                            } else {
-                                search_result_text(status)
-                            }),
-                    )
-                    .child(regex)
-                    .child(case)
-                    .child(previous)
-                    .child(next)
-                    .child(close),
-            )
-            .into_any_element()
+                                query.case = match query.case {
+                                    SearchCase::Sensitive => SearchCase::Insensitive,
+                                    _ => SearchCase::Sensitive,
+                                };
+                            }
+                            let query = query.clone();
+                            view.view(TerminalViewAction::SearchUpdate(query), cx);
+                            cx.notify();
+                        }
+                    }
+                    FindBarAction::Previous => view.step_search(true, cx),
+                    FindBarAction::Next => view.step_search(false, cx),
+                    FindBarAction::Close => view.close_search(window, cx),
+                });
+            },
+            cx,
+        )
+        .capture_key_down(cx.listener(|view, event: &KeyDownEvent, _, cx| {
+            if let Some(query) = view.search.as_mut()
+                && let Some(action) = search_key_action(query, &key_input(event))
+            {
+                view.view(action, cx);
+                cx.notify();
+                cx.stop_propagation();
+            }
+        }))
+        .on_action(cx.listener(|view, _: &zz_ui::input::Escape, window, cx| {
+            view.close_search(window, cx);
+            view.swallowed_search_key = Some(KeyCode::Escape);
+            cx.stop_propagation();
+        }))
+        .on_action(|_: &zz_ui::input::Enter, _, cx| cx.stop_propagation())
+        .into_any_element()
     }
 
     fn on_key_up(&mut self, event: &KeyUpEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -2153,15 +2036,6 @@ fn search_key_action(query: &mut SearchQuery, input: &KeyInput) -> Option<Termin
     }
 }
 
-fn search_result_text(status: Option<SearchStatus>) -> String {
-    match status {
-        Some(status) if status.invalid_pattern() => "Invalid pattern".to_owned(),
-        Some(status) if status.pending() => "Searching…".to_owned(),
-        Some(status) if status.total > 0 => format!("{} / {}", status.current(), status.total),
-        _ => "0 matches".to_owned(),
-    }
-}
-
 fn presented_uri(uri: &str) -> String {
     let mut characters = uri.chars();
     let mut presented = characters.by_ref().take(240).collect::<String>();
@@ -2547,23 +2421,6 @@ mod tests {
         assert_eq!(
             search_key_action(&mut query, &key("x".into(), false, false)),
             None
-        );
-    }
-
-    #[test]
-    fn terminal_search_feedback_uses_server_results() {
-        assert_eq!(search_result_text(Some(SearchStatus::new(2, 4))), "2 / 4");
-        assert_eq!(
-            search_result_text(Some(SearchStatus::new(0, 0))),
-            "0 matches"
-        );
-        assert_eq!(
-            search_result_text(Some(SearchStatus::default().with_pending(true))),
-            "Searching…"
-        );
-        assert_eq!(
-            search_result_text(Some(SearchStatus::default().with_invalid_pattern(true))),
-            "Invalid pattern"
         );
     }
 

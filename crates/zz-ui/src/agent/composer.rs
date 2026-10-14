@@ -1,6 +1,6 @@
 use super::AGENT_CONTENT_MAX_WIDTH;
 use crate::input::{Input, InputState, field_chrome, field_paint};
-use crate::{ActiveTheme as _, CHROME_GAP, PaintState, h_flex, roles, v_flex};
+use crate::{ActiveTheme as _, CHROME_GAP, Ground, PaintState, h_flex, roles, v_flex};
 use zz_gpui::{
     AnyElement, App, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
     prelude::*, px,
@@ -13,6 +13,11 @@ pub const COMPOSER_SECTION_GAP: f32 = 8.0;
 pub const COMPOSER_INPUT_PADDING_TOP: f32 = 12.0;
 pub const COMPOSER_INPUT_PADDING_X: f32 = 14.0;
 pub const COMPOSER_MAX_WIDTH: f32 = AGENT_CONTENT_MAX_WIDTH + 2.0;
+
+/// What the composer's controls and attachments sit on.
+pub fn composer_ground(cx: &App) -> Ground {
+    cx.theme().ground_of(roles::AGENT_COMPOSER)
+}
 
 #[derive(IntoElement)]
 pub struct AgentComposer {
@@ -61,7 +66,6 @@ impl RenderOnce for AgentComposer {
                                     true,
                                     cx,
                                 )
-                                .rounded(cx.theme().radius)
                                 .children(self.attachments)
                                 .child(
                                     Input::new(&self.input)

@@ -28,9 +28,6 @@ use zz_ui::{
     v_flex,
 };
 
-#[cfg(any(feature = "editor-pane", test))]
-const PATH_ROW_HEIGHT: f32 = 26.0;
-
 const MAX_PICKER_ROWS: usize = 500;
 const WORKSPACE_PRIOR: u32 = 1 << 10;
 const DIRECTORY_SCAN_LIMIT: usize = 50_000;
@@ -748,7 +745,6 @@ impl FilePickerView {
                             is_selected,
                             cx,
                         )
-                        .menu_item_corners(px(PATH_ROW_HEIGHT), cx)
                         .on_mouse_move(move |_, _, cx| {
                             pointer_view.update(cx, |picker, cx| {
                                 if picker.selected != Some(index) {

@@ -3371,6 +3371,230 @@ fn appearance_color(value: AppearanceColor) -> Hsla {
     .into()
 }
 
+pub use overlays::{FindBarAction, pasted_image_preview, search_result_text, terminal_find_bar};
+
+mod overlays {
+    use std::sync::Arc;
+
+    use zz_gpui::{
+        Anchor, AnyElement, App, Bounds, Div, Entity, Image, ImageSource, MouseButton, ObjectFit,
+        Pixels, Stateful, Window, anchored, deferred, div, img, prelude::*, px,
+    };
+    use zz_terminal::{SearchCase, SearchMode, SearchQuery, SearchStatus};
+
+    use crate::{
+        ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Kind, PaintState,
+        Selectable as _, StyledExt as _,
+        button::{Button, ButtonVariants as _},
+        input::{Input, InputState},
+        roles,
+    };
+
+    const IMAGE_PREVIEW_SIDE: f32 = 300.0;
+
+    /// What a button on the terminal find bar asks for.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum FindBarAction {
+        ToggleRegex,
+        ToggleCase,
+        Previous,
+        Next,
+        Close,
+    }
+
+    /// The find bar's match count, or why there is none.
+    #[must_use]
+    pub fn search_result_text(status: Option<SearchStatus>) -> String {
+        match status {
+            Some(status) if status.invalid_pattern() => "Invalid pattern".to_owned(),
+            Some(status) if status.pending() => "Searching…".to_owned(),
+            Some(status) if status.total > 0 => {
+                format!("{} / {}", status.current(), status.total)
+            }
+            _ => "0 matches".to_owned(),
+        }
+    }
+
+    /// The find bar at the top of a terminal: the query field, the match
+    /// count, and the regex, case, previous, next and close buttons. It keeps
+    /// the pointer to itself; the caller wires its keys.
+    pub fn terminal_find_bar(
+        input: &Entity<InputState>,
+        query: &SearchQuery,
+        status: Option<SearchStatus>,
+        on_action: impl Fn(FindBarAction, &mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> Stateful<Div> {
+        let on_action = std::rc::Rc::new(on_action);
+        let enabled = status.is_some_and(|status| {
+            status.total > 0 && !status.pending() && !status.invalid_pattern()
+        });
+        let button = |id: &'static str, icon: IconName, action: FindBarAction| {
+            let on_action = std::rc::Rc::clone(&on_action);
+            Button::compact_icon(id, icon)
+                .ghost()
+                .flat()
+                .on_click(move |_, window, cx| {
+                    on_action(action, window, cx);
+                    cx.stop_propagation();
+                })
+        };
+        let bar = cx.theme().layer(roles::FIND_BAR, PaintState::Rest);
+        div()
+            .id("terminal-search")
+            .debug_selector(|| "terminal-search".to_owned())
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(4.0))
+            .w(px(460.0))
+            .max_w_full()
+            .p(px(4.0))
+            .layer(&bar)
+            .occlude()
+            .font_family(cx.theme().font_family.clone())
+            .text_size(crate::rems_from_px(13.0))
+            .line_height(px(16.0))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+            .on_mouse_up(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .on_mouse_up(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
+            .on_mouse_move(|_, _, cx| cx.stop_propagation())
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .child(
+                div().flex_1().min_w(px(110.0)).child(
+                    Input::new(input)
+                        .on(bar.ground)
+                        .prefix(Icon::new(IconName::Search).size(px(13.0))),
+                ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(2.0))
+                    .ml_auto()
+                    .child(
+                        div()
+                            .px(px(4.0))
+                            .text_size(crate::rems_from_px(11.0))
+                            .text_color(if status.is_some_and(SearchStatus::invalid_pattern) {
+                                cx.theme().danger
+                            } else {
+                                cx.theme().foreground.muted()
+                            })
+                            .child(if query.text.is_empty() {
+                                String::new()
+                            } else {
+                                search_result_text(status)
+                            }),
+                    )
+                    .child(
+                        button(
+                            "terminal-search-regex",
+                            IconName::Asterisk,
+                            FindBarAction::ToggleRegex,
+                        )
+                        .selected(query.mode == SearchMode::Regex)
+                        .tooltip("Regular expression"),
+                    )
+                    .child(
+                        button(
+                            "terminal-search-case",
+                            IconName::CaseSensitive,
+                            FindBarAction::ToggleCase,
+                        )
+                        .selected(query.case == SearchCase::Sensitive)
+                        .tooltip(match query.case {
+                            SearchCase::Smart => "Smart case",
+                            SearchCase::Sensitive => "Match case",
+                            SearchCase::Insensitive => "Ignore case",
+                        }),
+                    )
+                    .child(
+                        button(
+                            "terminal-search-previous",
+                            IconName::ChevronUp,
+                            FindBarAction::Previous,
+                        )
+                        .disabled(!enabled)
+                        .tooltip("Previous match"),
+                    )
+                    .child(
+                        button(
+                            "terminal-search-next",
+                            IconName::ChevronDown,
+                            FindBarAction::Next,
+                        )
+                        .disabled(!enabled)
+                        .tooltip("Next match"),
+                    )
+                    .child(
+                        button(
+                            "terminal-search-close",
+                            IconName::Xmark,
+                            FindBarAction::Close,
+                        )
+                        .tooltip("Close search"),
+                    ),
+            )
+    }
+
+    /// A pasted image shown over the link that names it, above the link when
+    /// it fits there and below it otherwise.
+    pub fn pasted_image_preview(link: Bounds<Pixels>, image: Arc<Image>, cx: &App) -> AnyElement {
+        let (anchor, position) = if link.origin.y >= px(IMAGE_PREVIEW_SIDE + 8.0) {
+            (Anchor::BottomLeft, link.origin)
+        } else {
+            (Anchor::TopLeft, link.bottom_left())
+        };
+        deferred(
+            anchored()
+                .anchor(anchor)
+                .position(position)
+                .snap_to_window_with_margin(px(8.0))
+                .child(
+                    div()
+                        .size(px(IMAGE_PREVIEW_SIDE))
+                        .p_1()
+                        .surface(Kind::Popover, cx)
+                        .child(
+                            img(ImageSource::Image(image))
+                                .size_full()
+                                .object_fit(ObjectFit::ScaleDown),
+                        ),
+                ),
+        )
+        .with_priority(1)
+        .into_any_element()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn terminal_search_feedback_uses_server_results() {
+            assert_eq!(search_result_text(Some(SearchStatus::new(2, 4))), "2 / 4");
+            assert_eq!(
+                search_result_text(Some(SearchStatus::new(0, 0))),
+                "0 matches"
+            );
+            assert_eq!(
+                search_result_text(Some(SearchStatus::default().with_pending(true))),
+                "Searching…"
+            );
+            assert_eq!(
+                search_result_text(Some(SearchStatus::default().with_invalid_pattern(true))),
+                "Invalid pattern"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::disallowed_methods,

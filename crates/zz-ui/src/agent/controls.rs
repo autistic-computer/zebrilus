@@ -6,13 +6,15 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName,
-    InteractivePaintExt as _, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Icon, IconName, Kind,
+    PaintState, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
     pane::agent_provider_icon,
+    picker::{muted_on, row_surface},
     popover::Popover,
+    roles,
     separator::Separator,
     tooltip::Tooltip,
     v_flex,
@@ -52,12 +54,39 @@ pub fn composer_action_button(
     Button::compact_icon(id, icon)
         .when(action == ComposerAction::Send, ButtonVariants::primary)
         .when(action == ComposerAction::Queue, ButtonVariants::secondary)
+        .surface_role(roles::AGENT_SEND)
         .tooltip(tooltip)
         .disabled(!enabled)
 }
 
 pub fn agent_chrome_button(id: impl Into<ElementId>) -> Button {
     Button::new(id).ghost().small().h(px(24.0)).px_2()
+}
+
+/// How many prompts wait behind the live turn, as a chip that hands them back
+/// to the composer when clicked.
+pub fn agent_queue_chip(
+    id: impl Into<ElementId>,
+    queued: impl std::fmt::Display,
+    enabled: bool,
+    on_click: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    h_flex().w_full().justify_end().child(
+        Button::new(id)
+            .ghost()
+            .small()
+            .surface_role(roles::AGENT_CONTROL)
+            .icon(IconName::Undo2)
+            .label(format!("{queued} queued"))
+            .tooltip("Return the queued prompts to the composer")
+            .text_color(cx.theme().foreground.muted())
+            .disabled(!enabled)
+            .on_click(move |_, window, cx| {
+                on_click(window, cx);
+                cx.stop_propagation();
+            }),
+    )
 }
 
 pub fn agent_header_icon_button(
@@ -80,6 +109,7 @@ pub fn agent_directory_button(
     cx: &App,
 ) -> Button {
     agent_chrome_button(id)
+        .surface_role(roles::AGENT_CONTROL)
         .min_w_0()
         .flex_shrink_1()
         .max_w(px(140.0))
@@ -127,6 +157,7 @@ pub fn agent_config_picker(
     let current_value = current_value.to_owned();
     let on_select = Rc::new(on_select);
     agent_chrome_button(id)
+        .surface_role(roles::AGENT_CONTROL)
         .icon(icon)
         .label(current_label)
         .dropdown_caret(true)
@@ -160,11 +191,10 @@ pub fn agent_config_picker(
                                     div()
                                         .max_w(px(300.0))
                                         .text_size(crate::rems_from_px(10.0))
-                                        .text_color(
-                                            cx.theme()
-                                                .paint(Tone::Neutral, Emphasis::Ghost)
-                                                .muted_at(state),
-                                        )
+                                        .text_color(muted_on(
+                                            &cx.theme().layer(Kind::Row, state),
+                                            cx,
+                                        ))
                                         .child(description),
                                 )
                             })
@@ -194,8 +224,7 @@ impl AgentControlSelection {
 
 fn agent_picker_row(
     id: impl Into<ElementId>,
-    selected: bool,
-    parent: bool,
+    current: bool,
     enabled: bool,
     content: impl IntoElement,
     window: &mut Window,
@@ -206,35 +235,37 @@ fn agent_picker_row(
         .use_keyed_state(format!("{id}:focus"), cx, |_, cx| cx.focus_handle())
         .read(cx)
         .clone();
-    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
-    h_flex()
-        .id(id)
-        .role(Role::Button)
-        .aria_selected(selected)
-        .flex_none()
-        .min_h(px(PICKER_ROW_HEIGHT))
-        .px_2()
-        .py_1()
-        .menu_item_corners(px(PICKER_ROW_HEIGHT), cx)
-        .text_size(crate::rems_from_px(12.0))
-        .line_height(px(16.0))
-        .map(|this| {
-            if enabled && parent && selected {
-                this.painted(paint, PaintState::Hover)
-            } else {
-                this.painted_interactive(paint, selected, enabled)
-            }
-        })
-        .when(enabled, |this| this.track_focus(&focus.tab_stop(true)))
-        .on_mouse_down(zz_gpui::MouseButton::Left, move |_, window, cx| {
-            if !enabled {
-                cx.stop_propagation();
-                return;
-            }
-            window.prevent_default();
-            crate::text::suppress_text_selection(cx);
-        })
-        .child(content)
+    let state = match (enabled, current) {
+        (false, _) => PaintState::Disabled,
+        (true, true) => PaintState::Current,
+        (true, false) => PaintState::Rest,
+    };
+    row_surface(
+        h_flex()
+            .id(id)
+            .role(Role::Button)
+            .aria_selected(current)
+            .flex_none()
+            .min_h(px(PICKER_ROW_HEIGHT))
+            .px_2()
+            .py_1()
+            .text_size(crate::rems_from_px(12.0))
+            .line_height(px(16.0)),
+        Kind::Row,
+        state,
+        px(PICKER_ROW_HEIGHT),
+        cx,
+    )
+    .when(enabled, |this| this.track_focus(&focus.tab_stop(true)))
+    .on_mouse_down(zz_gpui::MouseButton::Left, move |_, window, cx| {
+        if !enabled {
+            cx.stop_propagation();
+            return;
+        }
+        window.prevent_default();
+        crate::text::suppress_text_selection(cx);
+    })
+    .child(content)
 }
 
 #[derive(Clone)]
@@ -370,6 +401,7 @@ pub fn agent_model_picker(
         .selected()
         .map_or_else(|| provider.label().to_owned(), |choice| choice.name.clone());
     let trigger = agent_chrome_button(id.clone())
+        .surface_role(roles::AGENT_CONTROL)
         .debug_selector(|| "agent-model-trigger".into())
         .icon(agent_provider_icon(provider))
         .label(label)
@@ -476,7 +508,6 @@ pub fn agent_model_picker(
                     agent_picker_row(
                         vendor.as_str(),
                         vendor == selected,
-                        true,
                         enabled,
                         h_flex()
                             .w_full()
@@ -526,7 +557,6 @@ pub fn agent_model_picker(
                         agent_picker_row(
                             value.clone(),
                             checked,
-                            false,
                             enabled,
                             h_flex()
                                 .w_full()
@@ -609,9 +639,14 @@ pub fn agent_model_picker(
                     .map(|choice| choice.name.clone().into())
                     .collect();
                 let state = state.clone();
-                content =
-                    content.child(v_flex().w_full().px_3().py_2().gap_1().rule_top(cx).child(
-                        crate::slider::DiscreteSlider::new(
+                content = content.child(
+                    v_flex()
+                        .w_full()
+                        .px_3()
+                        .py_2()
+                        .gap_1()
+                        .rule_on(roles::LIST_RULE, Edge::Top, cx)
+                        .child(crate::slider::DiscreteSlider::new(
                             "agent-effort",
                             "Effort",
                             labels,
@@ -635,8 +670,8 @@ pub fn agent_model_picker(
                                 });
                                 window.refresh();
                             },
-                        ),
-                    ));
+                        )),
+                );
             }
             content
         })
@@ -990,7 +1025,9 @@ mod tests {
     }
 
     #[zz_gpui::test]
-    fn model_highlights_share_menu_corners_and_keep_the_provider_neutral(cx: &mut TestAppContext) {
+    fn the_current_vendor_and_model_share_the_row_highlight_and_menu_corners(
+        cx: &mut TestAppContext,
+    ) {
         cx.update(|cx| {
             crate::init(cx);
             cx.set_reduce_motion(true);
@@ -1016,11 +1053,11 @@ mod tests {
         cx.update(|window, cx| {
             let scale = window.scale_factor();
             let quads = window.painted_quads();
-            let ghost = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+            let row = |state| cx.theme().layer(Kind::Row, state).fill;
             for (bounds, color) in [
-                (provider, ghost.hover),
-                (model, ghost.selected),
-                (hovered, ghost.hover),
+                (provider, row(PaintState::Current)),
+                (model, row(PaintState::Current)),
+                (hovered, row(PaintState::Hover)),
             ] {
                 let quad = quads
                     .iter()

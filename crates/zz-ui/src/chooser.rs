@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Icon, IconName, Sizable as _,
-    StyledExt as _, Tone, badge::Badge, kbd::Kbd, list::ListItem,
+    ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, Kind, PaintState,
+    Sizable as _, StyledExt as _, Surface, Tone, badge::Badge, kbd::Kbd, list::ListItem, roles,
 };
 use zz_gpui::{
     AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
@@ -115,6 +115,18 @@ impl RenderOnce for ChooserModal {
         let rows = f32::from(u8::try_from(self.dimensions.row_count.min(10)).unwrap_or(10));
         let notices = u8::from(self.help) + u8::from(self.prompt.is_some());
         let height = 106.0 + rows * CHOOSER_ROW_HEIGHT + f32::from(notices) * 36.0;
+        let modal = cx.theme().layer(roles::PICKER, PaintState::Rest);
+        let notice = |text: SharedString, cx: &App| {
+            div()
+                .flex_none()
+                .px(px(12.0))
+                .py(px(9.0))
+                .surface(Surface::new(Kind::Bar.role()).on(modal.ground), cx)
+                .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
+                .font_family(self.font_family.clone())
+                .text_size(crate::rems_from_px(11.0))
+                .child(text)
+        };
         let surface = div()
             .id(self.id)
             .relative()
@@ -125,8 +137,8 @@ impl RenderOnce for ChooserModal {
             .h(px(height))
             .max_h((window.viewport_size().height - px(44.0)).max(px(0.0)))
             .overflow_hidden()
-            .popover_style(cx)
-            .rounded(cx.theme().outer_radius(px(8.0)))
+            .surface(roles::PICKER, cx)
+            .rounded(crate::picker::outer_radius(&modal, px(8.0)))
             .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
@@ -160,31 +172,12 @@ impl RenderOnce for ChooserModal {
                     .child(self.close),
             )
             .when(self.help, |modal| {
-                modal.child(
-                    div()
-                        .flex_none()
-                        .px(px(12.0))
-                        .py(px(9.0))
-                        .rule_bottom(cx)
-                        .bg(cx.theme().surface(Elevation::Popover).fill)
-                        .font_family(self.font_family.clone())
-                        .text_size(crate::rems_from_px(11.0))
-                        .text_color(cx.theme().foreground)
-                        .child("Help: the next key closes this and does nothing else"),
-                )
+                modal.child(notice(
+                    "Help: the next key closes this and does nothing else".into(),
+                    cx,
+                ))
             })
-            .children(self.prompt.map(|prompt| {
-                div()
-                    .flex_none()
-                    .px(px(12.0))
-                    .py(px(9.0))
-                    .rule_bottom(cx)
-                    .bg(cx.theme().surface(Elevation::Popover).fill)
-                    .font_family(self.font_family.clone())
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground)
-                    .child(prompt)
-            }))
+            .children(self.prompt.clone().map(|prompt| notice(prompt, cx)))
             .child(
                 div()
                     .flex()
@@ -243,7 +236,7 @@ pub fn chooser_footer(
         .items_center()
         .gap(px(12.0))
         .px(px(12.0))
-        .rule_top(cx)
+        .rule_on(roles::BAR_RULE, Edge::Top, cx)
         .children(search)
         .child(div().flex_1())
         .child(

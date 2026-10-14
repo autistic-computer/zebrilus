@@ -12,7 +12,7 @@ use zz_gpui::{
 };
 use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Kind, PaintState, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
@@ -463,6 +463,7 @@ impl EditorView {
             Retry::Save(_) => "Couldn’t save this file",
         };
         let retry = error.retry;
+        let cover = cx.theme().layer(Kind::Panel, PaintState::Rest);
         div()
             .absolute()
             .inset_0()
@@ -470,7 +471,8 @@ impl EditorView {
             .items_center()
             .justify_center()
             .px(px(12.0))
-            .bg(cx.theme().background.opaque())
+            .layer(&cover)
+            .bg(cover.ground.fill)
             .child(
                 inline_alert(Some(title.into()), error.message.to_string(), cx)
                     .max_w(px(360.0))
@@ -555,7 +557,7 @@ impl Render for EditorView {
 }
 
 fn vim_mode_badge(mode: VimMode) -> Badge {
-    let badge = Badge::new(mode.label()).opaque();
+    let badge = Badge::new(mode.label()).surface_role(zz_ui::roles::PANE_CHIP);
     let badge = if matches!(mode, VimMode::Normal) {
         badge
     } else {
