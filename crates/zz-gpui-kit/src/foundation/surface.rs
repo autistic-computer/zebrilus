@@ -537,7 +537,8 @@ const BAR_WIDTH: Pixels = px(3.0);
 const CONTROL_EDGE_ALPHA: f32 = 0.1;
 const DISABLED: f32 = 0.5;
 /// The marker ring of the role a theme editor inspects: a magenta no theme
-/// uses, so it reads on every surface.
+/// uses, so it reads on every surface. It runs just inside the edge, so a
+/// translucent fill never shows it through.
 const INSPECT_COLOR: Hsla = Hsla {
     h: 0.833,
     s: 1.0,
@@ -840,7 +841,7 @@ impl Theme {
                 offset: point(px(0.0), px(0.0)),
                 blur_radius: px(0.0),
                 spread_radius: RING_WIDTH,
-                inset: false,
+                inset: true,
             });
         }
         let glass = glass.map(|material| {

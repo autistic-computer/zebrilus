@@ -268,6 +268,11 @@ The creator becomes four steps over the same live preview:
 Starter presets: Default, Tahoe (glass chrome, flat content), Linear (solid, hairlines, no
 shadows), Flat.
 
+Built 2026-10-13 in the storybook (`clients/storybook`): the four steps, the role tree with each
+prop's inherited value and its source, sparse role patches, and the inspect ring when a role is
+picked or pointed at. Every built-in starts the creator with its materials and roles. Clicking the
+preview to open a role is not built yet.
+
 ## Settings
 
 Advanced > Look keeps only materials (radius, outline width and strength, shadow strength, glass,

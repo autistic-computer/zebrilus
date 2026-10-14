@@ -5,7 +5,7 @@ mod dialogs;
 mod menus;
 pub(super) mod palette;
 mod path_picker;
-mod phone;
+pub(super) mod phone;
 mod terminal;
 mod tmux_styles;
 pub(super) mod which_key;

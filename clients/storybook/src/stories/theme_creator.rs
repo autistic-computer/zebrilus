@@ -1,15 +1,25 @@
+use std::sync::Arc;
+
 use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, IntoElement, Keystroke,
-    ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px, size,
+    ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px, relative,
+    size,
 };
+use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
+    agent::agent_jump_to_bottom_button,
     badge::Badge,
+    browser::{browser_recent_row, browser_start_surface},
     button::{Button, ButtonVariants as _},
     command::{
         CommandPaletteSurface, PaletteHint, PalettePill, PaletteRow, PaletteStatus,
         command_palette_entry, command_palette_row_height, command_palette_section,
         unified_command_palette_input,
+    },
+    compact::{
+        WhichKeyList, compact_bar, compact_bar_button, compact_bar_pill, compact_pane_header,
+        page_dots,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -18,7 +28,12 @@ use zz_ui::{
     menu::PopupMenu,
     notification::Notification,
     overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
-    pane::{PaneSplitAxis, pane_split_surface, pane_surface},
+    pane::{
+        FloatingSurface, PaneOverlayCorner, PaneSplitAxis, TERMINAL_HEADER_HEIGHT, pane_drag_chip,
+        pane_drop_preview, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
+        pane_split_surface, pane_status_badge, pane_surface, pane_sync_badge, pane_waiting_state,
+        terminal_mode_indicator,
+    },
     select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsStack,
@@ -28,6 +43,7 @@ use zz_ui::{
     shell::{app_shell_surface, app_workspace_surface},
     slider::DiscreteSlider,
     switch::Switch,
+    text::{TextView, TextViewStyle},
     tooltip::Tooltip,
     v_flex,
     which_key::WhichKeyView,
@@ -38,10 +54,13 @@ use super::{
         cards::{COMMAND, permission},
         pane::embedded_pane,
     },
-    console::which_key::{prefix_header, prefix_rows},
+    console::{
+        phone::{binding_rows, close, groups, key_row, tool_keys},
+        which_key::{prefix_header, prefix_rows},
+    },
     kit::menus::{SplitRight, bind_keys, pane_menu, view_menu},
     workspace::{
-        fixtures::{LOGS, SERVER, TerminalPane, chrome, gap},
+        fixtures::{BUILD, LOGS, SERVER, TerminalPane, chrome, gap, terminal_body},
         flat_sidebar::Live,
         shell::{Shell, with_sidebar},
         status_bar::{Bar, titlebar},
@@ -74,6 +93,26 @@ const MEDIUM: f32 = 680.0;
 const GAP: f32 = 16.0;
 const PLATE_PADDING: f32 = 20.0;
 const WHICH_KEY_HEIGHT: f32 = 300.0;
+const PANES_HEIGHT: f32 = 250.0;
+const PHONE_WIDTH: f32 = 390.0;
+const PHONE_LINES: [&str; 3] = [
+    "~/dev/zz main* > cargo test -p zz-ui",
+    "test result: ok. 214 passed; 0 failed",
+    "~/dev/zz main* > ",
+];
+const READING: &str = "Pinned tabs keep a `28px` floor, and the rest share what is left:\n\n\
+| Tabs | Pinned | Unpinned |\n\
+| ---: | ---: | ---: |\n\
+| 10 | 28px | 96px |\n\
+| 30 | 28px | 31px |\n\n\
+```rust\n\
+let floor = px(28.0) * pinned;\n\
+```";
+const RECENT: [&str; 3] = [
+    "zed.dev/docs/key-bindings",
+    "github.com/demfabris/zz/pull/412",
+    "localhost:4321",
+];
 
 pub struct Showcase {
     shell: Shell,
@@ -89,6 +128,7 @@ pub struct Showcase {
     search: Entity<InputState>,
     toasts: [Entity<Notification>; 2],
     tooltip: Entity<Tooltip>,
+    keys: zz_ui::compact::ToolKeys,
     restore: bool,
     animations: bool,
     sound: bool,
@@ -134,6 +174,7 @@ impl Showcase {
             ),
         ];
         let tooltip = cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None));
+        let keys = tool_keys(cx);
         cx.new(|_| Self {
             shell,
             flat,
@@ -148,6 +189,7 @@ impl Showcase {
             search,
             toasts,
             tooltip,
+            keys,
             restore: true,
             animations: true,
             sound: false,
@@ -254,6 +296,238 @@ impl Showcase {
                 },
                 cx,
             ))
+            .into_any_element()
+    }
+
+    fn panes(&self, cx: &App) -> AnyElement {
+        let gaps = crate::pane().gaps;
+        let tags = TerminalPane::new(4, "cargo test", BUILD)
+            .active(true)
+            .gaps(gaps)
+            .render(
+                "showcase-tags",
+                vec![
+                    pane_overlay_stack(
+                        PaneOverlayCorner::TopRight,
+                        vec![
+                            terminal_mode_indicator(Some("Copy mode"), "12 / 340", cx)
+                                .into_any_element(),
+                            pane_sync_badge(cx).into_any_element(),
+                        ],
+                    )
+                    .top(px(TERMINAL_HEADER_HEIGHT + 8.0))
+                    .into_any_element(),
+                    pane_overlay_stack(
+                        PaneOverlayCorner::BottomRight,
+                        vec![
+                            pane_waiting_state("Waiting for %3", cx).into_any_element(),
+                            pane_status_badge(IconName::CircleX, "Dead · exit 1", cx)
+                                .into_any_element(),
+                        ],
+                    )
+                    .into_any_element(),
+                ],
+                cx,
+            );
+        let indicators = DisplayPanesState {
+            window: WindowId(1),
+            duration_ms: 1000,
+            indicators: vec![PaneIndicator {
+                pane: PaneId(5),
+                index: 1,
+                select_key: b'1',
+                flags: 0,
+                label: String::new(),
+            }],
+            colour: Some(TmuxColour::Theme(7)),
+            active_colour: Some(TmuxColour::Theme(6)),
+        };
+        let pane = crate::pane();
+        let logs = TerminalPane::new(5, "tail -f daemon.log", LOGS)
+            .gaps(gaps)
+            .render(
+                "showcase-drop",
+                vec![
+                    pane_indicator_overlay(pane_indicator(
+                        "showcase-indicator",
+                        &indicators,
+                        &indicators.indicators[0],
+                        cx,
+                    ))
+                    .into_any_element(),
+                    pane_drop_preview(px(pane.radius), px(pane.border.max(1.0)), cx)
+                        .top(px(TERMINAL_HEADER_HEIGHT + 6.0))
+                        .bottom(px(6.0))
+                        .right(px(6.0))
+                        .w(relative(0.4))
+                        .into_any_element(),
+                    div()
+                        .absolute()
+                        .left(px(16.0))
+                        .bottom(px(16.0))
+                        .child(pane_drag_chip("%4", "cargo test", cx))
+                        .into_any_element(),
+                ],
+                cx,
+            );
+        let popup = TerminalPane::new(6, "just site", SERVER).gaps(gaps).render(
+            "showcase-popup",
+            vec![
+                div()
+                    .absolute()
+                    .top(px(TERMINAL_HEADER_HEIGHT + 16.0))
+                    .left(px(16.0))
+                    .right(px(16.0))
+                    .bottom(px(16.0))
+                    .child(
+                        FloatingSurface::new(
+                            "showcase-floating",
+                            terminal_body(SERVER, false, cx).bg(zz_gpui::transparent_black()),
+                            cx,
+                        )
+                        .title("display-popup · lazygit")
+                        .content_inset(px(8.0), px(14.0)),
+                    )
+                    .into_any_element(),
+            ],
+            cx,
+        );
+        let right = pane_split_surface(
+            "showcase-panes-right",
+            PaneSplitAxis::Horizontal,
+            0.5,
+            false,
+            gaps,
+            gap(gaps),
+            None,
+            None,
+            logs,
+            popup,
+            div().absolute(),
+            cx,
+        );
+        let layout = pane_split_surface(
+            "showcase-panes-split",
+            PaneSplitAxis::Horizontal,
+            0.34,
+            false,
+            gaps,
+            gap(gaps),
+            None,
+            None,
+            tags,
+            right,
+            div().absolute(),
+            cx,
+        );
+        div()
+            .id("showcase-panes")
+            .w_full()
+            .h(px(PANES_HEIGHT))
+            .overflow_hidden()
+            .rounded(cx.theme().radius)
+            .framed(cx)
+            .bg(cx.theme().background)
+            .p(gap(gaps))
+            .child(layout)
+            .into_any_element()
+    }
+
+    fn phone(&self, cx: &App) -> AnyElement {
+        let theme = cx.theme();
+        let pill = compact_bar_pill(
+            "showcase-phone-pill",
+            IconName::SquareTerminal,
+            "cargo test",
+            "zz · editor",
+            false,
+            page_dots(&groups(), cx),
+            cx,
+        );
+        let keyboard = compact_bar_button("showcase-phone-keyboard", IconName::Keyboard);
+        let screen = v_flex()
+            .id("showcase-phone-screen")
+            .w_full()
+            .max_w(px(PHONE_WIDTH))
+            .overflow_hidden()
+            .rounded(theme.radius)
+            .framed(cx)
+            .bg(theme.background)
+            .child(compact_pane_header(
+                IconName::SquareTerminal,
+                "cargo test",
+                [close("showcase-phone-close", cx)],
+                cx,
+            ))
+            .child(
+                v_flex()
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .font_family(theme.mono_font_family.clone())
+                    .text_size(px(12.0))
+                    .line_height(px(17.0))
+                    .children(PHONE_LINES.map(|line| div().h(px(17.0)).child(line))),
+            )
+            .child(div().id("showcase-phone-keys").child(key_row(&self.keys)))
+            .child(
+                div()
+                    .rule_top(cx)
+                    .child(compact_bar(pill, keyboard, false, cx)),
+            );
+        let rows: Arc<[_]> = binding_rows().iter().take(4).cloned().collect();
+        let sheet = div()
+            .id("showcase-phone-sheet")
+            .w_full()
+            .max_w(px(PHONE_WIDTH))
+            .overflow_hidden()
+            .rounded(theme.radius)
+            .framed(cx)
+            .bg(theme.background)
+            .child(WhichKeyList::new(rows));
+        card("showcase-phone", cx)
+            .child(heading(
+                "Phone",
+                "The bar, its pill, the key row and a touch list.",
+                cx,
+            ))
+            .child(screen)
+            .child(sheet)
+            .into_any_element()
+    }
+
+    fn reading(&self, cx: &App) -> AnyElement {
+        let style = TextViewStyle {
+            highlight_theme: Arc::clone(&cx.theme().highlight_theme),
+            is_dark: cx.theme().is_dark(),
+            ..TextViewStyle::default()
+        };
+        card("showcase-reading", cx)
+            .child(heading(
+                "Reading",
+                "Code and a table in an agent's answer.",
+                cx,
+            ))
+            .child(TextView::markdown("showcase-markdown", READING).style(style))
+            .into_any_element()
+    }
+
+    fn start_page(&self, cx: &App) -> AnyElement {
+        let recents = v_flex().w_full().max_w(px(360.0)).gap(px(4.0)).children(
+            RECENT
+                .into_iter()
+                .enumerate()
+                .map(|(index, url)| browser_recent_row(("showcase-recent", index), url, None, cx)),
+        );
+        div()
+            .id("showcase-start-page")
+            .relative()
+            .w_full()
+            .h(px(220.0))
+            .overflow_hidden()
+            .rounded(cx.theme().radius)
+            .framed(cx)
+            .bg(cx.theme().background.opaque())
+            .child(browser_start_surface(recents))
             .into_any_element()
     }
 
@@ -551,6 +825,17 @@ impl Showcase {
                 true,
                 cx,
             ))
+            .child(
+                h_flex()
+                    .gap_2()
+                    .child(agent_jump_to_bottom_button("showcase-jump", cx))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().foreground.muted())
+                            .child("Jump to latest"),
+                    ),
+            )
             .into_any_element()
     }
 }
@@ -584,9 +869,15 @@ impl Render for Showcase {
             cx,
         );
         let tiles = [
-            vec![self.connect(cx), self.preferences(cx), view],
-            vec![menus, self.buttons(cx), toasts],
-            vec![palette, dialog, self.agent(cx), self.settings(cx)],
+            vec![self.connect(cx), self.preferences(cx), view, self.phone(cx)],
+            vec![menus, self.buttons(cx), toasts, self.reading(cx)],
+            vec![
+                palette,
+                dialog,
+                self.agent(cx),
+                self.settings(cx),
+                self.start_page(cx),
+            ],
         ];
         let columns = if width >= WIDE {
             3
@@ -610,6 +901,7 @@ impl Render for Showcase {
             .child(self.hero(cx))
             .child(self.flat_app(cx))
             .child(self.status_bar(cx))
+            .child(self.panes(cx))
             .child(
                 h_flex().w_full().items_start().gap(px(GAP)).children(
                     stacks

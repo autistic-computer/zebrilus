@@ -18,7 +18,17 @@ const GLASS_KNOBS = [
     "glass-edge-width",
     "glass-noise",
 ];
-const MATERIAL_KNOBS = ["radius", "outline", "row-inset", "shadow-strength", "primary", "font"];
+const SHADOW_KNOBS = [
+    "contact-y",
+    "contact-blur",
+    "contact-spread",
+    "contact-strength",
+    "float-y",
+    "float-blur",
+    "float-spread",
+    "float-strength",
+];
+const MATERIAL_KNOBS = ["name", "radius", "outline", "row-inset", ...SHADOW_KNOBS, "primary", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],
@@ -31,7 +41,20 @@ const COLORS = [
 ];
 const MODES = ["light", "dark"];
 const COLOR_KNOBS = MODES.flatMap((mode) => COLORS.map(([name]) => `${mode}-${name}`));
-const SHUFFLED = ["radius", "outline", "row-inset", "shadow-strength"];
+const SHUFFLED = ["radius", "outline", "row-inset", "contact-strength", "float-y", "float-blur", "float-strength"];
+const STEPS = ["colors", "materials", "roles", "export"];
+const HIGHLIGHTS = ["none", "tint", "lift", "accent", "ring", "bar"];
+const PROPS = [
+    ["fill", "Fill", ["none", "tint", "solid", "glass"]],
+    ["outline", "Outline", [true, false]],
+    ["shadow", "Shadow", ["none", "contact", "float"]],
+    ["shape", "Shape", ["square", "round", "pill"]],
+    ["hover", "Hover", HIGHLIGHTS],
+    ["selected", "Selected", HIGHLIGHTS],
+];
+const ORIGINS = { kind: "kind built-in", "theme-kind": "theme kind patch", role: "role built-in" };
+const HASH_LIMIT = 2000;
+const STORED_ROLES = "zz-storybook-roles";
 const KNOBS = [
     "theme",
     "contrast",
@@ -77,6 +100,13 @@ let stories = [];
 let glassPresets = {};
 let themes = {};
 let current = null;
+let roles = {};
+let roleTree = [];
+let step = "colors";
+let selectedRole = null;
+let hoveredRole = null;
+let inspected = "";
+const openRegions = new Set();
 const timeline = { past: [], future: [], last: null };
 
 function parseHash() {
@@ -127,12 +157,80 @@ function isDefault(name) {
     return Math.abs(Number(value) - Number(fallback)) < step / 2;
 }
 
-function knobQuery() {
+function propLabel(value) {
+    if (value === true) return "on";
+    if (value === false) return "off";
+    return String(value);
+}
+
+function sortRoles(map) {
+    const sorted = {};
+    for (const id of Object.keys(map ?? {}).sort()) {
+        const patch = {};
+        for (const [prop] of PROPS) {
+            if (map[id]?.[prop] !== undefined) patch[prop] = map[id][prop];
+        }
+        if (Object.keys(patch).length > 0) sorted[id] = patch;
+    }
+    return sorted;
+}
+
+function presetRoles(theme = knobValue("interface-theme")) {
+    return sortRoles(themes[theme]?.roles);
+}
+
+function themeParams() {
     const params = new URLSearchParams();
     for (const name of KNOBS) {
         if (!isDefault(name)) params.set(name, knobValue(name));
     }
+    const encoded = JSON.stringify(roles);
+    if (encoded !== JSON.stringify(presetRoles())) params.set("roles", encoded);
+    return params;
+}
+
+function shownInspect() {
+    return step === "roles" ? (hoveredRole ?? selectedRole ?? "") : "";
+}
+
+function knobQuery() {
+    const params = themeParams();
+    const inspect = shownInspect();
+    if (inspect) params.set("inspect", inspect);
     return params.toString();
+}
+
+function hashQuery() {
+    const params = themeParams();
+    if (params.toString().length > HASH_LIMIT) params.delete("roles");
+    if (step !== STEPS[0]) params.set("step", step);
+    if (step === "roles" && selectedRole) params.set("inspect", selectedRole);
+    return params.toString();
+}
+
+function storeRoles() {
+    try {
+        localStorage.setItem(STORED_ROLES, JSON.stringify({ theme: knobValue("interface-theme"), roles }));
+    } catch {}
+}
+
+function validRoles(map) {
+    try {
+        if (typeof map !== "object" || map === null) return null;
+        zz.import_theme(JSON.stringify({ roles: map }));
+        return sortRoles(map);
+    } catch {
+        return null;
+    }
+}
+
+function storedRoles(theme) {
+    try {
+        const stored = JSON.parse(localStorage.getItem(STORED_ROLES) ?? "null");
+        return stored?.theme === theme ? validRoles(stored.roles) : null;
+    } catch {
+        return null;
+    }
 }
 
 function resetGlassSliders() {
@@ -146,6 +244,7 @@ function resetThemeKnobs() {
     for (const name of [...MATERIAL_KNOBS, ...COLOR_KNOBS]) setKnobValue(name, knobDefault(name));
     setKnobValue("glass", "theme");
     resetGlassSliders();
+    roles = presetRoles();
 }
 
 function shownMode() {
@@ -155,7 +254,7 @@ function shownMode() {
 }
 
 function writeHash(story, section) {
-    const query = knobQuery();
+    const query = hashQuery();
     const path = section ? `${story}/${section}` : story;
     const hash = `#/${path}${query ? `?${query}` : ""}`;
     if (location.hash !== hash) history.replaceState(null, "", hash);
@@ -270,13 +369,205 @@ function applyKnobs() {
     }
     paintSliders();
     zz.set_knobs(knobQuery());
+    inspected = shownInspect();
+    storeRoles();
     paintChrome();
+    paintStep();
     const { story, section } = parseHash();
     writeHash(story || current, section);
 }
 
+function rolesChanged() {
+    return JSON.stringify(roleTree.map((region) => region.roles.map((role) => [role.patch, role.inherited])));
+}
+
+function paintStep() {
+    for (const tab of form.querySelectorAll("[role=tab]")) {
+        const active = tab.dataset.step === step;
+        tab.setAttribute("aria-selected", String(active));
+        tab.tabIndex = active ? 0 : -1;
+    }
+    for (const panel of form.querySelectorAll(".step")) panel.hidden = panel.dataset.step !== step;
+    if (step === "roles") {
+        const before = rolesChanged();
+        roleTree = JSON.parse(zz.roles());
+        if (before !== rolesChanged() || !document.getElementById("role-tree").hasChildNodes()) renderRoles();
+    }
+    if (step === "export") document.getElementById("theme-json").textContent = zz.theme_file();
+}
+
+function showStep(name) {
+    if (!STEPS.includes(name) || name === step) return;
+    step = name;
+    hoveredRole = null;
+    inspect();
+    paintStep();
+    const { story, section } = parseHash();
+    writeHash(story || current, section);
+}
+
+function inspect() {
+    const id = shownInspect();
+    if (id === inspected) return;
+    inspected = id;
+    zz.inspect(id);
+}
+
+function findRole(id) {
+    for (const region of roleTree) {
+        const role = region.roles.find((candidate) => candidate.id === id);
+        if (role) return role;
+    }
+    return null;
+}
+
+function setRoleProp(id, prop, value) {
+    const role = findRole(id);
+    if (!role || !PROPS.some(([name]) => name === prop)) throw new Error(`no role ${id} or prop ${prop}`);
+    const patch = { ...(roles[id] ?? {}) };
+    if (value === "inherit" || value === null || value === undefined || value === role.inherited[prop].value) {
+        delete patch[prop];
+    } else {
+        patch[prop] = value;
+    }
+    roles = sortRoles({ ...roles, [id]: patch });
+}
+
+function selectRole(id) {
+    selectedRole = id && findRole(id) ? id : null;
+    if (selectedRole) {
+        const region = roleTree.find((candidate) => candidate.roles.some((role) => role.id === selectedRole));
+        if (region) openRegions.add(region.title);
+    }
+    renderRoles();
+    inspect();
+    const { story, section } = parseHash();
+    writeHash(story || current, section);
+}
+
+function matchesFilter(role, query) {
+    if (!query) return true;
+    return [role.id, role.label, role.about, role.kind].some((text) => text.toLowerCase().includes(query));
+}
+
+function roleSummary(role) {
+    const style = role.style;
+    const parts = [style.fill === "none" ? "no fill" : style.fill];
+    if (style.outline) parts.push("outline");
+    if (style.shadow !== "none") parts.push(style.shadow);
+    parts.push(style.shape);
+    return parts.join(" · ");
+}
+
+function propControl(role, [prop, label, values]) {
+    const set = role.patch[prop];
+    const inherited = role.inherited[prop];
+    const name = `role-${prop}`;
+    const option = (value, text, checked, extra = "") =>
+        element(
+            "label",
+            { class: extra },
+            element("input", Object.assign(
+                { type: "radio", name, value: propLabel(value), "data-role": role.id, "data-prop": prop },
+                checked ? { checked: "" } : {},
+            )),
+            element("span", { text }),
+        );
+    const segments = element(
+        "div",
+        { class: "segmented compact", role: "radiogroup", "aria-label": label },
+        option("inherit", "inherit", set === undefined),
+        ...values.map((value) =>
+            option(
+                value,
+                propLabel(value),
+                set === value,
+                set === undefined && value === inherited.value ? "inherited" : "",
+            ),
+        ),
+    );
+    return element(
+        "div",
+        { class: "prop" },
+        element(
+            "div",
+            { class: "prop-head" },
+            element("span", { text: label }),
+            element(
+                "small",
+                {},
+                set === undefined ? "inherits " : "set here · inherits ",
+                element("b", { text: propLabel(inherited.value) }),
+                ` from ${ORIGINS[inherited.from]}`,
+            ),
+        ),
+        segments,
+    );
+}
+
+function renderRoles() {
+    const tree = document.getElementById("role-tree");
+    const query = document.getElementById("role-filter").value.trim().toLowerCase();
+    const focused = document.activeElement?.closest?.("#role-tree") ? document.activeElement : null;
+    const focus = focused && { name: focused.name, value: focused.value, role: focused.dataset.roleHead };
+    tree.replaceChildren(
+        ...roleTree.flatMap((region) => {
+            const members = region.roles.filter((role) => matchesFilter(role, query));
+            if (members.length === 0) return [];
+            const edited = members.filter((role) => Object.keys(role.patch).length > 0).length;
+            const details = element(
+                "details",
+                { class: "region", "data-region": region.title },
+                element(
+                    "summary",
+                    {},
+                    element("span", { text: region.title }),
+                    element("small", { text: edited ? `${edited} set · ${members.length}` : String(members.length) }),
+                ),
+                ...members.map((role) => {
+                    const selected = role.id === selectedRole;
+                    const patched = Object.keys(role.patch).length > 0;
+                    const head = element(
+                        "button",
+                        {
+                            type: "button",
+                            class: "role-head",
+                            "data-role-head": role.id,
+                            "aria-expanded": String(selected),
+                            title: role.about,
+                        },
+                        element("span", { class: "role-label", text: role.label }),
+                        element("span", { class: patched ? "role-dot" : "role-dot hidden", "aria-hidden": "true" }),
+                        element("small", { class: "role-kind", text: role.id === role.kind ? "kind" : role.kind }),
+                        element("small", { class: "role-summary", text: roleSummary(role) }),
+                    );
+                    const body = selected
+                        ? [
+                              element(
+                                  "div",
+                                  { class: "role-body" },
+                                  element("p", {}, element("code", { text: role.id }), ` ${role.about}.`),
+                                  ...PROPS.map((spec) => propControl(role, spec)),
+                              ),
+                          ]
+                        : [];
+                    return element("div", { class: selected ? "role selected" : "role", "data-role": role.id }, head, ...body);
+                }),
+            );
+            details.open = query !== "" || openRegions.has(region.title);
+            return [details];
+        }),
+    );
+    if (focus) {
+        const selector = focus.role
+            ? `[data-role-head="${CSS.escape(focus.role)}"]`
+            : `input[name="${CSS.escape(focus.name)}"][value="${CSS.escape(focus.value)}"]`;
+        tree.querySelector(selector)?.focus();
+    }
+}
+
 function remember() {
-    const query = knobQuery();
+    const query = themeParams().toString();
     if (query === timeline.last) return;
     if (timeline.last !== null) timeline.past.push(timeline.last);
     timeline.past = timeline.past.slice(-100);
@@ -289,7 +580,7 @@ function travel(from, to) {
     if (from.length === 0) return;
     to.push(timeline.last);
     timeline.last = from.pop();
-    loadKnobs(new URLSearchParams(timeline.last));
+    loadKnobs(new URLSearchParams(timeline.last), false);
     applyKnobs();
     paintHistory();
 }
@@ -309,7 +600,7 @@ function paintChrome() {
     document.documentElement.dataset.mode = theme.mode;
 }
 
-function loadKnobs(params) {
+function loadKnobs(params, stored) {
     const glass = params.get("glass") ?? DEFAULTS.glass;
     const theme = params.get("interface-theme") ?? DEFAULTS["interface-theme"];
     setKnobValue("interface-theme", theme);
@@ -317,6 +608,16 @@ function loadKnobs(params) {
         const value = params.get(name) ?? knobDefault(name, glass, theme);
         if (value !== undefined) setKnobValue(name, value);
     }
+    let loaded = null;
+    try {
+        loaded = params.has("roles") ? validRoles(JSON.parse(params.get("roles"))) : null;
+    } catch {}
+    roles = loaded ?? (stored ? storedRoles(theme) : null) ?? presetRoles(theme);
+}
+
+function loadView(params) {
+    if (STEPS.includes(params.get("step"))) step = params.get("step");
+    if (params.has("inspect")) selectedRole = findRole(params.get("inspect")) ? params.get("inspect") : null;
 }
 
 function renderThemes() {
@@ -383,6 +684,7 @@ function importTheme(json) {
         setKnobValue("glass", knobs.glass);
         resetGlassSliders();
     }
+    roles = sortRoles(knobs.roles);
     for (const [name, value] of Object.entries(knobs)) {
         if (name === "font" && value) addFontOption(value);
         if (form.elements[name]) setKnobValue(name, String(value));
@@ -444,17 +746,90 @@ renderThemes();
 const initial = parseHash();
 const font = initial.params.get("font");
 if (font) addFontOption(font);
-loadKnobs(initial.params);
+loadKnobs(initial.params, true);
+roleTree = JSON.parse(zz.roles());
+loadView(initial.params);
+if (selectedRole) {
+    const region = roleTree.find((candidate) => candidate.roles.some((role) => role.id === selectedRole));
+    if (region) openRegions.add(region.title);
+} else {
+    openRegions.add(roleTree[0]?.title);
+}
 applyKnobs();
 remember();
 show(initial.story, initial.section);
+revealSelectedRole();
+
+function revealSelectedRole() {
+    const aside = document.getElementById("knobs");
+    const target = document.querySelector("#role-tree .role.selected");
+    if (!target) return;
+    const offset = target.getBoundingClientRect().top - aside.getBoundingClientRect().top;
+    aside.scrollTop += offset - 120;
+}
 
 form.addEventListener("input", (event) => {
-    if (event.target.name === "interface-theme") resetThemeKnobs();
-    else if (event.target.name === "glass") resetGlassSliders();
+    const target = event.target;
+    if (target.id === "role-filter") {
+        renderRoles();
+        return;
+    }
+    if (target.dataset.prop) {
+        const prop = PROPS.find(([name]) => name === target.dataset.prop);
+        const value = target.value === "inherit" ? "inherit" : prop[2].find((each) => propLabel(each) === target.value);
+        setRoleProp(target.dataset.role, target.dataset.prop, value);
+        applyKnobs();
+        remember();
+        return;
+    }
+    if (target.name === "interface-theme") resetThemeKnobs();
+    else if (target.name === "glass") resetGlassSliders();
     applyKnobs();
 });
-form.addEventListener("change", remember);
+form.addEventListener("change", (event) => {
+    if (!event.target.dataset.prop && event.target.id !== "role-filter") remember();
+});
+form.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-step], [data-goto]");
+    if (tab && !tab.classList.contains("step")) {
+        showStep(tab.dataset.goto ?? tab.dataset.step);
+        if (tab.dataset.goto) document.getElementById("knobs").scrollTop = 0;
+        return;
+    }
+    const head = event.target.closest("[data-role-head]");
+    if (head) selectRole(head.dataset.roleHead === selectedRole ? null : head.dataset.roleHead);
+});
+form.addEventListener("keydown", (event) => {
+    const tab = event.target.closest("[role=tab]");
+    if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const index = STEPS.indexOf(step);
+    const next = {
+        ArrowLeft: Math.max(0, index - 1),
+        ArrowRight: Math.min(STEPS.length - 1, index + 1),
+        Home: 0,
+        End: STEPS.length - 1,
+    }[event.key];
+    showStep(STEPS[next]);
+    form.querySelector(`[role=tab][data-step="${STEPS[next]}"]`)?.focus();
+});
+const roleTreeNode = document.getElementById("role-tree");
+roleTreeNode.addEventListener("toggle", (event) => {
+    const region = event.target.dataset?.region;
+    if (!region || document.getElementById("role-filter").value.trim()) return;
+    if (event.target.open) openRegions.add(region);
+    else openRegions.delete(region);
+}, true);
+roleTreeNode.addEventListener("pointerover", (event) => {
+    const role = event.target.closest("[data-role]")?.dataset.role ?? null;
+    if (role === hoveredRole) return;
+    hoveredRole = role;
+    inspect();
+});
+roleTreeNode.addEventListener("pointerleave", () => {
+    hoveredRole = null;
+    inspect();
+});
 form.addEventListener("reset", () =>
     setTimeout(() => {
         loadKnobs(new URLSearchParams());
@@ -507,7 +882,8 @@ document.getElementById("font-file").addEventListener("change", async (event) =>
 window.addEventListener("hashchange", () => {
     const { story, section, query, params } = parseHash();
     if (query) {
-        loadKnobs(params);
+        loadKnobs(params, false);
+        loadView(params);
         applyKnobs();
         remember();
     }
@@ -534,11 +910,33 @@ window.storybook = {
         for (const [name, value] of Object.entries(knobs)) {
             if (form.elements[name]) setKnobValue(name, String(value));
         }
+        if ("roles" in knobs) {
+            const map = typeof knobs.roles === "string" ? JSON.parse(knobs.roles) : knobs.roles;
+            roles = validRoles(map) ?? roles;
+        }
         applyKnobs();
         remember();
         return globalThis.zzGpui?.idle();
     },
     knobs: () => Object.fromEntries(KNOBS.map((name) => [name, knobValue(name)])),
+    step: (name) => {
+        if (name !== undefined) showStep(name);
+        return step;
+    },
+    roles: () => (roleTree = JSON.parse(zz.roles())),
+    setRole: (id, prop, value) => {
+        roleTree = JSON.parse(zz.roles());
+        setRoleProp(id, prop, value);
+        applyKnobs();
+        remember();
+        return globalThis.zzGpui?.idle();
+    },
+    inspect: (id) => {
+        showStep("roles");
+        roleTree = JSON.parse(zz.roles());
+        selectRole(id || null);
+        return globalThis.zzGpui?.idle();
+    },
     theme: () => JSON.parse(zz.theme_file()),
     importTheme: (theme) => {
         importTheme(typeof theme === "string" ? theme : JSON.stringify(theme));

@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
+use zz_gpui::{App, GlassMaterial, Hsla, SharedString, WindowAppearance, px};
 use zz_ui::{
-    CORNER_SMOOTHING, Emphasis, PrimaryStyle, StylePatch, Theme, ThemeColor, ThemeMode, Tone,
-    UiZoom,
+    CORNER_SMOOTHING, Emphasis, PrimaryStyle, Style, StylePatch, SurfaceRole, Theme, ThemeColor,
+    ThemeMode, Tone, UiZoom,
     interface_theme::{self, InterfaceTheme, Materials, ThemeColors},
 };
 
@@ -18,11 +18,14 @@ pub struct Knobs {
     pub theme: Option<ThemeMode>,
     /// The built-in theme the knobs start from.
     pub interface: &'static str,
+    /// What the theme file calls the theme.
+    pub name: String,
     pub materials: Materials,
-    /// Scales both of the theme's shadows: 1 keeps them, 0 turns them off.
-    pub shadow_strength: f32,
-    /// The roles of the theme the knobs start from, which no knob changes.
+    /// How the theme changes each kind and role: the start theme's until
+    /// the `roles` knob names them.
     pub roles: BTreeMap<String, StylePatch>,
+    /// The role whose surfaces draw the inspect ring.
+    pub inspect: Option<SharedString>,
     pub light: ThemeColors,
     pub dark: ThemeColors,
     pub contrast: f32,
@@ -67,11 +70,39 @@ pub enum Backdrop {
 
 type Knob<T> = (&'static str, fn(&T) -> f32, fn(&mut T, f32));
 
-/// The lengths of [`Materials`], by knob name.
+/// The lengths of [`Materials`] and its two shadows, by knob name.
 pub const MATERIAL_KNOBS: &[Knob<Materials>] = &[
     ("radius", |m| m.radius, |m, v| m.radius = v),
     ("outline", |m| m.outline, |m, v| m.outline = v),
     ("row-inset", |m| m.row_inset, |m, v| m.row_inset = v),
+    ("contact-y", |m| m.contact.y, |m, v| m.contact.y = v),
+    (
+        "contact-blur",
+        |m| m.contact.blur,
+        |m, v| m.contact.blur = v,
+    ),
+    (
+        "contact-spread",
+        |m| m.contact.spread,
+        |m, v| m.contact.spread = v,
+    ),
+    (
+        "contact-strength",
+        |m| m.contact.strength,
+        |m, v| m.contact.strength = v,
+    ),
+    ("float-y", |m| m.float.y, |m, v| m.float.y = v),
+    ("float-blur", |m| m.float.blur, |m, v| m.float.blur = v),
+    (
+        "float-spread",
+        |m| m.float.spread,
+        |m, v| m.float.spread = v,
+    ),
+    (
+        "float-strength",
+        |m| m.float.strength,
+        |m, v| m.float.strength = v,
+    ),
 ];
 
 type ColorKnob = (
@@ -165,9 +196,10 @@ impl Knobs {
         Self {
             theme: None,
             interface: id,
+            name: theme.name.clone(),
             materials: theme.materials.clone(),
-            shadow_strength: 1.0,
             roles: theme.roles.clone(),
+            inspect: None,
             light: theme.light.clone(),
             dark: theme.dark.clone(),
             contrast: 1.0,
@@ -230,7 +262,16 @@ impl Knobs {
                         }
                     }
                 }
-                "shadow-strength" => knobs.shadow_strength = number(key, value)?,
+                "name" => knobs.name = decode(value),
+                "roles" => knobs.roles = parse_roles(&decode(value))?,
+                "inspect" => {
+                    let id = decode(value);
+                    knobs.inspect = match id.as_str() {
+                        "" => None,
+                        id if zz_ui::roles::find(id).is_some() => Some(id.to_owned().into()),
+                        id => return Err(format!("inspect names no role: {id}")),
+                    };
+                }
                 "primary" => {
                     knobs.materials.primary = match value {
                         "foreground" => PrimaryStyle::Foreground,
@@ -301,21 +342,11 @@ impl Knobs {
         Ok(knobs)
     }
 
-    /// The materials the knobs describe, with the shadow strength applied.
-    pub fn materials(&self) -> Materials {
-        let mut materials = self.materials.clone();
-        materials.contact.strength *= self.shadow_strength;
-        materials.float.strength *= self.shadow_strength;
-        materials
-    }
-
     /// The theme the knobs describe, as a theme file would hold it.
     pub fn interface_theme(&self) -> InterfaceTheme {
         InterfaceTheme {
-            name: interface_theme::builtin_theme(self.interface)
-                .map(|theme| theme.name.clone())
-                .unwrap_or_default(),
-            materials: self.materials(),
+            name: self.name.clone(),
+            materials: self.materials.clone(),
             roles: self.roles.clone(),
             light: self.light.clone(),
             dark: self.dark.clone(),
@@ -338,6 +369,7 @@ impl Knobs {
         theme.pane_glow_strength = self.pane.glow;
         theme.pane_frames = self.pane.gaps;
         theme.pane_edge_width = px(self.pane.border);
+        theme.inspect.clone_from(&self.inspect);
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();
@@ -355,14 +387,13 @@ impl Knobs {
 }
 
 /// The knob values that reproduce `materials`, by knob name, for the page to
-/// load: every length, the shadow strength, the primary style, the font and
-/// the glass. The shadow strength is 1: the materials' shadows as they are.
+/// load: every length, both shadows, the primary style, the font and the
+/// glass.
 pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_json::Value> {
     let mut knobs = MATERIAL_KNOBS
         .iter()
         .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(materials))))
         .collect::<serde_json::Map<_, _>>();
-    knobs.insert("shadow-strength".to_owned(), serde_json::json!(1.0));
     knobs.insert("primary".to_owned(), serde_json::json!(materials.primary));
     knobs.insert(
         "font".to_owned(),
@@ -382,11 +413,14 @@ pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_js
     knobs
 }
 
-/// The knob values that reproduce `theme`: its materials and both modes'
-/// colors, each color as the `#rrggbb` a color input takes. A color the
-/// theme leaves to the palette comes out as what the palette resolves it to.
+/// The knob values that reproduce `theme`: its name, materials, roles and
+/// both modes' colors, each color as the `#rrggbb` a color input takes. A
+/// color the theme leaves to the palette comes out as what the palette
+/// resolves it to.
 pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json::Value> {
     let mut knobs = material_knobs(&theme.materials);
+    knobs.insert("name".to_owned(), serde_json::json!(theme.name));
+    knobs.insert("roles".to_owned(), serde_json::json!(theme.roles));
     for (mode, prefix) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
         for (name, value) in resolved_colors(theme, mode) {
             knobs.insert(format!("{prefix}-{name}"), serde_json::json!(value));
@@ -410,6 +444,81 @@ pub fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static
         ("on-accent", rgb(ink)),
         ("shadow-color", rgb(colors.shadow_color)),
     ]
+}
+
+/// A `roles` knob: the theme file's `roles` object, checked the way a theme
+/// file is.
+fn parse_roles(json: &str) -> Result<BTreeMap<String, StylePatch>, String> {
+    let roles = serde_json::from_str::<serde_json::Value>(json)
+        .map_err(|error| format!("roles must be JSON: {error}"))?;
+    interface_theme::parse_theme(&serde_json::json!({ "roles": roles }).to_string())
+        .map(|theme| theme.roles)
+}
+
+/// Where a role's prop comes from before the theme names the role itself:
+/// its kind's built-in style, the theme's patch for its kind, or the role's
+/// own built-in patch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Origin {
+    Kind,
+    ThemeKind,
+    Role,
+}
+
+impl Origin {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Kind => "kind",
+            Self::ThemeKind => "theme-kind",
+            Self::Role => "role",
+        }
+    }
+}
+
+/// The props of a [`Style`] in theme-file order.
+pub const PROPS: [&str; 6] = ["fill", "outline", "shadow", "shape", "hover", "selected"];
+
+/// The style `role` takes from everything but the theme's patch for it, and
+/// where each of its [`PROPS`] comes from. For a kind, the theme's patch
+/// for the kind is its own patch, so it inherits only the built-in.
+pub fn inherited(role: SurfaceRole, roles: &BTreeMap<String, StylePatch>) -> (Style, [Origin; 6]) {
+    let mut style = role.kind.base();
+    let mut origins = [Origin::Kind; 6];
+    let mut layer = |patch: &StylePatch, origin: Origin| {
+        patch.apply(&mut style);
+        let named = [
+            patch.fill.is_some(),
+            patch.outline.is_some(),
+            patch.shadow.is_some(),
+            patch.shape.is_some(),
+            patch.hover.is_some(),
+            patch.selected.is_some(),
+        ];
+        for (from, named) in origins.iter_mut().zip(named) {
+            if named {
+                *from = origin;
+            }
+        }
+    };
+    if !role.is_kind()
+        && let Some(patch) = roles.get(role.kind.name())
+    {
+        layer(patch, Origin::ThemeKind);
+    }
+    layer(&role.patch, Origin::Role);
+    (style, origins)
+}
+
+/// `style`'s props by name, spelled as a theme file spells them.
+pub fn style_json(style: Style) -> serde_json::Value {
+    serde_json::json!({
+        "fill": style.fill,
+        "outline": style.outline,
+        "shadow": style.shadow,
+        "shape": style.shape,
+        "hover": style.hover,
+        "selected": style.selected,
+    })
 }
 
 fn accent_ink(colors: ThemeColor) -> Hsla {
@@ -532,29 +641,72 @@ mod tests {
         assert_eq!(tuned.dark.on_accent, zz_ui::parse_hex("#112233").ok());
         assert_eq!(tuned.light, linear.light);
         assert!(Knobs::parse("primary=loud").is_err());
-        assert!(Knobs::parse("shadow-strength=dark").is_err());
+        assert!(Knobs::parse("contact-y=low").is_err());
         assert!(Knobs::parse("light-accent=blue").is_err());
     }
 
     #[test]
-    fn shadow_strength_scales_the_themes_shadows_and_keeps_its_roles() {
+    fn shadow_and_role_knobs_change_only_what_they_name() {
         let tahoe = interface_theme::builtin_theme("tahoe").unwrap();
-        let theme = Knobs::parse("interface-theme=tahoe&shadow-strength=0.5")
-            .unwrap()
-            .interface_theme();
-        assert_eq!(
-            theme.materials.contact.strength,
-            tahoe.materials.contact.strength * 0.5
-        );
-        assert_eq!(
-            theme.materials.float.strength,
-            tahoe.materials.float.strength * 0.5
-        );
+        let theme = Knobs::parse(
+            "interface-theme=tahoe&float-y=4&contact-strength=0.5&roles=%7B%22chip%22%3A%7B%22fill%22%3A%22glass%22%7D%7D",
+        )
+        .unwrap()
+        .interface_theme();
+        assert_eq!(theme.materials.float.y, 4.0);
         assert_eq!(theme.materials.float.blur, tahoe.materials.float.blur);
-        assert!(!theme.roles.is_empty());
-        assert_eq!(theme.roles, tahoe.roles);
+        assert_eq!(theme.materials.contact.strength, 0.5);
+        assert_eq!(theme.roles.len(), 1);
+        assert_eq!(
+            theme.roles["chip"],
+            StylePatch::EMPTY.fill(zz_ui::Fill::Glass)
+        );
         let file = interface_theme::parse_theme(&theme.to_json()).unwrap();
         assert_eq!(file, theme);
+        assert_eq!(
+            Knobs::parse("interface-theme=tahoe").unwrap().roles,
+            tahoe.roles
+        );
+        assert!(Knobs::parse("roles=%7B%22chipp%22%3A%7B%7D%7D").is_err());
+        assert!(Knobs::parse("roles=chip").is_err());
+        assert!(Knobs::parse("float-blur=soft").is_err());
+    }
+
+    #[test]
+    fn inspect_names_a_role_or_nothing() {
+        assert_eq!(
+            Knobs::parse("inspect=chrome.button")
+                .unwrap()
+                .inspect
+                .as_deref(),
+            Some("chrome.button")
+        );
+        assert_eq!(Knobs::parse("inspect=").unwrap().inspect, None);
+        assert!(Knobs::parse("inspect=sparkle").is_err());
+    }
+
+    #[test]
+    fn a_role_inherits_what_the_theme_resolves_and_says_from_where() {
+        for (id, theme) in interface_theme::builtin_themes() {
+            let mut kit = Theme::default();
+            theme.apply_roles(&mut kit);
+            for role in zz_ui::roles::all() {
+                let (mut style, _) = inherited(role, &theme.roles);
+                if let Some(patch) = theme.roles.get(role.id) {
+                    patch.apply(&mut style);
+                }
+                assert_eq!(style, kit.style(role), "{id} {}", role.id);
+            }
+        }
+        let tahoe = &interface_theme::builtin_theme("tahoe").unwrap().roles;
+        let (style, origins) = inherited(zz_ui::roles::STATUS_CHIP, tahoe);
+        assert_eq!(style.fill, zz_ui::Fill::Tint);
+        assert_eq!(origins[0], Origin::Role);
+        assert_eq!(origins[3], Origin::ThemeKind);
+        assert_eq!(origins[1], Origin::ThemeKind);
+        assert_eq!(origins[4], Origin::Kind);
+        let (_, origins) = inherited(zz_ui::Kind::Chip.role(), tahoe);
+        assert_eq!(origins, [Origin::Kind; 6]);
     }
 
     #[test]
@@ -584,11 +736,12 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
                 .join("&");
-            let parsed = Knobs::parse(&format!("interface-theme={id}&{query}")).unwrap();
+            let parsed = Knobs::parse(&format!("interface-theme=default&{query}")).unwrap();
+            assert_eq!(parsed.name, theme.name, "{id}");
             assert_eq!(
                 Materials {
                     glass: None,
-                    ..parsed.materials()
+                    ..parsed.materials.clone()
                 },
                 Materials {
                     glass: None,
