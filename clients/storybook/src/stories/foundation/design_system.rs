@@ -19,6 +19,7 @@ use zz_ui::{
     v_flex,
 };
 
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
@@ -124,7 +125,7 @@ fn sample(label: &'static str, paint: Paint, state: PaintState, cx: &App) -> Any
         .h(px(28.0))
         .px_3()
         .justify_center()
-        .rounded(cx.theme().control_radius())
+        .rounded(cx.theme().radius)
         .painted(paint, state)
         .text_size(px(13.0))
         .child(label)
@@ -149,7 +150,7 @@ fn tones(_: &mut Window, cx: &mut App) -> AnyElement {
                     div()
                         .h(px(44.0))
                         .rounded(theme.radius)
-                        .surface_edge(cx)
+                        .framed(cx)
                         .bg(theme.tone(tone)),
                 )
                 .child(div().text_size(px(12.0)).child(tone.name()))
@@ -394,7 +395,7 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
             .h(px(28.0))
             .px_2()
             .gap_2()
-            .rounded(theme.menu_radius())
+            .rounded(theme.shape_radius(zz_ui::Kind::Row, zz_ui::Shape::Round))
             .painted_interactive(row_paint, selected, true)
             .text_size(px(13.0))
             .child(div().flex_1().child(label))
@@ -424,7 +425,7 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 .w(px(240.0))
                 .gap(px(2.0))
                 .p_1()
-                .popover_style(cx)
+                .surface(zz_ui::Kind::Popover, cx)
                 .child(div().px_2().py_1().child(caption("rows in a popover", cx)))
                 .child(list_row(0, "New tab", false))
                 .child(list_row(1, "Split right", true))
@@ -486,7 +487,7 @@ fn text(_: &mut Window, cx: &mut App) -> AnyElement {
             v_flex()
                 .gap_2()
                 .p_3()
-                .popover_style(cx)
+                .surface(zz_ui::Kind::Popover, cx)
                 .child(caption("popover", cx))
                 .child(text_column(cx)),
         )
@@ -563,7 +564,7 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
                 .w(px(204.0))
                 .gap_2()
                 .p_3()
-                .popover_style(cx)
+                .surface(zz_ui::Kind::Popover, cx)
                 .child(caption("popover", cx))
                 .child(ground_samples(cx)),
         )

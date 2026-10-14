@@ -178,7 +178,6 @@ fn update_item(cx: &App) -> AnyElement {
     workspace_status_item("update", None, "v0.17.0".into(), cx)
         .flex_none()
         .px(px(6.0))
-        .rounded(cx.theme().control_radius())
         .child(
             div()
                 .flex_none()

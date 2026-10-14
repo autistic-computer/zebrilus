@@ -760,7 +760,7 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             .items_center()
             .justify_center()
             .size(px(STACK_CELL))
-            .rounded(cx.theme().control_radius())
+            .rounded(cx.theme().radius)
             .bg(flat_row_ground(state, cx).fill)
             .child(flat_tile_stack(MACBOOK, WindowId(id), &tiles, state, cx))
     };

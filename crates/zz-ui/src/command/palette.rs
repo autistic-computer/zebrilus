@@ -12,7 +12,8 @@ use crate::{
     input::{Input, InputState},
     kbd::Keycap,
     list::ListItem,
-    picker::{muted_on, row_corners},
+    picker::muted_on,
+    row_corners,
 };
 
 use super::command_palette_row_height;

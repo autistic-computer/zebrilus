@@ -24,10 +24,9 @@ pub use element_ext::{ElementExt, InteractiveElementExt};
 pub use geometry::Side;
 pub use index_path::IndexPath;
 pub use styled::{
-    Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, Selectable, Sizable, Size, StyledExt,
-    contact_shadow, control_shadow, floating_shadow, h_flex, lifted_shadow, v_flex,
+    Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, Selectable, Sizable, Size, StyledExt, h_flex,
+    lifted_shadow, row_corners, row_radius, v_flex,
 };
-pub(crate) use styled::{row_corners, row_radius};
 pub(crate) use surface::restyle;
 pub use surface::{
     Edge, Fill, Highlight, InteractiveSurfaceExt, Kind, Layer, Shadow, ShadowMaterial, Shape,

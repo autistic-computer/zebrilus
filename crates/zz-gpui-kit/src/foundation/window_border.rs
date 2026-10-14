@@ -166,20 +166,23 @@ impl RenderOnce for WindowBorder {
                             .when(!tiling.bottom, |div| div.border_b(BORDER_SIZE))
                             .when(!tiling.left, |div| div.border_l(BORDER_SIZE))
                             .when(!tiling.right, |div| div.border_r(BORDER_SIZE))
-                            .when(!tiling.is_tiled() && cx.theme().float_shadow.strength > 0.0, |div| {
-                                div.shadow(vec![zz_gpui::BoxShadow {
-                                    color: Hsla {
-                                        h: 0.,
-                                        s: 0.,
-                                        l: 0.,
-                                        a: 0.3,
-                                    },
-                                    blur_radius: visual_shadow / 2.,
-                                    spread_radius: px(0.),
-                                    offset: point(px(0.0), px(0.0)),
-                                    inset: false,
-                                }])
-                            }),
+                            .when(
+                                !tiling.is_tiled() && cx.theme().float_shadow.strength > 0.0,
+                                |div| {
+                                    div.shadow(vec![zz_gpui::BoxShadow {
+                                        color: Hsla {
+                                            h: 0.,
+                                            s: 0.,
+                                            l: 0.,
+                                            a: 0.3,
+                                        },
+                                        blur_radius: visual_shadow / 2.,
+                                        spread_radius: px(0.),
+                                        offset: point(px(0.0), px(0.0)),
+                                        inset: false,
+                                    }])
+                                },
+                            ),
                     })
                     .on_mouse_move(|_e, _, cx| {
                         cx.stop_propagation();

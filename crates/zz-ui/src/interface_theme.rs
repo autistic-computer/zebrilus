@@ -549,10 +549,7 @@ mod tests {
     #[test]
     fn unknown_roles_are_errors_that_suggest_the_role() {
         let error = parse_theme(r#"{"roles":{"chromebutton":{}}}"#).unwrap_err();
-        assert!(
-            error.contains("did you mean `chrome.button`"),
-            "{error}"
-        );
+        assert!(error.contains("did you mean `chrome.button`"), "{error}");
         let error = parse_theme(r#"{"roles":{"composer":{}}}"#).unwrap_err();
         assert!(error.contains("did you mean `agent.composer`"), "{error}");
         assert!(parse_theme(r#"{"roles":{"sparkle":{}}}"#).is_err());
@@ -573,10 +570,9 @@ mod tests {
                 ..clear
             })
         );
-        let lit = parse_theme(
-            r##"{"materials":{"glass":{"preset":"clear","light_color":"#ff0000"}}}"##,
-        )
-        .unwrap();
+        let lit =
+            parse_theme(r##"{"materials":{"glass":{"preset":"clear","light_color":"#ff0000"}}}"##)
+                .unwrap();
         assert_eq!(
             lit.materials.glass.map(|glass| glass.light_color),
             Some(crate::parse_hex("#ff0000").unwrap())
