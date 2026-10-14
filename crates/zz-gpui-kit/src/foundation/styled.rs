@@ -3,8 +3,8 @@
 
 use super::{ActiveTheme, Edge, Elevation, Ground, Kind, Layer, PaintState, Surface, SurfaceRole};
 use zz_gpui::{
-    AbsoluteLength, App, BoxShadow, Corners, DefiniteLength, Div, Edges, Hsla, Pixels, Refineable,
-    StyleRefinement, Styled, div, point, px,
+    AbsoluteLength, App, BoxShadow, Corners, DefiniteLength, Div, Edges, FULL_CORNER_RADIUS, Hsla,
+    Pixels, Refineable, StyleRefinement, Styled, div, point, px,
 };
 
 use super::rems_from_px;
@@ -268,6 +268,24 @@ pub trait StyledExt: Styled + Sized {
 }
 
 impl<E: Styled> StyledExt for E {}
+
+pub(crate) fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
+    if layer.radius >= FULL_CORNER_RADIUS {
+        layer.radius
+    } else {
+        layer.radius.min(height * ROW_RADIUS_SHARE)
+    }
+}
+
+pub(crate) fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
+    element
+        .rounded(row_radius(layer, height))
+        .corner_radius_mode(zz_gpui::CornerRadiusMode::Fixed)
+        .corner_smoothing(ROW_CORNER_SMOOTHING)
+}
+
+const ROW_RADIUS_SHARE: f32 = 0.40;
+const ROW_CORNER_SMOOTHING: f32 = 2.5;
 
 /// The width of every divider rule.
 pub const RULE_WIDTH: Pixels = px(1.0);

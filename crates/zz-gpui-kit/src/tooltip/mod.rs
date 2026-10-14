@@ -6,12 +6,13 @@ use zz_gpui::{
 };
 
 use crate::Colorize as _;
-use crate::{ActiveTheme as _, StyledExt as _, h_flex, kbd::Kbd};
+use crate::{ActiveTheme as _, Kind, StyledExt as _, SurfaceRole, h_flex, kbd::Kbd};
 
 /// The box that appears on hover: a label, optionally trailed by the keybinding
 /// of the action it triggers. Attach one through zz-gpui's `.tooltip()`.
 pub struct Tooltip {
     style: StyleRefinement,
+    surface_role: SurfaceRole,
     text: SharedString,
     action: Option<(Box<dyn Action>, Option<SharedString>)>,
 }
@@ -21,6 +22,7 @@ impl Tooltip {
     pub fn new(text: impl Into<SharedString>) -> Self {
         Self {
             style: StyleRefinement::default(),
+            surface_role: Kind::Tooltip.role(),
             text: text.into(),
             action: None,
         }
@@ -31,6 +33,13 @@ impl Tooltip {
     #[must_use]
     pub fn action(mut self, action: &dyn Action, context: Option<&str>) -> Self {
         self.action = Some((action.boxed_clone(), context.map(SharedString::new)));
+        self
+    }
+
+    /// Draw the tooltip as `role` draws, instead of as a tooltip.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = role;
         self
     }
 
@@ -64,7 +73,7 @@ impl Render for Tooltip {
                 .justify_between()
                 .font_family(cx.theme().font_family.clone())
                 .text_xs()
-                .surface(crate::Kind::Tooltip, cx)
+                .surface(self.surface_role, cx)
                 .refine_style(&self.style)
                 .child(div().child(self.text.clone()))
                 .when_some(key_binding, |this, kbd| {

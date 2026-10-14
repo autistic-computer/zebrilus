@@ -1,10 +1,11 @@
 use crate::Colorize as _;
-use crate::{ActiveTheme, Disableable, Emphasis, StyledExt, Tone, h_flex};
+use crate::foundation::restyle;
+use crate::{ActiveTheme, Disableable, Kind, PaintState, StyledExt, h_flex};
 use smallvec::SmallVec;
 use zz_gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
     ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, prelude::FluentBuilder as _, px,
+    StyleRefinement, Styled, Window, prelude::FluentBuilder as _,
 };
 
 #[derive(IntoElement)]
@@ -96,16 +97,18 @@ impl ParentElement for MenuItemElement {
 
 impl RenderOnce for MenuItemElement {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let highlight = if self.submenu_open {
-            let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
-            StyleRefinement::default()
-                .bg(paint.hover)
-                .border_color(zz_gpui::transparent_white())
-                .text_color(paint.text)
-                .shadow_none()
+        let theme = cx.theme();
+        let role = Kind::Row.role();
+        let state = if self.disabled {
+            PaintState::Rest
+        } else if self.submenu_open {
+            PaintState::Hover
+        } else if self.selected {
+            PaintState::Selected
         } else {
-            StyleRefinement::default().selection_highlight(cx)
+            PaintState::Rest
         };
+        let hover = (state == PaintState::Rest).then(|| theme.layer(role, PaintState::Hover));
         h_flex()
             .id(self.id)
             .role(Role::MenuItem)
@@ -117,10 +120,8 @@ impl RenderOnce for MenuItemElement {
             .py_1()
             .px_2()
             .text_xs()
-            .text_color(cx.theme().foreground)
             .relative()
-            .border(px(0.5))
-            .border_color(zz_gpui::transparent_white())
+            .layer(&theme.layer(role, state))
             .items_center()
             .justify_between()
             .refine_style(&self.style)
@@ -128,17 +129,18 @@ impl RenderOnce for MenuItemElement {
                 this.on_hover(move |hovered, window, cx| (on_hover)(hovered, window, cx))
             })
             .when(!self.disabled, |this| {
-                this.when(self.selected, |this| this.refine_style(&highlight))
-                    .hover(move |this| this.refine_style(&highlight))
-                    .when_some(self.on_click, |this, on_click| {
-                        this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                            cx.stop_propagation();
-                        })
-                        .on_click(on_click)
+                this.when_some(hover, |this, hover| {
+                    this.hover(move |style| restyle(style, &hover))
+                })
+                .when_some(self.on_click, |this, on_click| {
+                    this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                        cx.stop_propagation();
                     })
+                    .on_click(on_click)
+                })
             })
             .when(self.disabled, |this| {
-                this.text_color(cx.theme().foreground.muted())
+                this.text_color(theme.foreground.muted())
             })
             .children(self.children)
     }

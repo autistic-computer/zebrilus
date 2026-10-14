@@ -3,10 +3,7 @@ use zz_gpui::{
     RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{
-    ActiveTheme as _, PaintState, StyledExt as _, Tone,
-    input::{field_chrome, field_paint},
-};
+use crate::{ActiveTheme as _, Kind, PaintState, StyledExt as _, SurfaceRole, input::field_chrome};
 
 use super::{
     CodeEditorState,
@@ -23,6 +20,7 @@ pub struct CodeEditor {
     disabled: bool,
     background_opacity: f32,
     tab_index: isize,
+    surface_role: Option<SurfaceRole>,
 }
 
 impl CodeEditor {
@@ -35,6 +33,7 @@ impl CodeEditor {
             disabled: false,
             background_opacity: 1.0,
             tab_index: 0,
+            surface_role: None,
         }
     }
 
@@ -67,6 +66,13 @@ impl CodeEditor {
         self.tab_index = tab_index;
         self
     }
+
+    /// Draw the frame as `role` draws, instead of as a field.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
+        self
+    }
 }
 
 impl Styled for CodeEditor {
@@ -78,10 +84,10 @@ impl Styled for CodeEditor {
 impl RenderOnce for CodeEditor {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let framed = self.bordered || self.focus_bordered;
-        let paint = field_paint(Tone::Neutral, None, None, cx);
-        let edge = paint.border_width.max(px(1.0));
-        let radius = cx.theme().radius;
-        let inner = Corners::all(cx.theme().inner_radius(edge));
+        let role = self.surface_role.unwrap_or(Kind::Field.role());
+        let frame = cx.theme().layer(role, PaintState::Rest);
+        let edge = frame.border_width.max(px(1.0));
+        let inner = Corners::all((frame.radius - edge).max(px(0.0)));
         self.state.update(cx, |state, cx| {
             state.disabled = self.disabled;
             if state.background_opacity != self.background_opacity {
@@ -119,7 +125,7 @@ impl RenderOnce for CodeEditor {
             .track_focus(&focus_handle)
             .tab_index(self.tab_index)
             .when(framed, |this| {
-                field_chrome(this, paint, paint_state, true, self.focus_bordered).rounded(radius)
+                field_chrome(this, role, paint_state, true, self.focus_bordered, cx)
             })
             .when(!self.disabled, |this| {
                 this.on_action(window.listener_for(&self.state, CodeEditorState::backspace))

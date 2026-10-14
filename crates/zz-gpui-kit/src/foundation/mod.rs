@@ -27,6 +27,8 @@ pub use styled::{
     Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, Selectable, Sizable, Size, StyledExt,
     contact_shadow, control_shadow, floating_shadow, h_flex, lifted_shadow, v_flex,
 };
+pub(crate) use styled::{row_corners, row_radius};
+pub(crate) use surface::restyle;
 pub use surface::{
     Edge, Fill, Highlight, InteractiveSurfaceExt, Kind, Layer, Shadow, ShadowMaterial, Shape,
     StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole,

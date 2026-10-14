@@ -5,7 +5,7 @@ use zz_gpui::{
     div, prelude::FluentBuilder as _,
 };
 
-use crate::{ActiveTheme as _, RULE_WIDTH, StyledExt as _};
+use crate::{Edge, Kind, StyledExt as _, SurfaceRole};
 
 /// A one-pixel divider rule. The rule is an absolutely positioned child, so the
 /// separator takes no space along its own axis; only its margins do.
@@ -13,6 +13,7 @@ use crate::{ActiveTheme as _, RULE_WIDTH, StyledExt as _};
 pub struct Separator {
     style: StyleRefinement,
     color: Option<Hsla>,
+    surface_role: Option<SurfaceRole>,
     axis: Axis,
 }
 
@@ -23,6 +24,7 @@ impl Separator {
         Self {
             style: StyleRefinement::default(),
             color: None,
+            surface_role: None,
             axis: Axis::Vertical,
         }
     }
@@ -42,6 +44,14 @@ impl Separator {
         self.color = Some(color.into());
         self
     }
+
+    /// Draw the rule as `role` draws, instead of as a divider: nothing when
+    /// the role has no outline.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
+        self
+    }
 }
 
 impl Styled for Separator {
@@ -52,7 +62,7 @@ impl Styled for Separator {
 
 impl RenderOnce for Separator {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let color = self.color.unwrap_or(cx.theme().divider_color());
+        let role = self.surface_role.unwrap_or(Kind::Rule.role());
         let vertical = self.axis == Axis::Vertical;
 
         div()
@@ -68,12 +78,17 @@ impl RenderOnce for Separator {
                 }
             })
             .refine_style(&self.style)
-            .child(div().absolute().bg(color).map(|this| {
-                if vertical {
-                    this.w(RULE_WIDTH).h_full()
-                } else {
-                    this.h(RULE_WIDTH).w_full()
-                }
-            }))
+            .child(
+                div()
+                    .absolute()
+                    .map(|this| {
+                        if vertical {
+                            this.h_full().rule_on(role, Edge::Left, cx)
+                        } else {
+                            this.w_full().rule_on(role, Edge::Top, cx)
+                        }
+                    })
+                    .when_some(self.color, Styled::border_color),
+            )
     }
 }

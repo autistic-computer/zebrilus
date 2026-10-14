@@ -10,7 +10,7 @@ use zz_gpui::{
 
 use super::dialog::{CONTENT_PADDING, DEFAULT_WIDTH, DESCRIPTION_TEXT_SIZE, TITLE_TEXT_SIZE};
 use crate::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _,
+    ActiveTheme as _, Icon, IconName, Kind, Sizable as _, Size, StyledExt as _, SurfaceRole,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -52,6 +52,7 @@ pub struct Notification {
     content_builder: Option<ContentBuilder>,
     autohide: Option<Duration>,
     width: Pixels,
+    surface_role: SurfaceRole,
     closing: bool,
 }
 
@@ -68,6 +69,7 @@ impl Notification {
             content_builder: None,
             autohide: Some(AUTOHIDE_DELAY),
             width: DEFAULT_WIDTH,
+            surface_role: Kind::Toast.role(),
             closing: false,
         }
     }
@@ -133,6 +135,13 @@ impl Notification {
     #[must_use]
     pub fn width(mut self, width: Pixels) -> Self {
         self.width = width;
+        self
+    }
+
+    /// Draw the toast as `role` draws, instead of as a toast.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = role;
         self
     }
 
@@ -203,7 +212,7 @@ impl Render for Notification {
             .w(self.width)
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
-            .surface(crate::Kind::Toast, cx)
+            .surface(self.surface_role, cx)
             .p(CONTENT_PADDING)
             .gap_2()
             .child(

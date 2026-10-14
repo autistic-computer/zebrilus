@@ -180,7 +180,8 @@ pub fn browser_address(
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let focus_handle = address.read(cx).focus_handle(cx);
-    let paint = field_paint(Tone::Neutral, Some(Emphasis::Ghost), None, cx);
+    let role = crate::roles::ADDRESS_BAR;
+    let paint = field_paint(role, cx);
     let input = Input::new(address)
         .small()
         .h(px(BROWSER_CONTROL_HEIGHT))
@@ -203,7 +204,7 @@ pub fn browser_address(
         .flex_1()
         .min_w_0()
         .items_center();
-    field_chrome(shell, paint, PaintState::Rest, true, true)
+    field_chrome(shell, role, PaintState::Rest, true, true, cx)
         .rounded(cx.theme().control_radius())
         .focus(move |style| style.border_color(paint.focus))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {

@@ -9,7 +9,7 @@ use zz_gpui::{
     anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{Selectable, StyledExt as _, v_flex};
+use crate::{Kind, Selectable, StyledExt as _, SurfaceRole, v_flex};
 use actions::Cancel;
 
 const CONTEXT: &str = "ZzPopover";
@@ -36,6 +36,7 @@ pub struct Popover {
     style: StyleRefinement,
     anchor: Anchor,
     appearance: bool,
+    surface_role: Option<SurfaceRole>,
     overlay_closable: bool,
     trigger: Option<TriggerBuilder>,
     content: Option<ContentBuilder>,
@@ -52,6 +53,7 @@ impl Popover {
             style: StyleRefinement::default(),
             anchor: Anchor::TopLeft,
             appearance: true,
+            surface_role: None,
             overlay_closable: true,
             trigger: None,
             content: None,
@@ -117,6 +119,13 @@ impl Popover {
     #[must_use]
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.appearance = appearance;
+        self
+    }
+
+    /// Draw the panel as `role` draws, instead of as a popover.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
     }
 
@@ -251,7 +260,10 @@ impl RenderOnce for Popover {
             .id("content")
             .occlude()
             .tab_group()
-            .when(self.appearance, |this| this.popover_style(cx).p_3())
+            .when(self.appearance, |this| {
+                this.surface(self.surface_role.unwrap_or(Kind::Popover.role()), cx)
+                    .p_3()
+            })
             .map(|this| {
                 if bottom_anchor(self.anchor) {
                     this.bottom_1()

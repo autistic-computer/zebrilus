@@ -4,16 +4,17 @@ use std::rc::Rc;
 
 use smallvec::SmallVec;
 use zz_gpui::{
-    AnyElement, App, ClickEvent, Decorations, Div, Hsla, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Point, RenderOnce, Stateful,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
-    WindowControlArea, div, point, prelude::FluentBuilder as _, px,
+    AnyElement, App, ClickEvent, Decorations, Div, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Pixels, Point, RenderOnce, Stateful, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, div, point,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::UiZoom;
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, InteractiveElementExt as _, Paint, PaintState,
-    StyledExt as _, Tone, h_flex,
+    ActiveTheme as _, Edge, Highlight, Icon, IconName, InteractiveElementExt as _, Kind, Layer,
+    PaintState, Shape, StylePatch, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle,
+    h_flex,
 };
 
 /// Height of the title bar, and of every strip that has to line up with it
@@ -154,7 +155,20 @@ const CONTROL_ICON_WIDTH: Pixels = TITLE_BAR_HEIGHT;
 #[cfg(target_os = "windows")]
 const CONTROL_ICON_WIDTH: Pixels = px(46.);
 
-#[derive(IntoElement, Clone)]
+const WINDOW_CONTROL: SurfaceRole = Kind::IconButton.role().with(
+    StylePatch::EMPTY
+        .shape(Shape::Square)
+        .hover(Highlight::Tint)
+        .selected(Highlight::None),
+);
+
+#[derive(IntoElement)]
+struct WindowControl {
+    icon: ControlIcon,
+    role: SurfaceRole,
+}
+
+#[derive(Clone)]
 enum ControlIcon {
     Minimize,
     Restore,
@@ -210,52 +224,41 @@ impl ControlIcon {
     fn is_close(&self) -> bool {
         matches!(self, Self::Close { .. })
     }
+}
 
-    fn paint(&self, cx: &App) -> Paint {
-        if self.is_close() {
-            cx.theme().paint(Tone::Danger, Emphasis::Solid)
-        } else {
-            cx.theme().paint(Tone::Neutral, Emphasis::Ghost)
+impl WindowControl {
+    fn layer(&self, state: PaintState, cx: &App) -> Layer {
+        let theme = cx.theme();
+        match state {
+            PaintState::Hover | PaintState::Active if self.icon.is_close() => theme.layer(
+                Surface::new(self.role).tone(Tone::Danger).prominent(true),
+                if state == PaintState::Hover {
+                    PaintState::Rest
+                } else {
+                    PaintState::Active
+                },
+            ),
+            state => theme.layer(self.role, state),
         }
-    }
-
-    fn hover_fg(&self, cx: &App) -> Hsla {
-        self.paint(cx).text_at(PaintState::Hover)
-    }
-
-    fn hover_bg(&self, cx: &App) -> Hsla {
-        let paint = self.paint(cx);
-        if self.is_close() {
-            paint.fill
-        } else {
-            paint.hover
-        }
-    }
-
-    fn active_bg(&self, cx: &App) -> Hsla {
-        self.paint(cx).active
     }
 }
 
-impl RenderOnce for ControlIcon {
-    #[allow(
-        clippy::similar_names,
-        reason = "hover_fg/hover_bg is the clearest naming for a foreground/background pair"
-    )]
+impl RenderOnce for WindowControl {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let is_linux = cfg!(target_os = "linux");
         let is_windows = cfg!(target_os = "windows");
-        let hover_fg = self.hover_fg(cx);
-        let hover_bg = self.hover_bg(cx);
-        let active_bg = self.active_bg(cx);
-        let icon = self.clone();
-        let on_close_window = match &self {
-            Self::Close { on_close_window } => on_close_window.clone(),
+        let hover = self.layer(PaintState::Hover, cx);
+        let active = self.layer(PaintState::Active, cx);
+        let rest = self.layer(PaintState::Rest, cx);
+        let icon = self.icon.clone();
+        let on_close_window = match &self.icon {
+            ControlIcon::Close { on_close_window } => on_close_window.clone(),
             _ => None,
         };
+        let control = self.icon;
 
         div()
-            .id(self.id())
+            .id(control.id())
             .flex()
             .w(CONTROL_ICON_WIDTH)
             .h_full()
@@ -263,11 +266,11 @@ impl RenderOnce for ControlIcon {
             .justify_center()
             .content_center()
             .items_center()
-            .text_color(cx.theme().foreground)
-            .hover(|style| style.bg(hover_bg).text_color(hover_fg))
-            .active(|style| style.bg(active_bg).text_color(hover_fg))
+            .layer(&rest)
+            .hover(move |style| restyle(style, &hover))
+            .active(move |style| restyle(style, &active))
             .when(is_windows, |this| {
-                this.window_control_area(self.window_control_area())
+                this.window_control_area(control.window_control_area())
             })
             .when(is_linux, |this| {
                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -277,9 +280,9 @@ impl RenderOnce for ControlIcon {
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();
                     match icon {
-                        Self::Minimize => window.minimize_window(),
-                        Self::Restore | Self::Maximize => window.zoom_window(),
-                        Self::Close { .. } => {
+                        ControlIcon::Minimize => window.minimize_window(),
+                        ControlIcon::Restore | ControlIcon::Maximize => window.zoom_window(),
+                        ControlIcon::Close { .. } => {
                             if let Some(f) = on_close_window.clone() {
                                 f(&ClickEvent::default(), window, cx);
                             } else {
@@ -289,22 +292,40 @@ impl RenderOnce for ControlIcon {
                     }
                 })
             })
-            .child(Icon::new(self.icon()).medium())
+            .child(Icon::new(control.icon()).medium())
     }
 }
 
 /// The trailing minimize / maximize / close cluster. Empty wherever
 /// [`draws_window_controls`] is false. Mountable on its own, without a
 /// [`TitleBar`].
-#[derive(IntoElement, Default)]
+#[derive(IntoElement)]
 pub struct WindowControls {
     on_close_window: Option<CloseHandler>,
+    surface_role: SurfaceRole,
+}
+
+impl Default for WindowControls {
+    fn default() -> Self {
+        Self {
+            on_close_window: None,
+            surface_role: WINDOW_CONTROL,
+        }
+    }
 }
 
 impl WindowControls {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Draw the controls' hover and press as `role` draws, instead of as
+    /// square icon buttons.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = role;
+        self
     }
 
     /// Run `f` instead of `Window::remove_window` when close is clicked. Linux
@@ -328,18 +349,20 @@ impl RenderOnce for WindowControls {
             return div().id("window-controls");
         }
 
+        let role = self.surface_role;
+        let control = move |icon| WindowControl { icon, role };
         h_flex()
             .id("window-controls")
             .items_center()
             .flex_shrink_0()
             .h_full()
-            .child(ControlIcon::minimize())
-            .child(if window.is_maximized() {
+            .child(control(ControlIcon::minimize()))
+            .child(control(if window.is_maximized() {
                 ControlIcon::restore()
             } else {
                 ControlIcon::maximize()
-            })
-            .child(ControlIcon::close(self.on_close_window))
+            }))
+            .child(control(ControlIcon::close(self.on_close_window)))
     }
 }
 
@@ -392,7 +415,7 @@ impl RenderOnce for TitleBar {
                 .justify_between()
                 .h(TITLE_BAR_HEIGHT)
                 .pl(title_bar_left_padding(cx))
-                .rule_bottom(cx)
+                .rule_on(Kind::Rule.role(), Edge::Bottom, cx)
                 .bg(cx.theme().background)
                 .refine_style(&self.style)
                 .when(is_linux, |this| {
@@ -433,6 +456,7 @@ impl RenderOnce for TitleBar {
                 )
                 .child(WindowControls {
                     on_close_window: self.on_close_window,
+                    ..WindowControls::default()
                 }),
         )
     }

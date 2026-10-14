@@ -9,7 +9,9 @@ use zz_gpui::{
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable, Emphasis, Selectable, Size, StyledExt as _, Tone, h_flex,
+    ActiveTheme as _, Disableable, Kind, PaintState, Selectable, Size, StyledExt as _, SurfaceRole,
+    foundation::{restyle, row_corners},
+    h_flex,
 };
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
@@ -25,6 +27,7 @@ pub struct ListItem {
     style: StyleRefinement,
     disabled: bool,
     selected: bool,
+    surface_role: Option<SurfaceRole>,
     on_click: Option<ClickHandler>,
     on_mouse_down: Vec<(MouseButton, MouseDownHandler)>,
     on_mouse_enter: Option<MouseMoveHandler>,
@@ -40,6 +43,7 @@ impl ListItem {
             style: StyleRefinement::default(),
             disabled: false,
             selected: false,
+            surface_role: None,
             on_click: None,
             on_mouse_down: Vec::new(),
             on_mouse_enter: None,
@@ -52,6 +56,13 @@ impl ListItem {
     #[must_use]
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
+        self
+    }
+
+    /// Draw the row as `role` draws, instead of as a list row.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
     }
 
@@ -126,6 +137,7 @@ impl RenderOnce for ListItem {
             style,
             disabled,
             selected,
+            surface_role,
             on_click,
             on_mouse_down,
             on_mouse_enter,
@@ -135,8 +147,17 @@ impl RenderOnce for ListItem {
         let interactive = !disabled;
         let highlighted = interactive && selected;
 
-        let foreground = cx.theme().foreground;
-        let muted_foreground = cx.theme().foreground.muted();
+        let theme = cx.theme();
+        let role = surface_role.unwrap_or(Kind::Row.role());
+        let layer = theme.layer(
+            role,
+            if highlighted {
+                PaintState::Selected
+            } else {
+                PaintState::Rest
+            },
+        );
+        let muted_foreground = theme.foreground.muted();
 
         base.relative()
             .justify_between()
@@ -144,11 +165,8 @@ impl RenderOnce for ListItem {
             .py_1()
             .px_3()
             .text_base()
-            .text_color(foreground)
-            .menu_item_corners(px(Size::Medium.control_px()), cx)
-            .border(px(0.5))
-            .border_color(zz_gpui::transparent_white())
-            .when(highlighted, |this| this.selection_highlight(cx))
+            .layer(&layer)
+            .map(|this| row_corners(this, &layer, px(Size::Medium.control_px())))
             .refine_style(&style)
             .when(interactive, |this| {
                 this.when_some(on_click, |this, on_click| this.on_click(on_click))
@@ -163,11 +181,60 @@ impl RenderOnce for ListItem {
                             })
                     })
                     .when(!selected, |this| {
-                        let hover = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover;
-                        this.hover(move |this| this.bg(hover))
+                        let hover = theme.layer(role, PaintState::Hover);
+                        this.hover(move |style| restyle(style, &hover))
                     })
             })
             .when(!interactive, |this| this.text_color(muted_foreground))
             .child(div().w_full().children(children))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Highlight, StylePatch};
+    use zz_gpui::{Context, IntoElement, Render, TestAppContext, solid_background};
+
+    const TINTED: SurfaceRole = SurfaceRole::new("test.row", Kind::Row, "Tinted rows", "")
+        .with(StylePatch::EMPTY.selected(Highlight::Tint));
+
+    struct Rows;
+
+    impl Render for Rows {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .child(ListItem::new("plain").selected(true).child("Plain"))
+                .child(
+                    ListItem::new("tinted")
+                        .surface_role(TINTED)
+                        .selected(true)
+                        .child("Tinted"),
+                )
+        }
+    }
+
+    #[zz_gpui::test]
+    fn a_row_roles_selected_highlight_reaches_the_selected_row(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Rows);
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+            let theme = cx.theme();
+            let tinted = theme.layer(TINTED, PaintState::Selected).fill;
+            let accent = theme.layer(Kind::Row.role(), PaintState::Selected).fill;
+            assert_eq!(accent, theme.selection_background());
+            assert_ne!(tinted, accent);
+            let quads = window.painted_quads();
+            for fill in [accent, tinted] {
+                assert!(
+                    quads
+                        .iter()
+                        .any(|quad| quad.background == solid_background(fill)),
+                    "no row painted {fill:?}"
+                );
+            }
+        });
     }
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use zz_gpui::{Pixels, Rems, StyleRefinement, px, rems};
 
-use crate::highlighter::HighlightTheme;
+use crate::{SurfaceRole, highlighter::HighlightTheme};
 
 #[derive(Clone)]
 pub struct TextViewStyle {
@@ -23,6 +23,11 @@ pub struct TextViewStyle {
     pub table: StyleRefinement,
     pub table_cell: StyleRefinement,
     pub is_dark: bool,
+    /// The role code blocks, their header and inline code draw as. Unset,
+    /// they take a plain raised fill.
+    pub code_role: Option<SurfaceRole>,
+    /// The role tables draw as. Unset, they take a divider-colored border.
+    pub figure_role: Option<SurfaceRole>,
 }
 
 impl PartialEq for TextViewStyle {
@@ -30,6 +35,8 @@ impl PartialEq for TextViewStyle {
         self.paragraph_gap == other.paragraph_gap
             && self.heading_base_font_size == other.heading_base_font_size
             && self.highlight_theme == other.highlight_theme
+            && self.code_role == other.code_role
+            && self.figure_role == other.figure_role
     }
 }
 
@@ -44,6 +51,8 @@ impl Default for TextViewStyle {
             table: StyleRefinement::default(),
             table_cell: StyleRefinement::default(),
             is_dark: false,
+            code_role: None,
+            figure_role: None,
         }
     }
 }
@@ -77,6 +86,16 @@ impl TextViewStyle {
 
     pub fn table_cell(mut self, style: StyleRefinement) -> Self {
         self.table_cell = style;
+        self
+    }
+
+    pub fn code_role(mut self, role: SurfaceRole) -> Self {
+        self.code_role = Some(role);
+        self
+    }
+
+    pub fn figure_role(mut self, role: SurfaceRole) -> Self {
+        self.figure_role = Some(role);
         self
     }
 }

@@ -15,10 +15,10 @@ use zz_gpui::{
     WhiteSpace, Window, img, point, prelude::FluentBuilder as _, px, relative, size,
 };
 
-use crate::{WindowExt as _, tooltip::Tooltip};
+use crate::{ActiveTheme as _, SurfaceRole, WindowExt as _, tooltip::Tooltip};
 
 use super::{
-    inline::{Inline, InlineState},
+    inline::{Inline, InlineState, code_runs},
     node::LinkMark,
 };
 
@@ -27,6 +27,7 @@ const IMAGE_LEN: usize = 1;
 pub(super) struct InlineFlow {
     id: ElementId,
     items: Vec<InlineFlowItem>,
+    code_role: Option<SurfaceRole>,
 }
 
 pub(super) enum InlineFlowItem {
@@ -35,6 +36,7 @@ pub(super) enum InlineFlowItem {
         text: SharedString,
         links: Vec<(Range<usize>, LinkMark)>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
+        code_ranges: Vec<Range<usize>>,
     },
     Image {
         url: SharedUri,
@@ -66,6 +68,7 @@ enum PositionedFragment {
         text: SharedString,
         links: Vec<(Range<usize>, LinkMark)>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
+        code_ranges: Vec<Range<usize>>,
     },
     Image {
         item_ix: usize,
@@ -79,6 +82,7 @@ enum MeasureItem {
         text: SharedString,
         links: Vec<(Range<usize>, LinkMark)>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
+        code_ranges: Vec<Range<usize>>,
     },
     Image {
         url: SharedUri,
@@ -99,6 +103,7 @@ enum LineFragmentKind {
         text: SharedString,
         links: Vec<(Range<usize>, LinkMark)>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
+        code_ranges: Vec<Range<usize>>,
     },
     Image,
 }
@@ -108,7 +113,13 @@ impl InlineFlow {
         Self {
             id: id.into(),
             items,
+            code_role: None,
         }
+    }
+
+    pub(super) fn code_role(mut self, code_role: Option<SurfaceRole>) -> Self {
+        self.code_role = code_role;
+        self
     }
 
     fn image_element(
@@ -188,6 +199,7 @@ impl Element for InlineFlow {
         let layout_state = InlineFlowLayoutState::default();
         let layout_ref = layout_state.layout.clone();
 
+        let mono = cx.theme().mono_font_family.clone();
         let layout_id = window.request_measured_layout(Default::default(), {
             move |known_dimensions, available_space, window, _cx| {
                 let text_style = window.text_style();
@@ -203,6 +215,7 @@ impl Element for InlineFlow {
                     &measure_items,
                     &image_sizes,
                     &text_style,
+                    &mono,
                     wrap_width,
                     window,
                 );
@@ -244,6 +257,7 @@ impl Element for InlineFlow {
                     text,
                     links,
                     highlights,
+                    code_ranges,
                     ..
                 } => {
                     let state = match &self.items[item_ix] {
@@ -258,8 +272,10 @@ impl Element for InlineFlow {
                         state.set_text(text);
                     }
 
-                    let mut element =
-                        Inline::new(elements.len(), state, links, highlights).into_any_element();
+                    let mut element = Inline::new(elements.len(), state, links, highlights)
+                        .code_ranges(code_ranges)
+                        .code_role(self.code_role)
+                        .into_any_element();
                     element.prepaint_as_root(
                         bounds.origin + origin,
                         size(
@@ -330,11 +346,12 @@ impl From<&InlineFlowItem> for MeasureItem {
                 text,
                 links,
                 highlights,
-                ..
+                code_ranges,
             } => MeasureItem::Text {
                 text: text.clone(),
                 links: links.clone(),
                 highlights: highlights.clone(),
+                code_ranges: code_ranges.clone(),
             },
             InlineFlowItem::Image {
                 url, width, height, ..
@@ -360,6 +377,7 @@ fn layout_flow(
     items: &[MeasureItem],
     image_sizes: &[Option<Size<Pixels>>],
     text_style: &TextStyle,
+    mono: &SharedString,
     wrap_width: Option<Pixels>,
     window: &mut Window,
 ) -> InlineFlowLayout {
@@ -397,6 +415,7 @@ fn layout_flow(
                     text,
                     links,
                     highlights,
+                    code_ranges,
                 } => {
                     let local_start = line_range.start.max(item_start) - item_start;
                     let local_end = line_range.end.min(item_end) - item_start;
@@ -409,7 +428,13 @@ fn layout_flow(
                         let links = slice_ranges(links, local_start, local_end, |range, link| {
                             (range, link.clone())
                         });
-                        let runs = runs_for_highlights(&subtext, text_style, highlights.clone());
+                        let code_ranges = code_ranges
+                            .iter()
+                            .filter_map(|range| clip(range, local_start, local_end))
+                            .collect::<Vec<_>>();
+                        let mut runs =
+                            runs_for_highlights(&subtext, text_style, highlights.clone());
+                        code_runs(&mut runs, &code_ranges, mono);
                         let shaped_line = shape_line(subtext.clone(), font_size, &runs, window);
                         let width = shaped_line.width();
                         line_width += width;
@@ -419,6 +444,7 @@ fn layout_flow(
                                 text: subtext,
                                 links,
                                 highlights,
+                                code_ranges,
                             },
                             size: size(width, line_height),
                             source_range: local_start..local_end,
@@ -452,6 +478,7 @@ fn layout_flow(
                     text,
                     links,
                     highlights,
+                    code_ranges,
                 } => PositionedFragment::Text {
                     item_ix: fragment.item_ix,
                     origin,
@@ -460,6 +487,7 @@ fn layout_flow(
                     text,
                     links,
                     highlights,
+                    code_ranges,
                 },
                 LineFragmentKind::Image => PositionedFragment::Image {
                     item_ix: fragment.item_ix,
@@ -708,13 +736,14 @@ fn slice_ranges<T, U>(
 ) -> Vec<U> {
     ranges
         .iter()
-        .filter_map(|(range, value)| {
-            let clipped_start = range.start.max(start);
-            let clipped_end = range.end.min(end);
-            (clipped_start < clipped_end)
-                .then(|| map((clipped_start - start)..(clipped_end - start), value))
-        })
+        .filter_map(|(range, value)| clip(range, start, end).map(|range| map(range, value)))
         .collect()
+}
+
+fn clip(range: &Range<usize>, start: usize, end: usize) -> Option<Range<usize>> {
+    let clipped_start = range.start.max(start);
+    let clipped_end = range.end.min(end);
+    (clipped_start < clipped_end).then(|| (clipped_start - start)..(clipped_end - start))
 }
 
 #[cfg(test)]
@@ -730,6 +759,7 @@ mod tests {
                     text: "é\n\n".into(),
                     links: vec![],
                     highlights: vec![],
+                    code_ranges: vec![],
                 },
                 MeasureItem::Image {
                     url: "https://example.com/image.svg".into(),
@@ -740,6 +770,7 @@ mod tests {
                     text: "\nend\n".into(),
                     links: vec![],
                     highlights: vec![],
+                    code_ranges: vec![],
                 },
             ];
             let image_sizes = [None, Some(size(px(20.), px(10.))), None];
@@ -750,7 +781,14 @@ mod tests {
                     line_ranges(&items, &image_sizes, &text_style, wrap_width, window),
                     vec![0..2, 3..3, 4..5, 6..9, 10..10],
                 );
-                let layout = layout_flow(&items, &image_sizes, &text_style, wrap_width, window);
+                let layout = layout_flow(
+                    &items,
+                    &image_sizes,
+                    &text_style,
+                    &text_style.font_family,
+                    wrap_width,
+                    window,
+                );
                 let PositionedFragment::Image { origin, .. } = layout.fragments[1] else {
                     panic!("expected inline image");
                 };
