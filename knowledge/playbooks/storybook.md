@@ -31,18 +31,33 @@ just storybook serve    # serve the last build
 ```
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&interface-theme=macos`.
-Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`, `macos`,
-`linear`, `glass`), the look values (`radius`, `outline`, `row-inset`, `shadows` as `none`,
-`surfaces` or `all`, `selection`, `primary`, `field`, `font`, and `glass` with its sliders; while
-glass is on, a note under Outline says menus, popovers and dialogs draw the glass rim instead),
-each mode's colors (`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
+Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`, `macos`, `tahoe`,
+`linear`, `glass`: the built-in the knobs start from, materials and roles both), the theme's `name`,
+the materials (`radius`, `outline`, `row-inset`, `primary`, `font`, `glass` with its sliders, the
+contact shadow as `contact-y`, `contact-blur`, `contact-spread`, `contact-strength` and the float
+shadow as `float-y`, `float-blur`, `float-spread`, `float-strength`), `roles` (the theme file's
+`roles` object as JSON, written only while it differs from the start theme's), each mode's colors
+(`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
 theme's alpha, or the palette's when the theme sets none), `contrast`, `zoom`, the pane knobs
 (`pane-gaps`, `pane-margin`, `pane-corner-radius`, `pane-border-width`, `pane-opacity`,
 `pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes; `pane-gaps` drives the Theme
 creator and makes the glass pane frame own the pane fill, as in the app, while other stories show
-gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `motion` (`motion=0` turns animations off and freezes
-spinners). Pane knobs are app config, not theme, so Copy JSON leaves them out; they stay in the URL. The Theme creator story is every surface on one canvas;
-its Copy JSON copies a theme file Settings can Import, and Import loads one back into the knobs.
+gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `motion` (`motion=0` turns
+animations off and freezes spinners). Two more keys only steer the page: `step` (`colors`,
+`materials`, `roles`, `export`) opens a step of the knob panel, and `inspect=<role id>` picks a role
+on the Roles step. Pane knobs are app config, not theme, so Copy JSON leaves them out; they stay in
+the URL.
+
+The Theme creator story is every surface of zz on one canvas, and its knob panel is four steps:
+Colors (mode, palettes, font), Materials (shape, glass, both shadows), Roles and Export (the theme
+file with Copy and Import). The Roles step lists `zz_ui::roles::REGIONS` with each role's six props
+as segmented controls. A prop left on inherit shows the value it inherits and where from: the
+kind's built-in, the theme's patch for the kind, or the role's built-in. Setting a prop writes only
+what differs from that into the theme's `roles` patch for the role, and an entry in Kinds patches
+the kind. Picking or pointing at a role sets the kit theme's `inspect`, which rings every surface
+drawn through that role in magenta; roles whose call sites still use the older recipes are listed
+but show no ring until they move to `.surface(role)`. Roles also go to `localStorage`, keyed by the
+start theme, so they survive a reload when the address drops them for length.
 
 # Add a story
 
@@ -74,9 +89,13 @@ itself with, or on `story::Framed::framed`, the edge of a frame that stands in f
 - `scripts/storybook-shot.mjs <story>[/<section>][?knobs] out.png [--url ..]` (also
   `just storybook shot`) opens the story in headless Chrome over CDP, waits for `zzGpui.idle()` and
   saves a PNG clipped to the section. Its JSON output lists wasm panics and console errors under
-  `problems`.
+  `problems`. The knob panel keeps its own scroll, which the capture does not, so pass a taller
+  `--height` to see a step's lower half, as in `theme-creator?step=roles&inspect=button`.
 - In a browser tab: `storybook.show(id, section)`, `storybook.setKnobs({ theme: "dark" })`,
-  `storybook.theme()` (the theme file the knobs describe), `storybook.importTheme(json)`, and
+  `storybook.theme()` (the theme file the knobs describe), `storybook.importTheme(json)`,
+  `storybook.step("roles")`, `storybook.roles()` (the role tree with inherited and resolved styles),
+  `storybook.setRole("chrome.button", "fill", "glass")` (`"inherit"` clears a prop),
+  `storybook.inspect("button")`, and
   the `zzGpui` API from [zz-gpui web windows for agents](/references/zz-gpui-web-agents.md) for the live
   UI (`zzGpui.find`, `zzGpui.click`, `zzGpui.capture`).
 

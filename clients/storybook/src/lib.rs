@@ -111,6 +111,56 @@ pub fn theme_file_json() -> String {
     knobs().interface_theme().to_json()
 }
 
+/// zz's roles by region, for the creator's Roles step: each role's kind,
+/// the theme's patch for it, what it inherits and from where, and the style
+/// it resolves to.
+pub fn roles_json() -> String {
+    let roles = knobs().roles;
+    json!(
+        zz_ui::roles::REGIONS
+            .iter()
+            .map(|(title, members)| json!({
+                "title": title,
+                "roles": members.iter().map(|role| {
+                    let (inherited, origins) = knobs::inherited(*role, &roles);
+                    let patch = roles.get(role.id).copied().unwrap_or_default();
+                    let mut style = inherited;
+                    patch.apply(&mut style);
+                    let values = knobs::style_json(inherited);
+                    json!({
+                        "id": role.id,
+                        "label": role.label,
+                        "about": role.about,
+                        "kind": role.kind.name(),
+                        "patch": patch,
+                        "inherited": knobs::PROPS
+                            .iter()
+                            .zip(origins)
+                            .map(|(prop, origin)| ((*prop).to_owned(), json!({
+                                "value": values[prop],
+                                "from": origin.name(),
+                            })))
+                            .collect::<serde_json::Map<_, _>>(),
+                        "style": knobs::style_json(style),
+                    })
+                }).collect::<Vec<_>>(),
+            }))
+            .collect::<Vec<_>>()
+    )
+    .to_string()
+}
+
+/// Rings every surface of the role `id` in the open story, or none when
+/// `id` is empty.
+pub fn inspect(id: &str, cx: &mut App) {
+    let inspect = (!id.is_empty()).then(|| zz_gpui::SharedString::from(id.to_owned()));
+    KNOBS.with(|knobs| knobs.borrow_mut().inspect.clone_from(&inspect));
+    zz_ui::Theme::global_mut(cx).inspect = inspect;
+    for window in cx.windows() {
+        window.update(cx, |_, window, _| window.refresh()).ok();
+    }
+}
+
 /// The knob values a theme file describes; see [`knobs::theme_knobs`].
 pub fn import_theme(json: &str) -> Result<String, String> {
     let theme = zz_ui::interface_theme::parse_theme(json)?;
@@ -292,6 +342,16 @@ mod web {
     #[wasm_bindgen]
     pub fn theme_file() -> String {
         super::theme_file_json()
+    }
+
+    #[wasm_bindgen]
+    pub fn roles() -> String {
+        super::roles_json()
+    }
+
+    #[wasm_bindgen]
+    pub fn inspect(id: &str) -> Result<(), JsValue> {
+        with_app(|cx| super::inspect(id, cx))
     }
 
     #[wasm_bindgen]

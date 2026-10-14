@@ -93,7 +93,7 @@ fn dot(active: bool, attention: bool) -> PageDot {
     PageDot { active, attention }
 }
 
-fn groups() -> Vec<Vec<PageDot>> {
+pub(crate) fn groups() -> Vec<Vec<PageDot>> {
     vec![
         vec![dot(false, false), dot(true, false)],
         vec![dot(false, false), dot(false, true), dot(false, false)],
@@ -198,7 +198,7 @@ fn dots(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn close(id: &'static str, cx: &App) -> AnyElement {
+pub(crate) fn close(id: &'static str, cx: &App) -> AnyElement {
     pane_header_icon_button(id, IconName::Xmark, true, cx).into_any_element()
 }
 
@@ -298,12 +298,12 @@ fn prefix_items() -> (Vec<PopoverKeyItem>, PopoverKeyItem) {
     )
 }
 
-fn tool_keys(cx: &mut App) -> ToolKeys {
+pub(crate) fn tool_keys(cx: &mut App) -> ToolKeys {
     let (items, footer) = prefix_items();
     ToolKeys::new(items, Some(footer), cx)
 }
 
-fn key_row(keys: &ToolKeys) -> KeyRow {
+pub(crate) fn key_row(keys: &ToolKeys) -> KeyRow {
     KeyRow::new(keys.row())
         .track_scroll(&keys.scroll)
         .on_key(|_, _, _| {})
@@ -398,7 +398,7 @@ impl Render for Keys {
     }
 }
 
-fn binding_rows() -> Arc<[WhichKeyRow]> {
+pub(crate) fn binding_rows() -> Arc<[WhichKeyRow]> {
     super::which_key::prefix_rows()
         .into_iter()
         .filter(|row| {
