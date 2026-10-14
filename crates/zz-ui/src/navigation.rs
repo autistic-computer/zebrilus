@@ -5,16 +5,18 @@ pub mod status;
 pub mod tree;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    Selectable as _, StyledExt as _, TITLE_BAR_HEIGHT, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Ground, Icon, IconName,
+    InteractiveSurfaceExt as _, Kind, Layer, PaintState, Selectable as _, StyledExt as _, Surface,
+    SurfaceRole, TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
-    rems_from_px,
+    rems_from_px, roles,
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
 };
 use zz_gpui::{
-    AnyElement, App, ElementId, Hsla, IntoElement, ParentElement as _, Pixels, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, prelude::*, px,
+    AnyElement, App, CursorStyle, ElementId, Hsla, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement as _, Pixels, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, Window, div, prelude::*, px,
 };
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
@@ -30,8 +32,8 @@ pub const WORKSPACE_SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
 const WORKSPACE_SIDEBAR_EDGE_INSET: f32 = 6.0;
 const WORKSPACE_SIDEBAR_FOOTER_TOP: f32 = 4.0;
+const WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
-pub const WORKSPACE_STATUS_CONTENT_HEIGHT: Pixels = px(24.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(26.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(16.0);
 const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
@@ -39,6 +41,7 @@ const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(13.0);
 const WORKSPACE_STATUS_TEXT_SIZE: f32 = 12.0;
+const WORKSPACE_STATUS_CHIP_PADDING: Pixels = px(6.0);
 pub(crate) const STATUS_DOT_SIZE: f32 = 6.0;
 
 #[must_use]
@@ -56,6 +59,18 @@ pub struct WorkspaceStatusWindowState {
     pub active: bool,
     pub bell: bool,
     pub activity: bool,
+}
+
+impl WorkspaceStatusWindowState {
+    /// How the window's pill paints: current while it is the active window.
+    #[must_use]
+    pub const fn paint_state(self) -> PaintState {
+        if self.active {
+            PaintState::Current
+        } else {
+            PaintState::Rest
+        }
+    }
 }
 
 #[must_use]
@@ -104,6 +119,7 @@ fn workspace_chrome_button(
     tooltip: &'static str,
 ) -> Button {
     Button::compact_icon(id, icon)
+        .surface_role(roles::CHROME_BUTTON)
         .size(WORKSPACE_STATUS_PILL_HEIGHT)
         .tooltip(tooltip)
 }
@@ -129,10 +145,12 @@ pub fn workspace_status_item(
         .flex_shrink_1()
         .min_w_0()
         .max_w(WORKSPACE_STATUS_ITEM_MAX_WIDTH)
-        .h(WORKSPACE_STATUS_CONTENT_HEIGHT)
+        .h(WORKSPACE_STATUS_PILL_HEIGHT)
         .items_center()
         .gap(px(5.0))
+        .px(WORKSPACE_STATUS_CHIP_PADDING)
         .overflow_hidden()
+        .surface(Surface::new(roles::STATUS_CHIP), cx)
         .text_color(cx.theme().foreground.muted())
         .text_size(rems_from_px(WORKSPACE_STATUS_TEXT_SIZE))
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
@@ -169,12 +187,16 @@ pub fn workspace_status_window(
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let foreground = cx.theme().foreground;
-    let highlight = workspace_row_highlight(cx);
-    let text_color = if state.active {
-        foreground
-    } else {
-        foreground.muted()
-    };
+    let tab = Surface::new(roles::WINDOW_TAB);
+    let paint_state = state.paint_state();
+    let index_ink = cx
+        .theme()
+        .paint_on(
+            cx.theme().layer(tab, paint_state).ground,
+            Tone::Neutral,
+            Emphasis::Ghost,
+        )
+        .muted_at(PaintState::Rest);
     div()
         .id(id)
         .relative()
@@ -187,26 +209,23 @@ pub fn workspace_status_window(
         .items_center()
         .gap(px(5.0))
         .px(px(9.0))
-        .rounded(cx.theme().control_radius())
         .overflow_hidden()
-        .surface_outline(cx.theme().transparent, cx)
-        .when(state.active, |item| item.bg(highlight).control_surface(cx))
-        .text_color(text_color)
+        .map(|item| {
+            if state.connected {
+                item.cursor_pointer().surface_hover(tab, paint_state, cx)
+            } else {
+                item.surface_at(tab, paint_state, cx)
+            }
+        })
+        .when(!state.active, |item| item.text_color(foreground.muted()))
         .text_size(rems_from_px(13.0))
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
-        .when(state.connected, |item| {
-            item.cursor_pointer().hover(move |item| {
-                item.bg(highlight)
-                    .text_color(foreground)
-                    .control_surface(cx)
-            })
-        })
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .child(
             div()
                 .flex_none()
                 .text_size(rems_from_px(12.0))
-                .text_color(foreground.muted())
+                .text_color(index_ink)
                 .child(index),
         )
         .children(deck)
@@ -290,23 +309,39 @@ pub fn workspace_sidebar_footer(
         .children(trailing)
 }
 
-/// The fill that says "this one" in the workspace tree: a row under the
-/// pointer, the keyboard cursor, or the mux.
-#[must_use]
-pub fn workspace_row_highlight(cx: &App) -> Hsla {
-    cx.theme()
-        .paint(crate::Tone::Neutral, crate::Emphasis::Ghost)
-        .hover
-}
-
-/// Full-height sidebar interior. Native callers attach window dragging to the
-/// titlebar slot and wrap the surface with resize handling.
+/// Full-height sidebar interior on the window, with its edge rule. Native
+/// callers attach window dragging to the titlebar slot and wrap the surface
+/// with resize handling.
 #[must_use]
 pub fn workspace_sidebar_surface(
     id: impl Into<ElementId>,
     width: f32,
     titlebar: impl IntoElement,
     navigation: impl IntoElement,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    workspace_sidebar_panel(
+        id,
+        width,
+        titlebar,
+        navigation,
+        cx.theme().ground(),
+        true,
+        cx,
+    )
+}
+
+/// [`workspace_sidebar_surface`] on `ground`, what the sidebar sits on, with
+/// its edge rule only while `divider` is set: panes with gaps stand apart
+/// without one.
+#[must_use]
+pub fn workspace_sidebar_panel(
+    id: impl Into<ElementId>,
+    width: f32,
+    titlebar: impl IntoElement,
+    navigation: impl IntoElement,
+    ground: Ground,
+    divider: bool,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     div()
@@ -319,8 +354,10 @@ pub fn workspace_sidebar_surface(
         .flex_none()
         .overflow_hidden()
         .relative()
-        .text_color(cx.theme().foreground)
-        .rule_right(cx)
+        .surface(Surface::new(roles::SIDEBAR).on(ground), cx)
+        .when(divider, |this| {
+            this.rule_on(roles::SIDEBAR_RULE, Edge::Right, cx)
+        })
         .child(titlebar)
         .child(
             div()
@@ -334,8 +371,95 @@ pub fn workspace_sidebar_surface(
         )
 }
 
+/// The strip along the sidebar's trailing edge that resizes it. Without a
+/// divider, pointing at it shows the edge it drags. The caller attaches the
+/// drag.
+#[must_use]
+pub fn workspace_sidebar_resize_handle(
+    id: impl Into<ElementId>,
+    divider: bool,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    div()
+        .id(id)
+        .absolute()
+        .top(px(0.0))
+        .right(px(0.0))
+        .bottom(px(0.0))
+        .w(px(WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH))
+        .cursor(CursorStyle::ResizeLeftRight)
+        .occlude()
+        .when(!divider, |this| {
+            this.hover(|this| this.rule_on(roles::SIDEBAR_RULE, Edge::Right, cx))
+        })
+}
+
+/// What a sidebar sliding over the panes floats on: the popover surface,
+/// square against the window's edge.
+#[must_use]
+pub fn workspace_slideover_layer(cx: &App) -> Layer {
+    Layer {
+        radius: px(0.0),
+        ..cx.theme().layer(Kind::Popover.role(), PaintState::Rest)
+    }
+}
+
+/// The sidebar sliding over the panes: `sidebar` on its own surface, over a
+/// scrim that calls `on_dismiss` when pressed.
+#[must_use]
+pub fn workspace_sidebar_slideover(
+    id: impl Into<ElementId>,
+    sidebar: impl IntoElement,
+    on_dismiss: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    div()
+        .id(id)
+        .absolute()
+        .inset_0()
+        .flex()
+        .items_start()
+        .bg(cx.theme().scrim)
+        .occlude()
+        .on_mouse_down(MouseButton::Left, on_dismiss)
+        .child(
+            div()
+                .h_full()
+                .flex()
+                .flex_none()
+                .layer(&workspace_slideover_layer(cx))
+                .occlude()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(sidebar),
+        )
+}
+
+/// What the sidebar sits on: `window`, the plane of its column, or the
+/// slideover's surface while it slides over the panes.
+#[must_use]
+pub fn workspace_sidebar_ground(window: Ground, slideover: bool, cx: &App) -> Ground {
+    if slideover {
+        workspace_slideover_layer(cx).ground
+    } else {
+        window
+    }
+}
+
+/// The color the sidebar's list fades into at its bottom edge: the sidebar's
+/// own fill over `ground`, what it sits on.
+#[must_use]
+pub fn workspace_sidebar_fade(ground: Ground, cx: &App) -> Hsla {
+    let sidebar = cx
+        .theme()
+        .layer(Surface::new(roles::SIDEBAR).on(ground), PaintState::Rest);
+    ground.fill.blend(sidebar.fill)
+}
+
+/// The fill behind a sidebar row drawn as `role`, in `lit`. A resting row
+/// takes its hover look while the pointer is anywhere in `hover_group`.
 pub fn workspace_row_fill(
     id: &ElementId,
+    role: SurfaceRole,
     lit: PaintState,
     hover_group: Option<SharedString>,
     cx: &App,
@@ -347,32 +471,26 @@ pub fn workspace_row_fill(
     } else {
         px(0.)
     };
-    let radius = theme.control_radius();
-    let paint = theme.paint(Tone::Neutral, Emphasis::Ghost).opaque();
+    let surface = Surface::new(role);
+    let hover = theme.layer(surface, PaintState::Hover);
     let fill = div()
         .absolute()
         .top(vertical_inset)
         .bottom(vertical_inset)
         .left(inset)
         .right(inset)
-        .rounded(radius)
-        .surface_outline(theme.transparent, cx)
-        .when_some(hover_group, |this, group| {
-            this.group_hover(group, |this| this.bg(paint.hover).control_surface(cx))
-        })
-        .when(lit != PaintState::Rest, |this| {
-            this.bg(paint.fill_at(lit)).control_surface(cx)
-        });
+        .surface_at(surface, lit, cx)
+        .when_some(
+            hover_group.filter(|_| lit == PaintState::Rest),
+            |this, group| this.group_hover(group, move |style| style.layer(&hover)),
+        );
     let press = CoarsePointer::get(cx).then(|| {
-        crate::touch::press_highlight(
-            id.clone(),
-            theme.paint(Tone::Neutral, Emphasis::Ghost).active,
-            radius,
-        )
-        .top(vertical_inset)
-        .bottom(vertical_inset)
-        .left(inset)
-        .right(inset)
+        let pressed = theme.layer(surface, PaintState::Active);
+        crate::touch::press_highlight(id.clone(), pressed.fill, pressed.radius)
+            .top(vertical_inset)
+            .bottom(vertical_inset)
+            .left(inset)
+            .right(inset)
     });
     std::iter::once(fill.into_any_element()).chain(press.map(IntoElement::into_any_element))
 }
@@ -412,7 +530,7 @@ pub fn workspace_tree_row(
     } else {
         PaintState::Rest
     };
-    let fill = workspace_row_fill(&id, lit, Some(row_group.clone()), cx);
+    let fill = workspace_row_fill(&id, roles::SIDEBAR_ROW, lit, Some(row_group.clone()), cx);
     workspace_tree_row_frame(id, depth, cx)
         .pr(workspace_tree_trailing_inset(cx))
         .group(row_group)
@@ -458,15 +576,32 @@ pub fn workspace_tree_action_button(
     disabled: bool,
     cx: &App,
 ) -> Button {
-    Button::compact_icon(id, icon)
-        .text()
-        .flat()
-        .hit_slop(TREE_TOUCH_SLOP, TREE_TOUCH_SLOP)
-        .when(!disabled, |button| {
-            button.text_color(cx.theme().foreground.muted())
-        })
-        .tooltip(tooltip)
+    workspace_row_action(
+        Button::compact_icon(id, icon)
+            .hit_slop(TREE_TOUCH_SLOP, TREE_TOUCH_SLOP)
+            .tooltip(tooltip),
+        cx.theme().ground(),
+        disabled,
+        cx,
+    )
+}
+
+/// Draws `button` as an action that shows on a row under the pointer (+, ×,
+/// …, the layout menu), sitting on `ground`, the row's fill: muted ink until
+/// pointed at, faint while `disabled`.
+#[must_use]
+pub fn workspace_row_action(button: Button, ground: Ground, disabled: bool, cx: &App) -> Button {
+    let ink = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Ghost);
+    button
+        .ghost()
+        .surface_role(roles::ROW_ACTION)
+        .on(ground)
         .disabled(disabled)
+        .text_color(if disabled {
+            ink.faint_at(PaintState::Rest)
+        } else {
+            ink.muted_at(PaintState::Rest)
+        })
 }
 
 fn workspace_tree_row_height(cx: &App) -> f32 {

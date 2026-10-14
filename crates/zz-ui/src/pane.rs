@@ -1,8 +1,7 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Elevation, Emphasis, Icon,
-    IconName, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
-    button::{Button, ButtonVariants as _},
-    contact_shadow, floating_shadow,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Icon,
+    IconName, InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _, Surface,
+    Tone, button::Button, roles,
 };
 use zz_gpui::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, FontWeight,
@@ -22,12 +21,9 @@ pub fn pane_header_icon_button(
     cx: &App,
 ) -> Button {
     Button::compact_icon(id, icon)
-        .text()
-        .flat()
+        .surface_role(roles::PANE_HEADER_BUTTON)
         .disabled(!enabled)
-        .when(enabled, |button| {
-            button.text_color(cx.theme().foreground.faint())
-        })
+        .text_color(cx.theme().foreground.faint())
 }
 
 pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconName {
@@ -71,6 +67,7 @@ pub fn terminal_pane_header(
         .items_center()
         .gap(px(8.0))
         .px(px(8.0))
+        .surface(Surface::new(roles::PANE_HEADER), cx)
         .font_family(cx.theme().font_family.clone())
         .text_size(crate::rems_from_px(13.0))
         .line_height(px(16.0))
@@ -128,6 +125,23 @@ pub fn terminal_pane_header(
                     "Close pane",
                 )),
         )
+}
+
+/// A terminal header over the pane's `background`, rounded into the pane's
+/// top corners and faded to `opacity` while the pane is inactive.
+pub fn pane_header_frame(
+    header: impl IntoElement,
+    background: Hsla,
+    radii: Corners<Pixels>,
+    opacity: f32,
+) -> zz_gpui::Div {
+    div()
+        .w_full()
+        .flex_none()
+        .rounded_tl(radii.top_left)
+        .rounded_tr(radii.top_right)
+        .bg(background)
+        .child(div().opacity(opacity).child(header))
 }
 
 const PANE_DRAG_SOURCE_FADE: f32 = 0.3;
@@ -191,18 +205,30 @@ pub fn pane_surface(
     chrome: PaneChrome,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
+    let theme = cx.theme();
+    let glass = theme.style(roles::PANE).fill == Fill::Glass;
+    let lit = chrome.active && theme.pane_glow_strength > 0.0;
+    let rest = theme.layer(roles::PANE, PaintState::Rest);
+    let shadow = if chrome.shadow {
+        rest.shadow.clone()
+    } else {
+        Vec::new()
+    };
+    let frame = chrome
+        .frame
+        .map(|frame| pane_frame_layer(frame, glass, lit, rest, cx));
     div()
         .id(id)
         .relative()
         .flex()
         .size_full()
         .overflow_hidden()
+        .when_some(frame, |surface, frame| surface.layer(&frame))
+        .shadow(shadow)
         .rounded_tl(chrome.radii.top_left)
         .rounded_tr(chrome.radii.top_right)
         .rounded_bl(chrome.radii.bottom_left)
         .rounded_br(chrome.radii.bottom_right)
-        .when_some(chrome.frame, zz_gpui::Styled::glass)
-        .when(chrome.shadow, |surface| surface.shadow(contact_shadow(cx)))
         .child(content)
         .when(chrome.inactive_opacity < 1.0, |surface| {
             surface.child(pane_inactive_scrim(
@@ -214,9 +240,8 @@ pub fn pane_surface(
         .when_some(
             chrome
                 .frame
-                .filter(|frame| frame.glint_width > Pixels::ZERO),
+                .filter(|frame| glass && frame.glint_width > Pixels::ZERO),
             |surface, frame| {
-                let lit = chrome.active && cx.theme().pane_glow_strength > 0.0;
                 surface.child(pane_frame_hairline(
                     chrome.radii,
                     frame.glint_width,
@@ -225,6 +250,22 @@ pub fn pane_surface(
             },
         )
         .children(overlays)
+}
+
+fn pane_frame_layer(frame: GlassMaterial, glass: bool, lit: bool, rest: Layer, cx: &App) -> Layer {
+    if glass {
+        return Layer {
+            glass: Some(frame),
+            border_width: Pixels::ZERO,
+            ..rest
+        };
+    }
+    let solid = cx.theme().style(roles::PANE).fill == Fill::Solid;
+    Layer {
+        fill: if solid { frame.tint } else { rest.fill },
+        border: if lit { cx.theme().accent } else { rest.border },
+        ..rest
+    }
 }
 
 /// The frame's edge where the window cannot sample its backdrop and glass
@@ -273,14 +314,14 @@ pub struct FloatingSurface {
     content: AnyElement,
     inset_x: Pixels,
     inset_y: Pixels,
-    background: Hsla,
-    foreground: Hsla,
-    border_color: Hsla,
+    background: Option<Hsla>,
+    foreground: Option<Hsla>,
+    border_color: Option<Hsla>,
     bordered: bool,
 }
 
 impl FloatingSurface {
-    pub fn new(id: impl Into<ElementId>, content: impl IntoElement, cx: &App) -> Self {
+    pub fn new(id: impl Into<ElementId>, content: impl IntoElement, _: &App) -> Self {
         Self {
             id: id.into(),
             title: SharedString::default(),
@@ -288,9 +329,9 @@ impl FloatingSurface {
             content: content.into_any_element(),
             inset_x: Pixels::ZERO,
             inset_y: Pixels::ZERO,
-            background: cx.theme().surface(Elevation::Panel).fill.opaque(),
-            foreground: cx.theme().foreground,
-            border_color: cx.theme().border(),
+            background: None,
+            foreground: None,
+            border_color: None,
             bordered: true,
         }
     }
@@ -314,11 +355,21 @@ impl FloatingSurface {
         self
     }
 
+    /// Fills, inks and edges the float in colors a popup style sets, over
+    /// the floating pane role's own.
     #[must_use]
     pub const fn colors(mut self, background: Hsla, foreground: Hsla, border_color: Hsla) -> Self {
-        self.background = background;
-        self.foreground = foreground;
-        self.border_color = border_color;
+        self.background = Some(background);
+        self.foreground = Some(foreground);
+        self.border_color = Some(border_color);
+        self
+    }
+
+    /// Edges the float in `color`, such as the accent of the active pane,
+    /// keeping the role's fill and ink.
+    #[must_use]
+    pub const fn edge_color(mut self, color: Hsla) -> Self {
+        self.border_color = Some(color);
         self
     }
 
@@ -331,30 +382,36 @@ impl FloatingSurface {
 
 impl RenderOnce for FloatingSurface {
     fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
-        let forced = (self.bordered && self.border_color != cx.theme().border())
-            .then_some(self.border_color);
-        let border = match (self.bordered, forced) {
-            (false, _) => Pixels::ZERO,
-            (true, Some(_)) => forced_edge_width(cx),
-            (true, None) => cx.theme().outline,
-        };
+        let theme = cx.theme();
+        let mut layer = theme.layer(roles::FLOATING_PANE, PaintState::Rest);
+        if let Some(fill) = self.background {
+            layer.fill = fill;
+            layer.glass = layer
+                .glass
+                .map(|glass| glass.tint(fill.alpha(glass.tint.a)).fallback(fill));
+        }
+        if let Some(text) = self.foreground {
+            layer.text = text;
+        }
+        if !self.bordered {
+            layer.border_width = Pixels::ZERO;
+        } else if let Some(color) = self.border_color.filter(|color| *color != theme.border()) {
+            layer.border_width = forced_edge_width(cx);
+            layer.border = color;
+        }
+        let border = layer.border_width;
         let inset_x = (self.inset_x - border).max(Pixels::ZERO);
         let inset_y = (self.inset_y - border).max(Pixels::ZERO);
         let title_inset = self.inset_x.max(px(8.0)) - border;
         let titled = self.bordered && !(self.title.is_empty() && self.title_right.is_empty());
-        let glass = cx.theme().glass_effect().is_some();
+        let label_fill = layer.glass.is_none().then_some(layer.fill);
         div()
             .id(self.id)
             .relative()
             .size_full()
             .overflow_hidden()
             .occlude()
-            .rounded(cx.theme().radius)
-            .when(self.bordered, |surface| surface.surface_edge(cx))
-            .surface_fill(self.background, cx)
-            .when_some(forced, |surface, color| forced_edge(surface, color, cx))
-            .text_color(self.foreground)
-            .shadow(floating_shadow(cx))
+            .layer(&layer)
             .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
@@ -373,7 +430,7 @@ impl RenderOnce for FloatingSurface {
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .when(!glass, |label| label.bg(self.background))
+                        .when_some(label_fill, zz_gpui::Styled::bg)
                         .child(text)
                 };
                 surface.child(
@@ -401,14 +458,6 @@ fn forced_edge_width(cx: &App) -> Pixels {
     cx.theme().outline.max(px(1.0))
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a floating pane's own border colour (the active accent or a tmux popup-border-style) wins over the look's edge"
-)]
-fn forced_edge(surface: Stateful<zz_gpui::Div>, color: Hsla, cx: &App) -> Stateful<zz_gpui::Div> {
-    surface.border(forced_edge_width(cx)).border_color(color)
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneDragOverlayState {
     /// The prefix is armed: every pane is a handle waiting to be picked up.
@@ -418,60 +467,58 @@ pub enum PaneDragOverlayState {
 }
 
 /// The occluding pane layer used while the tmux prefix is armed.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the dragged pane fades under a veil of the window color"
-)]
 pub fn pane_drag_overlay(
     id: impl Into<ElementId>,
     state: PaneDragOverlayState,
     radii: Corners<Pixels>,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let (tint, cursor) = match state {
-        PaneDragOverlayState::Armed => (
-            cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover,
-            CursorStyle::OpenHand,
-        ),
-        PaneDragOverlayState::Source => (
-            cx.theme()
-                .background
-                .opaque()
-                .opacity(PANE_DRAG_SOURCE_FADE),
-            CursorStyle::ClosedHand,
-        ),
+    let cursor = match state {
+        PaneDragOverlayState::Armed => CursorStyle::OpenHand,
+        PaneDragOverlayState::Source => CursorStyle::ClosedHand,
     };
-
     div()
         .id(id)
         .absolute()
         .inset_0()
         .occlude()
         .cursor(cursor)
-        .bg(tint)
+        .map(|veil| match state {
+            PaneDragOverlayState::Armed => veil.surface_at(roles::DROP_ZONE, PaintState::Hover, cx),
+            PaneDragOverlayState::Source => veil.bg(pane_drag_source_veil(cx)),
+        })
         .rounded_tl(radii.top_left)
         .rounded_tr(radii.top_right)
         .rounded_bl(radii.bottom_left)
         .rounded_br(radii.bottom_right)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the dragged pane fades under a veil of the window color"
+)]
+fn pane_drag_source_veil(cx: &App) -> Hsla {
+    cx.theme()
+        .background
+        .opaque()
+        .opacity(PANE_DRAG_SOURCE_FADE)
+}
+
 /// The rectangle a dragged pane lands in if it is dropped now. Positioning and
 /// animation belong to the caller; pass the target pane's own radius and border
 /// width so the preview's arcs land on the pane's.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the preview traces the target pane's own border width so its arcs land on the pane's"
-)]
 pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> zz_gpui::Div {
-    div()
-        .absolute()
-        .rounded(radius)
-        .border(border_width)
-        .border_color(cx.theme().foreground)
-        .bg(cx
-            .theme()
-            .paint(Tone::Neutral, Emphasis::Soft)
-            .fill_at(PaintState::Active))
+    let layer = cx.theme().layer(roles::DROP_ZONE, PaintState::Selected);
+    let border_width = if layer.border_width > Pixels::ZERO {
+        border_width
+    } else {
+        Pixels::ZERO
+    };
+    div().absolute().layer(&Layer {
+        radius,
+        border_width,
+        ..layer
+    })
 }
 
 /// The chip that follows the pointer while a pane is being dragged, carrying
@@ -482,11 +529,8 @@ pub fn pane_drag_chip(
     cx: &App,
 ) -> zz_gpui::Div {
     let theme = cx.theme();
-    let ink = theme.paint_on(
-        theme.surface(Elevation::Popover).opaque(),
-        Tone::Neutral,
-        Emphasis::Ghost,
-    );
+    let layer = theme.layer(roles::DRAG_CHIP, PaintState::Rest);
+    let ink = theme.paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost);
     div()
         .flex()
         .items_center()
@@ -495,8 +539,7 @@ pub fn pane_drag_chip(
         .px(px(10.0))
         .py(px(6.0))
         .overflow_hidden()
-        .popover_style(cx)
-        .rounded(theme.control_radius())
+        .layer(&layer)
         .text_size(crate::rems_from_px(12.0))
         .child(
             div()
@@ -611,6 +654,7 @@ pub fn pane_split_surface(
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let slot = f32::from(pane_split_slot(gap));
+    let ruled = cx.theme().style(roles::SPLIT_RULE).outline || hairline.is_some();
     let first = div()
         .flex()
         .flex_none()
@@ -633,7 +677,7 @@ pub fn pane_split_surface(
         .when(axis == PaneSplitAxis::Vertical, |element| {
             element.h(px(slot)).w_full()
         })
-        .when(!gaps, |divider| {
+        .when(!gaps && (ruled || resizing), |divider| {
             let hairline = div()
                 .absolute()
                 .bg(if resizing {
@@ -654,7 +698,7 @@ pub fn pane_split_surface(
                         .w_full()
                 });
             divider.child(hairline).when_some(
-                highlight.filter(|_| !resizing),
+                highlight.filter(|_| ruled && !resizing),
                 |divider, highlight| {
                     let half = PANE_SPLIT_DIVIDER_THICKNESS / 2.0;
                     divider.child(
@@ -801,11 +845,14 @@ pub fn pane_indicator(
 ) -> Stateful<zz_gpui::Div> {
     let theme = cx.theme();
     let active = indicator.active();
-    let ink = theme.paint_on(
-        theme.surface(Elevation::Popover).opaque(),
-        Tone::Neutral,
-        Emphasis::Ghost,
-    );
+    let surface = Surface::new(roles::DISPLAY_PANES);
+    let chip_state = if active {
+        PaintState::Current
+    } else {
+        PaintState::Rest
+    };
+    let layer = theme.layer(surface, chip_state);
+    let ink = theme.paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost);
     let muted = ink.muted_at(PaintState::Rest);
     let (option, default) = if active {
         (state.active_colour, DISPLAY_PANES_ACTIVE_COLOUR)
@@ -843,7 +890,20 @@ pub fn pane_indicator(
         )
         .collect();
     let pane = indicator.pane;
-    let accent = theme.accent;
+    let accent = theme.accent.opaque();
+    let ringed = option.filter(|_| active).map(|color| {
+        layer
+            .shadow
+            .iter()
+            .cloned()
+            .map(|mut shadow| {
+                if shadow.color == accent {
+                    shadow.color = color;
+                }
+                shadow
+            })
+            .collect::<Vec<_>>()
+    });
 
     div()
         .id(id)
@@ -856,12 +916,8 @@ pub fn pane_indicator(
         .h(px(40.0))
         .min_w(px(40.0))
         .when(!caption.is_empty(), |chip| chip.pl(px(14.0)).pr(px(16.0)))
-        .popover_style(cx)
-        .rounded(theme.control_radius())
-        .when_some(ring, |chip, ring| chip.chosen_ring(cx).border_color(ring))
-        .when(ring.is_none(), |chip| {
-            chip.hover(move |style| style.border_color(accent))
-        })
+        .surface_hover(surface, chip_state, cx)
+        .when_some(ringed, zz_gpui::Styled::shadow)
         .cursor(CursorStyle::PointingHand)
         .font_family(theme.font_family.clone())
         .child(
@@ -893,6 +949,7 @@ pub fn pane_unzoom_control() -> Button {
     Button::new("pane-unzoom")
         .icon(IconName::WindowRestore)
         .label("Unzoom")
+        .surface_role(roles::PANE_CHIP)
 }
 
 pub fn terminal_mode_indicator(
@@ -975,12 +1032,11 @@ fn overlay_paint(cx: &App) -> crate::Paint {
 }
 
 fn pane_chip(state: PaintState, cx: &App) -> zz_gpui::Div {
-    let paint = overlay_paint(cx);
     div()
-        .rounded(cx.theme().control_radius())
-        .painted(paint, state)
-        .control_surface(cx)
-        .when(state == PaintState::Focused, |chip| chip.focus_ring(&paint))
+        .surface_at(roles::PANE_CHIP, state, cx)
+        .when(state == PaintState::Focused, |chip| {
+            chip.focus_ring(&overlay_paint(cx))
+        })
 }
 
 /// A line in the pane's bottom-right overlay stack.
@@ -1038,6 +1094,33 @@ pub fn pane_picker_row(
             .lowercase()
             .on(paint.ground_at(state)),
         )
+}
+
+/// A freshly split pane asking what it should become: `rows` centered on
+/// the pane's fill, rounded into the pane's corners. The caller wires focus,
+/// keys and clicks.
+pub fn pane_picker_surface(
+    id: impl Into<ElementId>,
+    radii: Corners<Pixels>,
+    rows: impl IntoIterator<Item = AnyElement>,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    let theme = cx.theme();
+    div()
+        .id(id)
+        .flex()
+        .size_full()
+        .items_center()
+        .justify_center()
+        .overflow_hidden()
+        .rounded_tl(radii.top_left)
+        .rounded_tr(radii.top_right)
+        .rounded_bl(radii.bottom_left)
+        .rounded_br(radii.bottom_right)
+        .bg(theme.pane_background(theme.background))
+        .text_color(theme.foreground)
+        .px(px(12.0))
+        .child(pane_picker_choices(rows))
 }
 
 pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> zz_gpui::Div {

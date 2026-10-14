@@ -1,12 +1,12 @@
 use crate::connection::Connection;
 use zz_gpui::{
     App, Context, Corners, Entity, FocusHandle, Focusable, KeyDownEvent, MouseButton, Pixels,
-    Render, Window, div, prelude::*, px,
+    Render, Window, prelude::*,
 };
 use zz_protocol::PaneId;
 use zz_ui::{
-    ActiveTheme as _, IconName,
-    pane::{pane_picker_choices, pane_picker_row},
+    IconName,
+    pane::{pane_picker_row, pane_picker_surface},
 };
 
 const CHOICES: &[(&str, &str, IconName, &str)] = &[
@@ -159,35 +159,26 @@ impl Render for PanePicker {
                 .into_any_element()
             })
             .collect::<Vec<_>>();
-        div()
-            .id(("web-pane-picker", self.pane.0))
-            .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::key_down))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, window, cx| {
-                    this.connection.update(cx, |connection, cx| {
-                        connection.command(
-                            "select-pane",
-                            vec!["-Z".into(), "-t".into(), this.pane.to_string()],
-                            cx,
-                        );
-                    });
-                    this.focus.focus(window, cx);
-                }),
-            )
-            .flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .overflow_hidden()
-            .rounded_tl(self.corner_radii.top_left)
-            .rounded_tr(self.corner_radii.top_right)
-            .rounded_bl(self.corner_radii.bottom_left)
-            .rounded_br(self.corner_radii.bottom_right)
-            .bg(cx.theme().pane_background(cx.theme().background))
-            .text_color(cx.theme().foreground)
-            .px(px(12.0))
-            .child(pane_picker_choices(rows))
+        pane_picker_surface(
+            ("web-pane-picker", self.pane.0),
+            self.corner_radii,
+            rows,
+            cx,
+        )
+        .track_focus(&self.focus)
+        .on_key_down(cx.listener(Self::key_down))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _, window, cx| {
+                this.connection.update(cx, |connection, cx| {
+                    connection.command(
+                        "select-pane",
+                        vec!["-Z".into(), "-t".into(), this.pane.to_string()],
+                        cx,
+                    );
+                });
+                this.focus.focus(window, cx);
+            }),
+        )
     }
 }

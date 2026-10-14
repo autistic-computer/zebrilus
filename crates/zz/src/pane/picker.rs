@@ -1,12 +1,12 @@
 use zz_gpui::{
     App, Context, FocusHandle, Focusable, IntoElement, KeyDownEvent, Keystroke, MouseButton,
-    Render, Window, div, prelude::*, px,
+    Render, Window, prelude::*,
 };
 use zz_protocol::{CommandInvocation, PaneId};
-use zz_ui::{ActiveTheme as _, IconName};
+use zz_ui::IconName;
 
 use crate::mux::{client::MuxClient, hosts::HostId};
-use crate::window::corners::{WindowCorners, round_div_radii};
+use crate::window::corners::WindowCorners;
 use crate::{browser, config};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,26 +250,18 @@ impl Render for PanePickerView {
             .enumerate()
             .map(|(index, choice)| self.row(index, *choice, cx).into_any_element())
             .collect::<Vec<_>>();
-        round_div_radii(
-            div()
-                .id(("pane-picker", self.pane.0))
-                .track_focus(&self.focus_handle)
-                .on_key_down(cx.listener(Self::on_key_down))
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    select_mux.read(cx).execute(select_command(pane));
-                    focus_handle.focus(window, cx);
-                })
-                .flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .overflow_hidden()
-                .bg(crate::theme::app_pane_background(cx))
-                .text_color(cx.theme().foreground)
-                .px(px(12.0))
-                .child(zz_ui::pane::pane_picker_choices(rows)),
+        zz_ui::pane::pane_picker_surface(
+            ("pane-picker", self.pane.0),
             config::pane_content_radii(cx, self.window_corners),
+            rows,
+            cx,
         )
+        .track_focus(&self.focus_handle)
+        .on_key_down(cx.listener(Self::on_key_down))
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            select_mux.read(cx).execute(select_command(pane));
+            focus_handle.focus(window, cx);
+        })
     }
 }
 

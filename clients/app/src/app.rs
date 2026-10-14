@@ -34,22 +34,24 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Icon, IconName, Root,
-    StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Ground, Icon, IconName,
+    Kind, Root, StyledExt as _,
     button::{Button, ButtonVariants as _},
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserSearch,
         buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
     },
     navigation::{
-        workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
-        workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_sidebar_view_button,
+        workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
+        workspace_sidebar_footer, workspace_sidebar_ground, workspace_sidebar_panel,
+        workspace_sidebar_resize_handle, workspace_sidebar_slideover, workspace_sidebar_titlebar,
+        workspace_sidebar_view_button,
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneChrome, PaneDrag, PaneDragOverlayState, PaneSplitAxis,
         PaneSplitHighlight, PaneSplitSide, TerminalPaneAction, pane_drag_button, pane_drag_overlay,
-        pane_drag_preview, pane_drop_preview, pane_split_hit_target, pane_split_surface,
-        pane_surface, terminal_pane_header,
+        pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
+        pane_split_surface, pane_surface, terminal_pane_header,
     },
     settings::{SettingsSection, settings_navigation_button, settings_navigation_group_label},
     shell::{app_shell_surface, app_workspace_surface},
@@ -496,33 +498,16 @@ impl AppShell {
 
     fn slideover(&mut self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let sidebar = self.sidebar(window, cx);
-        div()
-            .id("web-slideover-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_start()
-            .bg(cx.theme().scrim)
-            .occlude()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, window, cx| {
-                    this.release_sidebar_focus(window, cx);
-                    cx.stop_propagation();
-                }),
-            )
-            .child(
-                div()
-                    .h_full()
-                    .flex()
-                    .flex_none()
-                    .popover_style(cx)
-                    .rounded(px(0.0))
-                    .occlude()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(sidebar),
-            )
-            .into_any_element()
+        workspace_sidebar_slideover(
+            "web-slideover-scrim",
+            sidebar,
+            cx.listener(|this, _, window, cx| {
+                this.release_sidebar_focus(window, cx);
+                cx.stop_propagation();
+            }),
+            cx,
+        )
+        .into_any_element()
     }
 
     fn active_window(&self, cx: &App) -> Option<WindowSnapshot> {
@@ -933,6 +918,10 @@ impl AppShell {
         !Self::narrow(window) && (self.sidebar || self.settings.is_some())
     }
 
+    fn sidebar_ground(&self, window: &Window, cx: &App) -> Ground {
+        workspace_sidebar_ground(cx.theme().ground(), !self.inline_sidebar(window), cx)
+    }
+
     pub(super) fn sidebar_width(&self, window: &Window) -> f32 {
         let width = f32::from(window.fully_visible_bounds().size.width);
         if Self::narrow(window) {
@@ -980,7 +969,8 @@ impl AppShell {
                 .children(rows)
                 .into_any_element()
         } else if self.preferences.flat_sidebar {
-            sidebar::flat_tree(self, cx)
+            let fade = workspace_sidebar_fade(self.sidebar_ground(window, cx), cx);
+            sidebar::flat_tree(self, fade, cx)
         } else {
             let core = &self.connection.read(cx).core;
             sidebar::session_tree(
@@ -998,6 +988,7 @@ impl AppShell {
                 },
                 &self.collapsed_tree,
                 &self.sidebar_scroll,
+                workspace_sidebar_fade(self.sidebar_ground(window, cx), cx),
                 cx,
             )
         };
@@ -1026,32 +1017,20 @@ impl AppShell {
                 cx,
             )
         });
-        let divider_hidden = self.preferences.gaps && self.inline_sidebar(window);
-        workspace_sidebar_surface(
+        let divider = !(self.preferences.gaps && self.inline_sidebar(window));
+        workspace_sidebar_panel(
             "web-sidebar-surface",
             self.sidebar_width(window),
             workspace_sidebar_titlebar("web-sidebar-titlebar", self.controls(cx), cx),
             navigation,
+            self.sidebar_ground(window, cx),
+            divider,
             cx,
         )
         .children(footer)
-        .when(divider_hidden, |surface| {
-            surface.border_color(zz_gpui::transparent_black())
-        })
         .track_focus(&self.sidebar_focus)
         .child(
-            div()
-                .id("web-sidebar-resize-handle")
-                .absolute()
-                .top(px(0.0))
-                .right(px(0.0))
-                .bottom(px(0.0))
-                .w(px(8.0))
-                .cursor(zz_gpui::CursorStyle::ResizeLeftRight)
-                .occlude()
-                .when(divider_hidden, |handle| {
-                    handle.hover(|handle| handle.rule_right(cx))
-                })
+            workspace_sidebar_resize_handle("web-sidebar-resize-handle", divider, cx)
                 .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
                     cx.new(|_| SidebarResizePreview)
                 })
@@ -1829,22 +1808,16 @@ impl AppShell {
                     .flex()
                     .flex_col()
                     .size_full()
-                    .child(
-                        div()
-                            .flex_none()
-                            .rounded_tl(radii.top_left)
-                            .rounded_tr(radii.top_right)
-                            .bg(background)
-                            .child(
-                                div()
-                                    .opacity(if active_window.active_pane == pane_id {
-                                        1.0
-                                    } else {
-                                        self.preferences.pane_inactive_opacity
-                                    })
-                                    .child(header),
-                            ),
-                    )
+                    .child(pane_header_frame(
+                        header,
+                        background,
+                        radii,
+                        if active_window.active_pane == pane_id {
+                            1.0
+                        } else {
+                            self.preferences.pane_inactive_opacity
+                        },
+                    ))
                     .child(div().flex_1().min_h_0().min_w_0().child(content))
                     .into_any_element()
             } else {
@@ -2040,7 +2013,7 @@ impl AppShell {
                     .right(px(8.0))
                     .top(px(8.0))
                     .p(px(8.0))
-                    .popover_style(cx)
+                    .surface(Kind::Toast, cx)
                     .text_size(px(12.0))
                     .text_color(cx.theme().warning)
                     .child(self.connection.read(cx).status.clone())

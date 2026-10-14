@@ -7,8 +7,9 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, Icon, IconName, Paint,
-    PaintState, StyledExt as _, Tone, tooltip::Tooltip, touch::CoarsePointer,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractiveSurfaceExt as _,
+    Kind, Layer, PaintState, StyledExt as _, Surface, Tone, roles, tooltip::Tooltip,
+    touch::CoarsePointer,
 };
 
 pub type StackAction = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -66,10 +67,12 @@ pub struct StackTile {
     pub select: Option<StackAction>,
 }
 
+/// The corner radius of a `tile` tall stack tile inside something `around`
+/// tall: the role's corners, kept concentric with what holds them.
 pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     let theme = cx.theme();
-    let radius = theme.control_radius();
-    if radius == FULL_CORNER_RADIUS {
+    let radius = theme.layer(roles::PANE_STACK, PaintState::Rest).radius;
+    if radius == FULL_CORNER_RADIUS || radius == Pixels::ZERO {
         return radius;
     }
     (radius - (around - tile) / 2.0).max(theme.radius * 0.25)
@@ -168,16 +171,13 @@ fn glyph(tile: &StackTile, size: f32, color: Hsla) -> AnyElement {
     }
 }
 
-fn tile_box(size: StackSize, radius: Pixels, fill: Hsla, border: Hsla, cx: &App) -> Div {
+fn tile_box(size: StackSize) -> Div {
     div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
         .size(px(size.tile()))
-        .rounded(radius)
-        .bg(fill)
-        .surface_outline(border, cx)
 }
 
 fn update(pointer: &Entity<Pointer>, view: EntityId, cx: &mut App, f: impl FnOnce(&mut Pointer)) {
@@ -194,22 +194,23 @@ impl PaneStack {
         }
     }
 
-    fn resting(&self, slot: usize, shown: usize, paint: &Paint, cx: &App) -> Div {
+    fn resting(&self, slot: usize, shown: usize, layer: &Layer) -> Div {
         let size = self.size;
-        let tile = tile_box(
-            size,
-            self.radius,
-            self.dim(paint.hover),
-            self.dim(paint.hover.blend(paint.border)),
-            cx,
-        )
-        .when(slot == 0, |tile| {
-            tile.children(
-                self.tiles
-                    .first()
-                    .map(|front| glyph(front, size.glyph(), self.dim(paint.text))),
-            )
-        });
+        let layer = Layer {
+            fill: self.dim(layer.fill),
+            border: self.dim(layer.fill.blend(layer.border)),
+            ..layer.clone()
+        };
+        let tile = tile_box(size)
+            .layer(&layer)
+            .rounded(self.radius)
+            .when(slot == 0, |tile| {
+                tile.children(
+                    self.tiles
+                        .first()
+                        .map(|front| glyph(front, size.glyph(), self.dim(layer.text))),
+                )
+            });
         let left = px(slot as f32 * size.step());
         if slot + 1 == shown {
             return tile.absolute().left(left).top_0();
@@ -230,66 +231,72 @@ impl PaneStack {
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
         let size = self.size;
         let theme = cx.theme();
-        let ground = theme.surface(Elevation::Popover).opaque();
-        let paint = theme
-            .paint_on(ground, Tone::Neutral, Emphasis::Soft)
-            .opaque();
+        let plate = theme.layer(Kind::Popover.role(), PaintState::Rest);
+        let tile = Surface::new(roles::PANE_STACK).on(plate.ground);
         let pad = size.gap();
         let travel = size.tile() + size.gap();
         let animate = !cx.reduce_motion();
         let duration = OPEN_DURATION;
         let id = self.id.clone();
-        let tiles = self.tiles.iter().enumerate().rev().map(|(index, tile)| {
-            let front = index == 0;
-            let state = if front {
-                PaintState::Current
-            } else {
-                PaintState::Rest
-            };
-            let ink = if front {
-                paint.text
-            } else {
-                paint.muted_at(PaintState::Rest)
-            };
-            let select = tile.select.clone();
-            let tooltip = tile.tooltip.clone();
-            let hovered = paint.hover;
-            let element = tile_box(size, self.radius, paint.fill_at(state), paint.border, cx)
-                .id(("pane-stack-tile", index))
-                .debug_selector(move || format!("pane-stack-tile-{index}"))
-                .role(Role::Button)
-                .aria_label(tile.label.clone())
-                .aria_selected(front)
-                .relative()
-                .when(!front, |tile| tile.hover(move |style| style.bg(hovered)))
-                .tooltip(move |window, cx| {
-                    Tooltip::new(tooltip.clone())
-                        .max_w(px(360.0))
-                        .build(window, cx)
-                })
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .when_some(select, |element, select| {
-                    let pointer = pointer.clone();
-                    element.cursor_pointer().on_click(move |_, window, cx| {
-                        cx.stop_propagation();
-                        update(&pointer, view, cx, |pointer| *pointer = Pointer::default());
-                        select(window, cx);
+        let tiles = self
+            .tiles
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(index, stack_tile)| {
+                let front = index == 0;
+                let state = if front {
+                    PaintState::Current
+                } else {
+                    PaintState::Rest
+                };
+                let layer = theme.layer(tile, state);
+                let ink = if front {
+                    layer.text
+                } else {
+                    theme
+                        .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
+                        .muted_at(PaintState::Rest)
+                };
+                let select = stack_tile.select.clone();
+                let tooltip = stack_tile.tooltip.clone();
+                let element = tile_box(size)
+                    .id(("pane-stack-tile", index))
+                    .debug_selector(move || format!("pane-stack-tile-{index}"))
+                    .role(Role::Button)
+                    .aria_label(stack_tile.label.clone())
+                    .aria_selected(front)
+                    .relative()
+                    .surface_hover(tile, state, cx)
+                    .rounded(self.radius)
+                    .tooltip(move |window, cx| {
+                        Tooltip::new(tooltip.clone())
+                            .max_w(px(360.0))
+                            .build(window, cx)
                     })
-                })
-                .child(glyph(tile, size.glyph(), ink));
-            let from = index.min(RESTING - 1) as f32 * size.step() - index as f32 * travel;
-            if animate {
-                element
-                    .with_animation(
-                        ("pane-stack-open", index),
-                        Animation::new(duration).with_easing(ease_out_quint()),
-                        move |tile, delta| tile.left(px(from * (1.0 - delta))),
-                    )
-                    .into_any_element()
-            } else {
-                element.into_any_element()
-            }
-        });
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .when_some(select, |element, select| {
+                        let pointer = pointer.clone();
+                        element.cursor_pointer().on_click(move |_, window, cx| {
+                            cx.stop_propagation();
+                            update(&pointer, view, cx, |pointer| *pointer = Pointer::default());
+                            select(window, cx);
+                        })
+                    })
+                    .child(glyph(stack_tile, size.glyph(), ink));
+                let from = index.min(RESTING - 1) as f32 * size.step() - index as f32 * travel;
+                if animate {
+                    element
+                        .with_animation(
+                            ("pane-stack-open", index),
+                            Animation::new(duration).with_easing(ease_out_quint()),
+                            move |tile, delta| tile.left(px(from * (1.0 - delta))),
+                        )
+                        .into_any_element()
+                } else {
+                    element.into_any_element()
+                }
+            });
         let pointer = pointer.clone();
         let leave = pointer.clone();
         let row = div()
@@ -302,7 +309,7 @@ impl PaneStack {
             .gap(px(size.gap()))
             .p(px(pad))
             .occlude()
-            .popover_style(cx)
+            .layer(&plate)
             .rounded(grow(self.radius, pad))
             .on_hover(move |hovered, _, cx| {
                 let hovered = *hovered;
@@ -335,10 +342,10 @@ impl RenderOnce for PaneStack {
         let openable = self.tiles.len() > 1;
         let open = openable && pointer.read(cx).open();
         let shown = self.tiles.len().clamp(1, RESTING);
-        let paint = cx
-            .theme()
-            .paint_on(self.ground, Tone::Neutral, Emphasis::Soft)
-            .opaque();
+        let resting = cx.theme().layer(
+            Surface::new(roles::PANE_STACK).on(self.ground),
+            PaintState::Hover,
+        );
         let size = self.size;
         let width = size.tile() + (shown - 1) as f32 * size.step();
         let coarse = CoarsePointer::get(cx);
@@ -370,7 +377,7 @@ impl RenderOnce for PaneStack {
             .children(
                 (0..shown)
                     .rev()
-                    .map(|slot| self.resting(slot, shown, &paint, cx)),
+                    .map(|slot| self.resting(slot, shown, &resting)),
             )
             .children(row)
     }

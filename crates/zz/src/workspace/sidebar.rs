@@ -8,8 +8,8 @@ use std::{
 
 use zz_client::{ChromeAction, SIDEBAR_TABLE};
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, CursorStyle, Entity, EventEmitter, FocusHandle,
-    Hsla, InteractiveElement as _, IntoElement, KeyBinding, ListSizingBehavior, MouseButton,
+    AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Hsla,
+    InteractiveElement as _, IntoElement, KeyBinding, ListSizingBehavior, MouseButton,
     ParentElement as _, Render, ScrollStrategy, SharedString, StatefulInteractiveElement as _,
     Styled as _, UniformListScrollHandle, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px, uniform_list,
@@ -28,13 +28,14 @@ use zz_ui::navigation::{
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
         tree_node_marker, tree_row_menu, tree_window_layout_button,
     },
-    workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
-    workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_sidebar_view_button,
+    workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
+    workspace_sidebar_footer, workspace_sidebar_ground, workspace_sidebar_panel,
+    workspace_sidebar_resize_handle, workspace_sidebar_titlebar, workspace_sidebar_view_button,
     workspace_tree_action_button, workspace_tree_action_row, workspace_tree_disclosure,
     workspace_tree_row,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, rems_from_px,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, rems_from_px,
     scroll::ScrollableElement as _,
     settings::{
         settings_navigation_back_button, settings_navigation_back_row, settings_navigation_button,
@@ -70,7 +71,6 @@ use crate::mux::nav::{
 
 const SIDEBAR_MIN_WIDTH: f32 = 160.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
-const SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 const TREE_INDENT_GUIDE_OFFSET: f32 = TREE_MARKER_SLOT_WIDTH / 2.0;
 const TREE_INDENT_GUIDE_PADDING: f32 = 4.0;
 const TREE_KEY_CONTEXT: &str = "WorkspaceTree";
@@ -321,6 +321,17 @@ impl WorkspaceSidebar {
 
     pub(crate) const fn slideover_open(&self) -> bool {
         self.slideover
+    }
+
+    fn ground(&self, cx: &App) -> Ground {
+        workspace_sidebar_ground(
+            Ground {
+                fill: crate::theme::chrome_background(cx),
+                ..cx.theme().ground()
+            },
+            self.route == WorkspaceRoute::App && self.mode == ChromeMode::Titlebar,
+            cx,
+        )
     }
 
     pub(crate) fn toggle_mode(&mut self, cx: &mut Context<Self>) {
@@ -613,6 +624,7 @@ impl WorkspaceSidebar {
         render_expanded_navigation(
             &self.visible_entries,
             &self.scroll_handle,
+            workspace_sidebar_fade(self.ground(cx), cx),
             &TreeRowRuntime {
                 sidebar: sidebar.clone(),
                 mux: self.mux.clone(),
@@ -835,28 +847,26 @@ impl Render for WorkspaceSidebar {
             let divider_hidden =
                 (settings_route || matches!(self.mode(), ChromeMode::Sidebar)) && pane_gaps(cx);
             let shell = corners.round_div(
-                workspace_sidebar_surface("workspace-sidebar", width, titlebar, navigation, cx)
-                    .children(footer)
-                    .when(divider_hidden, |this| {
-                        this.border_color(zz_gpui::transparent_black())
-                    }),
+                workspace_sidebar_panel(
+                    "workspace-sidebar",
+                    width,
+                    titlebar,
+                    navigation,
+                    self.ground(cx),
+                    !divider_hidden,
+                    cx,
+                )
+                .children(footer),
                 frame_content_corner_radius(cx),
             );
-            let resize_handle = div()
-                .id("workspace-sidebar-resize-handle")
-                .absolute()
-                .top(px(0.0))
-                .right(px(0.0))
-                .bottom(px(0.0))
-                .w(px(SIDEBAR_RESIZE_HANDLE_WIDTH))
-                .cursor(CursorStyle::ResizeLeftRight)
-                .occlude()
-                .when(divider_hidden, |this| {
-                    this.hover(|this| this.rule_right(cx))
-                })
-                .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
-                    cx.new(|_| SidebarResizePreview)
-                });
+            let resize_handle = workspace_sidebar_resize_handle(
+                "workspace-sidebar-resize-handle",
+                !divider_hidden,
+                cx,
+            )
+            .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
+                cx.new(|_| SidebarResizePreview)
+            });
             div()
                 .id("workspace-sidebar-clip")
                 .relative()
@@ -1116,6 +1126,7 @@ struct TreeRowRuntime {
 fn render_expanded_navigation(
     entries: &Rc<[VisibleTreeEntry]>,
     scroll_handle: &UniformListScrollHandle,
+    fade: Hsla,
     runtime: &TreeRowRuntime,
     window: &mut Window,
     cx: &mut App,
@@ -1136,17 +1147,13 @@ fn render_expanded_navigation(
     } else {
         None
     };
-    let guide_color = cx.theme().foreground.muted();
     let decoration = WorkspaceIndentGuides::new(
         depths,
         active_row,
         px(TREE_INDENT_WIDTH),
         px(TREE_CONTENT_INSET + TREE_INDENT_GUIDE_OFFSET),
         px(TREE_INDENT_GUIDE_PADDING),
-        IndentGuideColors {
-            default: cx.theme().divider_color(),
-            active: guide_color,
-        },
+        IndentGuideColors::tree(cx),
     );
     let row_entries = Rc::clone(entries);
     let row_runtime = runtime.clone();
@@ -1187,11 +1194,7 @@ fn render_expanded_navigation(
         .size_full()
         .min_h_0()
         .child(rows)
-        .bottom_fade(
-            scroll_handle,
-            crate::theme::chrome_background(cx),
-            WORKSPACE_SIDEBAR_FADE_HEIGHT,
-        )
+        .bottom_fade(scroll_handle, fade, WORKSPACE_SIDEBAR_FADE_HEIGHT)
         .vertical_scrollbar(scroll_handle)
         .into_any_element()
 }

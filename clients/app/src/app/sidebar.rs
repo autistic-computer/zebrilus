@@ -362,6 +362,7 @@ pub(super) fn session_tree(
     runtime: Runtime,
     collapsed: &BTreeSet<Target>,
     scroll: &UniformListScrollHandle,
+    fade: Hsla,
     cx: &App,
 ) -> AnyElement {
     let connection = &runtime.connection;
@@ -377,17 +378,13 @@ pub(super) fn session_tree(
         .then(|| rows.iter().rposition(|row| row.on_active_path))
         .flatten();
     let depths: Rc<[usize]> = rows.iter().map(|row| usize::from(row.depth)).collect();
-    let guide_color = cx.theme().foreground.muted();
     let guides = WorkspaceIndentGuides::new(
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),
         px(WORKSPACE_TREE_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
         px(4.0),
-        IndentGuideColors {
-            default: cx.theme().divider_color(),
-            active: guide_color,
-        },
+        IndentGuideColors::tree(cx),
     );
     let list = uniform_list("web-session-tree-rows", rows.len(), move |range, _, cx| {
         range
@@ -406,7 +403,7 @@ pub(super) fn session_tree(
         .child(list)
         .bottom_fade(
             scroll,
-            cx.theme().background,
+            fade,
             zz_ui::navigation::WORKSPACE_SIDEBAR_FADE_HEIGHT,
         )
         .vertical_scrollbar(scroll)
@@ -437,7 +434,7 @@ fn writable(connection: &Connection) -> bool {
     connection.connected && !connection.core.attached_read_only()
 }
 
-pub(super) fn flat_tree(view: &AppShell, cx: &mut Context<AppShell>) -> AnyElement {
+pub(super) fn flat_tree(view: &AppShell, fade: Hsla, cx: &mut Context<AppShell>) -> AnyElement {
     let connection = view.connection.read(cx);
     let core = &connection.core;
     let snapshot = core.snapshot();
@@ -507,7 +504,7 @@ pub(super) fn flat_tree(view: &AppShell, cx: &mut Context<AppShell>) -> AnyEleme
                 .track_scroll(scroll)
                 .child(list),
         )
-        .bottom_fade(scroll, cx.theme().background, WORKSPACE_SIDEBAR_FADE_HEIGHT)
+        .bottom_fade(scroll, fade, WORKSPACE_SIDEBAR_FADE_HEIGHT)
         .vertical_scrollbar(scroll)
         .into_any_element()
 }

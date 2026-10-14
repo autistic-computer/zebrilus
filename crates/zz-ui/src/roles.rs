@@ -79,13 +79,16 @@ pub const ROW_ACTION: SurfaceRole = SurfaceRole::new(
 .with(P.hover(Highlight::None).selected(Highlight::None));
 pub const PANE_STACK: SurfaceRole = SurfaceRole::new(
     "pane-stack",
-    Kind::Tile,
+    Kind::Chip,
     "Pane stacks",
-    "Stacked pane tiles in flat rows and window tabs, and the plate they fan out on",
+    "Stacked pane tiles in flat rows and window tabs, and on the plate they fan out on",
 )
 .with(
-    P.fill(Fill::Tint)
+    P.fill(Fill::Solid)
+        .outline(true)
         .shadow(Shadow::None)
+        .shape(Shape::Round)
+        .hover(Highlight::Tint)
         .selected(Highlight::Tint),
 );
 
@@ -136,11 +139,16 @@ pub const FIND_BAR: SurfaceRole = SurfaceRole::new(
 );
 pub const DROP_ZONE: SurfaceRole = SurfaceRole::new(
     "pane.drop-zone",
-    Kind::Tile,
+    Kind::Chip,
     "Drop zones",
     "Where a dragged pane will land, and the veil over panes while you drag",
 )
-.with(P.fill(Fill::Tint).shadow(Shadow::None));
+.with(
+    P.fill(Fill::Tint)
+        .shadow(Shadow::None)
+        .hover(Highlight::Tint)
+        .selected(Highlight::Tint),
+);
 pub const DRAG_CHIP: SurfaceRole = SurfaceRole::new(
     "pane.drag-chip",
     Kind::Chip,
