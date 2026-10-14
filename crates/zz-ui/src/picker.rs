@@ -1,18 +1,78 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName,
-    InteractivePaintExt as _, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Icon, IconName, Kind, Layer,
+    PaintState, Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Surface, SurfaceRole, Tone,
     badge::Badge,
     h_flex,
     input::{Input, InputState},
-    v_flex,
+    roles, v_flex,
 };
 use zz_gpui::{
-    AnimationElement, App, Div, ElementId, Entity, FontWeight, MouseButton, Pixels, SharedString,
-    Stateful, div, prelude::*, px, relative,
+    AnimationElement, App, CornerRadiusMode, Div, ElementId, Entity, FULL_CORNER_RADIUS,
+    FontWeight, Hsla, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, relative,
 };
 
 const PICKER_ROW_HEIGHT: Pixels = px(26.0);
 const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
+const ROW_RADIUS_SHARE: f32 = 0.40;
+const ROW_CORNER_SMOOTHING: f32 = 2.5;
+
+/// The corners of a row `height` tall drawn as `layer`: its role's radius,
+/// held to the share of the height a list row rounds by.
+pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
+    let radius = if layer.radius >= FULL_CORNER_RADIUS {
+        layer.radius
+    } else {
+        layer.radius.min(height * ROW_RADIUS_SHARE)
+    };
+    element
+        .rounded(radius)
+        .corner_radius_mode(CornerRadiusMode::Fixed)
+        .corner_smoothing(ROW_CORNER_SMOOTHING)
+}
+
+/// A row `height` tall drawn as `surface` in `state`, with its hover and
+/// press while it rests.
+pub fn row_surface<E: StatefulInteractiveElement + Styled>(
+    element: E,
+    surface: impl Into<Surface>,
+    state: PaintState,
+    height: Pixels,
+    cx: &App,
+) -> E {
+    let surface = surface.into();
+    let layer = cx.theme().layer(surface, state);
+    row_corners(
+        element.surface_interactive(surface, state, cx),
+        &layer,
+        height,
+    )
+}
+
+/// Secondary text on what `layer` paints: its ink pulled toward its fill.
+pub fn muted_on(layer: &Layer, cx: &App) -> Hsla {
+    cx.theme()
+        .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
+        .muted_at(PaintState::Rest)
+}
+
+/// The state of a row the cursor may be on.
+pub const fn row_state(selected: bool, enabled: bool) -> PaintState {
+    match (enabled, selected) {
+        (false, _) => PaintState::Disabled,
+        (true, true) => PaintState::Selected,
+        (true, false) => PaintState::Rest,
+    }
+}
+
+/// The radius of a surface drawn as `layer` whose rows sit `inset` inside
+/// it, so the two stay concentric. Square and pill shapes keep theirs.
+pub fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
+    if layer.radius > px(0.0) && layer.radius < FULL_CORNER_RADIUS {
+        layer.radius + inset
+    } else {
+        layer.radius
+    }
+}
 
 pub fn picker_overlay(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
     div()
@@ -46,7 +106,7 @@ pub fn picker_modal_sized(
         .min_h(px(240.0))
         .max_h(px(720.0))
         .overflow_hidden()
-        .popover_style(cx)
+        .surface(roles::PICKER, cx)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     zz_gpui_kit::foundation::surface_enter(surface, (id, "picker-open"), px(0.0))
 }
@@ -55,14 +115,19 @@ pub fn picker_header(cx: &App) -> Div {
     v_flex()
         .flex_none()
         .gap(px(CHROME_GAP))
-        .rule_bottom(cx)
+        .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
         .p(px(8.0))
 }
 
 pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
+    picker_search_on(input, roles::PICKER, cx)
+}
+
+/// The search field of a picker drawn as `role`, on its ground.
+pub fn picker_search_on(input: &Entity<InputState>, role: SurfaceRole, cx: &App) -> Div {
     div().w_full().child(
         Input::new(input)
-            .on(cx.theme().surface(Elevation::Popover).opaque())
+            .on(cx.theme().ground_of(role))
             .w_full()
             .min_w_0()
             .prefix(
@@ -100,7 +165,7 @@ pub fn picker_footer(cx: &App) -> Div {
         .min_h(px(40.0))
         .flex_none()
         .gap(px(CHROME_GAP))
-        .rule_top(cx)
+        .rule_on(roles::BAR_RULE, Edge::Top, cx)
         .py(px(CHROME_GAP))
         .pl_4()
         .pr(px(CHROME_GAP))
@@ -115,16 +180,13 @@ pub fn list_row(
     enabled: bool,
     cx: &App,
 ) -> Stateful<Div> {
-    h_flex()
-        .id(id)
-        .flex_none()
-        .h(height)
-        .menu_item_corners(height, cx)
-        .painted_interactive(
-            cx.theme().paint(Tone::Neutral, Emphasis::Ghost),
-            selected,
-            enabled,
-        )
+    row_surface(
+        h_flex().id(id).flex_none().h(height),
+        Kind::Row.role(),
+        row_state(selected, enabled),
+        height,
+        cx,
+    )
 }
 
 pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {

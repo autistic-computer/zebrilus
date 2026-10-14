@@ -14,7 +14,7 @@ pub use palette_model::{
 pub use palette_view::{CommandPaletteEvent, CommandPaletteView, PaletteBackend};
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Sizable as _, StyledExt as _,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, PaintState, Sizable as _, StyledExt as _,
     badge::Badge,
     input::{Input, InputState},
     kbd::Kbd,
@@ -34,10 +34,13 @@ pub fn command_palette_row_height() -> f32 {
     px(COMMAND_PALETTE_ROW_HEIGHT).as_f32()
 }
 
-/// The palette surface's radius: the theme's, opened by
+/// The palette surface's radius: its role's, opened by
 /// [`COMMAND_PALETTE_INSET`] to stay concentric with the children's corners.
 pub fn command_palette_radius(cx: &App) -> Pixels {
-    cx.theme().outer_radius(px(COMMAND_PALETTE_INSET))
+    crate::picker::outer_radius(
+        &cx.theme().layer(crate::roles::PALETTE, PaintState::Rest),
+        px(COMMAND_PALETTE_INSET),
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -157,7 +160,7 @@ impl RenderOnce for CommandPaletteSurface {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .popover_style(cx)
+            .surface(crate::roles::PALETTE, cx)
             .rounded(command_palette_radius(cx))
             .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(self.input)
@@ -195,7 +198,7 @@ impl RenderOnce for CommandPaletteSurface {
                     .gap(px(14.0))
                     .px(px(18.0))
                     .py(px(8.0))
-                    .rule_top(cx)
+                    .rule_on(crate::roles::BAR_RULE, Edge::Top, cx)
                     .text_size(crate::rems_from_px(10.0))
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())

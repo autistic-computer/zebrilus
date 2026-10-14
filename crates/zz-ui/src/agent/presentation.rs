@@ -6,9 +6,10 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractivePaintExt as _,
-    Paint, PaintState, StyledExt as _, Tone, badge::Badge, button::Button, feedback::inline_alert,
-    h_flex, kbd::Keycap, pulse::pulse_phase, v_flex,
+    ActiveTheme as _, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, PaintState,
+    StatefulSurfaceExt as _, StyledExt as _, Surface, Tone, badge::Badge, button::Button,
+    feedback::inline_alert, h_flex, kbd::Keycap, picker::muted_on, pulse::pulse_phase, roles,
+    v_flex,
 };
 
 pub use zz_client::agent_config::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -162,7 +163,10 @@ const CARD_DETAIL_LINE: f32 = 16.0;
 const CARD_CLOSE: f32 = 24.0;
 
 pub(crate) fn card_surface(cx: &App) -> Div {
-    v_flex().w_full().overflow_hidden().popover_style(cx)
+    v_flex()
+        .w_full()
+        .overflow_hidden()
+        .surface(roles::INLINE_PANEL, cx)
 }
 
 pub(crate) fn card_header() -> Div {
@@ -200,31 +204,37 @@ pub(crate) fn card_chip(text: impl Into<SharedString>) -> Badge {
 }
 
 pub(crate) fn card_divider(cx: &App) -> Div {
-    div().mx(px(CARD_GUTTER)).my(px(CARD_GAP)).rule_top(cx)
+    div()
+        .mx(px(CARD_GUTTER))
+        .my(px(CARD_GAP))
+        .rule_on(roles::LIST_RULE, Edge::Top, cx)
 }
 
 pub(crate) fn card_tiles() -> Div {
     v_flex().w_full().gap(px(CARD_TILE_GAP)).px(px(CARD_GUTTER))
 }
 
-/// An option tile in a card: neutral soft, or danger soft for a
-/// destructive choice, selectable. What sits inside it (its description,
-/// keycaps, checks) paints on the tile's ground.
+/// An option tile in a card: neutral, or danger for a destructive choice,
+/// selectable. What sits inside it (its description, keycaps, checks) paints
+/// on the tile's ground.
 #[derive(Clone, Copy)]
 pub(crate) struct CardTile {
-    paint: Paint,
+    surface: Surface,
     state: PaintState,
+    ground: Ground,
+    muted: zz_gpui::Hsla,
 }
 
 impl CardTile {
     pub(crate) fn new(tone: Tone, enabled: bool, selected: bool, cx: &App) -> Self {
+        let surface = Surface::new(roles::AGENT_OPTION).tone(tone);
+        let state = crate::picker::row_state(selected, enabled);
+        let layer = cx.theme().layer(surface, state);
         Self {
-            paint: cx.theme().paint(tone, Emphasis::Soft),
-            state: match (enabled, selected) {
-                (false, _) => PaintState::Disabled,
-                (true, true) => PaintState::Selected,
-                (true, false) => PaintState::Rest,
-            },
+            surface,
+            state,
+            ground: layer.ground,
+            muted: muted_on(&layer, cx),
         }
     }
 
@@ -233,7 +243,7 @@ impl CardTile {
     }
 
     pub(crate) fn ground(self) -> Ground {
-        self.paint.ground_at(self.state)
+        self.ground
     }
 
     pub(crate) fn render(self, id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
@@ -245,8 +255,7 @@ impl CardTile {
             .gap(px(CARD_GAP))
             .px(px(CARD_TILE_PADDING_X))
             .py(px(CARD_TILE_PADDING_Y))
-            .rounded(cx.theme().control_radius())
-            .painted_interactive(self.paint, self.selected(), enabled)
+            .surface_interactive(self.surface, self.state, cx)
             .text_size(crate::rems_from_px(13.0))
             .line_height(px(CARD_LABEL_LINE))
             .when(enabled, zz_gpui::Styled::cursor_pointer)
@@ -256,7 +265,7 @@ impl CardTile {
         div()
             .text_size(crate::rems_from_px(12.0))
             .line_height(px(CARD_DETAIL_LINE))
-            .text_color(self.paint.muted_at(self.state))
+            .text_color(self.muted)
             .child(text.into())
     }
 

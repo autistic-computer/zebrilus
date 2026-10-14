@@ -6,12 +6,13 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Sizable as _,
-    StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, PaintState, Sizable as _,
+    Tone,
     badge::Badge,
     input::{Input, InputState},
     kbd::Keycap,
     list::ListItem,
+    picker::{muted_on, row_corners},
 };
 
 use super::command_palette_row_height;
@@ -64,6 +65,19 @@ pub struct PaletteRow {
 
 fn status_dot(status: PaletteStatus, cx: &App) -> Div {
     crate::navigation::status_dot(status.color(cx))
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a ring in the row's ink keeps a status dot legible on the selection; it is the dot's color, not an edge"
+)]
+fn ringed(dot: Div, ring: Hsla, cx: &App) -> Div {
+    let dot = dot.border_color(ring);
+    if cx.theme().outlined() {
+        dot.border(cx.theme().outline)
+    } else {
+        dot
+    }
 }
 
 fn pill(pill: PalettePill, cx: &App) -> Badge {
@@ -140,14 +154,14 @@ pub(super) fn palette_entry(
     on_toggle: Option<ToggleHandler>,
     cx: &App,
 ) -> ListItem {
-    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
     let state = if selected {
         PaintState::Selected
     } else {
         PaintState::Rest
     };
-    let foreground = paint.text_at(state);
-    let secondary = paint.muted_at(state);
+    let layer = cx.theme().layer(Kind::Row, state);
+    let foreground = layer.text;
+    let secondary = muted_on(&layer, cx);
     let highlights = row
         .label
         .char_indices()
@@ -173,7 +187,7 @@ pub(super) fn palette_entry(
     ListItem::new(id)
         .w_full()
         .h(height)
-        .menu_item_corners(height, cx)
+        .map(|item| row_corners(item, &layer, height))
         .pl(px(12.0 + row.indent))
         .pr(px(12.0))
         .py(px(4.0))
@@ -233,7 +247,7 @@ pub(super) fn palette_entry(
                     )
                 })
                 .children(row.status.map(|status| {
-                    status_dot(status, cx).when(selected, |dot| dot.surface_outline(secondary, cx))
+                    status_dot(status, cx).when(selected, |dot| ringed(dot, secondary, cx))
                 }))
                 .child(
                     div()
@@ -277,7 +291,7 @@ pub(super) fn palette_entry(
                     element.child(
                         Keycap::new(shortcut)
                             .small()
-                            .on(paint.ground_at(state))
+                            .on(layer.ground)
                             .font_family(cx.theme().mono_font_family.clone()),
                     )
                 })
@@ -447,7 +461,9 @@ mod tests {
                     .iter()
                     .find(|quad| {
                         quad.background
-                            == zz_gpui::solid_background(cx.theme().selection_background())
+                            == zz_gpui::solid_background(
+                                cx.theme().layer(Kind::Row, PaintState::Selected).fill,
+                            )
                             && quad.bounds.size.width.0 > 100.0 * window.scale_factor()
                     })
                     .expect("selected row");

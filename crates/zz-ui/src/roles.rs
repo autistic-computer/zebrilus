@@ -204,13 +204,12 @@ pub const AGENT_TRACE: SurfaceRole = SurfaceRole::new(
 .with(P.selected(Highlight::Tint));
 pub const AGENT_OPTION: SurfaceRole = SurfaceRole::new(
     "agent.option",
-    Kind::Tile,
+    Kind::Button,
     "Answer options",
     "The choices in question and permission cards",
 )
 .with(
     P.fill(Fill::Tint)
-        .outline(false)
         .shadow(Shadow::None)
         .hover(Highlight::Tint)
         .selected(Highlight::Accent),
@@ -229,7 +228,7 @@ pub const AGENT_JUMP: SurfaceRole = SurfaceRole::new(
 );
 pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
     "inline-panel",
-    Kind::Card,
+    Kind::Popover,
     "Inline panels",
     "Panels raised inside a pane: question cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
 )
@@ -237,17 +236,23 @@ pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
 
 pub const CODE: SurfaceRole = SurfaceRole::new(
     "code",
-    Kind::Card,
+    Kind::Popover,
     "Code",
     "Code blocks and inline code in messages",
 )
-.with(P.fill(Fill::Tint).outline(false).shadow(Shadow::None));
+.with(
+    P.fill(Fill::Solid)
+        .outline(false)
+        .shadow(Shadow::None)
+        .shape(Shape::Round),
+);
 pub const FIGURE: SurfaceRole = SurfaceRole::new(
     "figure",
     Kind::Card,
     "Figures",
     "Diagram frames and tables in messages",
-);
+)
+.with(P.fill(Fill::None));
 
 pub const BROWSER_TAB: SurfaceRole = SurfaceRole::new(
     "browser.tab",
@@ -369,6 +374,13 @@ pub const PICKER: SurfaceRole = SurfaceRole::new(
     "Pickers",
     "Agent history, the file picker, choose-tree and choose-buffer",
 );
+pub const PICKER_NOTICE: SurfaceRole = SurfaceRole::new(
+    "picker.notice",
+    Kind::Badge,
+    "Picker notices",
+    "Strips across a picker that ask before something happens, like deleting a session",
+)
+.with(P.outline(false).shape(Shape::Square));
 
 pub const BAR_RULE: SurfaceRole = SurfaceRole::new(
     "rule.bar",
@@ -472,7 +484,7 @@ pub const REGIONS: &[(&str, &[SurfaceRole])] = &[
             GRABBER,
         ],
     ),
-    ("Overlays", &[PALETTE, PICKER]),
+    ("Overlays", &[PALETTE, PICKER, PICKER_NOTICE]),
     (
         "Dividers",
         &[BAR_RULE, SIDEBAR_RULE, SPLIT_RULE, LIST_RULE, TREE_RULE],

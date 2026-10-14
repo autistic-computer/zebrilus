@@ -4,10 +4,12 @@ use zz_gpui::{App, Div, SharedString, Window, div, prelude::*, px};
 use zz_protocol::AgentTaskWire;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName,
-    InteractivePaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, Kind, PaintState,
+    Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Tone,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex,
+    picker::{muted_on, row_surface},
+    roles, v_flex,
 };
 
 use super::controls::agent_chrome_button;
@@ -81,12 +83,11 @@ pub fn task_tray(
             .flex_none()
             .gap_2()
             .px((px(super::presentation::CARD_GUTTER) - cx.theme().row_inset).max(px(0.0)))
-            .menu_item_corners(px(TASK_ROW_HEIGHT), cx)
             .overflow_hidden()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
             .when_some(tool_call, |row, tool_call| {
-                row.painted_interactive(row_paint, false, true)
+                row_surface(row, Kind::Row, PaintState::Rest, px(TASK_ROW_HEIGHT), cx)
                     .cursor_pointer()
                     .on_click(move |_, window, cx| {
                         reveal(TaskTrayAction::Reveal(tool_call.clone()), window, cx);
@@ -138,12 +139,12 @@ pub fn task_tray(
     };
     let plan_chip = plan.map(|(_, (label, current))| {
         let open = open == Some(TrayPanel::Plan);
-        let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
         let state = if open {
             PaintState::Current
         } else {
             PaintState::Rest
         };
+        let muted = muted_on(&cx.theme().layer(roles::AGENT_CONTROL, state), cx);
         h_flex()
             .id(SharedString::from(format!("{id}-plan")))
             .debug_selector(|| "agent-plan-chip".to_owned())
@@ -151,11 +152,10 @@ pub fn task_tray(
             .h(px(24.0))
             .px_2()
             .gap_1p5()
-            .rounded(cx.theme().control_radius())
             .cursor_pointer()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
-            .painted_interactive(paint, open, true)
+            .surface_interactive(roles::AGENT_CONTROL, state, cx)
             .child(
                 div()
                     .flex_none()
@@ -171,7 +171,7 @@ pub fn task_tray(
                         .overflow_hidden()
                         .text_ellipsis()
                         .whitespace_nowrap()
-                        .text_color(paint.muted_at(state))
+                        .text_color(muted)
                         .child(current),
                 )
             })
@@ -180,7 +180,7 @@ pub fn task_tray(
                     .flex_none()
                     .relative()
                     .top(chip_drop)
-                    .text_color(paint.muted_at(state))
+                    .text_color(muted)
                     .child(
                         Icon::new(if open {
                             IconName::ChevronDown
@@ -199,6 +199,7 @@ pub fn task_tray(
     let tasks_chip = (!tasks.is_empty()).then(|| {
         agent_chrome_button(SharedString::from(format!("{id}-tasks")))
             .debug_selector(|| "agent-task-tray".to_owned())
+            .surface_role(roles::AGENT_CONTROL)
             .flex_none()
             .icon(super::presentation::spinner(phase))
             .label(task_tray_label(tasks.len()))
@@ -218,7 +219,13 @@ pub fn task_tray(
             .w_full()
             .gap_1()
             .when_some(panel, |tray, panel| {
-                tray.child(panel.w_full().list_inset(cx).py(px(4.0)).popover_style(cx))
+                tray.child(
+                    panel
+                        .w_full()
+                        .list_inset(cx)
+                        .py(px(4.0))
+                        .surface(roles::INLINE_PANEL, cx),
+                )
             })
             .child(
                 h_flex()

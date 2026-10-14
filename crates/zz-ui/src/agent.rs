@@ -1,5 +1,6 @@
 pub mod composer;
 pub mod controls;
+pub mod history;
 pub mod presentation;
 pub mod question;
 pub mod slash;
@@ -17,8 +18,8 @@ use std::{
 use web_time::{Duration, Instant};
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Elevation, Emphasis, Icon, IconName,
-    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Elevation, Emphasis, Ground, Icon, IconName,
+    Kind, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Surface, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     badge::Badge,
     button::{Button, ButtonVariants as _},
@@ -1025,7 +1026,8 @@ impl StickSpring {
 pub fn agent_jump_to_bottom_button(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::compact_icon(id, IconName::ArrowDown)
         .secondary()
-        .shadow(crate::lifted_shadow(cx))
+        .surface_role(crate::roles::AGENT_JUMP)
+        .on(transcript_ground(cx))
         .tooltip("Jump to latest")
 }
 
@@ -1790,7 +1792,7 @@ fn render_trace_steps(
         .w_full()
         .ml_1()
         .pl_4()
-        .rule_left(cx)
+        .rule_on(crate::roles::TREE_RULE, Edge::Left, cx)
         .children(trace.steps.iter().map(|index| {
             match &trace.members[*index] {
                 AgentEntry::Reasoning { id, markdown, .. } => {
@@ -2007,7 +2009,7 @@ fn reply_popover(
         .gap_1()
         .px_3()
         .py_2()
-        .popover_style(cx)
+        .surface(crate::roles::INLINE_PANEL, cx)
         .text_size(crate::rems_from_px(13.0))
         .when(side, |popover| {
             popover.child(
@@ -2092,13 +2094,52 @@ impl StepNesting {
     }
 }
 
-/// One attachment as a `side`-square tile that opens a full view when clicked.
-/// The size is definite whatever was pasted, so layout never consults the
-/// image; the bytes are hash-keyed in zz-gpui's asset cache, so decoding is shared.
+/// One attachment in the composer as a `side`-square tile that opens a full
+/// view when clicked. The size is definite whatever was pasted, so layout
+/// never consults the image; the bytes are hash-keyed in zz-gpui's asset
+/// cache, so decoding is shared.
 pub fn agent_attachment_thumbnail(
     id: impl Into<ElementId>,
     image: Arc<Image>,
     side: Pixels,
+    cx: &App,
+) -> Stateful<Div> {
+    attachment_tile(id, image, side, composer::composer_ground(cx), cx)
+}
+
+/// A composer attachment with the button that removes it.
+pub fn composer_attachment(
+    id: impl Into<ElementId>,
+    remove: impl Into<ElementId>,
+    image: Arc<Image>,
+    on_remove: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Div {
+    div()
+        .relative()
+        .child(agent_attachment_thumbnail(
+            id,
+            image,
+            COMPOSER_ATTACHMENT,
+            cx,
+        ))
+        .child(
+            div().absolute().top(px(-6.0)).right(px(-6.0)).child(
+                Button::compact_icon(remove, IconName::Xmark)
+                    .tooltip("Remove this image")
+                    .on_click(move |_, window, cx| {
+                        on_remove(window, cx);
+                        cx.stop_propagation();
+                    }),
+            ),
+        )
+}
+
+fn attachment_tile(
+    id: impl Into<ElementId>,
+    image: Arc<Image>,
+    side: Pixels,
+    ground: Ground,
     cx: &App,
 ) -> Stateful<Div> {
     let preview = Arc::clone(&image);
@@ -2107,8 +2148,7 @@ pub fn agent_attachment_thumbnail(
         .size(side)
         .flex_none()
         .overflow_hidden()
-        .card_style(cx)
-        .bg(cx.theme().surface(Elevation::Popover).fill.opaque())
+        .surface(Surface::new(crate::roles::AGENT_ATTACHMENT).on(ground), cx)
         .cursor_pointer()
         .child(
             img(ImageSource::Image(image))
@@ -2263,92 +2303,104 @@ fn activity_row_marked(
         RowEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
         RowEnd::Open => Some(IconName::ExternalLink),
     };
-    h_flex()
+    let row = h_flex()
         .id(id)
         .w_full()
         .h(px(ACTIVITY_ROW_HEIGHT))
         .flex_none()
         .gap_2()
-        .overflow_hidden()
-        .font_family(cx.theme().font_family.clone())
-        .text_size(crate::rems_from_px(ACTIVITY_ROW_FONT_SIZE))
-        .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
-        .text_color(timeline_affordance_color(cx))
-        .when(end != RowEnd::None, zz_gpui::Styled::cursor_pointer)
-        .when_some(glyph, |this, glyph| {
-            this.child(
-                div()
-                    .debug_selector(|| "agent-activity-glyph".to_owned())
-                    .flex_none()
-                    .relative()
-                    .top(drop)
-                    .child(glyph),
-            )
-        })
-        .child(
+        .overflow_hidden();
+    let height = px(ACTIVITY_ROW_HEIGHT);
+    let clickable = end != RowEnd::None;
+    let trace = Surface::new(crate::roles::AGENT_TRACE).on(transcript_ground(cx));
+    if clickable {
+        crate::picker::row_surface(row, trace, PaintState::Rest, height, cx)
+    } else {
+        crate::picker::row_corners(
+            row.surface(trace, cx),
+            &cx.theme().layer(trace, PaintState::Rest),
+            height,
+        )
+    }
+    .font_family(cx.theme().font_family.clone())
+    .text_size(crate::rems_from_px(ACTIVITY_ROW_FONT_SIZE))
+    .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
+    .text_color(timeline_affordance_color(cx))
+    .when(clickable, zz_gpui::Styled::cursor_pointer)
+    .when_some(glyph, |this, glyph| {
+        this.child(
             div()
-                .debug_selector(|| "agent-activity-label".to_owned())
+                .debug_selector(|| "agent-activity-glyph".to_owned())
+                .flex_none()
+                .relative()
+                .top(drop)
+                .child(glyph),
+        )
+    })
+    .child(
+        div()
+            .debug_selector(|| "agent-activity-label".to_owned())
+            .min_w_0()
+            .flex_shrink_0()
+            .max_w_full()
+            .overflow_hidden()
+            .text_ellipsis()
+            .whitespace_nowrap()
+            .when_some(mark.label_color, zz_gpui::Styled::text_color)
+            .child(single_line(label)),
+    )
+    .when_some(mark.detail, |this, detail| {
+        this.child(
+            div()
+                .debug_selector(|| "agent-activity-detail".to_owned())
                 .min_w_0()
-                .flex_shrink_0()
-                .max_w_full()
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .when_some(mark.label_color, zz_gpui::Styled::text_color)
-                .child(single_line(label)),
+                .text_color(cx.theme().foreground.faint())
+                .child(detail),
         )
-        .when_some(mark.detail, |this, detail| {
-            this.child(
-                div()
-                    .debug_selector(|| "agent-activity-detail".to_owned())
-                    .min_w_0()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .whitespace_nowrap()
-                    .text_color(cx.theme().foreground.faint())
-                    .child(detail),
-            )
-        })
-        .when(!mark.counts.is_empty(), |this| {
-            this.child(
-                h_flex()
-                    .debug_selector(|| "agent-activity-counts".to_owned())
-                    .flex_none()
-                    .gap(px(TRACE_COUNT_GAP))
-                    .pl_1()
-                    .pr(px(TRACE_COUNT_BADGE_OVERHANG))
-                    .children(
-                        mark.counts
-                            .into_iter()
-                            .enumerate()
-                            .map(|(slot, count)| trace_count_glyph(slot, count, drop, cx)),
-                    ),
-            )
-        })
-        .when_some(mark.tag, |this, (tag, tone)| {
-            this.child(
-                div()
-                    .debug_selector(|| "agent-activity-tag".to_owned())
-                    .flex_none()
-                    .child(Badge::new(tag).tone(tone)),
-            )
-        })
-        .when_some(end_icon, |this, icon| {
-            this.child(
-                activity_row_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
-                    .debug_selector(|| "agent-activity-chevron".to_owned()),
-            )
-        })
-        .when_some(mark.trailing, |this, trailing| {
-            this.child(div().flex_1()).child(
-                div()
-                    .debug_selector(|| "agent-activity-trailing".to_owned())
-                    .flex_none()
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.faint())
-                    .child(trailing),
-            )
-        })
+    })
+    .when(!mark.counts.is_empty(), |this| {
+        this.child(
+            h_flex()
+                .debug_selector(|| "agent-activity-counts".to_owned())
+                .flex_none()
+                .gap(px(TRACE_COUNT_GAP))
+                .pl_1()
+                .pr(px(TRACE_COUNT_BADGE_OVERHANG))
+                .children(
+                    mark.counts
+                        .into_iter()
+                        .enumerate()
+                        .map(|(slot, count)| trace_count_glyph(slot, count, drop, cx)),
+                ),
+        )
+    })
+    .when_some(mark.tag, |this, (tag, tone)| {
+        this.child(
+            div()
+                .debug_selector(|| "agent-activity-tag".to_owned())
+                .flex_none()
+                .child(Badge::new(tag).tone(tone)),
+        )
+    })
+    .when_some(end_icon, |this, icon| {
+        this.child(
+            activity_row_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
+                .debug_selector(|| "agent-activity-chevron".to_owned()),
+        )
+    })
+    .when_some(mark.trailing, |this, trailing| {
+        this.child(div().flex_1()).child(
+            div()
+                .debug_selector(|| "agent-activity-trailing".to_owned())
+                .flex_none()
+                .text_size(crate::rems_from_px(11.0))
+                .text_color(cx.theme().foreground.faint())
+                .child(trailing),
+        )
+    })
 }
 
 const TRACE_COUNT_BADGE: f32 = 15.0;
@@ -2358,19 +2410,34 @@ const TRACE_COUNT_BADGE_OVERHANG: f32 =
     TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
+/// What the transcript sits on: its pane's color over the window, as the
+/// pane's frame draws it.
+fn transcript_ground(cx: &App) -> Ground {
+    let theme = cx.theme();
+    Ground {
+        fill: theme.background.blend(theme.pane_color(theme.background)),
+        ..theme.ground()
+    }
+}
+
 #[allow(
     clippy::disallowed_methods,
-    reason = "the ring is a cutout in the window color that parts the badge from the icon it overlaps, not an edge"
+    reason = "the ring is a cutout in the color the badge sits on that parts it from the icon it overlaps, not an edge"
 )]
 fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> Stateful<Div> {
     let theme = cx.theme();
-    let (badge, number) = if count.failed {
-        let solid = theme.paint(Tone::Danger, Emphasis::Solid);
-        (solid.fill, solid.text)
-    } else {
-        let soft = theme.paint(Tone::Neutral, Emphasis::Soft).opaque();
-        (soft.fill_at(PaintState::Active), soft.text)
-    };
+    let ground = transcript_ground(cx);
+    let badge = theme.layer(
+        Surface::new(Kind::Badge.role())
+            .tone(if count.failed {
+                Tone::Danger
+            } else {
+                Tone::Neutral
+            })
+            .prominent(count.failed)
+            .on(ground),
+        PaintState::Rest,
+    );
     let tooltip = SharedString::from(count.describe());
     div()
         .id(("agent-trace-count", slot))
@@ -2390,11 +2457,12 @@ fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> 
                 .h(px(TRACE_COUNT_BADGE))
                 .px(px(3.0))
                 .justify_center()
-                .rounded(theme.control_radius())
+                .layer(&badge)
+                .when(badge.glass.is_none(), |badge_fill| {
+                    badge_fill.bg(badge.ground.fill)
+                })
                 .border(px(TRACE_COUNT_RING))
-                .border_color(theme.ground().fill)
-                .bg(badge)
-                .text_color(number)
+                .border_color(ground.fill)
                 .text_size(crate::rems_from_px(8.5))
                 .line_height(px(TRACE_COUNT_BADGE - 2.0 * TRACE_COUNT_RING))
                 .font_weight(zz_gpui::FontWeight::SEMIBOLD)
@@ -2413,13 +2481,14 @@ fn render_user_entry(
     rewind: Option<(&TimelineRewind, SharedString)>,
     cx: &mut App,
 ) -> AnyElement {
+    let bubble_ground = cx.theme().ground_of(crate::roles::AGENT_BUBBLE);
     let bubble = v_flex()
         .debug_selector(|| "agent-user-bubble".to_owned())
         .max_w(relative(1.0))
         .gap_2()
         .px_3()
         .py_2()
-        .card_style(cx)
+        .surface(crate::roles::AGENT_BUBBLE, cx)
         .text_size(crate::rems_from_px(13.0))
         .when(!images.is_empty(), |this| {
             this.child(
@@ -2427,13 +2496,14 @@ fn render_user_entry(
                     .flex_wrap()
                     .gap_1()
                     .children(images.iter().enumerate().map(|(index, image)| {
-                        agent_attachment_thumbnail(
+                        attachment_tile(
                             (
                                 SharedString::from(format!("agent-user-attachment-{id}")),
                                 index,
                             ),
                             Arc::clone(image),
                             TRANSCRIPT_ATTACHMENT,
+                            bubble_ground,
                             cx,
                         )
                         .debug_selector(|| "agent-user-attachment".to_owned())
@@ -2639,7 +2709,9 @@ fn markdown_view_with_extensions(
         highlight_theme: Arc::clone(&cx.theme().highlight_theme),
         is_dark: cx.theme().is_dark(),
         ..TextViewStyle::default()
-    };
+    }
+    .code_role(crate::roles::CODE)
+    .figure_role(crate::roles::FIGURE);
 
     let (state, extensions, streaming) = store.update(cx, |store, cx| {
         (
@@ -3034,8 +3106,7 @@ impl MarkdownPlugin for MermaidPlugin {
             .relative()
             .w_full()
             .p_3()
-            .card_style(cx)
-            .bg(cx.theme().surface(Elevation::Window).fill.opaque())
+            .surface(crate::roles::FIGURE, cx)
             .overflow_hidden()
             .child(content)
             .child(
@@ -3607,7 +3678,10 @@ pub fn agent_pane_header(
         .justify_between()
         .gap_3()
         .px(px(CHROME_GAP))
-        .when(show_separator, |header| header.rule_bottom(cx))
+        .surface(crate::roles::PANE_HEADER, cx)
+        .when(show_separator, |header| {
+            header.rule_on(crate::roles::BAR_RULE, Edge::Bottom, cx)
+        })
         .child(div().flex_1().min_w_0().overflow_hidden().child(leading))
         .children(status)
         .child(
@@ -3658,6 +3732,7 @@ pub fn agent_status_pill(
     };
     let badge = Badge::new(label)
         .tone(tone)
+        .surface_role(crate::roles::PANE_CHIP)
         .when_some(icon, Badge::icon)
         .when(quiet, |badge| {
             badge.text_color(paint.muted_at(PaintState::Rest))
@@ -3669,7 +3744,7 @@ pub fn agent_status_pill(
                     .debug_selector(|| "agent-status-restart".to_owned())
                     .pl_1p5()
                     .ml_0p5()
-                    .rule_left(cx)
+                    .rule_on(crate::roles::LIST_RULE, Edge::Left, cx)
                     .text_color(paint.text)
                     .cursor_pointer()
                     .child("Restart")

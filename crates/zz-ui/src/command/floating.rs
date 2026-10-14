@@ -7,8 +7,10 @@ use zz_gpui::{
 use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Elevation, Emphasis, StyledExt as _, Tone,
-    h_flex, rems_from_px,
+    ActiveTheme as _, Colorize as _, Edge, ElementExt as _, Kind, PaintState, StyledExt as _,
+    h_flex,
+    picker::row_corners,
+    rems_from_px, roles,
     tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
     touch::{CoarsePointer, TOUCH_TARGET},
     v_flex,
@@ -55,14 +57,23 @@ pub fn display_menu(
     let outline = tmux_literal_colour(&state.border_style, "fg", cx);
     let selected_text = tmux_literal_colour(&state.selected_style, "fg", cx);
     let rest = text.unwrap_or(theme.foreground);
+    let mut surface = theme.layer(Kind::Popover, PaintState::Rest);
     let inks = MenuInks {
         rest,
         selected: tmux_literal_colour(&state.selected_style, "bg", cx)
             .map(|fill| (fill, selected_text.unwrap_or(rest))),
         selected_text,
-        ground: fill.unwrap_or(theme.surface(Elevation::Popover).fill.opaque()),
+        ground: fill.unwrap_or(surface.ground.fill),
         rule: outline.unwrap_or(theme.divider_color()),
     };
+    if let Some(fill) = fill {
+        match surface.glass {
+            Some(material) => {
+                surface.glass = Some(material.tint(fill.alpha(material.tint.a)).fallback(fill));
+            }
+            None => surface.fill = fill,
+        }
+    }
     let row_height = menu_row_height(state, titled, room, cx);
     hits.borrow_mut()
         .tops
@@ -84,7 +95,7 @@ pub fn display_menu(
                 .flex_none()
                 .my(px(2.0))
                 .mx(theme.row_inset)
-                .rule_bottom(cx)
+                .rule_on(roles::LIST_RULE, Edge::Bottom, cx)
                 .border_color(inks.rule)
                 .on_prepaint(record)
                 .into_any_element(),
@@ -108,8 +119,7 @@ pub fn display_menu(
         .role(Role::Menu)
         .relative()
         .occlude()
-        .popover_style(cx)
-        .when_some(fill, |surface, fill| surface.surface_fill(fill, cx))
+        .layer(&surface)
         .when_some(text, Styled::text_color)
         .when_some(outline.filter(|_| outlined), |surface, outline| {
             literal_edge(surface, outline, cx)
@@ -154,13 +164,17 @@ fn menu_row(
     cx: &App,
 ) -> Stateful<Div> {
     let highlighted = selected && item.enabled;
-    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+    let layer = cx.theme().layer(
+        Kind::Row,
+        if highlighted {
+            PaintState::Selected
+        } else {
+            PaintState::Rest
+        },
+    );
     let (ink, ground) = match (highlighted, inks.selected) {
         (true, Some((fill, text))) => (text, fill),
-        (true, None) => (
-            inks.selected_text.unwrap_or(paint.selected_text),
-            paint.selected,
-        ),
+        (true, None) => (inks.selected_text.unwrap_or(layer.text), layer.ground.fill),
         (false, _) if item.enabled => (inks.rest, inks.ground),
         (false, _) => (inks.rest.muted(), inks.ground),
     };
@@ -175,10 +189,10 @@ fn menu_row(
         .px(ROW_PADDING)
         .gap_3()
         .justify_between()
-        .menu_item_corners(row_height, cx)
-        .when(highlighted, |row| match inks.selected {
-            Some((fill, _)) => row.bg(fill),
-            None => row.selection_highlight(cx),
+        .layer(&layer)
+        .map(|row| row_corners(row, &layer, row_height))
+        .when_some(inks.selected.filter(|_| highlighted), |row, (fill, _)| {
+            row.bg(fill)
         })
         .text_color(ink)
         .child(
