@@ -189,14 +189,7 @@ pub fn workspace_status_window(
     let foreground = cx.theme().foreground;
     let tab = Surface::new(roles::WINDOW_TAB);
     let paint_state = state.paint_state();
-    let index_ink = cx
-        .theme()
-        .paint_on(
-            cx.theme().layer(tab, paint_state).ground,
-            Tone::Neutral,
-            Emphasis::Ghost,
-        )
-        .muted_at(PaintState::Rest);
+    let index_ink = cx.theme().layer(tab, paint_state).text.muted();
     div()
         .id(id)
         .relative()
@@ -455,13 +448,15 @@ pub fn workspace_sidebar_fade(ground: Ground, cx: &App) -> Hsla {
     ground.fill.blend(sidebar.fill)
 }
 
-/// The fill behind a sidebar row drawn as `role`, in `lit`. A resting row
-/// takes its hover look while the pointer is anywhere in `hover_group`.
+/// The fill behind a sidebar row drawn as `role` on `ground`, in `lit`. A
+/// resting row takes its hover look while the pointer is anywhere in
+/// `hover_group`.
 pub fn workspace_row_fill(
     id: &ElementId,
     role: SurfaceRole,
     lit: PaintState,
     hover_group: Option<SharedString>,
+    ground: Ground,
     cx: &App,
 ) -> impl Iterator<Item = AnyElement> + use<> {
     let theme = cx.theme();
@@ -471,7 +466,7 @@ pub fn workspace_row_fill(
     } else {
         px(0.)
     };
-    let surface = Surface::new(role);
+    let surface = Surface::new(role).on(ground);
     let hover = theme.layer(surface, PaintState::Hover);
     let fill = div()
         .absolute()
@@ -511,6 +506,7 @@ pub fn workspace_tree_row(
     marker: impl IntoElement,
     label: impl IntoElement,
     actions: impl IntoElement,
+    ground: Ground,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let trailing = div()
@@ -530,7 +526,14 @@ pub fn workspace_tree_row(
     } else {
         PaintState::Rest
     };
-    let fill = workspace_row_fill(&id, roles::SIDEBAR_ROW, lit, Some(row_group.clone()), cx);
+    let fill = workspace_row_fill(
+        &id,
+        roles::SIDEBAR_ROW,
+        lit,
+        Some(row_group.clone()),
+        ground,
+        cx,
+    );
     workspace_tree_row_frame(id, depth, cx)
         .pr(workspace_tree_trailing_inset(cx))
         .group(row_group)

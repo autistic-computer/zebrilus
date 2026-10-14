@@ -26,12 +26,12 @@ pub const STORY: Story = Story {
     id: "design-system",
     name: "Design system",
     group: "Foundation",
-    summary: "Every filled, tinted or outlined widget picks a tone (what it means) and an emphasis (how loud it is). The theme turns the pair into one Paint, so a badge, a button and a tile that mean the same thing are drawn alike. Try the Primary and Selection knobs.",
+    summary: "Every filled, tinted or outlined widget picks a tone (what it means) and an emphasis (how loud it is). The theme turns the pair into one Paint, so a badge, a button and a tile that mean the same thing are drawn alike. Which fill, edge and shadow each piece takes comes from its role; try the Roles step of the theme creator.",
     sections: &[
         Section {
             id: "tones",
             name: "Tones",
-            summary: "Neutral, primary, danger, warning and success. Primary is the foreground or the accent, as the look says.",
+            summary: "Neutral, primary, danger, warning and success. Primary is the foreground or the accent, as the theme's materials say.",
             build: |_, cx| stateless(tones, cx),
         },
         Section {
@@ -67,13 +67,13 @@ pub const STORY: Story = Story {
         Section {
             id: "tiles-and-rows",
             name: "Tiles and rows",
-            summary: "Selectable surfaces. Tiles are neutral soft, rows are neutral ghost; both select with the look's selection fill.",
+            summary: "Selectable surfaces. Tiles are neutral soft, rows are neutral ghost; both select with their role's selected highlight.",
             build: |_, cx| stateless(tiles_and_rows, cx),
         },
         Section {
             id: "fields",
             name: "Fields",
-            summary: "Text, number and select fields are neutral at the look's field emphasis (the Fields knob), ghost when they should show their edge only on hover or focus, danger when invalid. Focus turns the border to the primary tone. A field inside a tile sits on the tile's ground.",
+            summary: "Text, number and select fields draw as the theme's field role says, ghost when they should show their edge only on hover or focus, danger when invalid. Focus turns the border to the primary tone. A field inside a tile sits on the tile's ground.",
             build: |window, cx| cx.new(|cx| Fields::new(window, cx)).into(),
         },
         Section {
@@ -574,7 +574,7 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
 const P: StylePatch = StylePatch::EMPTY;
 
 const FIELD_ROWS: [(&str, Option<StylePatch>); 4] = [
-    ("the look's", None),
+    ("the theme's", None),
     ("soft", Some(P.fill(Fill::Tint).outline(true))),
     ("outline", Some(P.fill(Fill::None).outline(true))),
     ("ghost", Some(P.fill(Fill::None).outline(false))),

@@ -1294,13 +1294,6 @@ impl AppShell {
     /// select for a choice, with a reset back to the theme's value.
     fn material_setting(&self, item: AppearancePageItem, cx: &mut Context<Self>) -> SettingEntry {
         let (title, description) = item.material_text().unwrap_or_default();
-        let title = if item == AppearancePageItem::WidgetCornerRadius
-            && self.preferences.widget_corner_radius() > 24.0
-        {
-            "Corner radius (Full)"
-        } else {
-            title
-        };
         let controls = &self.settings_controls;
         let input = match item {
             AppearancePageItem::WidgetCornerRadius => Some(&controls.radius),

@@ -647,6 +647,7 @@ impl Render for BrowserPane {
         let retry = self.writable(cx).then(|| {
             Button::new("ios-browser-retry")
                 .primary()
+                .on(zz_ui::feedback::alert_ground(cx))
                 .label("Try again")
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
         });

@@ -3865,6 +3865,7 @@ impl Render for BrowserView {
                 let retry_view = cx.entity();
                 Button::new("browser-retry")
                     .primary()
+                    .on(zz_ui::feedback::alert_ground(cx))
                     .label("Try again")
                     .on_click(move |_, _, cx| {
                         retry_view.update(cx, BrowserView::on_retry);

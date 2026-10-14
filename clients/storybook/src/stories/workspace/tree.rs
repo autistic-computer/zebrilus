@@ -272,6 +272,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
         marker,
         div().text_color(color).child(node.label),
         actions,
+        cx.theme().ground(),
         cx,
     );
     let rename = match node.kind {

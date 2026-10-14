@@ -235,8 +235,13 @@ impl Input {
         self
     }
 
-    fn field_surface(&self) -> Surface {
-        Surface::new(self.surface_role.unwrap_or(Kind::Field.role()))
+    fn field_surface(&self, multi_line: bool) -> Surface {
+        let field = if multi_line {
+            SurfaceRole::TEXT_AREA
+        } else {
+            Kind::Field.role()
+        };
+        Surface::new(self.surface_role.unwrap_or(field))
             .tone(self.tone)
             .on_maybe(self.on)
     }
@@ -288,7 +293,8 @@ impl Styled for Input {
 
 impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let surface = self.field_surface();
+        let multi_line = self.state.read(cx).mode().is_multi_line();
+        let surface = self.field_surface(multi_line);
         let paint = field_paint(surface, cx);
         let resting = if self.disabled {
             PaintState::Disabled
@@ -303,10 +309,9 @@ impl RenderOnce for Input {
             state.masked = self.content_type.is_some_and(InputContentType::masks);
         });
 
-        let (multi_line, focused, empty, loading, focus_handle) = {
+        let (focused, empty, loading, focus_handle) = {
             let state = self.state.read(cx);
             (
-                state.mode().is_multi_line(),
                 state.focus_handle_ref().is_focused(window) && !self.disabled,
                 state.text().is_empty(),
                 state.loading,

@@ -639,7 +639,7 @@ impl RenderOnce for Button {
                         .text_color(hover.text);
                     match (hover_bg, hover.glass) {
                         (Some(bg), _) => style.bg(bg),
-                        (None, Some(_)) => style,
+                        (None, Some(material)) => style.glass(material),
                         (None, None) => style.bg(hover.fill),
                     }
                 })
@@ -649,7 +649,7 @@ impl RenderOnce for Button {
                         .shadow(active.shadow.clone())
                         .text_color(active.text);
                     match active.glass {
-                        Some(_) => style,
+                        Some(material) => style.glass(material),
                         None => style.bg(active.fill),
                     }
                 })

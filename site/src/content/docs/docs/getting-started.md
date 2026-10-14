@@ -363,13 +363,13 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | Key | Default | Does |
 | --- | --- | --- |
 | `theme-mode` | `system` | `system`, `light`, or `dark` |
-| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, `macos` (flat controls, frosted popovers, blue accent), `linear` (opaque surfaces with hairline outlines, indigo accent), `glass` (frosted glass with no outlines or shadows), or the name of a theme saved as `themes/<name>.json` next to the config file |
+| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, `macos` (flat controls, frosted popovers, blue accent), `tahoe` (glass toolbar buttons over flat filled buttons and chips), `linear` (opaque surfaces with hairline outlines, indigo accent), `glass` (frosted glass with no outlines or shadows), or the name of a theme saved as `themes/<name>.json` next to the config file |
 | `pane-gaps` | `false` | The card treatment: spaced panes framed in glass. Off pins the next three to zero |
 | `pane-margin` | `6` | Gap between panes and at the window edge, 0–32 |
 | `pane-corner-radius` | `13.5` | 0–32 |
 | `pane-border-width` | `0.5` | 0–8, the bright line along a gapped pane's glass edge; zero turns it off |
-| `widget-corner-radius` | from the theme | Widget corners, 0–24px; set 25 for fully rounded buttons, fields, and rows |
-| `widget-shadows` | from the theme | Which surfaces cast shadows: `none`, `surfaces` (cards, popovers, dialogs), or `all` (controls too) |
+| `widget-corner-radius` | from the theme | Corners of every rounded surface, 0–25px. Which pieces are pills is up to the theme |
+| `widget-shadow-strength` | `1` | How dark the theme's shadows are, 0–2: `0` turns them off, `2` doubles them |
 | `animations` | `true` | Interface transitions, loading indicators, scrollbars, and animated UI images |
 | `theme` | unset | A Ghostty theme file by name, or `light:a,dark:b` |
 | `font-family` | platform default | Terminal font stack. `font-size` is `13` |
@@ -384,12 +384,13 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `browser-search-provider` | `google` | `google`, `duckduckgo`, or `brave` |
 | `browser-egress` | `true` | Route a remote pane's traffic through its host |
 
-`widget-corner-radius` and `widget-shadows` are two of the eight look keys,
-each of which overrides one part of the interface theme until you remove it.
-The others are `widget-outline-width` (0–2px, 0 for no outlines),
-`widget-row-inset`, `widget-selection`, `widget-primary`, `widget-field`, and
-`widget-glass`. Settings edits all eight under Interface → Advanced → Look, and
-picking a theme clears them.
+`widget-corner-radius` and `widget-shadow-strength` are two of the six material
+keys, each of which overrides one material of the interface theme until you
+remove it. The others are `widget-outline-width` (0–2px, 0 for no outlines),
+`widget-row-inset`, `widget-primary`, and `widget-glass`. Settings edits all six
+under Interface → Advanced → Materials, and picking a theme clears them. Which
+pieces of the interface take a shadow, glass or an outline, and how a selected
+row shows, is set per piece by the theme file itself.
 
 Terminal appearance uses Ghostty's spellings, so `theme`, `font-family`,
 `font-feature`, `palette`, `cursor-style`, `minimum-contrast`, and per-edge

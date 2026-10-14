@@ -16,8 +16,8 @@ use crate::{
 };
 
 use super::{
-    WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, status_dot, workspace_status_window,
-    workspace_tree_action_button,
+    TREE_TOUCH_SLOP, WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, status_dot,
+    workspace_row_action, workspace_status_window,
 };
 
 pub const MAX_VISIBLE_WINDOWS: usize = 5;
@@ -76,6 +76,7 @@ pub fn status_window(
     let tab = Surface::new(roles::WINDOW_TAB);
     let ground = cx.theme().layer(tab, state.paint_state()).ground;
     let hovered = cx.theme().layer(tab, PaintState::Hover).ground;
+    let hovers = state.connected && !state.active;
     let deck = status_pane_deck(
         ElementId::Name(format!("status-window-panes-{id:?}").into()),
         panes,
@@ -84,7 +85,7 @@ pub fn status_window(
         cx,
     )
     .map(|deck| {
-        if state.connected && !state.active {
+        if hovers {
             deck.group_hover_ground(group.clone(), hovered.fill)
         } else {
             deck
@@ -100,10 +101,14 @@ pub fn status_window(
                 .invisible()
                 .group_hover(group, zz_gpui::Styled::visible)
                 .child(
-                    workspace_tree_action_button(
-                        ElementId::Name(format!("status-window-close-{id:?}").into()),
-                        IconName::Xmark,
-                        "Close window",
+                    workspace_row_action(
+                        Button::compact_icon(
+                            ElementId::Name(format!("status-window-close-{id:?}").into()),
+                            IconName::Xmark,
+                        )
+                        .hit_slop(TREE_TOUCH_SLOP, TREE_TOUCH_SLOP)
+                        .tooltip("Close window"),
+                        if hovers { hovered } else { ground },
                         !state.connected || close_button.is_none(),
                         cx,
                     )

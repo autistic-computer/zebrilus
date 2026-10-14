@@ -4,8 +4,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Layer, PaintState, StyledExt as _,
-    Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Layer, PaintState, Shape,
+    StyledExt as _, Surface, Tone,
     button::{Button, ButtonVariants as _},
     rems_from_px, roles,
 };
@@ -114,14 +114,17 @@ pub fn compact_bar_pill(
     let theme = cx.theme();
     let pill = theme.layer(roles::PHONE_PILL, PaintState::Rest);
     let pressed = theme.layer(roles::PHONE_PILL, PaintState::Active).fill;
-    let badge = theme.paint_on(
-        pill.ground,
-        if warning {
-            Tone::Warning
-        } else {
-            Tone::Neutral
-        },
-        Emphasis::Soft,
+    let tone = if warning {
+        Tone::Warning
+    } else {
+        Tone::Neutral
+    };
+    let badge = theme.paint_on(pill.ground, tone, Emphasis::Soft);
+    let backing = theme.layer(
+        Surface::new(roles::PHONE_PILL_ICON)
+            .tone(tone)
+            .on(pill.ground),
+        PaintState::Rest,
     );
     let meta_color = if warning {
         badge.text
@@ -131,7 +134,11 @@ pub fn compact_bar_pill(
             .muted_at(PaintState::Rest)
     };
     let inset = px((BUTTON - TILE) / 2.0);
-    let tile_radius = (pill.radius - inset).max(px(0.0));
+    let tile_radius = if theme.style(roles::PHONE_PILL_ICON).shape == Shape::Round {
+        (pill.radius - inset).max(px(0.0))
+    } else {
+        backing.radius
+    };
     let radius = pill.radius;
     div()
         .id(id)
@@ -154,8 +161,10 @@ pub fn compact_bar_pill(
                 .items_center()
                 .justify_center()
                 .size(rems_from_px(TILE))
-                .rounded(tile_radius)
-                .bg(badge.fill)
+                .layer(&Layer {
+                    radius: tile_radius,
+                    ..backing
+                })
                 .text_color(if warning {
                     badge.text
                 } else {

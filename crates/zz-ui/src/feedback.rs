@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
+    ActiveTheme as _, Emphasis, Ground, Icon, IconName, StyledExt as _, Tone,
     button::ButtonVariant,
     dialog::{AlertDialog, Dialog, DialogButtonProps},
     h_flex,
@@ -70,6 +70,11 @@ pub fn inline_alert(
 /// The buttons under an [`inline_alert`], right-aligned with the main action last.
 pub fn alert_actions(cx: &App) -> Div {
     dialog_footer(cx).flex_wrap()
+}
+
+/// What the buttons in an [`inline_alert`] sit on.
+pub fn alert_ground(cx: &App) -> Ground {
+    cx.theme().ground_of(roles::INLINE_PANEL)
 }
 
 #[cfg(target_os = "ios")]

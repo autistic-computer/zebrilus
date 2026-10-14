@@ -3,6 +3,7 @@ use std::rc::Rc;
 use zz_client::StatusBarModel;
 use zz_gpui::{AnyElement, App, Context, Entity, IntoElement, px};
 use zz_ui::{
+    ActiveTheme as _,
     navigation::{
         WorkspaceStatusWindowState,
         status::{
@@ -160,7 +161,10 @@ pub(super) fn render(
         WorkspaceStatusSlots {
             windows,
             right,
-            titlebar_controls: Some((view.controls(cx), AppShell::controls_width(window))),
+            titlebar_controls: Some((
+                view.controls(cx.theme().ground(), cx),
+                AppShell::controls_width(window),
+            )),
             window_controls: None,
         },
         cx,

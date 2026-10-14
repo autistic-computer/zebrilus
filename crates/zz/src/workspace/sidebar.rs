@@ -323,15 +323,25 @@ impl WorkspaceSidebar {
         self.slideover
     }
 
+    fn slides_over(&self) -> bool {
+        self.route == WorkspaceRoute::App && self.mode == ChromeMode::Titlebar
+    }
+
     fn ground(&self, cx: &App) -> Ground {
         workspace_sidebar_ground(
             Ground {
                 fill: crate::theme::chrome_background(cx),
                 ..cx.theme().ground()
             },
-            self.route == WorkspaceRoute::App && self.mode == ChromeMode::Titlebar,
+            self.slides_over(),
             cx,
         )
+    }
+
+    /// What rows and buttons in the sidebar sit on: the window, or the
+    /// slideover's surface.
+    fn content_ground(&self, cx: &App) -> Ground {
+        workspace_sidebar_ground(cx.theme().ground(), self.slides_over(), cx)
     }
 
     pub(crate) fn toggle_mode(&mut self, cx: &mut Context<Self>) {
@@ -637,6 +647,7 @@ impl WorkspaceSidebar {
                 focused: self.focus_handle.is_focused(window),
                 local_hostname: self.local_hostname.clone(),
                 badges: Rc::clone(&self.badges),
+                ground: self.content_ground(cx),
             },
             window,
             cx,
@@ -683,10 +694,15 @@ impl WorkspaceSidebar {
             .into_any_element()
     }
 
-    pub(crate) fn render_controls(sidebar: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+    pub(crate) fn render_controls(
+        sidebar: &Entity<Self>,
+        ground: Ground,
+        cx: &App,
+    ) -> Option<AnyElement> {
         let sidebar = sidebar.clone();
         (!crate::profile::profile(cx).fixed_window).then(|| {
             workspace_layout_button("workspace-layout")
+                .on(ground)
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(move |_, _, cx| {
                     cx.stop_propagation();
@@ -699,13 +715,17 @@ impl WorkspaceSidebar {
     fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
         let settings = sidebar.clone();
         let view = sidebar.clone();
+        let ground = self.content_ground(cx);
         workspace_sidebar_footer(
             "workspace-sidebar-footer",
-            workspace_settings_button("workspace-settings").on_click(move |_, window, cx| {
-                settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
-            }),
+            workspace_settings_button("workspace-settings")
+                .on(ground)
+                .on_click(move |_, window, cx| {
+                    settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+                }),
             Some(
                 workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+                    .on(ground)
                     .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat))
                     .into_any_element(),
             ),
@@ -825,7 +845,7 @@ impl Render for WorkspaceSidebar {
             let controls = if settings_route {
                 None
             } else {
-                Self::render_controls(&sidebar, cx)
+                Self::render_controls(&sidebar, self.content_ground(cx), cx)
             };
             let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
             let titlebar = workspace_sidebar_titlebar(
@@ -1121,6 +1141,7 @@ struct TreeRowRuntime {
     focused: bool,
     local_hostname: SharedString,
     badges: Rc<BTreeMap<(HostId, PaneId), AgentBadge>>,
+    ground: Ground,
 }
 
 fn render_expanded_navigation(
@@ -1326,6 +1347,7 @@ fn render_tree_row(
         marker,
         label,
         trailing,
+        runtime.ground,
         cx,
     )
     .on_mouse_down(MouseButton::Left, move |_, window, cx| {

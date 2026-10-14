@@ -14,7 +14,8 @@ use zz_gpui::{
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
 
 use super::{
-    Colorize as _, PrimaryStyle, ShadowMaterial, StylePatch, SurfaceRole, ThemeColor, color,
+    Colorize as _, Highlight, Kind, PrimaryStyle, ShadowMaterial, StylePatch, SurfaceRole,
+    ThemeColor, color,
 };
 
 /// The one gap in chrome: how far a control sits from the edge of the bar it
@@ -236,6 +237,12 @@ impl Theme {
             .opacity(self.pane_fill_opacity())
     }
 
+    /// Whether the active pane lights its edge: the look's glow is on and the
+    /// pane role's selected highlight is not none.
+    pub fn lights_active_pane(&self) -> bool {
+        self.pane_glow_strength > 0.0 && self.style(Kind::Pane.role()).selected != Highlight::None
+    }
+
     /// The glass a gapped pane draws as its frame and fill: the look's glass
     /// edge, or a plain lit edge when the look has no glass, with no frost or
     /// lensing, tinted with the pane's color over `plane`, the window color
@@ -261,7 +268,7 @@ impl Theme {
         } else {
             frame.specular(0.0)
         };
-        if active && self.pane_glow_strength > 0.0 {
+        if active && self.lights_active_pane() {
             let strength = self.pane_glow_strength;
             frame
                 .light_color(self.accent.opaque())

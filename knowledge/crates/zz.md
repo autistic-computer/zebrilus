@@ -206,7 +206,7 @@ Browser, Terminal, Hosts, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Theme (`theme-mode` and the `interface-theme` strip with Duplicate and Import), Advanced (system UI font picker, transient UI zoom, macOS app-icon pickers, contrast, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`, then the Look group: the eight `widget-*` look keys, each with a Reset back to the theme's value) |
+| Interface | Theme (`theme-mode` and the `interface-theme` strip with Duplicate and Import), Advanced (system UI font picker, transient UI zoom, macOS app-icon pickers, contrast, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`, then the Materials group: the six `widget-*` material keys, each with a Reset back to the theme's value) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), Appearance (`pane-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`, `pane-corner-radius`, `pane-border-width`); gapped panes draw their frame in glass |
@@ -284,11 +284,13 @@ effect without a restart.
 `apply_zz_overrides` writes, in this order:
 
 - the active theme's colors for the mode (`InterfaceTheme::colors`: the six roots, the shadow
-  color and the text on the accent), then its look with the `widget-*` keys `zz/config` sets
-  folded in (`config::look_overrides` returns them as a `LookOverrides`, applied over the theme's
-  `Look` before `Look::apply`). Only the roots are written; every elevation, hover state, muted
-  text, and focus ring derives from them at paint time, so a theme and its overrides reach the
-  whole UI with no per-component plumbing;
+  color and the text on the accent), then its materials with the `widget-*` keys `zz/config` sets
+  folded in (`config::material_overrides` returns them as a `MaterialOverrides`, applied over the
+  theme's `Materials` before `Materials::apply`), then its role patches
+  (`InterfaceTheme::apply_roles`). Only the roots are written; every elevation, hover state, muted
+  text, and focus ring derives from them at paint time, and every surface resolves its role
+  against the materials when it paints, so a theme and its overrides reach the whole UI with no
+  per-component plumbing;
 - `font_family` from `ui-font-family`, else the theme's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown, tool previews,
   and code blocks match the terminal typeface;

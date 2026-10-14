@@ -223,10 +223,11 @@ const PANES: &[TreeRow] = &[
     ),
 ];
 
-fn close(id: &'static str) -> Button {
+fn close(id: &'static str, cx: &App) -> Button {
     Button::compact_icon(id, IconName::Xmark)
         .ghost()
-        .flat()
+        .surface_role(zz_ui::SurfaceRole::FLAT_ICON_BUTTON)
+        .on(cx.theme().ground_of(zz_ui::roles::PICKER))
         .tooltip("Close")
 }
 
@@ -295,7 +296,7 @@ fn tree_modal(tree: Tree<'_>, cx: &App) -> AnyElement {
                 row_count: count,
             },
             tree_rows(tree.id, tree.rows, tree.selected, cx),
-            close(tree.id),
+            close(tree.id, cx),
             cx.theme().mono_font_family.clone(),
         )
         .prompt(tree.prompt)
@@ -498,7 +499,7 @@ fn buffers(_: &mut Window, cx: &mut App) -> AnyElement {
                 row_count: BUFFERS.len(),
             },
             rows,
-            close("chooser-buffers-close"),
+            close("chooser-buffers-close", cx),
             font.clone(),
         )
         .hints(BUFFER_HINTS),

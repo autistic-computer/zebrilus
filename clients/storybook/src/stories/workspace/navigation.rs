@@ -586,6 +586,7 @@ fn guide_list(
                     ),
                     div().child(label),
                     div(),
+                    cx.theme().ground(),
                     cx,
                 )
                 .into_any_element()

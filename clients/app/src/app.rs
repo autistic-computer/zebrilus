@@ -34,8 +34,8 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Ground, Icon, IconName,
-    Kind, Root, StyledExt as _,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Kind, Root,
+    StyledExt as _,
     button::{Button, ButtonVariants as _},
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserSearch,
@@ -884,20 +884,23 @@ impl AppShell {
         .detach();
     }
 
-    fn controls(&self, cx: &Context<Self>) -> AnyElement {
+    fn controls(&self, ground: Ground, cx: &Context<Self>) -> AnyElement {
         div()
             .flex()
             .items_center()
             .gap_1()
             .child(
                 workspace_layout_button("web-sidebar")
+                    .on(ground)
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx))),
             )
             .when(cfg!(target_os = "ios"), |controls| {
                 controls.child(
-                    zz_ui::navigation::workspace_palette_button("web-palette").on_click(
-                        cx.listener(|this, _, window, cx| this.open_palette(None, window, cx)),
-                    ),
+                    zz_ui::navigation::workspace_palette_button("web-palette")
+                        .on(ground)
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_palette(None, window, cx)),
+                        ),
                 )
             })
             .into_any_element()
@@ -933,6 +936,7 @@ impl AppShell {
 
     fn sidebar(&mut self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         sidebar::reconcile(self, window, cx);
+        let ground = self.sidebar_ground(window, cx);
         let navigation = if let Some(selected) = self.settings {
             let mut rows = Vec::new();
             let mut previous_group = None;
@@ -969,8 +973,8 @@ impl AppShell {
                 .children(rows)
                 .into_any_element()
         } else if self.preferences.flat_sidebar {
-            let fade = workspace_sidebar_fade(self.sidebar_ground(window, cx), cx);
-            sidebar::flat_tree(self, fade, cx)
+            let fade = workspace_sidebar_fade(ground, cx);
+            sidebar::flat_tree(self, fade, ground, cx)
         } else {
             let core = &self.connection.read(cx).core;
             sidebar::session_tree(
@@ -985,28 +989,30 @@ impl AppShell {
                         .then_some(self.sidebar_selection)
                         .flatten(),
                     unseen_agents: self.unseen_agents.clone(),
+                    ground,
                 },
                 &self.collapsed_tree,
                 &self.sidebar_scroll,
-                workspace_sidebar_fade(self.sidebar_ground(window, cx), cx),
+                workspace_sidebar_fade(ground, cx),
                 cx,
             )
         };
         let footer = self.settings.is_none().then(|| {
             workspace_sidebar_footer(
                 "web-sidebar-footer",
-                workspace_settings_button("web-settings").on_click(cx.listener(
-                    |this, _, _, cx| {
+                workspace_settings_button("web-settings")
+                    .on(ground)
+                    .on_click(cx.listener(|this, _, _, cx| {
                         this.settings = Some(SettingsSection::Appearance);
                         this.focused_pane = None;
                         cx.notify();
-                    },
-                )),
+                    })),
                 Some(
                     workspace_sidebar_view_button(
                         "web-sidebar-view",
                         self.preferences.flat_sidebar,
                     )
+                    .on(ground)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.preferences.flat_sidebar = !this.preferences.flat_sidebar;
                         this.preferences.save();
@@ -1021,9 +1027,9 @@ impl AppShell {
         workspace_sidebar_panel(
             "web-sidebar-surface",
             self.sidebar_width(window),
-            workspace_sidebar_titlebar("web-sidebar-titlebar", self.controls(cx), cx),
+            workspace_sidebar_titlebar("web-sidebar-titlebar", self.controls(ground, cx), cx),
             navigation,
-            self.sidebar_ground(window, cx),
+            ground,
             divider,
             cx,
         )
@@ -2597,7 +2603,8 @@ impl AppShell {
         let close_input = close.clone();
         let close_button = Button::compact_icon("web-overlay-close", IconName::Xmark)
             .ghost()
-            .flat()
+            .surface_role(zz_ui::SurfaceRole::FLAT_ICON_BUTTON)
+            .on(cx.theme().ground_of(zz_ui::roles::PICKER))
             .tooltip("Close")
             .on_click(move |_, _, cx| {
                 connection.update(cx, |connection, cx| {
@@ -3031,9 +3038,14 @@ fn unsupported_pane(
 ) -> AnyElement {
     let toolbar = (title == "Browser").then(|| {
         let control = |id, icon| {
-            Button::compact_icon(id, icon)
-                .disabled(true)
-                .tooltip("Requires the desktop browser runtime")
+            zz_ui::browser::browser_toolbar_button(
+                cx,
+                id,
+                icon,
+                "Requires the desktop browser runtime",
+                true,
+                false,
+            )
         };
         zz_ui::browser::BrowserToolbar::new(
             control("web-browser-back", IconName::ArrowLeft),

@@ -1942,6 +1942,7 @@ impl AgentView {
                     let method_id = method.id.clone();
                     card_button(
                         Button::new(format!("agent-auth-{}-{index}", self.pane.0)).secondary(),
+                        cx,
                     )
                     .label(method.name.clone())
                     .tooltip(
@@ -1958,18 +1959,21 @@ impl AgentView {
                 });
             this.child(
                 alert_actions(cx).children(auth_buttons).child(
-                    card_button(Button::new(format!("agent-retry-{}", self.pane.0)).primary())
-                        .label(if state.lifecycle_pending {
-                            "Restarting…"
-                        } else {
-                            "Try again"
-                        })
-                        .disabled(state.lifecycle_pending)
-                        .on_click(move |_, _, cx| {
-                            retry_controller.update(cx, |controller, cx| {
-                                controller.retry(pane, cx);
-                            });
-                        }),
+                    card_button(
+                        Button::new(format!("agent-retry-{}", self.pane.0)).primary(),
+                        cx,
+                    )
+                    .label(if state.lifecycle_pending {
+                        "Restarting…"
+                    } else {
+                        "Try again"
+                    })
+                    .disabled(state.lifecycle_pending)
+                    .on_click(move |_, _, cx| {
+                        retry_controller.update(cx, |controller, cx| {
+                            controller.retry(pane, cx);
+                        });
+                    }),
                 ),
             )
         }))

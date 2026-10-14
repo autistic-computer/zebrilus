@@ -13,7 +13,7 @@ use zz_gpui::{
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     command::PaletteHostId,
     menu::PopupMenuItem,
     navigation::{
@@ -354,6 +354,7 @@ pub(super) struct Runtime {
     pub view: Entity<AppShell>,
     pub selected: Option<Target>,
     pub unseen_agents: BTreeSet<PaneId>,
+    pub ground: Ground,
 }
 
 pub(super) fn session_tree(
@@ -434,7 +435,12 @@ fn writable(connection: &Connection) -> bool {
     connection.connected && !connection.core.attached_read_only()
 }
 
-pub(super) fn flat_tree(view: &AppShell, fade: Hsla, cx: &mut Context<AppShell>) -> AnyElement {
+pub(super) fn flat_tree(
+    view: &AppShell,
+    fade: Hsla,
+    ground: Ground,
+    cx: &mut Context<AppShell>,
+) -> AnyElement {
     let connection = view.connection.read(cx);
     let core = &connection.core;
     let snapshot = core.snapshot();
@@ -489,7 +495,7 @@ pub(super) fn flat_tree(view: &AppShell, fade: Hsla, cx: &mut Context<AppShell>)
                 }),
         )
     });
-    let list = flat_sidebar(&[host], state, &handler, &menu, cx);
+    let list = flat_sidebar(&[host], state, &handler, &menu, ground, cx);
     let scroll = &view.flat.scroll;
     div()
         .id("web-flat-sidebar")
@@ -832,6 +838,7 @@ fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) ->
                     .child(index)
             })),
         actions,
+        runtime.ground,
         cx,
     )
     .on_mouse_down(MouseButton::Left, move |_, window, cx| {

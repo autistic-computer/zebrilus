@@ -1517,7 +1517,7 @@ pub fn settings_reset_button(
         .small()
         .compact()
         .ghost()
-        .flat()
+        .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
         .hit_slop(slop, slop)
         .icon(crate::IconName::Undo2)
         .tooltip(tooltip)

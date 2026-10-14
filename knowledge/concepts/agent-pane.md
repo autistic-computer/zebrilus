@@ -538,8 +538,8 @@ measured height below the transcript, including attachments, wrapped input, and 
 With no prefix cards, the composer overlaps the transcript by 12 px with no top gap. The transcript
 clips within that overlap, before reaching the footer.
 Permission, error, queue, and completion prefixes keep their top spacing without overlap.
-The composer is a field shell drawn with the look's field paint, a soft wash or an outline, not an
-opaque card; its surroundings inherit the pane transparency.
+The composer is a field shell drawn as the `agent.composer` field role (a soft wash in Default,
+glass in Tahoe), not an opaque card; its surroundings inherit the pane transparency.
 The combined directory and session picker sits at the right end of the desktop composer footer. The transcript reserves
 12 px of bottom padding, and its scrollbar stops 12 px above the viewport bottom. Controller updates for other panes
 or unchanged pane metadata do not invalidate this view.
@@ -574,8 +574,8 @@ every semantic color used by the SVG theme, and appearance. Per-node state also 
 offset so distinct blocks do not alias, while identical diagrams can share a raster; Mermaid theme
 configuration is built only on a cache miss.
 
-User prompts sit in a card (`card_style`): the opaque panel fill, the look's edge and corners, and
-the contact shadow when the look's surfaces cast shadows. Tool
+User prompts sit in an `agent.bubble` card: in the Default theme the opaque panel fill, the
+outline, the theme radius and the contact shadow. Tool
 disclosures are compact, fixed single-line borderless rows with one kind icon, an ellipsized label,
 and a chevron immediately after the label when details are available. There is no trailing status
 glyph or ellipsis. Kind icons and chevrons use the same muted foreground regardless of ACP status;
@@ -683,16 +683,16 @@ its wrap fragments do not have stable identities across reflow.
 # Composer, permissions, and failure states
 
 The native composer is a centered field shell that auto-grows from two to eight lines:
-`field_chrome` with the neutral paint at the look's field emphasis, whose border turns to the focus
-color while the input has focus.
+`field_chrome` drawn as the `agent.composer` role, whose border turns to the focus color while the
+input has focus.
 Enter sends when the session is ready; Shift+Enter inserts a newline. The controller returns to ready
 on ACP completion and marks in-flight tools cancelled when the stop reason is `cancelled`.
 Send is disabled on an empty draft, not just on a busy connection, so the primary control never
-invites a no-op. The Send, Queue, and Stop states share one 28 px icon-only button declared with
-`rounded_full()`,
-so it stays a true circle instead of inheriting the widget radius or squircle smoothing. The
-jump-to-latest control is a 24 px compact icon button in the secondary paint, rounded at the
-control radius and lifted by `lifted_shadow`, carrying the arrow-down twin of Send's arrow-up,
+invites a no-op. The Send, Queue, and Stop states share one compact icon-only button drawn as the
+`agent.send` role: a solid fill with the outline and the contact shadow, primary for Send, its
+corner from the role's shape. The
+jump-to-latest control is a 24 px compact icon button drawn as `agent.jump` (a solid fill with
+the outline and the contact shadow) on the transcript's ground, carrying the arrow-down twin of Send's arrow-up,
 floated 24 px above the bottom of the clipped timeline viewport and labelled by tooltip alone. A
 separate compact footer under the composer carries the current Git branch and `N files +A -D` summary on the
 left, with the working directory, New session, and History on the right. The composer settings row

@@ -4,7 +4,7 @@ title: Unified palette and tmux command completions
 description: Desktop session, window, and pane navigation alongside command and host search, with shared zz-ui presentation and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [gpui, command-prompt, tmux, completions, ui]
-timestamp: 2026-09-16T00:17:40Z
+timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Overview
@@ -146,8 +146,8 @@ through the same trait.
 placeholder without replacing the field.
 
 The desktop overlay starts near 12% of the viewport height, caps its width at 560px, and leaves
-16px side margins. The panel uses `popover_style`, an opaque raised Chroma background, the
-shared edge and shadow, and the configured theme radius plus the 8px list inset. A 40px input
+16px side margins. The panel is the `palette` role (a popover): in the Default theme an opaque
+raised background, the outline and the float shadow, and the theme radius plus the 8px list inset. A 40px input
 row contains 12px search text and pills. Rows match dropdown typography with 12px medium labels,
 10px secondary text, 16px line heights, 26px highlights, and 2px gaps; the scrolling area reaches
 at most 440px. Usage and footer text are 10px. The normal UI font follows the theme; usage, prefixes, command pills, and shortcut

@@ -159,6 +159,7 @@ impl WorkspaceSidebar {
                         state,
                         &handler,
                         &window_menu(sidebar),
+                        self.content_ground(cx),
                         cx,
                     )),
             )

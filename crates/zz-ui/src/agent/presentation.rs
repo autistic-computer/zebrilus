@@ -124,19 +124,19 @@ pub fn permission_card(
                 ))
                 .child(div().min_w_0().flex_1().child(title.into()))
                 .when_some(counter, |row, counter| row.child(card_chip(counter)))
-                .child(card_close(cancel)),
+                .child(card_close(cancel, cx)),
         )
         .child(card_tiles().pb(px(CARD_GUTTER)).children(options))
 }
 
-pub fn card_close(button: Button) -> Div {
+pub fn card_close(button: Button, cx: &App) -> Div {
     div()
         .flex_none()
         .mt(px((CARD_TITLE_LINE - CARD_CLOSE) / 2.0))
         .mb(px((CARD_TITLE_LINE - CARD_CLOSE) / 2.0))
         .mr(px(-(CARD_CLOSE - CARD_GLYPH) / 2.0))
         .child(
-            button
+            card_button(button, cx)
                 .icon(IconName::Xmark)
                 .emphasis(Emphasis::Ghost)
                 .compact()
@@ -144,8 +144,9 @@ pub fn card_close(button: Button) -> Div {
         )
 }
 
-pub fn card_button(button: Button) -> Button {
-    button
+/// `button` on a card, drawn on the card's surface.
+pub fn card_button(button: Button, cx: &App) -> Button {
+    button.on(cx.theme().ground_of(roles::INLINE_PANEL))
 }
 
 pub(crate) const CARD_GUTTER: f32 = 12.0;
