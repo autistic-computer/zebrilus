@@ -7,7 +7,7 @@ use zz_gpui::{
     Styled as _, TouchPhase, Window, canvas, div, prelude::*, px,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, contact_shadow};
+use crate::{ActiveTheme as _, Colorize as _, roles};
 use zz_gpui_kit::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 
 const EDGE: f32 = 20.0;
@@ -259,7 +259,8 @@ impl RenderOnce for SwipeBack {
                     .bg(theme.background.opaque())
                     .when(moving, |page| {
                         page.shadow(
-                            contact_shadow(cx)
+                            theme
+                                .shadows_of(theme.style(roles::PANE).shadow)
                                 .into_iter()
                                 .map(|mut shadow| {
                                     shadow.color =

@@ -17,7 +17,7 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Sizable as _,
-    StyledExt as _, ThemeMode, WindowExt as _,
+    ThemeMode, WindowExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
@@ -55,7 +55,7 @@ use zz_ui::settings::appearance::{
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
     StackPosition, settings_card_ground, settings_list_disclosure_header,
-    settings_list_group_header, settings_page_content, settings_page_description,
+    settings_list_group_header, settings_page_content, settings_page_description, settings_preview,
     settings_provenance_badge, settings_reset_button, settings_scroll_column,
 };
 
@@ -836,10 +836,10 @@ impl SettingsView {
         title: &'static str,
         description: &'static str,
         setting: ConfigValue<bool>,
-        _cx: &Context<Self>,
+        cx: &Context<Self>,
     ) -> SettingEntry {
         SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, setting.provenance))
+            .title_actions(key_annotations(key, setting.provenance, cx))
             .control(boolean_control(
                 key.as_str(),
                 setting.value,
@@ -866,7 +866,7 @@ impl SettingsView {
              the browser runtime next starts; relaunch zz if a browser pane is already open. \
              Set browser-remote-debugging-port in the config file for another port.",
         )
-        .title_actions(key_annotations(key, setting.provenance))
+        .title_actions(key_annotations(key, setting.provenance, cx))
         .control(
             Switch::new(format!("settings-{}", key.as_str()))
                 .checked(setting.value.is_some())
@@ -899,7 +899,7 @@ impl SettingsView {
         cx: &Context<Self>,
     ) -> SettingEntry {
         SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, setting.provenance))
+            .title_actions(key_annotations(key, setting.provenance, cx))
             .control(numeric_control(input, cx))
     }
 
@@ -942,8 +942,8 @@ impl SettingsView {
         let provenance = resolved
             .choice_setting(key)
             .map_or(ConfigProvenance::Default, |setting| setting.provenance);
-        let entry =
-            SettingEntry::new(title, description).title_actions(key_annotations(key, provenance));
+        let entry = SettingEntry::new(title, description)
+            .title_actions(key_annotations(key, provenance, cx));
         match self
             .material_selects
             .iter()
@@ -1086,6 +1086,7 @@ impl SettingsView {
                 },
                 !is_default,
             )
+            .on(settings_card_ground(cx))
             .on_click(|_, _, cx| crate::ui_scale::reset(cx)),
         )
         .control(
@@ -1099,7 +1100,11 @@ impl SettingsView {
     fn theme_mode_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
         let setting = resolved.theme_mode;
         SettingEntry::new("Theme", "Follow the system light/dark setting, or pin one.")
-            .title_actions(key_annotations(ConfigKey::ThemeMode, setting.provenance))
+            .title_actions(key_annotations(
+                ConfigKey::ThemeMode,
+                setting.provenance,
+                cx,
+            ))
             .control(div().flex().flex_none().gap(px(10.0)).children(
                 ThemeModeSetting::ALL.into_iter().map(|mode| {
                     picker_tile(
@@ -1157,13 +1162,14 @@ impl SettingsView {
             "The look of the whole interface and its colors in light and dark. Duplicate saves a copy to edit in the themes folder; Import adds one from the clipboard.",
         )
         .title_actions(
-            key_annotations(ConfigKey::InterfaceTheme, setting.provenance)
+            key_annotations(ConfigKey::InterfaceTheme, setting.provenance, cx)
                 .child(
                     Button::new("settings-interface-theme-duplicate")
                         .ghost()
                         .small()
                         .label("Duplicate")
                         .tooltip("Save a copy of this theme to edit and use it")
+                        .on(settings_card_ground(cx))
                         .on_click(|_, _, cx| {
                             let mut theme = config::themes(cx).active.clone();
                             config::material_overrides(cx).apply(&mut theme.materials);
@@ -1180,6 +1186,7 @@ impl SettingsView {
                         .small()
                         .label("Import")
                         .tooltip("Save the theme on the clipboard and use it")
+                        .on(settings_card_ground(cx))
                         .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
                 ),
         )
@@ -1190,7 +1197,7 @@ impl SettingsView {
         let setting = resolved.app_icon;
         let appearance = cx.window_appearance();
         SettingEntry::new("App Icon", "Dock and app switcher.")
-            .title_actions(key_annotations(ConfigKey::AppIcon, setting.provenance))
+            .title_actions(key_annotations(ConfigKey::AppIcon, setting.provenance, cx))
             .control(div().flex().flex_none().gap(px(10.0)).children(
                 AppIconSetting::ALL.into_iter().map(|choice| {
                     picker_tile(
@@ -1220,6 +1227,7 @@ impl SettingsView {
         .title_actions(key_annotations(
             ConfigKey::UiFontFamily,
             self.observed_ui_font.provenance,
+            cx,
         ))
         .control(
             div().flex_none().child(
@@ -1310,6 +1318,7 @@ impl SettingsView {
                     .title_actions(key_annotations(
                         ConfigKey::BrowserSearchProvider,
                         search.provenance,
+                        cx,
                     ))
                     .control(
                         div().flex_none().child(
@@ -1328,6 +1337,7 @@ impl SettingsView {
                     .title_actions(key_annotations(
                         ConfigKey::BrowserElementSelectorHotkey,
                         setting.provenance,
+                        cx,
                     ))
                     .control(
                         div().w(px(CONTROL_WIDTH)).flex_none().child(
@@ -1383,6 +1393,7 @@ impl SettingsView {
                             .ghost()
                             .icon(IconName::Xmark)
                             .tooltip(format!("Remove host ({})", state.label()))
+                            .on(settings_card_ground(cx))
                             .on_click(move |_, _, cx| {
                                 let host_id = remove_mux.read(cx).fleet_hosts().find_map(
                                     |(id, current_name, _, _)| {
@@ -1437,6 +1448,7 @@ impl SettingsView {
                     Button::new("settings-add-host")
                         .primary()
                         .label("Add")
+                        .on(settings_card_ground(cx))
                         .on_click(cx.listener(|settings, _, window, cx| {
                             settings.submit_add_host(window, cx);
                         })),
@@ -1561,7 +1573,7 @@ impl SettingsView {
             .find(|(choice, _)| *choice == value)
             .map_or(value, |(_, label)| *label);
         SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, provenance))
+            .title_actions(key_annotations(key, provenance, cx))
             .control(
                 Button::new(format!("settings-{}", key.as_str()))
                     .label(label)
@@ -1612,6 +1624,7 @@ impl SettingsView {
                             Button::new("settings-update-install")
                                 .primary()
                                 .label(format!("Update to {}", release.version))
+                                .on(settings_card_ground(cx))
                                 .on_click(|_, window, cx| update::install(window, cx)),
                         )
                         .child(
@@ -1668,6 +1681,7 @@ impl SettingsView {
             .child(zz_ui::settings::about::about_build_stack(
                 platform(),
                 zz_ui::settings::about::about_copy_button("settings-about-copy-build-info")
+                    .on(settings_card_ground(cx))
                     .on_click(|_, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(
                             zz_ui::settings::about::build_info(&platform()),
@@ -1780,15 +1794,11 @@ impl SettingsView {
                         )
                     })
                     .child(
-                        div()
+                        settings_preview(cx.theme().editor_background(), cx)
                             .flex()
                             .flex_none()
                             .h(px(320.0))
-                            .overflow_hidden()
                             .p(px(CONFIG_EDITOR_PADDING))
-                            .surface_edge(cx)
-                            .rounded(cx.theme().menu_radius())
-                            .bg(cx.theme().editor_background())
                             .font_family(cx.theme().mono_font_family.clone())
                             .text_size(px(CONFIG_EDITOR_FONT_SIZE))
                             .child(CodeEditor::new(&editor)),
@@ -2688,17 +2698,17 @@ fn provenance_badge(provenance: ConfigProvenance) -> Badge {
     })
 }
 
-fn key_annotations(key: ConfigKey, provenance: ConfigProvenance) -> zz_gpui::Div {
+fn key_annotations(key: ConfigKey, provenance: ConfigProvenance, cx: &App) -> zz_gpui::Div {
     div()
         .flex()
         .flex_none()
         .items_center()
         .gap(px(8.0))
-        .child(config_reset_button(key, provenance))
+        .child(config_reset_button(key, provenance, cx))
         .child(provenance_badge(provenance))
 }
 
-fn config_reset_button(key: ConfigKey, provenance: ConfigProvenance) -> Button {
+fn config_reset_button(key: ConfigKey, provenance: ConfigProvenance, cx: &App) -> Button {
     let tooltip = match provenance {
         ConfigProvenance::Default => "Already using the default value",
         ConfigProvenance::Override => "Reset to the inherited or default value",
@@ -2708,6 +2718,7 @@ fn config_reset_button(key: ConfigKey, provenance: ConfigProvenance) -> Button {
         tooltip,
         provenance == ConfigProvenance::Override,
     )
+    .on(settings_card_ground(cx))
     .on_click(move |_, _, cx| {
         if let Err(error) = remove_config_key(key) {
             report_write_error("reset", key.as_str(), &error, cx);

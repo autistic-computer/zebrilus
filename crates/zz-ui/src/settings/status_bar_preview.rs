@@ -148,20 +148,16 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
             workspace_status_item("settings-preview-update", None, "v0.9.0".into(), cx)
                 .flex_none()
                 .px(px(6.0))
-                .rounded(cx.theme().control_radius())
-                .surface_outline(cx.theme().transparent, cx)
+                .surface(crate::roles::STATUS_CHIP, cx)
+                .text_color(cx.theme().foreground.muted())
                 .child(status_dot(cx.theme().success))
                 .into_any_element(),
         );
     }
-    div()
+    super::settings_preview(cx.theme().background.opaque(), cx)
         .relative()
         .w_full()
         .flex_none()
-        .overflow_hidden()
-        .rounded(cx.theme().radius)
-        .surface_edge(cx)
-        .bg(cx.theme().background.opaque())
         .child(
             workspace_status_bar(
                 gaps,

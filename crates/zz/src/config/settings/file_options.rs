@@ -341,6 +341,7 @@ impl SettingsView {
                 },
                 !disabled && row.value.is_some(),
             )
+            .on(settings_card_ground(cx))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.commit_file_option(kind, index, None, window, cx);
             }));
@@ -416,10 +417,15 @@ impl SettingsView {
                 .control(
                     h_flex()
                         .gap_2()
-                        .child(div().w(px(230.0)).child(Input::new(&controls.donor)))
+                        .child(
+                            div()
+                                .w(px(230.0))
+                                .child(Input::new(&controls.donor).on(settings_card_ground(cx))),
+                        )
                         .child(
                             Button::new("choose-config-donor")
                                 .label("Choose…")
+                                .on(settings_card_ground(cx))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     let selected =
                                         cx.prompt_for_paths(zz_gpui::PathPromptOptions {
@@ -450,6 +456,7 @@ impl SettingsView {
                         .child(
                             Button::new("import-config-donor")
                                 .label("Import")
+                                .on(settings_card_ground(cx))
                                 .disabled(
                                     disabled || controls.donor.read(cx).value().trim().is_empty(),
                                 )

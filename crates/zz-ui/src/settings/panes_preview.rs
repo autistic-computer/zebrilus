@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, Kind, PaintState, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, PaintState,
     input::{field_chrome, field_paint},
     pane::{
         PaneChrome, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface,
@@ -99,15 +99,11 @@ impl RenderOnce for PanesPreview {
             div().absolute(),
             cx,
         );
-        div()
+        super::settings_preview(backdrop, cx)
             .id("settings-panes-preview")
             .w_full()
             .h(px(height))
             .flex_none()
-            .overflow_hidden()
-            .rounded(cx.theme().radius)
-            .surface_edge(cx)
-            .bg(backdrop)
             .text_color(cx.theme().foreground)
             .text_size(px(11.0))
             .line_height(px(16.0))
@@ -203,7 +199,7 @@ fn terminal_sample(cx: &App) -> zz_gpui::Div {
 }
 
 fn agent_sample(cx: &App) -> zz_gpui::Div {
-    let paint = field_paint(Kind::Field, cx);
+    let paint = field_paint(crate::roles::AGENT_COMPOSER, cx);
     let composer = div()
         .flex_none()
         .h(px(24.0))
@@ -223,17 +219,23 @@ fn agent_sample(cx: &App) -> zz_gpui::Div {
                 .child("Ready when you are."),
         )
         .child(
-            field_chrome(composer, Kind::Field, PaintState::Rest, true, true, cx)
-                .rounded(cx.theme().radius)
-                .text_color(paint.faint_at(PaintState::Rest))
-                .child(
-                    div()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .child("Ask anything…"),
-                ),
+            field_chrome(
+                composer,
+                crate::roles::AGENT_COMPOSER,
+                PaintState::Rest,
+                true,
+                true,
+                cx,
+            )
+            .text_color(paint.faint_at(PaintState::Rest))
+            .child(
+                div()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .child("Ask anything…"),
+            ),
         )
 }
 

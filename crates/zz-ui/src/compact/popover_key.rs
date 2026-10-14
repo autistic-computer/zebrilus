@@ -11,13 +11,13 @@ use zz_gpui::{
 };
 
 use super::{
-    key_row::{KEY_HEIGHT, KEY_WIDTH, KeyLook, key_paint, key_surface},
+    key_row::{KEY_HEIGHT, KEY_WIDTH, KeyLook, key_look, key_surface},
     press::{Grip, Press, key_slop, press_listeners},
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, PaintExt as _, PaintState, RULE_WIDTH,
-    StyledExt as _, Tone, rems_from_px, separator::Separator,
+    ActiveTheme as _, Emphasis, Icon, IconName, Kind, PaintState, RULE_WIDTH, StyledExt as _,
+    Surface, Tone, rems_from_px, roles, separator::Separator,
 };
 
 const HOLD: Duration = Duration::from_millis(280);
@@ -237,21 +237,24 @@ impl PopoverKey {
     fn item(&self, index: usize, item: &PopoverKeyItem, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let hovered = self.hover == Some(index);
-        let paint = theme.paint(
-            if item.danger {
-                Tone::Danger
-            } else {
-                Tone::Neutral
-            },
-            Emphasis::Ghost,
-        );
+        let row = Surface::new(Kind::Row.role()).tone(if item.danger {
+            Tone::Danger
+        } else {
+            Tone::Neutral
+        });
         let state = if hovered {
             PaintState::Selected
         } else {
             PaintState::Rest
         };
-        let pressed = paint.active;
-        let muted = paint.muted_at(state);
+        let pressed = theme.layer(row, PaintState::Active).fill;
+        let muted = theme
+            .paint_on(
+                theme.layer(row, state).ground,
+                Tone::Neutral,
+                Emphasis::Ghost,
+            )
+            .muted_at(PaintState::Rest);
         let cap = |cap: SharedString| {
             div()
                 .flex_none()
@@ -284,8 +287,7 @@ impl PopoverKey {
             .min_w_0()
             .h(rems_from_px(ITEM_HEIGHT))
             .px(rems_from_px(8.0))
-            .menu_item_corners(px(ITEM_HEIGHT), cx)
-            .painted(paint, state)
+            .surface_at(row, state, cx)
             .when(!hovered, |row| row.active(move |style| style.bg(pressed)))
             .children(leading)
             .child(
@@ -350,7 +352,7 @@ impl PopoverKey {
             .w(rems_from_px(width + 2.0 * CARD_PADDING))
             .p(rems_from_px(CARD_PADDING))
             .gap(rems_from_px(ITEM_GAP))
-            .popover_style(cx)
+            .surface(Kind::Popover, cx)
             .font_family(theme.font_family.clone())
             .text_size(rems_from_px(17.0))
             .line_height(rems_from_px(22.0))
@@ -369,10 +371,11 @@ impl PopoverKey {
             )
             .when_some(footer, |card, footer| {
                 card.child(
-                    div()
-                        .px(rems_from_px(8.0))
-                        .py(rems_from_px(2.0))
-                        .child(Separator::horizontal().h(RULE_WIDTH)),
+                    div().px(rems_from_px(8.0)).py(rems_from_px(2.0)).child(
+                        Separator::horizontal()
+                            .surface_role(roles::LIST_RULE)
+                            .h(RULE_WIDTH),
+                    ),
                 )
                 .child(footer)
             })
@@ -482,8 +485,15 @@ impl Render for PopoverKey {
         } else {
             KeyLook::Rest
         };
-        let (paint, state) = key_paint(look, cx);
-        let hint = paint.faint_at(state);
+        let (surface, state) = key_look(look);
+        let theme = cx.theme();
+        let hint = theme
+            .paint_on(
+                theme.layer(surface, state).ground,
+                Tone::Neutral,
+                Emphasis::Ghost,
+            )
+            .faint_at(PaintState::Rest);
         let key = Rc::clone(&self.key);
         let selector = format!("popover-key-{}", self.label);
         let open = self.open.is_some();

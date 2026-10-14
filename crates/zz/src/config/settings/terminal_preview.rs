@@ -7,7 +7,7 @@ use zz_terminal::{
     apply_appearance_overrides,
 };
 use zz_ui::{
-    ActiveTheme as _, StyledExt as _,
+    ActiveTheme as _,
     terminal::{RowRenderCache, TerminalRenderInput, cursor_should_blink, terminal_background},
 };
 
@@ -160,14 +160,10 @@ impl Render for TerminalPreview {
             + appearance.padding_top
             + appearance.padding_bottom
             + 2.0;
-        div()
+        zz_ui::settings::settings_preview(background, cx)
             .w_full()
             .h(px(height.max(190.0)))
             .flex_none()
-            .control_surface(cx)
-            .rounded(cx.theme().radius)
-            .overflow_hidden()
-            .bg(background)
             .child(
                 div()
                     .size_full()

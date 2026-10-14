@@ -1,7 +1,7 @@
 use super::{SettingsSelectItem, StackPosition};
 use crate::scroll::{GUTTER_WIDTH, Scrollbar, ScrollbarShow};
 use crate::select::{SelectItem as _, SelectState};
-use crate::{ActiveTheme as _, Colorize as _, ThemeColor, ThemeMode};
+use crate::{ActiveTheme as _, Colorize as _, StyledExt as _, ThemeColor, ThemeMode};
 use std::{rc::Rc, sync::Arc};
 use zz_gpui::{
     AnyElement, App, Entity, IntoElement, ScrollHandle, SharedString, Window, div, prelude::*, px,
@@ -14,10 +14,11 @@ const THEME_PREVIEW_SIDEBAR_WIDTH: f32 = 20.0;
 const PAGE_ROW_GAP: f32 = 8.0;
 const TILE_GAP: f32 = 6.0;
 const STRIP_INSET: f32 = super::SETTINGS_STACK_PADDING;
-const TILE_FRAME_PADDING: f32 = 3.0;
-const TILE_FRAME: f32 = TILE_FRAME_PADDING + 1.0;
+const TILE_FRAME_PADDING: f32 = 2.0;
+const TILE_RING: f32 = 2.0;
+const TILE_FRAME: f32 = TILE_FRAME_PADDING + TILE_RING;
 const TILE_HALO_GAP: f32 = 1.0;
-const TILE_HALO: f32 = TILE_HALO_GAP + 1.0;
+const TILE_HALO: f32 = TILE_RING + TILE_HALO_GAP + 1.0;
 
 pub fn run_position<T: Copy>(
     items: &[T],
@@ -246,9 +247,12 @@ pub fn picker_tile(
     tile(id, label, preview, selected, false, cx)
 }
 
+/// A picker tile drawn as [`crate::roles::SETTINGS_TILE`], its corners
+/// concentric with the preview it frames. The chosen one takes the role's
+/// selected highlight; the keyboard focus halo stays a 1px ring outside it.
 #[allow(
     clippy::disallowed_methods,
-    reason = "the focus halo and the selection frame are rings around the tile, 1px in every look"
+    reason = "the focus halo is a ring around the tile, 1px in every look"
 )]
 fn tile(
     id: SharedString,
@@ -258,13 +262,14 @@ fn tile(
     focused: bool,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let ring = |on: bool| {
-        if on {
-            cx.theme().accent
+    let frame = cx.theme().layer(
+        crate::roles::SETTINGS_TILE,
+        if selected {
+            crate::PaintState::Selected
         } else {
-            zz_gpui::transparent_black()
-        }
-    };
+            crate::PaintState::Rest
+        },
+    );
     div()
         .id(zz_gpui::ElementId::Name(id))
         .flex()
@@ -275,16 +280,21 @@ fn tile(
         .cursor_pointer()
         .child(
             div()
-                .p(px(TILE_HALO_GAP))
-                .rounded(cx.theme().outer_radius(px(TILE_FRAME + TILE_HALO)))
+                .p(px(TILE_HALO - 1.0))
+                .rounded(around(frame.radius, TILE_FRAME_PADDING + TILE_HALO))
                 .border_1()
-                .border_color(ring(focused))
+                .border_color(if focused {
+                    cx.theme().accent
+                } else {
+                    zz_gpui::transparent_black()
+                })
                 .child(
                     div()
                         .p(px(TILE_FRAME_PADDING))
-                        .rounded(cx.theme().outer_radius(px(TILE_FRAME)))
-                        .border_1()
-                        .border_color(ring(selected))
+                        .layer(&crate::Layer {
+                            radius: around(frame.radius, TILE_FRAME_PADDING),
+                            ..frame
+                        })
                         .child(preview),
                 ),
         )
@@ -304,6 +314,16 @@ fn tile(
                 })
                 .child(label.into()),
         )
+}
+
+/// The radius of a box `inset` outside one rounded by `radius`, so the two
+/// stay concentric. Square corners stay square.
+fn around(radius: zz_gpui::Pixels, inset: f32) -> zz_gpui::Pixels {
+    if radius > px(0.0) {
+        radius + px(inset)
+    } else {
+        px(0.0)
+    }
 }
 
 /// A row of picker tiles that scrolls sideways once it outgrows the page and
@@ -371,7 +391,12 @@ impl RenderOnce for PickerStrip {
             }
         });
         let id = self.id;
-        let edge = || div().flex_none().w(px(STRIP_INSET - TILE_GAP - TILE_HALO));
+        let edge = || {
+            div().flex_none().w(px(STRIP_INSET + TILE_FRAME
+                - TILE_FRAME_PADDING
+                - TILE_HALO
+                - TILE_GAP))
+        };
         let key_scroll = scroll.clone();
         let key_select = Rc::clone(&select);
         let tiles = div()
@@ -552,15 +577,18 @@ pub fn interface_theme_preview(
             menu.border(px(0.5))
                 .border_color(colors.foreground.opacity(0.15))
         })
-        .when(kit.casts_shadow(crate::Kind::Popover.role()) && materials.float.strength > 0.0, |menu| {
-            menu.shadow(vec![zz_gpui::BoxShadow {
-                color: colors.shadow_color,
-                offset: zz_gpui::point(px(0.0), px(3.0)),
-                blur_radius: px(8.0),
-                spread_radius: px(-1.0),
-                inset: false,
-            }])
-        })
+        .when(
+            kit.casts_shadow(crate::Kind::Popover.role()) && materials.float.strength > 0.0,
+            |menu| {
+                menu.shadow(vec![zz_gpui::BoxShadow {
+                    color: colors.shadow_color,
+                    offset: zz_gpui::point(px(0.0), px(3.0)),
+                    blur_radius: px(8.0),
+                    spread_radius: px(-1.0),
+                    inset: false,
+                }])
+            },
+        )
         .children([row(24.0, false), row(18.0, true), row(21.0, false)]);
     let (primary, primary_text) = match materials.primary {
         crate::PrimaryStyle::Accent => (colors.accent, accent_ink(&colors)),

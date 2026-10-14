@@ -293,7 +293,7 @@ pub const SETTINGS_ROW: SurfaceRole = SurfaceRole::new(
     "Setting rows",
     "One setting in a group, and its press on touch",
 )
-.with(P.hover(Highlight::None).selected(Highlight::None));
+.with(P.selected(Highlight::None));
 pub const SETTINGS_TILE: SurfaceRole = SurfaceRole::new(
     "settings.tile",
     Kind::Tile,
@@ -319,15 +319,14 @@ pub const PHONE_BAR: SurfaceRole = SurfaceRole::new(
     Kind::Bar,
     "Phone bars",
     "The phone's bottom bar, the key strip and the 44pt top bars",
-)
-.with(P.fill(Fill::Solid));
+);
 pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
     "phone.pill",
     Kind::Button,
     "Phone pill",
     "The pane pill in the phone's bottom bar",
 )
-.with(P.fill(Fill::Glass));
+.with(P.outline(false));
 pub const PHONE_BUTTON: SurfaceRole = SurfaceRole::new(
     "phone.button",
     Kind::IconButton,
@@ -340,20 +339,26 @@ pub const PHONE_KEY: SurfaceRole = SurfaceRole::new(
     "Keys",
     "Keys in the phone's key row and the arrow pad",
 )
-.with(P.fill(Fill::Solid).shadow(Shadow::Contact));
+.with(
+    P.fill(Fill::Solid)
+        .shadow(Shadow::Contact)
+        .hover(Highlight::Tint)
+        .selected(Highlight::Tint),
+);
 pub const PHONE_CARD: SurfaceRole = SurfaceRole::new(
     "phone.card",
     Kind::Tile,
     "Pane cards",
     "Pane thumbnails in the phone overview, and the New pane tile",
-);
+)
+.with(P.fill(Fill::Tint));
 pub const PHONE_ROW: SurfaceRole = SurfaceRole::new(
     "phone.row",
     Kind::Row,
     "Touch rows",
     "Rows in phone sheets, the bindings list and the Settings index",
 )
-.with(P.hover(Highlight::None).selected(Highlight::None));
+.with(P.selected(Highlight::None));
 pub const GRABBER: SurfaceRole = SurfaceRole::new(
     "grabber",
     Kind::Badge,
@@ -465,12 +470,7 @@ pub const REGIONS: &[(&str, &[SurfaceRole])] = &[
     ),
     (
         "Settings",
-        &[
-            SETTINGS_CARD,
-            SETTINGS_ROW,
-            SETTINGS_TILE,
-            SETTINGS_PREVIEW,
-        ],
+        &[SETTINGS_CARD, SETTINGS_ROW, SETTINGS_TILE, SETTINGS_PREVIEW],
     ),
     (
         "Phone",
