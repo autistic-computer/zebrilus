@@ -251,6 +251,7 @@ impl SettingsView {
                 .control(
                     Button::new("settings-retry-split-reload")
                         .label("Reload")
+                        .on(settings_card_ground(cx))
                         .disabled(disabled_reason.is_some())
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.reload_mux_configuration(cx);

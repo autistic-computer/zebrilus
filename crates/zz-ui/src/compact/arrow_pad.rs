@@ -10,8 +10,8 @@ use super::{
     press::{Grip, Press, press_listeners},
 };
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintExt as _, PaintState,
-    StyledExt as _, Tone, rems_from_px,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, PaintState, StyledExt as _,
+    Tone, rems_from_px,
 };
 
 const THRESHOLD: f32 = 10.0;
@@ -119,7 +119,9 @@ impl ArrowPad {
 
     fn bubble(&self, cx: &App) -> AnyElement {
         let theme = cx.theme();
-        let paint = theme.paint(Tone::Neutral, Emphasis::Ghost);
+        let muted = theme
+            .paint_on(theme.ground_of(Kind::Row), Tone::Neutral, Emphasis::Ghost)
+            .muted_at(PaintState::Rest);
         let cell = |slot: Option<ArrowDirection>, hub: bool| {
             let active = slot.is_some() && slot == self.direction;
             div()
@@ -127,14 +129,19 @@ impl ArrowPad {
                 .flex_1()
                 .items_center()
                 .justify_center()
-                .rounded(theme.menu_radius())
                 .when_some(slot, |cell, direction| {
                     let selector = format!("arrow-pad-cell-{}", direction.key());
                     cell.debug_selector(move || selector)
-                        .when(active, |cell| cell.painted(paint, PaintState::Selected))
-                        .when(!active, |cell| {
-                            cell.text_color(paint.muted_at(PaintState::Rest))
-                        })
+                        .surface_at(
+                            Kind::Row,
+                            if active {
+                                PaintState::Selected
+                            } else {
+                                PaintState::Rest
+                            },
+                            cx,
+                        )
+                        .when(!active, |cell| cell.text_color(muted))
                         .child(Icon::new(direction.icon()).size(rems_from_px(18.0)))
                 })
                 .when(hub, |cell| {
@@ -161,7 +168,7 @@ impl ArrowPad {
             .size(rems_from_px(BUBBLE))
             .p(rems_from_px(BUBBLE_PADDING))
             .gap(rems_from_px(CELL_GAP))
-            .popover_style(cx)
+            .surface(Kind::Popover, cx)
             .child(line([
                 blank(),
                 cell(Some(ArrowDirection::Up), false).into_any_element(),

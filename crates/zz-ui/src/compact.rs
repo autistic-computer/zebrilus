@@ -13,7 +13,10 @@ mod swipe_back;
 mod which_key_list;
 
 pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, resolve_direction};
-pub use bar::{COMPACT_BAR_HEIGHT, compact_bar, compact_bar_button, compact_bar_pill};
+pub use bar::{
+    COMPACT_BAR_HEIGHT, COMPACT_NAV_BAR_HEIGHT, compact_bar, compact_bar_button, compact_bar_pill,
+    compact_nav_bar,
+};
 pub use dots::{PageDot, page_dots};
 pub use header::{COMPACT_PANE_HEADER_HEIGHT, compact_pane_header};
 pub use hud::compact_hud;
@@ -29,5 +32,6 @@ pub use web_time::Instant;
 pub use which_key_list::WhichKeyList;
 pub use zz_gpui_kit::dismissal::coast_guard;
 pub use zz_gpui_kit::sheet::{
-    BottomSheet, bottom_sheet, floating_sheet, sheet_action, sheet_close, sheet_inset, sheet_option,
+    BottomSheet, bottom_sheet, floating_sheet, sheet_action, sheet_close, sheet_inset,
+    sheet_option, sheet_row,
 };

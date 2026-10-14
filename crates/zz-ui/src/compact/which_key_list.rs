@@ -6,7 +6,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, StyledExt as _, Tone, rems_from_px,
+    ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, rems_from_px, roles,
     which_key::{WhichKeyCap, WhichKeyRow, cap_text, groups},
 };
 
@@ -56,11 +56,8 @@ impl WhichKeyList {
         let id = row.id.clone();
         let on_pick = self.on_pick.clone();
         let element_id = ElementId::named_usize("which-key-list-row", index);
-        let press = crate::touch::press_highlight(
-            element_id.clone(),
-            cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active,
-            cx.theme().menu_radius(),
-        );
+        let pressed = cx.theme().layer(roles::PHONE_ROW, PaintState::Active);
+        let press = crate::touch::press_highlight(element_id.clone(), pressed.fill, pressed.radius);
         div()
             .id(element_id)
             .relative()
@@ -72,7 +69,7 @@ impl WhichKeyList {
             .min_w_0()
             .h(rems_from_px(ROW_HEIGHT))
             .px(rems_from_px(INSET))
-            .rounded(cx.theme().menu_radius())
+            .surface(roles::PHONE_ROW, cx)
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
             .child(press)
             .child(

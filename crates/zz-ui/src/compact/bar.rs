@@ -4,16 +4,17 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintExt as _, PaintState,
-    StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Layer, PaintState, StyledExt as _,
+    Tone,
     button::{Button, ButtonVariants as _},
-    rems_from_px,
+    rems_from_px, roles,
 };
 
 pub const COMPACT_BAR_HEIGHT: f32 = 60.0;
+pub const COMPACT_NAV_BAR_HEIGHT: f32 = 44.0;
 
 const BUTTON: f32 = 44.0;
-const BUTTON_ICON: f32 = 24.0;
+const BUTTON_ICON: f32 = 20.0;
 const PADDING_X: f32 = 8.0;
 const PADDING_TOP: f32 = 12.0;
 const GRABBER_TOP: f32 = 5.0;
@@ -49,29 +50,56 @@ pub fn compact_bar(
                 .right_0()
                 .flex()
                 .justify_center()
-                .child(
-                    div()
-                        .w(rems_from_px(GRABBER_WIDTH))
-                        .h(rems_from_px(GRABBER_HEIGHT))
-                        .rounded_full()
-                        .bg(if held {
-                            theme.foreground.muted()
-                        } else {
-                            theme.foreground.faint()
-                        }),
-                ),
+                .child(grabber(held, cx)),
         )
         .child(div().flex().flex_1().min_w_0().child(pill))
         .child(div().flex().flex_none().child(trailing))
 }
 
+/// The handle on the bar, drawn as [`roles::GRABBER`] in ink: faint, and
+/// brighter while the bar is held.
+fn grabber(held: bool, cx: &App) -> Div {
+    let theme = cx.theme();
+    let layer = theme.layer(roles::GRABBER, PaintState::Rest);
+    let ink = if held {
+        theme.foreground.muted()
+    } else {
+        theme.foreground.faint()
+    };
+    div()
+        .w(rems_from_px(GRABBER_WIDTH))
+        .h(rems_from_px(GRABBER_HEIGHT))
+        .layer(&Layer {
+            fill: ink,
+            glass: None,
+            ..layer
+        })
+}
+
+/// A button on the phone's bars, drawn as [`roles::PHONE_BUTTON`]: back,
+/// close, settings, the keyboard and the session switcher, which adds its
+/// name after the icon.
 pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
     Button::new(id)
         .ghost()
         .compact()
         .tab_stop(false)
+        .surface_role(roles::PHONE_BUTTON)
         .size(rems_from_px(BUTTON))
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
+}
+
+/// A 44pt bar across the top of a phone page, drawn as [`roles::PHONE_BAR`]:
+/// the settings and overview bars.
+pub fn compact_nav_bar(cx: &App) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(rems_from_px(4.0))
+        .h(rems_from_px(COMPACT_NAV_BAR_HEIGHT))
+        .px(rems_from_px(PADDING_X))
+        .surface(roles::PHONE_BAR, cx)
 }
 
 pub fn compact_bar_pill(
@@ -84,9 +112,10 @@ pub fn compact_bar_pill(
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let pill = theme.paint(Tone::Neutral, Emphasis::Soft).opaque();
+    let pill = theme.layer(roles::PHONE_PILL, PaintState::Rest);
+    let pressed = theme.layer(roles::PHONE_PILL, PaintState::Active).fill;
     let badge = theme.paint_on(
-        pill.ground_at(PaintState::Rest),
+        pill.ground,
         if warning {
             Tone::Warning
         } else {
@@ -97,8 +126,13 @@ pub fn compact_bar_pill(
     let meta_color = if warning {
         badge.text
     } else {
-        pill.muted_at(PaintState::Rest)
+        theme
+            .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
+            .muted_at(PaintState::Rest)
     };
+    let inset = px((BUTTON - TILE) / 2.0);
+    let tile_radius = (pill.radius - inset).max(px(0.0));
+    let radius = pill.radius;
     div()
         .id(id)
         .debug_selector(|| "compact-bar-pill".to_owned())
@@ -111,10 +145,7 @@ pub fn compact_bar_pill(
         .pl(rems_from_px(8.0))
         .pr(rems_from_px(12.0))
         .gap(rems_from_px(10.0))
-        .rounded(theme.control_radius())
-        .control_surface(cx)
-        .painted(pill, PaintState::Rest)
-        .surface_fill(pill.fill, cx)
+        .surface(roles::PHONE_PILL, cx)
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .child(
             div()
@@ -123,7 +154,7 @@ pub fn compact_bar_pill(
                 .items_center()
                 .justify_center()
                 .size(rems_from_px(TILE))
-                .rounded(theme.inner_radius(px((BUTTON - TILE) / 2.0)))
+                .rounded(tile_radius)
                 .bg(badge.fill)
                 .text_color(if warning {
                     badge.text
@@ -172,7 +203,7 @@ pub fn compact_bar_pill(
         )
         .child(crate::touch::press_highlight(
             "compact-bar-pill-press",
-            pill.active,
-            theme.control_radius(),
+            pressed,
+            radius,
         ))
 }

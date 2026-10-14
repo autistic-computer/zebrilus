@@ -16,7 +16,7 @@ use zz_gpui::{
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Edge, IconName, PaintState, StyledExt as _,
     compact::{
         ArrowPadEvent, COMPACT_BAR_HEIGHT, COMPACT_PANE_HEADER_HEIGHT, Instant, KEY_ROW_HEIGHT,
         KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent, PopoverKey, PopoverKeyEvent,
@@ -25,7 +25,7 @@ use zz_ui::{
     },
     kbd::Kbd,
     pane::pane_header_icon_button,
-    rems_from_px,
+    rems_from_px, roles,
     which_key::{WhichKeyCap, WhichKeyRow},
 };
 
@@ -615,7 +615,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let radius = cx.theme().radius * motion;
+        let radius = cx.theme().layer(roles::PANE, PaintState::Rest).radius * motion;
         let pane_id = slot.pane;
         let snapshot = self
             .connection
@@ -1036,8 +1036,8 @@ impl AppShell {
                         .top((zone + px(BAR_DROP)) * drop)
                         .opacity((1.0 - drop.min(1.0) * BAR_FADE).max(0.0))
                         .pb(safe_bottom)
-                        .bg(cx.theme().background)
-                        .rule_top(cx)
+                        .surface(roles::PHONE_BAR, cx)
+                        .rule_on(roles::BAR_RULE, Edge::Top, cx)
                         .child(compact_bar(pill, keys, self.compact.lift.is_dragging(), cx)),
                 )
                 .into_any_element()
@@ -1147,8 +1147,8 @@ impl AppShell {
             .w_full()
             .h(px(KEY_ROW_HEIGHT) + bottom)
             .pb(bottom)
-            .bg(cx.theme().background)
-            .rule_top(cx)
+            .surface(roles::PHONE_BAR, cx)
+            .rule_on(roles::BAR_RULE, Edge::Top, cx)
             .child(row)
             .into_any_element()
     }

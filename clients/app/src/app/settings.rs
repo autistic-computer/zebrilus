@@ -5,8 +5,8 @@ use zz_gpui::{
     Subscription, TextInputMode, Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, IconName, Sizable as _, StyledExt as _, Theme,
-    ThemeMode, Tone, UiZoom,
+    ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _, Theme, ThemeMode,
+    UiZoom,
     button::{Button, ButtonVariants as _},
     input::{InputEvent, InputState, NumberInput},
     interface_theme::{self, ThemeModeSetting},
@@ -17,8 +17,8 @@ use zz_ui::{
             AppearancePageItem, PickerStrip, appearance_page, appearance_page_items,
             interface_theme_preview, picker_tile, theme_preview, ui_font_select,
         },
-        settings_card_ground, settings_list_disclosure_header, settings_reset_button,
-        settings_scroll_column,
+        settings_card_ground, settings_list_disclosure_header, settings_page_heading,
+        settings_preview, settings_reset_button, settings_scroll_column,
     },
     switch::Switch,
 };
@@ -31,8 +31,6 @@ use crate::{
 
 pub(super) use crate::preferences::Preferences;
 
-const NAV_BAR_HEIGHT: f32 = 44.0;
-const NAV_BACK: f32 = 40.0;
 const PALETTE_LAYOUTS: [(&str, &str); 2] = [("grouped", "Tree"), ("flat", "Flat")];
 const HOST_PREFIXES: [(&str, &str); 2] = [("~", "~"), ("#", "#")];
 
@@ -726,28 +724,9 @@ impl AppShell {
             .min_w_0()
             .min_h_0()
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .h(px(NAV_BAR_HEIGHT))
-                    .px(px(8.0))
-                    .flex_none()
+                zz_ui::compact::compact_nav_bar(cx)
                     .child(
-                        div()
-                            .id("settings-back")
-                            .relative()
-                            .flex()
-                            .flex_none()
-                            .items_center()
-                            .justify_center()
-                            .size(px(NAV_BACK))
-                            .child(zz_ui::touch::press_highlight(
-                                "settings-back-press",
-                                cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active,
-                                cx.theme().radius,
-                            ))
-                            .child(zz_ui::Icon::new(IconName::ArrowLeft).size(px(18.0)))
+                        zz_ui::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.settings_back(window, cx);
                             })),
@@ -954,11 +933,13 @@ impl AppShell {
                     )
                 });
                 return settings_scroll_column("settings-page")
-                    .children(settings_heading(
-                        (!narrow).then_some(section.title()),
-                        "Tune the command palette and display on this client.",
-                        cx,
-                    ))
+                    .children((!narrow).then(|| {
+                        settings_page_heading(
+                            section.title(),
+                            "Tune the command palette and display on this client.",
+                            cx,
+                        )
+                    }))
                     .child(
                         SettingsStack::titled("Command palette")
                             .children(self.palette_settings(cx)),
@@ -1125,6 +1106,7 @@ impl AppShell {
                     "Reset UI zoom to 100%",
                     self.preferences.zoom != 1.0,
                 )
+                .on(settings_card_ground(cx))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.preferences.reset_zoom(&this.connection, window, cx);
                     this.sync_zoom_input(window, cx);
@@ -1141,6 +1123,7 @@ impl AppShell {
                     "Reset contrast to 100%",
                     self.preferences.contrast != 1.0,
                 )
+                .on(settings_card_ground(cx))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.preferences.contrast = 1.0;
                     this.settings_controls
@@ -1216,6 +1199,7 @@ impl AppShell {
                             .small()
                             .label("Duplicate")
                             .tooltip("Save a copy of this theme and use it")
+                            .on(settings_card_ground(cx))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 let saved = this.preferences.duplicate_theme();
                                 this.theme_saved(saved, window, cx);
@@ -1227,6 +1211,7 @@ impl AppShell {
                             .small()
                             .label("Import")
                             .tooltip("Save the theme on the clipboard and use it")
+                            .on(settings_card_ground(cx))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.import_theme(window, cx);
                             })),
@@ -1240,6 +1225,7 @@ impl AppShell {
                                     .small()
                                     .label("Delete")
                                     .tooltip("Delete this saved theme and use the default one")
+                                    .on(settings_card_ground(cx))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         let id = this.preferences.theme_id().to_owned();
                                         this.preferences.delete_theme(&id);
@@ -1374,6 +1360,7 @@ impl AppShell {
                     "Reset to default",
                     value != default,
                 )
+                .on(settings_card_ground(cx))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     *control.value(&mut this.preferences) = default;
                     let scale =
@@ -1419,6 +1406,7 @@ impl AppShell {
                 "Reset font scale to 100%",
                 self.preferences.terminal_font_scale != 1.0,
             )
+            .on(settings_card_ground(cx))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.preferences.terminal_font_scale = 1.0;
                 this.settings_controls
@@ -1430,7 +1418,7 @@ impl AppShell {
         )
         .control(number_control(&self.settings_controls.terminal_scale, cx));
         settings_scroll_column("settings-terminal")
-            .children(settings_heading((!narrow).then_some("Terminal"), "Adjust terminal text on this client. Colors, cursor, and spacing follow the host configuration.", cx))
+            .children((!narrow).then(|| settings_page_heading("Terminal", "Adjust terminal text on this client. Colors, cursor, and spacing follow the host configuration.", cx)))
             .child(zz_ui::settings::settings_list_group_header("Preview", None, cx))
             .child(terminal_preview(appearance, cx))
             .child(SettingsStack::titled("Display").child(font).child(scale))
@@ -1550,8 +1538,9 @@ fn about_page(cx: &mut Context<AppShell>) -> AnyElement {
         ))
         .child(about::about_build_stack(
             platform,
-            about::about_copy_button("settings-about-copy-build-info").on_click(
-                move |_, window, cx| {
+            about::about_copy_button("settings-about-copy-build-info")
+                .on(settings_card_ground(cx))
+                .on_click(move |_, window, cx| {
                     use zz_ui::WindowExt as _;
                     cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(about::build_info(
                         &copied,
@@ -1560,8 +1549,7 @@ fn about_page(cx: &mut Context<AppShell>) -> AnyElement {
                         zz_ui::notification::Notification::success("Copied build information"),
                         cx,
                     );
-                },
-            ),
+                }),
             cx,
         ))
         .child(about::about_project_stack(cx))
@@ -1586,13 +1574,13 @@ fn reset_button(
     reset: impl Fn(&mut AppShell, &mut Window, &mut Context<AppShell>) + 'static,
     cx: &Context<AppShell>,
 ) -> Button {
-    settings_reset_button(id, "Reset to default", changed).on_click(cx.listener(
-        move |this, _, window, cx| {
+    settings_reset_button(id, "Reset to default", changed)
+        .on(settings_card_ground(cx))
+        .on_click(cx.listener(move |this, _, window, cx| {
             reset(this, window, cx);
             this.preferences.save();
             this.preferences.apply(&this.connection, window, cx);
-        },
-    ))
+        }))
 }
 
 fn status_field<'a>(preferences: &'a mut Preferences, id: &str) -> &'a mut bool {
@@ -1713,32 +1701,6 @@ fn number_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
         .child(NumberInput::new(input).on(settings_card_ground(cx)))
 }
 
-pub(super) fn settings_heading(
-    title: Option<&'static str>,
-    description: &'static str,
-    cx: &App,
-) -> Option<zz_gpui::Div> {
-    let title = title?;
-    Some(
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(4.0))
-            .child(
-                div()
-                    .font_medium()
-                    .text_size(zz_ui::rems_from_px(20.0))
-                    .child(title),
-            )
-            .child(
-                div()
-                    .text_size(zz_ui::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(description),
-            ),
-    )
-}
-
 fn terminal_preview(appearance: zz_terminal::TerminalAppearance, _: &App) -> AnyElement {
     TerminalPreview { appearance }.into_any_element()
 }
@@ -1791,14 +1753,10 @@ impl zz_gpui::RenderOnce for TerminalPreview {
             .round()
             / scale;
         let height = cell_height * 8.0 + appearance.padding_top + appearance.padding_bottom + 2.0;
-        div()
+        settings_preview(background, cx)
             .w_full()
             .h(px(height.max(190.0)))
             .flex_none()
-            .control_surface(cx)
-            .rounded(cx.theme().radius)
-            .overflow_hidden()
-            .bg(background)
             .child(
                 div()
                     .size_full()

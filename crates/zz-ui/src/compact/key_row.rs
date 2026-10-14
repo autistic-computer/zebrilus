@@ -12,8 +12,7 @@ use super::{
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Paint, PaintExt as _, PaintState, StyledExt as _,
-    Tone, rems_from_px,
+    ActiveTheme as _, Icon, IconName, PaintState, StyledExt as _, Surface, rems_from_px, roles,
 };
 
 pub const KEY_ROW_HEIGHT: f32 = 44.0;
@@ -32,28 +31,23 @@ pub(super) enum KeyLook {
     Inverted,
 }
 
-/// A key's paint and state: a resting key is a neutral soft button, a latched
-/// modifier is selected, and a held or open key inverts to neutral solid.
-pub(super) fn key_paint(look: KeyLook, cx: &App) -> (Paint, PaintState) {
-    let theme = cx.theme();
-    let soft = theme.paint(Tone::Neutral, Emphasis::Soft).opaque();
+/// A key's surface and state, drawn as [`roles::PHONE_KEY`]: a resting key
+/// rests, a latched modifier is current, and a held or open key is the
+/// prominent one.
+pub(super) fn key_look(look: KeyLook) -> (Surface, PaintState) {
+    let key = Surface::new(roles::PHONE_KEY);
     match look {
-        KeyLook::Rest => (soft, PaintState::Rest),
-        KeyLook::Latched => (soft, PaintState::Current),
-        KeyLook::Inverted => (
-            theme.paint(Tone::Neutral, Emphasis::Solid),
-            PaintState::Rest,
-        ),
+        KeyLook::Rest => (key, PaintState::Rest),
+        KeyLook::Latched => (key, PaintState::Current),
+        KeyLook::Inverted => (key.prominent(true), PaintState::Rest),
     }
 }
 
 pub(super) fn key_surface<E: Styled>(element: E, look: KeyLook, cx: &App) -> E {
-    let (paint, state) = key_paint(look, cx);
+    let (surface, state) = key_look(look);
     let element = element
         .h(rems_from_px(KEY_HEIGHT))
-        .rounded(cx.theme().control_radius())
-        .control_surface(cx)
-        .painted(paint, state);
+        .surface_at(surface, state, cx);
     if look == KeyLook::Inverted {
         element.font_semibold()
     } else {
@@ -209,6 +203,7 @@ impl KeyRow {
 
     fn cap(index: usize, look: KeyLook, content: impl IntoElement, cx: &App) -> Stateful<Div> {
         let selector = format!("key-row-key-{index}");
+        let pressed = cx.theme().layer(key_look(look).0, PaintState::Active);
         Self::slot(ElementId::named_usize("key-row-key", index))
             .group(KEY_GROUP)
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
@@ -224,8 +219,8 @@ impl KeyRow {
                     .relative()
                     .child(crate::touch::instant_press_highlight(
                         ElementId::named_usize("key-row-press", index),
-                        key_paint(look, cx).0.active,
-                        cx.theme().control_radius(),
+                        pressed.fill,
+                        pressed.radius,
                     ))
                     .child(content),
             )

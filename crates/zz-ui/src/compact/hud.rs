@@ -1,6 +1,6 @@
 use zz_gpui::{App, Div, ParentElement as _, SharedString, Styled as _, div, prelude::*};
 
-use crate::{ActiveTheme as _, StyledExt as _, rems_from_px};
+use crate::{ActiveTheme as _, Kind, StyledExt as _, rems_from_px};
 
 pub fn compact_hud(text: impl Into<SharedString>, cx: &App) -> Div {
     div()
@@ -15,8 +15,7 @@ pub fn compact_hud(text: impl Into<SharedString>, cx: &App) -> Div {
                 .flex_none()
                 .px(rems_from_px(16.0))
                 .py(rems_from_px(8.0))
-                .popover_style(cx)
-                .rounded(cx.theme().control_radius())
+                .surface(Kind::Toast, cx)
                 .font_family(cx.theme().font_family.clone())
                 .text_size(rems_from_px(17.0))
                 .line_height(rems_from_px(22.0))

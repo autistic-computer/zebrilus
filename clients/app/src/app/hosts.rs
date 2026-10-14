@@ -5,19 +5,18 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,
     h_flex, rems_from_px,
-    settings::{SettingEntry, SettingsStack, settings_scroll_column},
+    settings::{
+        SettingEntry, SettingsStack, settings_card_ground, settings_page_heading,
+        settings_scroll_column,
+    },
 };
 #[cfg(target_os = "ios")]
 use zz_ui::{
     button::ButtonVariants as _,
     input::{Input, InputEvent, InputState},
-    settings::settings_card_ground,
 };
 
-use super::{
-    AppShell,
-    settings::{settings_heading, with_control},
-};
+use super::{AppShell, settings::with_control};
 use crate::connection::Connection;
 
 #[cfg(target_os = "ios")]
@@ -166,7 +165,7 @@ impl AppShell {
     ) -> AnyElement {
         let entries = self.host_entries(narrow, cx);
         let page = settings_scroll_column(id)
-            .children(settings_heading(title, DESCRIPTION, cx))
+            .children(title.map(|title| settings_page_heading(title, DESCRIPTION, cx)))
             .when(!entries.is_empty(), |page| {
                 page.child(SettingsStack::titled("Hosts").children(entries))
             });
@@ -270,6 +269,7 @@ impl AppShell {
                 let action = if active && (connected || busy) {
                     Button::new(("hosts-disconnect", index))
                         .label(if connected { "Disconnect" } else { "Cancel" })
+                        .on(settings_card_ground(cx))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.connection.update(cx, Connection::disconnect);
                         }))
@@ -281,6 +281,7 @@ impl AppShell {
                             zz_ui::button::ButtonVariants::primary,
                         )
                         .label("Connect")
+                        .on(settings_card_ground(cx))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let endpoint = endpoint.clone();
                             this.connection
@@ -292,6 +293,7 @@ impl AppShell {
                     .ghost()
                     .icon(IconName::Xmark)
                     .tooltip("Remove host")
+                    .on(settings_card_ground(cx))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.hosts.saved.remove(&removed);
                         this.hosts.saved.save();
@@ -338,6 +340,7 @@ impl AppShell {
             h_flex().child(
                 Button::new("hosts-reconnect")
                     .label(if connected { "Reconnect" } else { "Retry" })
+                    .on(settings_card_ground(cx))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.connection.update(cx, Connection::reconnect);
                     })),
@@ -376,6 +379,7 @@ impl AppShell {
                                 button.primary()
                             })
                             .label("Connect")
+                            .on(settings_card_ground(cx))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.add_host(window, cx)),
                             ),
@@ -387,7 +391,11 @@ impl AppShell {
                     "SSH key",
                     "Add this key to ~/.ssh/authorized_keys on the host to sign in without a password.",
                 ),
-                h_flex().child(Button::new("hosts-copy-ssh-key").label("Copy").on_click(
+                h_flex().child(
+                    Button::new("hosts-copy-ssh-key")
+                        .label("Copy")
+                        .on(settings_card_ground(cx))
+                        .on_click(
                     |_, window, cx| {
                         use zz_ui::{WindowExt as _, notification::Notification};
                         let notification = match zz_daemon_client::ios_ssh_public_key() {

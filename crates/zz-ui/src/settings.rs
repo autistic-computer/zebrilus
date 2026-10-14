@@ -7,17 +7,18 @@ use std::rc::Rc;
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable as _, Elevation, Emphasis, Ground, RULE_WIDTH, Selectable as _,
-    Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Disableable as _, Emphasis, Ground, Layer, PaintState, RULE_WIDTH,
+    Selectable as _, Sizable as _, StyledExt as _, Surface,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     icon::{Icon, cap_center_drop},
+    roles,
     scroll::ScrollableElement as _,
     select::SelectItem,
     separator::Separator,
 };
 use zz_gpui::{
-    AnyElement, App, Bounds, ElementId, FocusHandle, IntoElement, ListAlignment,
+    AnyElement, App, Bounds, ElementId, FocusHandle, Hsla, IntoElement, ListAlignment,
     ListSizingBehavior, ListState, ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString,
     Styled as _, Window, div, list, prelude::*, px, relative,
 };
@@ -138,14 +139,16 @@ impl SettingsSection {
     }
 }
 
-/// A settings-section navigation button. The caller attaches behavior. Its
-/// fills are [`crate::navigation::workspace_tree_row`]'s, so the two sidebars
-/// highlight identically.
-pub fn settings_navigation_button(section: SettingsSection, selected: bool, _: &App) -> Button {
+/// A settings-section navigation button. The caller attaches behavior. It
+/// draws as [`roles::SIDEBAR_ROW`], the role of the session tree's rows, so a
+/// theme styles both sidebars at once.
+pub fn settings_navigation_button(section: SettingsSection, selected: bool, cx: &App) -> Button {
     Button::new(section.title())
         .w_full()
         .px(px(8.0))
         .ghost()
+        .surface_role(roles::SIDEBAR_ROW)
+        .on(cx.theme().ground_of(roles::SIDEBAR))
         .icon(section.icon())
         .selected(selected)
         .label(section.title())
@@ -159,6 +162,7 @@ pub fn settings_navigation_back_button(id: impl Into<ElementId>) -> Button {
         .w_full()
         .px(px(8.0))
         .ghost()
+        .surface_role(roles::SIDEBAR_ROW)
         .icon(crate::IconName::ArrowLeft)
         .label("Back")
         .child(div().flex_1())
@@ -174,7 +178,8 @@ pub fn settings_navigation_back_row(button: Button) -> zz_gpui::Div {
         .child(button)
 }
 
-/// Label above a settings navigation group.
+/// Label above a settings navigation group, in the sidebar and in the
+/// narrow-screen index.
 pub fn settings_navigation_group_label(group: SettingsNavigationGroup, cx: &App) -> zz_gpui::Div {
     div()
         .px(px(8.0))
@@ -186,10 +191,8 @@ pub fn settings_navigation_group_label(group: SettingsNavigationGroup, cx: &App)
         .child(group.title())
 }
 
-const SECTION_ROW_HEIGHT: f32 = 48.0;
-
-/// The settings root on a narrow screen: the sidebar's labeled groups at
-/// touch size. `meta` puts a short value at the end of a row, and tapping a
+/// The settings root on a narrow screen: the sidebar's labeled groups as
+/// touch rows. `meta` puts a short value at the end of a row, and tapping a
 /// row hands its section to `on_pick`.
 pub fn settings_section_index(
     sections: &[SettingsSection],
@@ -208,8 +211,6 @@ pub fn settings_section_index(
     }
     let muted = cx.theme().foreground.muted();
     let faint = cx.theme().foreground.faint();
-    let radius = cx.theme().menu_radius();
-    let pressed = cx.theme().paint(Tone::Neutral, Emphasis::Ghost).active;
     let mut column = settings_scroll_column("settings-index");
     for (group, members) in groups {
         let rows = members
@@ -217,38 +218,25 @@ pub fn settings_section_index(
             .map(|section| {
                 let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
                 let on_pick = Rc::clone(&on_pick);
-                let press = crate::touch::press_highlight(id.clone(), pressed, radius);
-                div()
-                    .id(id)
-                    .relative()
-                    .flex()
-                    .items_center()
-                    .gap(px(12.0))
-                    .h(px(SECTION_ROW_HEIGHT))
-                    .px(px(10.0))
-                    .menu_item_corners(px(SECTION_ROW_HEIGHT), cx)
-                    .cursor_pointer()
-                    .child(press)
-                    .child(Icon::new(section.icon()).medium().text_color(muted))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_size(crate::rems_from_px(13.0))
-                            .child(section.title()),
-                    )
-                    .children(meta(section).map(|value| {
-                        div()
-                            .text_size(crate::rems_from_px(11.0))
-                            .text_color(muted)
-                            .child(value)
-                    }))
-                    .child(
-                        Icon::new(crate::IconName::ChevronRight)
-                            .size(px(14.0))
-                            .text_color(faint),
-                    )
-                    .on_click(move |_, window, cx| on_pick(section, window, cx))
+                zz_gpui_kit::sheet::sheet_row(
+                    id,
+                    roles::PHONE_ROW,
+                    Some(Icon::new(section.icon()).text_color(muted)),
+                    section.title(),
+                    cx,
+                )
+                .children(meta(section).map(|value| {
+                    div()
+                        .text_size(crate::rems_from_px(11.0))
+                        .text_color(muted)
+                        .child(value)
+                }))
+                .child(
+                    Icon::new(crate::IconName::ChevronRight)
+                        .size(px(14.0))
+                        .text_color(faint),
+                )
+                .on_click(move |_, window, cx| on_pick(section, window, cx))
             })
             .collect::<Vec<_>>();
         column = column.child(
@@ -256,15 +244,7 @@ pub fn settings_section_index(
                 .flex()
                 .flex_col()
                 .list_inset(cx)
-                .child(
-                    div()
-                        .px(px(6.0))
-                        .pb(px(6.0))
-                        .text_size(crate::rems_from_px(12.0))
-                        .text_color(muted)
-                        .map(crate::StyledExt::font_medium)
-                        .child(group.title()),
-                )
+                .child(settings_navigation_group_label(group, cx))
                 .children(rows),
         );
     }
@@ -712,7 +692,20 @@ pub fn settings_page_content() -> zz_gpui::Div {
         .mx_auto()
 }
 
+/// The heading of `section`'s page: its title and what it holds.
 pub fn settings_page_description(section: SettingsSection, cx: &App) -> zz_gpui::Div {
+    settings_page_heading(section.title(), section.description(), cx)
+}
+
+/// A settings page's heading: its title, then a line saying what it holds.
+/// Under a coarse pointer it leaves the title to the sidebar or the bar above
+/// the page.
+pub fn settings_page_heading(
+    title: impl Into<SharedString>,
+    description: impl Into<SharedString>,
+    cx: &App,
+) -> zz_gpui::Div {
+    let title = title.into();
     div()
         .flex()
         .flex_col()
@@ -721,14 +714,14 @@ pub fn settings_page_description(section: SettingsSection, cx: &App) -> zz_gpui:
         .when(!crate::touch::CoarsePointer::get(cx), |this| {
             this.child(
                 crate::StyledExt::font_medium(div().text_size(crate::rems_from_px(20.0)))
-                    .child(section.title()),
+                    .child(title),
             )
         })
         .child(
             div()
                 .text_size(crate::rems_from_px(11.0))
                 .text_color(cx.theme().foreground.muted())
-                .child(section.description()),
+                .child(description.into()),
         )
 }
 
@@ -1306,6 +1299,22 @@ impl RenderOnce for SettingEntry {
                 .when_some(self.control, zz_gpui::ParentElement::child)
         };
 
+        let theme = cx.theme();
+        let card = theme.layer(roles::SETTINGS_CARD, PaintState::Rest);
+        let pressed_fill = theme
+            .layer(
+                Surface::new(roles::SETTINGS_ROW).on(card.ground),
+                PaintState::Active,
+            )
+            .fill;
+        let (inset, cast): (Vec<_>, Vec<_>) =
+            card.shadow.iter().cloned().partition(|shadow| shadow.inset);
+        let radius = card.radius;
+        let ends = move |this: zz_gpui::Div| {
+            this.when(position.rounds_top(), |this| this.rounded_t(radius))
+                .when(position.rounds_bottom(), |this| this.rounded_b(radius))
+        };
+
         let body = div()
             .relative()
             .flex()
@@ -1323,16 +1332,8 @@ impl RenderOnce for SettingEntry {
                     div()
                         .absolute()
                         .inset_0()
-                        .when(position.rounds_top(), |this| {
-                            this.rounded_t(cx.theme().radius)
-                        })
-                        .when(position.rounds_bottom(), |this| {
-                            this.rounded_b(cx.theme().radius)
-                        })
-                        .bg(cx
-                            .theme()
-                            .paint_on(settings_card_ground(cx), Tone::Neutral, Emphasis::Ghost)
-                            .active)
+                        .map(ends)
+                        .bg(pressed_fill)
                         .opacity(pressed),
                 )
             })
@@ -1343,22 +1344,21 @@ impl RenderOnce for SettingEntry {
             .flex()
             .flex_col()
             .w_full()
-            .bg(settings_card_ground(cx).fill)
-            .surface_edge(cx)
-            .when(position.rounds_top(), |this| {
-                this.rounded_t(cx.theme().radius)
+            .layer(&Layer {
+                shadow: inset,
+                radius: px(0.0),
+                ..card
             })
+            .map(ends)
             .when(!position.rounds_top(), zz_gpui::Styled::border_t_0)
-            .when(position.rounds_bottom(), |this| {
-                this.rounded_b(cx.theme().radius)
-            })
             .when(!position.rounds_bottom(), zz_gpui::Styled::border_b_0)
             .when(position.rules_above(), |this| {
                 this.child(
-                    div()
-                        .flex_none()
-                        .px(px(SETTINGS_STACK_PADDING))
-                        .child(Separator::horizontal().h(RULE_WIDTH)),
+                    div().flex_none().px(px(SETTINGS_STACK_PADDING)).child(
+                        Separator::horizontal()
+                            .surface_role(roles::LIST_RULE)
+                            .h(RULE_WIDTH),
+                    ),
                 )
             })
             .child(body);
@@ -1368,7 +1368,7 @@ impl RenderOnce for SettingEntry {
             .flex()
             .flex_col()
             .w_full()
-            .when(cx.theme().casts_shadow(crate::roles::SETTINGS_CARD), |this| {
+            .when(!cast.is_empty(), |this| {
                 let extent = px(8.0);
                 this.child(
                     div()
@@ -1401,17 +1401,8 @@ impl RenderOnce for SettingEntry {
                                 } else {
                                     -extent
                                 })
-                                .when(position.rounds_top(), |this| {
-                                    this.rounded_t(cx.theme().radius)
-                                })
-                                .when(position.rounds_bottom(), |this| {
-                                    this.rounded_b(cx.theme().radius)
-                                })
-                                .shadow(
-                                    cx.theme().shadows_of(
-                                        cx.theme().style(crate::roles::SETTINGS_CARD).shadow,
-                                    ),
-                                ),
+                                .map(ends)
+                                .shadow(cast),
                         ),
                 )
             })
@@ -1496,7 +1487,20 @@ impl RenderOnce for SettingCopy {
 /// fills step up from the card instead of dissolving into it.
 #[must_use]
 pub fn settings_card_ground(cx: &App) -> Ground {
-    cx.theme().surface(Elevation::Panel).opaque()
+    cx.theme().ground_of(roles::SETTINGS_CARD)
+}
+
+/// A preview well in Settings, around `fill`, the color of what it shows:
+/// [`roles::SETTINGS_PREVIEW`]'s edge, corners and shadow, clipping what it
+/// holds.
+#[must_use]
+pub fn settings_preview(fill: Hsla, cx: &App) -> zz_gpui::Div {
+    let layer = cx.theme().layer(roles::SETTINGS_PREVIEW, PaintState::Rest);
+    div().overflow_hidden().layer(&Layer {
+        fill,
+        glass: None,
+        ..layer
+    })
 }
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {
