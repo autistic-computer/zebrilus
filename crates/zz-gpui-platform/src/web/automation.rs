@@ -312,14 +312,14 @@ fn idle() -> js_sys::Promise {
                 .document()
                 .is_some_and(|document| document.hidden());
             let windows = windows();
-            if hidden {
-                for window in &windows {
-                    if window.has_pending_frame() {
-                        window.render_now();
-                    }
+            for window in &windows {
+                if (hidden && window.has_pending_frame()) || window.take_deferred_frame() {
+                    window.render_now();
                 }
             }
-            let busy = windows.iter().any(|window| window.has_pending_frame());
+            let busy = windows
+                .iter()
+                .any(|window| window.has_pending_frame() || window.has_deferred_frame());
             quiet.set(if busy { 0 } else { quiet.get() + 1 });
             if quiet.get() >= 2 || ticks.get() >= IDLE_TICK_LIMIT {
                 schedule.borrow_mut().take();

@@ -220,6 +220,64 @@ body.creator .mount.canvas {
     border-radius: 0;
 }
 
+body.creator main > section.region {
+    position: relative;
+    max-width: none;
+    margin: 0;
+    scroll-margin-top: 0;
+}
+
+body.creator main > section.region h2 {
+    position: absolute;
+    top: 6px;
+    left: 24px;
+    z-index: 1;
+    margin: 0;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 14px;
+    color: var(--zz-muted);
+    pointer-events: none;
+}
+
+#regions {
+    display: none;
+}
+
+body.creator #regions {
+    display: flex;
+    gap: 2px;
+    margin-left: 12px;
+}
+
+#bar > * {
+    flex-shrink: 0;
+}
+
+#bar > .spacer {
+    flex-shrink: 1;
+}
+
+@media (max-width: 1240px) {
+    body.creator #regions {
+        display: none;
+    }
+}
+
+#regions a {
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 13px;
+    white-space: nowrap;
+    color: var(--zz-muted);
+    text-decoration: none;
+}
+
+#regions a:hover {
+    color: var(--zz-foreground);
+    background: var(--zz-raised);
+}
+
 #bar .back {
     display: flex;
     align-items: center;

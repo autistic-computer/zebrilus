@@ -4,7 +4,7 @@ title: zz-gpui web windows for agents
 description: How zz-gpui's web platform hosts several windows in one page (WindowOptions::mount), mirrors each window's AccessKit tree into ARIA elements, and exposes globalThis.zzGpui so agents can find, click, wait for and capture GPUI content.
 resource: crates/zz-gpui-platform/src/web/automation.rs
 tags: [zz-gpui, web, wasm, accessibility, accesskit, agents, automation]
-timestamp: 2026-10-09T00:00:00Z
+timestamp: 2026-10-14T00:00:00Z
 ---
 
 # Overview
@@ -30,6 +30,12 @@ and fills it (`position: absolute; inset: 0`), so the page decides the window's 
 - Only WebGPU can draw more than one window. WebGL2 binds its device to one canvas, so on the WebGL2
   fallback the second window fails with `WebWindowError::MultipleWindowsNeedWebGpu`.
 - `set_title` on a mounted window does not touch `document.title`.
+- A mounted window whose canvas is out of view by more than half the height of the element that
+  scrolls it skips its frames. An `IntersectionObserver` watches the canvas, rooted at the mount's
+  nearest scrolling ancestor (the page viewport when there is none) with a `50%` margin, since a
+  margin on the implicit root would not reach past an inner scroller. The first frame it skips is
+  drawn when it comes back. `zzGpui.idle()` draws skipped frames and waits on them like pending
+  ones, so captures of a long page stay current. Windows that fill the page are never skipped.
 
 Sources: `crates/zz-gpui-platform/src/web/platform.rs` (`open_window`, `find_mount`) and
 `crates/zz-gpui-platform/src/web/window.rs` (`mount_canvas`).

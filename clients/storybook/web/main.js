@@ -93,6 +93,7 @@ const DEFAULTS = {
 
 const nav = document.getElementById("nav");
 const storyRoot = document.getElementById("story");
+const regions = document.getElementById("regions");
 const form = document.getElementById("knob-form");
 const importDialog = document.getElementById("import-dialog");
 
@@ -316,10 +317,21 @@ function show(storyId, sectionId) {
     if (current !== story.id) {
         document.body.classList.toggle("creator", creator);
         if (creator) {
-            const [canvas] = story.sections;
             storyRoot.replaceChildren(
                 element("h1", { class: "visually-hidden", text: story.name }),
-                element("div", { id: canvas.mount, class: "mount canvas", "data-section": canvas.id }),
+                ...story.sections.map((section) =>
+                    element(
+                        "section",
+                        { id: `${story.id}-${section.id}`, class: "region", "aria-labelledby": `${story.id}-${section.id}-title` },
+                        element("h2", { id: `${story.id}-${section.id}-title`, text: section.name }),
+                        element("div", { id: section.mount, class: "mount canvas", "data-section": section.id }),
+                    ),
+                ),
+            );
+            regions.replaceChildren(
+                ...story.sections.map((section) =>
+                    element("a", { href: `#/${story.id}/${section.id}`, title: section.summary, text: section.name }),
+                ),
             );
         } else {
             const sections = story.sections.map((section) =>
@@ -341,12 +353,12 @@ function show(storyId, sectionId) {
         markCurrent(story.id);
         document.title = creator ? "Theme creator · zz" : `${story.name} · zz storybook`;
     }
-    if (sectionId && !creator) {
+    if (sectionId) {
         document.getElementById(`${story.id}-${sectionId}`)?.scrollIntoView({ block: "start" });
     } else {
         storyRoot.scrollTo?.(0, 0);
     }
-    writeHash(story.id, creator ? undefined : sectionId);
+    writeHash(story.id, sectionId);
 }
 
 function paintSliders() {
@@ -890,6 +902,12 @@ window.addEventListener("hashchange", () => {
     show(story, section);
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyKnobs);
+regions.addEventListener("click", (event) => {
+    const link = event.target.closest("a");
+    if (!link) return;
+    event.preventDefault();
+    show(CREATOR, link.getAttribute("href").split("/").pop());
+});
 
 window.storybook = {
     stories: () => stories,
