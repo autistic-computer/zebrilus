@@ -102,13 +102,7 @@ fn swatch(name: impl Into<SharedString>, color: Hsla, cx: &App) -> impl IntoElem
     v_flex()
         .w(px(104.0))
         .gap_1p5()
-        .child(
-            div()
-                .h(px(44.0))
-                .rounded(theme.radius)
-                .framed(cx)
-                .bg(color),
-        )
+        .child(div().h(px(44.0)).rounded(theme.radius).framed(cx).bg(color))
         .child(
             div()
                 .text_size(px(12.0))

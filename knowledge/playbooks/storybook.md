@@ -9,7 +9,7 @@ tags:
 - zz-gpui-kit
 - wasm
 - agents
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-14T00:00:00Z
 ---
 
 # What it is
@@ -20,7 +20,12 @@ is plain HTML (navigation, prose, knobs). Each section of the open story is its 
 mounted into the section's element with `WindowOptions::mount` and sized to its content, so a
 section looks exactly like that piece does in zz.
 
-It is its own wasm Cargo workspace, like `clients/web`, with its own lockfile.
+It is its own wasm Cargo workspace, like `clients/web`, with its own lockfile. Its dev profile
+optimizes dependencies the way the root workspace does (`[profile.dev.package]`); without that, a
+debug build drew one Theme creator frame in about 100 ms.
+
+A mounted window more than half a scroll height out of view skips its frames until it scrolls
+back, so a long story costs about what is on screen. See [zz-gpui web windows](/references/zz-gpui-web-agents.md).
 
 # Run it
 
@@ -48,7 +53,11 @@ animations off and freezes spinners). Two more keys only steer the page: `step` 
 on the Roles step. Pane knobs are app config, not theme, so Copy JSON leaves them out; they stay in
 the URL.
 
-The Theme creator story is every surface of zz on one canvas, and its knob panel is four steps:
+The Theme creator story is every surface of zz in six regions (Workspace, Flat sidebar, Panes,
+Controls, Floating, Content), each its own window, so a hover or a spinner redraws only its
+region. The bar links (on windows wider than 1240px) jump between them, and
+`theme-creator/<region>` in the address opens at one.
+Its knob panel is four steps:
 Colors (mode, palettes, font), Materials (shape, glass, both shadows), Roles and Export (the theme
 file with Copy and Import). The Roles step lists `zz_ui::roles::REGIONS` with each role's six props
 as segmented controls. A prop left on inherit shows the value it inherits and where from: the

@@ -67,7 +67,7 @@ use super::{
     },
 };
 use crate::story::Framed as _;
-use crate::story::{Section, Story};
+use crate::story::{Section, Story, stateless};
 use zz_ui::StyledExt as _;
 
 pub const ID: &str = "theme-creator";
@@ -76,13 +76,45 @@ pub const STORY: Story = Story {
     id: ID,
     name: "Theme creator",
     group: "Foundation",
-    summary: "Everything a theme touches on one canvas. Tune the knobs, then copy the theme as JSON.",
-    sections: &[Section {
-        id: "canvas",
-        name: "Canvas",
-        summary: "zz's chrome, controls and floating surfaces side by side, in one window.",
-        build: Showcase::view,
-    }],
+    summary: "Everything a theme touches, region by region. Tune the knobs, then copy the theme as JSON.",
+    sections: &[
+        Section {
+            id: "workspace",
+            name: "Workspace",
+            summary: "The window with the tree sidebar, and the status bar.",
+            build: Workspace::view,
+        },
+        Section {
+            id: "flat",
+            name: "Flat sidebar",
+            summary: "The flat sidebar beside an agent pane and two terminals.",
+            build: Flat::view,
+        },
+        Section {
+            id: "panes",
+            name: "Panes",
+            summary: "Badges, the drop preview, the drag chip and a popup over panes.",
+            build: |_, cx| stateless(panes, cx),
+        },
+        Section {
+            id: "controls",
+            name: "Controls",
+            summary: "A form, switches, buttons and a settings card.",
+            build: Controls::view,
+        },
+        Section {
+            id: "floating",
+            name: "Floating",
+            summary: "Menus, the palette, a dialog, toasts and which-key over the backdrop.",
+            build: Floating::view,
+        },
+        Section {
+            id: "content",
+            name: "Content",
+            summary: "An agent card, markdown, the phone and the browser start page.",
+            build: Content::view,
+        },
+    ],
 };
 
 const SHELLS: [&str; 4] = ["zsh", "fish", "bash", "nu"];
@@ -114,88 +146,14 @@ const RECENT: [&str; 3] = [
     "localhost:4321",
 ];
 
-pub struct Showcase {
+struct Workspace {
     shell: Shell,
-    flat: Entity<Live>,
-    agent: AnyView,
-    layout: Entity<SelectState<Vec<&'static str>>>,
-    host: Entity<InputState>,
-    user: Entity<InputState>,
-    port: Entity<InputState>,
-    login: Entity<SelectState<Vec<&'static str>>>,
-    pane_menu: Entity<PopupMenu>,
-    view_menu: Entity<PopupMenu>,
-    search: Entity<InputState>,
-    toasts: [Entity<Notification>; 2],
-    tooltip: Entity<Tooltip>,
-    keys: zz_ui::compact::ToolKeys,
-    restore: bool,
-    animations: bool,
-    sound: bool,
-    scrollback: usize,
 }
 
-impl Showcase {
+impl Workspace {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        bind_keys(cx);
         let shell = Shell::new(window, cx);
-        let flat = cx.new(|_| Live::new(None));
-        let agent = embedded_pane(window, cx);
-        let layout =
-            cx.new(|cx| SelectState::new(LAYOUTS.to_vec(), Some(IndexPath::new(1)), window, cx));
-        let field = |value: &'static str, window: &mut Window, cx: &mut App| {
-            cx.new(|cx| InputState::new(window, cx).default_value(value))
-        };
-        let host = field("devbox.local", window, cx);
-        let user = field("fabrico", window, cx);
-        let port = cx.new(|cx| {
-            InputState::new(window, cx)
-                .step(1.0)
-                .min(1.0)
-                .max(65535.0)
-                .default_value("22")
-        });
-        let login =
-            cx.new(|cx| SelectState::new(SHELLS.to_vec(), Some(IndexPath::new(0)), window, cx));
-        let pane_menu = PopupMenu::build(window, cx, pane_menu);
-        let view_menu = PopupMenu::build(window, cx, view_menu);
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Jump to a window"));
-        let toast = |notification: Notification, cx: &mut App| {
-            cx.new(|_| notification.autohide(false).width(px(320.0)))
-        };
-        let toasts = [
-            toast(
-                Notification::success("3 windows and 7 panes came back.").title("Session restored"),
-                cx,
-            ),
-            toast(
-                Notification::error("ssh devbox exited with status 255.").title("Connection lost"),
-                cx,
-            ),
-        ];
-        let tooltip = cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None));
-        let keys = tool_keys(cx);
-        cx.new(|_| Self {
-            shell,
-            flat,
-            agent,
-            layout,
-            host,
-            user,
-            port,
-            login,
-            pane_menu,
-            view_menu,
-            search,
-            toasts,
-            tooltip,
-            keys,
-            restore: true,
-            animations: true,
-            sound: false,
-            scrollback: 2,
-        })
-        .into()
+        cx.new(|_| Self { shell }).into()
     }
 
     fn hero(&self, cx: &App) -> AnyElement {
@@ -214,7 +172,38 @@ impl Showcase {
             )))
             .into_any_element()
     }
+}
 
+impl Render for Workspace {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .gap(px(GAP))
+            .child(self.hero(cx))
+            .child(status_bar(cx))
+    }
+}
+
+struct Flat {
+    flat: Entity<Live>,
+    agent: AnyView,
+}
+
+impl Flat {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        let flat = cx.new(|_| Live::new(None));
+        let agent = embedded_pane(window, cx);
+        cx.new(|_| Self { flat, agent }).into()
+    }
+}
+
+impl Render for Flat {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.flat_app(cx)
+    }
+}
+
+impl Flat {
     fn flat_app(&self, cx: &App) -> AnyElement {
         let gaps = crate::pane().gaps;
         let agent = pane_surface(
@@ -280,255 +269,50 @@ impl Showcase {
             ))
             .into_any_element()
     }
+}
 
-    fn status_bar(&self, cx: &App) -> AnyElement {
-        div()
-            .id("showcase-status-bar")
-            .w_full()
-            .overflow_hidden()
-            .rounded(cx.theme().radius)
-            .framed(cx)
-            .bg(cx.theme().background)
-            .child(titlebar(
-                &Bar {
-                    gaps: crate::pane().gaps,
-                    ..Bar::FULL
-                },
-                cx,
-            ))
-            .into_any_element()
-    }
+struct Controls {
+    layout: Entity<SelectState<Vec<&'static str>>>,
+    host: Entity<InputState>,
+    user: Entity<InputState>,
+    port: Entity<InputState>,
+    login: Entity<SelectState<Vec<&'static str>>>,
+    restore: bool,
+    animations: bool,
+    sound: bool,
+    scrollback: usize,
+}
 
-    fn panes(&self, cx: &App) -> AnyElement {
-        let gaps = crate::pane().gaps;
-        let tags = TerminalPane::new(4, "cargo test", BUILD)
-            .active(true)
-            .gaps(gaps)
-            .render(
-                "showcase-tags",
-                vec![
-                    pane_overlay_stack(
-                        PaneOverlayCorner::TopRight,
-                        vec![
-                            terminal_mode_indicator(Some("Copy mode"), "12 / 340", cx)
-                                .into_any_element(),
-                            pane_sync_badge(cx).into_any_element(),
-                        ],
-                    )
-                    .top(px(TERMINAL_HEADER_HEIGHT + 8.0))
-                    .into_any_element(),
-                    pane_overlay_stack(
-                        PaneOverlayCorner::BottomRight,
-                        vec![
-                            pane_waiting_state("Waiting for %3", cx).into_any_element(),
-                            pane_status_badge(IconName::CircleX, "Dead · exit 1", cx)
-                                .into_any_element(),
-                        ],
-                    )
-                    .into_any_element(),
-                ],
-                cx,
-            );
-        let indicators = DisplayPanesState {
-            window: WindowId(1),
-            duration_ms: 1000,
-            indicators: vec![PaneIndicator {
-                pane: PaneId(5),
-                index: 1,
-                select_key: b'1',
-                flags: 0,
-                label: String::new(),
-            }],
-            colour: Some(TmuxColour::Theme(7)),
-            active_colour: Some(TmuxColour::Theme(6)),
+impl Controls {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        let layout =
+            cx.new(|cx| SelectState::new(LAYOUTS.to_vec(), Some(IndexPath::new(1)), window, cx));
+        let field = |value: &'static str, window: &mut Window, cx: &mut App| {
+            cx.new(|cx| InputState::new(window, cx).default_value(value))
         };
-        let pane = crate::pane();
-        let logs = TerminalPane::new(5, "tail -f daemon.log", LOGS)
-            .gaps(gaps)
-            .render(
-                "showcase-drop",
-                vec![
-                    pane_indicator_overlay(pane_indicator(
-                        "showcase-indicator",
-                        &indicators,
-                        &indicators.indicators[0],
-                        cx,
-                    ))
-                    .into_any_element(),
-                    pane_drop_preview(px(pane.radius), px(pane.border.max(1.0)), cx)
-                        .top(px(TERMINAL_HEADER_HEIGHT + 6.0))
-                        .bottom(px(6.0))
-                        .right(px(6.0))
-                        .w(relative(0.4))
-                        .into_any_element(),
-                    div()
-                        .absolute()
-                        .left(px(16.0))
-                        .bottom(px(16.0))
-                        .child(pane_drag_chip("%4", "cargo test", cx))
-                        .into_any_element(),
-                ],
-                cx,
-            );
-        let popup = TerminalPane::new(6, "just site", SERVER).gaps(gaps).render(
-            "showcase-popup",
-            vec![
-                div()
-                    .absolute()
-                    .top(px(TERMINAL_HEADER_HEIGHT + 16.0))
-                    .left(px(16.0))
-                    .right(px(16.0))
-                    .bottom(px(16.0))
-                    .child(
-                        FloatingSurface::new(
-                            "showcase-floating",
-                            terminal_body(SERVER, false, cx).bg(zz_gpui::transparent_black()),
-                            cx,
-                        )
-                        .title("display-popup · lazygit")
-                        .content_inset(px(8.0), px(14.0)),
-                    )
-                    .into_any_element(),
-            ],
-            cx,
-        );
-        let right = pane_split_surface(
-            "showcase-panes-right",
-            PaneSplitAxis::Horizontal,
-            0.5,
-            false,
-            gaps,
-            gap(gaps),
-            None,
-            None,
-            logs,
-            popup,
-            div().absolute(),
-            cx,
-        );
-        let layout = pane_split_surface(
-            "showcase-panes-split",
-            PaneSplitAxis::Horizontal,
-            0.34,
-            false,
-            gaps,
-            gap(gaps),
-            None,
-            None,
-            tags,
-            right,
-            div().absolute(),
-            cx,
-        );
-        div()
-            .id("showcase-panes")
-            .w_full()
-            .h(px(PANES_HEIGHT))
-            .overflow_hidden()
-            .rounded(cx.theme().radius)
-            .framed(cx)
-            .bg(cx.theme().background)
-            .p(gap(gaps))
-            .child(layout)
-            .into_any_element()
-    }
-
-    fn phone(&self, cx: &App) -> AnyElement {
-        let theme = cx.theme();
-        let pill = compact_bar_pill(
-            "showcase-phone-pill",
-            IconName::SquareTerminal,
-            "cargo test",
-            "zz · editor",
-            false,
-            page_dots(&groups(), cx),
-            cx,
-        );
-        let keyboard = compact_bar_button("showcase-phone-keyboard", IconName::Keyboard);
-        let screen = v_flex()
-            .id("showcase-phone-screen")
-            .w_full()
-            .max_w(px(PHONE_WIDTH))
-            .overflow_hidden()
-            .rounded(theme.radius)
-            .framed(cx)
-            .bg(theme.background)
-            .child(compact_pane_header(
-                IconName::SquareTerminal,
-                "cargo test",
-                [close("showcase-phone-close", cx)],
-                cx,
-            ))
-            .child(
-                v_flex()
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .font_family(theme.mono_font_family.clone())
-                    .text_size(px(12.0))
-                    .line_height(px(17.0))
-                    .children(PHONE_LINES.map(|line| div().h(px(17.0)).child(line))),
-            )
-            .child(div().id("showcase-phone-keys").child(key_row(&self.keys)))
-            .child(
-                div()
-                    .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
-                    .child(compact_bar(pill, keyboard, false, cx)),
-            );
-        let rows: Arc<[_]> = binding_rows().iter().take(4).cloned().collect();
-        let sheet = div()
-            .id("showcase-phone-sheet")
-            .w_full()
-            .max_w(px(PHONE_WIDTH))
-            .overflow_hidden()
-            .rounded(theme.radius)
-            .framed(cx)
-            .bg(theme.background)
-            .child(WhichKeyList::new(rows));
-        card("showcase-phone", cx)
-            .child(heading(
-                "Phone",
-                "The bar, its pill, the key row and a touch list.",
-                cx,
-            ))
-            .child(screen)
-            .child(sheet)
-            .into_any_element()
-    }
-
-    fn reading(&self, cx: &App) -> AnyElement {
-        let style = TextViewStyle {
-            highlight_theme: Arc::clone(&cx.theme().highlight_theme),
-            is_dark: cx.theme().is_dark(),
-            ..TextViewStyle::default()
-        };
-        card("showcase-reading", cx)
-            .child(heading(
-                "Reading",
-                "Code and a table in an agent's answer.",
-                cx,
-            ))
-            .child(TextView::markdown("showcase-markdown", READING).style(style))
-            .into_any_element()
-    }
-
-    fn start_page(&self, cx: &App) -> AnyElement {
-        let recents = v_flex().w_full().max_w(px(360.0)).gap(px(4.0)).children(
-            RECENT
-                .into_iter()
-                .enumerate()
-                .map(|(index, url)| browser_recent_row(("showcase-recent", index), url, None, cx)),
-        );
-        div()
-            .id("showcase-start-page")
-            .relative()
-            .w_full()
-            .h(px(220.0))
-            .overflow_hidden()
-            .rounded(cx.theme().radius)
-            .framed(cx)
-            .bg(cx.theme().background.opaque())
-            .child(browser_start_surface(recents))
-            .into_any_element()
+        let host = field("devbox.local", window, cx);
+        let user = field("fabrico", window, cx);
+        let port = cx.new(|cx| {
+            InputState::new(window, cx)
+                .step(1.0)
+                .min(1.0)
+                .max(65535.0)
+                .default_value("22")
+        });
+        let login =
+            cx.new(|cx| SelectState::new(SHELLS.to_vec(), Some(IndexPath::new(0)), window, cx));
+        cx.new(|_| Self {
+            layout,
+            host,
+            user,
+            port,
+            login,
+            restore: true,
+            animations: true,
+            sound: false,
+            scrollback: 2,
+        })
+        .into()
     }
 
     fn connect(&self, cx: &App) -> AnyElement {
@@ -666,84 +450,57 @@ impl Showcase {
             )
             .into_any_element()
     }
+}
 
-    fn buttons(&self, cx: &App) -> AnyElement {
-        let keys = ["cmd-k", "cmd-shift-d", "ctrl-a"];
-        card("showcase-buttons", cx)
-            .child(heading("Actions", "Buttons, tags and key hints.", cx))
-            .child(
-                h_flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .child(
-                        Button::new("showcase-primary")
-                            .primary()
-                            .label("New session"),
-                    )
-                    .child(Button::new("showcase-default").label("Detach"))
-                    .child(Button::new("showcase-ghost").ghost().label("Rename"))
-                    .child(Button::new("showcase-danger").danger().label("Kill")),
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(Button::new("showcase-split-right").icon(IconName::PanelRight))
-                    .child(Button::new("showcase-split-down").icon(IconName::PanelBottom))
-                    .child(
-                        Button::new("showcase-search")
-                            .ghost()
-                            .icon(IconName::Search),
-                    )
-                    .child(
-                        Button::new("showcase-settings")
-                            .ghost()
-                            .icon(IconName::Settings),
-                    )
-                    .child(div().flex_1())
-                    .child(Button::new("showcase-small").label("Small")),
-            )
-            .child(
-                h_flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_2()
-                    .child(Badge::new("connected").tone(Tone::Success))
-                    .child(
-                        Badge::new("main")
-                            .tone(Tone::Primary)
-                            .emphasis(Emphasis::Solid),
-                    )
-                    .child(Badge::new("3 panes"))
-                    .children(
-                        keys.into_iter()
-                            .map(|key| Kbd::new(Keystroke::parse(key).unwrap_or_default())),
-                    ),
-            )
-            .into_any_element()
+impl Render for Controls {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        tiles(
+            window,
+            vec![
+                vec![self.connect(cx)],
+                vec![self.preferences(cx)],
+                vec![buttons(cx), self.settings(cx)],
+            ],
+        )
     }
+}
 
-    fn dialog(&self, cx: &App) -> AnyElement {
-        dialog_surface(cx)
-            .w_full()
-            .max_w(px(360.0))
-            .child(dialog_gutter().child(dialog_title().child("Kill session \"work\"?")))
-            .child(dialog_gutter().child(
-                dialog_description(cx).child(
-                    "Its 3 windows and 7 panes stop, and their scrollback is gone for good.",
-                ),
-            ))
-            .child(
-                dialog_gutter().child(
-                    dialog_footer(cx)
-                        .child(Button::new("showcase-dialog-cancel").label("Cancel"))
-                        .child(
-                            Button::new("showcase-dialog-kill")
-                                .danger()
-                                .label("Kill session"),
-                        ),
-                ),
-            )
-            .into_any_element()
+struct Floating {
+    pane_menu: Entity<PopupMenu>,
+    view_menu: Entity<PopupMenu>,
+    search: Entity<InputState>,
+    toasts: [Entity<Notification>; 2],
+    tooltip: Entity<Tooltip>,
+}
+
+impl Floating {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        bind_keys(cx);
+        let pane_menu = PopupMenu::build(window, cx, pane_menu);
+        let view_menu = PopupMenu::build(window, cx, view_menu);
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Jump to a window"));
+        let toast = |notification: Notification, cx: &mut App| {
+            cx.new(|_| notification.autohide(false).width(px(320.0)))
+        };
+        let toasts = [
+            toast(
+                Notification::success("3 windows and 7 panes came back.").title("Session restored"),
+                cx,
+            ),
+            toast(
+                Notification::error("ssh devbox exited with status 255.").title("Connection lost"),
+                cx,
+            ),
+        ];
+        let tooltip = cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None));
+        cx.new(|_| Self {
+            pane_menu,
+            view_menu,
+            search,
+            toasts,
+            tooltip,
+        })
+        .into()
     }
 
     fn palette(&self, cx: &App) -> AnyElement {
@@ -812,45 +569,15 @@ impl Showcase {
         ])
         .into_any_element()
     }
-
-    fn agent(&self, cx: &App) -> AnyElement {
-        card("showcase-agent", cx)
-            .child(heading("Agent", "A tool call waiting for approval.", cx))
-            .child(permission(
-                "showcase-permission",
-                "cargo test -p zz-ui",
-                None,
-                &COMMAND,
-                0,
-                true,
-                cx,
-            ))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(agent_jump_to_bottom_button("showcase-jump", cx))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().foreground.muted())
-                            .child("Jump to latest"),
-                    ),
-            )
-            .into_any_element()
-    }
 }
 
-impl Render for Showcase {
+impl Render for Floating {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let width = window.viewport_size().width.as_f32();
-        let menus = plate(
-            "showcase-menus",
-            h_flex().items_start().gap_4().child(self.pane_menu.clone()),
-            cx,
-        );
+        let menus = plate("showcase-menus", self.pane_menu.clone(), cx);
         let view = plate("showcase-view-menu", self.view_menu.clone(), cx);
         let palette = plate("showcase-palette", self.palette(cx), cx);
-        let dialog = plate("showcase-dialog", self.dialog(cx), cx);
+        let dialog = plate("showcase-dialog", dialog(cx), cx);
         let toasts = plate(
             "showcase-toasts",
             v_flex()
@@ -868,49 +595,422 @@ impl Render for Showcase {
             )),
             cx,
         );
-        let tiles = [
-            vec![self.connect(cx), self.preferences(cx), view, self.phone(cx)],
-            vec![menus, self.buttons(cx), toasts, self.reading(cx)],
-            vec![
-                palette,
-                dialog,
-                self.agent(cx),
-                self.settings(cx),
-                self.start_page(cx),
-            ],
-        ];
-        let columns = if width >= WIDE {
-            3
-        } else if width >= MEDIUM {
-            2
-        } else {
-            1
-        };
-        let mut stacks: Vec<Vec<AnyElement>> = (0..columns).map(|_| Vec::new()).collect();
-        let mut next = 0;
-        for (group, column) in tiles.into_iter().enumerate() {
-            for tile in column {
-                let index = if columns == 3 { group } else { next % columns };
-                next += 1;
-                stacks[index].push(tile);
-            }
-        }
         v_flex()
             .w_full()
             .gap(px(GAP))
-            .child(self.hero(cx))
-            .child(self.flat_app(cx))
-            .child(self.status_bar(cx))
-            .child(self.panes(cx))
-            .child(
-                h_flex().w_full().items_start().gap(px(GAP)).children(
-                    stacks
-                        .into_iter()
-                        .map(|stack| v_flex().flex_1().min_w_0().gap(px(GAP)).children(stack)),
-                ),
-            )
+            .child(tiles(
+                window,
+                vec![vec![menus], vec![view, toasts], vec![palette, dialog]],
+            ))
             .child(which_key)
     }
+}
+
+struct Content {
+    keys: zz_ui::compact::ToolKeys,
+}
+
+impl Content {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        let keys = tool_keys(cx);
+        cx.new(|_| Self { keys }).into()
+    }
+
+    fn phone(&self, cx: &App) -> AnyElement {
+        let theme = cx.theme();
+        let pill = compact_bar_pill(
+            "showcase-phone-pill",
+            IconName::SquareTerminal,
+            "cargo test",
+            "zz · editor",
+            false,
+            page_dots(&groups(), cx),
+            cx,
+        );
+        let keyboard = compact_bar_button("showcase-phone-keyboard", IconName::Keyboard);
+        let screen = v_flex()
+            .id("showcase-phone-screen")
+            .w_full()
+            .max_w(px(PHONE_WIDTH))
+            .overflow_hidden()
+            .rounded(theme.radius)
+            .framed(cx)
+            .bg(theme.background)
+            .child(compact_pane_header(
+                IconName::SquareTerminal,
+                "cargo test",
+                [close("showcase-phone-close", cx)],
+                cx,
+            ))
+            .child(
+                v_flex()
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .font_family(theme.mono_font_family.clone())
+                    .text_size(px(12.0))
+                    .line_height(px(17.0))
+                    .children(PHONE_LINES.map(|line| div().h(px(17.0)).child(line))),
+            )
+            .child(div().id("showcase-phone-keys").child(key_row(&self.keys)))
+            .child(
+                div()
+                    .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
+                    .child(compact_bar(pill, keyboard, false, cx)),
+            );
+        let rows: Arc<[_]> = binding_rows().iter().take(4).cloned().collect();
+        let sheet = div()
+            .id("showcase-phone-sheet")
+            .w_full()
+            .max_w(px(PHONE_WIDTH))
+            .overflow_hidden()
+            .rounded(theme.radius)
+            .framed(cx)
+            .bg(theme.background)
+            .child(WhichKeyList::new(rows));
+        card("showcase-phone", cx)
+            .child(heading(
+                "Phone",
+                "The bar, its pill, the key row and a touch list.",
+                cx,
+            ))
+            .child(screen)
+            .child(sheet)
+            .into_any_element()
+    }
+}
+
+impl Render for Content {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        tiles(
+            window,
+            vec![
+                vec![self.phone(cx)],
+                vec![reading(cx)],
+                vec![agent(cx), start_page(cx)],
+            ],
+        )
+    }
+}
+
+fn tiles(window: &Window, columns: Vec<Vec<AnyElement>>) -> impl IntoElement {
+    let width = window.viewport_size().width.as_f32();
+    let count = if width >= WIDE {
+        3
+    } else if width >= MEDIUM {
+        2
+    } else {
+        1
+    }
+    .min(columns.len());
+    let mut stacks: Vec<Vec<AnyElement>> = (0..count).map(|_| Vec::new()).collect();
+    let mut next = 0;
+    for (group, column) in columns.into_iter().enumerate() {
+        for tile in column {
+            let index = if count == 3 { group } else { next % count };
+            next += 1;
+            stacks[index].push(tile);
+        }
+    }
+    h_flex().w_full().items_start().gap(px(GAP)).children(
+        stacks
+            .into_iter()
+            .map(|stack| v_flex().flex_1().min_w_0().gap(px(GAP)).children(stack)),
+    )
+}
+
+fn status_bar(cx: &App) -> AnyElement {
+    div()
+        .id("showcase-status-bar")
+        .w_full()
+        .overflow_hidden()
+        .rounded(cx.theme().radius)
+        .framed(cx)
+        .bg(cx.theme().background)
+        .child(titlebar(
+            &Bar {
+                gaps: crate::pane().gaps,
+                ..Bar::FULL
+            },
+            cx,
+        ))
+        .into_any_element()
+}
+
+fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
+    let gaps = crate::pane().gaps;
+    let tags = TerminalPane::new(4, "cargo test", BUILD)
+        .active(true)
+        .gaps(gaps)
+        .render(
+            "showcase-tags",
+            vec![
+                pane_overlay_stack(
+                    PaneOverlayCorner::TopRight,
+                    vec![
+                        terminal_mode_indicator(Some("Copy mode"), "12 / 340", cx)
+                            .into_any_element(),
+                        pane_sync_badge(cx).into_any_element(),
+                    ],
+                )
+                .top(px(TERMINAL_HEADER_HEIGHT + 8.0))
+                .into_any_element(),
+                pane_overlay_stack(
+                    PaneOverlayCorner::BottomRight,
+                    vec![
+                        pane_waiting_state("Waiting for %3", cx).into_any_element(),
+                        pane_status_badge(IconName::CircleX, "Dead · exit 1", cx)
+                            .into_any_element(),
+                    ],
+                )
+                .into_any_element(),
+            ],
+            cx,
+        );
+    let indicators = DisplayPanesState {
+        window: WindowId(1),
+        duration_ms: 1000,
+        indicators: vec![PaneIndicator {
+            pane: PaneId(5),
+            index: 1,
+            select_key: b'1',
+            flags: 0,
+            label: String::new(),
+        }],
+        colour: Some(TmuxColour::Theme(7)),
+        active_colour: Some(TmuxColour::Theme(6)),
+    };
+    let pane = crate::pane();
+    let logs = TerminalPane::new(5, "tail -f daemon.log", LOGS)
+        .gaps(gaps)
+        .render(
+            "showcase-drop",
+            vec![
+                pane_indicator_overlay(pane_indicator(
+                    "showcase-indicator",
+                    &indicators,
+                    &indicators.indicators[0],
+                    cx,
+                ))
+                .into_any_element(),
+                pane_drop_preview(px(pane.radius), px(pane.border.max(1.0)), cx)
+                    .top(px(TERMINAL_HEADER_HEIGHT + 6.0))
+                    .bottom(px(6.0))
+                    .right(px(6.0))
+                    .w(relative(0.4))
+                    .into_any_element(),
+                div()
+                    .absolute()
+                    .left(px(16.0))
+                    .bottom(px(16.0))
+                    .child(pane_drag_chip("%4", "cargo test", cx))
+                    .into_any_element(),
+            ],
+            cx,
+        );
+    let popup = TerminalPane::new(6, "just site", SERVER).gaps(gaps).render(
+        "showcase-popup",
+        vec![
+            div()
+                .absolute()
+                .top(px(TERMINAL_HEADER_HEIGHT + 16.0))
+                .left(px(16.0))
+                .right(px(16.0))
+                .bottom(px(16.0))
+                .child(
+                    FloatingSurface::new(
+                        "showcase-floating",
+                        terminal_body(SERVER, false, cx).bg(zz_gpui::transparent_black()),
+                        cx,
+                    )
+                    .title("display-popup · lazygit")
+                    .content_inset(px(8.0), px(14.0)),
+                )
+                .into_any_element(),
+        ],
+        cx,
+    );
+    let right = pane_split_surface(
+        "showcase-panes-right",
+        PaneSplitAxis::Horizontal,
+        0.5,
+        false,
+        gaps,
+        gap(gaps),
+        None,
+        None,
+        logs,
+        popup,
+        div().absolute(),
+        cx,
+    );
+    let layout = pane_split_surface(
+        "showcase-panes-split",
+        PaneSplitAxis::Horizontal,
+        0.34,
+        false,
+        gaps,
+        gap(gaps),
+        None,
+        None,
+        tags,
+        right,
+        div().absolute(),
+        cx,
+    );
+    div()
+        .id("showcase-panes")
+        .w_full()
+        .h(px(PANES_HEIGHT))
+        .overflow_hidden()
+        .rounded(cx.theme().radius)
+        .framed(cx)
+        .bg(cx.theme().background)
+        .p(gap(gaps))
+        .child(layout)
+        .into_any_element()
+}
+
+fn reading(cx: &App) -> AnyElement {
+    let style = TextViewStyle {
+        highlight_theme: Arc::clone(&cx.theme().highlight_theme),
+        is_dark: cx.theme().is_dark(),
+        ..TextViewStyle::default()
+    };
+    card("showcase-reading", cx)
+        .child(heading(
+            "Reading",
+            "Code and a table in an agent's answer.",
+            cx,
+        ))
+        .child(TextView::markdown("showcase-markdown", READING).style(style))
+        .into_any_element()
+}
+
+fn start_page(cx: &App) -> AnyElement {
+    let recents = v_flex().w_full().max_w(px(360.0)).gap(px(4.0)).children(
+        RECENT
+            .into_iter()
+            .enumerate()
+            .map(|(index, url)| browser_recent_row(("showcase-recent", index), url, None, cx)),
+    );
+    div()
+        .id("showcase-start-page")
+        .relative()
+        .w_full()
+        .h(px(220.0))
+        .overflow_hidden()
+        .rounded(cx.theme().radius)
+        .framed(cx)
+        .bg(cx.theme().background.opaque())
+        .child(browser_start_surface(recents))
+        .into_any_element()
+}
+
+fn buttons(cx: &App) -> AnyElement {
+    let keys = ["cmd-k", "cmd-shift-d", "ctrl-a"];
+    card("showcase-buttons", cx)
+        .child(heading("Actions", "Buttons, tags and key hints.", cx))
+        .child(
+            h_flex()
+                .flex_wrap()
+                .gap_2()
+                .child(
+                    Button::new("showcase-primary")
+                        .primary()
+                        .label("New session"),
+                )
+                .child(Button::new("showcase-default").label("Detach"))
+                .child(Button::new("showcase-ghost").ghost().label("Rename"))
+                .child(Button::new("showcase-danger").danger().label("Kill")),
+        )
+        .child(
+            h_flex()
+                .gap_2()
+                .child(Button::new("showcase-split-right").icon(IconName::PanelRight))
+                .child(Button::new("showcase-split-down").icon(IconName::PanelBottom))
+                .child(
+                    Button::new("showcase-search")
+                        .ghost()
+                        .icon(IconName::Search),
+                )
+                .child(
+                    Button::new("showcase-settings")
+                        .ghost()
+                        .icon(IconName::Settings),
+                )
+                .child(div().flex_1())
+                .child(Button::new("showcase-small").label("Small")),
+        )
+        .child(
+            h_flex()
+                .flex_wrap()
+                .items_center()
+                .gap_2()
+                .child(Badge::new("connected").tone(Tone::Success))
+                .child(
+                    Badge::new("main")
+                        .tone(Tone::Primary)
+                        .emphasis(Emphasis::Solid),
+                )
+                .child(Badge::new("3 panes"))
+                .children(
+                    keys.into_iter()
+                        .map(|key| Kbd::new(Keystroke::parse(key).unwrap_or_default())),
+                ),
+        )
+        .into_any_element()
+}
+
+fn dialog(cx: &App) -> AnyElement {
+    dialog_surface(cx)
+        .w_full()
+        .max_w(px(360.0))
+        .child(dialog_gutter().child(dialog_title().child("Kill session \"work\"?")))
+        .child(
+            dialog_gutter().child(
+                dialog_description(cx).child(
+                    "Its 3 windows and 7 panes stop, and their scrollback is gone for good.",
+                ),
+            ),
+        )
+        .child(
+            dialog_gutter().child(
+                dialog_footer(cx)
+                    .child(Button::new("showcase-dialog-cancel").label("Cancel"))
+                    .child(
+                        Button::new("showcase-dialog-kill")
+                            .danger()
+                            .label("Kill session"),
+                    ),
+            ),
+        )
+        .into_any_element()
+}
+
+fn agent(cx: &App) -> AnyElement {
+    card("showcase-agent", cx)
+        .child(heading("Agent", "A tool call waiting for approval.", cx))
+        .child(permission(
+            "showcase-permission",
+            "cargo test -p zz-ui",
+            None,
+            &COMMAND,
+            0,
+            true,
+            cx,
+        ))
+        .child(
+            h_flex()
+                .gap_2()
+                .child(agent_jump_to_bottom_button("showcase-jump", cx))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().foreground.muted())
+                        .child("Jump to latest"),
+                ),
+        )
+        .into_any_element()
 }
 
 fn card(id: &'static str, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {

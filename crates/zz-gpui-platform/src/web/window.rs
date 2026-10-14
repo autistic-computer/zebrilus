@@ -96,6 +96,8 @@ pub(crate) struct WebWindowInner {
     pending_physical_size: Cell<Option<(u32, u32)>>,
     raf_id: Cell<Option<i32>>,
     raf_function: RefCell<Option<js_sys::Function>>,
+    offscreen: Cell<bool>,
+    deferred_frame: Cell<bool>,
 }
 
 pub struct WebWindow {
@@ -107,6 +109,10 @@ pub struct WebWindow {
     _resize_observer_closure: Closure<dyn FnMut(js_sys::Array)>,
     _safe_area_observer: Option<web_sys::ResizeObserver>,
     _safe_area_observer_closure: Closure<dyn FnMut(js_sys::Array)>,
+    _intersection_observer: Option<(
+        web_sys::IntersectionObserver,
+        Closure<dyn FnMut(js_sys::Array)>,
+    )>,
     _event_listeners: WebEventListeners,
 }
 
@@ -276,6 +282,8 @@ impl WebWindow {
             pending_physical_size: Cell::new(None),
             raf_id: Cell::new(None),
             raf_function: RefCell::new(None),
+            offscreen: Cell::new(false),
+            deferred_frame: Cell::new(false),
         });
 
         let raf_closure = inner.create_raf_closure();
@@ -313,6 +321,8 @@ impl WebWindow {
                 }
             };
 
+        let intersection_observer = inner.observe_intersection();
+
         Ok(Self {
             inner,
             display,
@@ -323,6 +333,7 @@ impl WebWindow {
             _event_listeners: event_listeners,
             _safe_area_observer: safe_area_observer,
             _safe_area_observer_closure: safe_area_observer_closure,
+            _intersection_observer: intersection_observer,
         })
     }
 
@@ -511,7 +522,53 @@ impl WebWindowInner {
         self.raf_id.get().is_some()
     }
 
+    pub(crate) fn take_deferred_frame(&self) -> bool {
+        self.deferred_frame.replace(false)
+    }
+
+    pub(crate) fn has_deferred_frame(&self) -> bool {
+        self.deferred_frame.get()
+    }
+
+    fn observe_intersection(
+        self: &Rc<Self>,
+    ) -> Option<(
+        web_sys::IntersectionObserver,
+        Closure<dyn FnMut(js_sys::Array)>,
+    )> {
+        let mount = self.mount.as_ref()?;
+        let inner = Rc::downgrade(self);
+        let closure = Closure::<dyn FnMut(js_sys::Array)>::new(move |entries: js_sys::Array| {
+            let Some(inner) = inner.upgrade() else {
+                return;
+            };
+            let Some(entry) = entries
+                .iter()
+                .last()
+                .and_then(|entry| entry.dyn_into::<web_sys::IntersectionObserverEntry>().ok())
+            else {
+                return;
+            };
+            let offscreen = !entry.is_intersecting();
+            if inner.offscreen.replace(offscreen) && !offscreen && inner.take_deferred_frame() {
+                inner.wake_frame_loop();
+            }
+        });
+        let options = web_sys::IntersectionObserverInit::new();
+        options.set_root(scroll_root(&self.browser_window, mount).as_ref());
+        options.set_root_margin("50% 0px");
+        let observer = web_sys::IntersectionObserver::new_with_options(
+            closure.as_ref().unchecked_ref(),
+            &options,
+        )
+        .inspect_err(|error| log::warn!("Failed to observe canvas visibility: {error:?}"))
+        .ok()?;
+        observer.observe(&self.canvas);
+        Some((observer, closure))
+    }
+
     pub(crate) fn render_now(&self) {
+        self.deferred_frame.set(false);
         if let Some(raf_id) = self.raf_id.take() {
             self.browser_window.cancel_animation_frame(raf_id).ok();
         }
@@ -527,6 +584,10 @@ impl WebWindowInner {
     }
 
     pub(crate) fn wake_frame_loop(&self) {
+        if self.offscreen.get() {
+            self.deferred_frame.set(true);
+            return;
+        }
         if self.raf_id.get().is_some() {
             return;
         }
@@ -676,6 +737,9 @@ impl Drop for WebWindow {
         if let Some(observer) = &self._safe_area_observer {
             observer.disconnect();
         }
+        if let Some((observer, _)) = &self._intersection_observer {
+            observer.disconnect();
+        }
 
         // The DPR media-query closure captures an `Rc<WebWindowInner>` and is
         // stored inside the inner itself, forming a reference cycle; take it
@@ -712,6 +776,30 @@ fn current_appearance(browser_window: &web_sys::Window) -> WindowAppearance {
 
 /// The Page Visibility API: `hidden` when the tab is in the background or the
 /// browser window is minimized. A missing document reads as visible.
+fn scroll_root(
+    browser_window: &web_sys::Window,
+    mount: &web_sys::HtmlElement,
+) -> Option<web_sys::Element> {
+    let body: Option<web_sys::Element> = browser_window.document()?.body().map(Into::into);
+    let mut element = mount.parent_element();
+    while let Some(ancestor) = element {
+        if ancestor.parent_element().is_none() || body.as_ref() == Some(&ancestor) {
+            return None;
+        }
+        let scrolls = browser_window
+            .get_computed_style(&ancestor)
+            .ok()
+            .flatten()
+            .and_then(|style| style.get_property_value("overflow-y").ok())
+            .is_some_and(|overflow| matches!(overflow.as_str(), "auto" | "scroll" | "overlay"));
+        if scrolls {
+            return Some(ancestor);
+        }
+        element = ancestor.parent_element();
+    }
+    None
+}
+
 fn document_visibility(browser_window: &web_sys::Window) -> WindowVisibility {
     let is_visible = browser_window
         .document()
