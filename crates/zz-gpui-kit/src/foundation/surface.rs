@@ -743,7 +743,11 @@ impl Theme {
                 Fill::Tint => base.washed(step),
                 Fill::Solid | Fill::Glass => base.raised(step),
             };
-            let over = |level: u8| rest.blend(base.washed(level));
+            let over = |level: u8| match fill {
+                Fill::None => base.washed(level),
+                Fill::Tint => base.washed(step + level),
+                Fill::Solid | Fill::Glass => rest.blend(base.washed(level)),
+            };
             super::Paint {
                 fill: rest,
                 hover: over(1),
@@ -810,9 +814,6 @@ impl Theme {
         } else {
             Vec::new()
         };
-        if !shadow.is_empty() && glass.is_none() && !ground.glass {
-            fill_color = ground.fill.opaque().blend(fill_color);
-        }
         match highlight {
             Highlight::Ring => shadow.push(BoxShadow {
                 color: self.accent.opaque(),
@@ -834,6 +835,9 @@ impl Theme {
             }),
             _ => {}
         }
+        if shadow.iter().any(|shadow| !shadow.inset) && glass.is_none() && !ground.glass {
+            fill_color = ground.fill.opaque().blend(fill_color);
+        }
 
         if self.inspect.as_deref() == Some(surface.role.id) {
             shadow.push(BoxShadow {
@@ -850,9 +854,7 @@ impl Theme {
             } else {
                 fill_color.opaque()
             };
-            material
-                .tint(tint.alpha(material.tint.a))
-                .fallback(tint)
+            material.tint(tint.alpha(material.tint.a)).fallback(tint)
         });
         let under = ground.fill.opaque().blend(fill_color);
         Layer {
@@ -1003,6 +1005,43 @@ mod tests {
     }
 
     #[test]
+    fn a_tinted_surface_deepens_on_hover_and_selection() {
+        let theme = theme();
+        let role = SurfaceRole::new("test.tile", Kind::Tile, "Test", "").with(
+            StylePatch::EMPTY
+                .fill(Fill::Tint)
+                .shadow(Shadow::None)
+                .hover(Highlight::Tint)
+                .selected(Highlight::Tint),
+        );
+        let rest = theme.layer(role, PaintState::Rest).fill;
+        let hover = theme.layer(role, PaintState::Hover).fill;
+        let current = theme.layer(role, PaintState::Current).fill;
+        assert!(hover.a > rest.a, "{rest:?} {hover:?}");
+        assert!(current.a > hover.a, "{hover:?} {current:?}");
+        let clear = SurfaceRole::new("test.clear", Kind::Tile, "Test", "").with(
+            StylePatch::EMPTY
+                .fill(Fill::None)
+                .shadow(Shadow::None)
+                .hover(Highlight::Tint),
+        );
+        assert!(theme.layer(clear, PaintState::Hover).fill.a > 0.0);
+    }
+
+    #[test]
+    fn a_ring_never_shows_through_its_fill() {
+        let theme = theme();
+        let role = SurfaceRole::new("test.ring", Kind::Tile, "Test", "").with(
+            StylePatch::EMPTY
+                .fill(Fill::Tint)
+                .shadow(Shadow::None)
+                .selected(Highlight::Ring),
+        );
+        assert_eq!(theme.layer(role, PaintState::Current).fill.a, 1.0);
+        assert!(theme.layer(role, PaintState::Rest).fill.a < 1.0);
+    }
+
+    #[test]
     fn controls_cast_shadows_only_on_the_window() {
         let theme = theme();
         let button = Kind::Button.role();
@@ -1026,8 +1065,7 @@ mod tests {
     fn highlights_never_change_the_border_width() {
         let theme = theme();
         for role in SurfaceRole::KIT {
-            let widths = PaintState::ALL
-                .map(|state| theme.layer(role, state).border_width);
+            let widths = PaintState::ALL.map(|state| theme.layer(role, state).border_width);
             assert!(
                 widths.iter().all(|width| *width == widths[0]),
                 "{} moves its border: {widths:?}",

@@ -124,7 +124,9 @@ fn bar(
     );
     let keys = compact_bar_button((id, 1_usize), IconName::Keyboard);
     phone(
-        div().rule_top(cx).child(compact_bar(pill, keys, held, cx)),
+        div()
+            .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
+            .child(compact_bar(pill, keys, held, cx)),
         cx,
     )
 }
@@ -487,7 +489,7 @@ impl Render for Screen {
                 .child(div().id("screen-key-row").child(key_row(&self.keys)))
                 .child(
                     div()
-                        .rule_top(cx)
+                        .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
                         .child(compact_bar(pill, keyboard, false, cx)),
                 ),
             cx,

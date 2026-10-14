@@ -2316,7 +2316,7 @@ fn activity_row_marked(
     if clickable {
         crate::picker::row_surface(row, trace, PaintState::Rest, height, cx)
     } else {
-        crate::picker::row_corners(
+        crate::row_corners(
             row.surface(trace, cx),
             &cx.theme().layer(trace, PaintState::Rest),
             height,

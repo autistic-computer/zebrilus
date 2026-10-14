@@ -113,7 +113,12 @@ impl ButtonVariant {
     /// The surface a painted button draws: its own role, or the one its
     /// emphasis implies. A solid button is the prominent one; a ghost one is
     /// quiet, or an icon button when it shows only an icon.
-    fn surface(&self, role: Option<SurfaceRole>, icon_only: bool, on: Option<Ground>) -> Option<Surface> {
+    fn surface(
+        &self,
+        role: Option<SurfaceRole>,
+        icon_only: bool,
+        on: Option<Ground>,
+    ) -> Option<Surface> {
         let Self::Paint(tone, emphasis) = *self else {
             return None;
         };

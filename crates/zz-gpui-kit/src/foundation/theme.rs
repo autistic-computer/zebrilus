@@ -14,7 +14,7 @@ use zz_gpui::{
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
 
 use super::{
-    Colorize as _, PrimaryStyle, SurfaceRole, ShadowMaterial, StylePatch, ThemeColor, color,
+    Colorize as _, PrimaryStyle, ShadowMaterial, StylePatch, SurfaceRole, ThemeColor, color,
 };
 
 /// The one gap in chrome: how far a control sits from the edge of the bar it

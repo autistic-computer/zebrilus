@@ -131,7 +131,7 @@ impl Render for FieldStates {
                 "appearance(false)",
                 div()
                     .px_2()
-                    .rule_bottom(cx)
+                    .rule_on(zz_ui::Kind::Rule.role(), zz_ui::Edge::Bottom, cx)
                     .child(Input::new(&self.bare).appearance(false)),
             )
             .state(

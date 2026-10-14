@@ -7,29 +7,12 @@ use crate::{
     roles, v_flex,
 };
 use zz_gpui::{
-    AnimationElement, App, CornerRadiusMode, Div, ElementId, Entity, FULL_CORNER_RADIUS,
-    FontWeight, Hsla, MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, relative,
+    AnimationElement, App, Div, ElementId, Entity, FULL_CORNER_RADIUS, FontWeight, Hsla,
+    MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, relative,
 };
 
 const PICKER_ROW_HEIGHT: Pixels = px(26.0);
 const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
-const ROW_RADIUS_SHARE: f32 = 0.40;
-const ROW_CORNER_SMOOTHING: f32 = 2.5;
-
-/// The corners of a row `height` tall drawn as `layer`: its role's radius,
-/// held to the share of the height a list row rounds by.
-pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
-    let radius = if layer.radius >= FULL_CORNER_RADIUS {
-        layer.radius
-    } else {
-        layer.radius.min(height * ROW_RADIUS_SHARE)
-    };
-    element
-        .rounded(radius)
-        .corner_radius_mode(CornerRadiusMode::Fixed)
-        .corner_smoothing(ROW_CORNER_SMOOTHING)
-}
-
 /// A row `height` tall drawn as `surface` in `state`, with its hover and
 /// press while it rests.
 pub fn row_surface<E: StatefulInteractiveElement + Styled>(
@@ -41,7 +24,7 @@ pub fn row_surface<E: StatefulInteractiveElement + Styled>(
 ) -> E {
     let surface = surface.into();
     let layer = cx.theme().layer(surface, state);
-    row_corners(
+    crate::row_corners(
         element.surface_interactive(surface, state, cx),
         &layer,
         height,

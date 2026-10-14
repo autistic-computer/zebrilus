@@ -471,7 +471,7 @@ impl Showcase {
             .child(div().id("showcase-phone-keys").child(key_row(&self.keys)))
             .child(
                 div()
-                    .rule_top(cx)
+                    .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
                     .child(compact_bar(pill, keyboard, false, cx)),
             );
         let rows: Arc<[_]> = binding_rows().iter().take(4).cloned().collect();
@@ -920,7 +920,7 @@ fn card(id: &'static str, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
         .p(px(16.0))
         .gap_3()
         .rounded(cx.theme().radius)
-        .surface_edge(cx)
+        .framed(cx)
         .bg(cx.theme().background)
 }
 
@@ -934,7 +934,7 @@ fn plate(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
         .w_full()
         .overflow_hidden()
         .rounded(cx.theme().radius)
-        .surface_edge(cx)
+        .framed(cx)
         .bg(cx.theme().surface(Elevation::Panel).fill)
         .children(backdrop)
         .child(

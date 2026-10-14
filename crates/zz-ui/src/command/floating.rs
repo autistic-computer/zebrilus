@@ -8,9 +8,7 @@ use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, ElementExt as _, Kind, PaintState, StyledExt as _,
-    h_flex,
-    picker::row_corners,
-    rems_from_px, roles,
+    h_flex, rems_from_px, roles, row_corners,
     tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
     touch::{CoarsePointer, TOUCH_TARGET},
     v_flex,

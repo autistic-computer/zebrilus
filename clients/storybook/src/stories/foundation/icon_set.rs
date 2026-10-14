@@ -11,8 +11,8 @@ use zz_ui::{
     v_flex,
 };
 
+use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
-use zz_ui::StyledExt as _;
 
 pub const STORY: Story = Story {
     id: "icon-set",
@@ -143,7 +143,7 @@ fn sidebar(cx: &App) -> impl IntoElement {
         .p_1p5()
         .gap_0p5()
         .rounded(theme.radius * 1.5)
-        .surface_edge(cx)
+        .framed(cx)
         .bg(theme.surface(Elevation::Panel).fill)
         .child(
             h_flex()

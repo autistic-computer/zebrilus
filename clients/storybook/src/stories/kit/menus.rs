@@ -13,8 +13,8 @@ use zz_ui::{
 };
 
 use super::support::{Probe, after_first_frame, dispatch, hover, press, when_visible};
+use crate::story::Framed as _;
 use crate::story::{Section, Story, row, states};
-use zz_ui::StyledExt as _;
 
 actions!(
     storybook_menu,
@@ -310,7 +310,7 @@ impl Render for Triggers {
             .items_center()
             .justify_center()
             .rounded(theme.radius)
-            .surface_edge(cx)
+            .framed(cx)
             .border_dashed()
             .text_sm()
             .text_color(theme.foreground.muted())
