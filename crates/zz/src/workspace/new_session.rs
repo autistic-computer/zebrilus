@@ -12,9 +12,10 @@ use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Kind, PaintState, Tone,
     button::{Button, ButtonVariants as _},
     kbd::Kbd,
+    list::ListItem,
 };
 
 /// The daemon's own default (`zz_mux::KeyTables`), printed until it publishes one.
@@ -141,6 +142,7 @@ fn hint_row(
     prefix: Option<&Keystroke>,
     key: Option<Keystroke>,
     strong: bool,
+    ground: Ground,
     cx: &App,
 ) -> Div {
     let keys = hint
@@ -149,8 +151,15 @@ fn hint_row(
         .flatten()
         .into_iter()
         .chain(key)
-        .map(|key| Kbd::new(key).lowercase().into_any_element())
+        .map(|key| Kbd::new(key).lowercase().on(ground).into_any_element())
         .collect::<Vec<_>>();
+    let label = if strong {
+        ground.ink
+    } else {
+        cx.theme()
+            .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
+            .muted_at(PaintState::Rest)
+    };
     div()
         .flex()
         .items_center()
@@ -173,13 +182,33 @@ fn hint_row(
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .text_size(zz_ui::rems_from_px(12.0))
-                .text_color(if strong {
-                    cx.theme().foreground
-                } else {
-                    cx.theme().foreground.muted()
-                })
+                .text_color(label)
                 .child(hint.label),
         )
+}
+
+fn action_row(
+    id: &'static str,
+    hint: &Hint,
+    prefix: Option<&Keystroke>,
+    key: Option<Keystroke>,
+    strong: bool,
+    selected: bool,
+    cx: &App,
+) -> ListItem {
+    let state = if selected {
+        PaintState::Selected
+    } else {
+        PaintState::Rest
+    };
+    let ground = cx.theme().layer(Kind::Row.role(), state).ground;
+    ListItem::new(id)
+        .selected(selected)
+        .h(px(HINT_ROW_HEIGHT))
+        .px(px(12.0))
+        .py_0()
+        .cursor_pointer()
+        .child(hint_row(hint, prefix, key, strong, ground, cx))
 }
 
 fn activates_new_session(keystroke: &Keystroke) -> bool {
@@ -225,7 +254,7 @@ impl Focusable for NewSessionView {
 }
 
 impl Render for NewSessionView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus_handle = self.focus_handle.clone();
         if !self.mux.read(cx).has_hosts() {
             return div()
@@ -314,21 +343,15 @@ impl Render for NewSessionView {
                     .max_w(px(PANEL_WIDTH))
                     .gap(px(2.0))
                     .child(
-                        hint_row(
+                        action_row(
+                            "new-session-activate",
                             new_session,
                             prefix.as_ref(),
                             Keystroke::parse(new_session.key).ok(),
                             true,
+                            self.focus_handle.is_focused(window),
                             cx,
                         )
-                        .id("new-session-activate")
-                        .h(px(HINT_ROW_HEIGHT))
-                        .px(px(12.0))
-                        .cursor_pointer()
-                        .menu_item_corners(px(HINT_ROW_HEIGHT), cx)
-                        .hover(|style| {
-                            style.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover)
-                        })
                         .on_mouse_down(
                             MouseButton::Left,
                             move |_, _, cx| {
@@ -338,21 +361,15 @@ impl Render for NewSessionView {
                         ),
                     )
                     .child(
-                        hint_row(
+                        action_row(
+                            "new-session-settings",
                             settings,
                             prefix.as_ref(),
                             Keystroke::parse(settings_key.as_deref().unwrap_or(settings.key)).ok(),
                             false,
+                            false,
                             cx,
                         )
-                        .id("new-session-settings")
-                        .h(px(HINT_ROW_HEIGHT))
-                        .px(px(12.0))
-                        .cursor_pointer()
-                        .menu_item_corners(px(HINT_ROW_HEIGHT), cx)
-                        .hover(|style| {
-                            style.bg(cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover)
-                        })
                         .on_click(|_, window, cx| {
                             window.dispatch_action(Box::new(OpenSettings), cx);
                         }),
@@ -368,9 +385,16 @@ impl Render for NewSessionView {
                     )
                     .children(BINDINGS.iter().zip(binding_keys).filter_map(|(hint, key)| {
                         key.map(|key| {
-                            hint_row(&hint.hint, prefix.as_ref(), Some(key), false, cx)
-                                .h(px(24.0))
-                                .px(px(12.0))
+                            hint_row(
+                                &hint.hint,
+                                prefix.as_ref(),
+                                Some(key),
+                                false,
+                                cx.theme().ground(),
+                                cx,
+                            )
+                            .h(px(24.0))
+                            .px(px(12.0))
                         })
                     })),
             )

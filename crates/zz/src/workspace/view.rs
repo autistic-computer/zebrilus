@@ -46,15 +46,15 @@ use zz_ui::path_picker::{
     PATH_PICKER_VISIBLE_ROWS, PathPickerBackend, PathPickerEvent, PathPickerView,
 };
 use zz_ui::{
-    ActiveTheme as _, ElementExt as _, Elevation, WindowExt as _, draws_window_controls,
-    notification::Notification,
+    ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _, button::ButtonVariant,
+    draws_window_controls, notification::Notification,
 };
 use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneChrome, PaneDrag, PaneDragOverlayState,
         PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
         TERMINAL_HEADER_HEIGHT, TerminalPaneAction, pane_border_color, pane_drag_button,
-        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_indicator,
+        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame, pane_indicator,
         pane_indicator_overlay, pane_overlay_stack, pane_split_hit_target, pane_split_slot,
         pane_split_surface, pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
         terminal_pane_header,
@@ -171,6 +171,7 @@ fn prompt_stale_daemon(
             .description(description.clone())
             .button_props(
                 DialogButtonProps::default()
+                    .ok_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Solid))
                     .ok_text("Restart daemon")
                     .cancel_text("Not now")
                     .show_cancel(true),
@@ -607,14 +608,7 @@ impl Render for TerminalHeaderView {
                 }
             });
         });
-        div()
-            .w_full()
-            .h_full()
-            .bg(state.background)
-            .rounded_tl(state.radii.top_left)
-            .rounded_tr(state.radii.top_right)
-            .child(header.opacity(state.opacity))
-            .into_any_element()
+        pane_header_frame(header, state.background, state.radii, state.opacity).into_any_element()
     }
 }
 
@@ -3714,11 +3708,7 @@ impl AppView {
                         .title(title.left)
                         .title_right(title.right)
                         .content_inset(inset.width, inset.height)
-                        .colors(
-                            cx.theme().surface(Elevation::Panel).fill.opaque(),
-                            cx.theme().foreground,
-                            pane_border_color(active, cx),
-                        )
+                        .edge_color(pane_border_color(active, cx))
                         .bordered(bordered),
                 )
                 .children(grips)

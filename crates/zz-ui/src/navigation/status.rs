@@ -9,15 +9,15 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Ground, IconName, Sizable as _,
-    StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, IconName, PaintState, Sizable as _, Surface,
     button::{Button, ButtonVariants as _},
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
+    roles,
 };
 
 use super::{
-    WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, status_dot, workspace_row_highlight,
-    workspace_status_window, workspace_tree_action_button,
+    WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, status_dot, workspace_status_window,
+    workspace_tree_action_button,
 };
 
 pub const MAX_VISIBLE_WINDOWS: usize = 5;
@@ -51,16 +51,13 @@ pub fn visible_window_range(total: usize, active: usize, limit: usize) -> Range<
     start..start + limit
 }
 
-fn status_menu_button(id: impl Into<ElementId>, cx: &App) -> Button {
+fn status_menu_button(id: impl Into<ElementId>) -> Button {
     Button::new(id)
         .ghost()
-        .flat()
         .small()
         .compact()
+        .surface_role(roles::STATUS_CHIP)
         .h(WORKSPACE_STATUS_PILL_HEIGHT)
-        .bg(workspace_row_highlight(cx))
-        .hover_bg(workspace_row_highlight(cx))
-        .control_surface(cx)
 }
 
 pub fn status_window(
@@ -76,22 +73,19 @@ pub fn status_window(
     let group: SharedString = format!("status-window-{id:?}").into();
     let close_button = actions.close.clone();
     let tooltip = format!("{index}:{name}").into();
-    let bar = cx.theme().ground();
-    let lit = bar.fill.blend(workspace_row_highlight(cx));
+    let tab = Surface::new(roles::WINDOW_TAB);
+    let ground = cx.theme().layer(tab, state.paint_state()).ground;
+    let hovered = cx.theme().layer(tab, PaintState::Hover).ground;
     let deck = status_pane_deck(
         ElementId::Name(format!("status-window-panes-{id:?}").into()),
         panes,
         state.connected,
-        if state.active {
-            Ground { fill: lit, ..bar }
-        } else {
-            bar
-        },
+        ground,
         cx,
     )
     .map(|deck| {
-        if state.connected {
-            deck.group_hover_ground(group.clone(), lit)
+        if state.connected && !state.active {
+            deck.group_hover_ground(group.clone(), hovered.fill)
         } else {
             deck
         }
@@ -155,14 +149,14 @@ pub fn status_window_overflow(
     id: impl Into<ElementId>,
     windows: Vec<StatusWindowEntry>,
     connected: bool,
-    cx: &App,
+    _: &App,
 ) -> AnyElement {
     Button::new(id)
         .ghost()
         .small()
         .compact()
         .icon(IconName::Ellipsis)
-        .hover_bg(workspace_row_highlight(cx))
+        .surface_role(roles::CHROME_BUTTON)
         .tooltip("All windows")
         .disabled(!connected)
         .dropdown_menu(move |menu, _, _| {
@@ -241,7 +235,7 @@ pub fn status_agents(
         Some(AgentAttentionStatus::Failed) => cx.theme().danger,
         _ => cx.theme().foreground.muted(),
     };
-    status_menu_button(id, cx)
+    status_menu_button(id)
         .px(px(6.0))
         .text_color(cx.theme().foreground.muted())
         .child(

@@ -2,11 +2,11 @@ use std::rc::Rc;
 
 use zz_client::{StatusBarModel, StatusBarWindow};
 use zz_gpui::{
-    AnyElement, App, Entity, IntoElement, MouseButton, Pixels, SharedString, Stateful, Window, div,
-    prelude::*, px,
+    AnyElement, App, Entity, IntoElement, MouseButton, Pixels, SharedString, Stateful, Window,
+    prelude::*,
 };
 use zz_ui::{
-    ActiveTheme as _, IconName, StyledExt as _,
+    ActiveTheme as _, IconName,
     navigation::{
         WorkspaceStatusWindowState,
         status::{
@@ -14,7 +14,7 @@ use zz_ui::{
             StatusWindowEntry, status_agents, status_window, status_window_overflow,
             visible_window_range,
         },
-        workspace_controls_leading_inset, workspace_row_highlight, workspace_status_item,
+        status_dot, workspace_controls_leading_inset, workspace_status_item,
     },
     tooltip::Tooltip,
 };
@@ -144,8 +144,6 @@ fn render_update(show: bool, cx: &App) -> Option<AnyElement> {
     let crate::update::CheckState::Available(release) = status.check else {
         return None;
     };
-    let foreground = cx.theme().foreground;
-    let highlight = workspace_row_highlight(cx);
     let tooltip: SharedString = format!("Install zz {}", release.version).into();
     Some(
         workspace_status_item(
@@ -155,23 +153,9 @@ fn render_update(show: bool, cx: &App) -> Option<AnyElement> {
             cx,
         )
         .flex_none()
-        .px(px(6.0))
-        .rounded(cx.theme().control_radius())
-        .surface_outline(cx.theme().transparent, cx)
         .cursor_pointer()
-        .hover(move |item| {
-            item.bg(highlight)
-                .text_color(foreground)
-                .control_highlight(cx)
-        })
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        .child(
-            div()
-                .flex_none()
-                .size(px(5.0))
-                .rounded_full()
-                .bg(cx.theme().success),
-        )
+        .child(status_dot(cx.theme().success))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(|_, window, cx| {
             cx.stop_propagation();

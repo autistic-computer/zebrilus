@@ -14,7 +14,7 @@ use zz_protocol::{
     FloatingPaneSnapshot, InputMessage, MenuState, PaneBorderLines, PopupBorderLines,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation,
+    ActiveTheme as _,
     command::floating::{
         MenuHits, RELEASE_BUTTONS, WHEEL_BUTTONS, confirm_prompt, display_menu, floating_frame,
         menu_enter, menu_hit_cell, menu_press_buttons,
@@ -284,11 +284,7 @@ impl AppShell {
                         FloatingSurface::new(("web-float", float.pane.0), content, cx)
                             .title(title)
                             .content_inset(inset.x, inset.y)
-                            .colors(
-                                cx.theme().surface(Elevation::Panel).fill.opaque(),
-                                cx.theme().foreground,
-                                border_color,
-                            )
+                            .edge_color(border_color)
                             .bordered(float.border_lines != PaneBorderLines::None),
                     )
                     .into_any_element(),

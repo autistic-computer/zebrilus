@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use zz_gpui::{
-    AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent, MouseButton,
-    Render, StyleRefinement, Window, div, prelude::*, px,
+    AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent, Render,
+    StyleRefinement, Window, div, prelude::*, px,
 };
 use zz_ui::shell::{app_shell_surface, app_titlebar_strip};
 use zz_ui::{
-    ActiveTheme as _, Root, StyledExt as _, WindowControls, draws_window_controls,
-    navigation::workspace_chrome_controls_width_for,
+    Root, StyledExt as _, Surface, WindowControls, draws_window_controls,
+    navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover},
+    roles,
 };
 
 #[cfg(target_os = "macos")]
@@ -229,17 +230,20 @@ impl AppShell {
     fn window_controls(&self) -> WindowControls {
         let close_controller = self.controller.clone();
         let close_agent_controller = self.agent_controller.clone();
-        WindowControls::new().on_close_window(move |_, window, cx| {
-            if request_window_close(&close_controller, &close_agent_controller, window, cx) {
-                window.remove_window();
-            }
-        })
+        WindowControls::new()
+            .surface_role(roles::WINDOW_CONTROLS)
+            .on_close_window(move |_, window, cx| {
+                if request_window_close(&close_controller, &close_agent_controller, window, cx) {
+                    window.remove_window();
+                }
+            })
     }
 
     fn render_control_strip(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         draws_window_controls(window).then(|| {
             let title_corners = WindowCorners::for_window(window).top();
             let strip = app_titlebar_strip("app-titlebar", self.window_controls())
+                .surface(Surface::new(roles::TITLEBAR), cx)
                 .when(title_corners.top_right(), |strip| {
                     strip.rounded_tr(frame_content_corner_radius(cx))
                 });
@@ -272,28 +276,16 @@ impl AppShell {
 
     fn render_slideover(&self, cx: &App) -> AnyElement {
         let dismiss = self.sidebar.clone();
-        div()
-            .id("workspace-slideover-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_start()
-            .bg(cx.theme().scrim)
-            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+        workspace_sidebar_slideover(
+            "workspace-slideover-scrim",
+            self.sidebar.clone(),
+            move |_, _, cx| {
                 dismiss.update(cx, WorkspaceSidebar::dismiss_slideover);
                 cx.stop_propagation();
-            })
-            .child(
-                div()
-                    .h_full()
-                    .flex()
-                    .flex_none()
-                    .popover_style(cx)
-                    .rounded(px(0.0))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(self.sidebar.clone()),
-            )
-            .into_any_element()
+            },
+            cx,
+        )
+        .into_any_element()
     }
 }
 

@@ -5,7 +5,7 @@ use crate::{
     h_flex,
     input::{Input, InputContentType, InputState},
     overlay::{dialog_description, dialog_footer, dialog_title},
-    rems_from_px, v_flex,
+    rems_from_px, roles, v_flex,
 };
 use zz_gpui::{
     App, Div, Entity, ParentElement as _, SharedString, Styled as _, div,
@@ -34,7 +34,7 @@ pub fn inline_alert(
         .w_full()
         .p(px(12.0))
         .gap(px(12.0))
-        .popover_style(cx)
+        .surface(roles::INLINE_PANEL, cx)
         .child(
             h_flex()
                 .w_full()

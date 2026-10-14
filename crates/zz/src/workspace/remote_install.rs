@@ -1,5 +1,5 @@
 use zz_gpui::{App, Entity, Window};
-use zz_ui::{WindowExt as _, dialog::DialogButtonProps};
+use zz_ui::{Emphasis, Tone, WindowExt as _, button::ButtonVariant, dialog::DialogButtonProps};
 
 use crate::mux::{
     client::MuxClient,
@@ -22,7 +22,7 @@ pub(crate) fn open(
     cx: &mut App,
 ) {
     let version = env!("CARGO_PKG_VERSION");
-    let (title, description, ok) = match offer {
+    let (title, description, ok, tone) = match offer {
         InstallOffer::Install => (
             format!("Install zz on {name}?"),
             format!(
@@ -30,6 +30,7 @@ pub(crate) fn open(
                  zz {version} in ~/.local/bin."
             ),
             "Install",
+            Tone::Primary,
         ),
         InstallOffer::Update => (
             format!("Update zz on {name}?"),
@@ -38,6 +39,7 @@ pub(crate) fn open(
                  restarts its daemon, which ends the sessions running on it."
             ),
             "Update and restart",
+            Tone::Danger,
         ),
     };
     let mux = mux.clone();
@@ -48,6 +50,7 @@ pub(crate) fn open(
             .description(description.clone())
             .button_props(
                 DialogButtonProps::default()
+                    .ok_variant(ButtonVariant::Paint(tone, Emphasis::Solid))
                     .ok_text(ok)
                     .cancel_text("Not now")
                     .show_cancel(true),

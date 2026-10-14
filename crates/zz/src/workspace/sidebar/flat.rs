@@ -18,6 +18,7 @@ use zz_ui::{
         flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatState, HostConnection, flat_sidebar,
         },
+        workspace_sidebar_fade,
     },
     scroll::ScrollableElement as _,
 };
@@ -163,7 +164,7 @@ impl WorkspaceSidebar {
             )
             .bottom_fade(
                 scroll,
-                crate::theme::chrome_background(cx),
+                workspace_sidebar_fade(self.ground(cx), cx),
                 WORKSPACE_SIDEBAR_FADE_HEIGHT,
             )
             .vertical_scrollbar(scroll)

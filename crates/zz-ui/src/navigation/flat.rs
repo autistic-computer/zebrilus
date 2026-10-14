@@ -15,17 +15,18 @@ use zz_gpui::{
 use zz_protocol::{AgentProvider, PaneId, SessionId, WindowId};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, PaintState, Sizable as _,
-    StyledExt as _, Tone,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Kind, PaintState,
+    Sizable as _, StyledExt as _, SurfaceRole, Tone,
+    button::Button,
     command::PaletteHostId,
     h_flex,
     icon::cap_center_drop,
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu},
     navigation::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile, stack_radius},
-        workspace_row_fill,
+        workspace_row_action, workspace_row_fill,
     },
+    roles,
     spinner::Spinner,
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
@@ -226,6 +227,13 @@ impl FlatRowState {
         }
     }
 
+    fn surface(self) -> (SurfaceRole, PaintState) {
+        match self.paint_state() {
+            PaintState::Selected => (Kind::Row.role(), PaintState::Selected),
+            state => (roles::SIDEBAR_ENTRY, state),
+        }
+    }
+
     fn for_pointer(self, cx: &App) -> Self {
         Self {
             hovered: self.hovered && !CoarsePointer::get(cx),
@@ -245,14 +253,16 @@ struct RowInk {
 
 impl RowInk {
     fn new(state: FlatRowState, cx: &App) -> Self {
-        let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
-        let paint_state = state.paint_state();
-        let text = paint.text_at(paint_state);
+        let theme = cx.theme();
+        let (role, paint_state) = state.surface();
+        let layer = theme.layer(role, paint_state);
         Self {
-            ground: paint.ground_at(paint_state),
-            text,
-            muted: paint.muted_at(paint_state),
-            plain: text != paint.text,
+            ground: layer.ground,
+            text: layer.text,
+            muted: theme
+                .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
+                .muted_at(PaintState::Rest),
+            plain: layer.text != theme.ground().ink,
             dimmed: state.dimmed,
         }
     }
@@ -429,18 +439,21 @@ fn actions_menu(
     ground: Ground,
     visible: bool,
     menu: &FlatMenu,
+    cx: &App,
 ) -> impl IntoElement {
     let menu = menu.clone();
-    icon_button(
-        ("flat-window-actions", window.0),
-        IconName::Ellipsis,
-        ACTIONS_ICON,
+    workspace_row_action(
+        icon_button(
+            ("flat-window-actions", window.0),
+            IconName::Ellipsis,
+            ACTIONS_ICON,
+        ),
+        ground,
+        false,
+        cx,
     )
     .w(px(ACTIONS_WIDTH))
     .h(px(ACTIONS_HEIGHT))
-    .text()
-    .flat()
-    .text_color(ground.ink)
     .hit_slop(
         (TOUCH_TARGET - ACTIONS_WIDTH) / 2.0,
         (TOUCH_TARGET - ACTIONS_HEIGHT) / 2.0,
@@ -494,11 +507,13 @@ pub fn flat_window_row(
                     ink.ground,
                     state.hovered || coarse,
                     menu,
+                    cx,
                 )),
         );
     let context = menu.clone();
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
-    let fill = workspace_row_fill(&row_id, state.paint_state(), None, cx);
+    let (role, paint_state) = state.surface();
+    let fill = workspace_row_fill(&row_id, role, paint_state, None, cx);
     let hover = handler.clone();
     let click = handler.clone();
     div()
@@ -596,7 +611,7 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
     let dots = [
         (rollup.needs_you.saturating_add(rollup.bell), theme.warning),
         (rollup.failed, theme.danger),
-        (rollup.done, theme.accent),
+        (rollup.done, theme.success),
     ];
     h_flex()
         .flex_none()
@@ -816,13 +831,16 @@ pub fn flat_session_header(
         .then(|| flat_rollup(&session.rollup, host.live(), cx));
     let new_window = (hovered || coarse).then(|| {
         let handler = handler.clone();
-        icon_button(
-            ("flat-new-window", session_id.0),
-            IconName::Plus,
-            NEW_WINDOW_ICON,
+        workspace_row_action(
+            icon_button(
+                ("flat-new-window", session_id.0),
+                IconName::Plus,
+                NEW_WINDOW_ICON,
+            ),
+            theme.ground(),
+            false,
+            cx,
         )
-        .text()
-        .flat()
         .size(px(NEW_WINDOW_SIZE))
         .hit_slop(
             (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,

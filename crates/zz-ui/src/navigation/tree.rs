@@ -5,6 +5,8 @@ use zz_gpui::{
     IntoElement, LayoutId, Pixels, Point, Style, UniformListDecoration, Window, fill, point, size,
 };
 
+use crate::{ActiveTheme as _, Colorize as _, roles};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct IndentGuideLayout {
     pub(crate) level: usize,
@@ -17,6 +19,23 @@ pub(crate) struct IndentGuideLayout {
 pub struct IndentGuideColors {
     pub default: Hsla,
     pub active: Hsla,
+}
+
+impl IndentGuideColors {
+    /// The sidebar tree's guides: the tree rule, and the guide along the
+    /// active row's path in muted ink.
+    #[must_use]
+    pub fn tree(cx: &App) -> Self {
+        let theme = cx.theme();
+        Self {
+            default: if theme.style(roles::TREE_RULE).outline {
+                theme.divider_color()
+            } else {
+                theme.transparent
+            },
+            active: theme.foreground.muted(),
+        }
+    }
 }
 
 pub struct WorkspaceIndentGuides {
