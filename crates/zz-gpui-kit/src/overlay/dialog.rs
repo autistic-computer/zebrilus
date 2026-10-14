@@ -13,7 +13,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, IconName, StyledExt as _, TITLE_BAR_HEIGHT, Tone,
+    ActiveTheme as _, Emphasis, IconName, Kind, StyledExt as _, SurfaceRole, TITLE_BAR_HEIGHT,
+    Tone,
     button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
     scroll::ScrollableElement as _,
@@ -190,6 +191,7 @@ pub struct Dialog {
     button_props: DialogButtonProps,
     show_button_row: bool,
     a11y_role: Role,
+    surface_role: Option<SurfaceRole>,
     pub(crate) props: DialogProps,
     pub(crate) focus_handle: FocusHandle,
     pub(crate) layer_ix: usize,
@@ -210,6 +212,7 @@ impl Dialog {
             button_props: DialogButtonProps::default(),
             show_button_row: false,
             a11y_role: Role::Dialog,
+            surface_role: None,
             props: DialogProps::default(),
             focus_handle: cx.focus_handle(),
             layer_ix: 0,
@@ -300,6 +303,13 @@ impl Dialog {
         self
     }
 
+    /// Draw the dialog as `role` draws, instead of as a dialog.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
+        self
+    }
+
     #[must_use]
     fn header(mut self, header: impl IntoElement) -> Self {
         self.header = Some(header.into_any_element());
@@ -356,7 +366,7 @@ impl RenderOnce for Dialog {
         let animation = Animation::new(ANIMATION_DURATION).with_easing(ease_out_quint());
         let scrim = cx.theme().scrim;
 
-        let body = dialog_surface(cx)
+        let body = dialog_frame(self.surface_role.unwrap_or(Kind::Dialog.role()), cx)
             .id(layer_ix)
             .debug_selector(move || format!("dialog-{layer_ix}"))
             .role(self.a11y_role)
@@ -497,8 +507,12 @@ impl RenderOnce for Dialog {
 /// A dialog's floating surface: its outline, fill, corners, vertical padding
 /// and shadow. Content sits in [`dialog_gutter`]s inside it.
 pub fn dialog_surface(cx: &App) -> Div {
+    dialog_frame(Kind::Dialog.role(), cx)
+}
+
+fn dialog_frame(role: SurfaceRole, cx: &App) -> Div {
     v_flex()
-        .popover_style(cx)
+        .surface(role, cx)
         .pt(CONTENT_PADDING)
         .pb(CONTENT_PADDING)
         .gap(CONTENT_PADDING)
@@ -579,6 +593,13 @@ impl AlertDialog {
     #[must_use]
     pub fn button_props(mut self, button_props: DialogButtonProps) -> Self {
         self.button_props = button_props;
+        self
+    }
+
+    /// Draw the alert as `role` draws, instead of as a dialog.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.base = self.base.surface_role(role);
         self
     }
 

@@ -4,8 +4,9 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, IconName,
-    InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, Fill, IconName,
+    InteractivePaintExt as _, Kind, Paint, PaintExt as _, PaintState, Sizable as _, StylePatch,
+    StyledExt as _, Tone,
     badge::Badge,
     button::Button,
     check::Check,
@@ -266,15 +267,6 @@ fn badges(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn keycaps(_: &mut Window, cx: &mut App) -> AnyElement {
-    let caps = |emphasis: Emphasis| {
-        h_flex()
-            .gap_1()
-            .child(Keycap::new("1").emphasis(emphasis))
-            .child(Keycap::new("↵").emphasis(emphasis))
-            .child(Keycap::new("⌘K").emphasis(emphasis))
-            .into_any_element()
-    };
-    let columns = Emphasis::ALL.map(Emphasis::name);
     let theme = cx.theme();
     let inside = |id: &'static str, tone: Tone| {
         let ground = theme
@@ -289,11 +281,10 @@ fn keycaps(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "on the window",
-            matrix(
-                &columns,
-                vec![("neutral".into(), Vec::from(Emphasis::ALL.map(caps)))],
-                cx,
-            ),
+            row()
+                .child(Keycap::new("1"))
+                .child(Keycap::new("↵"))
+                .child(Keycap::new("⌘K")),
         )
         .state(
             "inside a solid button",
@@ -407,11 +398,7 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
             .painted_interactive(row_paint, selected, true)
             .text_size(px(13.0))
             .child(div().flex_1().child(label))
-            .child(
-                Keycap::new("⌘")
-                    .emphasis(Emphasis::Ghost)
-                    .on(row_paint.ground_at(state)),
-            )
+            .child(Keycap::new("⌘").on(row_paint.ground_at(state)))
     };
     h_flex()
         .items_start()
@@ -583,11 +570,13 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-const FIELD_ROWS: [(&str, Option<Emphasis>); 4] = [
+const P: StylePatch = StylePatch::EMPTY;
+
+const FIELD_ROWS: [(&str, Option<StylePatch>); 4] = [
     ("the look's", None),
-    ("soft", Some(Emphasis::Soft)),
-    ("outline", Some(Emphasis::Outline)),
-    ("ghost", Some(Emphasis::Ghost)),
+    ("soft", Some(P.fill(Fill::Tint).outline(true))),
+    ("outline", Some(P.fill(Fill::None).outline(true))),
+    ("ghost", Some(P.fill(Fill::None).outline(false))),
 ];
 
 struct Fields {
@@ -659,10 +648,12 @@ impl Render for Fields {
         let rows = FIELD_ROWS
             .iter()
             .zip(&self.grid)
-            .map(|((name, emphasis), states)| {
+            .map(|((name, patch), states)| {
                 let cell = |index: usize| {
                     Input::new(&states[index])
-                        .when_some(*emphasis, Input::emphasis)
+                        .when_some(*patch, |input, patch| {
+                            input.surface_role(Kind::Field.role().with(patch))
+                        })
                         .when(index == 2, |input| input.tone(Tone::Danger))
                         .disabled(index == 3)
                         .into_any_element()

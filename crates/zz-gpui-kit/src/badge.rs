@@ -7,8 +7,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, PaintExt as _, PaintState, Sizable, Size, StyledExt as _,
-    Tone, h_flex, rems_from_px,
+    ActiveTheme as _, Emphasis, Fill, Icon, Kind, Layer, PaintState, Sizable, Size, StyledExt as _,
+    Surface, SurfaceRole, Theme, Tone, h_flex, rems_from_px,
 };
 
 #[derive(IntoElement)]
@@ -17,6 +17,7 @@ pub struct Badge {
     icon: Option<Icon>,
     tone: Tone,
     emphasis: Emphasis,
+    surface_role: Option<SurfaceRole>,
     opaque: bool,
     size: Size,
     style: StyleRefinement,
@@ -32,6 +33,7 @@ impl Badge {
             icon: None,
             tone: Tone::default(),
             emphasis: Emphasis::default(),
+            surface_role: None,
             opaque: false,
             size: Size::default(),
             style: StyleRefinement::default(),
@@ -59,10 +61,36 @@ impl Badge {
         self
     }
 
+    /// Solid fills the badge in its tone; outline and ghost leave it
+    /// unfilled, ghost without its outline too.
     #[must_use]
     pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
         self.emphasis = emphasis;
         self
+    }
+
+    /// Draw the badge as `role` draws, instead of as a badge.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
+        self
+    }
+
+    fn surface_layer(&self, theme: &Theme) -> Layer {
+        let role = self.surface_role.unwrap_or(Kind::Badge.role());
+        let role = match self.emphasis {
+            Emphasis::Solid | Emphasis::Soft => role,
+            Emphasis::Outline => role.with(role.patch.fill(Fill::None)),
+            Emphasis::Ghost => role.with(role.patch.fill(Fill::None).outline(false)),
+        };
+        let surface = Surface::new(role)
+            .tone(self.tone)
+            .prominent(self.emphasis == Emphasis::Solid);
+        let mut layer = theme.layer(surface, PaintState::Rest);
+        if self.opaque {
+            layer.fill = theme.ground().fill.blend(layer.fill);
+        }
+        layer
     }
 
     /// An icon before the label, in the label's color.
@@ -98,15 +126,13 @@ impl RenderOnce for Badge {
             Size::Small => (16.0, 10.0, 5.0),
             Size::Medium | Size::Size(_) => (18.0, 11.0, 6.0),
         };
-        let paint = cx.theme().paint(self.tone, self.emphasis);
-        let paint = if self.opaque { paint.opaque() } else { paint };
+        let layer = self.surface_layer(cx.theme());
         h_flex()
             .flex_none()
             .h(px(height))
             .gap(px(4.0))
             .px(px(padding))
-            .rounded(cx.theme().control_radius())
-            .painted(paint, PaintState::Rest)
+            .layer(&layer)
             .text_size(rems_from_px(text))
             .line_height(px(height - 2.0))
             .font_weight(FontWeight::MEDIUM)

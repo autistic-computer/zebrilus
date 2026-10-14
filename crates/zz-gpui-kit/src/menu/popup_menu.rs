@@ -3,7 +3,10 @@ use super::menu_item::MenuItemElement;
 use crate::button::{Button, ButtonVariants as _};
 use crate::scroll::ScrollableElement;
 use crate::{ActiveTheme, Icon, IconName, Sizable as _, StyledExt, h_flex, kbd::Kbd, v_flex};
-use crate::{ElementExt, Elevation, Emphasis, PaintExt as _, PaintState, Side, Tone};
+use crate::{
+    Edge, ElementExt, Kind, PaintState, Side, Surface, SurfaceRole,
+    foundation::{row_corners, row_radius},
+};
 use zz_gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
@@ -296,6 +299,7 @@ pub struct PopupMenu {
     bounds: Bounds<Pixels>,
 
     parent_menu: Option<WeakEntity<Self>>,
+    surface_role: SurfaceRole,
     scrollable: bool,
     scroll_handle: ScrollHandle,
     submenu_anchor: (Anchor, Pixels),
@@ -310,6 +314,7 @@ impl PopupMenu {
             action_context: None,
             previous_focus_handle: None,
             parent_menu: None,
+            surface_role: Kind::Popover.role(),
             menu_items: Vec::new(),
             selected_index: None,
             min_width: None,
@@ -370,6 +375,12 @@ impl PopupMenu {
     /// at 450px.
     pub fn max_h(mut self, height: impl Into<Pixels>) -> Self {
         self.max_height = Some(height.into());
+        self
+    }
+
+    /// Draw the menu as `role` draws, instead of as a popover.
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = role;
         self
     }
 
@@ -890,20 +901,28 @@ impl PopupMenu {
         };
 
         let coarse = crate::touch::CoarsePointer::get(cx);
+        let row = cx.theme().layer(
+            Kind::Row.role(),
+            if selected {
+                PaintState::Selected
+            } else {
+                PaintState::Rest
+            },
+        );
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .when(coarse && item.is_clickable(), |this| {
                 this.child(crate::touch::press_highlight(
                     zz_gpui::ElementId::NamedInteger(group_name.clone().into(), 0),
                     None,
-                    cx.theme().row_radius(item_height),
+                    row_radius(&row, item_height),
                 ))
             })
             .text_size(crate::rems_from_px(if coarse { 13.0 } else { 12.0 }))
             .line_height(px(16.0))
             .py_0()
             .px(INNER_PADDING)
-            .menu_item_corners(item_height, cx)
+            .map(|this| row_corners(this, &row, item_height))
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, _, cx| {
@@ -926,7 +945,7 @@ impl PopupMenu {
                 .mx(cx.theme().row_inset)
                 .rounded(px(0.0))
                 .border_0()
-                .rule_bottom(cx)
+                .rule_on(Kind::Rule.role(), Edge::Bottom, cx)
                 .disabled(true),
             PopupMenuItem::Label(label) => this
                 .disabled(true)
@@ -954,14 +973,11 @@ impl PopupMenu {
                     StepperAction::Increment => format!("Increase {label}"),
                 };
                 let theme = cx.theme();
-                let paint = theme
-                    .paint_on(
-                        theme.surface(Elevation::Popover).opaque(),
-                        Tone::Neutral,
-                        theme.field_emphasis(),
-                    )
-                    .opaque();
-                let ground = paint.ground_at(PaintState::Rest);
+                let menu = theme.ground_of(self.surface_role);
+                let mut group =
+                    theme.layer(Surface::new(Kind::Field.role()).on(menu), PaintState::Rest);
+                group.fill = group.ground.fill;
+                let ground = group.ground;
                 let button = |id, action| {
                     Button::new((id, ix))
                         .on(ground)
@@ -993,8 +1009,7 @@ impl PopupMenu {
                     .child(
                         h_flex()
                             .flex_none()
-                            .rounded(cx.theme().control_radius())
-                            .painted(paint, PaintState::Rest)
+                            .layer(&group)
                             .child(
                                 button("menu-step-down", StepperAction::Decrement)
                                     .icon(IconName::Minus),
@@ -1046,13 +1061,7 @@ impl PopupMenu {
             } => {
                 let show_link_icon = *is_link;
                 let action = action.as_ref().map(|action| action.boxed_clone());
-                let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
-                let ink = if selected {
-                    paint.selected_text
-                } else {
-                    paint.text
-                };
-                let key = self.render_key_binding(action, ink, detail_opacity, window);
+                let key = self.render_key_binding(action, row.text, detail_opacity, window);
 
                 this.when(!disabled, |this| {
                     this.on_click(
@@ -1193,7 +1202,7 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::dismiss))
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
-            .popover_style(cx)
+            .surface(self.surface_role, cx)
             .text_color(cx.theme().foreground)
             .relative()
             .occlude()
@@ -1242,6 +1251,7 @@ impl Render for PopupMenu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Elevation, Emphasis, Tone};
 
     #[zz_gpui::test]
     fn custom_content_tracks_keyboard_and_pointer_highlights(cx: &mut zz_gpui::TestAppContext) {

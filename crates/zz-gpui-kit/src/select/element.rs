@@ -6,7 +6,7 @@ use zz_gpui::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{Ground, Sizable, Size};
+use crate::{Ground, Sizable, Size, SurfaceRole};
 
 use super::{
     CONTEXT,
@@ -62,6 +62,13 @@ impl<D: SelectDelegate> Select<D> {
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.options.on = Some(ground);
+        self
+    }
+
+    /// Draw the trigger as `role` draws, instead of as a field.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.options.surface_role = Some(role);
         self
     }
 

@@ -617,6 +617,13 @@ pub struct Layer {
     pub ground: Ground,
 }
 
+impl Layer {
+    pub(crate) fn muted_text(&self) -> Hsla {
+        self.text
+            .mix_oklab(self.ground.fill, 1.0 - super::color::muted_weight())
+    }
+}
+
 impl Theme {
     /// The style `role` resolves to in this theme.
     pub fn style(&self, role: SurfaceRole) -> Style {
@@ -930,7 +937,7 @@ pub trait StatefulSurfaceExt: StatefulInteractiveElement + Styled + Sized {
 
 impl<E: StatefulInteractiveElement + Styled> StatefulSurfaceExt for E {}
 
-fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui::StyleRefinement {
+pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui::StyleRefinement {
     let style = style
         .border_color(layer.border)
         .shadow(layer.shadow.clone())

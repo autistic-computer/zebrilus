@@ -7,8 +7,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, Ground, PaintExt as _, PaintState, Sizable, Size, StyledExt as _,
-    Tone, h_flex, rems_from_px,
+    ActiveTheme as _, Ground, Kind, Layer, PaintState, Sizable, Size, StyledExt as _, Surface,
+    SurfaceRole, Theme, h_flex, rems_from_px,
 };
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -21,13 +21,13 @@ const MODIFIERS: [&str; 4] = ["⌃", "⌥", "⇧", "⌘"];
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 const MODIFIERS: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
 
-/// A keystroke drawn as a [`Keycap`]. Neutral soft by default.
+/// A keystroke drawn as a [`Keycap`].
 #[derive(IntoElement, Clone, Debug)]
 pub struct Kbd {
     style: StyleRefinement,
     stroke: Keystroke,
     lowercase: bool,
-    emphasis: Emphasis,
+    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
     size: Size,
 }
@@ -39,7 +39,7 @@ impl Kbd {
             style: StyleRefinement::default(),
             stroke,
             lowercase: false,
-            emphasis: Emphasis::Soft,
+            surface_role: None,
             on: None,
             size: Size::default(),
         }
@@ -52,9 +52,10 @@ impl Kbd {
         self
     }
 
+    /// Draw the cap as `role` draws, instead of as a key cap.
     #[must_use]
-    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
-        self.emphasis = emphasis;
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
     }
 
@@ -64,6 +65,16 @@ impl Kbd {
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);
         self
+    }
+
+    fn cap(&self) -> Keycap {
+        Keycap {
+            label: self.text().into(),
+            surface_role: self.surface_role,
+            on: self.on,
+            size: self.size,
+            style: self.style.clone(),
+        }
     }
 
     /// The keystroke as text, for a binding shown without a cap.
@@ -187,23 +198,16 @@ impl Sizable for Kbd {
 
 impl RenderOnce for Kbd {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let cap = Keycap::new(self.text())
-            .emphasis(self.emphasis)
-            .with_size(self.size)
-            .refine_style(&self.style);
-        match self.on {
-            Some(ground) => cap.on(ground),
-            None => cap,
-        }
+        self.cap()
     }
 }
 
 /// One key drawn as a cap: a shortcut digit on a row, the Enter mark inside a
-/// button. Neutral, in an emphasis; outline by default.
+/// button. Its label reads muted on the cap's fill.
 #[derive(IntoElement)]
 pub struct Keycap {
     label: SharedString,
-    emphasis: Emphasis,
+    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
     size: Size,
     style: StyleRefinement,
@@ -214,17 +218,25 @@ impl Keycap {
     pub fn new(label: impl Into<SharedString>) -> Self {
         Self {
             label: label.into(),
-            emphasis: Emphasis::Outline,
+            surface_role: None,
             on: None,
             size: Size::default(),
             style: StyleRefinement::default(),
         }
     }
 
+    /// Draw the cap as `role` draws, instead of as a key cap.
     #[must_use]
-    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
-        self.emphasis = emphasis;
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
+    }
+
+    fn surface_layer(&self, theme: &Theme) -> Layer {
+        theme.layer(
+            Surface::new(self.surface_role.unwrap_or(Kind::Keycap.role())).on_maybe(self.on),
+            PaintState::Rest,
+        )
     }
 
     /// Draw the cap on `ground`, the paint it sits inside (see
@@ -255,26 +267,15 @@ impl RenderOnce for Keycap {
             Size::Small => (16.0, 10.0),
             Size::Medium | Size::Size(_) => (18.0, 11.0),
         };
-        let theme = cx.theme();
-        let paint = theme.paint_on(
-            self.on.unwrap_or_else(|| theme.ground()),
-            Tone::Neutral,
-            self.emphasis,
-        );
-        let ink = if self.emphasis == Emphasis::Solid {
-            paint.text
-        } else {
-            paint.muted_at(PaintState::Rest)
-        };
+        let layer = self.surface_layer(cx.theme());
         h_flex()
             .flex_none()
             .justify_center()
             .h(px(height))
             .min_w(px(height))
             .px(px(4.0))
-            .rounded(theme.control_radius())
-            .painted(paint, PaintState::Rest)
-            .text_color(ink)
+            .layer(&layer)
+            .text_color(layer.muted_text())
             .text_size(rems_from_px(text))
             .line_height(px(height - 2.0))
             .font_weight(FontWeight::NORMAL)
@@ -285,8 +286,23 @@ impl RenderOnce for Keycap {
 
 #[cfg(test)]
 mod tests {
-    use super::Kbd;
+    use super::{Kbd, Keycap};
+    use crate::{Elevation, Theme, ThemeColor};
     use zz_gpui::Keystroke;
+
+    #[test]
+    fn kbd_and_keycap_draw_one_cap_on_the_same_ground() {
+        let theme = Theme::from(&*ThemeColor::dark());
+        let stroke = Keystroke::parse("cmd-k").unwrap();
+        assert_eq!(
+            Kbd::new(stroke.clone()).cap().surface_layer(&theme),
+            Keycap::new("⌘K").surface_layer(&theme)
+        );
+        let panel = theme.surface(Elevation::Panel);
+        let on_panel = Kbd::new(stroke).on(panel).cap().surface_layer(&theme);
+        assert_eq!(on_panel, Keycap::new("⌘K").on(panel).surface_layer(&theme));
+        assert_ne!(on_panel, Keycap::new("⌘K").surface_layer(&theme));
+    }
 
     #[test]
     fn lowercase_touches_only_the_key_glyph() {

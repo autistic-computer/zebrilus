@@ -1,6 +1,6 @@
 use super::AGENT_CONTENT_MAX_WIDTH;
 use crate::input::{Input, InputState, field_chrome, field_paint};
-use crate::{ActiveTheme as _, CHROME_GAP, PaintState, Tone, h_flex, v_flex};
+use crate::{ActiveTheme as _, CHROME_GAP, PaintState, h_flex, roles, v_flex};
 use zz_gpui::{
     AnyElement, App, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
     prelude::*, px,
@@ -30,7 +30,7 @@ pub struct AgentComposer {
 impl RenderOnce for AgentComposer {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_prefix = !self.prefix.is_empty();
-        let paint = field_paint(Tone::Neutral, None, None, cx);
+        let paint = field_paint(roles::AGENT_COMPOSER, cx);
         let state = if self.input.read(cx).focus_handle(cx).is_focused(window) {
             PaintState::Focused
         } else {
@@ -55,10 +55,11 @@ impl RenderOnce for AgentComposer {
                             .child(
                                 field_chrome(
                                     v_flex().w_full().min_h(px(COMPOSER_MIN_HEIGHT)),
-                                    paint,
+                                    roles::AGENT_COMPOSER,
                                     state,
                                     true,
                                     true,
+                                    cx,
                                 )
                                 .rounded(cx.theme().radius)
                                 .children(self.attachments)

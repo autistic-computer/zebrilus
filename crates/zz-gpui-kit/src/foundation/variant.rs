@@ -280,9 +280,10 @@ impl Theme {
         }
     }
 
-    /// What a field is drawn as at rest, as the theme's field style decides.
-    pub fn field_emphasis(&self) -> Emphasis {
-        let style = self.style(super::Kind::Field.role());
+    /// What a field drawn as `role` is at rest, as the theme's style for it
+    /// decides.
+    pub fn field_emphasis(&self, role: super::SurfaceRole) -> Emphasis {
+        let style = self.style(role);
         match style.fill {
             super::Fill::None if style.outline => Emphasis::Outline,
             super::Fill::None => Emphasis::Ghost,

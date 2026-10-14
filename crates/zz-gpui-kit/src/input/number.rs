@@ -7,12 +7,12 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Disableable, Emphasis, Ground, PaintState, Sizable, Size, StyledExt as _,
-    Tone, button::Button, h_flex, icon::IconName,
+    ActiveTheme as _, Disableable, Emphasis, Ground, Kind, PaintState, Sizable, Size,
+    StyledExt as _, Surface, SurfaceRole, Tone, button::Button, h_flex, icon::IconName,
 };
 
 use super::{
-    field::{Input, field_chrome, field_paint},
+    field::{Input, field_chrome},
     state::{InputState, StepDirection},
 };
 use zz_gpui::TextAlign;
@@ -111,7 +111,7 @@ pub struct NumberInput {
     appearance: bool,
     disabled: bool,
     tone: Tone,
-    emphasis: Option<Emphasis>,
+    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
 }
 
@@ -123,7 +123,7 @@ impl NumberInput {
             size: Size::default(),
             appearance: true,
             tone: Tone::Neutral,
-            emphasis: None,
+            surface_role: None,
             on: None,
             disabled: false,
         }
@@ -174,10 +174,10 @@ impl NumberInput {
         self
     }
 
-    /// Draw the field at `emphasis` instead of the look's field emphasis.
+    /// Draw the field as `role` draws, instead of as a field.
     #[must_use]
-    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
-        self.emphasis = Some(emphasis);
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
     }
 
@@ -214,13 +214,14 @@ impl RenderOnce for NumberInput {
         self.state.update(cx, InputState::mark_numeric);
 
         let focused = self.state.read(cx).focus_handle_ref().is_focused(window) && !self.disabled;
-        let paint = field_paint(self.tone, self.emphasis, self.on, cx);
+        let role = self.surface_role.unwrap_or(Kind::Field.role());
+        let surface = Surface::new(role).tone(self.tone).on_maybe(self.on);
         let state = match (self.disabled, focused) {
             (true, _) => PaintState::Disabled,
             (false, true) => PaintState::Focused,
             (false, false) => PaintState::Rest,
         };
-        let ground = paint.ground_at(state);
+        let ground = cx.theme().layer(surface, state).ground;
 
         h_flex()
             .id(("zz-number-input", self.state.entity_id()))
@@ -233,7 +234,7 @@ impl RenderOnce for NumberInput {
             .h(self.size.control_h())
             .items_center()
             .when(self.appearance, |this| {
-                field_chrome(this, paint, state, true, true).rounded(cx.theme().control_radius())
+                field_chrome(this, surface, state, true, true, cx)
             })
             .refine_style(&self.style)
             .child(Self::stepper(
@@ -250,7 +251,7 @@ impl RenderOnce for NumberInput {
                     .with_size(self.size)
                     .disabled(self.disabled)
                     .tone(self.tone)
-                    .when_some(self.emphasis, Input::emphasis)
+                    .surface_role(role)
                     .when_some(self.on, Input::on)
                     .appearance(false)
                     .text_align(TextAlign::Center)

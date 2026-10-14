@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, PaintState, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, Kind, PaintState, StyledExt as _,
     input::{field_chrome, field_paint},
     pane::{
         PaneChrome, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface,
@@ -203,7 +203,7 @@ fn terminal_sample(cx: &App) -> zz_gpui::Div {
 }
 
 fn agent_sample(cx: &App) -> zz_gpui::Div {
-    let paint = field_paint(Tone::Neutral, None, None, cx);
+    let paint = field_paint(Kind::Field, cx);
     let composer = div()
         .flex_none()
         .h(px(24.0))
@@ -223,7 +223,7 @@ fn agent_sample(cx: &App) -> zz_gpui::Div {
                 .child("Ready when you are."),
         )
         .child(
-            field_chrome(composer, paint, PaintState::Rest, true, true)
+            field_chrome(composer, Kind::Field, PaintState::Rest, true, true, cx)
                 .rounded(cx.theme().radius)
                 .text_color(paint.faint_at(PaintState::Rest))
                 .child(

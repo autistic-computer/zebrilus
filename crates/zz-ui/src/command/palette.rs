@@ -277,7 +277,6 @@ pub(super) fn palette_entry(
                     element.child(
                         Keycap::new(shortcut)
                             .small()
-                            .emphasis(Emphasis::Soft)
                             .on(paint.ground_at(state))
                             .font_family(cx.theme().mono_font_family.clone()),
                     )

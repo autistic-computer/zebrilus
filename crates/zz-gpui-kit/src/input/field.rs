@@ -7,9 +7,10 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Disableable, Emphasis, Ground, Paint, PaintExt as _, PaintState, Sizable,
-    Size, StyledExt as _, Tone,
+    ActiveTheme as _, Disableable, Emphasis, Ground, Kind, Layer, Paint, PaintState, Sizable, Size,
+    StyledExt as _, Surface, SurfaceRole, Theme, Tone,
     button::Button,
+    foundation::restyle,
     h_flex,
     icon::{Icon, IconName},
     spinner::Spinner,
@@ -60,49 +61,67 @@ pub struct Input {
     content_type: Option<InputContentType>,
     align: TextAlign,
     tone: Tone,
-    emphasis: Option<Emphasis>,
+    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
 }
 
-/// The paint of a field: `tone` at `emphasis`, or at the look's field
-/// emphasis, on `on` or the window.
-pub fn field_paint(tone: Tone, emphasis: Option<Emphasis>, on: Option<Ground>, cx: &App) -> Paint {
+/// The paint of a field drawn as `surface`: its tone, on its ground or the
+/// window, at the emphasis its role's fill and outline make. Its text,
+/// placeholder and focus colors are the field's.
+pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
+    let surface = surface.into();
     let theme = cx.theme();
     theme.paint_on(
-        on.unwrap_or_else(|| theme.ground()),
-        tone,
-        emphasis.unwrap_or_else(|| theme.field_emphasis()),
+        surface.ground.unwrap_or_else(|| theme.ground()),
+        surface.tone,
+        theme.field_emphasis(surface.role),
     )
 }
 
-/// A field's fill, border and text in `state`, with the hover fill while it
-/// rests. The border is always at least a pixel wide, clear when the paint
-/// has none, so focusing a field never moves its text. A field that holds
-/// more than its text, like the agent composer, draws its shell with this.
+/// A field's fill, border, corners and text in `state`, drawn as `surface`
+/// draws, with the hover highlight while it rests. A role with no fill and
+/// no outline draws no box. The border is always at least a pixel wide,
+/// clear when the role has none, so focusing a field never moves its text;
+/// focus turns it to the field's focus color. A field that holds more than
+/// its text, like the agent composer, draws its shell with this.
 pub fn field_chrome<E: Styled + InteractiveElement>(
     element: E,
-    paint: Paint,
+    surface: impl Into<Surface>,
     state: PaintState,
     bordered: bool,
     focus_bordered: bool,
+    cx: &App,
 ) -> E {
-    let border = match state {
-        PaintState::Focused if !focus_bordered => paint.border_at(PaintState::Rest),
-        _ => paint.border_at(state),
-    };
-    let element = element.painted(paint, state);
+    let surface = surface.into();
+    let theme = cx.theme();
+    let layer = field_layer(theme, surface, state, focus_bordered);
+    let element = element.layer(&layer);
     let element = if bordered {
         element
-            .border(paint.border_width.max(px(1.0)))
-            .border_color(border)
     } else {
         element.border(px(0.0))
     };
     if state == PaintState::Rest {
-        element.hover(move |style| style.bg(paint.hover))
+        let hover = field_layer(theme, surface, PaintState::Hover, focus_bordered);
+        element.hover(move |style| restyle(style, &hover))
     } else {
         element
     }
+}
+
+fn field_layer(theme: &Theme, surface: Surface, state: PaintState, focus_bordered: bool) -> Layer {
+    let mut layer = theme.layer(surface, state);
+    layer.border_width = layer.border_width.max(px(1.0));
+    if state == PaintState::Focused && focus_bordered {
+        layer.border = theme
+            .paint_on(
+                surface.ground.unwrap_or_else(|| theme.ground()),
+                surface.tone,
+                Emphasis::Ghost,
+            )
+            .focus;
+    }
+    layer
 }
 
 /// The text size of a field at `size`.
@@ -127,7 +146,7 @@ impl Input {
             content_type: None,
             align: TextAlign::Left,
             tone: Tone::Neutral,
-            emphasis: None,
+            surface_role: None,
             on: None,
         }
     }
@@ -139,11 +158,10 @@ impl Input {
         self
     }
 
-    /// Draw the field at `emphasis` instead of the look's field emphasis:
-    /// ghost for a field that shows its edge only when hovered or focused.
+    /// Draw the field as `role` draws, instead of as a field.
     #[must_use]
-    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
-        self.emphasis = Some(emphasis);
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
     }
 
@@ -217,6 +235,12 @@ impl Input {
         self
     }
 
+    fn field_surface(&self) -> Surface {
+        Surface::new(self.surface_role.unwrap_or(Kind::Field.role()))
+            .tone(self.tone)
+            .on_maybe(self.on)
+    }
+
     fn sized<E: Styled>(element: E, size: Size) -> E {
         field_text(element.px(size.input_px()).py(size.input_py()), size)
     }
@@ -264,7 +288,8 @@ impl Styled for Input {
 
 impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let paint = field_paint(self.tone, self.emphasis, self.on, cx);
+        let surface = self.field_surface();
+        let paint = field_paint(surface, cx);
         let resting = if self.disabled {
             PaintState::Disabled
         } else {
@@ -336,12 +361,13 @@ impl RenderOnce for Input {
 
         element
             .when(self.appearance, |this| {
-                field_chrome(this, paint, paint_state, self.bordered, self.focus_bordered).rounded(
-                    if multi_line {
-                        cx.theme().radius
-                    } else {
-                        cx.theme().control_radius()
-                    },
+                field_chrome(
+                    this,
+                    surface,
+                    paint_state,
+                    self.bordered,
+                    self.focus_bordered,
+                    cx,
                 )
             })
             .refine_style(&self.style)
@@ -421,5 +447,29 @@ impl RenderOnce for Input {
                         .children(suffix),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Fill, StylePatch, ThemeColor};
+
+    #[test]
+    fn a_field_role_with_no_fill_and_no_outline_draws_no_box() {
+        let theme = Theme::from(&*ThemeColor::dark());
+        let bare = Surface::new(
+            SurfaceRole::new("test.field", Kind::Field, "Bare fields", "")
+                .with(StylePatch::EMPTY.fill(Fill::None).outline(false)),
+        );
+        let rest = field_layer(&theme, bare, PaintState::Rest, true);
+        assert_eq!(rest.fill.a, 0.0);
+        assert!(rest.glass.is_none() && rest.shadow.is_empty());
+        assert_eq!(rest.border.a, 0.0);
+        assert!(rest.border_width >= px(1.0));
+
+        let focused = field_layer(&theme, bare, PaintState::Focused, true);
+        assert_eq!(focused.border_width, rest.border_width);
+        assert!(focused.border.a > 0.0);
     }
 }

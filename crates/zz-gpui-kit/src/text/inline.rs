@@ -12,10 +12,10 @@ use zz_gpui::{
     App, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId, GlobalElementId, Half,
     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyledText,
-    TextAlign, TextLayout, Window, WrappedLineLayout, point, px, quad,
+    TextAlign, TextLayout, TextRun, Window, WrappedLineLayout, point, px, quad,
 };
 
-use crate::{ActiveTheme, WindowExt as _};
+use crate::{ActiveTheme, PaintState, SurfaceRole, WindowExt as _};
 
 use super::{
     global::TextGlobal,
@@ -141,10 +141,25 @@ pub(super) struct Inline {
     links: Rc<Vec<(Range<usize>, LinkMark)>>,
     highlights: Vec<(Range<usize>, HighlightStyle)>,
     code_ranges: Vec<Range<usize>>,
+    code_role: Option<SurfaceRole>,
     styled_text: StyledText,
     streaming_veil: Option<(StreamingVeil, VeilKey)>,
 
     state: Arc<Mutex<InlineState>>,
+}
+
+pub(super) fn code_runs(runs: &mut [TextRun], code_ranges: &[Range<usize>], family: &SharedString) {
+    let mut start = 0;
+    for run in runs {
+        let end = start + run.len;
+        if code_ranges
+            .iter()
+            .any(|range| range.start <= start && end <= range.end)
+        {
+            run.font.family = family.clone();
+        }
+        start = end;
+    }
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -183,6 +198,7 @@ impl Inline {
             links: Rc::new(links),
             highlights,
             code_ranges: Vec::new(),
+            code_role: None,
             text: text.clone(),
             styled_text: StyledText::new(text),
             streaming_veil: None,
@@ -195,6 +211,11 @@ impl Inline {
     /// drop the spans off the shared baseline.
     pub(super) fn code_ranges(mut self, code_ranges: Vec<Range<usize>>) -> Self {
         self.code_ranges = code_ranges;
+        self
+    }
+
+    pub(super) fn code_role(mut self, code_role: Option<SurfaceRole>) -> Self {
+        self.code_role = code_role;
         self
     }
 
@@ -214,8 +235,20 @@ impl Inline {
         if self.code_ranges.is_empty() {
             return;
         }
-        let fill_color = cx.theme().surface(crate::Elevation::Popover).fill;
-        let radius = cx.theme().radius.min(px(CODE_FILL_RADIUS_MAX));
+        let theme = cx.theme();
+        let (fill_color, border_color, border_width, radius) = match self.code_role {
+            Some(role) => {
+                let layer = theme.layer(role, PaintState::Rest);
+                (layer.fill, layer.border, layer.border_width, layer.radius)
+            }
+            None => (
+                theme.surface(crate::Elevation::Popover).fill,
+                theme.transparent,
+                px(0.0),
+                theme.radius,
+            ),
+        };
+        let radius = radius.min(px(CODE_FILL_RADIUS_MAX));
         let line_height = layout.line_height();
         let bounds = layout.bounds();
         let lines = layout.line_layouts();
@@ -229,7 +262,14 @@ impl Inline {
                 line_height,
                 window.text_style().text_align,
             ) {
-                window.paint_quad(zz_gpui::fill(fill, fill_color).corner_radii(radius));
+                window.paint_quad(quad(
+                    fill,
+                    radius,
+                    fill_color,
+                    border_width,
+                    border_color,
+                    BorderStyle::default(),
+                ));
             }
         }
     }
@@ -450,19 +490,7 @@ impl Element for Inline {
             runs.push(text_style.to_run(self.text.len() - ix));
         }
         if !self.code_ranges.is_empty() {
-            let family = cx.theme().mono_font_family.clone();
-            let mut start = 0;
-            for run in &mut runs {
-                let end = start + run.len;
-                if self
-                    .code_ranges
-                    .iter()
-                    .any(|range| range.start <= start && end <= range.end)
-                {
-                    run.font.family = family.clone();
-                }
-                start = end;
-            }
+            code_runs(&mut runs, &self.code_ranges, &cx.theme().mono_font_family);
         }
         if let Some((veil, key)) = &self.streaming_veil {
             runs = veil.runs(*key, self.text.as_ref(), runs, cx);

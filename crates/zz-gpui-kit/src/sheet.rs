@@ -10,8 +10,10 @@ use zz_gpui::{
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, PaintState, StyledExt as _,
+    SurfaceRole, Tone,
     button::{Button, ButtonVariants as _},
+    foundation::{row_corners, row_radius},
 };
 
 const ENTER: Duration = Duration::from_millis(240);
@@ -37,6 +39,7 @@ pub struct BottomSheet {
     bottom_inset: Pixels,
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
+    surface_role: Option<SurfaceRole>,
 }
 
 pub fn bottom_sheet(
@@ -55,6 +58,7 @@ pub fn bottom_sheet(
         bottom_inset,
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
+        surface_role: None,
     }
 }
 
@@ -62,6 +66,13 @@ impl BottomSheet {
     #[must_use]
     pub fn content_scroll(mut self, handle: ScrollHandle) -> Self {
         self.content_scroll = Some(handle);
+        self
+    }
+
+    /// Draw the sheet as `role` draws, instead of as a sheet.
+    #[must_use]
+    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+        self.surface_role = Some(role);
         self
     }
 }
@@ -108,7 +119,13 @@ pub fn sheet_option(
     checked: bool,
     cx: &App,
 ) -> Stateful<Div> {
-    sheet_row(id, checked.then(|| Icon::new(IconName::Check)), label, cx)
+    sheet_row(
+        id,
+        Kind::Row.role(),
+        checked.then(|| Icon::new(IconName::Check)),
+        label,
+        cx,
+    )
 }
 
 /// A command at the end of a picker sheet, like "New session": an option row
@@ -120,31 +137,44 @@ pub fn sheet_action(
     cx: &App,
 ) -> Stateful<Div> {
     let muted = cx.theme().foreground.muted();
-    sheet_row(id, Some(Icon::new(icon).text_color(muted)), label, cx)
+    sheet_row(
+        id,
+        Kind::Row.role(),
+        Some(Icon::new(icon).text_color(muted)),
+        label,
+        cx,
+    )
 }
 
-fn sheet_row(
+/// A row of a picker sheet drawn as `role`, a row role: `slot` in front
+/// where an option shows its check, then the label. Touch rows show the
+/// row's press, never a hover.
+pub fn sheet_row(
     id: impl Into<ElementId>,
+    role: SurfaceRole,
     slot: Option<Icon>,
     label: impl Into<SharedString>,
     cx: &App,
 ) -> Stateful<Div> {
     let id = id.into();
-    let theme = cx.theme();
+    let layer = cx.theme().layer(role, PaintState::Rest);
+    let height = px(OPTION_HEIGHT);
     div()
         .id(id.clone())
         .relative()
         .flex()
         .items_center()
         .gap(px(10.0))
-        .h(px(OPTION_HEIGHT))
+        .h(height)
         .px(px(12.0))
         .flex_none()
         .cursor_pointer()
+        .layer(&layer)
+        .map(|this| row_corners(this, &layer, height))
         .child(crate::touch::instant_press_highlight(
             id,
             None,
-            theme.row_radius(px(OPTION_HEIGHT)),
+            row_radius(&layer, height),
         ))
         .child(
             div()
@@ -363,7 +393,7 @@ impl RenderOnce for BottomSheet {
             .flex()
             .flex_col()
             .occlude()
-            .popover_style(cx)
+            .surface(self.surface_role.unwrap_or(Kind::Sheet.role()), cx)
             .rounded_bl(px(0.0))
             .rounded_br(px(0.0))
             .font_family(theme.font_family.clone())
