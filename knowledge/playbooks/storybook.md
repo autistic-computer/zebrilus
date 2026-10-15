@@ -39,8 +39,8 @@ just storybook serve    # serve the last build
 ```
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&radius=4`.
-Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`:
-the built-in the knobs start from, materials and roles both), the theme's `name`,
+Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default` or
+`liquid-glass`: the built-in the knobs start from, materials and roles both, picked under Start from), the theme's `name`,
 the materials (`radius`, `outline`, `row-inset`, `primary`, `highlights` (`lift` or `flat`), `font`, `glass` with its sliders, the
 contact shadow as `contact-y`, `contact-blur`, `contact-spread`, `contact-strength` and the float
 shadow as `float-y`, `float-blur`, `float-spread`, `float-strength`), `roles` (the theme file's
@@ -50,17 +50,17 @@ theme's alpha, or the palette's when the theme sets none), `contrast`, the tint 
 degrees with 260 as the default, and `tint`, 0 to 1, as `chrome-tint-hue` and `chrome-tint` set it
 in the app), `zoom`, the pane knobs
 (`pane-gaps`, `pane-margin`, `pane-opacity`,
-`pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes, where pane corners and the pane
-edge follow the theme's radius and outline; `pane-gaps` drives the Theme
+`pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes, where pane corners follow the
+theme's radius and the pane edge its glass, or its outline in a theme without glass; `pane-gaps` drives the Theme
 creator and makes the glass pane frame own the pane fill, as in the app, while other stories show
 gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `motion` (`motion=0` turns
 animations off and freezes spinners). Two more keys only steer the page: `step` (`colors`,
 `materials`, `roles`, `export`, `app`) opens a step of the knob panel, and `inspect=<role id>` picks a role
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
 they stay in the URL. The Settings story's Appearance pickers section (`#/settings/appearance`)
-draws the Interface page's Theme rows with the builders the app uses: the mode tiles, the Style
-strip over the look on screen, the accent swatches with a custom picker (both rounding with the
-corner radius), the tint sliders (which follow the tint knobs) and the Saved themes strip, then
+draws the Interface page's Theme rows with the builders the app uses: the Mode tiles, the Themes
+strip (Default, Liquid Glass and a saved theme), the accent swatches with a custom picker (both
+rounding with the corner radius) and the tint sliders (which follow the tint knobs), then
 the Advanced heading and its Corner radius and Contrast sliders.
 
 The Theme creator story is every surface of zz in eight regions (Workspace, Flat sidebar, Panes,
@@ -74,10 +74,9 @@ HUD, the key row with the prefix menu open (`PopoverKey::open`) and the arrow pa
 with too) and the sessions sheet.
 Its knob panel is four steps and an App tab:
 Colors (the mode with Contrast, Tint hue and Tint, palettes, font), Materials
-(presets, shape, glass, both shadows),
+(shape, glass, both shadows),
 Roles and Export (the theme file with Copy and Import), then App (the pane settings and the
-preview backdrop and animations, none of which are in the theme). A material preset sets every
-material and leaves the roles, colors and font alone. The Roles step lists every kind with its groups and
+preview backdrop and animations, none of which are in the theme). The Roles step lists every kind with its groups and
 roles indented under it (`zz_ui::roles::members`), with the props each role's knobs allow
 (`SurfaceRole::knobs`) as segmented controls. A prop left on inherit shows the value it inherits
 and from which kind or group, built in or from this theme. Setting a prop on a role
@@ -110,7 +109,7 @@ authoring rules; the short version:
 # Check a change
 
 Edit the component in `crates/zz-ui` or `crates/zz-gpui-kit`, let `just storybook run` rebuild,
-reload, and walk the knobs: light and dark, a few material presets, radius 0 and 25 (where every
+reload, and walk the knobs: light and dark, both built-in themes, radius 0 and 25 (where every
 button turns pill), outline 0,
 both shadow strengths at 0, row inset 0, contrast extremes, a full tint, zoom. The sections re-render live as
 knobs move.
@@ -135,7 +134,6 @@ itself with, or on `story::Framed::framed`, the edge of a frame that stands in f
   `storybook.theme()` (the theme file the knobs describe), `storybook.importTheme(json)`,
   `storybook.step("roles")`, `storybook.roles()` (the role tree with inherited and resolved styles),
   `storybook.setRole("chrome.button", "fill", "glass")` (`"inherit"` clears a prop),
-  `storybook.presets()` and `storybook.preset("flat")`,
   `storybook.inspect("button")`, and
   the `zzGpui` API from [zz-gpui web windows for agents](/references/zz-gpui-web-agents.md) for the live
   UI (`zzGpui.find`, `zzGpui.click`, `zzGpui.capture`).

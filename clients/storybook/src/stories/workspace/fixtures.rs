@@ -11,7 +11,7 @@ use zz_protocol::{
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     navigation::status::{StatusAction, StatusPaneEntry},
-    pane::{PaneChrome, pane_drag_button, pane_surface, terminal_pane_header},
+    pane::{PaneChrome, PaneDragSource, pane_surface, terminal_pane_header},
 };
 
 /// What a freshly split pane offers, as the desktop and thin clients list
@@ -193,14 +193,7 @@ impl TerminalPane {
         let header = terminal_pane_header(
             self.active,
             self.title,
-            pane_drag_button(
-                ("terminal-drag", self.id),
-                PaneId(self.id),
-                self.title.into(),
-                true,
-                |_, _, _| {},
-                cx,
-            ),
+            PaneDragSource::new(PaneId(self.id), self.title, true, |_, _, _| {}),
             |_, _, _| {},
             cx,
         );

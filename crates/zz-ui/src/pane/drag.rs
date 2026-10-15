@@ -1,8 +1,8 @@
-use std::time::Duration;
+use std::{rc::Rc, time::Duration};
 
 use zz_gpui::{
-    App, Bounds, Context, CursorStyle, ElementId, Entity, IntoElement, Pixels, Point, Render,
-    Window, div, prelude::*, px,
+    AnyElement, App, Bounds, Context, CursorStyle, Div, ElementId, Entity, IntoElement, Pixels,
+    Point, Render, Stateful, Window, div, prelude::*, px,
 };
 use zz_protocol::PaneId;
 
@@ -84,26 +84,61 @@ pub fn pane_drag_preview(
     cx.new(|_| PaneDragPreview { pane, title, grab })
 }
 
-pub fn pane_drag_button(
-    id: impl Into<ElementId>,
+/// What dragging a pane by its header needs: the pane, the title its drag
+/// chip shows, whether it may move now, and what to do when a drag starts.
+pub struct PaneDragSource {
     pane: PaneId,
     title: String,
     enabled: bool,
-    on_start: impl Fn(&PaneDrag, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
-    div()
-        .id(id)
-        .aria_label("Drag pane")
-        .debug_selector(|| "pane-drag-handle".into())
-        .flex_none()
-        .child(
-            pane_header_icon_button("pane-drag-control", IconName::GripVertical, enabled, cx)
-                .tooltip("Drag pane · hold and move to split or swap")
-                .when(enabled, |button| button.cursor(CursorStyle::OpenHand)),
-        )
-        .when(enabled, |button| {
-            button.cursor(CursorStyle::OpenHand).on_drag(
+    on_start: Rc<dyn Fn(&PaneDrag, &mut Window, &mut App)>,
+    touch: Option<AnyElement>,
+}
+
+impl PaneDragSource {
+    pub fn new(
+        pane: PaneId,
+        title: impl Into<String>,
+        enabled: bool,
+        on_start: impl Fn(&PaneDrag, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        Self {
+            pane,
+            title: title.into(),
+            enabled,
+            on_start: Rc::new(on_start),
+            touch: None,
+        }
+    }
+
+    /// Lays `overlay` over the dragged element while enabled, for a client
+    /// that drags panes with its own touch handling.
+    #[must_use]
+    pub fn touch(mut self, overlay: impl IntoElement) -> Self {
+        self.touch = Some(overlay.into_any_element());
+        self
+    }
+
+    pub const fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// `element`, dragging the pane while the source is enabled.
+    pub fn attach(self, element: Stateful<Div>) -> Stateful<Div> {
+        if !self.enabled {
+            return element;
+        }
+        let Self {
+            pane,
+            title,
+            on_start,
+            touch,
+            ..
+        } = self;
+        element
+            .relative()
+            .children(touch)
+            .cursor(CursorStyle::OpenHand)
+            .on_drag(
                 PaneDrag {
                     pane,
                     requires_prefix: false,
@@ -116,7 +151,29 @@ pub fn pane_drag_button(
                     pane_drag_preview(drag.pane, title.clone(), grab, cx)
                 },
             )
-        })
+    }
+}
+
+pub fn pane_drag_button(
+    id: impl Into<ElementId>,
+    pane: PaneId,
+    title: String,
+    enabled: bool,
+    on_start: impl Fn(&PaneDrag, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<Div> {
+    PaneDragSource::new(pane, title, enabled, on_start).attach(
+        div()
+            .id(id)
+            .aria_label("Drag pane")
+            .debug_selector(|| "pane-drag-handle".into())
+            .flex_none()
+            .child(
+                pane_header_icon_button("pane-drag-control", IconName::GripVertical, enabled, cx)
+                    .tooltip("Drag pane · hold and move to split or swap")
+                    .when(enabled, |button| button.cursor(CursorStyle::OpenHand)),
+            ),
+    )
 }
 
 #[cfg(test)]

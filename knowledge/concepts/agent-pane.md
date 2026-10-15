@@ -684,7 +684,7 @@ its wrap fragments do not have stable identities across reflow.
 
 The native composer is a centered field shell that auto-grows from two to eight lines:
 `field_chrome` drawn as the `agent.composer` role, whose border turns to the focus color while the
-input has focus.
+input has focus, unless the theme draws no outlines or the composer is glass.
 Enter sends when the session is ready; Shift+Enter inserts a newline. The controller returns to ready
 on ACP completion and marks in-flight tools cancelled when the stop reason is `cancelled`.
 Send is disabled on an empty draft, not just on a busy connection, so the primary control never
@@ -811,14 +811,19 @@ keeps its window name and uses the first agent in layout order for the marker.
 The desktop controller uses a saved history title when a successful load carries no title metadata;
 provider title updates take precedence. New sessions and acknowledged provider switches clear the
 previous name, while failed history loads retain it. Replaying an already-open session without title
-metadata preserves its current name. The desktop header ends with Drag pane, Split bottom, Split
-right, and Close pane. The split buttons open a pane picker below or to the right, matching the
-terminal header. Pressing and moving the drag handle uses the existing split/swap previews without
-arming the mux prefix. Release drops the pane; Escape or window deactivation cancels. The handle
-stays disabled when zoomed or when the window has only one pane. Shared `pane::pane_drag_button`,
-`PaneDrag`, and `pane_drag_preview` in `crates/zz-ui` also support other pane types; desktop pane
-views emit `PaneDrag` to the workspace when the gesture starts. Prefix dragging keeps its existing
-behavior. The browser client has the split and close buttons but does not yet support pane drag reordering.
+metadata preserves its current name. The header's title is a pill
+(`agent::controls::agent_pane_title`, a `pane::PaneTitle`) holding the provider icon, the provider
+name and the session title, as in the terminal header; clicking the session title still renames
+it. The header ends with Split bottom and Split right, which open a pane picker below or to the
+right, matching the terminal header. Pressing and moving the title pill uses the existing
+split/swap previews without arming the mux prefix. Release drops the pane; Escape or window
+deactivation cancels. Dragging stays off when zoomed or when the window has only one pane.
+Pointed at, the pill's icon turns into the move arrows and an X at its right end closes the pane;
+under a coarse pointer the X always shows. Shared `pane::PaneDragSource`, `PaneDrag`, and
+`pane_drag_preview` in `crates/zz-ui` serve every pane type; desktop pane views emit `PaneDrag`
+to the workspace when the gesture starts. Prefix dragging keeps its existing behavior. The web
+and iPad header is the same pill, with iPad's touch drag laid over it
+(`PaneDragSource::touch`).
 The desktop composer footer places the combined project picker opposite the Git summary. Its
 button shows the cwd's last component and its full path in a tooltip. Local panes discover folders
 through `DirectoryCatalog`; remote panes offer directories from their provider session catalog.

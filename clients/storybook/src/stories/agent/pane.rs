@@ -12,7 +12,7 @@ use zz_ui::{
         AgentPaneStatus, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind,
         AgentToolStatus as Status, TimelineRow, agent_pane_header, agent_status_pill,
         composer::COMPOSER_OUTER_PADDING,
-        controls::agent_provider_label,
+        controls::agent_pane_title,
         fold_timeline_rows,
         presentation::spinner_phase,
         tasks::{TaskTrayAction, TrayPanel, task_tray},
@@ -20,7 +20,7 @@ use zz_ui::{
     },
     h_flex,
     input::InputState,
-    pane::{pane_drag_button, pane_header_icon_button},
+    pane::{PaneDragSource, pane_header_icon_button},
     scroll::Scrollbar,
 };
 
@@ -128,18 +128,12 @@ impl Render for FullPane {
             },
             cx,
         );
-        let leading = h_flex()
-            .min_w_0()
-            .gap(px(CHROME_GAP))
-            .child(agent_provider_label(AgentProvider::ClaudeCode, cx))
-            .child(agent_thread_title_editor(
-                "full-pane-title",
-                TITLE,
-                true,
-                |_, _| {},
-                window,
-                cx,
-            ));
+        let leading = agent_pane_title(
+            AgentProvider::ClaudeCode,
+            agent_thread_title_editor("full-pane-title", TITLE, true, |_, _| {}, window, cx),
+            PaneDragSource::new(PaneId(1), TITLE, true, |_, _, _| {}),
+            |_, _| {},
+        );
         let trailing = h_flex()
             .gap(px(CHROME_GAP))
             .child(
@@ -149,18 +143,6 @@ impl Render for FullPane {
             .child(
                 pane_header_icon_button("full-pane-split-right", IconName::PanelRight, true, cx)
                     .tooltip("Split right"),
-            )
-            .child(pane_drag_button(
-                "full-pane-drag",
-                PaneId(1),
-                TITLE.to_owned(),
-                true,
-                |_, _, _| {},
-                cx,
-            ))
-            .child(
-                pane_header_icon_button("full-pane-close", IconName::Xmark, true, cx)
-                    .tooltip("Close pane"),
             );
         let status = agent_status_pill(
             "full-pane-status",

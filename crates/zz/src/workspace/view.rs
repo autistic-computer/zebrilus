@@ -52,9 +52,9 @@ use zz_ui::{
 use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneChrome, PaneDrag, PaneDragOverlayState,
-        PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
-        TERMINAL_HEADER_HEIGHT, TerminalPaneAction, pane_border_color, pane_drag_button,
-        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame, pane_indicator,
+        PaneDragSource, PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
+        TERMINAL_HEADER_HEIGHT, TerminalPaneAction, pane_border_color, pane_drag_overlay,
+        pane_drag_preview, pane_drop_preview, pane_header_frame, pane_indicator,
         pane_indicator_overlay, pane_overlay_stack, pane_split_hit_target, pane_split_slot,
         pane_split_surface, pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
         terminal_pane_header,
@@ -575,18 +575,11 @@ impl Render for TerminalHeaderView {
         let header = terminal_pane_header(
             state.active,
             title.clone(),
-            pane_drag_button(
-                ("terminal-pane-drag", pane.0),
-                pane,
-                title,
-                state.can_drag,
-                move |drag, _, cx| {
-                    if let Some(app) = drag_app.upgrade() {
-                        app.update(cx, |view, cx| view.on_pane_drag_start(*drag, cx));
-                    }
-                },
-                cx,
-            ),
+            PaneDragSource::new(pane, title, state.can_drag, move |drag, _, cx| {
+                if let Some(app) = drag_app.upgrade() {
+                    app.update(cx, |view, cx| view.on_pane_drag_start(*drag, cx));
+                }
+            }),
             move |action, _, cx| {
                 let command = match action {
                     TerminalPaneAction::SplitBottom => picker_split_command(pane, Axis::Vertical),

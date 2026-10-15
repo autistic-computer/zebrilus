@@ -503,7 +503,6 @@ fn theme_overrides_from(config: &zz_config::AppConfig) -> interface_theme::Theme
         (value.provenance == ConfigProvenance::Override).then_some(value.value)
     }
     interface_theme::ThemeOverrides {
-        style: set(config.interface_style).map(str::to_owned),
         radius: set(config.widget_corner_radius),
         accent: set(config.chrome_accent)
             .filter(|accent| *accent != zz_client::appearance::AccentSetting::Theme)
@@ -976,15 +975,10 @@ mod tests {
         load_themes(&path, &mut parsed, &Themes::default());
         assert_f32_eq(parsed.config.widget_corner_radius.value, 9.0);
 
-        let mut parsed = parse_config("interface-theme = square\ninterface-style = capsule\n");
-        load_themes(&path, &mut parsed, &Themes::default());
-        assert_f32_eq(
-            parsed.config.widget_corner_radius.value,
-            interface_theme::material_preset("capsule")
-                .expect("the Capsule style")
-                .materials
-                .radius,
-        );
+        let mut parsed = parse_config("interface-theme = liquid-glass\n");
+        let loaded = load_themes(&path, &mut parsed, &Themes::default());
+        assert_eq!(loaded.active.name, "Liquid Glass");
+        assert_f32_eq(parsed.config.widget_corner_radius.value, 25.0);
 
         let mut parsed = parse_config("interface-theme = missing\n");
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
@@ -2417,13 +2411,13 @@ mod tests {
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
 
-        for (style, accent, tint) in [
-            (Some("brutal"), Some("green"), Some("1")),
-            (Some("capsule"), Some("#ff8800"), None),
+        for (theme, accent, tint) in [
+            (Some("liquid-glass"), Some("green"), Some("1")),
+            (None, Some("#ff8800"), None),
             (None, None, None),
         ] {
             for (key, value) in [
-                (ConfigKey::InterfaceStyle, style),
+                (ConfigKey::InterfaceTheme, theme),
                 (ConfigKey::ChromeAccent, accent),
                 (ConfigKey::ChromeTint, tint),
             ] {
@@ -2432,9 +2426,11 @@ mod tests {
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                let mut expected = interface_theme::default_theme().clone();
+                let mut expected =
+                    interface_theme::builtin_theme(theme.unwrap_or(interface_theme::DEFAULT_THEME))
+                        .expect("a built-in theme")
+                        .clone();
                 interface_theme::ThemeOverrides {
-                    style: style.map(str::to_owned),
                     accent: accent.map(str::to_owned),
                     tint: tint.map(|tint| tint.parse().expect("a number")),
                     ..interface_theme::ThemeOverrides::default()
@@ -2448,8 +2444,6 @@ mod tests {
                     resolved_config(cx).widget_corner_radius.value,
                     expected.materials.radius,
                 );
-                let provenance = resolved_config(cx).interface_style.provenance;
-                assert_eq!(provenance == ConfigProvenance::Override, style.is_some());
             });
         }
     }
@@ -2510,8 +2504,6 @@ mod tests {
         }
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
-        write_config_edit_at(&path, ConfigKey::InterfaceStyle.as_str(), Some("brutal"))
-            .expect("write style");
         cx.update(zz_ui::init);
         let shadows = cx.update(|cx| {
             install_config(Some(&path), Some(load_config(&path)), cx);
@@ -3179,7 +3171,6 @@ mod tests {
             "browser-egress",
             "theme-mode",
             "interface-theme",
-            "interface-style",
             "ui-font-family",
             "app-icon",
         ];

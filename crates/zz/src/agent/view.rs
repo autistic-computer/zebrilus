@@ -7,7 +7,7 @@ use std::{
 use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, composer_ground};
 use zz_ui::agent::controls::{
     AgentControlChoice, AgentControlSelection, ComposerAction, agent_chrome_button,
-    agent_config_picker, agent_directory_button, agent_model_picker, agent_provider_label,
+    agent_config_picker, agent_directory_button, agent_model_picker, agent_pane_title,
     agent_queue_chip, composer_action, composer_action_button, context_usage_meter,
     git_summary_footer,
 };
@@ -54,7 +54,7 @@ use zz_ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    pane::{PaneDrag, pane_drag_button, pane_header_icon_button},
+    pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     scroll::Scrollbar,
 };
 
@@ -2839,85 +2839,64 @@ impl Render for AgentView {
             .map_or_else(|| "New session".to_owned(), |pane| pane.title.clone());
         let mux = self.mux.clone();
         let pane = self.pane;
-        let header_controls = h_flex()
-            .min_w_0()
-            .gap(px(CHROME_GAP))
-            .child(agent_provider_label(state.provider, cx))
-            .child(agent_thread_title_editor(
-                ("agent-thread-title", pane.0),
-                &title,
-                self.mux.read(cx).is_connected(),
-                move |title, cx| {
-                    mux.read(cx).execute(CommandInvocation::new(
-                        "select-pane",
-                        vec![
-                            "-t".to_owned(),
-                            pane.to_string(),
-                            "-T".to_owned(),
-                            title.to_owned(),
-                        ],
-                    ));
-                },
-                window,
-                cx,
-            ));
-        let header_drag = pane_drag_button(
-            ("agent-pane-drag", pane.0),
-            pane,
-            title,
-            can_drag,
-            move |drag, _, cx| view.update(cx, |_, cx| cx.emit(*drag)),
+        let title_editor = agent_thread_title_editor(
+            ("agent-thread-title", pane.0),
+            &title,
+            self.mux.read(cx).is_connected(),
+            move |title, cx| {
+                mux.read(cx).execute(CommandInvocation::new(
+                    "select-pane",
+                    vec![
+                        "-t".to_owned(),
+                        pane.to_string(),
+                        "-T".to_owned(),
+                        title.to_owned(),
+                    ],
+                ));
+            },
+            window,
             cx,
         );
-        let header_actions = h_flex()
-            .flex_none()
-            .gap(px(CHROME_GAP))
-            .children(
-                [
-                    (
-                        "agent-split-bottom",
-                        IconName::PanelBottom,
-                        "Split bottom",
-                        Axis::Vertical,
-                    ),
-                    (
-                        "agent-split-right",
-                        IconName::PanelRight,
-                        "Split right",
-                        Axis::Horizontal,
-                    ),
-                ]
-                .into_iter()
-                .map(|(id, icon, label, axis)| {
-                    let mux = self.mux.clone();
-                    pane_header_icon_button((id, pane.0), icon, mux.read(cx).is_connected(), cx)
-                        .tooltip(label)
-                        .on_click(move |_, _, cx| {
-                            mux.read(cx).execute(picker_split_command(pane, axis));
-                            cx.stop_propagation();
-                        })
-                }),
-            )
-            .child(header_drag)
-            .child(
-                pane_header_icon_button(
-                    ("agent-pane-close", pane.0),
-                    IconName::Xmark,
-                    self.mux.read(cx).is_connected(),
-                    cx,
-                )
-                .tooltip("Close pane")
-                .on_click({
-                    let mux = self.mux.clone();
-                    move |_, _, cx| {
-                        mux.read(cx).execute(CommandInvocation::new(
-                            "kill-pane",
-                            vec!["-t".to_owned(), pane.to_string()],
-                        ));
+        let close_mux = self.mux.clone();
+        let header_controls = agent_pane_title(
+            state.provider,
+            title_editor,
+            PaneDragSource::new(pane, title, can_drag, move |drag, _, cx| {
+                view.update(cx, |_, cx| cx.emit(*drag));
+            }),
+            move |_, cx| {
+                close_mux.read(cx).execute(CommandInvocation::new(
+                    "kill-pane",
+                    vec!["-t".to_owned(), pane.to_string()],
+                ));
+            },
+        );
+        let header_actions = h_flex().flex_none().gap(px(CHROME_GAP)).children(
+            [
+                (
+                    "agent-split-bottom",
+                    IconName::PanelBottom,
+                    "Split bottom",
+                    Axis::Vertical,
+                ),
+                (
+                    "agent-split-right",
+                    IconName::PanelRight,
+                    "Split right",
+                    Axis::Horizontal,
+                ),
+            ]
+            .into_iter()
+            .map(|(id, icon, label, axis)| {
+                let mux = self.mux.clone();
+                pane_header_icon_button((id, pane.0), icon, mux.read(cx).is_connected(), cx)
+                    .tooltip(label)
+                    .on_click(move |_, _, cx| {
+                        mux.read(cx).execute(picker_split_command(pane, axis));
                         cx.stop_propagation();
-                    }
-                }),
-            );
+                    })
+            }),
+        );
         let view = cx.entity();
         let input_focus = self.focus(cx);
         let timeline = AgentTimeline::new(

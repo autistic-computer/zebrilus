@@ -132,14 +132,21 @@ pub const PANE_HEADER_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "pane.header.button",
     "Pane header buttons",
-    "Split, close and drag in pane headers",
+    "Split in pane headers, and the X in a pane title",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
+pub const PANE_TITLE: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::QUIET_BUTTON,
+    "pane.header.title",
+    "Pane titles",
+    "The title in a pane header: drag it to move the pane, its X closes it",
+)
+.with(P.hover(Highlight::Tint).selected(Highlight::Tint));
 pub const PANE_CHIP: SurfaceRole = SurfaceRole::new(
     "pane.chip",
     Kind::Floating,
     "Pane chips",
-    "Status over a pane: Dead, Waiting, Sync, Copy mode, the agent's status, the vim mode",
+    "Status over a pane: Dead, Waiting, Sync, Copy mode, the vim mode",
 )
 .with(P.shadow(Shadow::Contact).selected(Highlight::Tint))
 .with_knobs(Kind::Floating.knobs().pressable())
@@ -179,6 +186,12 @@ pub const DRAG_CHIP: SurfaceRole = SurfaceRole::new(
 )
 .capsule(true);
 
+pub const AGENT_STATUS: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::BADGE,
+    "agent.status",
+    "Agent status",
+    "Running, Waiting for you and Exited in an agent pane's header",
+);
 pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "agent.bubble",
     Kind::Card,
@@ -466,6 +479,7 @@ const ZZ: &[SurfaceRole] = &[
     WINDOW_CONTROLS,
     ROW_ACTION,
     PANE_HEADER_BUTTON,
+    PANE_TITLE,
     AGENT_SEND,
     AGENT_JUMP,
     AGENT_ACTION,
@@ -485,6 +499,7 @@ const ZZ: &[SurfaceRole] = &[
     PANE_STACK,
     AGENT_COMPOSER,
     AGENT_PICKER,
+    AGENT_STATUS,
     ADDRESS_BAR,
     STATUS_CHIP,
     PHONE_PILL_ICON,

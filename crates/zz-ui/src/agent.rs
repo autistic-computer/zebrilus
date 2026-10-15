@@ -3686,7 +3686,15 @@ pub fn agent_pane_header(
         .when(show_separator, |header| {
             header.rule_on(crate::roles::BAR_RULE, Edge::Bottom, cx)
         })
-        .child(div().flex_1().min_w_0().overflow_hidden().child(leading))
+        .child(
+            div()
+                .flex()
+                .flex_1()
+                .min_w_0()
+                .items_center()
+                .overflow_hidden()
+                .child(leading),
+        )
         .children(status)
         .child(
             h_flex()
@@ -3736,7 +3744,7 @@ pub fn agent_status_pill(
     };
     let badge = Badge::new(label)
         .tone(tone)
-        .surface_role(crate::roles::PANE_CHIP)
+        .surface_role(crate::roles::AGENT_STATUS)
         .when_some(icon, Badge::icon)
         .when(quiet, |badge| {
             badge.text_color(paint.muted_at(PaintState::Rest))

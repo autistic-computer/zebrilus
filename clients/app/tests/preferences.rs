@@ -9,7 +9,6 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
         zoom: f32::NAN,
         contrast: f32::INFINITY,
         overrides: ThemeOverrides {
-            style: Some("unknown".into()),
             radius: Some(-20.0),
             accent: Some("unknown".into()),
             tint: Some(4.0),

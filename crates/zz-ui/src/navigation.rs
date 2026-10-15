@@ -6,8 +6,8 @@ pub mod tree;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Ground, Icon, IconName,
-    InteractiveSurfaceExt as _, Layer, PaintState, StyledExt as _, Surface, SurfaceRole,
-    TITLE_BAR_HEIGHT, Tone,
+    InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _, Surface,
+    SurfaceRole, TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     rems_from_px, roles,
     tooltip::Tooltip,
@@ -35,6 +35,10 @@ const WORKSPACE_SIDEBAR_FOOTER_TOP: f32 = 4.0;
 const WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(26.0);
+/// The sidebar toggle, settings and view switch: icon buttons a little
+/// larger than the status pills, with 15px glyphs.
+pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = px(28.0);
+const WORKSPACE_CHROME_ICON_SIZE: Pixels = px(15.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(16.0);
 const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
@@ -115,14 +119,15 @@ fn workspace_chrome_button(
 ) -> Button {
     Button::compact_icon(id, icon)
         .surface_role(roles::CHROME_BUTTON)
-        .size(WORKSPACE_STATUS_PILL_HEIGHT)
+        .with_size(WORKSPACE_CHROME_ICON_SIZE / 0.75)
+        .size(WORKSPACE_CHROME_BUTTON_SIZE)
         .tooltip(tooltip)
 }
 
 #[must_use]
 pub fn workspace_chrome_controls_width_for(count: usize, window: &Window) -> Pixels {
     let count = f32::from(u16::try_from(count).unwrap_or(u16::MAX));
-    WORKSPACE_STATUS_PILL_HEIGHT * count
+    WORKSPACE_CHROME_BUTTON_SIZE * count
         + rems_from_px(WORKSPACE_CHROME_CONTROL_GAP).to_pixels(window.rem_size())
             * (count - 1.0).max(0.0)
 }
@@ -265,7 +270,7 @@ fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
 
 fn workspace_row_action_gap() -> Pixels {
     px(WORKSPACE_SIDEBAR_EDGE_INSET)
-        + (WORKSPACE_STATUS_PILL_HEIGHT - px(COMPACT_ICON_BUTTON_SIZE)) / 2.0
+        + (WORKSPACE_CHROME_BUTTON_SIZE - px(COMPACT_ICON_BUTTON_SIZE)) / 2.0
 }
 
 /// The strip under the sidebar's navigation: settings on the leading edge,

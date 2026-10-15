@@ -10,7 +10,7 @@ use std::{
 use zz_client::StatusBarSettings;
 use zz_client::appearance::{
     ACCENTS, AccentSetting, AppIconSetting, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE,
-    MAX_CORNER_RADIUS, STYLE_PRESETS, ThemeModeSetting, is_builtin_theme,
+    MAX_CORNER_RADIUS, ThemeModeSetting, is_builtin_theme,
 };
 use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{HostEntry, RejectedHost, configured_fleet_hosts, validate_fleet_host};
@@ -145,7 +145,6 @@ pub enum ConfigKey {
     BrowserEgress,
     ThemeMode,
     InterfaceTheme,
-    InterfaceStyle,
     UiFontFamily,
     AppIcon,
 }
@@ -194,7 +193,6 @@ impl ConfigKey {
             Self::BrowserEgress => "browser-egress",
             Self::ThemeMode => "theme-mode",
             Self::InterfaceTheme => "interface-theme",
-            Self::InterfaceStyle => "interface-style",
             Self::UiFontFamily => "ui-font-family",
             Self::AppIcon => "app-icon",
         }
@@ -243,7 +241,6 @@ impl ConfigKey {
             "browser-egress" => Some(Self::BrowserEgress),
             "theme-mode" => Some(Self::ThemeMode),
             "interface-theme" => Some(Self::InterfaceTheme),
-            "interface-style" => Some(Self::InterfaceStyle),
             "ui-font-family" => Some(Self::UiFontFamily),
             "app-icon" => Some(Self::AppIcon),
             _ => None,
@@ -295,24 +292,15 @@ impl ConfigKey {
             | Self::BrowserEgress
             | Self::ThemeMode
             | Self::InterfaceTheme
-            | Self::InterfaceStyle
             | Self::ChromeAccent
             | Self::UiFontFamily
             | Self::AppIcon => None,
         }
     }
 
-    /// The presets a preset key accepts, or `None` for any other key.
-    pub const fn choices(self) -> Option<&'static [&'static str]> {
-        match self {
-            Self::InterfaceStyle => Some(&STYLE_PRESETS),
-            _ => None,
-        }
-    }
-
-    /// The keys a picked theme replaces with its own: its style and its
-    /// corner radius. The accent and the tint stay.
-    pub const THEME_PICKS: [Self; 2] = [Self::InterfaceStyle, Self::WidgetCornerRadius];
+    /// The keys a picked theme replaces with its own: its corner radius. The
+    /// accent and the tint stay.
+    pub const THEME_PICKS: [Self; 1] = [Self::WidgetCornerRadius];
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -466,8 +454,6 @@ pub struct AppConfig {
     /// The built-in theme `interface-theme` names, or the default when it
     /// names a saved one; see [`ParsedConfig::theme`].
     pub interface_theme: ConfigValue<&'static str>,
-    /// The material preset drawn over the theme, while overridden.
-    pub interface_style: ConfigValue<&'static str>,
     pub app_icon: ConfigValue<AppIconSetting>,
 }
 
@@ -515,7 +501,6 @@ impl Default for AppConfig {
             browser_egress: ConfigValue::from_default(DEFAULT_BROWSER_EGRESS),
             theme_mode: ConfigValue::from_default(ThemeModeSetting::System),
             interface_theme: ConfigValue::from_default(DEFAULT_THEME),
-            interface_style: ConfigValue::from_default(DEFAULT_THEME),
             app_icon: ConfigValue::from_default(AppIconSetting::Automatic),
         }
     }
@@ -527,24 +512,6 @@ impl AppConfig {
     pub fn follow_theme_radius(&mut self, radius: f32) {
         if self.widget_corner_radius.provenance == ConfigProvenance::Default {
             self.widget_corner_radius.value = radius;
-        }
-    }
-
-    /// The setting of a preset key.
-    pub fn choice_setting(&self, key: ConfigKey) -> Option<ConfigValue<&'static str>> {
-        let mut config = *self;
-        config.choice_value_mut(key).map(|setting| *setting)
-    }
-
-    /// The value of a preset key.
-    pub fn choice_value(&self, key: ConfigKey) -> Option<&'static str> {
-        self.choice_setting(key).map(|setting| setting.value)
-    }
-
-    fn choice_value_mut(&mut self, key: ConfigKey) -> Option<&mut ConfigValue<&'static str>> {
-        match key {
-            ConfigKey::InterfaceStyle => Some(&mut self.interface_style),
-            _ => None,
         }
     }
 
@@ -591,7 +558,6 @@ impl AppConfig {
             | ConfigKey::BrowserSearchProvider
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
-            | ConfigKey::InterfaceStyle
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon => None,
         }
@@ -937,7 +903,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         if RETIRED_LOOK_KEYS.contains(&key) {
             let instead = if key == "shadow-strength" {
-                "pick a style with `interface-style`"
+                "pick a theme with `interface-theme`"
             } else {
                 "themes set this per role now"
             };
@@ -962,7 +928,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
                 message: format!(
-                    "`{key}` was removed: pick a style with `interface-style`, or make a theme in the theme creator"
+                    "`{key}` was removed: pick a theme with `interface-theme`, or make one in the theme creator"
                 ),
             });
             continue;
@@ -971,7 +937,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         if RETIRED_PANE_KEYS.contains(&key) {
             let instead = match key {
                 "pane-corner-radius" => "pane corners follow `widget-corner-radius`",
-                "pane-border-width" => "the pane edge follows the style's outline width",
+                "pane-border-width" => {
+                    "the pane edge follows the theme's glass, or its outline width without glass"
+                }
                 _ => "gapped panes always draw a glass frame",
             };
             parsed.diagnostics.push(ConfigDiagnostic {
@@ -1151,26 +1119,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if let Some(choices) = key.choices() {
-            if let Some(target) = parsed.config.choice_value_mut(key) {
-                match choices.iter().find(|choice| **choice == value.trim()) {
-                    Some(choice) => {
-                        target.value = choice;
-                        target.provenance = ConfigProvenance::Override;
-                    }
-                    None => parsed.diagnostics.push(ConfigDiagnostic {
-                        line: line_number,
-                        message: format!(
-                            "invalid `{}`: expected one of {}",
-                            key.as_str(),
-                            choices.join(", ")
-                        ),
-                    }),
-                }
-            }
-            continue;
-        }
-
         if let Some(diagnostic) = apply_theme_key(&mut parsed.config, key, value, line_number) {
             parsed.diagnostics.push(diagnostic);
             continue;
@@ -1223,7 +1171,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::FlatSidebar
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
-            | ConfigKey::InterfaceStyle
             | ConfigKey::ChromeAccent
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon => {
@@ -1528,9 +1475,10 @@ pub const RETIRED_APPEARANCE_KEYS: [&str; 8] = [
     "chrome-danger",
 ];
 
-/// Material keys an older zz read, now a style's or a theme's to set.
-/// Parsing reports them, and picking a theme in Settings removes them.
-pub const RETIRED_MATERIAL_KEYS: [&str; 5] = [
+/// Material keys an older zz read, now a theme's to set. Parsing reports
+/// them, and picking a theme in Settings removes them.
+pub const RETIRED_MATERIAL_KEYS: [&str; 6] = [
+    "interface-style",
     "widget-outline-width",
     "widget-shadow-strength",
     "widget-row-inset",
@@ -2362,10 +2310,6 @@ mod tests {
             parsed.config.widget_corner_radius,
             ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS)
         );
-        assert_eq!(
-            parsed.config.interface_style,
-            ConfigValue::from_default(DEFAULT_THEME)
-        );
         assert_eq!(parsed.config.chrome_contrast.value, 1.2);
         assert_eq!(
             parsed.config.chrome_accent.value,
@@ -2403,20 +2347,15 @@ mod tests {
     }
 
     #[test]
-    fn appearance_keys_set_presets_accent_and_tint_and_report_bad_values() {
+    fn appearance_keys_set_accent_and_tint_and_report_bad_values() {
         let parsed = parse_config(
             "interface-style = capsule\nchrome-accent = #FF8800\n\
-             chrome-tint = 0.3\nchrome-tint-hue = 145\ninterface-style = modern\n\
+             chrome-tint = 0.3\nchrome-tint-hue = 145\n\
              chrome-accent = chartreuse\nchrome-tint-hue = 400\nwidget-glass = off\n\
              pane-corner-radius = 4\nwidget-shadows = none\n",
             "monospace",
         );
         let config = parsed.config;
-        let set = |value| ConfigValue {
-            value,
-            provenance: ConfigProvenance::Override,
-        };
-        assert_eq!(config.interface_style, set("capsule"));
         assert_eq!(config.chrome_accent.value.spelled(), "#ff8800");
         assert_eq!(config.chrome_tint.value, 0.3);
         assert_eq!(config.chrome_tint_hue.value, 145.0);
@@ -2426,12 +2365,15 @@ mod tests {
             .map(|diagnostic| diagnostic.message.as_str())
             .collect::<Vec<_>>();
         assert_eq!(messages.len(), 6, "{messages:?}");
-        assert!(messages[0].contains("expected one of default, liquid-glass"));
+        assert_eq!(
+            messages[0],
+            "`interface-style` was removed: pick a theme with `interface-theme`, or make one in the theme creator"
+        );
         assert!(messages[1].contains("expected theme, blue"));
         assert!(messages[2].contains("between 0 and 360"));
         assert_eq!(
             messages[3],
-            "`widget-glass` was removed: pick a style with `interface-style`, or make a theme in the theme creator"
+            "`widget-glass` was removed: pick a theme with `interface-theme`, or make one in the theme creator"
         );
         assert_eq!(
             messages[4],

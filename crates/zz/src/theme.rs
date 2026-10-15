@@ -277,13 +277,9 @@ mod tests {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             let default = zz_ui::interface_theme::default_theme().clone();
-            let mut glass = default.clone();
-            zz_ui::interface_theme::material_presets()
-                .iter()
-                .find(|(id, _)| *id == "liquid-glass")
-                .expect("the Liquid glass preset")
-                .1
-                .apply_to(&mut glass);
+            let glass = zz_ui::interface_theme::builtin_theme("liquid-glass")
+                .expect("the Liquid Glass theme")
+                .clone();
             for (id, theme, gaps) in [
                 ("default", &default, true),
                 ("default", &default, false),

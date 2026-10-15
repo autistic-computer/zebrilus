@@ -138,7 +138,8 @@ materials decide what those look like, and the theme can change any role by id. 
    Settings stacks draw `settings.card` around the whole group, with `rule.list` separators
    between entries. The engine reserves the border width in every state and changes only its
    color, so a hover or a lift never moves what is inside. Inputs and number fields reserve at
-   least a 1px border, in the paint's focus color when focused.
+   least a 1px border, in the paint's focus color when focused if the theme draws outlines and the
+   field is not glass (a glass rim is its own edge).
    Settings value pickers use Button triggers and PopupMenu rows, including font, search engine,
    and multiplexer options. The shared Select API keeps their values and confirmation events;
    it has no separate trigger or row styling.
@@ -149,8 +150,10 @@ materials decide what those look like, and the theme can change any role by id. 
    foreground, without a button fill. Other embedded actions keep their wash.
    Gapped panes cast the `pane` role's shadow (the contact shadow in every built-in) and draw their frame
    only in glass: no border, the glass edge (glint, fresnel, thin contour) is the frame, tinted
-   with the pane's own color, its glint as wide as the theme's outline and its corners the theme
-   radius plus 3.5 (`Theme::pane_edge_width()`, `Theme::pane_radius()`). The
+   with the pane's own color, its rim the theme's glass as the theme defines it (glint width,
+   specular, fresnel, edge, noise) and its corners the theme radius plus 3.5
+   (`Theme::pane_radius()`). A theme without glass (Default) draws a hairline the outline's width
+   instead (`Theme::pane_edge_width()`), none when the outline is 0. The
    continuous app background sits beneath both pane and shadow. Flush panes have no
    outer shadow. Only shared divider segments touching the active flush pane use the accent
    color; exterior edges stay unoutlined. The settings preview follows the same rule.
@@ -158,14 +161,13 @@ materials decide what those look like, and the theme can change any role by id. 
    The local renderer makes blurred shadows follow the pane's corner smoothing, including
    its small 2px control shadow. Circular and fully rounded surfaces retain circular shadows.
 
-   The active gapped pane shows focus in its frame: `Theme::pane_frame` lights the glint in the
-   accent, colors the contour with it, and widens the glass rim to 128pt with a 0.16 fresnel in
-   the accent, a wash that fades in from the edges (edge³) on dark and light panes alike.
-   Settings > Panes > Selected pane edge scales the glint and the wash from 0–200%; 0 lights the
-   active pane like the others. `pane-glow-strength` stores the factor from 0–2, defaulting to 1.
-   The wash is the glass draw the pane already makes, so it costs a fraction of the old blurred
-   inset glow, which at its peak was most of zz's GPU fragment time (2026-10-15: +0.047 ms/frame
-   over the plain lit frame at 5344x2964 on an M4 Max, against +0.114 for the blurred glow).
+   The active gapped pane shows focus in its frame: `Theme::pane_frame` paints the rim's light,
+   the glint and the fresnel glow, in the accent (`light_color`, keeping the light's alpha) and
+   leaves the rest of the glass as the other panes draw it. Settings > Panes > Selected pane edge
+   scales the glint's specular and the fresnel from 0–200%; 0 lights the active pane like the
+   others. `pane-glow-strength` stores the factor from 0–2, defaulting to 1. Under a theme without
+   glass the active pane's hairline takes the accent (`pane_border_color`). Either way it is the
+   draw the pane already makes, with no glow layer of its own.
    `PaneChrome::active` and `PaneChrome::frame` share this across desktop, thin client, and preview
    callers. Without gaps, pane content roots paint their own backgrounds using the configured pane
    opacity; under a frame they paint none.
@@ -195,9 +197,14 @@ back to the active URL and then “browser”; explicitly renamed windows keep t
 
 Browser headers use 28px tabs, URL fields, and browser buttons, with 8px outer padding and an 8px gap
 between the tab and navigation rows. Pane split and close buttons keep their 24px size (`crates/zz-ui/src/browser.rs`, `BrowserHeader`).
-A shared 24px pane drag handle sits between the split controls and Close in Terminal, Agent,
-and Browser headers. Its icon is a two-column, three-row grid of dots. It keeps the existing
-drag-to-split or swap behavior and availability rules.
+In Terminal and Agent headers the title is the drag handle: `pane::PaneTitle`, a 24px button
+(`pane.header.title`) holding the kind icon and the title, the provider name and session title
+for an agent. Dragging it splits or swaps under the existing availability rules
+(`pane::PaneDragSource`). Pointed at, it tints, its icon turns into the four-way move arrows, and
+an X at its right end closes the pane; a coarse pointer (touch, iPad) never hovers, so there the X
+always shows and the icon stays. Split bottom and Split right stay on the right. The Browser
+header has tabs instead of a title, so its toolbar keeps a separate 24px drag grip (a two-column,
+three-row grid of dots, `pane::pane_drag_button`) and Close.
 The URL field contains a 24px site-controls button at its left edge. Its popup reads Chromium connection
 status and tab sound state when opened, and offers the existing site-data clearing confirmation.
 The URL field is a neutral ghost field: no resting background, the ghost hover fill, and a
@@ -227,7 +234,7 @@ Which surfaces cast drop shadows is each role's `shadow`, all drawn in the theme
 `contact` is the tight shadow a surface sits on (panes, cards, resting controls on the window) and
 `float` the contact shadow with a deep, soft one under it (popovers, dialogs, floating panes, a
 dragged pane chip). The theme's `contact` and `float` materials set their offset, blur, spread and
-strength, and a style (`interface-style`) replaces both with its own. `lifted_shadow` is the small shadow under a
+strength. `lifted_shadow` is the small shadow under a
 switch thumb and follows the contact strength. `Theme::shadows_of`, `contact_shadows`,
 `float_shadows` and `casts_shadow(role)` read them.
 
@@ -397,7 +404,7 @@ GPUI globals (used by settings badges and the detach action, not to color anythi
 `apply_zz_overrides` layers these values over the zz-ui base:
 
 - the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved file from
-  the `themes` folder, with the `interface-style`, `widget-corner-radius`, `chrome-accent` and
+  the `themes` folder, with the `widget-corner-radius`, `chrome-accent` and
   tint keys `zz/config` sets composed over it by
   `ThemeOverrides::apply_to`): its colors for the effective mode (`InterfaceTheme::colors`), then
   its materials, applied with `Materials::apply`: radius, outline width, both shadows, row inset,
@@ -428,8 +435,12 @@ client keeps the default derivation strengths.
 Icon-only chrome controls use `Button::compact_icon`: a 24px hover surface around a Small 14px
 glyph with a 0.5px downward optical adjustment. The titlebar, sidebar row actions, browser pane,
 and Agent pane share this constructor, which fixes padding and icon scale in one place. Browser
-controls override the hover surface to 28px while retaining the shared icon scale. Workspace settings
-and sidebar buttons use 26px surfaces to match the titlebar pills, with the same 14px glyphs.
+controls override the hover surface to 28px while retaining the shared icon scale. The sidebar
+toggle, Settings, the view switch (eye) and the iOS palette button are 28px buttons with 15px
+glyphs (from 26 and 14), a little larger than the 26px titlebar pills so their glyphs read at a
+glance (`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`). Tree-row actions center under the
+toggle from that size, inset the row inset plus 8px (`workspace_row_action_gap`), and a titlebar
+window pill's hover close sits the same 8px from the pill's edge.
 
 Text and icons take a hover color only from the `hover` of an element with an id. GPUI shapes text
 and resolves an icon's color at layout; an element with an id records its own hover and lays out

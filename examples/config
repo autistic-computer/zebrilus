@@ -38,27 +38,25 @@ pane-inactive-opacity = 0.7
 # between neighbors and at the window edge. Gapped panes draw their frame in
 # glass: the interface theme's glass edge, or a plain lit edge when the theme
 # has none, and the active pane lights its edge in the accent. Their corners
-# are 3.5px rounder than the theme's (13.5 under default), and the bright line
-# along the edge is as wide as the theme's outlines.
+# are 3.5px rounder than the theme's (13.5 under default). The bright line along
+# the edge is the theme glass's own glint, or as wide as the theme's outlines
+# when it has no glass.
 pane-margin = 6
 
 # The interface theme: its materials (corners, outlines, shadows, glass), which
 # piece of UI uses which (its roles), and its colors for light and for dark.
-# One is built in: default. Any other name selects themes/<name>.json next to
-# this file; Settings -> Interface -> Saved themes -> Save writes the look on
-# screen there as a new theme.
+# Two are built in: default and liquid-glass. Any other name selects
+# themes/<name>.json next to this file; Settings -> Interface -> Themes -> Save
+# writes the look on screen there as a new theme.
 interface-theme = default
+# interface-theme = liquid-glass
 
 # What Settings -> Interface sets over the theme. Each follows the theme until
-# set. Picking a theme in Settings removes interface-style and
-# widget-corner-radius; the accent and the tint stay.
+# set. Picking a theme in Settings removes widget-corner-radius; the accent
+# and the tint stay.
 #
-# A style, every material at once (corners, outlines, shadows, row inset,
-# primary buttons, glass): default, liquid-glass, capsule, flat, brutal or
-# terminal. Keeps the theme's colors, roles and font.
-# interface-style = flat
 # The corner every rounded piece turns, in logical pixels (0..=25), over the
-# style's. 0 squares the chrome off. Which pieces are pills at any radius is
+# theme's. 0 squares the chrome off. Which pieces are pills at any radius is
 # up to the theme.
 # widget-corner-radius = 6
 # The accent: theme (the theme's own), blue, purple, pink, red, orange,

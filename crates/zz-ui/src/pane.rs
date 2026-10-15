@@ -10,7 +10,9 @@ use zz_gpui::{
 };
 
 mod drag;
-pub use drag::{DropPreview, DropPreviewFrame, PaneDrag, pane_drag_button, pane_drag_preview};
+pub use drag::{
+    DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, pane_drag_button, pane_drag_preview,
+};
 
 pub const TERMINAL_HEADER_HEIGHT: f32 = 36.0;
 
@@ -33,6 +35,122 @@ pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconNa
     }
 }
 
+const PANE_TITLE_GROUP: &str = "pane-title";
+const PANE_TITLE_HEIGHT: f32 = 24.0;
+const PANE_TITLE_ICON_SIZE: f32 = 14.0;
+
+/// A pane header's title as a button: dragged, it moves the pane; pointed at,
+/// its icon turns into the move arrows and its X shows at the right end. A
+/// coarse pointer, which never hovers, always shows the X.
+#[derive(IntoElement)]
+pub struct PaneTitle {
+    id: ElementId,
+    icon: Icon,
+    label: AnyElement,
+    drag: PaneDragSource,
+    on_close: Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>>,
+}
+
+impl PaneTitle {
+    pub fn new(
+        id: impl Into<ElementId>,
+        icon: impl Into<Icon>,
+        label: impl IntoElement,
+        drag: PaneDragSource,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            icon: icon.into(),
+            label: label.into_any_element(),
+            drag,
+            on_close: None,
+        }
+    }
+
+    #[must_use]
+    pub fn on_close(mut self, on_close: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_close = Some(std::rc::Rc::new(on_close));
+        self
+    }
+}
+
+impl RenderOnce for PaneTitle {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let coarse = crate::touch::CoarsePointer::get(cx);
+        let movable = self.drag.enabled();
+        let icon_size = px(PANE_TITLE_ICON_SIZE);
+        let surface = Surface::new(roles::PANE_TITLE).on(cx.theme().ground_of(roles::PANE_HEADER));
+        let icon = div()
+            .relative()
+            .flex_none()
+            .size(icon_size)
+            .child(
+                div()
+                    .when(movable && !coarse, |icon| {
+                        icon.group_hover(PANE_TITLE_GROUP, zz_gpui::Styled::invisible)
+                    })
+                    .child(self.icon.size(icon_size)),
+            )
+            .when(movable && !coarse, |icon| {
+                icon.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .invisible()
+                        .group_hover(PANE_TITLE_GROUP, zz_gpui::Styled::visible)
+                        .child(Icon::new(IconName::ArrowsMove).size(icon_size)),
+                )
+            });
+        let close = self.on_close.map(|on_close| {
+            div()
+                .flex_none()
+                .debug_selector(|| "pane-title-close".into())
+                .when(!coarse, |close| {
+                    close
+                        .invisible()
+                        .group_hover(PANE_TITLE_GROUP, zz_gpui::Styled::visible)
+                })
+                .child(
+                    pane_header_icon_button("pane-title-close", IconName::Xmark, true, cx)
+                        .tooltip("Close pane")
+                        .on_click(move |_, window, cx| {
+                            cx.stop_propagation();
+                            on_close(window, cx);
+                        }),
+                )
+        });
+        let has_close = close.is_some();
+        let title = div()
+            .id(self.id)
+            .group(PANE_TITLE_GROUP)
+            .debug_selector(|| "pane-title".into())
+            .flex()
+            .flex_initial()
+            .min_w_0()
+            .h(px(PANE_TITLE_HEIGHT))
+            .items_center()
+            .gap(px(6.0))
+            .pl(px(6.0))
+            .pr(px(if has_close { 0.0 } else { 8.0 }))
+            .surface_hover(surface, PaintState::Rest, cx)
+            .text_color(cx.theme().foreground.muted())
+            .child(icon)
+            .child(
+                div()
+                    .flex()
+                    .flex_initial()
+                    .min_w_0()
+                    .items_center()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .child(self.label),
+            )
+            .children(close);
+        self.drag.attach(title)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerminalPaneAction {
     SplitBottom,
@@ -43,11 +161,12 @@ pub enum TerminalPaneAction {
 pub fn terminal_pane_header(
     active: bool,
     title: impl Into<SharedString>,
-    drag: impl IntoElement,
+    drag: PaneDragSource,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let on_action = std::rc::Rc::new(on_action);
+    let close = std::rc::Rc::clone(&on_action);
     let action = |action, icon, label: &'static str| {
         let on_action = std::rc::Rc::clone(&on_action);
         pane_header_icon_button(label, icon, true, cx)
@@ -66,36 +185,23 @@ pub fn terminal_pane_header(
         .flex_none()
         .items_center()
         .gap(px(8.0))
-        .px(px(8.0))
+        .pl(px(4.0))
+        .pr(px(8.0))
         .surface(Surface::new(roles::PANE_HEADER), cx)
         .font_family(cx.theme().font_family.clone())
         .text_size(crate::rems_from_px(13.0))
         .line_height(px(16.0))
         .text_color(cx.theme().foreground.muted())
         .child(
-            div()
-                .flex()
-                .flex_1()
-                .min_w_0()
-                .items_center()
-                .gap(px(8.0))
-                .child(
-                    div()
-                        .flex_none()
-                        .relative()
-                        .top(px(0.5))
-                        .opacity(0.8)
-                        .child(Icon::new(IconName::SquareTerminal).size(px(14.0))),
+            div().flex().flex_1().min_w_0().items_center().child(
+                PaneTitle::new(
+                    "terminal-pane-title",
+                    IconName::SquareTerminal,
+                    title.into(),
+                    drag,
                 )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .child(title.into()),
-                ),
+                .on_close(move |window, cx| close(TerminalPaneAction::Close, window, cx)),
+            ),
         )
         .child(
             div()
@@ -117,12 +223,6 @@ pub fn terminal_pane_header(
                     TerminalPaneAction::SplitRight,
                     IconName::PanelRight,
                     "Split right",
-                ))
-                .child(drag)
-                .child(action(
-                    TerminalPaneAction::Close,
-                    IconName::Xmark,
-                    "Close pane",
                 )),
         )
 }
@@ -1145,6 +1245,82 @@ pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> zz_gpu
 mod tests {
     use super::*;
     use zz_gpui::point;
+
+    struct TitleTest {
+        started: Vec<PaneDrag>,
+        closed: usize,
+    }
+
+    impl Render for TitleTest {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let view = cx.entity();
+            let close = cx.entity();
+            div().w(px(400.0)).h(px(100.0)).flex().child(
+                PaneTitle::new(
+                    "title",
+                    IconName::SquareTerminal,
+                    "cargo test",
+                    PaneDragSource::new(
+                        zz_protocol::PaneId(3),
+                        "cargo test",
+                        true,
+                        move |drag, _, cx| {
+                            view.update(cx, |view, _| view.started.push(*drag));
+                        },
+                    ),
+                )
+                .on_close(move |_, cx| close.update(cx, |view, _| view.closed += 1)),
+            )
+        }
+    }
+
+    #[zz_gpui::test]
+    fn the_title_drags_the_pane_and_its_x_closes_it(cx: &mut zz_gpui::TestAppContext) {
+        use zz_gpui::{Modifiers, MouseButton};
+        cx.update(crate::init);
+        let (view, cx) = cx.add_window_view(|_, _| TitleTest {
+            started: Vec::new(),
+            closed: 0,
+        });
+        let draw = |cx: &mut zz_gpui::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+        };
+        draw(cx);
+        let title = cx.debug_bounds("pane-title").unwrap();
+        cx.simulate_mouse_move(title.center(), None, Modifiers::default());
+        draw(cx);
+        let close = cx.debug_bounds("pane-title-close").unwrap();
+        cx.simulate_click(close.center(), Modifiers::default());
+        draw(cx);
+        assert_eq!(view.read_with(cx, |view, _| view.closed), 1);
+        assert!(view.read_with(cx, |view, _| view.started.is_empty()));
+
+        let start = point(title.left() + px(10.0), title.center().y);
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(
+            point(px(300.0), px(80.0)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.run_until_parked();
+        assert!(cx.update(|_, cx| cx.has_active_drag()));
+        assert_eq!(
+            view.read_with(cx, |view, _| view.started.clone()),
+            [PaneDrag {
+                pane: zz_protocol::PaneId(3),
+                requires_prefix: false,
+            }]
+        );
+        cx.simulate_mouse_up(
+            point(px(300.0), px(80.0)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        assert_eq!(view.read_with(cx, |view, _| view.closed), 1);
+    }
 
     #[test]
     fn inactive_opacity_one_disables_surface_dimming() {

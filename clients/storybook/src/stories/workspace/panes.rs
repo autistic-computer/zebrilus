@@ -171,14 +171,7 @@ fn header(
     zz_ui::pane::terminal_pane_header(
         active,
         title,
-        zz_ui::pane::pane_drag_button(
-            ("header-drag", id),
-            zz_protocol::PaneId(id),
-            title.into(),
-            draggable,
-            |_, _, _| {},
-            cx,
-        ),
+        zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(id), title, draggable, |_, _, _| {}),
         |_, _, _| {},
         cx,
     )

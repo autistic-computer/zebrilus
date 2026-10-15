@@ -10,7 +10,7 @@ use zz_gpui::{GlassMaterial, Hsla, SharedString, px};
 
 pub use zz_client::appearance::{
     ACCENTS, AccentSetting, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE, MAX_CORNER_RADIUS,
-    STYLE_PRESETS, ThemeModeSetting, is_builtin_theme,
+    ThemeModeSetting, is_builtin_theme,
 };
 
 use crate::{PrimaryStyle, ShadowMaterial, StylePatch, Theme, ThemeColor, ThemeMode};
@@ -102,14 +102,11 @@ pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
 }
 
 /// What Settings sets over the active theme, each `None` while it follows
-/// the theme. Picking a theme clears the style and radius; the accent and
-/// the tint stay.
+/// the theme. Picking a theme clears the radius; the accent and the tint
+/// stay.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ThemeOverrides {
-    /// A material preset id.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub style: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub radius: Option<f32>,
     /// One of [`ACCENTS`] or a hex color.
@@ -125,9 +122,6 @@ pub struct ThemeOverrides {
 impl ThemeOverrides {
     /// `theme` with every override set here.
     pub fn apply_to(&self, theme: &mut InterfaceTheme) {
-        if let Some(preset) = self.style.as_deref().and_then(material_preset) {
-            preset.apply_to(theme);
-        }
         if let Some(radius) = self.radius {
             theme.materials.radius = radius;
         }
@@ -151,15 +145,8 @@ impl ThemeOverrides {
         }
     }
 
-    /// Follow a newly picked theme's style and radius.
+    /// Follow a newly picked theme's radius.
     pub fn pick_theme(&mut self) {
-        self.style = None;
-        self.radius = None;
-    }
-
-    /// Draw in `style`, with its radius.
-    pub fn pick_style(&mut self, style: &str) {
-        self.style = Some(style.to_owned());
         self.radius = None;
     }
 }
@@ -395,8 +382,10 @@ fn with_spelling_hint(message: String) -> String {
         )
 }
 
-const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] =
-    [("default", include_str!("../themes/default.json"))];
+const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
+    ("default", include_str!("../themes/default.json")),
+    ("liquid-glass", include_str!("../themes/liquid-glass.json")),
+];
 
 static BUILTINS: LazyLock<Vec<(&'static str, InterfaceTheme)>> = LazyLock::new(|| {
     BUILTIN_SOURCES
@@ -423,64 +412,6 @@ pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
 
 pub fn default_theme() -> &'static InterfaceTheme {
     builtin_theme(DEFAULT_THEME).expect("the default theme is built in")
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
-pub struct MaterialPreset {
-    pub name: String,
-    pub about: String,
-    pub materials: Materials,
-}
-
-impl MaterialPreset {
-    pub fn apply_to(&self, theme: &mut InterfaceTheme) {
-        theme.materials = Materials {
-            font: theme.materials.font.take(),
-            ..self.materials.clone()
-        };
-    }
-}
-
-const PRESET_SOURCES: [(&str, &str); 5] = [
-    (
-        "liquid-glass",
-        include_str!("../themes/materials/liquid-glass.json"),
-    ),
-    ("capsule", include_str!("../themes/materials/capsule.json")),
-    ("flat", include_str!("../themes/materials/flat.json")),
-    ("brutal", include_str!("../themes/materials/brutal.json")),
-    (
-        "terminal",
-        include_str!("../themes/materials/terminal.json"),
-    ),
-];
-
-static PRESETS: LazyLock<Vec<(&'static str, MaterialPreset)>> = LazyLock::new(|| {
-    let default = default_theme();
-    let plain = MaterialPreset {
-        name: default.name.clone(),
-        about: "The Default theme's materials.".to_owned(),
-        materials: default.materials.clone(),
-    };
-    std::iter::once((DEFAULT_THEME, plain))
-        .chain(PRESET_SOURCES.iter().map(|(id, source)| {
-            let preset = serde_json::from_str(source)
-                .unwrap_or_else(|error| panic!("material preset {id} does not parse: {error}"));
-            (*id, preset)
-        }))
-        .collect()
-});
-
-pub fn material_presets() -> &'static [(&'static str, MaterialPreset)] {
-    &PRESETS
-}
-
-pub fn material_preset(id: &str) -> Option<&'static MaterialPreset> {
-    material_presets()
-        .iter()
-        .find(|(preset, _)| *preset == id.trim())
-        .map(|(_, preset)| preset)
 }
 
 pub const fn pinned_theme_mode(setting: ThemeModeSetting) -> Option<ThemeMode> {
@@ -689,31 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn every_material_preset_sets_only_materials_and_survives_the_theme_file() {
-        assert_eq!(material_presets()[0].1.materials, default_theme().materials);
-        for (id, preset) in material_presets() {
-            assert!(!preset.name.is_empty() && !preset.about.is_empty(), "{id}");
-            assert_eq!(
-                preset.materials.font, None,
-                "{id} leaves the font to the theme"
-            );
-            let mut theme = default_theme().clone();
-            theme.materials.font = Some("Inter".into());
-            theme.roles.insert(
-                "pane.chip".to_owned(),
-                StylePatch::EMPTY.shape(crate::Shape::Pill),
-            );
-            let roles = theme.roles.clone();
-            preset.apply_to(&mut theme);
-            assert_eq!(theme.roles, roles, "{id} leaves the roles to the theme");
-            assert_eq!(theme.light, default_theme().light, "{id}");
-            assert_eq!(theme.materials.font.as_deref(), Some("Inter"), "{id}");
-            assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme, "{id}");
-        }
-    }
-
-    #[test]
-    fn overrides_compose_a_style_radius_accent_and_tint_over_the_theme() {
+    fn overrides_compose_a_radius_accent_and_tint_over_the_theme() {
         let mut theme = default_theme().clone();
         theme.materials.font = Some("Inter".into());
         theme.roles.insert(
@@ -724,17 +631,15 @@ mod tests {
         let roles = theme.roles.clone();
         let colors = theme.dark.clone();
         ThemeOverrides {
-            style: Some("flat".to_owned()),
             radius: Some(14.0),
             accent: Some("green".to_owned()),
             tint: Some(1.0),
             tint_hue: Some(145.0),
         }
         .apply_to(&mut theme);
-        let flat = &material_preset("flat").unwrap().materials;
         assert_eq!(theme.roles, roles);
         assert_eq!(theme.materials.font.as_deref(), Some("Inter"));
-        assert_eq!(theme.materials.outline, flat.outline);
+        assert_eq!(theme.materials.outline, default_theme().materials.outline);
         assert_eq!(theme.materials.radius, 14.0);
         assert_eq!(theme.dark.foreground, colors.foreground);
         assert_eq!(theme.light.accent, accent_color("green", ThemeMode::Light));
@@ -754,17 +659,13 @@ mod tests {
     }
 
     #[test]
-    fn picking_a_theme_or_style_keeps_the_accent_and_tint() {
+    fn picking_a_theme_keeps_the_accent_and_tint() {
         let mut overrides = ThemeOverrides {
-            style: Some("flat".to_owned()),
             radius: Some(14.0),
             accent: Some("green".to_owned()),
             tint: Some(0.5),
             tint_hue: Some(145.0),
         };
-        overrides.pick_style("capsule");
-        assert_eq!(overrides.style.as_deref(), Some("capsule"));
-        assert_eq!(overrides.radius, None);
         overrides.pick_theme();
         assert_eq!(
             overrides,
@@ -794,15 +695,6 @@ mod tests {
                 assert_reads(&format!("{accent} at hue {hue}"), &theme);
             }
         }
-    }
-
-    #[test]
-    fn preset_ids_match_what_config_accepts() {
-        let styles = material_presets()
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>();
-        assert_eq!(styles, STYLE_PRESETS);
     }
 
     #[test]

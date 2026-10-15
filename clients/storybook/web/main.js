@@ -98,7 +98,6 @@ const importDialog = document.getElementById("import-dialog");
 let stories = [];
 let glassPresets = {};
 let themes = {};
-let presets = [];
 let current = null;
 let roles = {};
 let roleTree = [];
@@ -720,34 +719,7 @@ function renderThemes() {
             );
         }
     }
-}
-
-function renderPresets() {
-    document.getElementById("preset-choices").replaceChildren(
-        ...presets.map((preset) =>
-            element(
-                "button",
-                { type: "button", class: "preset", "data-preset": preset.id },
-                element("b", { text: preset.name }),
-                element("small", { text: preset.about }),
-            ),
-        ),
-    );
     document.querySelector(".start").hidden = Object.keys(themes).length < 2;
-}
-
-function applyPreset(id) {
-    const preset = presets.find((candidate) => candidate.id === id);
-    if (!preset) throw new Error(`no material preset ${id}`);
-    const { glass, ...knobs } = preset.knobs;
-    setKnobValue("glass", glass);
-    resetGlassSliders();
-    for (const [name, value] of Object.entries(knobs)) {
-        if (form.elements[name]) setKnobValue(name, String(value));
-    }
-    applyKnobs();
-    remember();
-    toast(`${preset.name} materials`);
 }
 
 function addFontOption(name) {
@@ -845,10 +817,8 @@ await waitFor(zz.is_ready);
 stories = JSON.parse(zz.stories());
 glassPresets = JSON.parse(zz.glass_presets());
 themes = JSON.parse(zz.interface_themes());
-presets = JSON.parse(zz.material_presets());
 renderNav();
 renderThemes();
-renderPresets();
 const initial = parseHash();
 const font = initial.params.get("font");
 if (font) addFontOption(font);
@@ -904,8 +874,6 @@ form.addEventListener("click", (event) => {
     }
     const head = event.target.closest("[data-role-head]");
     if (head) selectRole(head.dataset.roleHead === selectedRole ? null : head.dataset.roleHead);
-    const preset = event.target.closest("[data-preset]");
-    if (preset) applyPreset(preset.dataset.preset);
 });
 form.addEventListener("keydown", (event) => {
     const tab = event.target.closest("[role=tab]");
@@ -1026,11 +994,6 @@ window.storybook = {
         return globalThis.zzGpui?.idle();
     },
     knobs: () => Object.fromEntries(KNOBS.map((name) => [name, knobValue(name)])),
-    presets: () => presets.map((preset) => preset.id),
-    preset: (id) => {
-        applyPreset(id);
-        return globalThis.zzGpui?.idle();
-    },
     step: (name) => {
         if (name !== undefined) showStep(name, false);
         return step;
