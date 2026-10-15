@@ -5,6 +5,7 @@ mod header;
 mod hud;
 mod key_row;
 mod lift;
+mod overview;
 mod pager;
 mod popover_key;
 mod press;
@@ -12,16 +13,20 @@ mod sticky;
 mod swipe_back;
 mod which_key_list;
 
-pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, resolve_direction};
+pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
 pub use bar::{
     COMPACT_BAR_HEIGHT, COMPACT_NAV_BAR_HEIGHT, compact_bar, compact_bar_button, compact_bar_pill,
-    compact_nav_bar,
+    compact_nav_bar, compact_session_switcher,
 };
 pub use dots::{PageDot, page_dots};
 pub use header::{COMPACT_PANE_HEADER_HEIGHT, compact_pane_header};
 pub use hud::compact_hud;
 pub use key_row::{KEY_ROW_HEIGHT, KeyRow, KeyRowKey, ToolKeys};
 pub use lift::{Lift, LiftEvent, LiftResponse};
+pub use overview::{
+    OVERVIEW_CARD_GAP, OVERVIEW_CARD_HEIGHT, OVERVIEW_CARD_WIDTH, overview_add_tile, overview_card,
+    overview_count, overview_section_heading,
+};
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
 pub use popover_key::{
     PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords,

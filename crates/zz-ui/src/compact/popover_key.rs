@@ -16,8 +16,8 @@ use super::{
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Kind, PaintState, RULE_WIDTH, StyledExt as _,
-    Surface, Tone, rems_from_px, roles, separator::Separator,
+    ActiveTheme as _, Emphasis, Icon, IconName, PaintState, RULE_WIDTH, StyledExt as _, Surface,
+    SurfaceRole, Tone, rems_from_px, roles, separator::Separator,
 };
 
 const HOLD: Duration = Duration::from_millis(280);
@@ -206,6 +206,15 @@ impl PopoverKey {
         self.open.is_some()
     }
 
+    /// Opens the card as a tap does: it stays until a pick or a press
+    /// outside it.
+    pub fn open(&mut self, cx: &mut Context<Self>) {
+        if !self.items.is_empty() {
+            self.open = Some(Open::Pinned);
+            cx.notify();
+        }
+    }
+
     pub fn set_armed(&mut self, armed: bool, cx: &mut Context<Self>) {
         if self.armed != armed {
             self.armed = armed;
@@ -237,7 +246,7 @@ impl PopoverKey {
     fn item(&self, index: usize, item: &PopoverKeyItem, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let hovered = self.hover == Some(index);
-        let row = Surface::new(Kind::Row.role()).tone(if item.danger {
+        let row = Surface::new(SurfaceRole::MENU_ITEM).tone(if item.danger {
             Tone::Danger
         } else {
             Tone::Neutral
@@ -352,7 +361,7 @@ impl PopoverKey {
             .w(rems_from_px(width + 2.0 * CARD_PADDING))
             .p(rems_from_px(CARD_PADDING))
             .gap(rems_from_px(ITEM_GAP))
-            .surface(Kind::Popover, cx)
+            .surface(SurfaceRole::POPOVER, cx)
             .font_family(theme.font_family.clone())
             .text_size(rems_from_px(17.0))
             .line_height(rems_from_px(22.0))

@@ -55,7 +55,7 @@ pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
 pub const DEFAULT_PANE_BORDER_WIDTH: f32 = 0.5;
 /// The default theme's materials, until the client reads the active theme
 /// and calls [`AppConfig::apply_material_defaults`].
-pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 24.0;
+pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 10.0;
 pub const DEFAULT_WIDGET_OUTLINE_WIDTH: f32 = 0.5;
 /// Shadow strength multiplies the theme's shadows, so 1 is every theme's.
 pub const DEFAULT_WIDGET_SHADOW_STRENGTH: f32 = 1.0;
@@ -288,7 +288,7 @@ impl ConfigKey {
             Self::WidgetOutlineWidth => Some((0.0, MAX_WIDGET_OUTLINE_WIDTH)),
             Self::WidgetShadowStrength => Some((0.0, MAX_WIDGET_SHADOW_STRENGTH)),
             Self::WidgetRowInset => Some((0.0, MAX_WIDGET_ROW_INSET)),
-            Self::ChromeContrast => Some((0.5, 2.0)),
+            Self::ChromeContrast => Some((1.0, 2.0)),
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
             Self::EditorFontSize => Some((MIN_EDITOR_FONT_SIZE, MAX_EDITOR_FONT_SIZE)),
             Self::WhichKeyDelay => Some((0.0, MAX_WHICH_KEY_DELAY)),
@@ -2382,11 +2382,11 @@ mod tests {
         )
         .expect("write config");
 
-        write_interface_theme_at(&path, "macos", false).expect("write theme");
+        write_interface_theme_at(&path, "default", false).expect("write theme");
         let source = fs::read_to_string(&path).expect("read theme");
         let parsed = parse_config(&source, "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.config.interface_theme.value, "macos");
+        assert_eq!(parsed.config.interface_theme.value, "default");
         assert_eq!(parsed.theme, None);
         assert_eq!(
             parsed.config.widget_corner_radius,
@@ -2423,11 +2423,11 @@ mod tests {
         );
 
         let parsed = parse_config(
-            "interface-theme = round\ninterface-theme = linear",
+            "interface-theme = round\ninterface-theme = default",
             "monospace",
         );
         assert_eq!(parsed.theme, None);
-        assert_eq!(parsed.config.interface_theme.value, "linear");
+        assert_eq!(parsed.config.interface_theme.value, "default");
 
         let parsed = parse_config("interface-theme = ../round", "monospace");
         assert_eq!(parsed.diagnostics.len(), 1);

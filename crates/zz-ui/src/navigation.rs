@@ -6,8 +6,8 @@ pub mod tree;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Ground, Icon, IconName,
-    InteractiveSurfaceExt as _, Kind, Layer, PaintState, Selectable as _, StyledExt as _, Surface,
-    SurfaceRole, TITLE_BAR_HEIGHT, Tone,
+    InteractiveSurfaceExt as _, Layer, PaintState, StyledExt as _, Surface, SurfaceRole,
+    TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     rems_from_px, roles,
     tooltip::Tooltip,
@@ -101,16 +101,11 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
 /// it reads as pressed while the flat list shows.
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
-    workspace_chrome_button(
-        id,
-        IconName::Eye,
-        if flat {
-            "Show the session tree"
-        } else {
-            "Show the flat window list"
-        },
-    )
-    .selected(flat)
+    if flat {
+        workspace_chrome_button(id, IconName::EyeFilled, "Show the session tree")
+    } else {
+        workspace_chrome_button(id, IconName::Eye, "Show the flat window list")
+    }
 }
 
 fn workspace_chrome_button(
@@ -179,7 +174,6 @@ pub fn workspace_status_item(
 #[allow(clippy::too_many_arguments)]
 pub fn workspace_status_window(
     id: impl Into<ElementId>,
-    index: SharedString,
     name: SharedString,
     tooltip: SharedString,
     state: WorkspaceStatusWindowState,
@@ -189,7 +183,6 @@ pub fn workspace_status_window(
     let foreground = cx.theme().foreground;
     let tab = Surface::new(roles::WINDOW_TAB);
     let paint_state = state.paint_state();
-    let index_ink = cx.theme().layer(tab, paint_state).text.muted();
     div()
         .id(id)
         .relative()
@@ -214,13 +207,6 @@ pub fn workspace_status_window(
         .text_size(rems_from_px(13.0))
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        .child(
-            div()
-                .flex_none()
-                .text_size(rems_from_px(12.0))
-                .text_color(index_ink)
-                .child(index),
-        )
         .children(deck)
         .child(
             div()
@@ -274,7 +260,11 @@ fn workspace_sidebar_edge_inset(cx: &App) -> Pixels {
 /// The trailing inset that centers a tree row's action buttons under the
 /// sidebar toggle in the titlebar above them.
 fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
-    workspace_sidebar_edge_inset(cx)
+    cx.theme().row_inset + workspace_row_action_gap()
+}
+
+fn workspace_row_action_gap() -> Pixels {
+    px(WORKSPACE_SIDEBAR_EDGE_INSET)
         + (WORKSPACE_STATUS_PILL_HEIGHT - px(COMPACT_ICON_BUTTON_SIZE)) / 2.0
 }
 
@@ -393,7 +383,7 @@ pub fn workspace_sidebar_resize_handle(
 pub fn workspace_slideover_layer(cx: &App) -> Layer {
     Layer {
         radius: px(0.0),
-        ..cx.theme().layer(Kind::Popover.role(), PaintState::Rest)
+        ..cx.theme().layer(SurfaceRole::POPOVER, PaintState::Rest)
     }
 }
 

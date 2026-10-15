@@ -6,8 +6,8 @@ use zz_gpui::{
     div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, Highlight, Icon, IconName, IndexPath, Kind,
-    Sizable as _, StylePatch, ThemeMode, Tone,
+    ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, Sizable as _, StylePatch,
+    SurfaceRole, ThemeMode, Tone,
     button::{Button, ButtonVariants as _},
     input::{InputState, NumberInput},
     interface_theme::{
@@ -196,9 +196,6 @@ fn reset_actions(id: &'static str, changed: bool, source: &'static str) -> impl 
 }
 
 fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
-    let chevron = Icon::new(IconName::ChevronRight)
-        .size(px(14.0))
-        .text_color(cx.theme().foreground.muted());
     states()
         .state("page heading", settings_page_description(SettingsSection::Panes, cx))
         .state(
@@ -278,12 +275,11 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 ),
         )
         .state(
-            "a whole row as a button, with a state glyph",
+            "a state glyph before the title",
             SettingsStack::titled("Hosts").child(
                 SettingEntry::new("devbox", "fabrico@devbox.local · connected")
                     .title_icon(Icon::new(IconName::CircleCheck).text_color(cx.theme().success))
-                    .on_click("open-host", |_, _, _| {})
-                    .control(chevron),
+                    .control(Button::new("open-host").label("Disconnect")),
             ),
         )
         .state(
@@ -337,7 +333,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             ..builtin_themes()[1].1.materials.clone()
         },
         roles: [(
-            Kind::Row.name().to_owned(),
+            SurfaceRole::MENU_ITEM.id.to_owned(),
             StylePatch::EMPTY.selected(Highlight::Tint),
         )]
         .into(),

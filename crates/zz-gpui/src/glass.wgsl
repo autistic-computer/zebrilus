@@ -42,7 +42,7 @@ struct Glass {
     mask_rect: vec4<f32>,
     mask_radii: vec4<f32>,
     mask: vec4<f32>,
-    // color of the glint and the fresnel glow, premultiplied by its alpha
+    // color of the glint and the fresnel glow, premultiplied by its alpha in w
     light_color: vec4<f32>,
     // color of the contour; its alpha is in the edge shadow strength
     edge_color: vec4<f32>,
@@ -358,7 +358,8 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         let line = saturate(1.0 - depth / glint_width) + 0.2 * saturate(1.0 - depth / (glint_width * 4.0));
         let lobe = facing * facing;
         rgb = rgb + glass.light_color.rgb * (glass.light.z * line * mix(0.15, 1.0, lobe));
-        rgb = rgb + glass.light_color.rgb * (glass.rim.x * edge * edge * edge);
+        let glow = glass.rim.x * edge * edge * edge;
+        rgb = rgb * (1.0 - glow * glass.light_color.a) + glass.light_color.rgb * glow;
     }
 
     return finish(position, color, rgb, coverage, contour);

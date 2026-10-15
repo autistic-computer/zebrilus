@@ -8,23 +8,19 @@ use zz_gpui::{
 use zz_protocol::{PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::{Glyph, TerminalViewport};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, Layer, PaintState, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, PaintState, StyledExt as _,
     compact::{
-        COMPACT_NAV_BAR_HEIGHT, COMPACT_PANE_HEADER_HEIGHT, Instant, bottom_sheet,
-        compact_bar_button, compact_nav_bar, sheet_row, yield_back_swipe,
+        COMPACT_NAV_BAR_HEIGHT, COMPACT_PANE_HEADER_HEIGHT, Instant, OVERVIEW_CARD_GAP,
+        OVERVIEW_CARD_HEIGHT, OVERVIEW_CARD_WIDTH, bottom_sheet, compact_bar_button,
+        compact_nav_bar, compact_session_switcher, overview_add_tile, overview_card,
+        overview_count, overview_section_heading, sheet_row, yield_back_swipe,
     },
     rems_from_px, roles,
     terminal::terminal_background,
-    touch::press_highlight,
 };
 
 use super::{AppShell, Page, kind_icon, pages};
 
-const CARD_WIDTH: f32 = 108.0;
-const CARD_HEIGHT: f32 = 192.0;
-const ADD_WIDTH: f32 = 76.0;
-const CARD_GAP: f32 = 10.0;
-const CARD_STRIP: f32 = 20.0;
 const PREVIEW_TEXT: f32 = 4.0;
 const PREVIEW_LINE: f32 = 4.8;
 const PREVIEW_ROWS: u16 = 40;
@@ -33,14 +29,6 @@ const OVERVIEW_FADE: f32 = 1.5;
 const LIVE_FADE: f32 = 3.0;
 const CARD_FADE: f32 = 0.15;
 const TEXT_STEP: f32 = 4.0;
-
-fn count(n: usize, noun: &str) -> String {
-    if n == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{n} {noun}s")
-    }
-}
 
 fn quantized(size: Pixels) -> Pixels {
     px((f32::from(size) * TEXT_STEP).round() / TEXT_STEP)
@@ -270,7 +258,7 @@ impl AppShell {
             .unwrap_or_else(|| {
                 Bounds::new(
                     point(px(16.0), top_inset + px(COMPACT_NAV_BAR_HEIGHT * 2.0)),
-                    size(px(CARD_WIDTH), px(CARD_HEIGHT)),
+                    size(px(OVERVIEW_CARD_WIDTH), px(OVERVIEW_CARD_HEIGHT)),
                 )
             });
         let settled = progress.min(1.0);
@@ -428,24 +416,15 @@ impl AppShell {
         #[cfg(not(target_os = "ios"))]
         let host: Option<String> = None;
         let muted = cx.theme().foreground.muted();
-        let switcher = compact_bar_button("overview-session", IconName::Layers)
-            .flex_none()
-            .child(
-                div()
-                    .text_size(px(17.0))
-                    .font_semibold()
-                    .whitespace_nowrap()
-                    .child(model.session_name.clone().unwrap_or_default()),
-            )
-            .child(
-                Icon::new(IconName::ChevronDown)
-                    .size(px(14.0))
-                    .text_color(muted),
-            )
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.compact.sessions = true;
-                cx.notify();
-            }));
+        let switcher = compact_session_switcher(
+            "overview-session",
+            model.session_name.clone().unwrap_or_default(),
+            cx,
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.compact.sessions = true;
+            cx.notify();
+        }));
         let settings = compact_bar_button("overview-settings", IconName::Settings).on_click(
             cx.listener(|this, _, _, cx| {
                 this.settings = Some(zz_ui::settings::SettingsSection::Appearance);
@@ -484,30 +463,7 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let scroll = self.compact.overview_rows.entry(id).or_default().clone();
-        let theme = cx.theme();
-        let muted = theme.foreground.muted();
-        let tile = theme.layer(roles::PHONE_CARD, PaintState::Rest);
-        let add = div()
-            .id(("overview-add", id.0))
-            .relative()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .gap(px(8.0))
-            .w(px(ADD_WIDTH))
-            .h(px(CARD_HEIGHT))
-            .layer(&tile)
-            .text_size(px(12.0))
-            .text_color(muted)
-            .child(Icon::new(IconName::Plus).size(px(16.0)))
-            .child("New pane")
-            .child(press_highlight(
-                ("overview-add-press", id.0),
-                None,
-                tile.radius,
-            ))
+        let add = overview_add_tile(("overview-add", id.0), ("overview-add-press", id.0), cx)
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.command("select-window", vec!["-t".into(), id.to_string()], cx);
                 this.command(
@@ -526,24 +482,7 @@ impl AppShell {
         div()
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .items_baseline()
-                    .gap(px(8.0))
-                    .px(px(16.0))
-                    .pt(px(14.0))
-                    .pb(px(8.0))
-                    .text_size(px(13.0))
-                    .child(div().text_color(muted).child(index.to_string()))
-                    .child(div().font_medium().child(name.to_owned()))
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(muted)
-                            .child(count(panes, "pane")),
-                    ),
-            )
+            .child(overview_section_heading(index, name, panes, cx))
             .child(
                 div()
                     .relative()
@@ -551,7 +490,7 @@ impl AppShell {
                         div()
                             .id(("overview-row", id.0))
                             .flex()
-                            .gap(px(CARD_GAP))
+                            .gap(px(OVERVIEW_CARD_GAP))
                             .px(px(16.0))
                             .py(px(2.0))
                             .overflow_x_scroll()
@@ -567,15 +506,6 @@ impl AppShell {
     fn overview_card(&self, page: &Page, current: bool, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let muted = theme.foreground.muted();
-        let frame = theme.layer(
-            roles::PHONE_CARD,
-            if current {
-                PaintState::Selected
-            } else {
-                PaintState::Rest
-            },
-        );
-        let radius = frame.radius;
         let core = &self.connection.read(cx).core;
         let viewport = core.viewport(page.pane);
         let mut background = theme.background;
@@ -632,72 +562,32 @@ impl AppShell {
         let pane_id = page.pane;
         let target = page.clone();
         let cards = Rc::clone(&self.compact.cards);
-        div()
-            .id(("overview-card", pane_id.0))
-            .relative()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .w(px(CARD_WIDTH))
-            .h(px(CARD_HEIGHT))
-            .overflow_hidden()
-            .layer(&Layer {
-                fill: background,
-                glass: None,
-                ..frame
-            })
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(4.0))
-                    .h(px(CARD_STRIP))
-                    .px(px(6.0))
-                    .text_size(px(11.0))
-                    .text_color(muted)
-                    .child(Icon::new(kind_icon(&page.kind)).size(px(11.0)))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(page.title.clone()),
-                    ),
+        overview_card(
+            ("overview-card", pane_id.0),
+            ("overview-card-press", pane_id.0),
+            kind_icon(&page.kind),
+            page.title.clone(),
+            preview,
+            background,
+            current,
+            page.attention,
+            cx,
+        )
+        .child(
+            canvas(
+                move |bounds, _, _| {
+                    cards.borrow_mut().insert(pane_id, bounds);
+                },
+                |_, (), _, _| {},
             )
-            .child(div().flex_1().min_h_0().overflow_hidden().children(preview))
-            .when(page.attention && !current, |card| {
-                card.child(
-                    div()
-                        .absolute()
-                        .top(px(7.0))
-                        .right(px(6.0))
-                        .size(px(6.0))
-                        .rounded_full()
-                        .bg(theme.warning),
-                )
-            })
-            .child(press_highlight(
-                ("overview-card-press", pane_id.0),
-                None,
-                radius,
-            ))
-            .child(
-                canvas(
-                    move |bounds, _, _| {
-                        cards.borrow_mut().insert(pane_id, bounds);
-                    },
-                    |_, (), _, _| {},
-                )
-                .absolute()
-                .inset_0(),
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.compact_select(&target, cx);
-                this.land_overview(Some(target.pane), cx);
-            }))
-            .into_any_element()
+            .absolute()
+            .inset_0(),
+        )
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.compact_select(&target, cx);
+            this.land_overview(Some(target.pane), cx);
+        }))
+        .into_any_element()
     }
 
     pub(super) fn overview_sessions_sheet(
@@ -726,7 +616,7 @@ impl AppShell {
                         .flex_none()
                         .text_size(px(13.0))
                         .text_color(muted)
-                        .child(count(session.windows.len(), "window")),
+                        .child(overview_count(session.windows.len(), "window")),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.compact.sessions = false;

@@ -8,7 +8,7 @@ use zz_gpui::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractiveSurfaceExt as _,
-    Kind, Layer, PaintState, StyledExt as _, Surface, Tone, roles, tooltip::Tooltip,
+    Layer, PaintState, StyledExt as _, Surface, SurfaceRole, Tone, roles, tooltip::Tooltip,
     touch::CoarsePointer,
 };
 
@@ -231,7 +231,7 @@ impl PaneStack {
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
         let size = self.size;
         let theme = cx.theme();
-        let plate = theme.layer(Kind::Popover.role(), PaintState::Rest);
+        let plate = theme.layer(SurfaceRole::POPOVER, PaintState::Rest);
         let tile = Surface::new(roles::PANE_STACK).on(plate.ground);
         let pad = size.gap();
         let travel = size.tile() + size.gap();

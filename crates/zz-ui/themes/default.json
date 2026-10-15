@@ -1,39 +1,26 @@
 {
   "name": "Default",
   "materials": {
-    "radius": 24,
+    "radius": 10,
     "outline": 0.5,
     "row-inset": 4,
     "primary": "foreground",
-    "glass": {
-      "preset": "regular",
-      "blur": 0,
-      "tint": "#ffffff",
-      "refraction": 0,
-      "bezel": 2,
-      "dispersion": 0,
-      "saturation": 0.5,
-      "brightness": 0,
-      "specular": 0.25,
-      "fresnel": 0,
-      "edge_shadow": 0.3,
-      "noise": 0
-    }
+    "glass": null
   },
   "light": {
-    "background": "#ffffff",
-    "foreground": "#272727",
-    "accent": "#007aff",
-    "success": "#248a3d",
-    "warning": "#c93400",
-    "danger": "#d70015"
+    "background": "#fcfcfc",
+    "foreground": "#1d1d1f",
+    "accent": "#3d6df2",
+    "success": "#1f8a4c",
+    "warning": "#b25e09",
+    "danger": "#d22f3c"
   },
   "dark": {
-    "background": "#1e1e1e",
-    "foreground": "#dddddd",
-    "accent": "#007aff",
-    "success": "#30d158",
-    "warning": "#ff9230",
-    "danger": "#ff4245"
+    "background": "#18181a",
+    "foreground": "#e4e4e7",
+    "accent": "#6b8cff",
+    "success": "#3fbf74",
+    "warning": "#f0a14a",
+    "danger": "#f2555f"
   }
 }

@@ -131,7 +131,6 @@ fn window(
 ) -> AnyElement {
     status_window(
         ("window", index),
-        index.to_string().into(),
         name.into(),
         state,
         panes,

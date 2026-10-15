@@ -3075,6 +3075,19 @@ impl Window {
         self.adaptive_corner_fraction
     }
 
+    /// `radii` against `size` the way an element's own corners resolve: held
+    /// at the adaptive fraction when the window has one, clamped otherwise.
+    pub fn resolve_corner_radii(
+        &self,
+        radii: Corners<Pixels>,
+        size: Size<Pixels>,
+    ) -> Corners<Pixels> {
+        match self.adaptive_corner_fraction {
+            Some(fraction) => radii.resolve_radii_for_quad_size(size, fraction),
+            None => radii.clamp_radii_for_quad_size(size),
+        }
+    }
+
     /// Returns whether the title bar window controls need to be rendered by the application (Wayland and X11)
     pub fn window_decorations(&self) -> Decorations {
         self.platform_window.window_decorations()

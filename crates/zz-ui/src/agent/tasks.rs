@@ -4,9 +4,9 @@ use zz_gpui::{App, Div, SharedString, Window, div, prelude::*, px};
 use zz_protocol::AgentTaskWire;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, Kind, PaintState,
-    Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Tone,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
+    StatefulSurfaceExt as _, StyledExt as _, SurfaceRole, Tone,
+    button::Button,
     h_flex,
     picker::{muted_on, row_surface},
     roles, v_flex,
@@ -87,12 +87,18 @@ pub fn task_tray(
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
             .when_some(tool_call, |row, tool_call| {
-                row_surface(row, Kind::Row, PaintState::Rest, px(TASK_ROW_HEIGHT), cx)
-                    .cursor_pointer()
-                    .on_click(move |_, window, cx| {
-                        reveal(TaskTrayAction::Reveal(tool_call.clone()), window, cx);
-                        cx.stop_propagation();
-                    })
+                row_surface(
+                    row,
+                    SurfaceRole::MENU_ITEM,
+                    PaintState::Rest,
+                    px(TASK_ROW_HEIGHT),
+                    cx,
+                )
+                .cursor_pointer()
+                .on_click(move |_, window, cx| {
+                    reveal(TaskTrayAction::Reveal(tool_call.clone()), window, cx);
+                    cx.stop_propagation();
+                })
             })
             .text_color(row_paint.muted_at(PaintState::Rest))
             .child(
@@ -113,13 +119,14 @@ pub fn task_tray(
             )
             .child(
                 super::presentation::card_button(
-                    Button::new((SharedString::from(format!("{id}-task-stop")), index)),
+                    Button::compact_icon(
+                        (SharedString::from(format!("{id}-task-stop")), index),
+                        IconName::Stop,
+                    ),
                     cx,
                 )
                 .debug_selector(move || format!("agent-task-stop-{index}"))
-                .ghost()
-                .small()
-                .label("Stop")
+                .tooltip("Stop")
                 .disabled(!enabled)
                 .on_click(move |_, window, cx| {
                     stop(TaskTrayAction::Stop(task_id.clone()), window, cx);
@@ -147,7 +154,7 @@ pub fn task_tray(
         } else {
             PaintState::Rest
         };
-        let muted = muted_on(&cx.theme().layer(roles::AGENT_CONTROL, state), cx);
+        let muted = muted_on(&cx.theme().layer(roles::AGENT_TRAY, state), cx);
         h_flex()
             .id(SharedString::from(format!("{id}-plan")))
             .debug_selector(|| "agent-plan-chip".to_owned())
@@ -158,7 +165,7 @@ pub fn task_tray(
             .cursor_pointer()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
-            .surface_interactive(roles::AGENT_CONTROL, state, cx)
+            .surface_interactive(roles::AGENT_TRAY, state, cx)
             .child(
                 div()
                     .flex_none()
@@ -202,7 +209,7 @@ pub fn task_tray(
     let tasks_chip = (!tasks.is_empty()).then(|| {
         agent_chrome_button(SharedString::from(format!("{id}-tasks")))
             .debug_selector(|| "agent-task-tray".to_owned())
-            .surface_role(roles::AGENT_CONTROL)
+            .surface_role(roles::AGENT_TRAY)
             .flex_none()
             .icon(super::presentation::spinner(phase))
             .label(task_tray_label(tasks.len()))

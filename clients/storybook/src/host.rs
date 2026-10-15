@@ -7,18 +7,25 @@ use zz_ui::{ActiveTheme as _, Root};
 const PADDING: f32 = 24.0;
 
 pub struct SectionHost {
+    section: &'static str,
     content: AnyView,
     floats: bool,
 }
 
 impl SectionHost {
-    pub fn new(content: AnyView, floats: bool) -> Self {
-        Self { content, floats }
+    pub fn new(section: &'static str, content: AnyView, floats: bool) -> Self {
+        Self {
+            section,
+            content,
+            floats,
+        }
     }
 }
 
 impl Render for SectionHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        zz_ui::note_drawn_roles();
+        let section = self.section;
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
         let backdrop = self
@@ -49,7 +56,16 @@ impl Render for SectionHost {
                                     window.resize(size(current.width, height));
                                 }
                             },
-                            |_, (), _, _| {},
+                            move |bounds, (), window, _| {
+                                let drawn = zz_ui::drawn_roles();
+                                let size = window.viewport_size();
+                                if bounds.size.width > px(0.0)
+                                    && size.width > px(0.0)
+                                    && size.height > px(0.0)
+                                {
+                                    crate::note_drawn(section, drawn);
+                                }
+                            },
                         )
                         .absolute()
                         .top_0()

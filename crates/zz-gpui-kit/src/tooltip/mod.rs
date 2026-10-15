@@ -6,7 +6,7 @@ use zz_gpui::{
 };
 
 use crate::Colorize as _;
-use crate::{ActiveTheme as _, Kind, StyledExt as _, SurfaceRole, h_flex, kbd::Kbd};
+use crate::{ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex, kbd::Kbd};
 
 /// The box that appears on hover: a label, optionally trailed by the keybinding
 /// of the action it triggers. Attach one through zz-gpui's `.tooltip()`.
@@ -22,7 +22,7 @@ impl Tooltip {
     pub fn new(text: impl Into<SharedString>) -> Self {
         Self {
             style: StyleRefinement::default(),
-            surface_role: Kind::Tooltip.role(),
+            surface_role: SurfaceRole::TOOLTIP,
             text: text.into(),
             action: None,
         }

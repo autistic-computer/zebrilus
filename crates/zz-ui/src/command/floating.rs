@@ -7,8 +7,8 @@ use zz_gpui::{
 use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, ElementExt as _, Kind, PaintState, StyledExt as _,
-    h_flex, rems_from_px, roles, row_corners,
+    ActiveTheme as _, Colorize as _, Edge, ElementExt as _, PaintState, StyledExt as _,
+    SurfaceRole, h_flex, rems_from_px, roles, row_corners,
     tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
     touch::{CoarsePointer, TOUCH_TARGET},
     v_flex,
@@ -55,7 +55,7 @@ pub fn display_menu(
     let outline = tmux_literal_colour(&state.border_style, "fg", cx);
     let selected_text = tmux_literal_colour(&state.selected_style, "fg", cx);
     let rest = text.unwrap_or(theme.foreground);
-    let mut surface = theme.layer(Kind::Popover, PaintState::Rest);
+    let mut surface = theme.layer(SurfaceRole::POPOVER, PaintState::Rest);
     let inks = MenuInks {
         rest,
         selected: tmux_literal_colour(&state.selected_style, "bg", cx)
@@ -163,7 +163,7 @@ fn menu_row(
 ) -> Stateful<Div> {
     let highlighted = selected && item.enabled;
     let layer = cx.theme().layer(
-        Kind::Row,
+        SurfaceRole::MENU_ITEM,
         if highlighted {
             PaintState::Selected
         } else {

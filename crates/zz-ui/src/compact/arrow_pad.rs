@@ -10,8 +10,8 @@ use super::{
     press::{Grip, Press, press_listeners},
 };
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, PaintState, StyledExt as _,
-    Tone, rems_from_px, roles,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, StyledExt as _,
+    SurfaceRole, Tone, rems_from_px, roles,
 };
 
 const THRESHOLD: f32 = 10.0;
@@ -118,78 +118,83 @@ impl ArrowPad {
     }
 
     fn bubble(&self, cx: &App) -> AnyElement {
-        let theme = cx.theme();
-        let muted = theme
-            .paint_on(
-                theme.ground_of(roles::ARROW_PAD),
-                Tone::Neutral,
-                Emphasis::Ghost,
-            )
-            .muted_at(PaintState::Rest);
-        let cell = |slot: Option<ArrowDirection>, hub: bool| {
-            let active = slot.is_some() && slot == self.direction;
-            div()
-                .flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .when_some(slot, |cell, direction| {
-                    let selector = format!("arrow-pad-cell-{}", direction.key());
-                    cell.debug_selector(move || selector)
-                        .surface_at(
-                            roles::ARROW_PAD,
-                            if active {
-                                PaintState::Selected
-                            } else {
-                                PaintState::Rest
-                            },
-                            cx,
-                        )
-                        .when(!active, |cell| cell.text_color(muted))
-                        .child(Icon::new(direction.icon()).size(rems_from_px(18.0)))
-                })
-                .when(hub, |cell| {
-                    cell.child(
-                        div()
-                            .size(rems_from_px(HUB))
-                            .rounded_full()
-                            .bg(theme.foreground.muted()),
-                    )
-                })
-        };
-        let line = |cells: [AnyElement; 3]| {
-            div()
-                .flex()
-                .flex_1()
-                .gap(rems_from_px(CELL_GAP))
-                .children(cells)
-        };
-        let blank = || cell(None, false).into_any_element();
-        div()
-            .debug_selector(|| "arrow-pad-bubble".to_owned())
-            .flex()
-            .flex_col()
-            .size(rems_from_px(BUBBLE))
-            .p(rems_from_px(BUBBLE_PADDING))
-            .gap(rems_from_px(CELL_GAP))
-            .surface(Kind::Popover, cx)
-            .child(line([
-                blank(),
-                cell(Some(ArrowDirection::Up), false).into_any_element(),
-                blank(),
-            ]))
-            .child(line([
-                cell(Some(ArrowDirection::Left), false).into_any_element(),
-                cell(None, true).into_any_element(),
-                cell(Some(ArrowDirection::Right), false).into_any_element(),
-            ]))
-            .child(line([
-                blank(),
-                cell(Some(ArrowDirection::Down), false).into_any_element(),
-                blank(),
-            ]))
-            .into_any_element()
+        arrow_pad_bubble(self.direction, cx)
     }
+}
+
+/// The bubble a held arrow pad shows over its key, with `direction` lit.
+pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    let muted = theme
+        .paint_on(
+            theme.ground_of(roles::ARROW_PAD),
+            Tone::Neutral,
+            Emphasis::Ghost,
+        )
+        .muted_at(PaintState::Rest);
+    let cell = |slot: Option<ArrowDirection>, hub: bool| {
+        let active = slot.is_some() && slot == direction;
+        div()
+            .flex()
+            .flex_1()
+            .items_center()
+            .justify_center()
+            .when_some(slot, |cell, direction| {
+                let selector = format!("arrow-pad-cell-{}", direction.key());
+                cell.debug_selector(move || selector)
+                    .surface_at(
+                        roles::ARROW_PAD,
+                        if active {
+                            PaintState::Selected
+                        } else {
+                            PaintState::Rest
+                        },
+                        cx,
+                    )
+                    .when(!active, |cell| cell.text_color(muted))
+                    .child(Icon::new(direction.icon()).size(rems_from_px(18.0)))
+            })
+            .when(hub, |cell| {
+                cell.child(
+                    div()
+                        .size(rems_from_px(HUB))
+                        .rounded_full()
+                        .bg(theme.foreground.muted()),
+                )
+            })
+    };
+    let line = |cells: [AnyElement; 3]| {
+        div()
+            .flex()
+            .flex_1()
+            .gap(rems_from_px(CELL_GAP))
+            .children(cells)
+    };
+    let blank = || cell(None, false).into_any_element();
+    div()
+        .debug_selector(|| "arrow-pad-bubble".to_owned())
+        .flex()
+        .flex_col()
+        .size(rems_from_px(BUBBLE))
+        .p(rems_from_px(BUBBLE_PADDING))
+        .gap(rems_from_px(CELL_GAP))
+        .surface(SurfaceRole::POPOVER, cx)
+        .child(line([
+            blank(),
+            cell(Some(ArrowDirection::Up), false).into_any_element(),
+            blank(),
+        ]))
+        .child(line([
+            cell(Some(ArrowDirection::Left), false).into_any_element(),
+            cell(None, true).into_any_element(),
+            cell(Some(ArrowDirection::Right), false).into_any_element(),
+        ]))
+        .child(line([
+            blank(),
+            cell(Some(ArrowDirection::Down), false).into_any_element(),
+            blank(),
+        ]))
+        .into_any_element()
 }
 
 impl Press for ArrowPad {

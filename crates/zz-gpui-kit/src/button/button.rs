@@ -123,7 +123,7 @@ impl ButtonVariant {
             return None;
         };
         let role = role.unwrap_or(match emphasis {
-            Emphasis::Ghost if icon_only => Kind::IconButton.role(),
+            Emphasis::Ghost if icon_only => SurfaceRole::ICON_BUTTON,
             Emphasis::Ghost | Emphasis::Outline => SurfaceRole::QUIET_BUTTON,
             Emphasis::Solid | Emphasis::Soft => Kind::Button.role(),
         });
@@ -632,27 +632,15 @@ impl RenderOnce for Button {
                 this.text_decoration_1()
             })
             .when(!self.disabled && !self.selected && !coarse, |this| {
-                this.hover(move |style| {
-                    let style = style
+                this.hover(move |style| match hover_bg {
+                    Some(bg) => style
                         .border_color(hover.border)
                         .shadow(hover.shadow.clone())
-                        .text_color(hover.text);
-                    match (hover_bg, hover.glass) {
-                        (Some(bg), _) => style.bg(bg),
-                        (None, Some(material)) => style.glass(material),
-                        (None, None) => style.bg(hover.fill),
-                    }
+                        .text_color(hover.text)
+                        .bg(bg),
+                    None => crate::foundation::restyle(style, &hover),
                 })
-                .active(move |style| {
-                    let style = style
-                        .border_color(active.border)
-                        .shadow(active.shadow.clone())
-                        .text_color(active.text);
-                    match active.glass {
-                        Some(material) => style.glass(material),
-                        None => style.bg(active.fill),
-                    }
-                })
+                .active(move |style| crate::foundation::restyle(style, &active))
             })
             .refine_style(&self.style)
             .when(pressed > 0.0, |this| {
@@ -794,7 +782,7 @@ mod tests {
                 .variant
                 .surface(None, true, None)
                 .map(|surface| surface.role),
-            Some(Kind::IconButton.role())
+            Some(SurfaceRole::ICON_BUTTON)
         );
     }
 

@@ -445,11 +445,9 @@ impl Element for LiquidGlass {
         let center = body.center() + point(Pixels(drag.x), Pixels(drag.y));
         // The same shape policy Style::paint gives the element's own fill.
         let requested = self.corner_radii.to_pixels(window.rem_size());
-        let radii = match (self.corner_radius_mode, window.adaptive_corner_fraction()) {
-            (CornerRadiusMode::Inherit, Some(fraction)) => {
-                requested.resolve_radii_for_quad_size(bounds.size, fraction)
-            }
-            _ => requested.clamp_radii_for_quad_size(bounds.size),
+        let radii = match self.corner_radius_mode {
+            CornerRadiusMode::Inherit => window.resolve_corner_radii(requested, bounds.size),
+            CornerRadiusMode::Fixed => requested.clamp_radii_for_quad_size(bounds.size),
         };
         let shape = GlassShape {
             bounds: Bounds::new(center - point(grown.width / 2., grown.height / 2.), grown),

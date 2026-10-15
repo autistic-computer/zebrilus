@@ -7,7 +7,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, Fill, Icon, Kind, Layer, PaintState, Sizable, Size, StyledExt as _,
+    ActiveTheme as _, Emphasis, Fill, Icon, Layer, PaintState, Sizable, Size, StyledExt as _,
     Surface, SurfaceRole, Theme, Tone, h_flex, rems_from_px,
 };
 
@@ -77,7 +77,7 @@ impl Badge {
     }
 
     fn surface_layer(&self, theme: &Theme) -> Layer {
-        let role = self.surface_role.unwrap_or(Kind::Badge.role());
+        let role = self.surface_role.unwrap_or(SurfaceRole::BADGE);
         let role = match self.emphasis {
             Emphasis::Solid | Emphasis::Soft => role,
             Emphasis::Outline => role.with(role.patch.fill(Fill::None)),

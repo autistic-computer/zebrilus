@@ -7,8 +7,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, ElementExt as _, Icon, IconName, Kind,
-    StyledExt as _, Surface, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, ElementExt as _, Icon, IconName,
+    StyledExt as _, Surface, SurfaceRole, Tone,
     button::Button,
     command::palette_shortcut_hint,
     h_flex,
@@ -36,9 +36,10 @@ pub fn history_session_row(
     delete: Option<Button>,
     cx: &App,
 ) -> Stateful<Div> {
-    let row = cx
-        .theme()
-        .layer(Kind::Row, crate::picker::row_state(selected, true));
+    let row = cx.theme().layer(
+        SurfaceRole::MENU_ITEM,
+        crate::picker::row_state(selected, true),
+    );
     let detail = muted_on(&row, cx);
     let deletable = delete.is_some();
     picker_row(id, selected, cx)
@@ -101,8 +102,10 @@ pub fn history_directory_row(
     cx: &App,
 ) -> Stateful<Div> {
     let count = muted_on(
-        &cx.theme()
-            .layer(Kind::Row, crate::picker::row_state(highlighted, true)),
+        &cx.theme().layer(
+            SurfaceRole::MENU_ITEM,
+            crate::picker::row_state(highlighted, true),
+        ),
         cx,
     );
     directory_row(("agent-project-directory", index), label, highlighted, cx)

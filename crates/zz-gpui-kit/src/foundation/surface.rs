@@ -9,6 +9,9 @@
 //! a role takes the kind's built-in style, then the theme's patch for the
 //! kind, then its own built-in patch, then the theme's patch for the role.
 
+use std::cell::RefCell;
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 use zz_gpui::{
     App, BoxShadow, FULL_CORNER_RADIUS, GlassMaterial, Hsla, InteractiveElement, Pixels,
@@ -75,6 +78,19 @@ pub enum Highlight {
     Ring,
     /// A bar in the accent along the leading edge.
     Bar,
+    Glass,
+}
+
+impl Highlight {
+    pub const ALL: &'static [Self] = &[
+        Self::None,
+        Self::Tint,
+        Self::Lift,
+        Self::Accent,
+        Self::Ring,
+        Self::Bar,
+        Self::Glass,
+    ];
 }
 
 /// The treatments a surface takes.
@@ -206,43 +222,25 @@ pub enum Kind {
     Panel,
     Pane,
     Card,
-    Tile,
-    Row,
-    Tab,
-    Chip,
+    Floating,
     Button,
-    IconButton,
+    Item,
     Field,
-    Badge,
-    Keycap,
-    Popover,
-    Dialog,
-    Sheet,
-    Toast,
-    Tooltip,
+    Label,
     Rule,
 }
 
 impl Kind {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 10] = [
         Self::Bar,
         Self::Panel,
         Self::Pane,
         Self::Card,
-        Self::Tile,
-        Self::Row,
-        Self::Tab,
-        Self::Chip,
+        Self::Floating,
         Self::Button,
-        Self::IconButton,
+        Self::Item,
         Self::Field,
-        Self::Badge,
-        Self::Keycap,
-        Self::Popover,
-        Self::Dialog,
-        Self::Sheet,
-        Self::Toast,
-        Self::Tooltip,
+        Self::Label,
         Self::Rule,
     ];
 
@@ -253,20 +251,11 @@ impl Kind {
             Self::Panel => "panel",
             Self::Pane => "pane",
             Self::Card => "card",
-            Self::Tile => "tile",
-            Self::Row => "row",
-            Self::Tab => "tab",
-            Self::Chip => "chip",
+            Self::Floating => "floating",
             Self::Button => "button",
-            Self::IconButton => "icon-button",
+            Self::Item => "item",
             Self::Field => "field",
-            Self::Badge => "badge",
-            Self::Keycap => "keycap",
-            Self::Popover => "popover",
-            Self::Dialog => "dialog",
-            Self::Sheet => "sheet",
-            Self::Toast => "toast",
-            Self::Tooltip => "tooltip",
+            Self::Label => "label",
             Self::Rule => "rule",
         }
     }
@@ -277,44 +266,38 @@ impl Kind {
             Self::Panel => "Panels",
             Self::Pane => "Panes",
             Self::Card => "Cards",
-            Self::Tile => "Tiles",
-            Self::Row => "Rows",
-            Self::Tab => "Tabs",
-            Self::Chip => "Chips",
+            Self::Floating => "Floating",
             Self::Button => "Buttons",
-            Self::IconButton => "Icon buttons",
+            Self::Item => "Items",
             Self::Field => "Fields",
-            Self::Badge => "Badges",
-            Self::Keycap => "Keycaps",
-            Self::Popover => "Popovers and menus",
-            Self::Dialog => "Dialogs",
-            Self::Sheet => "Sheets",
-            Self::Toast => "Toasts",
-            Self::Tooltip => "Tooltips",
+            Self::Label => "Labels",
             Self::Rule => "Dividers",
         }
     }
 
     const fn about(self) -> &'static str {
         match self {
-            Self::Bar => "Strips across a window or pane: the title bar, pane headers, footers",
+            Self::Bar => {
+                "Strips across a window, pane or sheet: the title bar, pane headers, the phone bar"
+            }
             Self::Panel => "Columns set into the window, like the sidebar",
             Self::Pane => "Terminal, browser, agent and editor panes",
-            Self::Card => "Raised boxes in the flow: message bubbles, setting groups, code blocks",
-            Self::Tile => "Pickable thumbnails and image tiles",
-            Self::Row => "Rows in lists and menus",
-            Self::Tab => "Tabs and window pills",
-            Self::Chip => "Small status chips over content",
-            Self::Button => "Buttons with a label",
-            Self::IconButton => "Buttons that are only an icon",
-            Self::Field => "Text fields, selects and anything you type into",
-            Self::Badge => "Small labels and counts",
-            Self::Keycap => "Key hints",
-            Self::Popover => "Menus, dropdowns and popovers",
-            Self::Dialog => "Dialogs and modal pickers",
-            Self::Sheet => "Sheets that rise from the bottom",
-            Self::Toast => "Notifications and banners",
-            Self::Tooltip => "Tooltips",
+            Self::Card => {
+                "Boxes in the flow: message bubbles, setting groups, code blocks, previews"
+            }
+            Self::Floating => {
+                "Everything over the content: menus, palettes, dialogs, sheets, toasts, tooltips, floating panes and pane chips"
+            }
+            Self::Button => {
+                "Everything you press to do something: buttons, icon buttons, and the rows of menus, palettes and pickers"
+            }
+            Self::Item => {
+                "What you pick that stays picked or open: sidebar rows, tabs, agent steps, picker tiles"
+            }
+            Self::Field => {
+                "Text fields, selects and anything you type into. Selected is the one you are typing in"
+            }
+            Self::Label => "Badges, key hints and other small marks",
             Self::Rule => "Divider lines",
         }
     }
@@ -353,44 +336,25 @@ impl Kind {
                 ..style(Fill::None, true, Shadow::None, H::None, H::None)
             },
             Self::Pane => style(Fill::Glass, true, Shadow::Contact, H::None, H::Ring),
-            Self::Card | Self::Tile => style(Fill::Solid, true, Shadow::Contact, H::None, H::Ring),
-            Self::Row => style(Fill::None, false, Shadow::None, H::Tint, H::Accent),
-            Self::Tab => style(Fill::None, false, Shadow::None, H::Lift, H::Lift),
-            Self::Chip => style(Fill::Solid, true, Shadow::Contact, H::None, H::Tint),
+            Self::Card => style(Fill::Solid, true, Shadow::Contact, H::None, H::Ring),
+            Self::Floating => style(Fill::Glass, true, Shadow::Float, H::None, H::Accent),
             Self::Button => style(Fill::Solid, true, Shadow::Contact, H::Tint, H::Tint),
-            Self::IconButton => style(Fill::None, false, Shadow::None, H::Lift, H::Lift),
+            Self::Item => style(Fill::None, false, Shadow::None, H::Lift, H::Lift),
             Self::Field => style(Fill::Tint, true, Shadow::None, H::Tint, H::None),
-            Self::Badge | Self::Keycap => style(Fill::Tint, true, Shadow::None, H::None, H::None),
-            Self::Popover | Self::Dialog | Self::Sheet | Self::Toast => {
-                style(Fill::Glass, true, Shadow::Float, H::None, H::Accent)
-            }
-            Self::Tooltip => style(Fill::Glass, true, Shadow::Contact, H::None, H::None),
+            Self::Label => style(Fill::Tint, true, Shadow::None, H::None, H::None),
         }
     }
 
     /// A control: it casts its shadow only on the window, since a panel or a
     /// popover already stands off it.
     pub const fn is_control(self) -> bool {
-        matches!(
-            self,
-            Self::Row
-                | Self::Tab
-                | Self::Chip
-                | Self::Button
-                | Self::IconButton
-                | Self::Field
-                | Self::Badge
-                | Self::Keycap
-        )
+        matches!(self, Self::Button | Self::Item | Self::Field | Self::Label)
     }
 
     /// Floats over the window, so its fill steps off the window's color
     /// whatever it is placed on.
     pub const fn floats(self) -> bool {
-        matches!(
-            self,
-            Self::Popover | Self::Dialog | Self::Sheet | Self::Toast | Self::Tooltip
-        )
+        matches!(self, Self::Floating)
     }
 
     /// How far its fill stands off the window.
@@ -403,22 +367,186 @@ impl Kind {
             Elevation::Panel
         }
     }
+
+    pub const fn knobs(self) -> Knobs {
+        use Fill as F;
+        use Shadow as S;
+        use Shape as Sh;
+        const FILLS: &[Fill] = &[F::None, F::Tint, F::Solid, F::Glass];
+        const BACKED: &[Fill] = &[F::Tint, F::Solid, F::Glass];
+        const OUTLINE: &[bool] = &[true, false];
+        const SHADOWS: &[Shadow] = &[S::None, S::Contact, S::Float];
+        const RESTING: &[Shadow] = &[S::None, S::Contact];
+        const SHAPES: &[Shape] = &[Sh::Square, Sh::Round, Sh::Pill];
+        const ALL: &[Highlight] = Highlight::ALL;
+        const LIT: &[Highlight] = &[Highlight::None, Highlight::Ring];
+        const FOCUS: &[Highlight] = &[
+            Highlight::None,
+            Highlight::Tint,
+            Highlight::Lift,
+            Highlight::Ring,
+            Highlight::Bar,
+            Highlight::Glass,
+        ];
+        const FIXED: Knobs = Knobs::FIXED;
+        const SURFACE: Knobs = Knobs {
+            fill: FILLS,
+            outline: OUTLINE,
+            shadow: SHADOWS,
+            ..FIXED
+        };
+        const CONTROL: Knobs = Knobs {
+            shape: SHAPES,
+            hover: ALL,
+            selected: ALL,
+            ..SURFACE
+        };
+        match self {
+            Self::Bar => Knobs {
+                shadow: RESTING,
+                ..SURFACE
+            },
+            Self::Panel => FIXED,
+            Self::Pane => Knobs {
+                selected: LIT,
+                ..SURFACE
+            },
+            Self::Card => Knobs {
+                shape: Knobs::BOXES,
+                ..SURFACE
+            },
+            Self::Floating => Knobs {
+                fill: BACKED,
+                shape: SHAPES,
+                ..SURFACE
+            },
+            Self::Button => CONTROL,
+            Self::Item => Knobs {
+                shadow: RESTING,
+                ..CONTROL
+            },
+            Self::Field => Knobs {
+                selected: FOCUS,
+                ..CONTROL
+            },
+            Self::Label => Knobs {
+                shadow: RESTING,
+                shape: SHAPES,
+                ..SURFACE
+            },
+            Self::Rule => Knobs {
+                outline: OUTLINE,
+                ..FIXED
+            },
+        }
+    }
 }
 
-/// One distinct piece of UI a theme can style: a kind, and the built-in
-/// changes this piece makes to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Knobs {
+    pub fill: &'static [Fill],
+    pub outline: &'static [bool],
+    pub shadow: &'static [Shadow],
+    pub shape: &'static [Shape],
+    pub hover: &'static [Highlight],
+    pub selected: &'static [Highlight],
+}
+
+impl Knobs {
+    pub const FIXED: Self = Self {
+        fill: &[],
+        outline: &[],
+        shadow: &[],
+        shape: &[],
+        hover: &[],
+        selected: &[],
+    };
+
+    /// The shapes of a box too big to be a pill.
+    pub const BOXES: &'static [Shape] = &[Shape::Square, Shape::Round];
+
+    /// These knobs, with every hover and selected highlight open.
+    pub const fn pressable(self) -> Self {
+        Self {
+            hover: Highlight::ALL,
+            selected: Highlight::ALL,
+            ..self
+        }
+    }
+
+    fn open(&self) -> [bool; 6] {
+        [
+            !self.fill.is_empty(),
+            !self.outline.is_empty(),
+            !self.shadow.is_empty(),
+            !self.shape.is_empty(),
+            !self.hover.is_empty(),
+            !self.selected.is_empty(),
+        ]
+    }
+
+    pub fn admit(&self, patch: StylePatch) -> StylePatch {
+        fn keep<T: PartialEq>(value: Option<T>, allowed: &[T]) -> Option<T> {
+            value.filter(|value| allowed.contains(value))
+        }
+        StylePatch {
+            fill: keep(patch.fill, self.fill),
+            outline: keep(patch.outline, self.outline),
+            shadow: keep(patch.shadow, self.shadow),
+            shape: keep(patch.shape, self.shape),
+            hover: keep(patch.hover, self.hover),
+            selected: keep(patch.selected, self.selected),
+        }
+    }
+
+    pub fn refusal(&self, patch: &StylePatch) -> Option<String> {
+        fn check<T: PartialEq + Serialize>(
+            prop: &str,
+            value: Option<T>,
+            allowed: &[T],
+        ) -> Option<String> {
+            let value = value.filter(|value| !allowed.contains(value))?;
+            let spell = |value: &T| serde_json::to_string(value).unwrap_or_default();
+            Some(if allowed.is_empty() {
+                format!("`{prop}` is fixed")
+            } else {
+                format!(
+                    "`{prop}` can't be {}, only {}",
+                    spell(&value),
+                    allowed.iter().map(spell).collect::<Vec<_>>().join(", ")
+                )
+            })
+        }
+        check("fill", patch.fill, self.fill)
+            .or_else(|| check("outline", patch.outline, self.outline))
+            .or_else(|| check("shadow", patch.shadow, self.shadow))
+            .or_else(|| check("shape", patch.shape, self.shape))
+            .or_else(|| check("hover", patch.hover, self.hover))
+            .or_else(|| check("selected", patch.selected, self.selected))
+    }
+}
+
+/// One distinct piece of UI a theme can style: a kind, the group within it
+/// the piece belongs to, and the built-in changes this piece makes to what
+/// it takes from them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceRole {
     /// What a theme file calls it: the kind's name for a kind, or a dotted
     /// name for a place, like `sidebar.row`.
     pub id: &'static str,
     pub kind: Kind,
+    /// The group it belongs to within its kind; the kind itself when unset.
+    pub parent: Option<&'static SurfaceRole>,
     /// What the theme creator calls it.
     pub label: &'static str,
     /// Where it shows up, in plain words.
     pub about: &'static str,
-    /// How it differs from its kind before any theme speaks.
+    /// How it differs from its parent before any theme speaks.
     pub patch: StylePatch,
+    pub knobs: Option<Knobs>,
+    /// A row in a list: its round corners sit concentric inside the list,
+    /// and a bar highlight runs down its leading edge.
+    pub row: bool,
 }
 
 impl SurfaceRole {
@@ -431,9 +559,26 @@ impl SurfaceRole {
         Self {
             id,
             kind,
+            parent: None,
             label,
             about,
             patch: StylePatch::EMPTY,
+            knobs: None,
+            row: false,
+        }
+    }
+
+    /// A role within the group `parent`, taking its kind and its look.
+    pub const fn under(
+        parent: &'static SurfaceRole,
+        id: &'static str,
+        label: &'static str,
+        about: &'static str,
+    ) -> Self {
+        Self {
+            parent: Some(parent),
+            row: parent.row,
+            ..Self::new(id, parent.kind, label, about)
         }
     }
 
@@ -441,10 +586,113 @@ impl SurfaceRole {
         Self { patch, ..self }
     }
 
+    pub const fn with_knobs(self, knobs: Knobs) -> Self {
+        Self {
+            knobs: Some(knobs),
+            ..self
+        }
+    }
+
+    pub const fn rows(self) -> Self {
+        Self { row: true, ..self }
+    }
+
+    pub const fn knobs(&self) -> Knobs {
+        match (self.knobs, self.parent) {
+            (Some(knobs), _) => knobs,
+            (None, Some(parent)) => parent.knobs(),
+            (None, None) => self.kind.knobs(),
+        }
+    }
+
     /// Whether this role is its kind, not a place within it.
     pub fn is_kind(&self) -> bool {
         self.id == self.kind.name()
     }
+
+    /// The group this role belongs to: its parent, or its kind.
+    pub fn group(&self) -> Option<Self> {
+        match self.parent {
+            Some(parent) => Some(*parent),
+            None if self.is_kind() => None,
+            None => Some(self.kind.role()),
+        }
+    }
+
+    /// This role, then each group it belongs to out to its kind.
+    pub fn lineage(self) -> impl Iterator<Item = Self> {
+        std::iter::successors(Some(self), Self::group)
+    }
+
+    pub const POPOVER: Self = Self::new(
+        "popover",
+        Kind::Floating,
+        "Menus and popovers",
+        "Menus, dropdowns and popovers",
+    )
+    .with_knobs(Knobs {
+        shape: Knobs::BOXES,
+        ..Kind::Floating.knobs()
+    });
+
+    pub const DIALOG: Self = Self::new(
+        "dialog",
+        Kind::Floating,
+        "Dialogs",
+        "Dialogs and modal pickers",
+    )
+    .with_knobs(Knobs {
+        shape: Knobs::BOXES,
+        ..Kind::Floating.knobs()
+    });
+
+    pub const SHEET: Self = Self::new(
+        "sheet",
+        Kind::Floating,
+        "Sheets",
+        "Sheets that rise from the bottom",
+    )
+    .with_knobs(Knobs {
+        shape: Knobs::BOXES,
+        ..Kind::Floating.knobs()
+    });
+
+    pub const TOAST: Self = Self::new(
+        "toast",
+        Kind::Floating,
+        "Toasts",
+        "Notifications and banners",
+    );
+
+    /// A tooltip rests just off what it explains, so it casts the contact
+    /// shadow.
+    pub const TOOLTIP: Self = Self::new(
+        "tooltip",
+        Kind::Floating,
+        "Tooltips",
+        "Tooltips and key hints",
+    )
+    .with(
+        StylePatch::EMPTY
+            .shadow(Shadow::Contact)
+            .selected(Highlight::None),
+    );
+
+    /// A button that is only an icon: no fill until pointed at.
+    pub const ICON_BUTTON: Self = Self::new(
+        "icon-button",
+        Kind::Button,
+        "Icon buttons",
+        "Buttons that are only an icon",
+    )
+    .with(
+        StylePatch::EMPTY
+            .fill(Fill::None)
+            .outline(false)
+            .shadow(Shadow::None)
+            .hover(Highlight::Lift)
+            .selected(Highlight::Lift),
+    );
 
     /// A button that shows no fill until pointed at.
     pub const QUIET_BUTTON: Self = Self::new(
@@ -462,6 +710,62 @@ impl SurfaceRole {
             .selected(Highlight::Lift),
     );
 
+    /// An icon button set into a bar, a field or a row: it washes while
+    /// pointed at but never rises.
+    pub const FLAT_ICON_BUTTON: Self = Self::under(
+        &Self::ICON_BUTTON,
+        "icon-button.flat",
+        "Flat icon buttons",
+        "Icon buttons set into a bar, a field or a row, that wash but never rise",
+    )
+    .with(
+        StylePatch::EMPTY
+            .hover(Highlight::Tint)
+            .selected(Highlight::Tint),
+    );
+
+    /// A row you press to run or pick something.
+    pub const MENU_ITEM: Self = Self::new(
+        "menu-item",
+        Kind::Button,
+        "Menu items",
+        "Rows you press to run or pick something: menus, palettes, pickers, dropdowns",
+    )
+    .rows()
+    .with(
+        StylePatch::EMPTY
+            .fill(Fill::None)
+            .outline(false)
+            .shadow(Shadow::None)
+            .hover(Highlight::Tint)
+            .selected(Highlight::Accent),
+    )
+    .with_knobs(Knobs {
+        shadow: &[],
+        ..Kind::Button.knobs()
+    });
+
+    /// A row that shows which one is open or current.
+    pub const ROW: Self = Self::new(
+        "row",
+        Kind::Item,
+        "Rows",
+        "Rows that show which one is open or current",
+    )
+    .rows();
+
+    pub const TAB: Self = Self::new("tab", Kind::Item, "Tabs", "Tabs and window pills");
+
+    /// A pickable thumbnail, raised like a card.
+    pub const TILE: Self = Self::new("tile", Kind::Item, "Tiles", "Pickable thumbnails").with(
+        StylePatch::EMPTY
+            .fill(Fill::Solid)
+            .outline(true)
+            .shadow(Shadow::Contact)
+            .hover(Highlight::None)
+            .selected(Highlight::Ring),
+    );
+
     /// A field that holds more than one line. It keeps the theme's radius
     /// where a single-line field may be a pill.
     pub const TEXT_AREA: Self = Self::new(
@@ -472,55 +776,48 @@ impl SurfaceRole {
     )
     .with(StylePatch::EMPTY.shape(Shape::Round));
 
-    /// An icon button set into a bar, a field or a row: it washes while
-    /// pointed at but never rises.
-    pub const FLAT_ICON_BUTTON: Self = Self::new(
-        "icon-button.flat",
-        Kind::IconButton,
-        "Flat icon buttons",
-        "Icon buttons set into a bar, a field or a row, that wash but never rise",
-    )
-    .with(
-        StylePatch::EMPTY
-            .hover(Highlight::Tint)
-            .selected(Highlight::Tint),
-    );
+    pub const BADGE: Self = Self::new("badge", Kind::Label, "Badges", "Small labels and counts");
+
+    pub const KEYCAP: Self = Self::new("keycap", Kind::Label, "Keycaps", "Key hints");
 
     /// The handle a sheet or a bar is dragged by, filled with ink.
-    pub const GRABBER: Self = Self::new(
+    pub const GRABBER: Self = Self::under(
+        &Self::BADGE,
         "grabber",
-        Kind::Badge,
         "Grabbers",
         "The handles on the phone bar and on sheets",
     )
     .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
 
-    /// The roles the kit itself names: every kind, quiet and flat buttons,
-    /// text areas and grabbers.
-    pub const KIT: [Self; 23] = [
+    /// The roles the kit itself names: every kind and the groups within
+    /// them.
+    pub const KIT: [Self; 26] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
         Kind::Pane.role(),
         Kind::Card.role(),
-        Kind::Tile.role(),
-        Kind::Row.role(),
-        Kind::Tab.role(),
-        Kind::Chip.role(),
+        Kind::Floating.role(),
+        Self::POPOVER,
+        Self::DIALOG,
+        Self::SHEET,
+        Self::TOAST,
+        Self::TOOLTIP,
         Kind::Button.role(),
         Self::QUIET_BUTTON,
-        Kind::IconButton.role(),
+        Self::ICON_BUTTON,
         Self::FLAT_ICON_BUTTON,
+        Self::MENU_ITEM,
+        Kind::Item.role(),
+        Self::ROW,
+        Self::TAB,
+        Self::TILE,
         Kind::Field.role(),
         Self::TEXT_AREA,
-        Kind::Badge.role(),
-        Kind::Keycap.role(),
-        Kind::Popover.role(),
-        Kind::Dialog.role(),
-        Kind::Sheet.role(),
-        Kind::Toast.role(),
-        Kind::Tooltip.role(),
-        Kind::Rule.role(),
+        Kind::Label.role(),
+        Self::BADGE,
+        Self::KEYCAP,
         Self::GRABBER,
+        Kind::Rule.role(),
     ];
 }
 
@@ -582,6 +879,18 @@ const INSPECT_COLOR: Hsla = Hsla {
     l: 0.55,
     a: 1.0,
 };
+
+thread_local! {
+    static DRAWN: RefCell<Option<BTreeSet<&'static str>>> = const { RefCell::new(None) };
+}
+
+pub fn note_drawn_roles() {
+    DRAWN.with_borrow_mut(|drawn| *drawn = Some(BTreeSet::new()));
+}
+
+pub fn drawn_roles() -> BTreeSet<&'static str> {
+    DRAWN.with_borrow_mut(|drawn| drawn.take().unwrap_or_default())
+}
 
 /// A role drawn in a tone, on a ground.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -663,33 +972,85 @@ impl Layer {
 }
 
 impl Theme {
-    /// The style `role` resolves to in this theme.
+    /// Whether the theme's patch for `group`, one of the groups `role`
+    /// belongs to, still changes `role`: some prop its knobs open is left by
+    /// the theme's patches for everything between them.
+    pub fn group_reaches(&self, group: SurfaceRole, role: SurfaceRole) -> bool {
+        if !role.lineage().any(|node| node.id == group.id) {
+            return false;
+        }
+        let named = |patch: StylePatch| {
+            [
+                patch.fill.is_some(),
+                patch.outline.is_some(),
+                patch.shadow.is_some(),
+                patch.shape.is_some(),
+                patch.hover.is_some(),
+                patch.selected.is_some(),
+            ]
+        };
+        let mut held = [false; 6];
+        for node in role.lineage().take_while(|node| node.id != group.id) {
+            let themed = self.styles.get(node.id).copied().unwrap_or_default();
+            for (held, themed) in held.iter_mut().zip(named(themed)) {
+                *held |= themed;
+            }
+        }
+        held.into_iter()
+            .zip(role.knobs().open())
+            .any(|(held, open)| open && !held)
+    }
+
+    fn built_in(node: SurfaceRole, style: &mut Style) {
+        if let Some(group) = node.group() {
+            Self::built_in(group, style);
+        }
+        node.patch.apply(style);
+    }
+
+    fn themed(&self, node: SurfaceRole, knobs: Knobs, style: &mut Style) {
+        if let Some(group) = node.group() {
+            self.themed(group, knobs, style);
+        }
+        if let Some(patch) = self.styles.get(node.id) {
+            knobs.admit(*patch).apply(style);
+        }
+    }
+
+    /// The style `role` resolves to in this theme: its kind's built-in
+    /// style and each group's built-in patch from the kind inward, then the
+    /// theme's patches the same way, so a theme's patch for a kind beats
+    /// the built-in look of everything in it.
     pub fn style(&self, role: SurfaceRole) -> Style {
+        DRAWN.with_borrow_mut(|drawn| {
+            if let Some(drawn) = drawn {
+                drawn.insert(role.id);
+                for group in role.lineage().skip(1) {
+                    if self.group_reaches(group, role) {
+                        drawn.insert(group.id);
+                    }
+                }
+            }
+        });
         let mut style = role.kind.base();
-        if let Some(patch) = self.styles.get(role.kind.name()) {
-            patch.apply(&mut style);
-        }
-        role.patch.apply(&mut style);
-        if !role.is_kind()
-            && let Some(patch) = self.styles.get(role.id)
-        {
-            patch.apply(&mut style);
-        }
+        Self::built_in(role, &mut style);
+        self.themed(role, role.knobs(), &mut style);
         style
     }
 
-    /// The corner radius `shape` gives a surface of `kind`.
-    pub fn shape_radius(&self, kind: Kind, shape: Shape) -> Pixels {
+    /// The corner radius `shape` gives `role`. At the theme's largest radius
+    /// every button is a pill.
+    pub fn shape_radius(&self, role: SurfaceRole, shape: Shape) -> Pixels {
         match shape {
             Shape::Square => px(0.0),
             Shape::Pill => FULL_CORNER_RADIUS,
-            Shape::Round if kind == Kind::Row => {
-                if self.inset_rows() {
-                    self.menu_radius()
-                } else {
-                    px(0.0)
-                }
-            }
+            Shape::Round if role.row && !self.inset_rows() => px(0.0),
+            Shape::Round if role.kind == Kind::Button => match self.control_radius() {
+                FULL_CORNER_RADIUS => FULL_CORNER_RADIUS,
+                _ if role.row => self.menu_radius(),
+                radius => radius,
+            },
+            Shape::Round if role.row => self.menu_radius(),
             Shape::Round => self.radius,
         }
     }
@@ -741,7 +1102,7 @@ impl Theme {
         let kind = surface.role.kind;
         let style = self.style(surface.role);
         let ground = surface.ground.unwrap_or_else(|| self.ground());
-        let glass = match style.fill {
+        let mut glass = match style.fill {
             Fill::Glass if !ground.glass => self.drawn_glass(),
             _ => None,
         };
@@ -758,6 +1119,15 @@ impl Theme {
 
         let soft = self.paint_on(ground, tone, Emphasis::Soft);
         let solid = self.paint_on(ground, tone, Emphasis::Solid);
+        let base = if kind.floats() {
+            self.background.opaque()
+        } else {
+            ground.fill.opaque()
+        };
+        let step = match kind.elevation() {
+            Elevation::Popover => 2,
+            _ => 1,
+        };
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
         } else if kind.is_control() {
@@ -767,15 +1137,6 @@ impl Theme {
                 Fill::Solid | Fill::Glass => soft.opaque(),
             }
         } else {
-            let base = if kind.floats() {
-                self.background.opaque()
-            } else {
-                ground.fill.opaque()
-            };
-            let step = match kind.elevation() {
-                Elevation::Popover => 2,
-                _ => 1,
-            };
             let rest = match fill {
                 Fill::None => self.transparent,
                 Fill::Tint => base.washed(step),
@@ -806,9 +1167,17 @@ impl Theme {
 
         let highlight = match state {
             PaintState::Hover | PaintState::Active => style.hover,
-            PaintState::Selected | PaintState::Current => style.selected,
+            PaintState::Selected | PaintState::Current | PaintState::Focused => style.selected,
             _ => Highlight::None,
         };
+        let highlight = match highlight {
+            Highlight::Glass if glass.is_some() || ground.glass => Highlight::Tint,
+            Highlight::Glass if self.drawn_glass().is_none() => Highlight::Lift,
+            highlight => highlight,
+        };
+        if highlight == Highlight::Glass {
+            glass = self.drawn_glass();
+        }
         let washed = |paint: &super::Paint| match state {
             PaintState::Hover => paint.hover,
             PaintState::Active => paint.active,
@@ -817,6 +1186,8 @@ impl Theme {
         let (mut fill_color, mut text) = match highlight {
             Highlight::Tint | Highlight::Lift => (washed(&paint), paint.text),
             Highlight::Accent => (paint.selected, paint.selected_text),
+            Highlight::Glass if kind.is_control() => (soft.opaque().fill, paint.text),
+            Highlight::Glass => (base.raised(step), paint.text),
             Highlight::None | Highlight::Ring | Highlight::Bar => (paint.fill, paint.text),
         };
         if state == PaintState::Disabled {
@@ -833,7 +1204,10 @@ impl Theme {
         } else {
             self.border()
         };
-        let lifts = style.hover == Highlight::Lift || style.selected == Highlight::Lift;
+        let lifts = [style.hover, style.selected].into_iter().any(|highlight| {
+            highlight == Highlight::Lift
+                || (highlight == Highlight::Glass && self.drawn_glass().is_none())
+        });
         let border_width = if (style.outline || lifts) && self.outlined() {
             self.outline
         } else {
@@ -871,10 +1245,10 @@ impl Theme {
             }),
             Highlight::Bar => shadow.push(BoxShadow {
                 color: self.accent.opaque(),
-                offset: if kind == Kind::Tab {
-                    point(px(0.0), -BAR_WIDTH)
-                } else {
+                offset: if surface.role.row {
                     point(BAR_WIDTH, px(0.0))
+                } else {
+                    point(px(0.0), -BAR_WIDTH)
                 },
                 blur_radius: px(0.0),
                 spread_radius: px(0.0),
@@ -886,9 +1260,18 @@ impl Theme {
             fill_color = ground.fill.opaque().blend(fill_color);
         }
 
-        if self.inspect.as_deref() == Some(surface.role.id) {
+        if self.inspect_strength > 0.0
+            && self.inspect.as_deref().is_some_and(|inspect| {
+                inspect == surface.role.id
+                    || surface
+                        .role
+                        .lineage()
+                        .skip(1)
+                        .any(|group| inspect == group.id && self.group_reaches(group, surface.role))
+            })
+        {
             shadow.push(BoxShadow {
-                color: INSPECT_COLOR,
+                color: INSPECT_COLOR.alpha(self.inspect_strength.min(1.0)),
                 offset: point(px(0.0), px(0.0)),
                 blur_radius: px(0.0),
                 spread_radius: RING_WIDTH,
@@ -910,7 +1293,7 @@ impl Theme {
             border_width,
             shadow,
             text,
-            radius: self.shape_radius(kind, style.shape),
+            radius: self.shape_radius(surface.role, style.shape),
             ground: Ground {
                 fill: under,
                 ink: text,
@@ -993,7 +1376,7 @@ pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui
         .shadow(layer.shadow.clone())
         .text_color(layer.text);
     match layer.glass {
-        Some(material) => style.glass(material),
+        Some(material) => style.glass(material).bg(zz_gpui::transparent_black()),
         None => style.bg(layer.fill),
     }
 }
@@ -1008,34 +1391,76 @@ mod tests {
     }
 
     #[test]
-    fn a_role_takes_its_kind_then_the_theme_then_itself() {
+    fn a_theme_patch_beats_every_built_in_and_the_closest_patch_wins() {
         let mut theme = theme();
-        let role = SurfaceRole::new("test.row", Kind::Row, "Test", "")
+        let role = SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Test", "")
             .with(StylePatch::EMPTY.selected(Highlight::Tint));
         assert_eq!(theme.style(role).selected, Highlight::Tint);
-        assert_eq!(theme.style(role).hover, Kind::Row.base().hover);
+        assert_eq!(
+            theme.style(role).hover,
+            SurfaceRole::MENU_ITEM.patch.hover.unwrap()
+        );
+        assert!(role.row);
 
+        theme
+            .styles
+            .insert("button".into(), StylePatch::EMPTY.hover(Highlight::Glass));
+        assert_eq!(theme.style(role).hover, Highlight::Glass);
+        assert_eq!(theme.style(role).selected, Highlight::Tint);
         theme.styles.insert(
-            "row".into(),
+            "menu-item".into(),
             StylePatch::EMPTY
                 .hover(Highlight::Accent)
                 .selected(Highlight::Bar),
         );
         assert_eq!(theme.style(role).hover, Highlight::Accent);
-        assert_eq!(theme.style(role).selected, Highlight::Tint);
+        assert_eq!(theme.style(role).selected, Highlight::Bar);
 
         theme.styles.insert(
             "test.row".into(),
             StylePatch::EMPTY.selected(Highlight::Ring),
         );
         assert_eq!(theme.style(role).selected, Highlight::Ring);
-        assert_eq!(theme.style(Kind::Row.role()).selected, Highlight::Bar);
+        assert_eq!(theme.style(SurfaceRole::MENU_ITEM).selected, Highlight::Bar);
+        assert_eq!(theme.style(Kind::Button.role()).hover, Highlight::Glass);
+    }
+
+    #[test]
+    fn a_group_patch_reaches_its_members_and_rings_them() {
+        let mut theme = theme();
+        theme.styles.insert(
+            "icon-button".into(),
+            StylePatch::EMPTY.fill(Fill::Glass).hover(Highlight::Ring),
+        );
+        let flat = theme.style(SurfaceRole::FLAT_ICON_BUTTON);
+        assert_eq!(flat.fill, Fill::Glass);
+        assert_eq!(flat.hover, Highlight::Ring);
+        theme.styles.insert(
+            "icon-button.flat".into(),
+            StylePatch::EMPTY.hover(Highlight::Tint),
+        );
+        assert_eq!(
+            theme.style(SurfaceRole::FLAT_ICON_BUTTON).hover,
+            Highlight::Tint
+        );
+        assert!(theme.group_reaches(SurfaceRole::ICON_BUTTON, SurfaceRole::FLAT_ICON_BUTTON));
+        assert!(!theme.group_reaches(SurfaceRole::ICON_BUTTON, SurfaceRole::QUIET_BUTTON));
+        theme.inspect = Some("icon-button".into());
+        let ringed = |role| {
+            theme
+                .layer(role, PaintState::Rest)
+                .shadow
+                .iter()
+                .any(|shadow| shadow.color == INSPECT_COLOR)
+        };
+        assert!(ringed(SurfaceRole::FLAT_ICON_BUTTON));
+        assert!(!ringed(SurfaceRole::QUIET_BUTTON));
     }
 
     #[test]
     fn glass_paints_a_tint_on_glass_and_solid_without_the_themes_glass() {
         let mut theme = theme();
-        let popover = Kind::Popover.role();
+        let popover = SurfaceRole::POPOVER;
         theme.glass = None;
         let plain = theme.layer(popover, PaintState::Rest);
         assert!(plain.glass.is_none());
@@ -1049,6 +1474,42 @@ mod tests {
         let nested = theme.layer(Surface::new(popover).on(frosted.ground), PaintState::Rest);
         assert!(nested.glass.is_none());
         assert!(nested.fill.a < 1.0);
+    }
+
+    #[test]
+    fn a_glass_highlight_turns_a_solid_surface_to_glass_while_it_lasts() {
+        let mut theme = theme();
+        theme.glass = Some(GlassMaterial::frosted());
+        let tab = SurfaceRole::new("test.tab", Kind::Item, "Test", "").with(
+            StylePatch::EMPTY
+                .fill(Fill::Solid)
+                .selected(Highlight::Glass),
+        );
+        let rest = theme.layer(tab, PaintState::Rest);
+        let selected = theme.layer(tab, PaintState::Selected);
+        assert!(rest.glass.is_none());
+        assert!(!rest.ground.glass);
+        assert!(selected.glass.is_some());
+        assert!(selected.ground.glass);
+        assert_eq!(selected.border_width, rest.border_width);
+
+        let nested = theme.layer(Surface::new(tab).on(selected.ground), PaintState::Selected);
+        assert!(nested.glass.is_none());
+        assert_eq!(
+            nested.fill,
+            theme
+                .layer(
+                    Surface::new(tab.with(tab.patch.selected(Highlight::Tint))).on(selected.ground),
+                    PaintState::Selected
+                )
+                .fill
+        );
+
+        theme.glass = None;
+        let lifted = theme.layer(tab, PaintState::Selected);
+        assert!(lifted.glass.is_none());
+        assert!(!lifted.shadow.is_empty());
+        assert_ne!(lifted.fill, theme.layer(tab, PaintState::Rest).fill);
     }
 
     #[test]
@@ -1066,18 +1527,22 @@ mod tests {
     fn restyling_a_glass_layer_carries_its_glass() {
         let mut theme = theme();
         theme.glass = Some(GlassMaterial::frosted());
-        let hover = theme.layer(Kind::Popover.role(), PaintState::Hover);
+        let hover = theme.layer(SurfaceRole::POPOVER, PaintState::Hover);
         assert!(hover.glass.is_some());
-        assert_eq!(
-            restyle(zz_gpui::StyleRefinement::default(), &hover).glass,
-            hover.glass
+        let restyled = restyle(zz_gpui::StyleRefinement::default().bg(hover.fill), &hover);
+        assert_eq!(restyled.glass, hover.glass);
+        assert!(
+            restyled
+                .background
+                .and_then(|fill| fill.color())
+                .is_none_or(|color| color.is_transparent())
         );
     }
 
     #[test]
     fn a_tinted_surface_deepens_on_hover_and_selection() {
         let theme = theme();
-        let role = SurfaceRole::new("test.tile", Kind::Tile, "Test", "").with(
+        let role = SurfaceRole::new("test.tile", Kind::Card, "Test", "").with(
             StylePatch::EMPTY
                 .fill(Fill::Tint)
                 .shadow(Shadow::None)
@@ -1089,7 +1554,7 @@ mod tests {
         let current = theme.layer(role, PaintState::Current).fill;
         assert!(hover.a > rest.a, "{rest:?} {hover:?}");
         assert!(current.a > hover.a, "{hover:?} {current:?}");
-        let clear = SurfaceRole::new("test.clear", Kind::Tile, "Test", "").with(
+        let clear = SurfaceRole::new("test.clear", Kind::Card, "Test", "").with(
             StylePatch::EMPTY
                 .fill(Fill::None)
                 .shadow(Shadow::None)
@@ -1101,7 +1566,7 @@ mod tests {
     #[test]
     fn a_ring_never_shows_through_its_fill() {
         let theme = theme();
-        let role = SurfaceRole::new("test.ring", Kind::Tile, "Test", "").with(
+        let role = SurfaceRole::new("test.ring", Kind::Card, "Test", "").with(
             StylePatch::EMPTY
                 .fill(Fill::Tint)
                 .shadow(Shadow::None)
@@ -1161,6 +1626,74 @@ mod tests {
         assert_eq!(rings(&theme), 1);
         theme.inspect = Some("row".into());
         assert_eq!(rings(&theme), 0);
+        theme.inspect = Some("card".into());
+        theme.inspect_strength = 0.0;
+        assert_eq!(rings(&theme), 0);
+    }
+
+    #[test]
+    fn inspecting_a_kind_rings_every_role_of_it() {
+        let mut theme = theme();
+        theme.inspect = Some("button".into());
+        let ringed = |theme: &Theme, role: SurfaceRole| {
+            theme
+                .layer(role, PaintState::Rest)
+                .shadow
+                .iter()
+                .any(|shadow| shadow.color == INSPECT_COLOR)
+        };
+        assert!(ringed(&theme, Kind::Button.role()));
+        assert!(ringed(&theme, SurfaceRole::QUIET_BUTTON));
+        assert!(!ringed(&theme, Kind::Card.role()));
+        let sealed =
+            SurfaceRole::new("button.sealed", Kind::Button, "Sealed", "").with_knobs(Knobs::FIXED);
+        assert!(!ringed(&theme, sealed));
+        theme.styles.insert(
+            "button.quiet".into(),
+            StylePatch::EMPTY
+                .fill(Fill::None)
+                .outline(false)
+                .shadow(Shadow::None)
+                .shape(Shape::Pill)
+                .hover(Highlight::Lift)
+                .selected(Highlight::Lift),
+        );
+        assert!(!ringed(&theme, SurfaceRole::QUIET_BUTTON));
+    }
+
+    #[test]
+    fn a_kind_patch_reaches_only_what_a_role_takes() {
+        let mut theme = theme();
+        let fixed =
+            SurfaceRole::new("card.fixed", Kind::Card, "Fixed", "").with_knobs(Knobs::FIXED);
+        theme.styles.insert(
+            "card".into(),
+            StylePatch::EMPTY.fill(Fill::Glass).shape(Shape::Pill),
+        );
+        assert_eq!(theme.style(fixed), Kind::Card.base());
+        assert_eq!(theme.style(Kind::Card.role()).fill, Fill::Glass);
+        assert_eq!(theme.style(Kind::Card.role()).shape, Shape::Round);
+        assert!(!theme.group_reaches(Kind::Card.role(), fixed));
+        theme
+            .styles
+            .insert("panel".into(), StylePatch::EMPTY.fill(Fill::Glass));
+        assert_eq!(theme.style(Kind::Panel.role()), Kind::Panel.base());
+    }
+
+    #[test]
+    fn noting_drawn_roles_names_each_role_and_its_kind() {
+        let theme = theme();
+        theme.style(SurfaceRole::QUIET_BUTTON);
+        assert!(drawn_roles().is_empty());
+        note_drawn_roles();
+        theme.style(SurfaceRole::QUIET_BUTTON);
+        let drawn = drawn_roles();
+        assert_eq!(
+            drawn,
+            BTreeSet::from([SurfaceRole::QUIET_BUTTON.id, "button"])
+        );
+        theme.style(Kind::Card.role());
+        assert!(drawn_roles().is_empty());
     }
 
     #[test]

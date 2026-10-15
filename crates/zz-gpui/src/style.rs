@@ -728,11 +728,9 @@ impl Style {
         // repeating it. Fill, border and both shadow passes below share the
         // result, which is what keeps them tracing the same curve.
         let requested_radii = self.corner_radii.to_pixels(rem_size);
-        let corner_radii = match (self.corner_radius_mode, window.adaptive_corner_fraction()) {
-            (CornerRadiusMode::Inherit, Some(fraction)) => {
-                requested_radii.resolve_radii_for_quad_size(bounds.size, fraction)
-            }
-            _ => requested_radii.clamp_radii_for_quad_size(bounds.size),
+        let corner_radii = match self.corner_radius_mode {
+            CornerRadiusMode::Inherit => window.resolve_corner_radii(requested_radii, bounds.size),
+            CornerRadiusMode::Fixed => requested_radii.clamp_radii_for_quad_size(bounds.size),
         };
 
         window.paint_drop_shadows_with_smoothing(

@@ -308,7 +308,7 @@ impl Controls {
                     }
                     let (min, max, previous) = match key {
                         "zoom" => (50.0, 300.0, this.preferences.zoom * 100.0),
-                        "contrast" => (50.0, 200.0, this.preferences.contrast * 100.0),
+                        "contrast" => (100.0, 200.0, this.preferences.contrast * 100.0),
                         "outline" => (0.0, 2.0, this.preferences.materials().outline),
                         "shadow-strength" => (0.0, 2.0, shadow_strength_of(&this.preferences)),
                         "row-inset" => (0.0, 12.0, this.preferences.materials().row_inset),
@@ -1115,7 +1115,7 @@ impl AppShell {
             .control(number_control(&self.settings_controls.zoom, cx)),
             AppearancePageItem::ChromeContrast => SettingEntry::new(
                 "Contrast",
-                "Adjust surface, text, and edge contrast from 50% to 200%.",
+                "Raise surface, text, and edge contrast from 100% to 200%.",
             )
             .title_actions(
                 settings_reset_button(

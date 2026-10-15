@@ -21,8 +21,11 @@ mounted into the section's element with `WindowOptions::mount` and sized to its 
 section looks exactly like that piece does in zz.
 
 It is its own wasm Cargo workspace, like `clients/web`, with its own lockfile. Its dev profile
-optimizes dependencies the way the root workspace does (`[profile.dev.package]`); without that, a
-debug build drew one Theme creator frame in about 100 ms.
+optimizes dependencies the way the root workspace does (`[profile.dev.package]`): third-party
+crates and zz-gpui optimized, the zz crates it edits (`zz-ui`, `zz-gpui-kit`, `zz-client`,
+`zz-protocol`, `zz-terminal`) not. Without it, a debug build drew one Theme creator frame in about
+100 ms. Keep those zz crates at `opt-level = 0`: optimized and incremental, an edit to `zz-ui` once
+left an rlib that failed to link with undefined `anon.*.llvm.*` symbols.
 
 A mounted window more than half a scroll height out of view skips its frames until it scrolls
 back, so a long story costs about what is on screen. See [zz-gpui web windows](/references/zz-gpui-web-agents.md).
@@ -35,9 +38,9 @@ just storybook build    # build into clients/storybook/dist; --release for an op
 just storybook serve    # serve the last build
 ```
 
-The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&interface-theme=macos`.
-Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`, `macos`, `tahoe`,
-`linear`, `glass`: the built-in the knobs start from, materials and roles both), the theme's `name`,
+The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&radius=4`.
+Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`:
+the built-in the knobs start from, materials and roles both), the theme's `name`,
 the materials (`radius`, `outline`, `row-inset`, `primary`, `font`, `glass` with its sliders, the
 contact shadow as `contact-y`, `contact-blur`, `contact-spread`, `contact-strength` and the float
 shadow as `float-y`, `float-blur`, `float-spread`, `float-strength`), `roles` (the theme file's
@@ -49,23 +52,40 @@ theme's alpha, or the palette's when the theme sets none), `contrast`, `zoom`, t
 creator and makes the glass pane frame own the pane fill, as in the app, while other stories show
 gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `motion` (`motion=0` turns
 animations off and freezes spinners). Two more keys only steer the page: `step` (`colors`,
-`materials`, `roles`, `export`) opens a step of the knob panel, and `inspect=<role id>` picks a role
+`materials`, `roles`, `export`, `app`) opens a step of the knob panel, and `inspect=<role id>` picks a role
 on the Roles step. Pane knobs are app config, not theme, so Copy JSON leaves them out; they stay in
 the URL.
 
-The Theme creator story is every surface of zz in six regions (Workspace, Flat sidebar, Panes,
-Controls, Floating, Content), each its own window, so a hover or a spinner redraws only its
+The Theme creator story is every surface of zz in eight regions (Workspace, Flat sidebar, Panes,
+Start, Controls, Floating, Content, Phone), each its own window, so a hover or a spinner redraws only its
 region. The bar links (on windows wider than 1240px) jump between them, and
 `theme-creator/<region>` in the address opens at one.
-Its knob panel is four steps:
-Colors (mode, palettes, font), Materials (shape, glass, both shadows), Roles and Export (the theme
-file with Copy and Import). The Roles step lists `zz_ui::roles::REGIONS` with each role's six props
-as segmented controls. A prop left on inherit shows the value it inherits and where from: the
-kind's built-in, the theme's patch for the kind, or the role's built-in. Setting a prop writes only
-what differs from that into the theme's `roles` patch for the role, and an entry in Kinds patches
-the kind. Picking or pointing at a role sets the kit theme's `inspect`, which rings every surface
-drawn through that role in magenta, just inside its edge; `window` is the one role nothing draws
-through yet, so it never rings. Roles also go to `localStorage`, keyed by the
+The Phone region is phone-width pages from zz-ui's `compact` builders: a terminal page with the
+HUD, the key row with the prefix menu open (`PopoverKey::open`) and the arrow pad's bubble
+(`arrow_pad_bubble`), the bindings list, the overview's pane cards and New pane tiles
+(`overview_card`, `overview_add_tile`, `overview_section_heading`, which the thin client draws
+with too) and the sessions sheet.
+Its knob panel is four steps and an App tab:
+Colors (color presets, mode, palettes, font), Materials (presets, shape, glass, both shadows),
+Roles and Export (the theme file with Copy and Import), then App (the pane settings and the
+preview backdrop and animations, none of which are in the theme). A color preset sets both
+palettes and leaves materials, roles and font alone; a material preset sets every material and
+leaves the roles, colors and font alone. The Roles step lists every kind with its groups and
+roles indented under it (`zz_ui::roles::members`), with the props each role's knobs allow
+(`SurfaceRole::knobs`) as segmented controls. A prop left on inherit shows the value it inherits
+and from which kind or group, built in or from this theme. Setting a prop on a role
+with nothing under it writes only what differs from that into the theme's `roles` patch; on a
+kind or a group it always writes, since its patch beats the built-in look of everything under it
+(Floating set to glass makes the drop zones glass). Picking a role hides the regions that do not draw it, says which ones do above the
+showcase (Show all clears the pick), and flashes a magenta ring just inside the edge of each of
+its surfaces for about a second; picking a kind or group does the same for every role in it.
+Hovering the list does nothing. Each section host adds the role ids and kind names each of its
+frames resolves to that section's set (`zz_ui::note_drawn_roles`, read back by
+`zz.drawn_roles()`), skipping frames drawn at zero size while the section is hidden, and the page
+filters on those sets, so nothing lists a region's roles by hand. A kind or group only counts, and
+only rings, where its patch still reaches the role (`Theme::group_reaches`): a role that sets all
+six props itself, or whose groups in between do, is left out. `window` is the one role nothing draws
+through yet, so picking it keeps every region. Roles also go to `localStorage`, keyed by the
 start theme, so they survive a reload when the address drops them for length.
 
 # Add a story
@@ -83,7 +103,8 @@ authoring rules; the short version:
 # Check a change
 
 Edit the component in `crates/zz-ui` or `crates/zz-gpui-kit`, let `just storybook run` rebuild,
-reload, and walk the knobs: light and dark, each interface theme, radius 0 and 25, outline 0,
+reload, and walk the knobs: light and dark, a few color presets, radius 0 and 25 (where every
+button turns pill), outline 0,
 both shadow strengths at 0, row inset 0, contrast extremes, zoom. The sections re-render live as
 knobs move.
 
@@ -100,11 +121,15 @@ itself with, or on `story::Framed::framed`, the edge of a frame that stands in f
   `just storybook shot`) opens the story in headless Chrome over CDP, waits for `zzGpui.idle()` and
   saves a PNG clipped to the section. Its JSON output lists wasm panics and console errors under
   `problems`. The knob panel keeps its own scroll, which the capture does not, so pass a taller
-  `--height` to see a step's lower half, as in `theme-creator?step=roles&inspect=button`.
+  `--height` to see a step's lower half, as in `theme-creator?step=roles&inspect=button`, which
+  shows only the regions that draw buttons. Only a click on a role or a step tab flashes the ring;
+  page loads and the `storybook.*` calls do not, so shots never show it.
 - In a browser tab: `storybook.show(id, section)`, `storybook.setKnobs({ theme: "dark" })`,
   `storybook.theme()` (the theme file the knobs describe), `storybook.importTheme(json)`,
   `storybook.step("roles")`, `storybook.roles()` (the role tree with inherited and resolved styles),
   `storybook.setRole("chrome.button", "fill", "glass")` (`"inherit"` clears a prop),
+  `storybook.colorPresets()` and `storybook.colorPreset("nord")`, `storybook.presets()` and
+  `storybook.preset("flat")`,
   `storybook.inspect("button")`, and
   the `zzGpui` API from [zz-gpui web windows for agents](/references/zz-gpui-web-agents.md) for the live
   UI (`zzGpui.find`, `zzGpui.click`, `zzGpui.capture`).

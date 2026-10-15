@@ -69,7 +69,8 @@ pub struct GlassMaterial {
     /// Color of the glint and the fresnel glow; its alpha scales both.
     #[serde(default = "white")]
     pub light_color: Hsla,
-    /// Glow filling the rim, strongest at the edge.
+    /// Glow filling the rim, strongest at the edge: how far the rim turns to
+    /// the light color, so it shows on a light surface too.
     pub fresnel: f32,
     /// Darkness of the contour just outside the edge.
     pub edge_shadow: f32,
@@ -861,7 +862,12 @@ impl Glass {
                 ]
             }),
             mask: mask.map_or([0.; 4], |mask| [mask.corner_smoothing, 1., 0., 0.]),
-            light_color: [light.r * light.a, light.g * light.a, light.b * light.a, 0.],
+            light_color: [
+                light.r * light.a,
+                light.g * light.a,
+                light.b * light.a,
+                light.a,
+            ],
             edge_color: [edge.r, edge.g, edge.b, 0.],
         }
     }
@@ -1436,6 +1442,8 @@ pub fn bench_glass_rendering(
         .edge_color(accent)
         .edge_shadow(1.)
         .edge_width(px(2.));
+    let mut pane_glows = pane_frames.clone();
+    pane_glows[0].3 = pane_frames[0].3.bezel(px(256.)).fresnel(0.16);
     let cases = [
         ("one 100x100 button", vec![buttons[0]]),
         ("ten buttons in a row", buttons.clone()),
@@ -1456,6 +1464,10 @@ pub fn bench_glass_rendering(
         (
             "four panes of edge glass, one lit in the accent",
             pane_frames,
+        ),
+        (
+            "four panes of edge glass, one glowing in the accent",
+            pane_glows,
         ),
         (
             "edge glass over the whole window",

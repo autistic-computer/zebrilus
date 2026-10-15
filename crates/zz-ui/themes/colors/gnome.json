@@ -1,0 +1,20 @@
+{
+  "name": "GNOME",
+  "about": "Adwaita: GNOME's near-white and charcoal windows with its blue accent.",
+  "light": {
+    "background": "#fafafb",
+    "foreground": "#323237",
+    "accent": "#2d7ddc",
+    "success": "#007c3d",
+    "warning": "#905400",
+    "danger": "#c30000"
+  },
+  "dark": {
+    "background": "#222226",
+    "foreground": "#ffffff",
+    "accent": "#3584e4",
+    "success": "#78e9ab",
+    "warning": "#ffc252",
+    "danger": "#ff938c"
+  }
+}

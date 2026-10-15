@@ -688,7 +688,6 @@ fn pill(
 ) -> AnyElement {
     workspace_status_window(
         id,
-        index.into(),
         name.into(),
         format!("{index}:{name}").into(),
         state,

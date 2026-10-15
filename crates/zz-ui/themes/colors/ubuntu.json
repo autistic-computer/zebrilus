@@ -1,0 +1,20 @@
+{
+  "name": "Ubuntu",
+  "about": "Yaru as Ubuntu 24.04 ships it: warm grays and its orange.",
+  "light": {
+    "background": "#fafafa",
+    "foreground": "#3d3d3d",
+    "accent": "#de4a10",
+    "success": "#1b8553",
+    "warning": "#9c6e03",
+    "danger": "#c7162b"
+  },
+  "dark": {
+    "background": "#2c2c2c",
+    "foreground": "#f7f7f7",
+    "accent": "#e95420",
+    "success": "#5aed70",
+    "warning": "#fbc16a",
+    "danger": "#ff7b63"
+  }
+}

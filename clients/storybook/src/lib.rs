@@ -15,9 +15,11 @@ mod story;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
 
 use serde_json::json;
-use zz_gpui::{AnyWindowHandle, App, AppContext as _, WindowOptions};
+use zz_gpui::{AnyWindowHandle, App, AppContext as _, Task, WindowOptions};
 use zz_ui::{ActiveTheme as _, Colorize as _, Root, to_hex};
 
 pub use knobs::Knobs;
@@ -29,6 +31,20 @@ use host::SectionHost;
 thread_local! {
     static KNOBS: RefCell<Knobs> = RefCell::new(Knobs::default());
     static OPEN: RefCell<Vec<AnyWindowHandle>> = const { RefCell::new(Vec::new()) };
+    static DRAWN: RefCell<BTreeMap<&'static str, BTreeSet<&'static str>>> = const { RefCell::new(BTreeMap::new()) };
+    static FLASH: RefCell<Option<Task<()>>> = const { RefCell::new(None) };
+}
+
+const FLASH_FRAME: Duration = Duration::from_millis(16);
+const FLASH_HOLD: Duration = Duration::from_millis(700);
+const FLASH_FADE: Duration = Duration::from_millis(500);
+
+pub(crate) fn note_drawn(section: &'static str, roles: BTreeSet<&'static str>) {
+    DRAWN.with_borrow_mut(|drawn| drawn.entry(section).or_default().extend(roles));
+}
+
+pub fn drawn_roles_json() -> String {
+    DRAWN.with_borrow(|drawn| json!(drawn).to_string())
 }
 
 pub(crate) fn knobs() -> Knobs {
@@ -111,51 +127,143 @@ pub fn theme_file_json() -> String {
     knobs().interface_theme().to_json()
 }
 
-/// zz's roles by region, for the creator's Roles step: each role's kind,
-/// the theme's patch for it, what it inherits and from where, and the style
-/// it resolves to.
-pub fn roles_json() -> String {
-    let roles = knobs().roles;
+pub fn material_presets_json() -> String {
     json!(
-        zz_ui::roles::REGIONS
+        zz_ui::interface_theme::material_presets()
             .iter()
-            .map(|(title, members)| json!({
-                "title": title,
-                "roles": members.iter().map(|role| {
-                    let (inherited, origins) = knobs::inherited(*role, &roles);
-                    let patch = roles.get(role.id).copied().unwrap_or_default();
-                    let mut style = inherited;
-                    patch.apply(&mut style);
-                    let values = knobs::style_json(inherited);
-                    json!({
-                        "id": role.id,
-                        "label": role.label,
-                        "about": role.about,
-                        "kind": role.kind.name(),
-                        "patch": patch,
-                        "inherited": knobs::PROPS
-                            .iter()
-                            .zip(origins)
-                            .map(|(prop, origin)| ((*prop).to_owned(), json!({
-                                "value": values[prop],
-                                "from": origin.name(),
-                            })))
-                            .collect::<serde_json::Map<_, _>>(),
-                        "style": knobs::style_json(style),
-                    })
-                }).collect::<Vec<_>>(),
-            }))
+            .map(|(id, preset)| {
+                let mut values = knobs::material_knobs(&preset.materials);
+                values.remove("font");
+                json!({
+                    "id": id,
+                    "name": preset.name,
+                    "about": preset.about,
+                    "knobs": values,
+                })
+            })
             .collect::<Vec<_>>()
     )
     .to_string()
 }
 
-/// Rings every surface of the role `id` in the open story, or none when
-/// `id` is empty.
+/// The color presets as the color knobs each sets, both modes, with the
+/// background and accent of each mode to draw as swatches.
+pub fn color_presets_json() -> String {
+    json!(
+        zz_ui::interface_theme::color_presets()
+            .iter()
+            .map(|(id, preset)| {
+                let mut theme = zz_ui::interface_theme::default_theme().clone();
+                preset.apply_to(&mut theme);
+                let mut values = serde_json::Map::new();
+                let mut swatches = Vec::new();
+                for (mode, prefix) in [
+                    (zz_ui::ThemeMode::Light, "light"),
+                    (zz_ui::ThemeMode::Dark, "dark"),
+                ] {
+                    for (name, value) in knobs::resolved_colors(&theme, mode) {
+                        if matches!(name, "background" | "accent") {
+                            swatches.push(value.clone());
+                        }
+                        values.insert(format!("{prefix}-{name}"), json!(value));
+                    }
+                }
+                json!({
+                    "id": id,
+                    "name": preset.name,
+                    "about": preset.about,
+                    "knobs": values,
+                    "swatches": swatches,
+                })
+            })
+            .collect::<Vec<_>>()
+    )
+    .to_string()
+}
+
+/// zz's roles by kind, for the creator's Roles step: each kind, then the
+/// roles in it with how deep in its groups they sit, each role's patch from
+/// the theme, what it inherits and from where, and the style it resolves to.
+pub fn roles_json() -> String {
+    fn walk(group: zz_ui::SurfaceRole, depth: usize, out: &mut Vec<(usize, zz_ui::SurfaceRole)>) {
+        out.push((depth, group));
+        for member in zz_ui::roles::members(group) {
+            walk(member, depth + 1, out);
+        }
+    }
+    let roles = knobs().roles;
+    json!(
+        zz_ui::Kind::ALL
+            .iter()
+            .map(|kind| {
+                let mut members = Vec::new();
+                walk(kind.role(), 0, &mut members);
+                json!({
+                    "title": kind.role().label,
+                    "roles": members.into_iter().map(|(depth, role)| {
+                        let (inherited, origins) = knobs::inherited(role, &roles);
+                        let patch = roles.get(role.id).copied().unwrap_or_default();
+                        let mut style = inherited;
+                        patch.apply(&mut style);
+                        let values = knobs::style_json(inherited);
+                        json!({
+                            "id": role.id,
+                            "label": role.label,
+                            "about": role.about,
+                            "kind": role.kind.name(),
+                            "depth": depth,
+                            "group": role.group().map(|group| group.label),
+                            "members": zz_ui::roles::members(role).count(),
+                            "knobs": knobs::knobs_json(role.knobs()),
+                            "patch": patch,
+                            "inherited": knobs::PROPS
+                                .iter()
+                                .zip(origins)
+                                .map(|(prop, origin)| ((*prop).to_owned(), json!({
+                                    "value": values[prop],
+                                    "from": origin.role.label,
+                                    "themed": origin.themed,
+                                })))
+                                .collect::<serde_json::Map<_, _>>(),
+                            "style": knobs::style_json(style),
+                        })
+                    }).collect::<Vec<_>>(),
+                })
+            })
+            .collect::<Vec<_>>()
+    )
+    .to_string()
+}
+
+/// Flashes a ring around every surface of the role or kind `id` in the open
+/// story: it holds, then fades out. An empty `id` clears it.
 pub fn inspect(id: &str, cx: &mut App) {
     let inspect = (!id.is_empty()).then(|| zz_gpui::SharedString::from(id.to_owned()));
-    KNOBS.with(|knobs| knobs.borrow_mut().inspect.clone_from(&inspect));
+    let flash = inspect.is_some().then(|| {
+        cx.spawn(async move |cx| {
+            let start = web_time::Instant::now();
+            loop {
+                cx.background_executor().timer(FLASH_FRAME).await;
+                let faded = start.elapsed().saturating_sub(FLASH_HOLD);
+                let strength = 1.0 - faded.as_secs_f32() / FLASH_FADE.as_secs_f32();
+                cx.update(|cx| ring(strength.max(0.0), cx));
+                if strength <= 0.0 {
+                    break;
+                }
+            }
+        })
+    });
     zz_ui::Theme::global_mut(cx).inspect = inspect;
+    ring(1.0, cx);
+    FLASH.with_borrow_mut(|current| *current = flash);
+}
+
+fn ring(strength: f32, cx: &mut App) {
+    let theme = zz_ui::Theme::global_mut(cx);
+    theme.inspect_strength = strength;
+    if strength <= 0.0 {
+        theme.inspect = None;
+    }
     for window in cx.windows() {
         window.update(cx, |_, window, _| window.refresh()).ok();
     }
@@ -193,6 +301,7 @@ pub fn mount_id(story: &Story, section: &Section) -> String {
 }
 
 pub fn show_story(story: &'static Story, cx: &mut App) -> Result<(), String> {
+    DRAWN.with_borrow_mut(BTreeMap::clear);
     for handle in OPEN.with(|open| std::mem::take(&mut *open.borrow_mut())) {
         handle
             .update(cx, |_, window, _| window.remove_window())
@@ -215,7 +324,7 @@ pub fn show_story(story: &'static Story, cx: &mut App) -> Result<(), String> {
                     window.set_adaptive_corner_fraction(Some(0.45));
                     let content = (section.build)(window, cx);
                     let floats = backdrop::floats(story.id, section.id);
-                    let host = cx.new(|_| SectionHost::new(content, floats));
+                    let host = cx.new(|_| SectionHost::new(section.id, content, floats));
                     cx.new(|cx| Root::new(host, window, cx).bordered(false))
                 },
             )
@@ -340,6 +449,16 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn material_presets() -> String {
+        super::material_presets_json()
+    }
+
+    #[wasm_bindgen]
+    pub fn color_presets() -> String {
+        super::color_presets_json()
+    }
+
+    #[wasm_bindgen]
     pub fn theme_file() -> String {
         super::theme_file_json()
     }
@@ -347,6 +466,11 @@ mod web {
     #[wasm_bindgen]
     pub fn roles() -> String {
         super::roles_json()
+    }
+
+    #[wasm_bindgen]
+    pub fn drawn_roles() -> String {
+        super::drawn_roles_json()
     }
 
     #[wasm_bindgen]

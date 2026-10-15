@@ -1,12 +1,12 @@
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, Kind, PaintState,
-    Selectable as _, Sizable as _, StatefulSurfaceExt as _, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, PaintState,
+    Selectable as _, Sizable as _, StatefulSurfaceExt as _, StyledExt as _, SurfaceRole,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     feedback::{alert_actions, inline_alert},
-    input::{Input, InputContentType, InputState, field_chrome, field_paint},
+    input::{Input, InputContentType, InputState, field_chrome},
     menu::{PopupMenu, PopupMenuItem},
     separator::Separator,
     tooltip::Tooltip,
@@ -181,11 +181,16 @@ fn browser_toolbar_cluster() -> zz_gpui::Div {
 pub fn browser_address(
     address: &Entity<InputState>,
     site_controls: impl IntoElement,
+    window: &Window,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let focus_handle = address.read(cx).focus_handle(cx);
     let role = crate::roles::ADDRESS_BAR;
-    let paint = field_paint(role, cx);
+    let state = if focus_handle.is_focused(window) {
+        PaintState::Focused
+    } else {
+        PaintState::Rest
+    };
     let input = Input::new(address)
         .small()
         .h(px(BROWSER_CONTROL_HEIGHT))
@@ -208,8 +213,7 @@ pub fn browser_address(
         .flex_1()
         .min_w_0()
         .items_center();
-    field_chrome(shell, role, PaintState::Rest, true, true, cx)
-        .focus(move |style| style.border_color(paint.focus))
+    field_chrome(shell, role, state, true, true, cx)
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             focus_handle.focus(window, cx);
             cx.stop_propagation();
@@ -665,7 +669,7 @@ pub fn browser_omnibox_panel(rows: Vec<AnyElement>, cx: &App) -> impl IntoElemen
             .right(px(8.0))
             .occlude()
             .overflow_hidden()
-            .surface(Kind::Popover, cx)
+            .surface(SurfaceRole::POPOVER, cx)
             .py(px(4.0))
             .list_inset(cx)
             .children(rows),
@@ -685,7 +689,7 @@ pub fn browser_omnibox_row(
     let url = url.into();
     let muted = crate::picker::muted_on(
         &cx.theme().layer(
-            Kind::Row,
+            SurfaceRole::MENU_ITEM,
             if selected {
                 PaintState::Selected
             } else {
@@ -1211,7 +1215,7 @@ mod tests {
     }
 
     impl Render for BrowserHeaderTest {
-        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let button = |id, icon| {
                 browser_toolbar_button(cx, id, icon, id, false, false)
                     .debug_selector(move || id.into())
@@ -1273,10 +1277,11 @@ mod tests {
                         .min_w_0()
                         .h_full()
                         .child(
-                            browser_address(&self.address, site_controls, cx).on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|view, _, _, _| view.address_clicked = true),
-                            ),
+                            browser_address(&self.address, site_controls, window, cx)
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|view, _, _, _| view.address_clicked = true),
+                                ),
                         ),
                     button("picker", IconName::Inspector),
                     button("more", IconName::EllipsisVertical),

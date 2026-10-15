@@ -8,7 +8,7 @@ use std::rc::Rc;
 use crate::Colorize as _;
 use crate::{
     ActiveTheme as _, Disableable as _, Emphasis, Ground, Layer, PaintState, RULE_WIDTH,
-    Selectable as _, Sizable as _, StyledExt as _, Surface,
+    Selectable as _, Sizable as _, StyledExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     icon::{Icon, cap_center_drop},
@@ -1164,10 +1164,7 @@ pub struct SettingEntry {
     disabled: bool,
     position: StackPosition,
     children: Vec<AnyElement>,
-    on_click: Option<(ElementId, EntryClick)>,
 }
-
-type EntryClick = Rc<dyn Fn(&zz_gpui::ClickEvent, &mut zz_gpui::Window, &mut App)>;
 
 impl SettingEntry {
     pub fn new(title: impl Into<SharedString>, description: impl Into<SharedString>) -> Self {
@@ -1180,19 +1177,7 @@ impl SettingEntry {
             disabled: false,
             position: StackPosition::Middle,
             children: Vec::new(),
-            on_click: None,
         }
-    }
-
-    /// Make the whole row a button, for a row that opens something.
-    #[must_use]
-    pub fn on_click(
-        mut self,
-        id: impl Into<ElementId>,
-        handler: impl Fn(&zz_gpui::ClickEvent, &mut zz_gpui::Window, &mut App) + 'static,
-    ) -> Self {
-        self.on_click = Some((id.into(), Rc::new(handler)));
-        self
     }
 
     /// A state glyph drawn before the title; see [`SettingCopy::title_icon`].
@@ -1243,14 +1228,9 @@ impl ParentElement for SettingEntry {
 }
 
 impl RenderOnce for SettingEntry {
-    fn render(self, window: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
         let disabled = self.disabled;
         let position = self.position;
-        let press = self
-            .on_click
-            .as_ref()
-            .map(|(id, _)| crate::touch::press_feedback(id.clone(), window, cx));
-        let pressed = press.as_ref().map_or(0.0, |press| press.amount);
         let coarse = crate::touch::CoarsePointer::get(cx);
         let heading = if coarse {
             let description = (!self.description.is_empty()).then(|| {
@@ -1301,12 +1281,6 @@ impl RenderOnce for SettingEntry {
 
         let theme = cx.theme();
         let card = theme.layer(roles::SETTINGS_CARD, PaintState::Rest);
-        let pressed_fill = theme
-            .layer(
-                Surface::new(roles::SETTINGS_ROW).on(card.ground),
-                PaintState::Active,
-            )
-            .fill;
         let (inset, cast): (Vec<_>, Vec<_>) =
             card.shadow.iter().cloned().partition(|shadow| shadow.inset);
         let radius = card.radius;
@@ -1326,16 +1300,6 @@ impl RenderOnce for SettingEntry {
             .when(disabled, |this| {
                 this.opacity(0.5)
                     .child(div().absolute().inset_0().occlude())
-            })
-            .when(pressed > 0.0, |this| {
-                this.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .map(ends)
-                        .bg(pressed_fill)
-                        .opacity(pressed),
-                )
             })
             .child(heading)
             .children(self.children);
@@ -1363,7 +1327,7 @@ impl RenderOnce for SettingEntry {
             })
             .child(body);
 
-        let row = div()
+        div()
             .relative()
             .flex()
             .flex_col()
@@ -1406,16 +1370,7 @@ impl RenderOnce for SettingEntry {
                         ),
                 )
             })
-            .child(surface);
-        match self.on_click {
-            Some((id, handler)) => row
-                .id(id)
-                .cursor_pointer()
-                .on_click(move |event, window, cx| handler(event, window, cx))
-                .children(press.map(crate::touch::PressFeedback::listener))
-                .into_any_element(),
-            None => row.into_any_element(),
-        }
+            .child(surface)
     }
 }
 

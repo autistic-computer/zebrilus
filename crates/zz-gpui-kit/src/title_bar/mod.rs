@@ -155,7 +155,7 @@ const CONTROL_ICON_WIDTH: Pixels = TITLE_BAR_HEIGHT;
 #[cfg(target_os = "windows")]
 const CONTROL_ICON_WIDTH: Pixels = px(46.);
 
-const WINDOW_CONTROL: SurfaceRole = Kind::IconButton.role().with(
+const WINDOW_CONTROL: SurfaceRole = SurfaceRole::ICON_BUTTON.with(
     StylePatch::EMPTY
         .shape(Shape::Square)
         .hover(Highlight::Tint)

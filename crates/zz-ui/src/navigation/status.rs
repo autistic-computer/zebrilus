@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     TREE_TOUCH_SLOP, WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, status_dot,
-    workspace_row_action, workspace_status_window,
+    workspace_row_action, workspace_row_action_gap, workspace_status_window,
 };
 
 pub const MAX_VISIBLE_WINDOWS: usize = 5;
@@ -62,7 +62,6 @@ fn status_menu_button(id: impl Into<ElementId>) -> Button {
 
 pub fn status_window(
     id: impl Into<ElementId>,
-    index: SharedString,
     name: SharedString,
     state: WorkspaceStatusWindowState,
     panes: Vec<StatusPaneEntry>,
@@ -72,7 +71,7 @@ pub fn status_window(
     let id = id.into();
     let group: SharedString = format!("status-window-{id:?}").into();
     let close_button = actions.close.clone();
-    let tooltip = format!("{index}:{name}").into();
+    let tooltip = name.clone();
     let tab = Surface::new(roles::WINDOW_TAB);
     let ground = cx.theme().layer(tab, state.paint_state()).ground;
     let hovered = cx.theme().layer(tab, PaintState::Hover).ground;
@@ -92,9 +91,9 @@ pub fn status_window(
         }
         .into_any_element()
     });
-    let item = workspace_status_window(id.clone(), index, name, tooltip, state, deck, cx)
+    let item = workspace_status_window(id.clone(), name, tooltip, state, deck, cx)
         .group(group.clone())
-        .pr(px(0.0))
+        .pr(workspace_row_action_gap())
         .child(
             div()
                 .flex_none()

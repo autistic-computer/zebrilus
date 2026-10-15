@@ -13,8 +13,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, IconName, Kind, StyledExt as _, SurfaceRole, TITLE_BAR_HEIGHT,
-    Tone,
+    ActiveTheme as _, Emphasis, IconName, StyledExt as _, SurfaceRole, TITLE_BAR_HEIGHT, Tone,
     button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
     scroll::ScrollableElement as _,
@@ -366,7 +365,7 @@ impl RenderOnce for Dialog {
         let animation = Animation::new(ANIMATION_DURATION).with_easing(ease_out_quint());
         let scrim = cx.theme().scrim;
 
-        let body = dialog_frame(self.surface_role.unwrap_or(Kind::Dialog.role()), cx)
+        let body = dialog_frame(self.surface_role.unwrap_or(SurfaceRole::DIALOG), cx)
             .id(layer_ix)
             .debug_selector(move || format!("dialog-{layer_ix}"))
             .role(self.a11y_role)
@@ -507,7 +506,7 @@ impl RenderOnce for Dialog {
 /// A dialog's floating surface: its outline, fill, corners, vertical padding
 /// and shadow. Content sits in [`dialog_gutter`]s inside it.
 pub fn dialog_surface(cx: &App) -> Div {
-    dialog_frame(Kind::Dialog.role(), cx)
+    dialog_frame(SurfaceRole::DIALOG, cx)
 }
 
 fn dialog_frame(role: SurfaceRole, cx: &App) -> Div {

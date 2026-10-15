@@ -193,7 +193,6 @@ fn render_status_window(
         });
     status_window(
         ("gui-status-window", id.0),
-        window.index.to_string().into(),
         window.label.clone().into(),
         WorkspaceStatusWindowState {
             connected,

@@ -1,0 +1,20 @@
+{
+  "name": "Ayu",
+  "about": "Ayu light and dark: soft paper, deep navy and its amber accent.",
+  "light": {
+    "background": "#f8f9fa",
+    "foreground": "#41464a",
+    "accent": "#bd6600",
+    "success": "#608900",
+    "warning": "#cc5b00",
+    "danger": "#dd4749"
+  },
+  "dark": {
+    "background": "#0d1017",
+    "foreground": "#bfbdb6",
+    "accent": "#e6b450",
+    "success": "#aad94c",
+    "warning": "#ff8f40",
+    "danger": "#d95757"
+  }
+}

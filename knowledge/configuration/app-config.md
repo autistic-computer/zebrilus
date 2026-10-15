@@ -119,12 +119,12 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
 | `pane-corner-radius` | `13.5` | `0..=32` | All four corners of every pane, on every platform; applies only with `pane-gaps` |
 | `pane-border-width` | `0.5` | `0..=8` | Width of the glint, the bright line along a gapped pane's glass edge; `0` turns it off. Settings calls it Pane edge width |
-| `interface-theme` | `default` | `default`, `macos`, `tahoe`, `linear`, `glass`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. It decides the six `widget-*` material keys below unless they are set; picking a theme in Settings removes them |
-| `widget-corner-radius` | from the theme (`24`; macOS `10`, Tahoe `14`, Glass `25`) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme; Settings titles a value above 24 "Corner radius (Full)" |
+| `interface-theme` | `default` | `default`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. It decides the six `widget-*` material keys below unless they are set; picking a theme in Settings removes them |
+| `widget-corner-radius` | from the theme (`10` in Default) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme; Settings titles a value above 24 "Corner radius (Full)" |
 | `widget-outline-width` | from the theme (`0.5`; Glass `0`) | `0..=2` | The outline material: the width in pixels of every outline a role draws; `0` draws none. A surface drawn in glass shows the glass rim instead |
 | `widget-shadow-strength` | `1` | `0..=2` | Scales both of the theme's shadows, the contact shadow and the float shadow: `1` keeps them, `0` turns them off, `2` doubles them. Which pieces cast which shadow is up to the theme's roles |
-| `widget-row-inset` | from the theme (`4`; macOS and Tahoe `5`, Glass `3`) | `0..=12` | How far list rows float in from the list's edges, in pixels. At `0`, menu and tree rows become full-width bands with no gaps, and menu rows lose their corners |
-| `widget-primary` | from the theme (`foreground`; macOS, Tahoe and Linear `accent`) | `foreground`, `accent` | What the primary tone, the main action of a view, is drawn in |
+| `widget-row-inset` | from the theme (`4` in Default) | `0..=12` | How far list rows float in from the list's edges, in pixels. At `0`, menu and tree rows become full-width bands with no gaps, and menu rows lose their corners |
+| `widget-primary` | from the theme (`foreground` in Default) | `foreground`, `accent` | What the primary tone, the main action of a view, is drawn in |
 | `widget-glass` | `theme` | `theme`, `off`, `regular`, `clear`, `frosted`, `bubble`, `smoked` | The glass material, what surfaces whose role takes glass are made of: `theme` keeps the theme's own glass, `off` fills them plainly, and the rest name a glass preset |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
 | `which-key-delay` | `400` | `0..=2000` | Milliseconds after the prefix, or inside a `switch-client -T` table, before the which-key sheet lists the next keys; `0` turns the sheet off. Read when the timer starts |
@@ -139,7 +139,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `ui-font-family` | System default | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
-| `chrome-contrast` | `1.0` | `0.5`–`2.0` | Scales the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as 50–200% in steps of 5. |
+| `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as 100–200% in steps of 5. |
 
 `interface-style`, `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
 `chrome-foreground`, `chrome-accent`, `chrome-success`, `chrome-warning` and `chrome-danger` are
@@ -256,30 +256,29 @@ import show the same message. `look`, the nine-key format from earlier on 2026-1
 the same way, so a theme file written for it loads only once it is rewritten as `materials` and
 `roles`.
 
-Five themes are compiled in from `crates/zz-ui/themes/*.json`:
+One theme is compiled in, `default` from `crates/zz-ui/themes/default.json`: 10px corners,
+0.5px outlines, both shadows at their built-in geometry, no glass (a surface whose role takes
+glass fills solid), foreground primary, a 4px row inset and every role as built in, on neutral
+planes (`#fcfcfc` / `#18181a`), near-black and near-white ink, a blue accent (`#3d6df2` /
+`#6b8cff`) and status colors that read on both. A config naming a theme that is no longer built
+in, such as `macos`, `tahoe`, `linear` or `glass` before 2026-10-14, shows Default and logs a
+warning.
 
-- `default`: zz's look (24px corners, 0.5px outlines, both shadows, an opaque glass edge,
-  foreground primary, every role as built in: shadowed controls, accent selection) on the macOS
-  system colors: window `#ffffff` / `#1e1e1e`, label ink, system blue, and the system status
-  colors (the higher-contrast variants in light).
-- `macos`: 10px corners, 0.5px outlines, frosted glass, accent primary with white text on it;
-  buttons, chips, send and phone keys cast no shadow, and icon buttons, tabs, sidebar rows and
-  agent controls tint on hover instead of lifting.
-- `tahoe`: macOS's colors and glass at 14px corners, with glass pill chrome and browser buttons,
-  a glass composer and pane chips over flat tinted pill buttons, chips and fields without
-  outlines, the accent on the active window pill and selected chips, and no bar dividers.
-- `linear`: 24px corners, 0.5px outlines, both shadows, opaque surfaces with no glass, accent
-  selection, indigo primary, and a cool tinted shadow in light.
-- `glass`: 25px corners with no outlines or shadows (`outline: 0`, both shadow strengths 0),
-  heavily frosted glass with a dark contour, pill controls, tinted row selection and foreground
-  primary, on the macOS system colors.
+Seven material presets in `crates/zz-ui/themes/materials/` (Liquid glass, Frosted, Flat, Tactile, Soft, Brutal and Terminal) are
+starting points for the storybook's theme creator, not themes: each sets only the materials and
+leaves the roles, colors and font alone (`zz_ui::interface_theme::material_presets`). Fourteen
+color presets in `crates/zz-ui/themes/colors/` (macOS, Windows, GNOME, Ubuntu, Breeze, Ayu, Nord,
+Solarized, Gruvbox, Catppuccin, Dracula, Tokyo Night, GitHub and One) do the same for colors:
+each sets the six roots of both palettes and nothing else (`color_presets`). Where a scheme's own
+color fell under the contrast floors below on zz's window or popover, its lightness moved just
+enough to pass, keeping its hue.
 
 A surface whose role takes glass draws the theme's glass tinted with its own fill, with the glass
 rim in place of the outline. On a glass ground it paints a tint instead, and under a theme without
 glass a solid fill.
 
-A test in `crates/zz-ui/src/interface_theme.rs` holds every built-in to contrast floors in both
-modes: foreground at least 7:1 on the background and on a popover, the accent and status colors
+A test in `crates/zz-ui/src/interface_theme.rs` holds every built-in and every color preset to
+contrast floors in both modes: foreground at least 7:1 on the background and on a popover, the accent and status colors
 at least 3:1, and text on the accent at least 3:1.
 
 Saved themes live one per file in a `themes` folder beside the configuration file
@@ -379,20 +378,27 @@ Without gaps each pane content root owns its fill. Terminal, Agent, Editor, pick
 surfaces use this factor. Browser panes apply it only to the toolbar; page, blank, loading, and
 error backgrounds stay opaque.
 
-With gaps the pane frame owns the single fill and draws it in glass (`Theme::pane_frames`, set
-from `pane-gaps`). `Theme::pane_background` returns zero alpha, so content roots paint nothing
-under the frame, and `Theme::pane_frame(fill, plane, active)` tints the glass with the pane's own
-color over the window plane. The edge comes from the interface theme's glass when it has one, and
-from `GlassMaterial::edge` otherwise (`linear`), always with blur and refraction off: tiled panes
-sit on the flat app background, so there is nothing to frost. On an opaque window the tint is
-solid and the glass draws in place with no backdrop copy, costing about what a bordered fill does.
-There is no border and no focus glow: the glass edge (glint, fresnel, thin contour) is the frame.
-`pane-border-width` sets the glint's width. The active pane lights its glint, fresnel and contour
-in the accent, by `pane-glow-strength`; the colored contour is what shows on a light pane, where
-added light cannot. Where the window cannot sample its backdrop (WebGL, DirectX) glass paints only
-its fill, so `pane_surface` draws a hairline at the glint's width instead: the divider color, the
-accent on the active pane. Floating panes take the theme's full glass like every popover. Settings
-previews that are not inside a glass frame use `Theme::pane_color`.
+With gaps the pane frame owns the single fill (`Theme::pane_frames`, set from `pane-gaps`).
+`Theme::pane_background` returns zero alpha, so content roots paint nothing under the frame, and
+`Theme::pane_frame(fill, plane, active)` gives the frame the pane's own color over the window
+plane. Under a theme with glass, a pane whose role takes glass draws the frame in the theme's
+glass with blur and refraction off: tiled panes sit on the flat app background, so there is
+nothing to frost. On an opaque window the tint is solid and the glass draws in place with no
+backdrop copy, costing about what a bordered fill does. The glass edge (glint, fresnel, thin
+contour) is the frame, `pane-border-width` sets the glint's width, and the active pane lights its
+glint and contour in the accent and widens its rim into a soft accent wash, both by
+`pane-glow-strength`. Under a theme without glass (Default) the frame is a
+plain fill at the pane opacity with an even line over the content, `pane-border-width` wide, in the
+divider color and the accent on the active pane, because a lit glass edge there drew a bright top
+and a dark band along the bottom that differed from pane to pane. The same line stands in for the
+glass edge where the window cannot sample its backdrop (WebGL, DirectX), since glass paints only
+its fill there. A content root that paints an opaque fill under a frame hides the frame's color and
+the inside of its edge, which is why a browser shows its opaque page fill only behind a live page.
+The iPad browser's page is a native web view laid over everything GPUI draws, so it is mounted
+inside the frame by `pane-border-width` on its sides and bottom, with its corners eased by the same
+amount, and the pane's root paints the pane background like every other pane.
+Floating panes take the theme's full glass like every popover. Settings previews that are not
+inside a frame use `Theme::pane_color`.
 
 The Agent main surface uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
 the `agent.composer` field role), so at rest it draws what the theme gives that role, a soft wash

@@ -56,9 +56,16 @@
                     <button type="button" role="tab" id="tab-materials" data-step="materials" aria-controls="step-materials">Materials</button>
                     <button type="button" role="tab" id="tab-roles" data-step="roles" aria-controls="step-roles">Roles</button>
                     <button type="button" role="tab" id="tab-export" data-step="export" aria-controls="step-export">Export</button>
+                    <button type="button" role="tab" id="tab-app" data-step="app" aria-controls="step-app">App</button>
                 </div>
 
                 <div class="step" id="step-colors" role="tabpanel" aria-labelledby="tab-colors" data-step="colors">
+                    <section>
+                        <h3>Presets</h3>
+                        <p class="knob-note">Sets both palettes. Materials, roles and font stay.</p>
+                        <div class="presets" id="color-preset-choices"></div>
+                    </section>
+
                     <section>
                         <h3>Mode</h3>
                         <div class="segmented" role="radiogroup" aria-label="Mode">
@@ -68,7 +75,7 @@
                         </div>
                         <label class="row slider">
                             <span>Contrast</span><output name="contrast-value"></output>
-                            <input type="range" name="contrast" min="0.5" max="2" step="0.05" value="1" />
+                            <input type="range" name="contrast" min="1" max="2" step="0.05" value="1" />
                         </label>
                     </section>
 
@@ -104,10 +111,16 @@
 
                 <div class="step" id="step-materials" role="tabpanel" aria-labelledby="tab-materials" data-step="materials" hidden>
                     <section>
+                        <h3>Presets</h3>
+                        <p class="knob-note">Sets every material below. Colors, font and roles stay.</p>
+                        <div class="presets" id="preset-choices"></div>
+                    </section>
+
+                    <section>
                         <h3>Shape</h3>
                         <label class="row slider">
                             <span>Radius</span><output name="radius-value"></output>
-                            <input type="range" name="radius" min="0" max="25" step="1" value="24" />
+                            <input type="range" name="radius" min="0" max="25" step="1" value="10" />
                         </label>
                         <label class="row slider">
                             <span>Outline width</span><output name="outline-value"></output>
@@ -243,9 +256,42 @@
                         </label>
                     </section>
 
+                    <button type="button" class="next" data-goto="roles">Next: Roles</button>
+                </div>
+
+                <div class="step" id="step-roles" role="tabpanel" aria-labelledby="tab-roles" data-step="roles" hidden>
+                    <p class="knob-note">
+                        Every piece of zz is a role made from the materials, under its kind and group. Pick one
+                        to ring it in magenta and change its six props; what you leave on inherit follows the
+                        group it sits in. A kind or group changes everything under it.
+                    </p>
+                    <input type="search" id="role-filter" class="filter" placeholder="Find a role" aria-label="Find a role" data-local />
+                    <div id="role-tree"></div>
+                    <button type="button" class="next" data-goto="export">Next: Export</button>
+                </div>
+
+                <div class="step" id="step-export" role="tabpanel" aria-labelledby="tab-export" data-step="export" hidden>
+                    <section>
+                        <h3>Theme file</h3>
+                        <label class="row text">
+                            <span>Name</span>
+                            <input type="text" name="name" spellcheck="false" autocomplete="off" />
+                        </label>
+                        <pre id="theme-json" tabindex="0" aria-label="Theme JSON"></pre>
+                    </section>
+                    <section class="export">
+                        <button type="button" data-action="copy">Copy theme as JSON</button>
+                        <button type="button" data-action="import">Import a theme</button>
+                        <button type="reset">Reset</button>
+                    </section>
+                </div>
+                <div class="step" id="step-app" role="tabpanel" aria-labelledby="tab-app" data-step="app" hidden>
+                    <p class="knob-note">
+                        The app's own settings and the preview around the showcase. None of them are part of
+                        the theme: they stay in the address, not the JSON.
+                    </p>
                     <section>
                         <h3>Panes</h3>
-                        <p class="knob-note">App settings, not part of the theme: they stay in the address, not the JSON.</p>
                         <label class="row check">
                             <span>Gaps</span>
                             <input type="checkbox" name="pane-gaps" />
@@ -289,33 +335,6 @@
                         </label>
                     </section>
 
-                    <button type="button" class="next" data-goto="roles">Next: Roles</button>
-                </div>
-
-                <div class="step" id="step-roles" role="tabpanel" aria-labelledby="tab-roles" data-step="roles" hidden>
-                    <p class="knob-note">
-                        Every piece of zz is a role made from the materials. Pick one to ring it in magenta
-                        and change its six props; what you leave on inherit follows its kind.
-                    </p>
-                    <input type="search" id="role-filter" class="filter" placeholder="Find a role" aria-label="Find a role" data-local />
-                    <div id="role-tree"></div>
-                    <button type="button" class="next" data-goto="export">Next: Export</button>
-                </div>
-
-                <div class="step" id="step-export" role="tabpanel" aria-labelledby="tab-export" data-step="export" hidden>
-                    <section>
-                        <h3>Theme file</h3>
-                        <label class="row text">
-                            <span>Name</span>
-                            <input type="text" name="name" spellcheck="false" autocomplete="off" />
-                        </label>
-                        <pre id="theme-json" tabindex="0" aria-label="Theme JSON"></pre>
-                    </section>
-                    <section class="export">
-                        <button type="button" data-action="copy">Copy theme as JSON</button>
-                        <button type="button" data-action="import">Import a theme</button>
-                        <button type="reset">Reset</button>
-                    </section>
                 </div>
             </form>
             <p class="hint">

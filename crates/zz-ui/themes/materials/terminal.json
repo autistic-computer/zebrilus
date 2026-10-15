@@ -1,0 +1,13 @@
+{
+  "name": "Terminal",
+  "about": "Square corners, 1px lines, no shadows and no glass.",
+  "materials": {
+    "radius": 0,
+    "outline": 1,
+    "row-inset": 0,
+    "primary": "foreground",
+    "glass": null,
+    "contact": { "strength": 0 },
+    "float": { "strength": 0 }
+  }
+}

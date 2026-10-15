@@ -1,0 +1,20 @@
+{
+  "name": "Windows",
+  "about": "Windows 11's Mica fallback grays, its default accent and Fluent's status colors.",
+  "light": {
+    "background": "#f3f3f3",
+    "foreground": "#1a1a1a",
+    "accent": "#0067c0",
+    "success": "#0f7b0f",
+    "warning": "#9d5d00",
+    "danger": "#c42b1c"
+  },
+  "dark": {
+    "background": "#202020",
+    "foreground": "#ffffff",
+    "accent": "#4cc2ff",
+    "success": "#6ccb5f",
+    "warning": "#fce100",
+    "danger": "#ff99a4"
+  }
+}

@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Icon, IconName, Kind, Layer,
-    PaintState, Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Surface, SurfaceRole, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Icon, IconName, Layer, PaintState,
+    Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Surface, SurfaceRole, Tone,
     badge::Badge,
     h_flex,
     input::{Input, InputState},
@@ -165,7 +165,7 @@ pub fn list_row(
 ) -> Stateful<Div> {
     row_surface(
         h_flex().id(id).flex_none().h(height),
-        Kind::Row.role(),
+        SurfaceRole::MENU_ITEM,
         row_state(selected, enabled),
         height,
         cx,

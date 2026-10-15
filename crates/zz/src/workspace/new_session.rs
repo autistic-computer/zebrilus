@@ -5,26 +5,22 @@ use crate::mux::client::MuxClient;
 use crate::mux::prefix::display_keystroke;
 use zz_client::{ChromeAction, UI_TABLE};
 use zz_gpui::{
-    App, Context, Div, FocusHandle, Focusable, KeyDownEvent, Keystroke, MouseButton,
-    ParentElement as _, Render, Styled as _, Window, div, prelude::*, px,
+    App, Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, MouseButton, Render, Window,
+    prelude::*,
 };
 use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Kind, PaintState, Tone,
     button::{Button, ButtonVariants as _},
-    kbd::Kbd,
-    list::ListItem,
+    shell::{
+        empty_workspace, empty_workspace_action, empty_workspace_caption, empty_workspace_connect,
+        empty_workspace_hint, empty_workspace_keys,
+    },
 };
 
 /// The daemon's own default (`zz_mux::KeyTables`), printed until it publishes one.
 const DEFAULT_PREFIX: &str = "C-b";
-
-const KEY_COLUMN_WIDTH: f32 = 92.0;
-const KEY_LABEL_GAP: f32 = 10.0;
-const PANEL_WIDTH: f32 = 340.0;
-const HINT_ROW_HEIGHT: f32 = 32.0;
 
 struct Hint {
     prefixed: bool,
@@ -137,78 +133,16 @@ fn resolve_binding_key(
     display_keystroke(&binding.key).or_else(stock_key)
 }
 
-fn hint_row(
+fn hint_keys(
     hint: &Hint,
     prefix: Option<&Keystroke>,
     key: Option<Keystroke>,
-    strong: bool,
-    ground: Ground,
-    cx: &App,
-) -> Div {
-    let keys = hint
-        .prefixed
+) -> impl Iterator<Item = Keystroke> {
+    hint.prefixed
         .then(|| prefix.cloned())
         .flatten()
         .into_iter()
         .chain(key)
-        .map(|key| Kbd::new(key).lowercase().on(ground).into_any_element())
-        .collect::<Vec<_>>();
-    let label = if strong {
-        ground.ink
-    } else {
-        cx.theme()
-            .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
-            .muted_at(PaintState::Rest)
-    };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(KEY_LABEL_GAP))
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .w(px(KEY_COLUMN_WIDTH))
-                .items_center()
-                .justify_end()
-                .gap(px(4.0))
-                .children(keys),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_size(zz_ui::rems_from_px(12.0))
-                .text_color(label)
-                .child(hint.label),
-        )
-}
-
-fn action_row(
-    id: &'static str,
-    hint: &Hint,
-    prefix: Option<&Keystroke>,
-    key: Option<Keystroke>,
-    strong: bool,
-    selected: bool,
-    cx: &App,
-) -> ListItem {
-    let state = if selected {
-        PaintState::Selected
-    } else {
-        PaintState::Rest
-    };
-    let ground = cx.theme().layer(Kind::Row.role(), state).ground;
-    ListItem::new(id)
-        .selected(selected)
-        .h(px(HINT_ROW_HEIGHT))
-        .px(px(12.0))
-        .py_0()
-        .cursor_pointer()
-        .child(hint_row(hint, prefix, key, strong, ground, cx))
 }
 
 fn activates_new_session(keystroke: &Keystroke) -> bool {
@@ -257,50 +191,25 @@ impl Render for NewSessionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus_handle = self.focus_handle.clone();
         if !self.mux.read(cx).has_hosts() {
-            return div()
-                .id("new-session-empty-state")
-                .track_focus(&self.focus_handle)
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    focus_handle.focus(window, cx);
-                })
-                .flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .overflow_hidden()
-                .px(px(12.0))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .w_full()
-                        .max_w(px(PANEL_WIDTH))
-                        .items_start()
-                        .gap_3()
-                        .text_size(zz_ui::rems_from_px(12.0))
-                        .child(
-                            div()
-                                .text_color(cx.theme().foreground)
-                                .child("Connect to a computer"),
-                        )
-                        .child(
-                            div()
-                                .text_color(cx.theme().foreground.muted())
-                                .child(
-                                    "zz attaches to a daemon over SSH. On your Mac, enable Remote Login in System Settings, then add it here.",
-                                ),
-                        )
-                        .child(
-                            Button::new("new-session-add-host")
-                                .primary()
-                                .label("Add host…")
-                                .on_click(|_, window, cx| {
-                                    super::add_host::open(window, cx);
-                                    cx.stop_propagation();
-                                }),
-                        ),
-                )
-                .into_any_element();
+            return empty_workspace(
+                "new-session-empty-state",
+                empty_workspace_connect(
+                    Button::new("new-session-add-host")
+                        .primary()
+                        .label("Add host…")
+                        .on_click(|_, window, cx| {
+                            super::add_host::open(window, cx);
+                            cx.stop_propagation();
+                        }),
+                    cx,
+                ),
+                cx,
+            )
+            .track_focus(&self.focus_handle)
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                focus_handle.focus(window, cx);
+            })
+            .into_any_element();
         }
         let view = cx.entity();
         let prefix = self
@@ -320,85 +229,66 @@ impl Render for NewSessionView {
         let new_session = actions.next().expect("the new-session hint");
         let settings = actions.next().expect("the settings hint");
         let settings_key = crate::keymap::chord_for(cx, UI_TABLE, ChromeAction::OpenSettings);
-        div()
-            .id("new-session-empty-state")
-            .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(Self::on_key_down))
-            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                focus_handle.focus(window, cx);
+        let activate = empty_workspace_action(
+            "new-session-activate",
+            hint_keys(
+                new_session,
+                prefix.as_ref(),
+                Keystroke::parse(new_session.key).ok(),
+            ),
+            new_session.label,
+            true,
+            self.focus_handle.is_focused(window),
+            cx,
+        )
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            view.update(cx, |view, cx| view.activate(cx));
+            cx.stop_propagation();
+        });
+        let open_settings = empty_workspace_action(
+            "new-session-settings",
+            hint_keys(
+                settings,
+                prefix.as_ref(),
+                Keystroke::parse(settings_key.as_deref().unwrap_or(settings.key)).ok(),
+            ),
+            settings.label,
+            false,
+            false,
+            cx,
+        )
+        .on_click(|_, window, cx| {
+            window.dispatch_action(Box::new(OpenSettings), cx);
+        });
+        let hints = BINDINGS.iter().zip(binding_keys).filter_map(|(hint, key)| {
+            key.map(|key| {
+                empty_workspace_hint(
+                    hint_keys(&hint.hint, prefix.as_ref(), Some(key)),
+                    hint.hint.label,
+                    cx,
+                )
+                .into_any_element()
             })
-            .flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .overflow_hidden()
-            .text_color(cx.theme().foreground)
-            .px(px(12.0))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_none()
-                    .w_full()
-                    .max_w(px(PANEL_WIDTH))
-                    .gap(px(2.0))
-                    .child(
-                        action_row(
-                            "new-session-activate",
-                            new_session,
-                            prefix.as_ref(),
-                            Keystroke::parse(new_session.key).ok(),
-                            true,
-                            self.focus_handle.is_focused(window),
-                            cx,
-                        )
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            move |_, _, cx| {
-                                view.update(cx, |view, cx| view.activate(cx));
-                                cx.stop_propagation();
-                            },
-                        ),
-                    )
-                    .child(
-                        action_row(
-                            "new-session-settings",
-                            settings,
-                            prefix.as_ref(),
-                            Keystroke::parse(settings_key.as_deref().unwrap_or(settings.key)).ok(),
-                            false,
-                            false,
-                            cx,
-                        )
-                        .on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(OpenSettings), cx);
-                        }),
-                    )
-                    .child(
-                        div()
-                            .mt(px(12.0))
-                            .mb(px(4.0))
-                            .pl(px(12.0 + KEY_COLUMN_WIDTH + KEY_LABEL_GAP))
-                            .text_size(zz_ui::rems_from_px(11.0))
-                            .text_color(cx.theme().foreground.muted())
-                            .child("In a session"),
-                    )
-                    .children(BINDINGS.iter().zip(binding_keys).filter_map(|(hint, key)| {
-                        key.map(|key| {
-                            hint_row(
-                                &hint.hint,
-                                prefix.as_ref(),
-                                Some(key),
-                                false,
-                                cx.theme().ground(),
-                                cx,
-                            )
-                            .h(px(24.0))
-                            .px(px(12.0))
-                        })
-                    })),
-            )
-            .into_any_element()
+        });
+        empty_workspace(
+            "new-session-empty-state",
+            empty_workspace_keys(
+                [
+                    activate.into_any_element(),
+                    open_settings.into_any_element(),
+                    empty_workspace_caption("In a session", cx).into_any_element(),
+                ]
+                .into_iter()
+                .chain(hints),
+            ),
+            cx,
+        )
+        .track_focus(&self.focus_handle)
+        .on_key_down(cx.listener(Self::on_key_down))
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            focus_handle.focus(window, cx);
+        })
+        .into_any_element()
     }
 }
 

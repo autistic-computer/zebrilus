@@ -29,8 +29,9 @@ pub use styled::{
 };
 pub(crate) use surface::restyle;
 pub use surface::{
-    Edge, Fill, Highlight, InteractiveSurfaceExt, Kind, Layer, Shadow, ShadowMaterial, Shape,
-    StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole,
+    Edge, Fill, Highlight, InteractiveSurfaceExt, Kind, Knobs, Layer, Shadow, ShadowMaterial,
+    Shape, StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole, drawn_roles,
+    note_drawn_roles,
 };
 pub use theme::{ActiveTheme, CHROME_GAP, CORNER_SMOOTHING, ScrollbarShow, Theme, ThemeMode};
 pub use theme_color::ThemeColor;
