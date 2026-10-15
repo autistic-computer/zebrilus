@@ -306,7 +306,7 @@ pub fn browser_pane(
     window: &Window,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let radius = radii(gaps).top_left;
+    let radius = radii(gaps, cx).top_left;
     pane_surface(
         id,
         div()

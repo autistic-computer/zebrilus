@@ -1073,17 +1073,13 @@ pub fn pane_picker_row(
     enabled: bool,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let state = match (enabled, selected) {
-        (false, _) => PaintState::Disabled,
-        (true, true) => PaintState::Selected,
-        (true, false) => PaintState::Rest,
-    };
+    let state = crate::picker::row_state(selected, enabled);
     let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
     let ink = cx
         .theme()
         .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
         .muted_at(PaintState::Rest);
-    crate::picker::list_row(id, px(40.0), selected, enabled, cx)
+    crate::picker::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, enabled, cx)
         .w_full()
         .gap(px(10.0))
         .px(px(12.0))
@@ -1097,7 +1093,6 @@ pub fn pane_picker_row(
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .text_size(crate::rems_from_px(12.0))
-                .font_weight(FontWeight::MEDIUM)
                 .child(title),
         )
         .child(
@@ -1142,7 +1137,7 @@ pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> zz_gpu
         .flex_col()
         .w_full()
         .max_w(px(360.0))
-        .gap(px(4.0))
+        .gap(px(2.0))
         .children(rows)
 }
 

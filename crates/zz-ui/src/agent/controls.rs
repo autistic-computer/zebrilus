@@ -1069,8 +1069,7 @@ mod tests {
                     })
                     .expect("picker row highlight");
                 assert_eq!(quad.corner_smoothing, 2.5);
-                let pill = quad.bounds.size.height.0 / 2.0;
-                assert!((quad.corner_radii.top_left.0 - pill).abs() < 0.001);
+                assert!((quad.corner_radii.top_left.0 / scale - 12.8).abs() < 0.001);
             }
         });
     }

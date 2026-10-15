@@ -61,12 +61,6 @@
 
                 <div class="step" id="step-colors" role="tabpanel" aria-labelledby="tab-colors" data-step="colors">
                     <section>
-                        <h3>Presets</h3>
-                        <p class="knob-note">Sets both palettes. Materials, roles and font stay.</p>
-                        <div class="presets" id="color-preset-choices"></div>
-                    </section>
-
-                    <section>
                         <h3>Mode</h3>
                         <div class="segmented" role="radiogroup" aria-label="Mode">
                             <label><input type="radio" name="theme" value="system" checked /><span>System</span></label>
@@ -76,6 +70,14 @@
                         <label class="row slider">
                             <span>Contrast</span><output name="contrast-value"></output>
                             <input type="range" name="contrast" min="1" max="2" step="0.05" value="1" />
+                        </label>
+                        <label class="row slider hue">
+                            <span>Tint hue</span><output name="tint-hue-value"></output>
+                            <input type="range" name="tint-hue" min="0" max="360" step="1" value="260" />
+                        </label>
+                        <label class="row slider">
+                            <span>Tint</span><output name="tint-value"></output>
+                            <input type="range" name="tint" min="0" max="1" step="0.01" value="0" />
                         </label>
                     </section>
 
@@ -136,6 +138,10 @@
                         <div class="segmented" role="radiogroup" aria-label="Primary">
                             <label><input type="radio" name="primary" value="foreground" checked /><span>Ink primary</span></label>
                             <label><input type="radio" name="primary" value="accent" /><span>Accent primary</span></label>
+                        </div>
+                        <div class="segmented" role="radiogroup" aria-label="Highlights">
+                            <label><input type="radio" name="highlights" value="lift" checked /><span>Lifted highlights</span></label>
+                            <label><input type="radio" name="highlights" value="flat" /><span>Flat highlights</span></label>
                         </div>
                     </section>
 
@@ -299,14 +305,6 @@
                         <label class="row slider">
                             <span>Margin</span><output name="pane-margin-value"></output>
                             <input type="range" name="pane-margin" min="0" max="32" step="0.5" value="6" />
-                        </label>
-                        <label class="row slider">
-                            <span>Corner radius</span><output name="pane-corner-radius-value"></output>
-                            <input type="range" name="pane-corner-radius" min="0" max="32" step="0.5" value="13.5" />
-                        </label>
-                        <label class="row slider">
-                            <span>Edge width</span><output name="pane-border-width-value"></output>
-                            <input type="range" name="pane-border-width" min="0" max="8" step="0.25" value="0.5" />
                         </label>
                         <label class="row slider">
                             <span>Background opacity</span><output name="pane-opacity-value"></output>

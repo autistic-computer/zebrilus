@@ -1,6 +1,7 @@
-use serde::{Deserialize, Deserializer, Serialize};
-use zz_ui::interface_theme::{
-    self, InterfaceTheme, MaterialOverrides, Materials, ThemeModeSetting,
+use serde::{Deserialize, Deserializer, Serialize, de::value::MapDeserializer};
+use zz_ui::{
+    ThemeMode,
+    interface_theme::{self, InterfaceTheme, ThemeModeSetting, ThemeOverrides},
 };
 
 pub const MAX_SAVED_THEMES: usize = 32;
@@ -29,16 +30,15 @@ pub struct Preferences {
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
     pub zoom: f32,
-    /// Material values set over the theme. Picking a theme clears them.
+    /// What Settings sets over the theme. Picking a theme clears the style
+    /// and radius.
     #[serde(flatten)]
-    pub materials: MaterialOverrides,
+    pub overrides: ThemeOverrides,
     pub contrast: f32,
     pub pane_background_opacity: f32,
     pub pane_inactive_opacity: f32,
     pub pane_glow_strength: f32,
     pub pane_margin: f32,
-    pub pane_radius: f32,
-    pub pane_border_width: f32,
     pub palette_grouped: bool,
     pub palette_host_prefix: String,
     pub palette_show_keys: bool,
@@ -66,14 +66,12 @@ impl Default for Preferences {
             terminal_font_family: None,
             terminal_font_scale: 1.0,
             zoom: 1.0,
-            materials: MaterialOverrides::default(),
+            overrides: ThemeOverrides::default(),
             contrast: 1.0,
             pane_background_opacity: 0.5,
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
             pane_margin: 6.0,
-            pane_radius: 13.5,
-            pane_border_width: 0.5,
             palette_grouped: true,
             palette_host_prefix: "~".into(),
             palette_show_keys: true,
@@ -99,30 +97,24 @@ impl Preferences {
         });
         self.themes.truncate(MAX_SAVED_THEMES);
         self.theme = self.theme.take().filter(|id| self.knows_theme(id));
-        let theme = self.interface_theme().materials.clone();
-        self.materials.radius = self
-            .materials
-            .radius
-            .map(|value| bounded(value, 0.0, 25.0, theme.radius));
-        self.materials.outline = self
-            .materials
-            .outline
-            .map(|value| bounded(value, 0.0, 2.0, theme.outline));
-        self.materials.shadow_strength = self
-            .materials
-            .shadow_strength
-            .map(|value| bounded(value, 0.0, 2.0, 1.0));
-        self.materials.row_inset = self
-            .materials
-            .row_inset
-            .map(|value| bounded(value, 0.0, 12.0, theme.row_inset));
-        self.materials.glass = self.materials.glass.take().filter(|glass| {
-            zz_ui::settings::appearance::AppearancePageItem::Glass
-                .material_choices()
-                .iter()
-                .skip(1)
-                .any(|(_, choice)| choice == glass)
-        });
+        let overrides = &mut self.overrides;
+        for (value, max) in [
+            (&mut overrides.radius, interface_theme::MAX_CORNER_RADIUS),
+            (&mut overrides.tint, 1.0),
+            (&mut overrides.tint_hue, 360.0),
+        ] {
+            *value = value
+                .filter(|value| value.is_finite())
+                .map(|value| value.clamp(0.0, max));
+        }
+        overrides.style = overrides
+            .style
+            .take()
+            .filter(|id| interface_theme::material_preset(id).is_some());
+        overrides.accent = overrides
+            .accent
+            .take()
+            .filter(|accent| interface_theme::accent_color(accent, ThemeMode::Dark).is_some());
         self.zoom = bounded(self.zoom, 0.5, 3.0, 1.0);
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         self.contrast = bounded(self.contrast, 1.0, 2.0, 1.0);
@@ -131,8 +123,6 @@ impl Preferences {
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
             (&mut self.pane_glow_strength, 0., 2., 1.),
             (&mut self.pane_margin, 0., 32., 6.),
-            (&mut self.pane_radius, 0., 32., 13.5),
-            (&mut self.pane_border_width, 0., 8., 0.5),
         ] {
             *value = bounded(*value, min, max, fallback);
         }
@@ -209,25 +199,27 @@ impl Preferences {
     }
 
     /// Selects the built-in or saved theme `id`, or the default for any other
-    /// id, and drops the overrides of what the theme decides: the
-    /// materials, and the UI font when it sets one, so it shows as designed.
+    /// id, and drops the overrides of what the theme decides: its style and
+    /// radius, and the UI font when it sets one, so it shows as designed.
+    /// The accent and the tint stay.
     pub fn set_interface_theme(&mut self, id: &str) {
         self.theme = self.knows_theme(id).then(|| id.to_owned());
-        self.materials = MaterialOverrides::default();
+        self.overrides.pick_theme();
         if self.interface_theme().materials.font.is_some() {
             self.ui_font_family.clear();
         }
     }
 
-    /// Saves the active theme as it draws now, with the material and UI
-    /// font overrides folded into its materials, and selects the copy.
+    /// Saves the look on screen as a theme, with every override and the UI
+    /// font folded in, selects the copy and drops the overrides.
     pub fn duplicate_theme(&mut self) -> Result<String, String> {
-        let mut theme = self.interface_theme().clone();
-        theme.materials = self.materials();
+        let mut theme = self.shown_theme();
         if !self.ui_font_family.is_empty() {
             theme.materials.font = Some(self.ui_font_family.clone().into());
         }
-        self.save_theme(theme)
+        let id = self.save_theme(theme)?;
+        self.overrides = ThemeOverrides::default();
+        Ok(id)
     }
 
     /// Saves the theme file on the clipboard and selects it.
@@ -285,17 +277,17 @@ impl Preferences {
         }
     }
 
-    /// The active theme's materials with the overrides set here.
+    /// The active theme with the overrides set here: the look on screen.
     #[must_use]
-    pub fn materials(&self) -> Materials {
-        let mut materials = self.interface_theme().materials.clone();
-        self.materials.apply(&mut materials);
-        materials
+    pub fn shown_theme(&self) -> InterfaceTheme {
+        let mut theme = self.interface_theme().clone();
+        self.overrides.apply_to(&mut theme);
+        theme
     }
 
     #[must_use]
     pub fn widget_corner_radius(&self) -> f32 {
-        self.materials().radius
+        self.shown_theme().materials.radius
     }
 
     #[must_use]
@@ -311,13 +303,20 @@ impl Preferences {
     }
 
     pub fn decode(value: &str) -> serde_json::Result<Self> {
-        let source: serde_json::Value = serde_json::from_str(value)?;
+        let mut source: serde_json::Value = serde_json::from_str(value)?;
+        if let Some(fields) = source.as_object_mut() {
+            fields.retain(|key, value| {
+                let field = std::iter::once((key.as_str(), &*value));
+                ThemeOverrides::deserialize(MapDeserializer::<_, serde_json::Error>::new(field))
+                    .is_ok()
+            });
+        }
         let mut preferences: Self = serde_json::from_value(source.clone())?;
         if source.get("mode").is_none() && source.get("dark").is_none() {
             preferences.mode = Some("system".into());
         }
         if source.get("theme").is_none() {
-            preferences.materials = MaterialOverrides::default();
+            preferences.overrides = ThemeOverrides::default();
         }
         Ok(preferences.sanitized())
     }
@@ -413,7 +412,7 @@ fn bounded(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::Preferences;
-    use zz_ui::interface_theme::{MaterialOverrides, ThemeModeSetting};
+    use zz_ui::interface_theme::{self, ThemeModeSetting, ThemeOverrides};
 
     #[test]
     fn preferences_persist_and_missing_fields_keep_defaults() {
@@ -438,8 +437,12 @@ mod tests {
             terminal_font_family: Some("Lilex".into()),
             terminal_font_scale: 1.25,
             pane_margin: 7.5,
-            pane_radius: 10.5,
-            pane_border_width: 1.5,
+            overrides: ThemeOverrides {
+                accent: Some("green".into()),
+                tint: Some(0.25),
+                tint_hue: Some(200.0),
+                ..ThemeOverrides::default()
+            },
             ..Preferences::default()
         };
         expected.save_path(&path).unwrap();
@@ -491,7 +494,7 @@ mod tests {
         let defaults = serde_json::from_str::<Preferences>(r#"{"sidebar":false}"#).unwrap();
         assert!(!defaults.sidebar);
         assert!(defaults.animations);
-        assert_eq!(defaults.materials, MaterialOverrides::default());
+        assert_eq!(defaults.overrides, ThemeOverrides::default());
         assert_eq!(
             defaults.sidebar_width,
             zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH
@@ -503,9 +506,9 @@ mod tests {
             status_badges: false,
             status_agents: false,
             animations: false,
-            materials: MaterialOverrides {
-                shadow_strength: Some(0.0),
-                ..MaterialOverrides::default()
+            overrides: ThemeOverrides {
+                style: Some("flat".into()),
+                ..ThemeOverrides::default()
             },
             sidebar_width: 320.0,
             ..defaults
@@ -519,13 +522,14 @@ mod tests {
             changed.status_bar_settings()
         );
         assert!(!restored.animations);
-        assert_eq!(restored.materials().float.strength, 0.0);
-        assert_eq!(restored.materials().contact.strength, 0.0);
+        let flat = &interface_theme::material_preset("flat").unwrap().materials;
+        assert_eq!(restored.shown_theme().materials.outline, flat.outline);
+        assert_eq!(restored.widget_corner_radius(), flat.radius);
         assert_eq!(restored.sidebar_width, 320.0);
     }
 
     #[test]
-    fn sidebar_and_material_values_stay_within_supported_limits() {
+    fn sidebar_and_theme_overrides_stay_within_supported_limits() {
         for (width, available, expected) in [
             (0.0, 1000.0, 160.0),
             (300.0, 1000.0, 300.0),
@@ -542,31 +546,55 @@ mod tests {
         }
         let invalid = Preferences {
             sidebar_width: f32::NAN,
-            materials: MaterialOverrides {
-                outline: Some(f32::INFINITY),
-                shadow_strength: Some(f32::NAN),
-                glass: Some("stained".to_owned()),
-                ..MaterialOverrides::default()
+            overrides: ThemeOverrides {
+                style: Some("stained".into()),
+                radius: Some(f32::INFINITY),
+                accent: Some("chartreuse".into()),
+                tint: Some(f32::NAN),
+                tint_hue: Some(f32::NAN),
             },
             ..Preferences::default()
         }
         .sanitized();
         assert_eq!(invalid.sidebar_width, Preferences::default().sidebar_width);
-        assert_eq!(invalid.materials().outline, 0.5);
-        assert_eq!(invalid.materials.shadow_strength, Some(1.0));
-        assert_eq!(invalid.materials.glass, None);
-        for (value, expected) in [(-0.1, 0.0), (3.0, 2.0), (1.5, 1.5)] {
-            let preferences = Preferences {
-                materials: MaterialOverrides {
-                    outline: Some(value),
-                    shadow_strength: Some(value),
-                    ..MaterialOverrides::default()
+        assert_eq!(invalid.overrides, ThemeOverrides::default());
+        assert_eq!(
+            invalid.widget_corner_radius(),
+            interface_theme::default_theme().materials.radius
+        );
+        for (value, expected) in [
+            ((-1.0, -0.1, -10.0), (0.0, 0.0, 0.0)),
+            ((30.0, 2.0, 400.0), (25.0, 1.0, 360.0)),
+            ((12.5, 0.5, 145.0), (12.5, 0.5, 145.0)),
+        ] {
+            let overrides = Preferences {
+                overrides: ThemeOverrides {
+                    radius: Some(value.0),
+                    tint: Some(value.1),
+                    tint_hue: Some(value.2),
+                    ..ThemeOverrides::default()
                 },
                 ..Preferences::default()
             }
+            .sanitized()
+            .overrides;
+            assert_eq!(
+                (overrides.radius, overrides.tint, overrides.tint_hue),
+                (Some(expected.0), Some(expected.1), Some(expected.2))
+            );
+        }
+        for accent in ["green", "#ff8800"] {
+            let valid = ThemeOverrides {
+                style: Some("flat".into()),
+                accent: Some(accent.into()),
+                ..ThemeOverrides::default()
+            };
+            let preferences = Preferences {
+                overrides: valid.clone(),
+                ..Preferences::default()
+            }
             .sanitized();
-            assert_eq!(preferences.materials().outline, expected);
-            assert_eq!(preferences.materials.shadow_strength, Some(expected));
+            assert_eq!(preferences.overrides, valid);
         }
     }
 
@@ -594,9 +622,9 @@ mod tests {
     #[test]
     fn full_widget_radius_survives_saved_preferences() {
         let preferences = Preferences {
-            materials: MaterialOverrides {
+            overrides: ThemeOverrides {
                 radius: Some(25.0),
-                ..MaterialOverrides::default()
+                ..ThemeOverrides::default()
             },
             ..Preferences::default()
         };
@@ -608,31 +636,37 @@ mod tests {
     }
 
     #[test]
-    fn the_theme_decides_radius_and_shadow_until_they_are_set() {
-        let older =
-            Preferences::decode(r#"{"radius":12,"shadow_strength":0.3,"style":"flat"}"#).unwrap();
+    fn the_theme_decides_the_look_until_overrides_are_set() {
+        let builtin = interface_theme::default_theme();
+        let older = Preferences::decode(r#"{"radius":12,"tint":0.3,"style":"flat"}"#).unwrap();
         assert_eq!(older.theme_id(), "default");
-        assert_eq!(older.materials, MaterialOverrides::default());
-        assert_eq!(older.widget_corner_radius(), 10.0);
+        assert_eq!(older.overrides, ThemeOverrides::default());
+        assert_eq!(older.shown_theme(), *builtin);
 
-        let mut tuned = Preferences::decode(r#"{"theme":null,"radius":12}"#).unwrap();
+        let mut tuned =
+            Preferences::decode(r#"{"theme":null,"radius":12,"accent":"green","tint":0.4}"#)
+                .unwrap();
         assert_eq!(tuned.widget_corner_radius(), 12.0);
         let saved = serde_json::to_string(&tuned).unwrap();
         assert_eq!(
-            Preferences::decode(&saved).unwrap().materials.radius,
-            Some(12.0)
+            Preferences::decode(&saved).unwrap().overrides,
+            tuned.overrides
         );
 
+        tuned.overrides.style = Some("flat".into());
         tuned.set_interface_theme("default");
         let picked = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
         assert_eq!(picked.theme_id(), "default");
-        let materials = &zz_ui::interface_theme::builtin_theme("default")
-            .unwrap()
-            .materials;
         assert_eq!(
-            (picked.widget_corner_radius(), picked.materials().float),
-            (materials.radius, materials.float)
+            picked.overrides,
+            ThemeOverrides {
+                accent: Some("green".into()),
+                tint: Some(0.4),
+                ..ThemeOverrides::default()
+            }
         );
+        assert_eq!(picked.widget_corner_radius(), builtin.materials.radius);
+        assert_eq!(picked.shown_theme().materials, builtin.materials);
         tuned.set_interface_theme("vaporwave");
         assert_eq!(tuned.theme_id(), "default");
     }
@@ -648,29 +682,29 @@ mod tests {
         assert_eq!(restored.theme_id(), "theme-1");
         assert_eq!(restored.interface_theme().name, "Neon");
 
-        let mut frosted = Preferences {
-            materials: MaterialOverrides {
-                glass: Some("frosted".to_owned()),
-                ..MaterialOverrides::default()
+        let mut glass = Preferences {
+            overrides: ThemeOverrides {
+                style: Some("liquid-glass".into()),
+                ..ThemeOverrides::default()
             },
             ..Preferences::default()
         };
-        frosted.duplicate_theme().unwrap();
-        let restored = Preferences::decode(&serde_json::to_string(&frosted).unwrap()).unwrap();
+        glass.duplicate_theme().unwrap();
+        let restored = Preferences::decode(&serde_json::to_string(&glass).unwrap()).unwrap();
         assert_eq!(restored.theme_id(), "theme-1");
         assert!(restored.interface_theme().materials.glass.is_some());
 
         let older = Preferences::decode(
-            r#"{"theme":"default","radius":12,"shadows":"none","selection":"wash","field":"outline"}"#,
+            r#"{"theme":"default","radius":12,"shadows":"none","selection":"wash","field":"outline","outline":1,"shadow-strength":0.3,"row-inset":2,"primary":"accent","glass":"frosted","pane_radius":9,"pane_border_width":2,"colors":[null,"ff0000"],"style":3}"#,
         )
         .unwrap();
         assert!(older.themes.is_empty());
         assert_eq!(older.theme_id(), "default");
         assert_eq!(
-            older.materials,
-            MaterialOverrides {
+            older.overrides,
+            ThemeOverrides {
                 radius: Some(12.0),
-                ..MaterialOverrides::default()
+                ..ThemeOverrides::default()
             }
         );
 
@@ -718,41 +752,38 @@ mod tests {
 
     #[test]
     fn duplicate_keeps_what_is_on_screen() {
+        let overrides = ThemeOverrides {
+            style: Some("flat".into()),
+            radius: Some(7.0),
+            accent: Some("green".into()),
+            tint: Some(0.5),
+            tint_hue: Some(145.0),
+        };
         let mut preferences = Preferences {
             theme: Some("default".into()),
-            materials: MaterialOverrides {
-                radius: Some(7.0),
-                shadow_strength: Some(0.5),
-                ..MaterialOverrides::default()
-            },
+            overrides: overrides.clone(),
             ui_font_family: "Lilex".into(),
             ..Preferences::default()
         };
+        let shown = preferences.shown_theme();
         assert_eq!(preferences.duplicate_theme().unwrap(), "theme-1");
-        let copy = preferences.saved_theme("theme-1").unwrap();
-        assert_eq!(copy.name, "theme-1");
-        let builtin = zz_ui::interface_theme::builtin_theme("default").unwrap();
-        let float = builtin.materials.float.strength * 0.5;
-        assert_eq!(
-            (
-                copy.materials.radius,
-                copy.materials.float.strength,
-                copy.materials.font.as_deref()
-            ),
-            (7.0, float, Some("Lilex"))
-        );
-        assert_eq!(copy.roles, builtin.roles);
-        assert_eq!((&copy.light, &copy.dark), (&builtin.light, &builtin.dark));
+        let copy = preferences.saved_theme("theme-1").unwrap().clone();
+        let mut expected = interface_theme::default_theme().clone();
+        overrides.apply_to(&mut expected);
+        expected.materials.font = Some("Lilex".into());
+        expected.name = "theme-1".into();
+        assert_eq!(copy, expected);
         assert_eq!(preferences.theme_id(), "theme-1");
-        assert_eq!(preferences.materials, MaterialOverrides::default());
+        assert_eq!(preferences.overrides, ThemeOverrides::default());
         assert!(preferences.ui_font_family.is_empty());
+        assert_eq!(preferences.shown_theme(), copy);
         assert_eq!(
             (
+                preferences.shown_theme().dark.background,
                 preferences.widget_corner_radius(),
-                preferences.materials().float.strength,
                 preferences.shown_ui_font()
             ),
-            (7.0, float, "Lilex")
+            (shown.dark.background, 7.0, "Lilex")
         );
     }
 
@@ -782,9 +813,11 @@ mod tests {
         while preferences.themes.len() < super::MAX_SAVED_THEMES {
             preferences.import_theme("{}").unwrap();
         }
+        preferences.overrides.accent = Some("green".into());
         assert!(preferences.import_theme(NEON).is_err());
         assert!(preferences.duplicate_theme().is_err());
         assert_eq!(preferences.themes.len(), super::MAX_SAVED_THEMES);
+        assert_eq!(preferences.overrides.accent.as_deref(), Some("green"));
     }
 
     #[test]
@@ -792,26 +825,29 @@ mod tests {
         let mut preferences = Preferences::default();
         preferences.import_theme(NEON).unwrap();
         preferences.import_theme("{}").unwrap();
-        preferences.materials.radius = Some(4.0);
+        preferences.overrides.radius = Some(4.0);
+        preferences.overrides.accent = Some("pink".into());
         preferences.delete_theme("theme-1");
         assert_eq!(preferences.theme_id(), "theme-2");
-        assert_eq!(preferences.materials.radius, Some(4.0));
+        assert_eq!(preferences.overrides.radius, Some(4.0));
         preferences.delete_theme("theme-2");
         assert!(preferences.themes.is_empty());
         assert_eq!(preferences.theme_id(), "default");
-        assert_eq!(preferences.materials.radius, None);
+        assert_eq!(preferences.overrides.radius, None);
+        assert_eq!(preferences.overrides.accent.as_deref(), Some("pink"));
         assert_eq!(preferences.import_theme("{}").unwrap(), "theme-1");
     }
 
     #[test]
     fn older_preferences_gain_pane_controls_and_values_remain_bounded() {
-        let preferences = serde_json::from_str::<Preferences>(r#"{"gaps":true,"radius":8}"#)
-            .unwrap()
-            .sanitized();
+        let preferences = serde_json::from_str::<Preferences>(
+            r#"{"gaps":true,"radius":8,"pane_radius":20,"pane_border_width":3}"#,
+        )
+        .unwrap()
+        .sanitized();
         assert!(preferences.gaps);
-        assert_eq!(preferences.materials.radius, Some(8.0));
+        assert_eq!(preferences.overrides.radius, Some(8.0));
         assert_eq!(preferences.pane_margin, 6.0);
-        assert_eq!(preferences.pane_radius, 13.5);
         assert_eq!(preferences.pane_background_opacity, 0.5);
         assert_eq!(preferences.pane_glow_strength, 1.0);
         assert_eq!(
@@ -826,8 +862,6 @@ mod tests {
         );
         let preferences = Preferences {
             pane_margin: -1.0,
-            pane_radius: 200.0,
-            pane_border_width: f32::NAN,
             pane_inactive_opacity: 2.0,
             pane_background_opacity: -1.0,
             pane_glow_strength: 3.0,
@@ -835,8 +869,6 @@ mod tests {
         }
         .sanitized();
         assert_eq!(preferences.pane_margin, 0.0);
-        assert_eq!(preferences.pane_radius, 32.0);
-        assert_eq!(preferences.pane_border_width, 0.5);
         assert_eq!(preferences.pane_inactive_opacity, 1.0);
         assert_eq!(preferences.pane_background_opacity, 0.0);
         assert_eq!(preferences.pane_glow_strength, 2.0);

@@ -9,14 +9,64 @@ pub const BUILTIN_THEMES: [&str; 1] = ["default"];
 /// The theme a fresh install uses.
 pub const DEFAULT_THEME: &str = "default";
 
-/// What each look setting that is a choice accepts, spelled as theme files
-/// and `zz/config` spell them.
-pub const PRIMARY_CHOICES: [&str; 2] = ["foreground", "accent"];
-/// `theme` keeps the theme's own glass, `off` drops it, and the rest name a
-/// glass preset.
-pub const GLASS_CHOICES: [&str; 7] = [
-    "theme", "off", "regular", "clear", "frosted", "bubble", "smoked",
+/// The roundest corner radius `widget-corner-radius` takes.
+pub const MAX_CORNER_RADIUS: f32 = 25.0;
+
+/// The material presets `interface-style` names: Default's materials, then
+/// the presets.
+pub const STYLE_PRESETS: [&str; 6] = [
+    "default",
+    "liquid-glass",
+    "capsule",
+    "flat",
+    "brutal",
+    "terminal",
 ];
+
+/// The named accents `chrome-accent` takes besides a `#rrggbb` color, each
+/// tuned for light and for dark.
+pub const ACCENTS: [&str; 8] = [
+    "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite",
+];
+
+/// The hue `chrome-tint` leans toward until `chrome-tint-hue` picks one, in
+/// Oklch degrees: a cool blue.
+pub const DEFAULT_TINT_HUE: f32 = 260.0;
+
+/// What `chrome-accent` sets: the theme's own accent, one of [`ACCENTS`], or
+/// a color for both modes.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum AccentSetting {
+    #[default]
+    Theme,
+    Named(&'static str),
+    Color([f32; 4]),
+}
+
+impl AccentSetting {
+    pub fn parse(value: &str) -> Option<Self> {
+        let value = value.trim();
+        if value == "theme" {
+            return Some(Self::Theme);
+        }
+        match ACCENTS.iter().find(|name| **name == value) {
+            Some(name) => Some(Self::Named(name)),
+            None => parse_hex(value).ok().map(Self::Color),
+        }
+    }
+
+    /// How `zz/config` spells it.
+    pub fn spelled(self) -> String {
+        match self {
+            Self::Theme => "theme".to_owned(),
+            Self::Named(name) => name.to_owned(),
+            Self::Color([r, g, b, _]) => {
+                let byte = |channel: f32| (channel.clamp(0.0, 1.0) * 255.0).round() as u8;
+                format!("#{:02x}{:02x}{:02x}", byte(r), byte(g), byte(b))
+            }
+        }
+    }
+}
 
 pub fn is_builtin_theme(id: &str) -> bool {
     BUILTIN_THEMES.contains(&id.trim())
@@ -123,4 +173,21 @@ pub fn parse_hex(value: &str) -> Result<[f32; 4], String> {
         component(2, width),
         alpha,
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accents_parse_names_and_colors_and_spell_them_back() {
+        assert_eq!(AccentSetting::parse(" theme "), Some(AccentSetting::Theme));
+        assert_eq!(
+            AccentSetting::parse("green"),
+            Some(AccentSetting::Named("green"))
+        );
+        let color = AccentSetting::parse("#FF8800").unwrap();
+        assert_eq!(color.spelled(), "#ff8800");
+        assert_eq!(AccentSetting::parse("chartreuse"), None);
+    }
 }

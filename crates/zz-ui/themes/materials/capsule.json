@@ -1,0 +1,28 @@
+{
+  "name": "Capsule",
+  "about": "Dense glass with a bright top glint, pill controls with flat highlights and a faint shadow, like a phone's floating tab bar.",
+  "materials": {
+    "radius": 25,
+    "outline": 0.5,
+    "row-inset": 5,
+    "primary": "accent",
+    "flat-highlights": true,
+    "glass": {
+      "preset": "regular",
+      "blur": 22,
+      "tint": "#ffffffcc",
+      "refraction": 12,
+      "bezel": 10,
+      "dispersion": 0.02,
+      "saturation": 1.6,
+      "brightness": 0,
+      "specular": 0.6,
+      "glint_width": 1,
+      "fresnel": 0.02,
+      "edge_shadow": 0,
+      "noise": 0
+    },
+    "contact": { "y": 1, "blur": 4, "strength": 0.2 },
+    "float": { "y": 8, "blur": 30, "spread": -6, "strength": 0.2 }
+  }
+}

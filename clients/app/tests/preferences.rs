@@ -1,5 +1,5 @@
 use zz_app::preferences::Preferences;
-use zz_ui::interface_theme::ThemeModeSetting;
+use zz_ui::interface_theme::{ThemeModeSetting, ThemeOverrides};
 
 #[test]
 fn preferences_reject_invalid_themes_modes_and_numeric_values() {
@@ -8,11 +8,12 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
         theme: Some("unknown".into()),
         zoom: f32::NAN,
         contrast: f32::INFINITY,
-        materials: zz_ui::interface_theme::MaterialOverrides {
+        overrides: ThemeOverrides {
+            style: Some("unknown".into()),
             radius: Some(-20.0),
-            shadow_strength: Some(-1.0),
-            row_inset: Some(40.0),
-            ..Default::default()
+            accent: Some("unknown".into()),
+            tint: Some(4.0),
+            tint_hue: Some(f32::NAN),
         },
         terminal_font_family: Some(" ".into()),
         terminal_font_scale: f32::NAN,
@@ -25,11 +26,17 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
         (
             preferences.zoom,
             preferences.contrast,
-            preferences.materials.radius,
-            preferences.materials.shadow_strength,
-            preferences.materials.row_inset
+            preferences.overrides
         ),
-        (1.0, 1.0, Some(0.0), Some(0.0), Some(12.0))
+        (
+            1.0,
+            1.0,
+            ThemeOverrides {
+                radius: Some(0.0),
+                tint: Some(1.0),
+                ..ThemeOverrides::default()
+            }
+        )
     );
     assert_eq!(preferences.terminal_font_family, None);
     assert_eq!(preferences.terminal_font_scale, 1.0);
@@ -43,8 +50,6 @@ fn pane_preferences_bound_values_and_preserve_fractional_frames() {
         pane_inactive_opacity: 3.0,
         pane_glow_strength: f32::NAN,
         pane_margin: 33.0,
-        pane_radius: 13.5,
-        pane_border_width: 0.5,
         ..Preferences::default()
     }
     .sanitized();
@@ -53,8 +58,12 @@ fn pane_preferences_bound_values_and_preserve_fractional_frames() {
     assert_eq!(preferences.pane_inactive_opacity, 1.0);
     assert_eq!(preferences.pane_glow_strength, 1.0);
     assert_eq!(preferences.pane_margin, 32.0);
-    assert_eq!(preferences.pane_radius, 13.5);
-    assert_eq!(preferences.pane_border_width, 0.5);
-    let restored = Preferences::decode(&serde_json::to_string(&preferences).unwrap()).unwrap();
-    assert_eq!(restored, preferences);
+    let fractional = Preferences {
+        pane_margin: 7.5,
+        ..preferences
+    }
+    .sanitized();
+    assert_eq!(fractional.pane_margin, 7.5);
+    let restored = Preferences::decode(&serde_json::to_string(&fractional).unwrap()).unwrap();
+    assert_eq!(restored, fractional);
 }

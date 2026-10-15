@@ -8,7 +8,7 @@ use crate::{
     roles, v_flex,
 };
 
-const ROW_HEIGHT: f32 = 52.0;
+const ROW_HEIGHT: f32 = 40.0;
 const MAX_VISIBLE_ROWS: u8 = 6;
 const LIST_PADDING: f32 = 4.0;
 
@@ -48,7 +48,6 @@ pub fn suggestion_row(
         v_flex()
             .flex_1()
             .min_w_0()
-            .gap(px(2.0))
             .child(
                 div()
                     .w_full()
@@ -56,7 +55,8 @@ pub fn suggestion_row(
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .text_size(crate::rems_from_px(13.0))
+                    .text_size(crate::rems_from_px(12.0))
+                    .line_height(px(16.0))
                     .font_weight(zz_gpui::FontWeight::MEDIUM)
                     .child(format!("/{name}")),
             )
@@ -68,7 +68,8 @@ pub fn suggestion_row(
                         .overflow_hidden()
                         .text_ellipsis()
                         .whitespace_nowrap()
-                        .text_size(crate::rems_from_px(12.0))
+                        .text_size(crate::rems_from_px(11.0))
+                        .line_height(px(14.0))
                         .text_color(muted)
                         .child(description),
                 )

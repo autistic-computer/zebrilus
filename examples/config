@@ -21,10 +21,10 @@
 # Import Ghostty… and Settings → Multiplexer → Import tmux…; importing again
 # re-syncs, and the original files are never modified.
 #
-# Application chrome is colored by zz's own light/dark palette and follows the
-# system appearance. It is independent of the terminal palette: Ghostty colors
-# reach terminal panes only. (The terminal's font-family is still shared with
-# the chrome: a font, not chroma.)
+# Application chrome is colored by the interface theme's light and dark colors
+# and follows the system appearance. It is independent of the terminal
+# palette: Ghostty colors reach terminal panes only. (The terminal's
+# font-family is still shared with the chrome: a font, not chroma.)
 
 # Panes are flush and square until pane-gaps turns the card treatment on.
 pane-gaps = false
@@ -34,44 +34,40 @@ pane-gaps = false
 pane-inactive-opacity = 0.7
 
 # Pane geometry renders app-side on every platform, in logical pixels, and
-# applies only while pane-gaps is on: pane-corner-radius (0..=32) rounds all
-# four corners of each pane, pane-margin (0..=32) is the single gap between
-# neighbors and at the window edge. Gapped panes draw their frame in glass: the
-# interface theme's glass edge, or a plain lit edge when the theme has none,
-# and the active pane lights its edge in the accent. pane-border-width (0..=8)
-# is the width of the bright line along that edge (0 turns it off).
-pane-corner-radius = 13.5
+# applies only while pane-gaps is on: pane-margin (0..=32) is the single gap
+# between neighbors and at the window edge. Gapped panes draw their frame in
+# glass: the interface theme's glass edge, or a plain lit edge when the theme
+# has none, and the active pane lights its edge in the accent. Their corners
+# are 3.5px rounder than the theme's (13.5 under default), and the bright line
+# along the edge is as wide as the theme's outlines.
 pane-margin = 6
-pane-border-width = 0.5
 
 # The interface theme: its materials (corners, outlines, shadows, glass), which
 # piece of UI uses which (its roles), and its colors for light and for dark.
-# Built in: default (zz's look on the macOS system colors), macos (flat
-# controls, frosted popovers, blue accent), tahoe (glass toolbar buttons over
-# flat filled chips and buttons), linear (opaque surfaces, indigo accent) and
-# glass (frosted glass, no outlines or shadows). Any other name
-# selects themes/<name>.json next to this file; Settings -> Interface ->
-# Duplicate saves a copy to edit there.
+# One is built in: default. Any other name selects themes/<name>.json next to
+# this file; Settings -> Interface -> Saved themes -> Save writes the look on
+# screen there as a new theme.
 interface-theme = default
 
-# The theme's materials, overridden one setting at a time. Each follows the
-# theme until set; picking a theme in Settings removes them. Which pieces use
-# which material (shadows, glass, selection fills) is up to the theme.
+# What Settings -> Interface sets over the theme. Each follows the theme until
+# set. Picking a theme in Settings removes interface-style and
+# widget-corner-radius; the accent and the tint stay.
 #
-# The corner every rounded piece turns, in logical pixels (0..=25). 0 squares
-# the chrome off. Which pieces are pills at any radius is up to the theme.
+# A style, every material at once (corners, outlines, shadows, row inset,
+# primary buttons, glass): default, liquid-glass, capsule, flat, brutal or
+# terminal. Keeps the theme's colors, roles and font.
+# interface-style = flat
+# The corner every rounded piece turns, in logical pixels (0..=25), over the
+# style's. 0 squares the chrome off. Which pieces are pills at any radius is
+# up to the theme.
 # widget-corner-radius = 6
-# The width of every outline the theme draws (0..=2; 0 draws none).
-# widget-outline-width = 0.5
-# How dark the theme's shadows are (0..=2): 1 keeps them, 0 turns them off.
-# widget-shadow-strength = 1
-# How far list rows float in from the list's edges (0..=12; 0 makes bands).
-# widget-row-inset = 4
-# What the main action is drawn in: foreground or accent.
-# widget-primary = foreground
-# What the theme's glass surfaces are made of: theme, off, regular, clear,
-# frosted, bubble or smoked.
-# widget-glass = theme
+# The accent: theme (the theme's own), blue, purple, pink, red, orange,
+# yellow, green, graphite (each tuned for light and dark), or a #rrggbb color.
+# chrome-accent = theme
+# How far the window's background, and everything drawn from it, leans
+# toward chrome-tint-hue (0..=1), and that hue in Oklch degrees (0..=360).
+# chrome-tint = 0
+# chrome-tint-hue = 260
 
 # Animate interface transitions, loading indicators, scrollbars, and image
 # frames. Turning this off settles each interface state immediately.

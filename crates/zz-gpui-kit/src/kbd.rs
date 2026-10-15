@@ -203,7 +203,8 @@ impl RenderOnce for Kbd {
 }
 
 /// One key drawn as a cap: a shortcut digit on a row, the Enter mark inside a
-/// button. Its label reads muted on the cap's fill.
+/// button. Its label reads muted on the cap's fill, and at full ink on an
+/// accent or other colored fill, where muting would wash it into the color.
 #[derive(IntoElement)]
 pub struct Keycap {
     label: SharedString,

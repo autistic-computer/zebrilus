@@ -157,15 +157,16 @@ to work on the desktop and the phone. The design board is the "Quiet timeline" a
   `Plan` too). `split_turn` cuts it into the trace and the answer: the messages after the last
   thought or tool call. Text followed by another tool call is narration and stays in the trace.
 - **The trace line.** While the turn runs it shows the current step (the running tool's label,
-  "Thinking", or "Waiting for you" with the tool that needs approval), the step count and a clock,
-  and the end of the latest thought in two muted lines. After the turn it reads "Worked 2m 14s"
+  "Thinking", or "Waiting for you" with the tool that needs approval) and the end of the latest
+  thought in two muted lines; the step count and clock it also showed were dropped on 2026-10-15.
+  Rows draw no fill: their ink is muted, and a row you can open brightens under the pointer. After the turn it reads "Worked 2m 14s"
   with no leading icon, then one icon per kind (read, search, edit, command, fetch, other tool,
   agent, and a red warning for failures), each with its count in a badge on its top right and a
   tooltip naming it ("3 commands"). The clock lives in `AgentTimelineStore` (`tick_turn_clocks`,
   run on every timeline render), so turns replayed from history show no time.
 - **Opened.** A click lists the turn in order: "Thought" with its text, narration in muted 12px, and
-  one line per tool. Subagent steps are counted on their agent's line ("N steps"); their own view is
-  the PiP work, parked.
+  one line per tool. Subagent steps fold under their agent's line, which shows the agent icon and no
+  count; their own view is the PiP work, parked.
 - **Failures.** When the turn ended on a failed tool, that tool's line and its last two output lines
   stay under the trace.
 - **Open output.** A finished command with output opens it in a split beside the agent: the clients
@@ -196,7 +197,7 @@ v108 entry of the [wire protocol](/protocol/wire-protocol.md).
 
 Desktop and zz-app render these through shared zz-ui widgets: the question card
 (`agent/question.rs`), the task tray chip in the composer (`agent/tasks.rs`), and the step fold in
-`agent.rs`, which nests subagent steps under their agent row, collapsed to a step count. A step
+`agent.rs`, which nests subagent steps under their agent row, collapsed. A step
 leaves its place in the timeline for its agent's row wherever it arrives, before the agent or after
 other rows, and steps keep their arrival order; a loop of parent links renders flat. FFI carries
 them in the agent snapshot (`permissions[].questions`, `tasks`, each entry's `parent`, a prompt

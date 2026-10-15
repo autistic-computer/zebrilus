@@ -4,7 +4,7 @@ title: Terminal appearance and color model
 description: The renderer-neutral appearance model, the native zz/config override resolver, per-key provenance, the client-side Ghostty import loader, and embedded Ghostty/X11 colors.
 resource: crates/zz-terminal/src/appearance.rs
 tags: [appearance, color, ghostty, palette, x11-rgb, config]
-timestamp: 2026-08-14T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # Overview
@@ -150,8 +150,9 @@ Only one value crosses from terminal appearance into application chrome, and it 
 | `mono_font_family` | Agent Markdown, tool previews, and code blocks use the same primary family the terminal resolved, so code reads in one typeface across the window. |
 
 Everything else, including `background_opacity`, stays at the terminal paint boundary. Application
-backgrounds, foregrounds, accents, and semantic families come from zz-ui's own light/dark palettes
-and follow the effective light/dark mode (`theme-mode`, pinned or the OS's), which is also the color
+backgrounds, foregrounds, accents, and semantic families come from the interface theme's light and
+dark colors, with any accent and tint `zz/config` sets over them (see
+[interface themes](/designs/interface-themes.md)), and follow the effective light/dark mode (`theme-mode`, pinned or the OS's), which is also the color
 scheme the client reports for the terminals. `crates/zz/src/theme.rs` holds the latest immutable `TerminalAppearance`
 as a GPUI global; it derives no chrome color or alpha from it. The client consumes appearance
 provenance while resolving daemon font stacks against fonts installed on the rendering machine, but

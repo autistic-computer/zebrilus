@@ -28,7 +28,7 @@ const SHADOW_KNOBS = [
     "float-spread",
     "float-strength",
 ];
-const MATERIAL_KNOBS = ["name", "radius", "outline", "row-inset", ...SHADOW_KNOBS, "primary", "font"];
+const MATERIAL_KNOBS = ["name", "radius", "outline", "row-inset", ...SHADOW_KNOBS, "primary", "highlights", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],
@@ -56,11 +56,11 @@ const STORED_ROLES = "zz-storybook-roles";
 const KNOBS = [
     "theme",
     "contrast",
+    "tint-hue",
+    "tint",
     "zoom",
     "pane-gaps",
     "pane-margin",
-    "pane-corner-radius",
-    "pane-border-width",
     "pane-opacity",
     "pane-inactive-opacity",
     "pane-glow",
@@ -76,11 +76,11 @@ const DEFAULTS = {
     theme: "system",
     "interface-theme": "default",
     contrast: "1",
+    "tint-hue": "260",
+    tint: "0",
     zoom: "1",
     "pane-gaps": "0",
     "pane-margin": "6",
-    "pane-corner-radius": "13.5",
-    "pane-border-width": "0.5",
     "pane-opacity": "0.5",
     "pane-inactive-opacity": "0.7",
     "pane-glow": "1",
@@ -99,7 +99,6 @@ let stories = [];
 let glassPresets = {};
 let themes = {};
 let presets = [];
-let colorPresets = [];
 let current = null;
 let roles = {};
 let roleTree = [];
@@ -737,32 +736,6 @@ function renderPresets() {
     document.querySelector(".start").hidden = Object.keys(themes).length < 2;
 }
 
-function renderColorPresets() {
-    document.getElementById("color-preset-choices").replaceChildren(
-        ...colorPresets.map((preset) =>
-            element(
-                "button",
-                { type: "button", class: "preset", "data-color-preset": preset.id, title: preset.about },
-                element(
-                    "span",
-                    { class: "swatches", "aria-hidden": "true" },
-                    ...preset.swatches.map((color) => element("i", { style: `background: ${color}` })),
-                ),
-                element("b", { text: preset.name }),
-            ),
-        ),
-    );
-}
-
-function applyColorPreset(id) {
-    const preset = colorPresets.find((candidate) => candidate.id === id);
-    if (!preset) throw new Error(`no color preset ${id}`);
-    for (const [name, value] of Object.entries(preset.knobs)) setKnobValue(name, value);
-    applyKnobs();
-    remember();
-    toast(`${preset.name} colors`);
-}
-
 function applyPreset(id) {
     const preset = presets.find((candidate) => candidate.id === id);
     if (!preset) throw new Error(`no material preset ${id}`);
@@ -803,6 +776,7 @@ function shuffle() {
     };
     for (const name of SHUFFLED) pick(name);
     setKnobValue("primary", Math.random() < 0.5 ? "foreground" : "accent");
+    setKnobValue("highlights", Math.random() < 0.5 ? "lift" : "flat");
     const glasses = ["theme", "off", ...Object.keys(glassPresets)];
     setKnobValue("glass", glasses[Math.floor(Math.random() * glasses.length)]);
     resetGlassSliders();
@@ -872,11 +846,9 @@ stories = JSON.parse(zz.stories());
 glassPresets = JSON.parse(zz.glass_presets());
 themes = JSON.parse(zz.interface_themes());
 presets = JSON.parse(zz.material_presets());
-colorPresets = JSON.parse(zz.color_presets());
 renderNav();
 renderThemes();
 renderPresets();
-renderColorPresets();
 const initial = parseHash();
 const font = initial.params.get("font");
 if (font) addFontOption(font);
@@ -934,8 +906,6 @@ form.addEventListener("click", (event) => {
     if (head) selectRole(head.dataset.roleHead === selectedRole ? null : head.dataset.roleHead);
     const preset = event.target.closest("[data-preset]");
     if (preset) applyPreset(preset.dataset.preset);
-    const colors = event.target.closest("[data-color-preset]");
-    if (colors) applyColorPreset(colors.dataset.colorPreset);
 });
 form.addEventListener("keydown", (event) => {
     const tab = event.target.closest("[role=tab]");
@@ -1057,11 +1027,6 @@ window.storybook = {
     },
     knobs: () => Object.fromEntries(KNOBS.map((name) => [name, knobValue(name)])),
     presets: () => presets.map((preset) => preset.id),
-    colorPresets: () => colorPresets.map((preset) => preset.id),
-    colorPreset: (id) => {
-        applyColorPreset(id);
-        return globalThis.zzGpui?.idle();
-    },
     preset: (id) => {
         applyPreset(id);
         return globalThis.zzGpui?.idle();

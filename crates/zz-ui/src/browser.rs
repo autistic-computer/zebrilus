@@ -633,29 +633,29 @@ pub fn browser_recent_row(
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let url = url.into();
-    div()
-        .id(id)
-        .flex()
-        .w_full()
-        .h(px(32.0))
-        .flex_none()
-        .items_center()
-        .gap(px(8.0))
-        .px(px(12.0))
-        .surface_interactive(crate::roles::BROWSER_SUGGESTION, PaintState::Rest, cx)
-        .cursor_pointer()
-        .text_size(crate::rems_from_px(12.0))
-        .font_medium()
-        .child(browser_favicon(favicon, cx))
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .overflow_hidden()
-                .child(url),
-        )
+    let height = crate::picker::LIST_ROW_HEIGHT;
+    crate::picker::row_surface(
+        div().id(id).flex().w_full().h(height).flex_none(),
+        crate::roles::BROWSER_SUGGESTION,
+        PaintState::Rest,
+        height,
+        cx,
+    )
+    .items_center()
+    .gap(px(8.0))
+    .px(px(12.0))
+    .cursor_pointer()
+    .text_size(crate::rems_from_px(12.0))
+    .child(browser_favicon(favicon, cx))
+    .child(
+        div()
+            .min_w_0()
+            .flex_1()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .overflow_hidden()
+            .child(url),
+    )
 }
 
 pub fn browser_omnibox_panel(rows: Vec<AnyElement>, cx: &App) -> impl IntoElement {

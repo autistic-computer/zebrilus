@@ -508,8 +508,8 @@ mod tests {
 
     impl Render for PanesPageTest {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let [gaps, background, opacity, glow, margin, radius, border] =
-                std::array::from_fn::<_, 7, _>(|index| {
+            let [gaps, background, opacity, glow, margin] =
+                std::array::from_fn::<_, 5, _>(|index| {
                     SettingEntry::new(format!("Setting {index}"), "Sample pane setting").control(
                         div()
                             .w(px(100.0))
@@ -521,13 +521,12 @@ mod tests {
                 panes_preview::PanesPreview {
                     gaps: true,
                     margin: 6.0,
-                    radius: 13.5,
                     inactive_opacity: 0.7,
                 },
                 [gaps],
                 [background],
                 [opacity, glow],
-                [margin, radius, border],
+                [margin],
                 cx,
             ))
         }
@@ -1524,7 +1523,7 @@ pub fn panes_page(
     layout: impl IntoIterator<Item = SettingEntry>,
     appearance: [SettingEntry; 1],
     focus: [SettingEntry; 2],
-    frame: [SettingEntry; 3],
+    frame: [SettingEntry; 1],
     cx: &App,
 ) -> zz_gpui::Div {
     div()
@@ -1554,7 +1553,9 @@ pub fn panes_page(
                 .child(SettingsStack::titled("Focus").children(focus))
                 .child(
                     SettingsStack::titled("Frame")
-                        .description("Applies only while pane gaps are enabled.")
+                        .description(
+                            "Applies only while pane gaps are enabled. Corners and edges follow the style.",
+                        )
                         .children(frame),
                 ),
         )

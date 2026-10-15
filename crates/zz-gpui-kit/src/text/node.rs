@@ -589,6 +589,10 @@ struct CachedCodeBlockStyles {
     styles: Vec<(Range<usize>, HighlightStyle)>,
 }
 
+/// The hover group a fenced code block forms, so its actions can show only
+/// while it is pointed at.
+pub const CODE_BLOCK_GROUP: &str = "zz-code-block";
+
 #[derive(Debug, Clone)]
 pub struct CodeBlock {
     lang: Option<SharedString>,
@@ -730,6 +734,7 @@ impl CodeBlock {
             .child(
                 div()
                     .id(("codeblock", options.ix))
+                    .group(CODE_BLOCK_GROUP)
                     .w_full()
                     .min_w_0()
                     .px_3()

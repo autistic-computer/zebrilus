@@ -68,7 +68,8 @@ use super::{
     workspace::{
         browser::header as browser_header,
         fixtures::{
-            BUILD, LOGS, SERVER, TerminalPane, chrome, gap, radii, stateful, terminal_body,
+            BUILD, LOGS, PANE_CHOICES, SERVER, TerminalPane, chrome, gap, radii, stateful,
+            terminal_body,
         },
         flat_sidebar::Live,
         shell::{Shell, with_sidebar},
@@ -157,12 +158,6 @@ const SESSION_KEYS: [(&str, &str); 5] = [
     ("\"", "Split down"),
     ("s", "Sessions and windows"),
     ("?", "Every key binding"),
-];
-const PANE_CHOICES: [(&str, IconName, &str); 4] = [
-    ("Terminal", IconName::SquareTerminal, "t"),
-    ("Browser", IconName::BrandChrome, "b"),
-    ("Editor", IconName::File, "e"),
-    ("Agent", IconName::RobotFace, "a"),
 ];
 const PHONE_LINES: [&str; 3] = [
     "~/dev/zz main* > cargo test -p zz-ui",
@@ -1025,7 +1020,6 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
         colour: Some(TmuxColour::Theme(7)),
         active_colour: Some(TmuxColour::Theme(6)),
     };
-    let pane = crate::pane();
     let logs = TerminalPane::new(5, "tail -f daemon.log", LOGS)
         .gaps(gaps)
         .render(
@@ -1038,12 +1032,16 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
                     cx,
                 ))
                 .into_any_element(),
-                pane_drop_preview(px(pane.radius), px(pane.border.max(1.0)), cx)
-                    .top(px(TERMINAL_HEADER_HEIGHT + 6.0))
-                    .bottom(px(6.0))
-                    .right(px(6.0))
-                    .w(relative(0.4))
-                    .into_any_element(),
+                pane_drop_preview(
+                    cx.theme().pane_radius(),
+                    cx.theme().pane_edge_width().max(px(1.0)),
+                    cx,
+                )
+                .top(px(TERMINAL_HEADER_HEIGHT + 6.0))
+                .bottom(px(6.0))
+                .right(px(6.0))
+                .w(relative(0.4))
+                .into_any_element(),
                 div()
                     .absolute()
                     .left(px(16.0))
@@ -1204,7 +1202,7 @@ fn new_pane(cx: &App) -> AnyElement {
         .collect::<Vec<_>>();
     let pane = pane_surface(
         "showcase-new-pane-surface",
-        pane_picker_surface("showcase-new-pane-picker", radii(gaps), rows, cx),
+        pane_picker_surface("showcase-new-pane-picker", radii(gaps, cx), rows, cx),
         Vec::new(),
         chrome(true, false, gaps, cx),
         cx,

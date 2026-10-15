@@ -9,8 +9,8 @@ use std::{
 };
 use zz_client::StatusBarSettings;
 use zz_client::appearance::{
-    AppIconSetting, BUILTIN_THEMES, DEFAULT_THEME, GLASS_CHOICES, PRIMARY_CHOICES,
-    ThemeModeSetting, is_builtin_theme,
+    ACCENTS, AccentSetting, AppIconSetting, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE,
+    MAX_CORNER_RADIUS, STYLE_PRESETS, ThemeModeSetting, is_builtin_theme,
 };
 use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{HostEntry, RejectedHost, configured_fleet_hosts, validate_fleet_host};
@@ -33,12 +33,6 @@ pub const CONFIG_FILE_NAME: &str = "config";
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 
 pub const MAX_PANE_MARGIN: f32 = 32.0;
-pub const MAX_PANE_CORNER_RADIUS: f32 = 32.0;
-pub const MAX_PANE_BORDER_WIDTH: f32 = 8.0;
-pub const MAX_WIDGET_CORNER_RADIUS: f32 = 25.0;
-pub const MAX_WIDGET_OUTLINE_WIDTH: f32 = 2.0;
-pub const MAX_WIDGET_SHADOW_STRENGTH: f32 = 2.0;
-pub const MAX_WIDGET_ROW_INSET: f32 = 12.0;
 pub const MAX_WINDOW_CORNER_RADIUS: f32 = 32.0;
 
 // Tangent-circle fit of the native macOS 27 window corner, measured off a screenshot.
@@ -50,19 +44,12 @@ pub const DEFAULT_PANE_BACKGROUND_OPACITY: f32 = 0.5;
 pub const DEFAULT_PANE_INACTIVE_OPACITY: f32 = 0.7;
 pub const MIN_PANE_INACTIVE_OPACITY: f32 = 0.0;
 pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
-pub const DEFAULT_PANE_CORNER_RADIUS: f32 = DEFAULT_WINDOW_CORNER_RADIUS;
 pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
-pub const DEFAULT_PANE_BORDER_WIDTH: f32 = 0.5;
-/// The default theme's materials, until the client reads the active theme
-/// and calls [`AppConfig::apply_material_defaults`].
+/// The default theme's radius, until the client reads the active theme and
+/// calls [`AppConfig::follow_theme_radius`].
 pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 10.0;
-pub const DEFAULT_WIDGET_OUTLINE_WIDTH: f32 = 0.5;
-/// Shadow strength multiplies the theme's shadows, so 1 is every theme's.
-pub const DEFAULT_WIDGET_SHADOW_STRENGTH: f32 = 1.0;
-pub const DEFAULT_WIDGET_ROW_INSET: f32 = 4.0;
-pub const DEFAULT_WIDGET_PRIMARY: &str = "foreground";
-pub const DEFAULT_WIDGET_GLASS: &str = "theme";
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
+pub const DEFAULT_CHROME_TINT: f32 = 0.0;
 pub const DEFAULT_USE_SYSTEM_TITLEBAR: bool = false;
 pub const DEFAULT_WINDOW_BACKGROUND_BLUR: bool = false;
 pub const DEFAULT_ANIMATIONS: bool = true;
@@ -141,16 +128,12 @@ pub enum ConfigKey {
     PaneBackgroundOpacity,
     PaneGlowStrength,
     PaneInactiveOpacity,
-    PaneCornerRadius,
     PaneMargin,
-    PaneBorderWidth,
     WidgetCornerRadius,
-    WidgetOutlineWidth,
-    WidgetShadowStrength,
-    WidgetRowInset,
-    WidgetPrimary,
-    WidgetGlass,
     ChromeContrast,
+    ChromeAccent,
+    ChromeTint,
+    ChromeTintHue,
     EditorFontSize,
     EditorLineNumbers,
     EditorRelativeLineNumbers,
@@ -162,6 +145,7 @@ pub enum ConfigKey {
     BrowserEgress,
     ThemeMode,
     InterfaceTheme,
+    InterfaceStyle,
     UiFontFamily,
     AppIcon,
 }
@@ -193,16 +177,12 @@ impl ConfigKey {
             Self::PaneBackgroundOpacity => "pane-background-opacity",
             Self::PaneGlowStrength => "pane-glow-strength",
             Self::PaneInactiveOpacity => "pane-inactive-opacity",
-            Self::PaneCornerRadius => "pane-corner-radius",
             Self::PaneMargin => "pane-margin",
-            Self::PaneBorderWidth => "pane-border-width",
             Self::WidgetCornerRadius => "widget-corner-radius",
-            Self::WidgetOutlineWidth => "widget-outline-width",
-            Self::WidgetShadowStrength => "widget-shadow-strength",
-            Self::WidgetRowInset => "widget-row-inset",
-            Self::WidgetPrimary => "widget-primary",
-            Self::WidgetGlass => "widget-glass",
             Self::ChromeContrast => "chrome-contrast",
+            Self::ChromeAccent => "chrome-accent",
+            Self::ChromeTint => "chrome-tint",
+            Self::ChromeTintHue => "chrome-tint-hue",
             Self::EditorFontSize => "editor-font-size",
             Self::EditorLineNumbers => "editor-line-numbers",
             Self::EditorRelativeLineNumbers => "editor-relative-line-numbers",
@@ -214,6 +194,7 @@ impl ConfigKey {
             Self::BrowserEgress => "browser-egress",
             Self::ThemeMode => "theme-mode",
             Self::InterfaceTheme => "interface-theme",
+            Self::InterfaceStyle => "interface-style",
             Self::UiFontFamily => "ui-font-family",
             Self::AppIcon => "app-icon",
         }
@@ -245,16 +226,12 @@ impl ConfigKey {
             "pane-background-opacity" => Some(Self::PaneBackgroundOpacity),
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
             "pane-inactive-opacity" => Some(Self::PaneInactiveOpacity),
-            "pane-corner-radius" => Some(Self::PaneCornerRadius),
             "pane-margin" => Some(Self::PaneMargin),
-            "pane-border-width" => Some(Self::PaneBorderWidth),
             "widget-corner-radius" => Some(Self::WidgetCornerRadius),
-            "widget-outline-width" => Some(Self::WidgetOutlineWidth),
-            "widget-shadow-strength" => Some(Self::WidgetShadowStrength),
-            "widget-row-inset" => Some(Self::WidgetRowInset),
-            "widget-primary" => Some(Self::WidgetPrimary),
-            "widget-glass" => Some(Self::WidgetGlass),
             "chrome-contrast" => Some(Self::ChromeContrast),
+            "chrome-accent" => Some(Self::ChromeAccent),
+            "chrome-tint" => Some(Self::ChromeTint),
+            "chrome-tint-hue" => Some(Self::ChromeTintHue),
             "editor-font-size" => Some(Self::EditorFontSize),
             "editor-line-numbers" => Some(Self::EditorLineNumbers),
             "editor-relative-line-numbers" => Some(Self::EditorRelativeLineNumbers),
@@ -266,6 +243,7 @@ impl ConfigKey {
             "browser-egress" => Some(Self::BrowserEgress),
             "theme-mode" => Some(Self::ThemeMode),
             "interface-theme" => Some(Self::InterfaceTheme),
+            "interface-style" => Some(Self::InterfaceStyle),
             "ui-font-family" => Some(Self::UiFontFamily),
             "app-icon" => Some(Self::AppIcon),
             _ => None,
@@ -276,19 +254,15 @@ impl ConfigKey {
     /// is not numeric.
     pub const fn numeric_range(self) -> Option<(f32, f32)> {
         match self {
-            Self::PaneBackgroundOpacity => Some((0.0, 1.0)),
+            Self::PaneBackgroundOpacity | Self::ChromeTint => Some((0.0, 1.0)),
             Self::PaneGlowStrength => Some((0.0, 2.0)),
             Self::PaneInactiveOpacity => {
                 Some((MIN_PANE_INACTIVE_OPACITY, MAX_PANE_INACTIVE_OPACITY))
             }
             Self::PaneMargin => Some((0.0, MAX_PANE_MARGIN)),
-            Self::PaneCornerRadius => Some((0.0, MAX_PANE_CORNER_RADIUS)),
-            Self::PaneBorderWidth => Some((0.0, MAX_PANE_BORDER_WIDTH)),
-            Self::WidgetCornerRadius => Some((0.0, MAX_WIDGET_CORNER_RADIUS)),
-            Self::WidgetOutlineWidth => Some((0.0, MAX_WIDGET_OUTLINE_WIDTH)),
-            Self::WidgetShadowStrength => Some((0.0, MAX_WIDGET_SHADOW_STRENGTH)),
-            Self::WidgetRowInset => Some((0.0, MAX_WIDGET_ROW_INSET)),
+            Self::WidgetCornerRadius => Some((0.0, MAX_CORNER_RADIUS)),
             Self::ChromeContrast => Some((1.0, 2.0)),
+            Self::ChromeTintHue => Some((0.0, 360.0)),
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
             Self::EditorFontSize => Some((MIN_EDITOR_FONT_SIZE, MAX_EDITOR_FONT_SIZE)),
             Self::WhichKeyDelay => Some((0.0, MAX_WHICH_KEY_DELAY)),
@@ -321,45 +295,24 @@ impl ConfigKey {
             | Self::BrowserEgress
             | Self::ThemeMode
             | Self::InterfaceTheme
+            | Self::InterfaceStyle
+            | Self::ChromeAccent
             | Self::UiFontFamily
-            | Self::AppIcon
-            | Self::WidgetPrimary
-            | Self::WidgetGlass => None,
+            | Self::AppIcon => None,
         }
     }
 
-    /// The values a material key that is a choice accepts, or `None` for
-    /// any other key.
+    /// The presets a preset key accepts, or `None` for any other key.
     pub const fn choices(self) -> Option<&'static [&'static str]> {
         match self {
-            Self::WidgetPrimary => Some(&PRIMARY_CHOICES),
-            Self::WidgetGlass => Some(&GLASS_CHOICES),
+            Self::InterfaceStyle => Some(&STYLE_PRESETS),
             _ => None,
         }
     }
 
-    /// The keys that override the active theme's materials. Picking a theme
-    /// drops them, so it shows as designed.
-    pub const MATERIALS: [Self; 6] = [
-        Self::WidgetCornerRadius,
-        Self::WidgetOutlineWidth,
-        Self::WidgetShadowStrength,
-        Self::WidgetRowInset,
-        Self::WidgetPrimary,
-        Self::WidgetGlass,
-    ];
-}
-
-/// The active theme's materials as the material keys spell them, shown in
-/// every key nothing overrides. Shadow strength has none: it scales the
-/// theme's shadows, so it is 1 for every theme.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MaterialDefaults {
-    pub radius: f32,
-    pub outline_width: f32,
-    pub row_inset: f32,
-    pub primary: &'static str,
-    pub glass: &'static str,
+    /// The keys a picked theme replaces with its own: its style and its
+    /// corner radius. The accent and the tint stay.
+    pub const THEME_PICKS: [Self; 2] = [Self::InterfaceStyle, Self::WidgetCornerRadius];
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -497,16 +450,12 @@ pub struct AppConfig {
     pub pane_background_opacity: ConfigValue<f32>,
     pub pane_glow_strength: ConfigValue<f32>,
     pub pane_inactive_opacity: ConfigValue<f32>,
-    pub pane_corner_radius: ConfigValue<f32>,
     pub pane_margin: ConfigValue<f32>,
-    pub pane_border_width: ConfigValue<f32>,
     pub widget_corner_radius: ConfigValue<f32>,
-    pub widget_outline_width: ConfigValue<f32>,
-    pub widget_shadow_strength: ConfigValue<f32>,
-    pub widget_row_inset: ConfigValue<f32>,
-    pub widget_primary: ConfigValue<&'static str>,
-    pub widget_glass: ConfigValue<&'static str>,
     pub chrome_contrast: ConfigValue<f32>,
+    pub chrome_accent: ConfigValue<AccentSetting>,
+    pub chrome_tint: ConfigValue<f32>,
+    pub chrome_tint_hue: ConfigValue<f32>,
     pub editor_font_size: ConfigValue<f32>,
     pub editor_line_numbers: ConfigValue<bool>,
     pub editor_relative_line_numbers: ConfigValue<bool>,
@@ -517,6 +466,8 @@ pub struct AppConfig {
     /// The built-in theme `interface-theme` names, or the default when it
     /// names a saved one; see [`ParsedConfig::theme`].
     pub interface_theme: ConfigValue<&'static str>,
+    /// The material preset drawn over the theme, while overridden.
+    pub interface_style: ConfigValue<&'static str>,
     pub app_icon: ConfigValue<AppIconSetting>,
 }
 
@@ -548,16 +499,12 @@ impl Default for AppConfig {
             pane_background_opacity: ConfigValue::from_default(DEFAULT_PANE_BACKGROUND_OPACITY),
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
             pane_inactive_opacity: ConfigValue::from_default(DEFAULT_PANE_INACTIVE_OPACITY),
-            pane_corner_radius: ConfigValue::from_default(DEFAULT_PANE_CORNER_RADIUS),
             pane_margin: ConfigValue::from_default(DEFAULT_PANE_MARGIN),
-            pane_border_width: ConfigValue::from_default(DEFAULT_PANE_BORDER_WIDTH),
             widget_corner_radius: ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS),
-            widget_outline_width: ConfigValue::from_default(DEFAULT_WIDGET_OUTLINE_WIDTH),
-            widget_shadow_strength: ConfigValue::from_default(DEFAULT_WIDGET_SHADOW_STRENGTH),
-            widget_row_inset: ConfigValue::from_default(DEFAULT_WIDGET_ROW_INSET),
-            widget_primary: ConfigValue::from_default(DEFAULT_WIDGET_PRIMARY),
-            widget_glass: ConfigValue::from_default(DEFAULT_WIDGET_GLASS),
             chrome_contrast: ConfigValue::from_default(DEFAULT_CHROME_CONTRAST),
+            chrome_accent: ConfigValue::from_default(AccentSetting::Theme),
+            chrome_tint: ConfigValue::from_default(DEFAULT_CHROME_TINT),
+            chrome_tint_hue: ConfigValue::from_default(DEFAULT_TINT_HUE),
             editor_font_size: ConfigValue::from_default(DEFAULT_EDITOR_FONT_SIZE),
             editor_line_numbers: ConfigValue::from_default(DEFAULT_EDITOR_LINE_NUMBERS),
             editor_relative_line_numbers: ConfigValue::from_default(
@@ -568,42 +515,35 @@ impl Default for AppConfig {
             browser_egress: ConfigValue::from_default(DEFAULT_BROWSER_EGRESS),
             theme_mode: ConfigValue::from_default(ThemeModeSetting::System),
             interface_theme: ConfigValue::from_default(DEFAULT_THEME),
+            interface_style: ConfigValue::from_default(DEFAULT_THEME),
             app_icon: ConfigValue::from_default(AppIconSetting::Automatic),
         }
     }
 }
 
 impl AppConfig {
-    /// Shows the active theme's materials in every material key nothing
-    /// overrides.
-    pub fn apply_material_defaults(&mut self, materials: &MaterialDefaults) {
-        fn follow<T: Copy>(setting: &mut ConfigValue<T>, value: T) {
-            if setting.provenance == ConfigProvenance::Default {
-                setting.value = value;
-            }
+    /// Shows the active theme's radius in `widget-corner-radius` while
+    /// nothing overrides it.
+    pub fn follow_theme_radius(&mut self, radius: f32) {
+        if self.widget_corner_radius.provenance == ConfigProvenance::Default {
+            self.widget_corner_radius.value = radius;
         }
-        follow(&mut self.widget_corner_radius, materials.radius);
-        follow(&mut self.widget_outline_width, materials.outline_width);
-        follow(&mut self.widget_row_inset, materials.row_inset);
-        follow(&mut self.widget_primary, materials.primary);
-        follow(&mut self.widget_glass, materials.glass);
     }
 
-    /// The setting of a material key that is a choice.
+    /// The setting of a preset key.
     pub fn choice_setting(&self, key: ConfigKey) -> Option<ConfigValue<&'static str>> {
         let mut config = *self;
         config.choice_value_mut(key).map(|setting| *setting)
     }
 
-    /// The value of a material key that is a choice.
+    /// The value of a preset key.
     pub fn choice_value(&self, key: ConfigKey) -> Option<&'static str> {
         self.choice_setting(key).map(|setting| setting.value)
     }
 
     fn choice_value_mut(&mut self, key: ConfigKey) -> Option<&mut ConfigValue<&'static str>> {
         match key {
-            ConfigKey::WidgetPrimary => Some(&mut self.widget_primary),
-            ConfigKey::WidgetGlass => Some(&mut self.widget_glass),
+            ConfigKey::InterfaceStyle => Some(&mut self.interface_style),
             _ => None,
         }
     }
@@ -639,22 +579,19 @@ impl AppConfig {
             | ConfigKey::PaneBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
-            | ConfigKey::PaneCornerRadius
             | ConfigKey::PaneMargin
-            | ConfigKey::PaneBorderWidth
             | ConfigKey::WidgetCornerRadius
-            | ConfigKey::WidgetOutlineWidth
-            | ConfigKey::WidgetShadowStrength
-            | ConfigKey::WidgetRowInset
-            | ConfigKey::WidgetPrimary
-            | ConfigKey::WidgetGlass
             | ConfigKey::ChromeContrast
+            | ConfigKey::ChromeAccent
+            | ConfigKey::ChromeTint
+            | ConfigKey::ChromeTintHue
             | ConfigKey::EditorFontSize
             | ConfigKey::BrowserElementSelectorHotkey
             | ConfigKey::BrowserRemoteDebuggingPort
             | ConfigKey::BrowserSearchProvider
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
+            | ConfigKey::InterfaceStyle
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon => None,
         }
@@ -1000,7 +937,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         if RETIRED_LOOK_KEYS.contains(&key) {
             let instead = if key == "shadow-strength" {
-                "set `widget-shadow-strength`, from 0 (none) to 2"
+                "pick a style with `interface-style`"
             } else {
                 "themes set this per role now"
             };
@@ -1021,10 +958,25 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if RETIRED_PANE_KEYS.contains(&key) {
+        if RETIRED_MATERIAL_KEYS.contains(&key) {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
-                message: format!("`{key}` was removed: gapped panes always draw a glass frame"),
+                message: format!(
+                    "`{key}` was removed: pick a style with `interface-style`, or make a theme in the theme creator"
+                ),
+            });
+            continue;
+        }
+
+        if RETIRED_PANE_KEYS.contains(&key) {
+            let instead = match key {
+                "pane-corner-radius" => "pane corners follow `widget-corner-radius`",
+                "pane-border-width" => "the pane edge follows the style's outline width",
+                _ => "gapped panes always draw a glass frame",
+            };
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!("`{key}` was removed: {instead}"),
             });
             continue;
         }
@@ -1184,6 +1136,21 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if key == ConfigKey::ChromeAccent {
+            parsed.config.chrome_accent.provenance = ConfigProvenance::Override;
+            match AccentSetting::parse(value) {
+                Some(accent) => parsed.config.chrome_accent.value = accent,
+                None => parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!(
+                        "invalid `chrome-accent`: expected theme, {} or a #rrggbb color",
+                        ACCENTS.join(", ")
+                    ),
+                }),
+            }
+            continue;
+        }
+
         if let Some(choices) = key.choices() {
             if let Some(target) = parsed.config.choice_value_mut(key) {
                 match choices.iter().find(|choice| **choice == value.trim()) {
@@ -1220,14 +1187,11 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::PaneBackgroundOpacity => &mut parsed.config.pane_background_opacity,
             ConfigKey::PaneGlowStrength => &mut parsed.config.pane_glow_strength,
             ConfigKey::PaneInactiveOpacity => &mut parsed.config.pane_inactive_opacity,
-            ConfigKey::PaneCornerRadius => &mut parsed.config.pane_corner_radius,
             ConfigKey::PaneMargin => &mut parsed.config.pane_margin,
-            ConfigKey::PaneBorderWidth => &mut parsed.config.pane_border_width,
             ConfigKey::WidgetCornerRadius => &mut parsed.config.widget_corner_radius,
-            ConfigKey::WidgetOutlineWidth => &mut parsed.config.widget_outline_width,
-            ConfigKey::WidgetShadowStrength => &mut parsed.config.widget_shadow_strength,
-            ConfigKey::WidgetRowInset => &mut parsed.config.widget_row_inset,
             ConfigKey::ChromeContrast => &mut parsed.config.chrome_contrast,
+            ConfigKey::ChromeTint => &mut parsed.config.chrome_tint,
+            ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
             ConfigKey::WhichKeyDelay => &mut parsed.config.which_key_delay,
             ConfigKey::UseSystemTitlebar
@@ -1259,20 +1223,14 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::FlatSidebar
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
+            | ConfigKey::InterfaceStyle
+            | ConfigKey::ChromeAccent
             | ConfigKey::UiFontFamily
-            | ConfigKey::AppIcon
-            | ConfigKey::WidgetPrimary
-            | ConfigKey::WidgetGlass => {
+            | ConfigKey::AppIcon => {
                 unreachable!("handled above")
             }
         };
-        if !matches!(
-            key,
-            ConfigKey::WidgetCornerRadius
-                | ConfigKey::WidgetOutlineWidth
-                | ConfigKey::WidgetShadowStrength
-                | ConfigKey::WidgetRowInset
-        ) {
+        if key != ConfigKey::WidgetCornerRadius {
             target.provenance = ConfigProvenance::Override;
         }
 
@@ -1437,12 +1395,14 @@ pub fn parse_numeric_value(
         ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneBackgroundOpacity
             | ConfigKey::PaneGlowStrength
-            | ConfigKey::WidgetShadowStrength
             | ConfigKey::ChromeContrast
+            | ConfigKey::ChromeTint
     ) {
         ""
     } else if key == ConfigKey::WhichKeyDelay {
         " milliseconds"
+    } else if key == ConfigKey::ChromeTintHue {
+        " degrees"
     } else {
         " logical pixels"
     };
@@ -1557,17 +1517,25 @@ pub fn is_cumulative_appearance_key(key: AppearanceConfigKey) -> bool {
 
 /// Appearance keys an older zz wrote. Parsing reports them, and picking a theme
 /// in Settings removes them.
-pub const RETIRED_APPEARANCE_KEYS: [&str; 10] = [
-    "interface-style",
+pub const RETIRED_APPEARANCE_KEYS: [&str; 8] = [
     "chrome-preset",
     "chrome-preset-light",
     "chrome-preset-dark",
     "chrome-background",
     "chrome-foreground",
-    "chrome-accent",
     "chrome-success",
     "chrome-warning",
     "chrome-danger",
+];
+
+/// Material keys an older zz read, now a style's or a theme's to set.
+/// Parsing reports them, and picking a theme in Settings removes them.
+pub const RETIRED_MATERIAL_KEYS: [&str; 5] = [
+    "widget-outline-width",
+    "widget-shadow-strength",
+    "widget-row-inset",
+    "widget-primary",
+    "widget-glass",
 ];
 
 /// Look keys an older zz read. Parsing reports them and otherwise ignores them.
@@ -1579,7 +1547,7 @@ pub const RETIRED_LOOK_KEYS: [&str; 4] = [
 ];
 
 /// Pane keys an older zz read. Parsing reports them and otherwise ignores them.
-pub const RETIRED_PANE_KEYS: [&str; 1] = ["pane-glass"];
+pub const RETIRED_PANE_KEYS: [&str; 3] = ["pane-glass", "pane-corner-radius", "pane-border-width"];
 
 /// Status bar keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_STATUS_KEYS: [&str; 1] = ["status-show-session"];
@@ -1590,6 +1558,7 @@ pub fn is_app_config_key(key: &str) -> bool {
         || RETIRED_PANE_KEYS.contains(&key)
         || RETIRED_STATUS_KEYS.contains(&key)
         || RETIRED_LOOK_KEYS.contains(&key)
+        || RETIRED_MATERIAL_KEYS.contains(&key)
         || AgentConfigKey::parse(key).is_some()
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
@@ -1871,9 +1840,9 @@ pub fn write_interface_theme_at(path: &Path, name: &str, theme_sets_font: bool) 
         Err(error) => return Err(error),
     };
     let decided = |key: &str| {
-        ConfigKey::MATERIALS
+        ConfigKey::THEME_PICKS
             .iter()
-            .any(|material| material.as_str() == key)
+            .any(|picked| picked.as_str() == key)
             || (theme_sets_font && key == ConfigKey::UiFontFamily.as_str())
     };
     let mut without_decided = String::with_capacity(source.len());
@@ -1882,6 +1851,7 @@ pub fn write_interface_theme_at(path: &Path, name: &str, theme_sets_font: bool) 
             decided(key)
                 || RETIRED_APPEARANCE_KEYS.contains(&key)
                 || RETIRED_LOOK_KEYS.contains(&key)
+                || RETIRED_MATERIAL_KEYS.contains(&key)
         });
         if !dropped {
             without_decided.push_str(line);
@@ -2377,8 +2347,8 @@ mod tests {
             "widget-corner-radius = 25\nchrome-contrast = 1.2\nshadow-strength = 0.4\n\
              widget-shadows = none\nwidget-selection = wash\nwidget-field = outline\n\
              widget-shadow-strength = 0.5\nwidget-outline-width = 0\nwidget-glass = off\n\
-             interface-style = flat\nchrome-preset-dark = nord\nchrome-accent = #123456\n\
-             ui-font-family = \"Fira Sans\"\n",
+             interface-style = flat\nchrome-preset-dark = nord\n\
+             chrome-accent = green\nchrome-tint = 0.4\nui-font-family = \"Fira Sans\"\n",
         )
         .expect("write config");
 
@@ -2393,18 +2363,15 @@ mod tests {
             ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS)
         );
         assert_eq!(
-            parsed.config.widget_shadow_strength,
-            ConfigValue::from_default(DEFAULT_WIDGET_SHADOW_STRENGTH)
-        );
-        assert_eq!(
-            parsed.config.widget_outline_width,
-            ConfigValue::from_default(DEFAULT_WIDGET_OUTLINE_WIDTH)
-        );
-        assert_eq!(
-            parsed.config.widget_glass,
-            ConfigValue::from_default(DEFAULT_WIDGET_GLASS)
+            parsed.config.interface_style,
+            ConfigValue::from_default(DEFAULT_THEME)
         );
         assert_eq!(parsed.config.chrome_contrast.value, 1.2);
+        assert_eq!(
+            parsed.config.chrome_accent.value,
+            AccentSetting::Named("green")
+        );
+        assert_eq!(parsed.config.chrome_tint.value, 0.4);
         assert_eq!(parsed.ui_font.family.value.as_deref(), Some("Fira Sans"));
 
         write_interface_theme_at(&path, "round", true).expect("write theme");
@@ -2436,61 +2403,58 @@ mod tests {
     }
 
     #[test]
-    fn material_keys_override_the_theme_and_report_bad_values() {
+    fn appearance_keys_set_presets_accent_and_tint_and_report_bad_values() {
         let parsed = parse_config(
-            "widget-shadow-strength = 0.4\nwidget-glass = frosted\nwidget-primary = neon\n\
-             widget-outline-width = 1\nwidget-row-inset = 0\nwidget-shadow-strength = 3\n\
-             widget-row-inset = 99\nshadow-strength = 0.4\nwidget-shadows = none\n\
-             widget-selection = wash\nwidget-field = outline\n",
+            "interface-style = capsule\nchrome-accent = #FF8800\n\
+             chrome-tint = 0.3\nchrome-tint-hue = 145\ninterface-style = modern\n\
+             chrome-accent = chartreuse\nchrome-tint-hue = 400\nwidget-glass = off\n\
+             pane-corner-radius = 4\nwidget-shadows = none\n",
             "monospace",
         );
         let config = parsed.config;
-        assert_eq!(config.widget_shadow_strength.value, 0.4);
-        assert_eq!(config.widget_glass.value, "frosted");
-        assert_eq!(config.widget_outline_width.value, 1.0);
-        assert_eq!(config.widget_row_inset.value, 0.0);
-        assert_eq!(
-            config.widget_primary,
-            ConfigValue::from_default(DEFAULT_WIDGET_PRIMARY)
-        );
+        let set = |value| ConfigValue {
+            value,
+            provenance: ConfigProvenance::Override,
+        };
+        assert_eq!(config.interface_style, set("capsule"));
+        assert_eq!(config.chrome_accent.value.spelled(), "#ff8800");
+        assert_eq!(config.chrome_tint.value, 0.3);
+        assert_eq!(config.chrome_tint_hue.value, 145.0);
         let messages = parsed
             .diagnostics
             .iter()
             .map(|diagnostic| diagnostic.message.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(messages.len(), 7, "{messages:?}");
-        assert!(messages[0].contains("expected one of foreground, accent"));
-        assert!(messages[1].contains("between 0 and 2"));
-        assert!(messages[2].contains("between 0 and 12"));
-        assert!(messages[3].contains("set `widget-shadow-strength`"));
-        for (message, key) in
-            messages[4..]
-                .iter()
-                .zip(["widget-shadows", "widget-selection", "widget-field"])
+        assert_eq!(messages.len(), 6, "{messages:?}");
+        assert!(messages[0].contains("expected one of default, liquid-glass"));
+        assert!(messages[1].contains("expected theme, blue"));
+        assert!(messages[2].contains("between 0 and 360"));
+        assert_eq!(
+            messages[3],
+            "`widget-glass` was removed: pick a style with `interface-style`, or make a theme in the theme creator"
+        );
+        assert_eq!(
+            messages[4],
+            "`pane-corner-radius` was removed: pane corners follow `widget-corner-radius`"
+        );
+        assert_eq!(
+            messages[5],
+            "`widget-shadows` was removed: themes set this per role now"
+        );
+        for key in RETIRED_MATERIAL_KEYS
+            .into_iter()
+            .chain(["pane-corner-radius", "pane-border-width"])
         {
-            assert_eq!(
-                *message,
-                format!("`{key}` was removed: themes set this per role now")
-            );
             assert!(is_app_config_key(key));
             assert_eq!(ConfigKey::parse(key), None);
         }
 
-        let mut config = parse_config("widget-primary = foreground\n", "monospace").config;
-        config.apply_material_defaults(&MaterialDefaults {
-            radius: 10.0,
-            outline_width: 0.0,
-            row_inset: 5.0,
-            primary: "accent",
-            glass: "theme",
-        });
-        assert_eq!(config.widget_primary.value, "foreground");
-        assert_eq!(config.widget_corner_radius.value, 10.0);
-        assert_eq!(config.widget_row_inset.value, 5.0);
-        assert_eq!(
-            config.widget_shadow_strength,
-            ConfigValue::from_default(DEFAULT_WIDGET_SHADOW_STRENGTH)
-        );
+        let mut config = parse_config("", "monospace").config;
+        config.follow_theme_radius(18.0);
+        assert_eq!(config.widget_corner_radius.value, 18.0);
+        let mut config = parse_config("widget-corner-radius = 4\n", "monospace").config;
+        config.follow_theme_radius(18.0);
+        assert_eq!(config.widget_corner_radius.value, 4.0);
     }
 
     #[test]

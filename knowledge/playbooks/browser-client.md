@@ -9,7 +9,7 @@ tags:
 - client
 - websocket
 - gpui
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # Overview
@@ -112,15 +112,15 @@ menus use the provider's current options. Composer actions, context usage, and G
 the desktop presentation. Reclaimed drafts and PNG, JPEG, and WebP attachments are supported.
 The working-directory picker lists known Agent directories and accepts an absolute path on the
 daemon host; recursive filesystem discovery remains desktop-only. Appearance preferences for the
-browser live in local storage: system/light/dark mode, the interface theme (a built-in or one saved
-in the browser by Duplicate or Import), zoom, animations, and the material overrides from
-Interface › Advanced › Materials (corner radius, outline, shadow strength, row inset, primary
-buttons and glass), which picking a theme clears.
+browser live in local storage: system/light/dark mode, the interface theme (Default or one saved
+in the browser by Save or Import), zoom, animations, and what Interface sets over the theme: the
+style, the corner radius, the accent and the tint. Picking a theme clears the style and radius;
+the accent and tint stay.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
 color pickers, theme previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and
-Frame groups for gaps, inactive opacity, the selected pane's edge, margins, pane radius, and edge width. These settings are
-saved independently from widget radius. Sidebar rows share desktop labels, markers, layout and
+Frame groups for gaps, inactive opacity, the selected pane's edge and margins; pane corners and the
+pane edge follow the theme's radius and outline. Sidebar rows share desktop labels, markers, layout and
 rename menus, add/split/close actions, and keyboard navigation. Drag the sidebar’s right edge to
 resize it; the browser saves the width and clamps it to 160–640 logical pixels and half the viewport,
 with a 160-pixel minimum. The window strip shares tabs, overflow, rename/close menus, and agent

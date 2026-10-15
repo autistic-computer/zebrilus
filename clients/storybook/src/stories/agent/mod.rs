@@ -37,13 +37,13 @@ const STORY: Story = Story {
         Section {
             id: "answer",
             name: "Answer",
-            summary: "Assistant text after the last step of a turn. Only the final answer of a finished turn gets a copy button.",
+            summary: "Assistant text after the last step of a turn. Only the final answer of a finished turn gets a copy button, shown under the pointer.",
             build: transcript::answer,
         },
         Section {
             id: "turn-live",
             name: "Live turn",
-            summary: "A running turn folds into one line that says what the agent is doing now, with a step count and a clock.",
+            summary: "A running turn folds into one line that says what the agent is doing now. Rows draw no fill; a row you can open brightens under the pointer.",
             build: transcript::turn_live,
         },
         Section {
@@ -73,13 +73,13 @@ const STORY: Story = Story {
         Section {
             id: "markdown",
             name: "Markdown",
-            summary: "Code blocks get a language label and a copy button. Markdown fences render rich in answers, and a streaming answer closes its open markers.",
+            summary: "Code blocks get a language label and a copy button that shows under the pointer. Markdown fences render rich in answers, and a streaming answer closes its open markers.",
             build: transcript::markdown,
         },
         Section {
             id: "mermaid",
             name: "Mermaid",
-            summary: "Mermaid fences render as diagrams off the main thread. The first frames read Rendering Mermaid, and a source that does not parse shows the error.",
+            summary: "Mermaid fences render as diagrams off the main thread, with copy and full view under the pointer. The first frames read Rendering Mermaid, and a source that does not parse shows the error.",
             build: transcript::mermaid,
         },
         Section {

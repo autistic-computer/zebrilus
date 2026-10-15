@@ -146,41 +146,6 @@ pub fn material_presets_json() -> String {
     .to_string()
 }
 
-/// The color presets as the color knobs each sets, both modes, with the
-/// background and accent of each mode to draw as swatches.
-pub fn color_presets_json() -> String {
-    json!(
-        zz_ui::interface_theme::color_presets()
-            .iter()
-            .map(|(id, preset)| {
-                let mut theme = zz_ui::interface_theme::default_theme().clone();
-                preset.apply_to(&mut theme);
-                let mut values = serde_json::Map::new();
-                let mut swatches = Vec::new();
-                for (mode, prefix) in [
-                    (zz_ui::ThemeMode::Light, "light"),
-                    (zz_ui::ThemeMode::Dark, "dark"),
-                ] {
-                    for (name, value) in knobs::resolved_colors(&theme, mode) {
-                        if matches!(name, "background" | "accent") {
-                            swatches.push(value.clone());
-                        }
-                        values.insert(format!("{prefix}-{name}"), json!(value));
-                    }
-                }
-                json!({
-                    "id": id,
-                    "name": preset.name,
-                    "about": preset.about,
-                    "knobs": values,
-                    "swatches": swatches,
-                })
-            })
-            .collect::<Vec<_>>()
-    )
-    .to_string()
-}
-
 /// zz's roles by kind, for the creator's Roles step: each kind, then the
 /// roles in it with how deep in its groups they sit, each role's patch from
 /// the theme, what it inherits and from where, and the style it resolves to.
@@ -451,11 +416,6 @@ mod web {
     #[wasm_bindgen]
     pub fn material_presets() -> String {
         super::material_presets_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn color_presets() -> String {
-        super::color_presets_json()
     }
 
     #[wasm_bindgen]

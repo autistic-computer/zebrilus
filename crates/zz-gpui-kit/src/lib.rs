@@ -63,8 +63,8 @@ pub use foundation::{
     PaintExt, PaintState, PrimaryStyle, RULE_WIDTH, ScrollbarShow, Selectable, Shadow,
     ShadowMaterial, Shape, Side, Sizable, Size, StatefulSurfaceExt, Style, StylePatch, StyledExt,
     Surface, SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, drawn_roles,
-    h_flex, lifted_shadow, note_drawn_roles, oklab_lightness, parse_hex, rems_from_px, row_corners,
-    row_radius, to_hex, v_flex, window_border, window_paddings,
+    h_flex, lifted_shadow, note_drawn_roles, oklab_lightness, oklch, parse_hex, rems_from_px,
+    row_corners, row_radius, to_hex, v_flex, window_border, window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};
