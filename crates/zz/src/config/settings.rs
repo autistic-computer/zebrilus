@@ -1014,7 +1014,7 @@ impl SettingsView {
             AppearancePageItem::ChromeContrast => Self::numeric_setting(
                 ConfigKey::ChromeContrast,
                 "Contrast",
-                "Adjust surface, text, and edge contrast from 50% to 200%.",
+                "Raise surface, text, and edge contrast from 100% to 200%.",
                 resolved.chrome_contrast,
                 &self.chrome_contrast,
                 cx,
@@ -2818,14 +2818,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contrast_input_uses_50_to_200_percent_under_advanced() {
+    fn contrast_input_uses_100_to_200_percent_under_advanced() {
         let key = ConfigKey::ChromeContrast;
-        assert_eq!(numeric_range(key), (50.0, 200.0));
-        for (factor, text) in [(0.5, "50"), (1.0, "100"), (1.05, "105"), (2.0, "200")] {
+        assert_eq!(numeric_range(key), (100.0, 200.0));
+        for (factor, text) in [(1.0, "100"), (1.05, "105"), (2.0, "200")] {
             assert_eq!(numeric_input_text(key, factor), text);
             assert!(numeric_input_matches_value(key, text, factor));
         }
-        for value in ["49", "201", "NaN", "invalid"] {
+        for value in ["99", "201", "NaN", "invalid"] {
             assert!(validate_numeric_value(key, value).is_err());
         }
         assert_eq!(

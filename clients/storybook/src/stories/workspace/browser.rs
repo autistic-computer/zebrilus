@@ -19,7 +19,7 @@ use zz_ui::{
     pane::{pane_drag_button, pane_header_icon_button, pane_surface},
 };
 
-use super::fixtures::{chrome, radii, stateful};
+use super::fixtures::{chrome, pane_background, radii, stateful};
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -280,6 +280,7 @@ pub fn header(
     active_tab: usize,
     address: &Entity<InputState>,
     show_separator: bool,
+    window: &Window,
     cx: &App,
 ) -> BrowserHeader {
     BrowserHeader::new(
@@ -287,7 +288,7 @@ pub fn header(
         BrowserTabStrip::new(tab_infos(tabs), active_tab),
         pane_actions(1, cx),
         toolbar(
-            browser_address(address, site_controls(cx), cx).into_any_element(),
+            browser_address(address, site_controls(cx), window, cx).into_any_element(),
             true,
             false,
             false,
@@ -302,6 +303,7 @@ pub fn browser_pane(
     address: &Entity<InputState>,
     active: bool,
     gaps: bool,
+    window: &Window,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     let radius = radii(gaps).top_left;
@@ -312,9 +314,9 @@ pub fn browser_pane(
             .flex_col()
             .size_full()
             .rounded(radius)
-            .bg(cx.theme().background.opaque())
+            .bg(pane_background(cx))
             .text_color(cx.theme().foreground)
-            .child(header(active, 2, 0, address, false, cx))
+            .child(header(active, 2, 0, address, false, window, cx))
             .child(
                 div()
                     .relative()
@@ -340,13 +342,13 @@ fn framed(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn headers(inputs: &[Entity<InputState>; 4], _: &mut Window, cx: &mut App) -> AnyElement {
+fn headers(inputs: &[Entity<InputState>; 4], window: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "active pane, three tabs",
             framed(
                 "header-active",
-                header(true, 3, 1, &inputs[0], true, cx),
+                header(true, 3, 1, &inputs[0], true, window, cx),
                 cx,
             ),
         )
@@ -354,7 +356,7 @@ fn headers(inputs: &[Entity<InputState>; 4], _: &mut Window, cx: &mut App) -> An
             "inactive pane: actions appear on hover",
             framed(
                 "header-inactive",
-                header(false, 3, 0, &inputs[1], true, cx),
+                header(false, 3, 0, &inputs[1], true, window, cx),
                 cx,
             ),
         )
@@ -362,7 +364,7 @@ fn headers(inputs: &[Entity<InputState>; 4], _: &mut Window, cx: &mut App) -> An
             "one tab: no close button",
             framed(
                 "header-single",
-                header(true, 1, 0, &inputs[2], true, cx),
+                header(true, 1, 0, &inputs[2], true, window, cx),
                 cx,
             ),
         )
@@ -370,14 +372,14 @@ fn headers(inputs: &[Entity<InputState>; 4], _: &mut Window, cx: &mut App) -> An
             "over the start page: no separator",
             framed(
                 "header-start",
-                header(true, 2, 1, &inputs[3], false, cx),
+                header(true, 2, 1, &inputs[3], false, window, cx),
                 cx,
             ),
         )
         .into_any_element()
 }
 
-fn toolbars(inputs: &[Entity<InputState>; 2], _: &mut Window, cx: &mut App) -> AnyElement {
+fn toolbars(inputs: &[Entity<InputState>; 2], window: &mut Window, cx: &mut App) -> AnyElement {
     let plain_address = div()
         .flex_1()
         .min_w_0()
@@ -433,7 +435,7 @@ fn toolbars(inputs: &[Entity<InputState>; 2], _: &mut Window, cx: &mut App) -> A
             framed(
                 "toolbar-history",
                 toolbar(
-                    browser_address(&inputs[0], site_controls(cx), cx).into_any_element(),
+                    browser_address(&inputs[0], site_controls(cx), window, cx).into_any_element(),
                     true,
                     false,
                     false,
@@ -447,7 +449,7 @@ fn toolbars(inputs: &[Entity<InputState>; 2], _: &mut Window, cx: &mut App) -> A
             framed(
                 "toolbar-picking",
                 toolbar(
-                    browser_address(&inputs[1], site_controls(cx), cx).into_any_element(),
+                    browser_address(&inputs[1], site_controls(cx), window, cx).into_any_element(),
                     false,
                     false,
                     true,
@@ -475,20 +477,28 @@ fn toolbars(inputs: &[Entity<InputState>; 2], _: &mut Window, cx: &mut App) -> A
         .into_any_element()
 }
 
-fn address_row(id: &'static str, input: &Entity<InputState>, cx: &App) -> AnyElement {
+fn address_row(
+    id: &'static str,
+    input: &Entity<InputState>,
+    window: &Window,
+    cx: &App,
+) -> AnyElement {
     div()
         .id(id)
         .flex()
         .w(px(520.0))
         .h(px(28.0))
-        .child(browser_address(input, site_controls(cx), cx))
+        .child(browser_address(input, site_controls(cx), window, cx))
         .into_any_element()
 }
 
-fn addresses(inputs: &[Entity<InputState>; 4], _: &mut Window, cx: &mut App) -> AnyElement {
+fn addresses(inputs: &[Entity<InputState>; 4], window: &mut Window, cx: &mut App) -> AnyElement {
     states()
-        .state("url", address_row("address-url", &inputs[0], cx))
-        .state("long url", address_row("address-long", &inputs[3], cx))
+        .state("url", address_row("address-url", &inputs[0], window, cx))
+        .state(
+            "long url",
+            address_row("address-long", &inputs[3], window, cx),
+        )
         .state(
             "site controls alone",
             row().child(browser_site_controls_button(cx)),
@@ -496,9 +506,9 @@ fn addresses(inputs: &[Entity<InputState>; 4], _: &mut Window, cx: &mut App) -> 
         .into_any_element()
 }
 
-fn focused_address(input: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement {
+fn focused_address(input: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
     states()
-        .state("focused", address_row("address-focused", input, cx))
+        .state("focused", address_row("address-focused", input, window, cx))
         .into_any_element()
 }
 
@@ -530,7 +540,7 @@ fn tabs(_: &mut Window, _: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn omnibox(inputs: &[Entity<InputState>; 1], _: &mut Window, cx: &mut App) -> AnyElement {
+fn omnibox(inputs: &[Entity<InputState>; 1], window: &mut Window, cx: &mut App) -> AnyElement {
     let rows = [
         ("Key bindings - Zed", "zed.dev/docs/key-bindings", true),
         ("Zed - The editor for what's next", "zed.dev", false),
@@ -559,7 +569,7 @@ fn omnibox(inputs: &[Entity<InputState>; 1], _: &mut Window, cx: &mut App) -> An
                 .rounded(cx.theme().radius)
                 .framed(cx)
                 .bg(cx.theme().background.opaque())
-                .child(header(true, 2, 0, &inputs[0], true, cx))
+                .child(header(true, 2, 0, &inputs[0], true, window, cx))
                 .child(browser_omnibox_panel(rows, cx)),
         )
         .into_any_element()

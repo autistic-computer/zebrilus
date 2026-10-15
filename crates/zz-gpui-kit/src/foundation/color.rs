@@ -80,7 +80,7 @@ pub fn set_contrast(value: f32) {
     CONTRAST.set(if value.is_nan() {
         1.0
     } else {
-        value.clamp(0.5, 2.0)
+        value.clamp(1.0, 2.0)
     });
 }
 
@@ -509,29 +509,13 @@ mod tests {
             let active = distance(palette.background.active(), palette.background);
             let muted = distance(palette.foreground.muted(), palette.foreground);
             let edge = distance(palette.border(), palette.background);
-            for value in [0.5, 2.0] {
+            for value in [1.5, 2.0] {
                 set_contrast(value);
-                let higher = value > 1.0;
-                assert_eq!(
-                    distance(palette.background.raised(1), palette.background) > raised,
-                    higher
-                );
-                assert_eq!(
-                    distance(palette.background.hover(), palette.background) > hovered,
-                    higher
-                );
-                assert_eq!(
-                    distance(palette.background.active(), palette.background) > active,
-                    higher
-                );
-                assert_eq!(
-                    distance(palette.foreground.muted(), palette.foreground) < muted,
-                    higher
-                );
-                assert_eq!(
-                    distance(palette.border(), palette.background) > edge,
-                    higher
-                );
+                assert!(distance(palette.background.raised(1), palette.background) > raised);
+                assert!(distance(palette.background.hover(), palette.background) > hovered);
+                assert!(distance(palette.background.active(), palette.background) > active);
+                assert!(distance(palette.foreground.muted(), palette.foreground) < muted);
+                assert!(distance(palette.border(), palette.background) > edge);
                 assert_close(palette.background.washed(2).a, 0.08 * value);
                 assert_close(palette.foreground.fill().a, 0.12 * value);
                 assert_close(palette.foreground.glow().a, 0.35 * value);
@@ -565,7 +549,7 @@ mod tests {
         };
         set_contrast(1.0);
         let baseline = samples();
-        for value in [0.5, 2.0] {
+        for value in [1.5, 2.0] {
             set_contrast(value);
             assert_eq!(samples(), baseline);
             assert_close(color.washed(u8::MAX).a, 1.0);
@@ -576,7 +560,7 @@ mod tests {
     #[test]
     fn theme_contrast_clamps_and_keeps_the_stored_value_in_sync() {
         let mut theme = crate::Theme::default();
-        for (value, expected) in [(-1.0, 0.5), (4.0, 2.0), (f32::NAN, 1.0)] {
+        for (value, expected) in [(-1.0, 1.0), (0.5, 1.0), (4.0, 2.0), (f32::NAN, 1.0)] {
             theme.set_contrast(value);
             assert_close(theme.contrast, expected);
             assert_close(contrast(), expected);

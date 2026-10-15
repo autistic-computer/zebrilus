@@ -42,17 +42,15 @@ const COLORS = [
 const MODES = ["light", "dark"];
 const COLOR_KNOBS = MODES.flatMap((mode) => COLORS.map(([name]) => `${mode}-${name}`));
 const SHUFFLED = ["radius", "outline", "row-inset", "contact-strength", "float-y", "float-blur", "float-strength"];
-const STEPS = ["colors", "materials", "roles", "export"];
-const HIGHLIGHTS = ["none", "tint", "lift", "accent", "ring", "bar"];
+const STEPS = ["colors", "materials", "roles", "export", "app"];
 const PROPS = [
-    ["fill", "Fill", ["none", "tint", "solid", "glass"]],
-    ["outline", "Outline", [true, false]],
-    ["shadow", "Shadow", ["none", "contact", "float"]],
-    ["shape", "Shape", ["square", "round", "pill"]],
-    ["hover", "Hover", HIGHLIGHTS],
-    ["selected", "Selected", HIGHLIGHTS],
+    ["fill", "Fill"],
+    ["outline", "Outline"],
+    ["shadow", "Shadow"],
+    ["shape", "Shape"],
+    ["hover", "Hover"],
+    ["selected", "Selected"],
 ];
-const ORIGINS = { kind: "kind built-in", "theme-kind": "theme kind patch", role: "role built-in" };
 const HASH_LIMIT = 2000;
 const STORED_ROLES = "zz-storybook-roles";
 const KNOBS = [
@@ -100,13 +98,14 @@ const importDialog = document.getElementById("import-dialog");
 let stories = [];
 let glassPresets = {};
 let themes = {};
+let presets = [];
+let colorPresets = [];
 let current = null;
 let roles = {};
 let roleTree = [];
 let step = "colors";
 let selectedRole = null;
-let hoveredRole = null;
-let inspected = "";
+let focusRetries = 0;
 const openRegions = new Set();
 const timeline = { past: [], future: [], last: null };
 
@@ -190,15 +189,12 @@ function themeParams() {
     return params;
 }
 
-function shownInspect() {
-    return step === "roles" ? (hoveredRole ?? selectedRole ?? "") : "";
+function focusedRole() {
+    return step === "roles" ? selectedRole : null;
 }
 
 function knobQuery() {
-    const params = themeParams();
-    const inspect = shownInspect();
-    if (inspect) params.set("inspect", inspect);
-    return params.toString();
+    return themeParams().toString();
 }
 
 function hashQuery() {
@@ -319,10 +315,21 @@ function show(storyId, sectionId) {
         if (creator) {
             storyRoot.replaceChildren(
                 element("h1", { class: "visually-hidden", text: story.name }),
+                element(
+                    "div",
+                    { id: "focus-note", role: "status", hidden: "" },
+                    element("span"),
+                    element("button", { type: "button", "data-action": "show-all", text: "Show all" }),
+                ),
                 ...story.sections.map((section) =>
                     element(
                         "section",
-                        { id: `${story.id}-${section.id}`, class: "region", "aria-labelledby": `${story.id}-${section.id}-title` },
+                        {
+                            id: `${story.id}-${section.id}`,
+                            class: "region",
+                            "data-region": section.id,
+                            "aria-labelledby": `${story.id}-${section.id}-title`,
+                        },
                         element("h2", { id: `${story.id}-${section.id}-title`, text: section.name }),
                         element("div", { id: section.mount, class: "mount canvas", "data-section": section.id }),
                     ),
@@ -330,7 +337,12 @@ function show(storyId, sectionId) {
             );
             regions.replaceChildren(
                 ...story.sections.map((section) =>
-                    element("a", { href: `#/${story.id}/${section.id}`, title: section.summary, text: section.name }),
+                    element("a", {
+                        href: `#/${story.id}/${section.id}`,
+                        title: section.summary,
+                        text: section.name,
+                        "data-region": section.id,
+                    }),
                 ),
             );
         } else {
@@ -351,6 +363,9 @@ function show(storyId, sectionId) {
         zz.show(story.id);
         current = story.id;
         markCurrent(story.id);
+        focusRetries = 0;
+        focusShowcase();
+        zz.inspect("");
         document.title = creator ? "Theme creator · zz" : `${story.name} · zz storybook`;
     }
     if (sectionId) {
@@ -381,7 +396,6 @@ function applyKnobs() {
     }
     paintSliders();
     zz.set_knobs(knobQuery());
-    inspected = shownInspect();
     storeRoles();
     paintChrome();
     paintStep();
@@ -405,24 +419,56 @@ function paintStep() {
         roleTree = JSON.parse(zz.roles());
         if (before !== rolesChanged() || !document.getElementById("role-tree").hasChildNodes()) renderRoles();
     }
+    focusShowcase();
     if (step === "export") document.getElementById("theme-json").textContent = zz.theme_file();
 }
 
-function showStep(name) {
+function showStep(name, flashing = true) {
     if (!STEPS.includes(name) || name === step) return;
     step = name;
-    hoveredRole = null;
-    inspect();
+    focusRetries = 0;
     paintStep();
+    if (flashing) flash();
     const { story, section } = parseHash();
     writeHash(story || current, section);
 }
 
-function inspect() {
-    const id = shownInspect();
-    if (id === inspected) return;
-    inspected = id;
-    zz.inspect(id);
+function flash() {
+    zz.inspect(current === CREATOR ? (focusedRole() ?? "") : "");
+}
+
+function focusShowcase() {
+    if (current !== CREATOR) return;
+    const id = focusedRole();
+    const drawn = id ? JSON.parse(zz.drawn_roles()) : {};
+    const sections = [...storyRoot.querySelectorAll("section.region")];
+    const shows = sections.map((section) => {
+        const names = drawn[section.dataset.region];
+        return !id || !names || names.includes(id);
+    });
+    const found = sections.filter((section, index) => shows[index] && drawn[section.dataset.region]?.includes(id));
+    const filtering = Boolean(id) && found.length > 0;
+    sections.forEach((section, index) => {
+        section.hidden = filtering && !shows[index];
+    });
+    for (const link of regions.children) {
+        link.hidden = filtering && !found.some((section) => section.dataset.region === link.dataset.region);
+    }
+    const note = document.getElementById("focus-note");
+    note.hidden = !id;
+    storyRoot.style.setProperty("--focus-note", note.hidden ? "0px" : `${note.offsetHeight}px`);
+    if (id) {
+        const role = findRole(id);
+        const names = found.map((section) => section.querySelector("h2").textContent);
+        note.querySelector("span").textContent = `${role?.label ?? id} · ${
+            found.length ? `in ${names.join(", ")}` : "not in the showcase"
+        }`;
+    }
+    const pending = id && sections.some((section) => !drawn[section.dataset.region]);
+    if (pending && focusRetries < 25) {
+        focusRetries += 1;
+        setTimeout(focusShowcase, 200);
+    }
 }
 
 function findRole(id) {
@@ -436,8 +482,10 @@ function findRole(id) {
 function setRoleProp(id, prop, value) {
     const role = findRole(id);
     if (!role || !PROPS.some(([name]) => name === prop)) throw new Error(`no role ${id} or prop ${prop}`);
+    const clears = value === "inherit" || value === null || value === undefined;
+    if (!clears && !role.knobs[prop].includes(value)) throw new Error(`${id} can't set ${prop} to ${value}`);
     const patch = { ...(roles[id] ?? {}) };
-    if (value === "inherit" || value === null || value === undefined || value === role.inherited[prop].value) {
+    if (clears || (value === role.inherited[prop].value && role.members === 0)) {
         delete patch[prop];
     } else {
         patch[prop] = value;
@@ -445,14 +493,17 @@ function setRoleProp(id, prop, value) {
     roles = sortRoles({ ...roles, [id]: patch });
 }
 
-function selectRole(id) {
+function selectRole(id, flashing = true) {
     selectedRole = id && findRole(id) ? id : null;
     if (selectedRole) {
         const region = roleTree.find((candidate) => candidate.roles.some((role) => role.id === selectedRole));
         if (region) openRegions.add(region.title);
     }
     renderRoles();
-    inspect();
+    focusRetries = 0;
+    focusShowcase();
+    storyRoot.scrollTo?.(0, 0);
+    if (flashing) flash();
     const { story, section } = parseHash();
     writeHash(story || current, section);
 }
@@ -471,7 +522,8 @@ function roleSummary(role) {
     return parts.join(" · ");
 }
 
-function propControl(role, [prop, label, values]) {
+function propControl(role, [prop, label]) {
+    const values = role.knobs[prop];
     const set = role.patch[prop];
     const inherited = role.inherited[prop];
     const name = `role-${prop}`;
@@ -510,7 +562,7 @@ function propControl(role, [prop, label, values]) {
                 {},
                 set === undefined ? "inherits " : "set here · inherits ",
                 element("b", { text: propLabel(inherited.value) }),
-                ` from ${ORIGINS[inherited.from]}`,
+                ` from ${inherited.from}${inherited.themed ? " in this theme" : ""}`,
             ),
         ),
         segments,
@@ -538,6 +590,8 @@ function renderRoles() {
                 ),
                 ...members.map((role) => {
                     const selected = role.id === selectedRole;
+                    const next = region.roles[region.roles.indexOf(role) + 1];
+                    const grouping = role.depth === 0 ? "kind" : (next?.depth ?? 0) > role.depth ? "group" : "";
                     const patched = Object.keys(role.patch).length > 0;
                     const head = element(
                         "button",
@@ -550,7 +604,7 @@ function renderRoles() {
                         },
                         element("span", { class: "role-label", text: role.label }),
                         element("span", { class: patched ? "role-dot" : "role-dot hidden", "aria-hidden": "true" }),
-                        element("small", { class: "role-kind", text: role.id === role.kind ? "kind" : role.kind }),
+                        element("small", { class: "role-kind", text: grouping }),
                         element("small", { class: "role-summary", text: roleSummary(role) }),
                     );
                     const body = selected
@@ -559,11 +613,21 @@ function renderRoles() {
                                   "div",
                                   { class: "role-body" },
                                   element("p", {}, element("code", { text: role.id }), ` ${role.about}.`),
-                                  ...PROPS.map((spec) => propControl(role, spec)),
+                                  ...(PROPS.some(([prop]) => role.knobs[prop].length > 0)
+                                      ? []
+                                      : [element("p", { text: "Themes don't change this one." })]),
+                                  ...PROPS.filter(([prop]) => role.knobs[prop].length > 0).map((spec) =>
+                                      propControl(role, spec),
+                                  ),
                               ),
                           ]
                         : [];
-                    return element("div", { class: selected ? "role selected" : "role", "data-role": role.id }, head, ...body);
+                    return element(
+                        "div",
+                        { class: selected ? "role selected" : "role", "data-role": role.id, style: `--depth: ${query ? 0 : role.depth}` },
+                        head,
+                        ...body,
+                    );
                 }),
             );
             details.open = query !== "" || openRegions.has(region.title);
@@ -657,6 +721,60 @@ function renderThemes() {
             );
         }
     }
+}
+
+function renderPresets() {
+    document.getElementById("preset-choices").replaceChildren(
+        ...presets.map((preset) =>
+            element(
+                "button",
+                { type: "button", class: "preset", "data-preset": preset.id },
+                element("b", { text: preset.name }),
+                element("small", { text: preset.about }),
+            ),
+        ),
+    );
+    document.querySelector(".start").hidden = Object.keys(themes).length < 2;
+}
+
+function renderColorPresets() {
+    document.getElementById("color-preset-choices").replaceChildren(
+        ...colorPresets.map((preset) =>
+            element(
+                "button",
+                { type: "button", class: "preset", "data-color-preset": preset.id, title: preset.about },
+                element(
+                    "span",
+                    { class: "swatches", "aria-hidden": "true" },
+                    ...preset.swatches.map((color) => element("i", { style: `background: ${color}` })),
+                ),
+                element("b", { text: preset.name }),
+            ),
+        ),
+    );
+}
+
+function applyColorPreset(id) {
+    const preset = colorPresets.find((candidate) => candidate.id === id);
+    if (!preset) throw new Error(`no color preset ${id}`);
+    for (const [name, value] of Object.entries(preset.knobs)) setKnobValue(name, value);
+    applyKnobs();
+    remember();
+    toast(`${preset.name} colors`);
+}
+
+function applyPreset(id) {
+    const preset = presets.find((candidate) => candidate.id === id);
+    if (!preset) throw new Error(`no material preset ${id}`);
+    const { glass, ...knobs } = preset.knobs;
+    setKnobValue("glass", glass);
+    resetGlassSliders();
+    for (const [name, value] of Object.entries(knobs)) {
+        if (form.elements[name]) setKnobValue(name, String(value));
+    }
+    applyKnobs();
+    remember();
+    toast(`${preset.name} materials`);
 }
 
 function addFontOption(name) {
@@ -753,8 +871,12 @@ await waitFor(zz.is_ready);
 stories = JSON.parse(zz.stories());
 glassPresets = JSON.parse(zz.glass_presets());
 themes = JSON.parse(zz.interface_themes());
+presets = JSON.parse(zz.material_presets());
+colorPresets = JSON.parse(zz.color_presets());
 renderNav();
 renderThemes();
+renderPresets();
+renderColorPresets();
 const initial = parseHash();
 const font = initial.params.get("font");
 if (font) addFontOption(font);
@@ -787,8 +909,8 @@ form.addEventListener("input", (event) => {
         return;
     }
     if (target.dataset.prop) {
-        const prop = PROPS.find(([name]) => name === target.dataset.prop);
-        const value = target.value === "inherit" ? "inherit" : prop[2].find((each) => propLabel(each) === target.value);
+        const values = findRole(target.dataset.role)?.knobs[target.dataset.prop] ?? [];
+        const value = target.value === "inherit" ? "inherit" : values.find((each) => propLabel(each) === target.value);
         setRoleProp(target.dataset.role, target.dataset.prop, value);
         applyKnobs();
         remember();
@@ -810,6 +932,10 @@ form.addEventListener("click", (event) => {
     }
     const head = event.target.closest("[data-role-head]");
     if (head) selectRole(head.dataset.roleHead === selectedRole ? null : head.dataset.roleHead);
+    const preset = event.target.closest("[data-preset]");
+    if (preset) applyPreset(preset.dataset.preset);
+    const colors = event.target.closest("[data-color-preset]");
+    if (colors) applyColorPreset(colors.dataset.colorPreset);
 });
 form.addEventListener("keydown", (event) => {
     const tab = event.target.closest("[role=tab]");
@@ -832,16 +958,6 @@ roleTreeNode.addEventListener("toggle", (event) => {
     if (event.target.open) openRegions.add(region);
     else openRegions.delete(region);
 }, true);
-roleTreeNode.addEventListener("pointerover", (event) => {
-    const role = event.target.closest("[data-role]")?.dataset.role ?? null;
-    if (role === hoveredRole) return;
-    hoveredRole = role;
-    inspect();
-});
-roleTreeNode.addEventListener("pointerleave", () => {
-    hoveredRole = null;
-    inspect();
-});
 form.addEventListener("reset", () =>
     setTimeout(() => {
         loadKnobs(new URLSearchParams());
@@ -902,6 +1018,9 @@ window.addEventListener("hashchange", () => {
     show(story, section);
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyKnobs);
+storyRoot.addEventListener("click", (event) => {
+    if (event.target.closest("[data-action=show-all]")) selectRole(null);
+});
 regions.addEventListener("click", (event) => {
     const link = event.target.closest("a");
     if (!link) return;
@@ -937,8 +1056,18 @@ window.storybook = {
         return globalThis.zzGpui?.idle();
     },
     knobs: () => Object.fromEntries(KNOBS.map((name) => [name, knobValue(name)])),
+    presets: () => presets.map((preset) => preset.id),
+    colorPresets: () => colorPresets.map((preset) => preset.id),
+    colorPreset: (id) => {
+        applyColorPreset(id);
+        return globalThis.zzGpui?.idle();
+    },
+    preset: (id) => {
+        applyPreset(id);
+        return globalThis.zzGpui?.idle();
+    },
     step: (name) => {
-        if (name !== undefined) showStep(name);
+        if (name !== undefined) showStep(name, false);
         return step;
     },
     roles: () => (roleTree = JSON.parse(zz.roles())),
@@ -950,9 +1079,9 @@ window.storybook = {
         return globalThis.zzGpui?.idle();
     },
     inspect: (id) => {
-        showStep("roles");
+        showStep("roles", false);
         roleTree = JSON.parse(zz.roles());
-        selectRole(id || null);
+        selectRole(id || null, false);
         return globalThis.zzGpui?.idle();
     },
     theme: () => JSON.parse(zz.theme_file()),

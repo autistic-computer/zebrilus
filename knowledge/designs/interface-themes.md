@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Interface themes: materials, roles and colors in one file"
-description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default, macOS, Tahoe, Linear and Glass ship built in; the 34 palette presets, Flat/Modern/Full, the chrome color overrides and the nine-key look are gone."
+description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default ships built in, with seven material presets and fourteen color presets (macOS, Windows, GNOME, Ubuntu, Breeze, Ayu and eight editor schemes) to start a theme from, each setting only its half; the 34 old palette presets, Flat/Modern/Full, the chrome color overrides and the nine-key look are gone."
 status: Built
 resource: crates/zz-ui/src/interface_theme.rs
 tags:
@@ -42,11 +42,31 @@ A file can leave keys out: materials fall back to `Materials::default()` (Defaul
 
 | Theme | Materials and roles | Colors |
 |---|---|---|
-| Default | 24px corners, 0.5px outlines, both shadows at full strength, an opaque glass edge, foreground primary, 4px row inset; no role patches, so every piece draws as its kind's built-in: shadowed controls, accent selection, lifting icon buttons | macOS system colors: `#ffffff` / `#1e1e1e` windows, label ink, system blue, system status colors (higher-contrast variants in light) |
-| macOS | 10px corners, 0.5px outlines, frosted glass, accent primary, 5px row inset; buttons, chips, send and phone keys cast no shadow, and icon buttons, tabs, sidebar rows and agent controls tint instead of lift | the same system colors, white text on the accent, stronger popover shadows |
-| Tahoe | 14px corners and macOS's colors and glass, accent primary; glass pill chrome and browser buttons, a glass composer and pane chips, flat tinted pill buttons, chips and fields without outlines, cards without outlines, the accent on the active window pill and selected chips, no bar dividers | macOS's |
-| Linear | 24px corners, 0.5px outlines, no glass, accent primary; no role patches | near-black and near-white planes, indigo accent with white text, a cool tinted light shadow |
-| Glass | 25px corners, no outlines, both shadows at strength 0, heavily frosted glass with a dark contour, 3px row inset, foreground primary; buttons, icon buttons, chips, tabs, fields, badges and keycaps are pills, and rows and answer options select with a tint | the macOS system colors |
+| Default | 10px corners, 0.5px outlines, both shadows at their built-in geometry, no glass, foreground primary, 4px row inset; no role patches, so every piece draws as its kind's built-in | neutral planes `#fcfcfc` / `#18181a`, near-black and near-white ink, a blue accent `#3d6df2` / `#6b8cff`, status colors that read on both planes |
+
+`crates/zz-ui/themes/materials/*.json` hold material presets: a name, a line saying what it is and
+`materials`, nothing else, so a preset never touches roles, colors or the font.
+`zz_ui::interface_theme::material_presets` lists them after a Default preset built from the
+Default theme's materials, and `MaterialPreset::apply_to` puts one's materials on a theme, keeping
+the theme's font. The storybook's Materials step shows them as its Presets.
+
+| Preset | Materials |
+|---|---|
+| Liquid glass | 18px corners, 0.5px lines, 5px row inset, accent primary, Tahoe's glass, a light contact shadow and a soft deep float |
+| Frosted | 8px corners, 1px lines, accent primary, heavy frosted glass, moderate shadows |
+| Flat | 6px corners, 1px lines, 3px row inset, accent primary, no glass, no contact shadow and a faint float |
+| Tactile | 7px corners, 1px lines, 3px row inset, accent primary, no glass, strong close contact and float shadows |
+| Soft | 20px corners, no lines, 6px row inset, accent primary, no glass, soft diffuse shadows |
+| Brutal | square corners, 2px lines, no row inset, accent primary, no glass, hard unblurred shadows |
+| Terminal | square corners, 1px lines, no row inset, foreground primary, no glass, no shadows |
+
+`crates/zz-ui/themes/colors/*.json` hold color presets: a name, a line saying what it is, and
+`light` and `dark` with the six roots (background, foreground, accent, success, warning, danger),
+nothing else. `color_presets` lists them after a Default preset, and `ColorPreset::apply_to` puts
+both palettes on a theme. The storybook's Colors step shows them as its Presets, each with its
+light and dark background and accent as swatches: macOS, Windows, GNOME (Adwaita), Ubuntu (Yaru),
+Breeze, Ayu, Nord, Solarized, Gruvbox, Catppuccin (Latte and Mocha), Dracula (Alucard and
+Dracula), Tokyo Night (Day and Night), GitHub (Primer) and One (Light and Dark).
 
 They imitate an app's feel, not its pixels. A test holds every built-in to contrast floors in both modes: foreground 7:1 on the window and a popover, accent and status colors 3:1, text on the accent 3:1.
 
@@ -76,7 +96,9 @@ The web and iOS clients pick their theme themselves and never take the host's. T
 # Decisions
 
 - **No surviving palettes.** None of the 34 presets read right across looks, so all went, with their per-mode keys and the three `chrome-*` color overrides. Old keys are reported as removed and dropped when a theme is picked.
-- **Flat, Modern and Full dropped.** Default, macOS, Tahoe, Linear and Glass cover the same range with colors that fit them.
+- **Flat, Modern and Full dropped.** Built-in themes with colors that fit them took their place.
+- **One built-in theme and material presets (2026-10-14).** macOS, Tahoe, Linear and Glass are gone so themes can be rebuilt from scratch in the creator. Default was redrawn, and material presets give a theme's materials a starting point; roles, colors and the font stay the theme's own.
+- **Color presets (2026-10-14).** The same idea for colors: a preset sets both palettes' six roots and nothing else, so picking macOS colors keeps Liquid glass materials and the roles. Unlike the 34 presets that went, they are checked against zz's own floors (foreground 7:1, accent and status 3:1 on the window and on a popover), and a color that missed moved in lightness only.
 - **Nine look keys, not seventeen (2026-10-13).** Shadow strength, the share controls cast and elevation became one choice, `shadows`. Outline strength and outline width became `outline`, a width. Corner smoothing became the constant `CORNER_SMOOTHING` (4) that every window draws with. Density, control fill, divider strength and animation speed are gone, so control heights, fills, rules and transitions no longer change per theme.
 - **Materials and roles instead of a look (2026-10-13, same day).** A global look could not put glass on toolbar buttons and flat fills on the chips under them. `shadows`, `selection` and `field` became role props (`shadow`, `selected`, a field role's `fill` and `outline`), the shadows became two materials with their own geometry, and `look` became `materials` plus `roles`. Unreleased, so there is no migration: a file with `look` stops loading until rewritten. See [surface roles](/designs/surface-roles.md).
 - **`interface-theme` keeps `theme-mode`.** The mode stays its own setting, as in the apps themes imitate.

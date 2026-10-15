@@ -1,10 +1,13 @@
 use crate::ActiveTheme as _;
 use crate::Colorize as _;
 use crate::StyledExt as _;
-use crate::{Edge, Surface, roles};
+use crate::kbd::Kbd;
+use crate::list::ListItem;
+use crate::{Edge, Emphasis, Ground, PaintState, Surface, SurfaceRole, Tone, roles};
 use zz_gpui::{
-    AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Stateful, Styled as _, WindowControlArea, div, prelude::FluentBuilder as _, px,
+    AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, Keystroke,
+    ParentElement as _, Pixels, SharedString, Stateful, Styled as _, WindowControlArea, div,
+    prelude::FluentBuilder as _, px,
 };
 
 #[allow(
@@ -201,4 +204,145 @@ pub fn workspace_status_bar(
         .children(titlebar_controls)
         .child(content)
         .children(window_controls)
+}
+
+const EMPTY_WORKSPACE_WIDTH: f32 = 340.0;
+const EMPTY_KEY_COLUMN: f32 = 92.0;
+const EMPTY_KEY_GAP: f32 = 10.0;
+const EMPTY_ACTION_HEIGHT: f32 = 32.0;
+const EMPTY_HINT_HEIGHT: f32 = 24.0;
+
+pub fn empty_workspace(
+    id: impl Into<ElementId>,
+    content: impl IntoElement,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    div()
+        .id(id)
+        .flex()
+        .size_full()
+        .items_center()
+        .justify_center()
+        .overflow_hidden()
+        .text_color(cx.theme().foreground)
+        .px(px(12.0))
+        .child(content)
+}
+
+pub fn empty_workspace_keys(rows: impl IntoIterator<Item = AnyElement>) -> zz_gpui::Div {
+    div()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .w_full()
+        .max_w(px(EMPTY_WORKSPACE_WIDTH))
+        .gap(px(2.0))
+        .children(rows)
+}
+
+pub fn empty_workspace_action(
+    id: impl Into<ElementId>,
+    keys: impl IntoIterator<Item = Keystroke>,
+    label: impl Into<SharedString>,
+    strong: bool,
+    selected: bool,
+    cx: &App,
+) -> ListItem {
+    let state = if selected {
+        PaintState::Selected
+    } else {
+        PaintState::Rest
+    };
+    let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
+    ListItem::new(id)
+        .selected(selected)
+        .h(px(EMPTY_ACTION_HEIGHT))
+        .px(px(12.0))
+        .py_0()
+        .cursor_pointer()
+        .child(key_hint(keys, label, strong, ground, cx))
+}
+
+pub fn empty_workspace_caption(label: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
+    div()
+        .mt(px(12.0))
+        .mb(px(4.0))
+        .pl(px(12.0 + EMPTY_KEY_COLUMN + EMPTY_KEY_GAP))
+        .text_size(crate::rems_from_px(11.0))
+        .text_color(cx.theme().foreground.muted())
+        .child(label.into())
+}
+
+pub fn empty_workspace_hint(
+    keys: impl IntoIterator<Item = Keystroke>,
+    label: impl Into<SharedString>,
+    cx: &App,
+) -> zz_gpui::Div {
+    key_hint(keys, label, false, cx.theme().ground(), cx)
+        .h(px(EMPTY_HINT_HEIGHT))
+        .px(px(12.0))
+}
+
+pub fn empty_workspace_connect(action: impl IntoElement, cx: &App) -> zz_gpui::Div {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .max_w(px(EMPTY_WORKSPACE_WIDTH))
+        .items_start()
+        .gap_3()
+        .text_size(crate::rems_from_px(12.0))
+        .child("Connect to a computer")
+        .child(
+            div()
+                .text_color(cx.theme().foreground.muted())
+                .child(
+                    "zz attaches to a daemon over SSH. On your Mac, enable Remote Login in System Settings, then add it here.",
+                ),
+        )
+        .child(action)
+}
+
+fn key_hint(
+    keys: impl IntoIterator<Item = Keystroke>,
+    label: impl Into<SharedString>,
+    strong: bool,
+    ground: Ground,
+    cx: &App,
+) -> zz_gpui::Div {
+    let ink = if strong {
+        ground.ink
+    } else {
+        cx.theme()
+            .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
+            .muted_at(PaintState::Rest)
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap(px(EMPTY_KEY_GAP))
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .w(px(EMPTY_KEY_COLUMN))
+                .items_center()
+                .justify_end()
+                .gap(px(4.0))
+                .children(
+                    keys.into_iter()
+                        .map(|key| Kbd::new(key).lowercase().on(ground)),
+                ),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_size(crate::rems_from_px(12.0))
+                .text_color(ink)
+                .child(label.into()),
+        )
 }

@@ -132,7 +132,7 @@ mod tests {
         save_theme(&themes, "Neon_2", r#"{"radius":4}"#).expect("save theme");
         fs::write(themes.join("notes.txt"), "not a theme").expect("write stray file");
         fs::write(themes.join("bad name.json"), "{}").expect("write stray theme");
-        fs::write(themes.join("macos.json"), "{}").expect("write a built-in id");
+        fs::write(themes.join("default.json"), "{}").expect("write a built-in id");
 
         assert_eq!(saved_theme_names(&themes), ["Neon_2", "theme-1"]);
         assert_eq!(next_theme_name(&themes), "theme-2");

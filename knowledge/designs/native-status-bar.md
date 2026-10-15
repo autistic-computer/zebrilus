@@ -42,7 +42,7 @@ desktop view owns those concerns:
 
 | Item | Desktop behavior |
 | --- | --- |
-| Windows | Always left-aligned; index and name for at most five visible windows; the visible range stays centered around the active window, and the overflow menu reaches the rest |
+| Windows | Always left-aligned; the name (no index, since 2026-10-15) for at most five visible windows, with a close button on hover inset like the sidebar tree's; the visible range stays centered around the active window, and the overflow menu reaches the rest |
 | Pane deck | A packed fan of pane tiles, the focused pane in front with its Terminal, Browser, Agent provider, Editor, or Picker glyph; pointing at it opens every pane in a row with details on hover; clicking a tile selects that pane |
 | Window markers | Small bell and activity indicators derived from the model; daemon selection clears the latched attention state |
 | Agents | Small status dot and summary; needs input takes priority over failed, running, and idle states; clicking lists agents and selects their panes |

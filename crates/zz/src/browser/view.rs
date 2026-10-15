@@ -482,7 +482,7 @@ fn element_picker_appearance(theme: &zz_ui::Theme, page_zoom: f64) -> ElementPic
         preview_foreground: to_hex(theme.foreground),
         preview_border: to_hex(theme.border()),
         shadow: theme
-            .casts_shadow(zz_ui::Kind::Popover.role())
+            .casts_shadow(zz_ui::SurfaceRole::POPOVER)
             .then(|| to_hex(theme.shadow_color)),
         radius: f32::from(theme.radius),
         font_family: theme.mono_font_family.to_string(),
@@ -3263,7 +3263,7 @@ impl EntityInputHandler for BrowserView {
 impl zz_gpui::EventEmitter<PaneDrag> for BrowserView {}
 
 impl Render for BrowserChromeView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let back_browser = self.browser.clone();
         let back = browser_toolbar_button(
             cx,
@@ -3549,7 +3549,7 @@ impl Render for BrowserChromeView {
         let activate_browser = self.browser.clone();
         let close_browser = self.browser.clone();
         let new_tab_browser = self.browser.clone();
-        let address = browser_address(&self.address, site_controls, cx).on_mouse_down(
+        let address = browser_address(&self.address, site_controls, window, cx).on_mouse_down(
             MouseButton::Left,
             move |_, _, cx| {
                 if let Some(browser) = address_browser.upgrade() {
@@ -4232,7 +4232,7 @@ mod tests {
         assert_eq!(appearance.page_zoom, 1.25);
 
         theme.styles.insert(
-            zz_ui::Kind::Popover.name().into(),
+            zz_ui::SurfaceRole::POPOVER.id.into(),
             zz_ui::StylePatch::EMPTY.shadow(zz_ui::Shadow::None),
         );
         assert_eq!(element_picker_appearance(&theme, 1.0).shadow, None);

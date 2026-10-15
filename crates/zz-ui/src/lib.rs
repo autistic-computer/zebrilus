@@ -16,14 +16,14 @@ pub use zz_gpui_kit::code_editor;
 pub use zz_gpui_kit::{
     ActiveTheme, Assets, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING, Colorize, Disableable,
     Edge, ElementExt, Elevation, Emphasis, Fill, Ground, Highlight, Icon, IconName, IndexPath,
-    InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt, Kind, Layer,
+    InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt, Kind, Knobs, Layer,
     MACOS_TRAFFIC_LIGHT_INSET, MACOS_TRAFFIC_LIGHT_SPAN, Paint, PaintExt, PaintState, PrimaryStyle,
     ROOT_KEY_CONTEXT, RULE_WIDTH, Root, ScrollbarShow, Selectable, Shadow, ShadowMaterial, Shape,
     Side, Sizable, Size, StatefulSurfaceExt, Style, StylePatch, StyledExt, Surface, SurfaceRole,
     TITLE_BAR_HEIGHT, Theme, ThemeColor, ThemeMode, TitleBar, Tone, UiZoom, WindowControls,
-    WindowExt, cubic_ease, draws_window_controls, h_flex, init, lifted_shadow,
-    macos_traffic_light_clearance, oklab_lightness, parse_hex, rems_from_px, row_corners,
-    row_radius, to_hex, v_flex, window_border, window_controls_width, window_paddings,
+    WindowExt, cubic_ease, drawn_roles, draws_window_controls, h_flex, init, lifted_shadow,
+    macos_traffic_light_clearance, note_drawn_roles, oklab_lightness, parse_hex, rems_from_px,
+    row_corners, row_radius, to_hex, v_flex, window_border, window_controls_width, window_paddings,
 };
 
 #[cfg(feature = "agent")]

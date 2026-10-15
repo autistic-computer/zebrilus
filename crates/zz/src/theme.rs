@@ -184,11 +184,10 @@ mod tests {
     fn the_selected_theme_paints_the_mode_it_is_in(cx: &mut zz_gpui::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
-            let linear =
-                zz_ui::interface_theme::builtin_theme("linear").expect("Linear is built in");
+            let default = zz_ui::interface_theme::default_theme();
             cx.set_global(config::Themes {
-                active: linear.clone(),
-                selected: "linear".into(),
+                active: default.clone(),
+                selected: "default".into(),
                 saved: Vec::new(),
                 error: None,
             });
@@ -201,7 +200,7 @@ mod tests {
                 cx.set_global(config);
                 refresh_current_theme(cx);
                 let theme = Theme::global(cx);
-                assert_eq!(theme.colors, linear.colors(mode));
+                assert_eq!(theme.colors, default.colors(mode));
                 assert!(theme.glass.is_none());
             }
         });
@@ -280,16 +279,23 @@ mod tests {
     fn gapped_panes_draw_frames_in_every_theme(cx: &mut zz_gpui::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
-            for (id, gaps) in [
-                ("macos", true),
-                ("macos", false),
-                ("linear", true),
-                ("linear", false),
+            let default = zz_ui::interface_theme::default_theme().clone();
+            let mut glass = default.clone();
+            zz_ui::interface_theme::material_presets()
+                .iter()
+                .find(|(id, _)| *id == "liquid-glass")
+                .expect("the Liquid glass preset")
+                .1
+                .apply_to(&mut glass);
+            for (id, theme, gaps) in [
+                ("default", &default, true),
+                ("default", &default, false),
+                ("liquid-glass", &glass, true),
+                ("liquid-glass", &glass, false),
             ] {
-                let theme = zz_ui::interface_theme::builtin_theme(id).expect("theme is built in");
                 cx.set_global(config::Themes {
                     active: theme.clone(),
-                    selected: id.into(),
+                    selected: "default".into(),
                     saved: Vec::new(),
                     error: None,
                 });

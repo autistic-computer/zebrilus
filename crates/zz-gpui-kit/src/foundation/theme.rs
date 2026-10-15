@@ -117,6 +117,7 @@ pub struct Theme {
     /// A role whose every surface draws a marker ring, so a theme editor can
     /// show where it appears.
     pub inspect: Option<SharedString>,
+    pub inspect_strength: f32,
     pub pane_background_opacity: f32,
     /// Whether panes draw a [`Self::pane_frame`], which then owns their
     /// fill: set while panes have gaps.
@@ -140,6 +141,8 @@ impl Default for Theme {
 
 /// The corner smoothing every window draws with.
 pub const CORNER_SMOOTHING: f32 = 4.0;
+const PANE_GLOW_REACH: Pixels = px(128.0);
+const PANE_GLOW: f32 = 0.16;
 
 impl Deref for Theme {
     type Target = ThemeColor;
@@ -248,9 +251,9 @@ impl Theme {
     /// lensing, tinted with the pane's color over `plane`, the window color
     /// behind the pane. On an opaque window the tint is solid, so the glass
     /// paints in place without reading the backdrop. The active pane lights
-    /// its edge in the accent: the glint and fresnel scaled by
-    /// [`Self::pane_glow_strength`], and the contour, which also shows on a
-    /// light pane where added light cannot.
+    /// its edge in the accent: the glint, a glow that fades in from the edge
+    /// over `PANE_GLOW_REACH`, both scaled by [`Self::pane_glow_strength`],
+    /// and the contour.
     pub fn pane_frame(&self, fill: Hsla, plane: Hsla, active: bool) -> GlassMaterial {
         let tint = plane.blend(self.pane_color(fill));
         let frame = self
@@ -273,7 +276,8 @@ impl Theme {
             frame
                 .light_color(self.accent.opaque())
                 .specular(frame.specular * strength)
-                .fresnel(frame.fresnel * strength)
+                .bezel(PANE_GLOW_REACH)
+                .fresnel(PANE_GLOW * strength)
                 .edge_color(self.accent.opaque())
                 .edge_shadow(strength.min(1.0))
                 .edge_width(frame.edge_width.max(px(1.0)))
@@ -402,6 +406,7 @@ impl From<&ThemeColor> for Theme {
             glass: None,
             styles: HashMap::default(),
             inspect: None,
+            inspect_strength: 1.0,
             pane_background_opacity: 0.5,
             pane_frames: false,
             pane_edge_width: px(0.5),
@@ -534,16 +539,15 @@ mod tests {
         assert_eq!(inactive.edge_color, GlassMaterial::regular().edge_color);
         assert_eq!(active.edge_shadow, 1.0);
         assert!(active.edge_width >= px(1.0));
-        assert_eq!(
-            (active.specular, active.fresnel),
-            (inactive.specular, inactive.fresnel)
-        );
+        assert_eq!(active.specular, inactive.specular);
+        assert_eq!((active.bezel, active.fresnel), (PANE_GLOW_REACH, PANE_GLOW));
+        assert!(inactive.bezel < PANE_GLOW_REACH);
 
         theme.pane_glow_strength = 2.0;
         let bright = theme.pane_frame(fill, plane, true);
         assert_eq!(
             (bright.specular, bright.fresnel),
-            (inactive.specular * 2.0, inactive.fresnel * 2.0)
+            (inactive.specular * 2.0, PANE_GLOW * 2.0)
         );
 
         theme.pane_glow_strength = 0.0;

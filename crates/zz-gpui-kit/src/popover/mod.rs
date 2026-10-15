@@ -9,7 +9,7 @@ use zz_gpui::{
     anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{Kind, Selectable, StyledExt as _, SurfaceRole, v_flex};
+use crate::{Selectable, StyledExt as _, SurfaceRole, v_flex};
 use actions::Cancel;
 
 const CONTEXT: &str = "ZzPopover";
@@ -261,7 +261,7 @@ impl RenderOnce for Popover {
             .occlude()
             .tab_group()
             .when(self.appearance, |this| {
-                this.surface(self.surface_role.unwrap_or(Kind::Popover.role()), cx)
+                this.surface(self.surface_role.unwrap_or(SurfaceRole::POPOVER), cx)
                     .p_3()
             })
             .map(|this| {

@@ -3,8 +3,9 @@ use std::{collections::VecDeque, rc::Rc};
 use crate::ios_browser::{BrowserEvent, BrowserProfile, BrowserView, ElementPickerAppearance};
 use futures::StreamExt as _;
 use zz_gpui::{
-    App, ClipboardEntry, ClipboardItem, ClipboardString, Context, Corners, Entity, FocusHandle,
-    Focusable, Image, ImageFormat, Pixels, Render, Subscription, Window, div, prelude::*, px,
+    App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context, Corners, Entity,
+    FocusHandle, Focusable, Image, ImageFormat, Pixels, Render, Subscription, Window, div, point,
+    prelude::*, px, size,
 };
 use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
 use zz_ui::{
@@ -163,7 +164,7 @@ impl BrowserPane {
                 preview_foreground: zz_ui::to_hex(theme.foreground),
                 preview_border: zz_ui::to_hex(theme.border()),
                 shadow: theme
-                    .casts_shadow(zz_ui::Kind::Popover.role())
+                    .casts_shadow(zz_ui::SurfaceRole::POPOVER)
                     .then(|| zz_ui::to_hex(theme.shadow_color)),
                 radius: f32::from(theme.radius),
                 font_family: theme.mono_font_family.to_string(),
@@ -514,7 +515,7 @@ impl Focusable for BrowserPane {
 }
 
 impl Render for BrowserPane {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let writable = self.writable(cx);
         let tab = &self.tabs[self.active];
         let tabs = self
@@ -584,7 +585,7 @@ impl Render for BrowserPane {
                 false,
             )
             .on_click(cx.listener(|this, _, _, cx| this.reload(cx))),
-            browser_address(&self.address, Icon::new(IconName::Globe), cx),
+            browser_address(&self.address, Icon::new(IconName::Globe), window, cx),
             browser_toolbar_button(
                 cx,
                 "ios-browser-element-picker",
@@ -640,7 +641,13 @@ impl Render for BrowserPane {
         );
         let view = tab.view.clone();
         let visible = self.visible && self.profile.available();
-        let radius = self.radii.bottom_left.min(self.radii.bottom_right);
+        let theme = cx.theme();
+        let edge = if theme.pane_frames {
+            theme.pane_edge_width
+        } else {
+            px(0.0)
+        };
+        let radius = (self.radii.bottom_left.min(self.radii.bottom_right) - edge).max(px(0.0));
         let waiting = !self.profile.available();
         let error = tab.error.clone().filter(|_| !waiting);
         let failed = error.is_some();
@@ -666,7 +673,7 @@ impl Render for BrowserPane {
             .overflow_hidden()
             .rounded_tl(self.radii.top_left)
             .rounded_tr(self.radii.top_right)
-            .bg(cx.theme().background.opaque())
+            .bg(cx.theme().pane_background(cx.theme().background))
             .text_color(cx.theme().foreground)
             .child(BrowserHeader::new(
                 self.active_pane,
@@ -715,6 +722,13 @@ impl Render for BrowserPane {
                     .min_h_0()
                     .min_w_0()
                     .on_prepaint(move |bounds, window, _| {
+                        let bounds = Bounds::new(
+                            point(bounds.left() + edge, bounds.top()),
+                            size(
+                                (bounds.size.width - edge * 2.0).max(px(0.0)),
+                                (bounds.size.height - edge).max(px(0.0)),
+                            ),
+                        );
                         view.mount(bounds, radius, window);
                         view.set_visible(
                             visible

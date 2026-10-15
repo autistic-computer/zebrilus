@@ -6,8 +6,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, PaintState, Sizable as _,
-    Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Sizable as _,
+    SurfaceRole, Tone,
     badge::Badge,
     input::{Input, InputState},
     kbd::Keycap,
@@ -160,7 +160,7 @@ pub(super) fn palette_entry(
     } else {
         PaintState::Rest
     };
-    let layer = cx.theme().layer(Kind::Row, state);
+    let layer = cx.theme().layer(SurfaceRole::MENU_ITEM, state);
     let foreground = layer.text;
     let secondary = muted_on(&layer, cx);
     let highlights = row
@@ -463,7 +463,9 @@ mod tests {
                     .find(|quad| {
                         quad.background
                             == zz_gpui::solid_background(
-                                cx.theme().layer(Kind::Row, PaintState::Selected).fill,
+                                cx.theme()
+                                    .layer(SurfaceRole::MENU_ITEM, PaintState::Selected)
+                                    .fill,
                             )
                             && quad.bounds.size.width.0 > 100.0 * window.scale_factor()
                     })
@@ -474,7 +476,12 @@ mod tests {
                 );
                 assert!(surface.bounds.contains(&selection.bounds.origin));
                 assert!(surface.bounds.contains(&selection.bounds.bottom_right()));
-                assert!(selection.corner_radii.top_left.0 < selection.bounds.size.height.0 / 2.0);
+                let pill = selection.bounds.size.height.0 / 2.0;
+                if radius > 24.0 {
+                    assert!((selection.corner_radii.top_left.0 - pill).abs() < 0.001);
+                } else {
+                    assert!(selection.corner_radii.top_left.0 < pill);
+                }
                 assert!(
                     quads.iter().any(|quad| {
                         quad.border_color

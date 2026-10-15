@@ -539,7 +539,7 @@ With no prefix cards, the composer overlaps the transcript by 12 px with no top 
 clips within that overlap, before reaching the footer.
 Permission, error, queue, and completion prefixes keep their top spacing without overlap.
 The composer is a field shell drawn as the `agent.composer` field role (a soft wash in Default,
-glass in Tahoe), not an opaque card; its surroundings inherit the pane transparency.
+glass in a theme that gives that role a glass fill), not an opaque card; its surroundings inherit the pane transparency.
 The combined directory and session picker sits at the right end of the desktop composer footer. The transcript reserves
 12 px of bottom padding, and its scrollbar stops 12 px above the viewport bottom. Controller updates for other panes
 or unchanged pane metadata do not invalidate this view.

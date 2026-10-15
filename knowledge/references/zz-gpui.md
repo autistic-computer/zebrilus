@@ -168,7 +168,9 @@ Each is upstream-able as a small Zed PR; if Zed merges an equivalent, drop it. I
     small radius changes become visually compressed. `FULL_CORNER_RADIUS` (what `rounded_full` sets) is exempt
     and still resolves to exactly half, making a pill something a widget declares.
     Per-element `CornerRadiusMode::Fixed` bypasses adaptive compression and uses the normal
-    geometric clamp. `Styled::corner_smoothing` overrides the contour for an element's fill,
+    geometric clamp. `Window::resolve_corner_radii` applies the same policy to radii an element
+    paints itself with `paint_quad`, so a press layer or other painted quad keeps the corners
+    of the element under it. `Styled::corner_smoothing` overrides the contour for an element's fill,
     border, and shadows without changing descendants. PopupMenu rows use these native
     controls for circular corners with a separate non-pill radius cap.
 22. Building the wgpu renderer against wgpu 30: `Queue::present()` replaces
@@ -278,9 +280,11 @@ shape array out of fast uniform registers (0.04 ms on a full 5K window), and emp
 clear instead of discarding (0.01 ms).
 
 `GlassMaterial::light_color` (white by default) colors the glint and the fresnel glow; theme files
-without the key keep white. Light only adds, so it cannot show on a white surface:
-`GlassMaterial::edge_color` (black by default) colors the contour instead, its alpha folded into
-the edge shadow strength on the CPU side, and zz's active pane frame sets both to the accent. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
+without the key keep white. The glint adds light; the fresnel mixes the rim toward the light color
+(since 2026-10-15; it added before, which could not show on a white surface), so a wide bezel with
+a colored fresnel is a soft inner glow on any surface. `GlassMaterial::edge_color` (black by
+default) colors the contour, its alpha folded into the edge shadow strength on the CPU side, and
+zz's active pane frame sets both to the accent and widens its bezel into that glow. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
 blur or refraction, a 1 px glint, faint fresnel, a 0.5 px contour), meant for surfaces that cover
 most of the window, such as pane frames.
 

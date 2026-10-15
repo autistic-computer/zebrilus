@@ -89,6 +89,32 @@ pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
 }
 
+/// The session switcher at the start of the overview's bar: the attached
+/// session's name between the layers icon and a caret, as wide as they are.
+pub fn compact_session_switcher(
+    id: impl Into<ElementId>,
+    name: impl Into<SharedString>,
+    cx: &App,
+) -> Button {
+    compact_bar_button(id, IconName::Layers)
+        .flex_none()
+        .w_auto()
+        .gap(rems_from_px(6.0))
+        .px(rems_from_px(10.0))
+        .child(
+            div()
+                .text_size(rems_from_px(17.0))
+                .font_semibold()
+                .whitespace_nowrap()
+                .child(name.into()),
+        )
+        .child(
+            Icon::new(IconName::ChevronDown)
+                .size(rems_from_px(14.0))
+                .text_color(cx.theme().foreground.muted()),
+        )
+}
+
 /// A 44pt bar across the top of a phone page, drawn as [`roles::PHONE_BAR`]:
 /// the settings and overview bars.
 pub fn compact_nav_bar(cx: &App) -> Div {
@@ -154,6 +180,11 @@ pub fn compact_bar_pill(
         .gap(rems_from_px(10.0))
         .surface(roles::PHONE_PILL, cx)
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(crate::touch::press_highlight(
+            "compact-bar-pill-press",
+            pressed,
+            radius,
+        ))
         .child(
             div()
                 .flex()
@@ -210,9 +241,4 @@ pub fn compact_bar_pill(
                         .child(dots),
                 ),
         )
-        .child(crate::touch::press_highlight(
-            "compact-bar-pill-press",
-            pressed,
-            radius,
-        ))
 }

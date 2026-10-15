@@ -69,6 +69,7 @@ fn canvas(
     gaps: bool,
     inline_sidebar: bool,
     address: &Entity<InputState>,
+    window: &Window,
     cx: &App,
 ) -> impl IntoElement {
     let terminal = TerminalPane::new(1, "cargo test", BUILD)
@@ -85,7 +86,7 @@ fn canvas(
         Vec::new(),
         cx,
     );
-    let browser = browser_pane("shell-browser", address, false, gaps, cx);
+    let browser = browser_pane("shell-browser", address, false, gaps, window, cx);
     let right = pane_split_surface(
         "shell-right",
         PaneSplitAxis::Vertical,
@@ -140,7 +141,13 @@ fn window_frame(id: &'static str, height: f32, shell: impl IntoElement, cx: &App
         .into_any_element()
 }
 
-pub(crate) fn with_sidebar(gaps: bool, state: &Shell, index: usize, cx: &App) -> AnyElement {
+pub(crate) fn with_sidebar(
+    gaps: bool,
+    state: &Shell,
+    index: usize,
+    window: &Window,
+    cx: &App,
+) -> AnyElement {
     let sidebar = sidebar(
         tree_list(
             workspace_tree(),
@@ -161,7 +168,7 @@ pub(crate) fn with_sidebar(gaps: bool, state: &Shell, index: usize, cx: &App) ->
         None,
         app_workspace_surface(
             "workspace",
-            canvas(gaps, true, &state.addresses[index], cx),
+            canvas(gaps, true, &state.addresses[index], window, cx),
             Vec::new(),
             cx,
         ),
@@ -170,7 +177,13 @@ pub(crate) fn with_sidebar(gaps: bool, state: &Shell, index: usize, cx: &App) ->
     .into_any_element()
 }
 
-fn with_status_bar(gaps: bool, state: &Shell, index: usize, cx: &App) -> AnyElement {
+fn with_status_bar(
+    gaps: bool,
+    state: &Shell,
+    index: usize,
+    window: &Window,
+    cx: &App,
+) -> AnyElement {
     app_shell_surface(
         "shell",
         cx.theme().background,
@@ -178,7 +191,7 @@ fn with_status_bar(gaps: bool, state: &Shell, index: usize, cx: &App) -> AnyElem
         Some(titlebar(&Bar { gaps, ..Bar::FULL }, cx).into_any_element()),
         app_workspace_surface(
             "workspace",
-            canvas(gaps, false, &state.addresses[index], cx),
+            canvas(gaps, false, &state.addresses[index], window, cx),
             Vec::new(),
             cx,
         ),
@@ -187,14 +200,14 @@ fn with_status_bar(gaps: bool, state: &Shell, index: usize, cx: &App) -> AnyElem
     .into_any_element()
 }
 
-fn app(state: &Shell, _: &mut Window, cx: &mut App) -> AnyElement {
+fn app(state: &Shell, window: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "sidebar open, no gaps (the default)",
             window_frame(
                 "shell-sidebar",
                 540.0,
-                with_sidebar(false, state, 0, cx),
+                with_sidebar(false, state, 0, window, cx),
                 cx,
             ),
         )
@@ -203,7 +216,7 @@ fn app(state: &Shell, _: &mut Window, cx: &mut App) -> AnyElement {
             window_frame(
                 "shell-status",
                 540.0,
-                with_status_bar(true, state, 1, cx),
+                with_status_bar(true, state, 1, window, cx),
                 cx,
             ),
         )

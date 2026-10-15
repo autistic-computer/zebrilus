@@ -1,0 +1,26 @@
+{
+  "name": "Liquid glass",
+  "about": "Tahoe's glass, generous corners, hairlines and soft, deep floating shadows.",
+  "materials": {
+    "radius": 18,
+    "outline": 0.5,
+    "row-inset": 5,
+    "primary": "accent",
+    "glass": {
+      "preset": "regular",
+      "blur": 19.7,
+      "tint": "#ffffff87",
+      "refraction": 40,
+      "bezel": 11,
+      "dispersion": 0.06,
+      "saturation": 0.9,
+      "brightness": 0.04,
+      "specular": 0.3,
+      "fresnel": 0.03,
+      "edge_shadow": 0.45,
+      "noise": 0
+    },
+    "contact": { "y": 1, "blur": 3, "strength": 0.7 },
+    "float": { "y": 16, "blur": 44, "spread": -6, "strength": 1.1 }
+  }
+}

@@ -19,7 +19,7 @@ use web_time::{Duration, Instant};
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Elevation, Emphasis, Ground, Icon, IconName,
-    Kind, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Surface, Tone,
+    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Surface, SurfaceRole, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     badge::Badge,
     button::{Button, ButtonVariants as _},
@@ -52,6 +52,7 @@ const ACTIVITY_ROW_FONT_SIZE: f32 = 13.0;
 /// [`ACTIVITY_ROW_FONT_SIZE`] (15.31px), so `overflow_hidden` never clips a
 /// descender.
 const ACTIVITY_ROW_LINE_HEIGHT: f32 = 16.0;
+const ACTIVITY_ROW_INSET: f32 = 8.0;
 const ACTIVITY_DISCLOSURE_SIZE: f32 = 12.0;
 const MERMAID_CACHE_CAPACITY: usize = 16;
 const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
@@ -2305,7 +2306,8 @@ fn activity_row_marked(
     };
     let row = h_flex()
         .id(id)
-        .w_full()
+        .mx(px(-ACTIVITY_ROW_INSET))
+        .px(px(ACTIVITY_ROW_INSET))
         .h(px(ACTIVITY_ROW_HEIGHT))
         .flex_none()
         .gap_2()
@@ -2428,7 +2430,7 @@ fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> 
     let theme = cx.theme();
     let ground = transcript_ground(cx);
     let badge = theme.layer(
-        Surface::new(Kind::Badge.role())
+        Surface::new(SurfaceRole::BADGE)
             .tone(if count.failed {
                 Tone::Danger
             } else {

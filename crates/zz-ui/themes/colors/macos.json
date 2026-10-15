@@ -1,0 +1,20 @@
+{
+  "name": "macOS",
+  "about": "AppKit's window and label colors, the default blue and the system status colors.",
+  "light": {
+    "background": "#ffffff",
+    "foreground": "#272727",
+    "accent": "#007aff",
+    "success": "#009525",
+    "warning": "#cd6000",
+    "danger": "#f52b33"
+  },
+  "dark": {
+    "background": "#1e1e1e",
+    "foreground": "#dddddd",
+    "accent": "#007aff",
+    "success": "#30d158",
+    "warning": "#ff9230",
+    "danger": "#ff4245"
+  }
+}

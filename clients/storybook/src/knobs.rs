@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use zz_gpui::{App, GlassMaterial, Hsla, SharedString, WindowAppearance, px};
+use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
     CORNER_SMOOTHING, Emphasis, PrimaryStyle, Style, StylePatch, SurfaceRole, Theme, ThemeColor,
     ThemeMode, Tone, UiZoom,
@@ -24,8 +24,6 @@ pub struct Knobs {
     /// How the theme changes each kind and role: the start theme's until
     /// the `roles` knob names them.
     pub roles: BTreeMap<String, StylePatch>,
-    /// The role whose surfaces draw the inspect ring.
-    pub inspect: Option<SharedString>,
     pub light: ThemeColors,
     pub dark: ThemeColors,
     pub contrast: f32,
@@ -199,7 +197,6 @@ impl Knobs {
             name: theme.name.clone(),
             materials: theme.materials.clone(),
             roles: theme.roles.clone(),
-            inspect: None,
             light: theme.light.clone(),
             dark: theme.dark.clone(),
             contrast: 1.0,
@@ -264,14 +261,6 @@ impl Knobs {
                 }
                 "name" => knobs.name = decode(value),
                 "roles" => knobs.roles = parse_roles(&decode(value))?,
-                "inspect" => {
-                    let id = decode(value);
-                    knobs.inspect = match id.as_str() {
-                        "" => None,
-                        id if zz_ui::roles::find(id).is_some() => Some(id.to_owned().into()),
-                        id => return Err(format!("inspect names no role: {id}")),
-                    };
-                }
                 "primary" => {
                     knobs.materials.primary = match value {
                         "foreground" => PrimaryStyle::Foreground,
@@ -369,7 +358,6 @@ impl Knobs {
         theme.pane_glow_strength = self.pane.glow;
         theme.pane_frames = self.pane.gaps;
         theme.pane_edge_width = px(self.pane.border);
-        theme.inspect.clone_from(&self.inspect);
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();
@@ -456,35 +444,27 @@ fn parse_roles(json: &str) -> Result<BTreeMap<String, StylePatch>, String> {
 }
 
 /// Where a role's prop comes from before the theme names the role itself:
-/// its kind's built-in style, the theme's patch for its kind, or the role's
-/// own built-in patch.
+/// the built-in style or patch of the role or one of its groups, or the
+/// theme's patch for one of its groups, which beats every built-in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Origin {
-    Kind,
-    ThemeKind,
-    Role,
-}
-
-impl Origin {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Kind => "kind",
-            Self::ThemeKind => "theme-kind",
-            Self::Role => "role",
-        }
-    }
+pub struct Origin {
+    pub role: SurfaceRole,
+    pub themed: bool,
 }
 
 /// The props of a [`Style`] in theme-file order.
 pub const PROPS: [&str; 6] = ["fill", "outline", "shadow", "shape", "hover", "selected"];
 
 /// The style `role` takes from everything but the theme's patch for it, and
-/// where each of its [`PROPS`] comes from. For a kind, the theme's patch
-/// for the kind is its own patch, so it inherits only the built-in.
+/// where each of its [`PROPS`] comes from.
 pub fn inherited(role: SurfaceRole, roles: &BTreeMap<String, StylePatch>) -> (Style, [Origin; 6]) {
+    let knobs = role.knobs();
     let mut style = role.kind.base();
-    let mut origins = [Origin::Kind; 6];
-    let mut layer = |patch: &StylePatch, origin: Origin| {
+    let mut origins = [Origin {
+        role: role.kind.role(),
+        themed: false,
+    }; 6];
+    let mut layer = |patch: StylePatch, origin: Origin| {
         patch.apply(&mut style);
         let named = [
             patch.fill.is_some(),
@@ -500,13 +480,39 @@ pub fn inherited(role: SurfaceRole, roles: &BTreeMap<String, StylePatch>) -> (St
             }
         }
     };
-    if !role.is_kind()
-        && let Some(patch) = roles.get(role.kind.name())
-    {
-        layer(patch, Origin::ThemeKind);
+    let lineage = role.lineage().collect::<Vec<_>>();
+    for node in lineage.iter().rev() {
+        layer(
+            node.patch,
+            Origin {
+                role: *node,
+                themed: false,
+            },
+        );
     }
-    layer(&role.patch, Origin::Role);
+    for node in lineage.iter().rev().filter(|node| node.id != role.id) {
+        if let Some(patch) = roles.get(node.id) {
+            layer(
+                knobs.admit(*patch),
+                Origin {
+                    role: *node,
+                    themed: true,
+                },
+            );
+        }
+    }
     (style, origins)
+}
+
+pub fn knobs_json(knobs: zz_ui::Knobs) -> serde_json::Value {
+    serde_json::json!({
+        "fill": knobs.fill,
+        "outline": knobs.outline,
+        "shadow": knobs.shadow,
+        "shape": knobs.shape,
+        "hover": knobs.hover,
+        "selected": knobs.selected,
+    })
 }
 
 /// `style`'s props by name, spelled as a theme file spells them.
@@ -580,16 +586,30 @@ fn number(key: &str, value: &str) -> Result<f32, String> {
 mod tests {
     use super::*;
 
+    fn themes() -> Vec<(String, InterfaceTheme)> {
+        let built_in = interface_theme::builtin_themes()
+            .iter()
+            .map(|(id, theme)| ((*id).to_owned(), theme.clone()));
+        let dressed = interface_theme::material_presets()
+            .iter()
+            .map(|(id, preset)| {
+                let mut theme = interface_theme::default_theme().clone();
+                preset.apply_to(&mut theme);
+                (format!("preset {id}"), theme)
+            });
+        built_in.chain(dressed).collect()
+    }
+
     #[test]
     fn parses_known_keys_and_ignores_the_rest() {
         let knobs = Knobs::parse(
-            "?theme=dark&radius=12&zoom=1.25&story=agent&interface-theme=linear&motion=0",
+            "?theme=dark&radius=12&zoom=1.25&story=agent&interface-theme=default&motion=0",
         )
         .unwrap();
         assert_eq!(knobs.theme, Some(ThemeMode::Dark));
         assert_eq!(knobs.materials.radius, 12.0);
         assert_eq!(knobs.zoom, 1.25);
-        assert_eq!(knobs.interface, "linear");
+        assert_eq!(knobs.interface, "default");
         assert!(!knobs.motion);
         assert_eq!(
             Knobs::parse("pane-glass=on").unwrap().pane,
@@ -621,7 +641,7 @@ mod tests {
             None
         );
         assert!(Knobs::parse("glass=lava").is_err());
-        let lit = Knobs::parse("glass-light=90&glass-glint-width=3").unwrap();
+        let lit = Knobs::parse("glass=regular&glass-light=90&glass-glint-width=3").unwrap();
         let glass = lit.materials.glass.unwrap();
         assert!((glass.light_angle - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
         assert_eq!(glass.glint_width, px(3.0));
@@ -629,17 +649,17 @@ mod tests {
 
     #[test]
     fn the_interface_theme_sets_the_knobs_until_one_says_otherwise() {
-        let linear = interface_theme::builtin_theme("linear").unwrap();
-        let knobs = Knobs::parse("interface-theme=linear").unwrap();
-        assert_eq!(knobs.interface_theme(), *linear);
+        let default = interface_theme::default_theme();
+        let knobs = Knobs::parse("interface-theme=default").unwrap();
+        assert_eq!(knobs.interface_theme(), *default);
         let tuned = Knobs::parse(
-            "radius=12&primary=foreground&dark-on-accent=%23112233&interface-theme=linear",
+            "radius=12&primary=accent&dark-on-accent=%23112233&interface-theme=default",
         )
         .unwrap();
         assert_eq!(tuned.materials.radius, 12.0);
-        assert_eq!(tuned.materials.primary, PrimaryStyle::Foreground);
+        assert_eq!(tuned.materials.primary, PrimaryStyle::Accent);
         assert_eq!(tuned.dark.on_accent, zz_ui::parse_hex("#112233").ok());
-        assert_eq!(tuned.light, linear.light);
+        assert_eq!(tuned.light, default.light);
         assert!(Knobs::parse("primary=loud").is_err());
         assert!(Knobs::parse("contact-y=low").is_err());
         assert!(Knobs::parse("light-accent=blue").is_err());
@@ -647,47 +667,56 @@ mod tests {
 
     #[test]
     fn shadow_and_role_knobs_change_only_what_they_name() {
-        let tahoe = interface_theme::builtin_theme("tahoe").unwrap();
+        let default = interface_theme::default_theme();
         let theme = Knobs::parse(
-            "interface-theme=tahoe&float-y=4&contact-strength=0.5&roles=%7B%22chip%22%3A%7B%22fill%22%3A%22glass%22%7D%7D",
+            "interface-theme=default&float-y=4&contact-strength=0.5&roles=%7B%22tile%22%3A%7B%22fill%22%3A%22glass%22%7D%7D",
         )
         .unwrap()
         .interface_theme();
         assert_eq!(theme.materials.float.y, 4.0);
-        assert_eq!(theme.materials.float.blur, tahoe.materials.float.blur);
+        assert_eq!(theme.materials.float.blur, default.materials.float.blur);
         assert_eq!(theme.materials.contact.strength, 0.5);
         assert_eq!(theme.roles.len(), 1);
         assert_eq!(
-            theme.roles["chip"],
+            theme.roles["tile"],
             StylePatch::EMPTY.fill(zz_ui::Fill::Glass)
         );
         let file = interface_theme::parse_theme(&theme.to_json()).unwrap();
         assert_eq!(file, theme);
         assert_eq!(
-            Knobs::parse("interface-theme=tahoe").unwrap().roles,
-            tahoe.roles
+            Knobs::parse("interface-theme=default").unwrap().roles,
+            default.roles
         );
-        assert!(Knobs::parse("roles=%7B%22chipp%22%3A%7B%7D%7D").is_err());
+        assert!(Knobs::parse("roles=%7B%22tilee%22%3A%7B%7D%7D").is_err());
         assert!(Knobs::parse("roles=chip").is_err());
         assert!(Knobs::parse("float-blur=soft").is_err());
     }
 
     #[test]
-    fn inspect_names_a_role_or_nothing() {
-        assert_eq!(
-            Knobs::parse("inspect=chrome.button")
-                .unwrap()
-                .inspect
-                .as_deref(),
-            Some("chrome.button")
-        );
-        assert_eq!(Knobs::parse("inspect=").unwrap().inspect, None);
-        assert!(Knobs::parse("inspect=sparkle").is_err());
-    }
-
-    #[test]
     fn a_role_inherits_what_the_theme_resolves_and_says_from_where() {
-        for (id, theme) in interface_theme::builtin_themes() {
+        let group_patches = BTreeMap::from([
+            (
+                "icon-button".to_owned(),
+                StylePatch::EMPTY
+                    .fill(zz_ui::Fill::Tint)
+                    .outline(true)
+                    .hover(zz_ui::Highlight::Ring),
+            ),
+            (
+                "floating".to_owned(),
+                StylePatch::EMPTY
+                    .fill(zz_ui::Fill::Glass)
+                    .shape(zz_ui::Shape::Pill),
+            ),
+        ]);
+        let patched = InterfaceTheme {
+            roles: group_patches.clone(),
+            ..interface_theme::default_theme().clone()
+        };
+        for (id, theme) in themes()
+            .into_iter()
+            .chain([("patched groups".to_owned(), patched)])
+        {
             let mut kit = Theme::default();
             theme.apply_roles(&mut kit);
             for role in zz_ui::roles::all() {
@@ -698,24 +727,35 @@ mod tests {
                 assert_eq!(style, kit.style(role), "{id} {}", role.id);
             }
         }
-        let tahoe = &interface_theme::builtin_theme("tahoe").unwrap().roles;
-        let (style, origins) = inherited(zz_ui::roles::STATUS_CHIP, tahoe);
+        let origin = |role, themed| Origin { role, themed };
+        let (style, origins) = inherited(zz_ui::roles::WINDOW_CONTROLS, &group_patches);
         assert_eq!(style.fill, zz_ui::Fill::Tint);
-        assert_eq!(origins[0], Origin::Role);
-        assert_eq!(origins[3], Origin::ThemeKind);
-        assert_eq!(origins[1], Origin::ThemeKind);
-        assert_eq!(origins[4], Origin::Kind);
-        let (_, origins) = inherited(zz_ui::Kind::Chip.role(), tahoe);
-        assert_eq!(origins, [Origin::Kind; 6]);
+        assert_eq!(origins[0], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
+        assert_eq!(origins[2], origin(zz_ui::SurfaceRole::ICON_BUTTON, false));
+        assert_eq!(origins[3], origin(zz_ui::roles::WINDOW_CONTROLS, false));
+        assert_eq!(style.hover, zz_ui::Highlight::Ring);
+        assert_eq!(origins[4], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
+        let (style, origins) = inherited(zz_ui::roles::DROP_ZONE, &group_patches);
+        assert_eq!(style.fill, zz_ui::Fill::Glass);
+        assert_eq!(origins[0], origin(zz_ui::Kind::Floating.role(), true));
+        let (style, origins) = inherited(zz_ui::SurfaceRole::DIALOG, &group_patches);
+        assert_eq!(style.shape, zz_ui::Shape::Round);
+        assert_eq!(origins[3], origin(zz_ui::Kind::Floating.role(), false));
+        assert_eq!(
+            inherited(zz_ui::SurfaceRole::TOAST, &group_patches).0.shape,
+            zz_ui::Shape::Pill
+        );
     }
 
     #[test]
     fn a_shadow_color_knob_keeps_the_themes_alpha() {
-        let macos = interface_theme::builtin_theme("macos").unwrap();
-        let knobs = Knobs::parse("interface-theme=macos&dark-shadow-color=%23102030").unwrap();
-        let shadow = knobs.dark.shadow_color.unwrap();
-        assert_eq!(shadow.a, macos.dark.shadow_color.unwrap().a);
-        assert_eq!(zz_ui::to_hex(shadow.alpha(1.0)), "#102030");
+        let tinted = Knobs::parse("dark-shadow-color=%2310203080&dark-shadow-color=%23405060")
+            .unwrap()
+            .dark
+            .shadow_color
+            .unwrap();
+        assert!((tinted.a - 128.0 / 255.0).abs() < 1e-3);
+        assert_eq!(zz_ui::to_hex(tinted.alpha(1.0)), "#405060");
         let default = Knobs::parse("dark-shadow-color=%23102030").unwrap();
         let shadow = default.dark.shadow_color.unwrap();
         assert_eq!(shadow.a, ThemeColor::dark().shadow_color.a);
@@ -724,7 +764,8 @@ mod tests {
 
     #[test]
     fn a_theme_survives_the_trip_through_its_knobs() {
-        for (id, theme) in interface_theme::builtin_themes() {
+        for (id, theme) in themes() {
+            let theme = &theme;
             let query = theme_knobs(theme)
                 .iter()
                 .map(|(name, value)| {

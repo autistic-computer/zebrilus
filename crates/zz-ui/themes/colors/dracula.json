@@ -1,0 +1,20 @@
+{
+  "name": "Dracula",
+  "about": "Dracula and its light twin Alucard, with the purple accent.",
+  "light": {
+    "background": "#fffbeb",
+    "foreground": "#1f1f1f",
+    "accent": "#644ac9",
+    "success": "#14710a",
+    "warning": "#a34d14",
+    "danger": "#cb3a2a"
+  },
+  "dark": {
+    "background": "#282a36",
+    "foreground": "#f8f8f2",
+    "accent": "#bd93f9",
+    "success": "#50fa7b",
+    "warning": "#ffb86c",
+    "danger": "#ff5555"
+  }
+}

@@ -10,7 +10,7 @@ use zz_gpui::{
 
 use super::dialog::{CONTENT_PADDING, DEFAULT_WIDTH, DESCRIPTION_TEXT_SIZE, TITLE_TEXT_SIZE};
 use crate::{
-    ActiveTheme as _, Icon, IconName, Kind, Sizable as _, Size, StyledExt as _, SurfaceRole,
+    ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _, SurfaceRole,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -69,7 +69,7 @@ impl Notification {
             content_builder: None,
             autohide: Some(AUTOHIDE_DELAY),
             width: DEFAULT_WIDTH,
-            surface_role: Kind::Toast.role(),
+            surface_role: SurfaceRole::TOAST,
             closing: false,
         }
     }

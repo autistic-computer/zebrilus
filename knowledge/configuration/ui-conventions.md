@@ -26,7 +26,7 @@ The browser client in `clients/web` (`just web run`) uses the shared GPUI compon
 # Surfaces and roles
 
 Every painted piece of chrome names a surface role (see [surface roles](/designs/surface-roles.md)):
-a kit kind such as `button`, `row`, `chip` or `popover`, or a zz role over one from `zz_ui::roles`
+a kit kind or group such as `button`, `menu-item`, `floating` or `popover`, or a zz role in one from `zz_ui::roles`
 (`crates/zz-ui/src/roles.rs`) such as `chrome.button`, `sidebar.row` or `pane.chip`. The role
 decides the fill, outline, shadow, shape and the hover and selected highlights; the theme's
 materials decide what those look like, and the theme can change any role by id. To paint one:
@@ -157,11 +157,14 @@ materials decide what those look like, and the theme can change any role by id. 
    The local renderer makes blurred shadows follow the pane's corner smoothing, including
    its small 2px control shadow. Circular and fully rounded surfaces retain circular shadows.
 
-   The active gapped pane shows focus in its frame: `Theme::pane_frame` lights the glint and
-   fresnel in the accent and colors the contour with it, which is what reads on a light pane.
-   Settings > Panes > Selected pane edge scales the glint and fresnel from 0–200%; 0 lights the
+   The active gapped pane shows focus in its frame: `Theme::pane_frame` lights the glint in the
+   accent, colors the contour with it, and widens the glass rim to 128pt with a 0.16 fresnel in
+   the accent, a wash that fades in from the edges (edge³) on dark and light panes alike.
+   Settings > Panes > Selected pane edge scales the glint and the wash from 0–200%; 0 lights the
    active pane like the others. `pane-glow-strength` stores the factor from 0–2, defaulting to 1.
-   There is no inset focus glow any more: at its peak it was most of zz's GPU fragment time.
+   The wash is the glass draw the pane already makes, so it costs a fraction of the old blurred
+   inset glow, which at its peak was most of zz's GPU fragment time (2026-10-15: +0.047 ms/frame
+   over the plain lit frame at 5344x2964 on an M4 Max, against +0.114 for the blurred glow).
    `PaneChrome::active` and `PaneChrome::frame` share this across desktop, thin client, and preview
    callers. Without gaps, pane content roots paint their own backgrounds using the configured pane
    opacity; under a frame they paint none.
@@ -208,7 +211,7 @@ stored page favicons, with a globe fallback.
 
 # Control density
 
-Menus and select dropdowns draw as the `popover` kind, the command palette and path picker as
+Menus and select dropdowns draw as `popover` (a floating group), the command palette and path picker as
 `palette` (a popover), and the file, history and tree pickers as `picker` (a dialog): in the
 Default theme an opaque `theme.surface(Elevation::Popover)` fill or the theme's glass, the
 outline, the theme radius and the float shadow in the theme's `shadow_color`. Tooltips are the
@@ -407,8 +410,8 @@ in their preferences, and `Preferences::apply` draws the theme's colors, `Prefer
 (the theme's materials with the device's `MaterialOverrides`) and the theme's roles, with the UI
 font taken from the preference, else the theme's font, else the bundled Inter.
 
-`chrome-contrast` defaults to 1.0 and accepts 0.5–2.0; other values are reported like any numeric
-key. The Appearance page shows 50–200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and
+`chrome-contrast` defaults to 1.0 and accepts 1.0–2.0; other values are reported like any numeric
+key. The Appearance page shows 100–200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and
 `active()`, the alpha factors in `fill()`, `glow()`, and `wash()`, and the foreground weight in
 `border()`. It divides the `muted()` amount, keeping muted text closer to foreground as contrast
 rises. Those factors clamp to 0–1. `on()`, `outline()`, `subtle()`, `floating()`, explicit opacity,
@@ -447,8 +450,8 @@ Settings accepts widget radii from 0 through 25. Every surface whose role's shap
 takes the radius through the adaptive corners described above, so a large radius rounds a short
 control nearly into a pill without making it one; rows take their separate inset corner rule.
 Pills are a role's choice: the `pill` shape resolves to GPUI's `FULL_CORNER_RADIUS`, the same
-value as `rounded_full()`, so the piece stays a pill or a circle at any radius (Glass makes its
-controls pills this way, and Tahoe its buttons, chips and fields). Desktop settings apply changes
+value as `rounded_full()`, so the piece stays a pill or a circle at any radius (a theme makes
+its buttons and chips pills this way). Desktop settings apply changes
 immediately, and still title a radius above 24 “Corner radius (Full)”. `Theme::control_radius`,
 which turns a radius above 24 into a pill, now rounds only the kit's slider.
 

@@ -58,7 +58,14 @@ debug = 1
 [profile.dev.package]
 "*" = { opt-level = 2 }
 taffy = { opt-level = 3 }
+zz-client = { opt-level = 0 }
 zz-gpui = { opt-level = 3 }
+zz-gpui-kit = { opt-level = 0 }
+zz-gpui-macros = { opt-level = 2 }
+zz-gpui-platform = { opt-level = 2 }
+zz-protocol = { opt-level = 0 }
+zz-terminal = { opt-level = 0 }
+zz-ui = { opt-level = 0 }
 
 [profile.release]
 opt-level = 3

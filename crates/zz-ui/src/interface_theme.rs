@@ -44,7 +44,7 @@ pub struct Materials {
 impl Default for Materials {
     fn default() -> Self {
         Self {
-            radius: 24.0,
+            radius: 10.0,
             outline: 0.5,
             row_inset: 4.0,
             primary: PrimaryStyle::Foreground,
@@ -170,9 +170,15 @@ fn deserialize_roles<'de, D: Deserializer<'de>>(
 ) -> Result<BTreeMap<String, StylePatch>, D::Error> {
     use serde::de::Error as _;
     let roles = BTreeMap::<String, StylePatch>::deserialize(deserializer)?;
-    for id in roles.keys() {
-        if crate::roles::find(id).is_none() {
+    for (id, patch) in &roles {
+        let Some(role) = crate::roles::find(id) else {
             return Err(D::Error::custom(unknown_role(id)));
+        };
+        if let Some(refusal) = role.knobs().refusal(patch) {
+            return Err(D::Error::custom(format!(
+                "`{id}` is a {}: {refusal}",
+                role.kind.name()
+            )));
         }
     }
     Ok(roles)
@@ -362,13 +368,8 @@ fn with_spelling_hint(message: String) -> String {
         )
 }
 
-const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
-    ("default", include_str!("../themes/default.json")),
-    ("macos", include_str!("../themes/macos.json")),
-    ("tahoe", include_str!("../themes/tahoe.json")),
-    ("linear", include_str!("../themes/linear.json")),
-    ("glass", include_str!("../themes/glass.json")),
-];
+const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] =
+    [("default", include_str!("../themes/default.json"))];
 
 static BUILTINS: LazyLock<Vec<(&'static str, InterfaceTheme)>> = LazyLock::new(|| {
     BUILTIN_SOURCES
@@ -395,6 +396,121 @@ pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
 
 pub fn default_theme() -> &'static InterfaceTheme {
     builtin_theme(DEFAULT_THEME).expect("the default theme is built in")
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct MaterialPreset {
+    pub name: String,
+    pub about: String,
+    pub materials: Materials,
+}
+
+impl MaterialPreset {
+    pub fn apply_to(&self, theme: &mut InterfaceTheme) {
+        theme.materials = Materials {
+            font: theme.materials.font.take(),
+            ..self.materials.clone()
+        };
+    }
+}
+
+const PRESET_SOURCES: [(&str, &str); 7] = [
+    (
+        "liquid-glass",
+        include_str!("../themes/materials/liquid-glass.json"),
+    ),
+    ("frosted", include_str!("../themes/materials/frosted.json")),
+    ("flat", include_str!("../themes/materials/flat.json")),
+    ("tactile", include_str!("../themes/materials/tactile.json")),
+    ("soft", include_str!("../themes/materials/soft.json")),
+    ("brutal", include_str!("../themes/materials/brutal.json")),
+    (
+        "terminal",
+        include_str!("../themes/materials/terminal.json"),
+    ),
+];
+
+static PRESETS: LazyLock<Vec<(&'static str, MaterialPreset)>> = LazyLock::new(|| {
+    let default = default_theme();
+    let plain = MaterialPreset {
+        name: default.name.clone(),
+        about: "The Default theme's materials.".to_owned(),
+        materials: default.materials.clone(),
+    };
+    std::iter::once((DEFAULT_THEME, plain))
+        .chain(PRESET_SOURCES.iter().map(|(id, source)| {
+            let preset = serde_json::from_str(source)
+                .unwrap_or_else(|error| panic!("material preset {id} does not parse: {error}"));
+            (*id, preset)
+        }))
+        .collect()
+});
+
+pub fn material_presets() -> &'static [(&'static str, MaterialPreset)] {
+    &PRESETS
+}
+
+/// Colors for both modes and nothing else: one `themes/colors/<name>.json`
+/// file.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct ColorPreset {
+    pub name: String,
+    pub about: String,
+    pub light: ThemeColors,
+    pub dark: ThemeColors,
+}
+
+impl ColorPreset {
+    pub fn apply_to(&self, theme: &mut InterfaceTheme) {
+        theme.light = self.light.clone();
+        theme.dark = self.dark.clone();
+    }
+}
+
+const COLOR_SOURCES: [(&str, &str); 14] = [
+    ("macos", include_str!("../themes/colors/macos.json")),
+    ("windows", include_str!("../themes/colors/windows.json")),
+    ("gnome", include_str!("../themes/colors/gnome.json")),
+    ("ubuntu", include_str!("../themes/colors/ubuntu.json")),
+    ("breeze", include_str!("../themes/colors/breeze.json")),
+    ("ayu", include_str!("../themes/colors/ayu.json")),
+    ("nord", include_str!("../themes/colors/nord.json")),
+    ("solarized", include_str!("../themes/colors/solarized.json")),
+    ("gruvbox", include_str!("../themes/colors/gruvbox.json")),
+    (
+        "catppuccin",
+        include_str!("../themes/colors/catppuccin.json"),
+    ),
+    ("dracula", include_str!("../themes/colors/dracula.json")),
+    (
+        "tokyo-night",
+        include_str!("../themes/colors/tokyo-night.json"),
+    ),
+    ("github", include_str!("../themes/colors/github.json")),
+    ("one", include_str!("../themes/colors/one.json")),
+];
+
+static COLORS: LazyLock<Vec<(&'static str, ColorPreset)>> = LazyLock::new(|| {
+    let default = default_theme();
+    let plain = ColorPreset {
+        name: default.name.clone(),
+        about: "The Default theme's colors.".to_owned(),
+        light: default.light.clone(),
+        dark: default.dark.clone(),
+    };
+    std::iter::once((DEFAULT_THEME, plain))
+        .chain(COLOR_SOURCES.iter().map(|(id, source)| {
+            let preset = serde_json::from_str(source)
+                .unwrap_or_else(|error| panic!("color preset {id} does not parse: {error}"));
+            (*id, preset)
+        }))
+        .collect()
+});
+
+pub fn color_presets() -> &'static [(&'static str, ColorPreset)] {
+    &COLORS
 }
 
 pub const fn pinned_theme_mode(setting: ThemeModeSetting) -> Option<ThemeMode> {
@@ -437,17 +553,52 @@ mod tests {
         assert_eq!(ids, BUILTIN_THEMES);
         for (id, theme) in builtin_themes() {
             assert!(!theme.name.is_empty(), "{id} has no name");
-            for colors in [&theme.light, &theme.dark] {
-                for root in [
-                    colors.background,
-                    colors.foreground,
-                    colors.accent,
-                    colors.success,
-                    colors.warning,
-                    colors.danger,
+            sets_every_root(id, &theme.light, &theme.dark);
+        }
+    }
+
+    fn assert_reads(id: &str, theme: &InterfaceTheme) {
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
+            kit.mode = mode;
+            theme.apply(&mut kit);
+            for surface in [
+                kit.background,
+                kit.surface(Elevation::Popover).fill.opaque(),
+            ] {
+                let ratio = contrast(kit.foreground, surface);
+                assert!(ratio >= 7.0, "{id} {mode:?} foreground is {ratio:.2}:1");
+                for (name, color) in [
+                    ("accent", kit.accent),
+                    ("success", kit.success),
+                    ("warning", kit.warning),
+                    ("danger", kit.danger),
                 ] {
-                    assert!(root.is_some(), "{id} leaves a root to the fallback palette");
+                    let ratio = contrast(color, surface);
+                    assert!(ratio >= 3.0, "{id} {mode:?} {name} is {ratio:.2}:1");
                 }
+            }
+            let accent = kit.paint(crate::Tone::Primary, crate::Emphasis::Solid);
+            let ink = kit.on_accent.unwrap_or(accent.text);
+            let ratio = contrast(ink, kit.accent);
+            assert!(
+                ratio >= 3.0,
+                "{id} {mode:?} text on the accent is {ratio:.2}:1"
+            );
+        }
+    }
+
+    fn sets_every_root(id: &str, light: &ThemeColors, dark: &ThemeColors) {
+        for colors in [light, dark] {
+            for root in [
+                colors.background,
+                colors.foreground,
+                colors.accent,
+                colors.success,
+                colors.warning,
+                colors.danger,
+            ] {
+                assert!(root.is_some(), "{id} leaves a root to the fallback palette");
             }
         }
     }
@@ -455,34 +606,37 @@ mod tests {
     #[test]
     fn builtin_text_and_status_colors_read_on_their_surfaces() {
         for (id, theme) in builtin_themes() {
-            for mode in [ThemeMode::Light, ThemeMode::Dark] {
-                let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
-                kit.mode = mode;
-                theme.apply(&mut kit);
-                for surface in [
-                    kit.background,
-                    kit.surface(Elevation::Popover).fill.opaque(),
-                ] {
-                    let ratio = contrast(kit.foreground, surface);
-                    assert!(ratio >= 7.0, "{id} {mode:?} foreground is {ratio:.2}:1");
-                    for (name, color) in [
-                        ("accent", kit.accent),
-                        ("success", kit.success),
-                        ("warning", kit.warning),
-                        ("danger", kit.danger),
-                    ] {
-                        let ratio = contrast(color, surface);
-                        assert!(ratio >= 3.0, "{id} {mode:?} {name} is {ratio:.2}:1");
-                    }
-                }
-                let accent = kit.paint(crate::Tone::Primary, crate::Emphasis::Solid);
-                let ink = kit.on_accent.unwrap_or(accent.text);
-                let ratio = contrast(ink, kit.accent);
-                assert!(
-                    ratio >= 3.0,
-                    "{id} {mode:?} text on the accent is {ratio:.2}:1"
-                );
-            }
+            assert_reads(id, theme);
+        }
+    }
+
+    #[test]
+    fn every_color_preset_sets_both_palettes_that_read_and_nothing_else() {
+        let ids = color_presets()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids.len(), COLOR_SOURCES.len() + 1);
+        for (id, preset) in color_presets() {
+            assert!(!preset.name.is_empty() && !preset.about.is_empty(), "{id}");
+            sets_every_root(id, &preset.light, &preset.dark);
+            let mut theme = default_theme().clone();
+            theme.materials.font = Some("Inter".into());
+            theme.materials.radius = 3.0;
+            theme.roles.insert(
+                "pane.chip".to_owned(),
+                StylePatch::EMPTY.shape(crate::Shape::Pill),
+            );
+            let before = theme.clone();
+            preset.apply_to(&mut theme);
+            assert_eq!(
+                theme.materials, before.materials,
+                "{id} leaves the materials"
+            );
+            assert_eq!(theme.roles, before.roles, "{id} leaves the roles");
+            assert_eq!(theme.light, preset.light, "{id}");
+            assert_reads(id, &theme);
+            assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme, "{id}");
         }
     }
 
@@ -541,7 +695,10 @@ mod tests {
         theme.apply(&mut kit);
         let chrome = kit.style(crate::roles::CHROME_BUTTON);
         assert_eq!((chrome.fill, chrome.shape), (Fill::Glass, Shape::Pill));
-        assert_eq!(chrome.hover, Kind::IconButton.base().hover);
+        assert_eq!(
+            chrome.hover,
+            kit.style(crate::SurfaceRole::ICON_BUTTON).hover
+        );
         assert!(!kit.style(Kind::Button.role()).outline);
         assert!(kit.style(crate::roles::PANE_CHIP).outline);
     }
@@ -554,6 +711,16 @@ mod tests {
         assert!(error.contains("did you mean `agent.composer`"), "{error}");
         assert!(parse_theme(r#"{"roles":{"sparkle":{}}}"#).is_err());
         assert!(parse_theme(r#"{"roles":{"row":{"fill":"neon"}}}"#).is_err());
+    }
+
+    #[test]
+    fn roles_take_only_what_their_kind_offers() {
+        let error = parse_theme(r#"{"roles":{"settings.card":{"shape":"pill"}}}"#).unwrap_err();
+        assert!(error.contains("`settings.card` is a card"), "{error}");
+        assert!(error.contains("`shape` can't be \"pill\""), "{error}");
+        let error = parse_theme(r#"{"roles":{"titlebar":{"hover":"tint"}}}"#).unwrap_err();
+        assert!(error.contains("`hover` is fixed"), "{error}");
+        assert!(parse_theme(r#"{"roles":{"settings.card":{"shape":"square"}}}"#).is_ok());
     }
 
     #[test]
@@ -582,8 +749,32 @@ mod tests {
     }
 
     #[test]
+    fn every_material_preset_sets_only_materials_and_survives_the_theme_file() {
+        assert_eq!(material_presets()[0].1.materials, default_theme().materials);
+        for (id, preset) in material_presets() {
+            assert!(!preset.name.is_empty() && !preset.about.is_empty(), "{id}");
+            assert_eq!(
+                preset.materials.font, None,
+                "{id} leaves the font to the theme"
+            );
+            let mut theme = default_theme().clone();
+            theme.materials.font = Some("Inter".into());
+            theme.roles.insert(
+                "pane.chip".to_owned(),
+                StylePatch::EMPTY.shape(crate::Shape::Pill),
+            );
+            let roles = theme.roles.clone();
+            preset.apply_to(&mut theme);
+            assert_eq!(theme.roles, roles, "{id} leaves the roles to the theme");
+            assert_eq!(theme.light, default_theme().light, "{id}");
+            assert_eq!(theme.materials.font.as_deref(), Some("Inter"), "{id}");
+            assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme, "{id}");
+        }
+    }
+
+    #[test]
     fn overrides_replace_only_what_they_set() {
-        let theme = builtin_theme("macos").unwrap();
+        let theme = default_theme();
         let mut materials = theme.materials.clone();
         MaterialOverrides {
             outline: Some(1.0),

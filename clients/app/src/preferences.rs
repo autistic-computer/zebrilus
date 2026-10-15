@@ -125,7 +125,7 @@ impl Preferences {
         });
         self.zoom = bounded(self.zoom, 0.5, 3.0, 1.0);
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
-        self.contrast = bounded(self.contrast, 0.5, 2.0, 1.0);
+        self.contrast = bounded(self.contrast, 1.0, 2.0, 1.0);
         for (value, min, max, fallback) in [
             (&mut self.pane_background_opacity, 0., 1., 0.5),
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
@@ -574,7 +574,7 @@ mod tests {
     fn contrast_defaults_clamps_and_round_trips_with_preferences() {
         let defaults = serde_json::from_str::<Preferences>("{}").unwrap();
         assert_eq!(defaults.contrast, 1.0);
-        for (value, expected) in [(0.1, 0.5), (3.0, 2.0), (1.5, 1.5), (f32::NAN, 1.0)] {
+        for (value, expected) in [(0.1, 1.0), (3.0, 2.0), (1.5, 1.5), (f32::NAN, 1.0)] {
             let preferences = Preferences {
                 contrast: value,
                 ..Preferences::default()
@@ -613,7 +613,7 @@ mod tests {
             Preferences::decode(r#"{"radius":12,"shadow_strength":0.3,"style":"flat"}"#).unwrap();
         assert_eq!(older.theme_id(), "default");
         assert_eq!(older.materials, MaterialOverrides::default());
-        assert_eq!(older.widget_corner_radius(), 24.0);
+        assert_eq!(older.widget_corner_radius(), 10.0);
 
         let mut tuned = Preferences::decode(r#"{"theme":null,"radius":12}"#).unwrap();
         assert_eq!(tuned.widget_corner_radius(), 12.0);
@@ -623,14 +623,14 @@ mod tests {
             Some(12.0)
         );
 
-        tuned.set_interface_theme("linear");
-        let linear = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
-        assert_eq!(linear.theme_id(), "linear");
-        let materials = &zz_ui::interface_theme::builtin_theme("linear")
+        tuned.set_interface_theme("default");
+        let picked = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
+        assert_eq!(picked.theme_id(), "default");
+        let materials = &zz_ui::interface_theme::builtin_theme("default")
             .unwrap()
             .materials;
         assert_eq!(
-            (linear.widget_corner_radius(), linear.materials().float),
+            (picked.widget_corner_radius(), picked.materials().float),
             (materials.radius, materials.float)
         );
         tuned.set_interface_theme("vaporwave");
@@ -649,7 +649,10 @@ mod tests {
         assert_eq!(restored.interface_theme().name, "Neon");
 
         let mut frosted = Preferences {
-            theme: Some("macos".into()),
+            materials: MaterialOverrides {
+                glass: Some("frosted".to_owned()),
+                ..MaterialOverrides::default()
+            },
             ..Preferences::default()
         };
         frosted.duplicate_theme().unwrap();
@@ -658,11 +661,11 @@ mod tests {
         assert!(restored.interface_theme().materials.glass.is_some());
 
         let older = Preferences::decode(
-            r#"{"theme":"macos","radius":12,"shadows":"none","selection":"wash","field":"outline"}"#,
+            r#"{"theme":"default","radius":12,"shadows":"none","selection":"wash","field":"outline"}"#,
         )
         .unwrap();
         assert!(older.themes.is_empty());
-        assert_eq!(older.theme_id(), "macos");
+        assert_eq!(older.theme_id(), "default");
         assert_eq!(
             older.materials,
             MaterialOverrides {
@@ -686,7 +689,7 @@ mod tests {
             theme: Some("theme-2".into()),
             themes: vec![
                 ("theme-2".into(), theme()),
-                ("macos".into(), theme()),
+                ("default".into(), theme()),
                 (String::new(), theme()),
                 ("theme-2".into(), theme()),
             ],
@@ -716,7 +719,7 @@ mod tests {
     #[test]
     fn duplicate_keeps_what_is_on_screen() {
         let mut preferences = Preferences {
-            theme: Some("linear".into()),
+            theme: Some("default".into()),
             materials: MaterialOverrides {
                 radius: Some(7.0),
                 shadow_strength: Some(0.5),
@@ -728,8 +731,8 @@ mod tests {
         assert_eq!(preferences.duplicate_theme().unwrap(), "theme-1");
         let copy = preferences.saved_theme("theme-1").unwrap();
         assert_eq!(copy.name, "theme-1");
-        let linear = zz_ui::interface_theme::builtin_theme("linear").unwrap();
-        let float = linear.materials.float.strength * 0.5;
+        let builtin = zz_ui::interface_theme::builtin_theme("default").unwrap();
+        let float = builtin.materials.float.strength * 0.5;
         assert_eq!(
             (
                 copy.materials.radius,
@@ -738,8 +741,8 @@ mod tests {
             ),
             (7.0, float, Some("Lilex"))
         );
-        assert_eq!(copy.roles, linear.roles);
-        assert_eq!((&copy.light, &copy.dark), (&linear.light, &linear.dark));
+        assert_eq!(copy.roles, builtin.roles);
+        assert_eq!((&copy.light, &copy.dark), (&builtin.light, &builtin.dark));
         assert_eq!(preferences.theme_id(), "theme-1");
         assert_eq!(preferences.materials, MaterialOverrides::default());
         assert!(preferences.ui_font_family.is_empty());
@@ -756,7 +759,7 @@ mod tests {
     #[test]
     fn import_names_built_in_and_nameless_themes_after_their_id() {
         let mut preferences = Preferences::default();
-        preferences.import_theme(r#"{"name":"macOS"}"#).unwrap();
+        preferences.import_theme(r#"{"name":"Default"}"#).unwrap();
         preferences.import_theme("{}").unwrap();
         preferences.import_theme(NEON).unwrap();
         let names = preferences

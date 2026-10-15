@@ -168,7 +168,7 @@ fn highlight(
         },
         move |bounds, (hitbox, state, amount, color), window, _| {
             if amount > 0.0 {
-                let corners = Corners::all(radius).clamp_radii_for_quad_size(bounds.size);
+                let corners = window.resolve_corner_radii(Corners::all(radius), bounds.size);
                 window.paint_quad(fill(bounds, color.opacity(amount)).corner_radii(corners));
             }
             listen(&state, hitbox, delay, window);

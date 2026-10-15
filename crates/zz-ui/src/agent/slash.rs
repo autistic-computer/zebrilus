@@ -3,7 +3,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Kind, StyledExt as _, h_flex,
+    ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex,
     picker::{muted_on, row_state, row_surface},
     roles, v_flex,
 };
@@ -29,7 +29,7 @@ pub fn suggestion_row(
     cx: &App,
 ) -> Stateful<Div> {
     let state = row_state(selected, true);
-    let muted = muted_on(&cx.theme().layer(Kind::Row, state), cx);
+    let muted = muted_on(&cx.theme().layer(SurfaceRole::MENU_ITEM, state), cx);
     row_surface(
         h_flex()
             .id(id)
@@ -39,7 +39,7 @@ pub fn suggestion_row(
             .gap_3()
             .px_3()
             .cursor_pointer(),
-        Kind::Row,
+        SurfaceRole::MENU_ITEM,
         state,
         px(ROW_HEIGHT),
         cx,

@@ -6,8 +6,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Icon, IconName, Kind,
-    PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Icon, IconName, PaintState,
+    Sizable as _, StyledExt as _, SurfaceRole, Tone,
     button::{Button, ButtonVariants},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
@@ -49,7 +49,7 @@ pub fn composer_action_button(
     let (icon, tooltip) = match action {
         ComposerAction::Send => (IconName::ArrowUp, "Send message"),
         ComposerAction::Queue => (IconName::Plus, "Queue this as the next turn"),
-        ComposerAction::Stop => (IconName::Xmark, "Stop the current turn"),
+        ComposerAction::Stop => (IconName::Stop, "Stop the current turn"),
     };
     Button::compact_icon(id, icon)
         .when(action == ComposerAction::Send, ButtonVariants::primary)
@@ -76,7 +76,7 @@ pub fn agent_queue_chip(
         Button::new(id)
             .ghost()
             .small()
-            .surface_role(roles::AGENT_CONTROL)
+            .surface_role(SurfaceRole::QUIET_BUTTON)
             .icon(IconName::Undo2)
             .label(format!("{queued} queued"))
             .tooltip("Return the queued prompts to the composer")
@@ -109,7 +109,7 @@ pub fn agent_directory_button(
     cx: &App,
 ) -> Button {
     agent_chrome_button(id)
-        .surface_role(roles::AGENT_CONTROL)
+        .surface_role(roles::AGENT_PICKER)
         .min_w_0()
         .flex_shrink_1()
         .max_w(px(140.0))
@@ -157,7 +157,7 @@ pub fn agent_config_picker(
     let current_value = current_value.to_owned();
     let on_select = Rc::new(on_select);
     agent_chrome_button(id)
-        .surface_role(roles::AGENT_CONTROL)
+        .surface_role(roles::AGENT_PICKER)
         .icon(icon)
         .label(current_label)
         .dropdown_caret(true)
@@ -192,7 +192,7 @@ pub fn agent_config_picker(
                                         .max_w(px(300.0))
                                         .text_size(crate::rems_from_px(10.0))
                                         .text_color(muted_on(
-                                            &cx.theme().layer(Kind::Row, state),
+                                            &cx.theme().layer(SurfaceRole::MENU_ITEM, state),
                                             cx,
                                         ))
                                         .child(description),
@@ -251,7 +251,7 @@ fn agent_picker_row(
             .py_1()
             .text_size(crate::rems_from_px(12.0))
             .line_height(px(16.0)),
-        Kind::Row,
+        SurfaceRole::MENU_ITEM,
         state,
         px(PICKER_ROW_HEIGHT),
         cx,
@@ -401,7 +401,7 @@ pub fn agent_model_picker(
         .selected()
         .map_or_else(|| provider.label().to_owned(), |choice| choice.name.clone());
     let trigger = agent_chrome_button(id.clone())
-        .surface_role(roles::AGENT_CONTROL)
+        .surface_role(roles::AGENT_PICKER)
         .debug_selector(|| "agent-model-trigger".into())
         .icon(agent_provider_icon(provider))
         .label(label)
@@ -1052,7 +1052,7 @@ mod tests {
         cx.update(|window, cx| {
             let scale = window.scale_factor();
             let quads = window.painted_quads();
-            let row = |state| cx.theme().layer(Kind::Row, state).fill;
+            let row = |state| cx.theme().layer(SurfaceRole::MENU_ITEM, state).fill;
             for (bounds, color) in [
                 (provider, row(PaintState::Current)),
                 (model, row(PaintState::Current)),
@@ -1069,7 +1069,8 @@ mod tests {
                     })
                     .expect("picker row highlight");
                 assert_eq!(quad.corner_smoothing, 2.5);
-                assert!((quad.corner_radii.top_left.0 / scale - 12.8).abs() < 0.001);
+                let pill = quad.bounds.size.height.0 / 2.0;
+                assert!((quad.corner_radii.top_left.0 - pill).abs() < 0.001);
             }
         });
     }

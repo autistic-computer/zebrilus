@@ -1,7 +1,7 @@
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Icon,
-    IconName, InteractiveSurfaceExt as _, Kind, Layer, PaintState, Sizable as _, StyledExt as _,
-    Surface, Tone, button::Button, roles,
+    IconName, InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _, Surface,
+    SurfaceRole, Tone, button::Button, roles,
 };
 use zz_gpui::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, FontWeight,
@@ -206,9 +206,10 @@ pub fn pane_surface(
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let theme = cx.theme();
-    let glass = theme.style(roles::PANE).fill == Fill::Glass;
+    let glass = theme.style(roles::PANE).fill == Fill::Glass && theme.glass_effect().is_some();
     let lit = chrome.active && theme.lights_active_pane();
     let rest = theme.layer(roles::PANE, PaintState::Rest);
+    let outlined = rest.border_width > Pixels::ZERO;
     let shadow = if chrome.shadow {
         rest.shadow.clone()
     } else {
@@ -216,7 +217,7 @@ pub fn pane_surface(
     };
     let frame = chrome
         .frame
-        .map(|frame| pane_frame_layer(frame, glass, lit, rest, cx));
+        .map(|frame| pane_frame_layer(frame, glass, rest, cx));
     div()
         .id(id)
         .relative()
@@ -240,19 +241,20 @@ pub fn pane_surface(
         .when_some(
             chrome
                 .frame
-                .filter(|frame| glass && frame.glint_width > Pixels::ZERO),
+                .filter(|frame| frame.glint_width > Pixels::ZERO && (glass || outlined)),
             |surface, frame| {
                 surface.child(pane_frame_hairline(
                     chrome.radii,
                     frame.glint_width,
                     pane_border_color(lit, cx),
+                    !glass,
                 ))
             },
         )
         .children(overlays)
 }
 
-fn pane_frame_layer(frame: GlassMaterial, glass: bool, lit: bool, rest: Layer, cx: &App) -> Layer {
+fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer, cx: &App) -> Layer {
     if glass {
         return Layer {
             glass: Some(frame),
@@ -260,22 +262,30 @@ fn pane_frame_layer(frame: GlassMaterial, glass: bool, lit: bool, rest: Layer, c
             ..rest
         };
     }
-    let solid = cx.theme().style(roles::PANE).fill == Fill::Solid;
+    let solid = matches!(
+        cx.theme().style(roles::PANE).fill,
+        Fill::Solid | Fill::Glass
+    );
     Layer {
         fill: if solid { frame.tint } else { rest.fill },
-        border: if lit { cx.theme().accent } else { rest.border },
+        border_width: Pixels::ZERO,
         ..rest
     }
 }
 
-/// The frame's edge where the window cannot sample its backdrop and glass
-/// paints only its fill: a hairline the width of the glint, over the content
-/// as a border would be.
-fn pane_frame_hairline(radii: Corners<Pixels>, width: Pixels, color: Hsla) -> impl IntoElement {
+/// The frame's edge without glass, or where the window cannot sample its
+/// backdrop and glass paints only its fill: a hairline the width of the
+/// glint, over the content as a border would be.
+fn pane_frame_hairline(
+    radii: Corners<Pixels>,
+    width: Pixels,
+    color: Hsla,
+    always: bool,
+) -> impl IntoElement {
     canvas(
         |_, _, _| {},
         move |bounds, (), window, cx| {
-            if !window.supports_backdrop_sampling() {
+            if always || !window.supports_backdrop_sampling() {
                 window.paint_quad(quad(
                     bounds,
                     radii,
@@ -1068,7 +1078,7 @@ pub fn pane_picker_row(
         (true, true) => PaintState::Selected,
         (true, false) => PaintState::Rest,
     };
-    let ground = cx.theme().layer(Kind::Row, state).ground;
+    let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
     let ink = cx
         .theme()
         .paint_on(ground, Tone::Neutral, Emphasis::Ghost)

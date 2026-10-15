@@ -314,7 +314,7 @@ impl PopupMenu {
             action_context: None,
             previous_focus_handle: None,
             parent_menu: None,
-            surface_role: Kind::Popover.role(),
+            surface_role: SurfaceRole::POPOVER,
             menu_items: Vec::new(),
             selected_index: None,
             min_width: None,
@@ -902,7 +902,7 @@ impl PopupMenu {
 
         let coarse = crate::touch::CoarsePointer::get(cx);
         let row = cx.theme().layer(
-            Kind::Row.role(),
+            SurfaceRole::MENU_ITEM,
             if selected {
                 PaintState::Selected
             } else {
@@ -1303,7 +1303,7 @@ mod tests {
                 v_flex().size_full().items_start().child(self.0.clone())
             }
         }
-        for (configured, expected) in [(12.0, 8.0), (14.0, 10.0), (25.0, 10.4)] {
+        for (configured, expected) in [(12.0, Some(8.0)), (14.0, Some(10.0)), (25.0, None)] {
             cx.update(|cx| {
                 crate::init(cx);
                 cx.set_reduce_motion(true);
@@ -1340,11 +1340,15 @@ mod tests {
                     .expect("selected menu entry");
                 assert_eq!(highlight.corner_smoothing, 2.5);
                 assert_eq!(surface.corner_smoothing, 4.0);
-                assert!(
-                    (highlight.corner_radii.top_left.0 / window.scale_factor() - expected).abs()
-                        < 0.001
-                );
-                assert!(highlight.corner_radii.top_left.0 < highlight.bounds.size.height.0 / 2.0);
+                let pill = highlight.bounds.size.height.0 / 2.0;
+                let radius = highlight.corner_radii.top_left.0;
+                match expected {
+                    Some(expected) => {
+                        assert!((radius / window.scale_factor() - expected).abs() < 0.001);
+                        assert!(radius < pill);
+                    }
+                    None => assert!((radius - pill).abs() < 0.001, "{radius} {pill}"),
+                }
                 assert!(surface.bounds.contains(&highlight.bounds.origin));
                 assert!(surface.bounds.contains(&highlight.bounds.bottom_right()));
             });

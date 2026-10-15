@@ -532,13 +532,13 @@ pub fn interface_theme_preview(
     let materials = &theme.materials;
     let mut kit = crate::Theme::from(&colors);
     theme.apply(&mut kit);
-    let popover = kit.style(crate::Kind::Popover.role());
+    let popover = kit.style(crate::SurfaceRole::POPOVER);
     let surface_radius = (materials.radius / 3.0).min(10.0);
     let row_radius = surface_radius / 2.0;
     let inset = materials.row_inset.min(3.0);
     let frosted = popover.fill == crate::Fill::Glass
         && materials.glass.is_some_and(|glass| glass.blur > px(0.0));
-    let (selection, selected_text) = match kit.style(crate::Kind::Row.role()).selected {
+    let (selection, selected_text) = match kit.style(crate::SurfaceRole::MENU_ITEM).selected {
         crate::Highlight::Accent => (colors.accent.opaque(), accent_ink(&colors)),
         _ => (colors.background.washed(3), colors.foreground),
     };
@@ -578,7 +578,7 @@ pub fn interface_theme_preview(
                 .border_color(colors.foreground.opacity(0.15))
         })
         .when(
-            kit.casts_shadow(crate::Kind::Popover.role()) && materials.float.strength > 0.0,
+            kit.casts_shadow(crate::SurfaceRole::POPOVER) && materials.float.strength > 0.0,
             |menu| {
                 menu.shadow(vec![zz_gpui::BoxShadow {
                     color: colors.shadow_color,

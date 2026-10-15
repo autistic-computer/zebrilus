@@ -363,7 +363,7 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | Key | Default | Does |
 | --- | --- | --- |
 | `theme-mode` | `system` | `system`, `light`, or `dark` |
-| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, `macos` (flat controls, frosted popovers, blue accent), `tahoe` (glass toolbar buttons over flat filled buttons and chips), `linear` (opaque surfaces with hairline outlines, indigo accent), `glass` (frosted glass with no outlines or shadows), or the name of a theme saved as `themes/<name>.json` next to the config file |
+| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, or the name of a theme saved as `themes/<name>.json` next to the config file |
 | `pane-gaps` | `false` | The card treatment: spaced panes framed in glass. Off pins the next three to zero |
 | `pane-margin` | `6` | Gap between panes and at the window edge, 0–32 |
 | `pane-corner-radius` | `13.5` | 0–32 |

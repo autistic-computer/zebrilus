@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use zz_gpui::{
-    AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, IntoElement, Keystroke,
-    ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px, relative,
-    size,
+    AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, Focusable as _,
+    IntoElement, Keystroke, ParentElement as _, Render, SharedString, Styled as _, Window, div,
+    prelude::*, px, relative, size,
 };
 use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
     agent::agent_jump_to_bottom_button,
     badge::Badge,
-    browser::{browser_recent_row, browser_start_surface},
+    browser::{BrowserHeader, browser_recent_row, browser_start_surface},
     button::{Button, ButtonVariants as _},
     command::{
         CommandPaletteSurface, PaletteHint, PalettePill, PaletteRow, PaletteStatus,
@@ -18,8 +18,10 @@ use zz_ui::{
         unified_command_palette_input,
     },
     compact::{
-        WhichKeyList, compact_bar, compact_bar_button, compact_bar_pill, compact_pane_header,
-        page_dots,
+        ArrowDirection, ToolKeys, WhichKeyList, arrow_pad_bubble, bottom_sheet, compact_bar,
+        compact_bar_button, compact_bar_pill, compact_hud, compact_nav_bar, compact_pane_header,
+        compact_session_switcher, overview_add_tile, overview_card, overview_count,
+        overview_section_heading, page_dots, sheet_row,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -31,8 +33,8 @@ use zz_ui::{
     pane::{
         FloatingSurface, PaneOverlayCorner, PaneSplitAxis, TERMINAL_HEADER_HEIGHT, pane_drag_chip,
         pane_drop_preview, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
-        pane_split_surface, pane_status_badge, pane_surface, pane_sync_badge, pane_waiting_state,
-        terminal_mode_indicator,
+        pane_picker_row, pane_picker_surface, pane_split_surface, pane_status_badge, pane_surface,
+        pane_sync_badge, pane_waiting_state, terminal_mode_indicator,
     },
     select::{Select, SelectState},
     settings::{
@@ -40,7 +42,11 @@ use zz_ui::{
         appearance::{picker_tile, theme_preview},
         settings_card_ground,
     },
-    shell::{app_shell_surface, app_workspace_surface},
+    shell::{
+        app_shell_surface, app_workspace_surface, empty_workspace, empty_workspace_action,
+        empty_workspace_caption, empty_workspace_connect, empty_workspace_hint,
+        empty_workspace_keys,
+    },
     slider::DiscreteSlider,
     switch::Switch,
     text::{TextView, TextViewStyle},
@@ -60,7 +66,10 @@ use super::{
     },
     kit::menus::{SplitRight, bind_keys, pane_menu, view_menu},
     workspace::{
-        fixtures::{BUILD, LOGS, SERVER, TerminalPane, chrome, gap, terminal_body},
+        browser::header as browser_header,
+        fixtures::{
+            BUILD, LOGS, SERVER, TerminalPane, chrome, gap, radii, stateful, terminal_body,
+        },
         flat_sidebar::Live,
         shell::{Shell, with_sidebar},
         status_bar::{Bar, titlebar},
@@ -97,6 +106,12 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(panes, cx),
         },
         Section {
+            id: "start",
+            name: "Start",
+            summary: "The workspace before its first session, the first run with no host, and a new split asking what it should become.",
+            build: |_, cx| stateless(start, cx),
+        },
+        Section {
             id: "controls",
             name: "Controls",
             summary: "A form, switches, buttons and a settings card.",
@@ -111,8 +126,14 @@ pub const STORY: Story = Story {
         Section {
             id: "content",
             name: "Content",
-            summary: "An agent card, markdown, the phone and the browser start page.",
-            build: Content::view,
+            summary: "An agent card, markdown and a new browser tab with its address focused.",
+            build: |window, cx| stateful(window, cx, new_tab_address, content),
+        },
+        Section {
+            id: "phone",
+            name: "Phone",
+            summary: "The phone: a terminal page with a HUD, the key row's prefix menu and arrow pad, the bindings list, the overview's pane cards and the sessions sheet.",
+            build: Phone::view,
         },
     ],
 };
@@ -127,11 +148,55 @@ const PLATE_PADDING: f32 = 20.0;
 const WHICH_KEY_HEIGHT: f32 = 300.0;
 const PANES_HEIGHT: f32 = 250.0;
 const PHONE_WIDTH: f32 = 390.0;
+const START_HEIGHT: f32 = 300.0;
+const START_PAGE_HEIGHT: f32 = 220.0;
+const PREFIX: &str = "ctrl-b";
+const SESSION_KEYS: [(&str, &str); 5] = [
+    ("c", "New window"),
+    ("%", "Split right"),
+    ("\"", "Split down"),
+    ("s", "Sessions and windows"),
+    ("?", "Every key binding"),
+];
+const PANE_CHOICES: [(&str, IconName, &str); 4] = [
+    ("Terminal", IconName::SquareTerminal, "t"),
+    ("Browser", IconName::BrandChrome, "b"),
+    ("Editor", IconName::File, "e"),
+    ("Agent", IconName::RobotFace, "a"),
+];
 const PHONE_LINES: [&str; 3] = [
     "~/dev/zz main* > cargo test -p zz-ui",
     "test result: ok. 214 passed; 0 failed",
     "~/dev/zz main* > ",
 ];
+const PHONE_SHEET_HEIGHT: f32 = 460.0;
+const PHONE_PAGE_HEIGHT: f32 = 190.0;
+const KEYS_PAGE_HEIGHT: f32 = 470.0;
+const CARD_LINES: [&str; 6] = [
+    "$ cargo test",
+    "Compiling zz-ui",
+    "Finished test",
+    "ok. 214 passed",
+    "$ git status",
+    "On branch main",
+];
+const OVERVIEW: [(u32, &str, &[(IconName, &str, bool, bool)]); 2] = [
+    (
+        1,
+        "editor",
+        &[
+            (IconName::SquareTerminal, "cargo test", true, false),
+            (IconName::RobotFace, "Review sidebar", false, true),
+        ],
+    ),
+    (
+        2,
+        "docs",
+        &[(IconName::BrandChrome, "zed.dev", false, false)],
+    ),
+];
+const SESSIONS: [(&str, usize, bool); 3] =
+    [("work", 3, true), ("scratch", 1, false), ("logs", 2, false)];
 const READING: &str = "Pinned tabs keep a `28px` floor, and the rest share what is left:\n\n\
 | Tabs | Pinned | Unpinned |\n\
 | ---: | ---: | ---: |\n\
@@ -156,7 +221,7 @@ impl Workspace {
         cx.new(|_| Self { shell }).into()
     }
 
-    fn hero(&self, cx: &App) -> AnyElement {
+    fn hero(&self, window: &Window, cx: &App) -> AnyElement {
         v_flex()
             .id("showcase-app")
             .w_full()
@@ -168,6 +233,7 @@ impl Workspace {
                 crate::pane().gaps,
                 &self.shell,
                 0,
+                window,
                 cx,
             )))
             .into_any_element()
@@ -175,11 +241,11 @@ impl Workspace {
 }
 
 impl Render for Workspace {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap(px(GAP))
-            .child(self.hero(cx))
+            .child(self.hero(window, cx))
             .child(status_bar(cx))
     }
 }
@@ -606,17 +672,42 @@ impl Render for Floating {
     }
 }
 
-struct Content {
-    keys: zz_ui::compact::ToolKeys,
+fn new_tab_address(window: &mut Window, cx: &mut App) -> Entity<InputState> {
+    let address = cx.new(|cx| InputState::new(window, cx).placeholder("Search or enter address"));
+    address.read(cx).focus_handle(cx).focus(window, cx);
+    address
 }
 
-impl Content {
+fn content(address: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    tiles(
+        window,
+        vec![
+            vec![reading(cx)],
+            vec![agent(cx)],
+            vec![start_page(address, window, cx)],
+        ],
+    )
+    .into_any_element()
+}
+
+struct Phone {
+    keys: ToolKeys,
+    menu: ToolKeys,
+}
+
+impl Phone {
     fn view(_: &mut Window, cx: &mut App) -> AnyView {
-        let keys = tool_keys(cx);
-        cx.new(|_| Self { keys }).into()
+        cx.new(|cx| {
+            let keys = tool_keys(cx);
+            let menu = tool_keys(cx);
+            menu.prefix.update(cx, zz_ui::compact::PopoverKey::open);
+            Self { keys, menu }
+        })
+        .into()
     }
 
-    fn phone(&self, cx: &App) -> AnyElement {
+    fn terminal(&self, cx: &App) -> AnyElement {
         let theme = cx.theme();
         let pill = compact_bar_pill(
             "showcase-phone-pill",
@@ -628,14 +719,7 @@ impl Content {
             cx,
         );
         let keyboard = compact_bar_button("showcase-phone-keyboard", IconName::Keyboard);
-        let screen = v_flex()
-            .id("showcase-phone-screen")
-            .w_full()
-            .max_w(px(PHONE_WIDTH))
-            .overflow_hidden()
-            .rounded(theme.radius)
-            .framed(cx)
-            .bg(theme.background)
+        phone_frame("showcase-phone-screen", cx)
             .child(compact_pane_header(
                 IconName::SquareTerminal,
                 "cargo test",
@@ -644,52 +728,214 @@ impl Content {
             ))
             .child(
                 v_flex()
+                    .relative()
+                    .h(px(PHONE_PAGE_HEIGHT))
                     .px(px(12.0))
                     .py(px(8.0))
                     .font_family(theme.mono_font_family.clone())
                     .text_size(px(12.0))
                     .line_height(px(17.0))
-                    .children(PHONE_LINES.map(|line| div().h(px(17.0)).child(line))),
+                    .children(PHONE_LINES.map(|line| div().h(px(17.0)).child(line)))
+                    .child(compact_hud("Copied", cx)),
             )
             .child(div().id("showcase-phone-keys").child(key_row(&self.keys)))
             .child(
                 div()
                     .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
                     .child(compact_bar(pill, keyboard, false, cx)),
-            );
-        let rows: Arc<[_]> = binding_rows().iter().take(4).cloned().collect();
-        let sheet = div()
-            .id("showcase-phone-sheet")
-            .w_full()
-            .max_w(px(PHONE_WIDTH))
-            .overflow_hidden()
-            .rounded(theme.radius)
-            .framed(cx)
-            .bg(theme.background)
-            .child(WhichKeyList::new(rows));
-        card("showcase-phone", cx)
-            .child(heading(
-                "Phone",
-                "The bar, its pill, the key row and a touch list.",
+            )
+            .into_any_element()
+    }
+
+    fn keys(&self, cx: &App) -> AnyElement {
+        let theme = cx.theme();
+        phone_frame("showcase-phone-menu", cx)
+            .child(compact_pane_header(
+                IconName::SquareTerminal,
+                "zsh",
+                [close("showcase-phone-menu-close", cx)],
                 cx,
             ))
-            .child(screen)
+            .child(
+                h_flex()
+                    .h(px(KEYS_PAGE_HEIGHT))
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .items_start()
+                    .justify_end()
+                    .font_family(theme.mono_font_family.clone())
+                    .text_size(px(12.0))
+                    .child(arrow_pad_bubble(Some(ArrowDirection::Up), cx)),
+            )
+            .child(
+                div()
+                    .id("showcase-phone-menu-keys")
+                    .child(key_row(&self.menu)),
+            )
+            .into_any_element()
+    }
+
+    fn bindings(cx: &App) -> AnyElement {
+        let rows: Arc<[_]> = binding_rows().iter().take(4).cloned().collect();
+        phone_frame("showcase-phone-bindings", cx)
+            .child(WhichKeyList::new(rows))
+            .into_any_element()
+    }
+
+    fn overview(cx: &App) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.foreground.muted();
+        let preview = || {
+            v_flex()
+                .px(px(6.0))
+                .font_family(theme.mono_font_family.clone())
+                .text_size(px(7.0))
+                .line_height(px(9.0))
+                .text_color(muted)
+                .children(CARD_LINES.map(|line| div().whitespace_nowrap().child(line)))
+                .into_any_element()
+        };
+        let top = compact_nav_bar(cx)
+            .child(compact_session_switcher(
+                "showcase-overview-session",
+                "work",
+                cx,
+            ))
+            .child(div().flex_1())
+            .child(compact_bar_button(
+                "showcase-overview-settings",
+                IconName::Settings,
+            ))
+            .child(compact_bar_button(
+                "showcase-overview-close",
+                IconName::Xmark,
+            ));
+        let sections = OVERVIEW.iter().map(|(index, name, panes)| {
+            v_flex()
+                .child(overview_section_heading(*index, name, panes.len(), cx))
+                .child(
+                    h_flex()
+                        .gap(px(zz_ui::compact::OVERVIEW_CARD_GAP))
+                        .px(px(16.0))
+                        .py(px(2.0))
+                        .overflow_hidden()
+                        .children(panes.iter().enumerate().map(
+                            |(slot, (icon, title, current, attention))| {
+                                let id = (*index as usize) * 10 + slot;
+                                overview_card(
+                                    ("showcase-overview-card", id),
+                                    ("showcase-overview-press", id),
+                                    icon.clone(),
+                                    *title,
+                                    (*icon == IconName::SquareTerminal).then(preview),
+                                    theme.background,
+                                    *current,
+                                    *attention,
+                                    cx,
+                                )
+                            },
+                        ))
+                        .child(overview_add_tile(
+                            ("showcase-overview-add", *index as usize),
+                            ("showcase-overview-add-press", *index as usize),
+                            cx,
+                        )),
+                )
+        });
+        phone_frame("showcase-phone-overview", cx)
+            .bg(theme.surface(Elevation::Panel).fill)
+            .pb(px(12.0))
+            .child(top)
+            .children(sections)
+            .into_any_element()
+    }
+
+    fn sheet(cx: &App) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.foreground.muted();
+        let rows = SESSIONS
+            .iter()
+            .enumerate()
+            .map(|(ix, (name, windows, attached))| {
+                sheet_row(
+                    ("showcase-session-option", ix),
+                    zz_ui::roles::PHONE_ROW,
+                    attached.then(|| zz_ui::Icon::new(IconName::Check)),
+                    *name,
+                    cx,
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .text_size(px(13.0))
+                        .text_color(muted)
+                        .child(overview_count(*windows, "window")),
+                )
+            });
+        let sheet = bottom_sheet(
+            "showcase-sessions-sheet",
+            "Sessions",
+            [compact_bar_button("showcase-sessions-close", IconName::Xmark).into_any_element()],
+            v_flex()
+                .px(px(8.0))
+                .pb(px(8.0))
+                .children(rows)
+                .child(div().mx(px(12.0)).my(px(4.0)).rule_on(
+                    zz_ui::roles::LIST_RULE,
+                    zz_ui::Edge::Top,
+                    cx,
+                ))
+                .child(sheet_row(
+                    "showcase-new-session",
+                    zz_ui::roles::PHONE_ROW,
+                    Some(zz_ui::Icon::new(IconName::Plus).text_color(muted)),
+                    "New session",
+                    cx,
+                )),
+            px(0.0),
+            |_, _| {},
+        )
+        .header_role(zz_ui::roles::PHONE_BAR);
+        phone_frame("showcase-phone-sheet", cx)
+            .relative()
+            .h(px(PHONE_SHEET_HEIGHT))
+            .bg(theme.surface(Elevation::Panel).fill)
+            .child(
+                v_flex()
+                    .p(px(16.0))
+                    .gap_2()
+                    .text_size(px(13.0))
+                    .text_color(muted)
+                    .children(PHONE_LINES.map(|line| div().child(line))),
+            )
             .child(sheet)
             .into_any_element()
     }
 }
 
-impl Render for Content {
+impl Render for Phone {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         tiles(
             window,
             vec![
-                vec![self.phone(cx)],
-                vec![reading(cx)],
-                vec![agent(cx), start_page(cx)],
+                vec![self.keys(cx), Self::bindings(cx)],
+                vec![self.terminal(cx), Self::sheet(cx)],
+                vec![Self::overview(cx)],
             ],
         )
     }
+}
+
+fn phone_frame(id: &'static str, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
+    let theme = cx.theme();
+    v_flex()
+        .id(id)
+        .w_full()
+        .max_w(px(PHONE_WIDTH))
+        .overflow_hidden()
+        .rounded(theme.radius)
+        .framed(cx)
+        .bg(theme.background)
 }
 
 fn tiles(window: &Window, columns: Vec<Vec<AnyElement>>) -> impl IntoElement {
@@ -870,6 +1116,119 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+fn start(window: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    tiles(
+        window,
+        vec![
+            vec![empty_session(cx)],
+            vec![first_run(cx)],
+            vec![new_pane(cx)],
+        ],
+    )
+    .into_any_element()
+}
+
+fn empty_session(cx: &App) -> AnyElement {
+    let key = |key: &str| Keystroke::parse(key).ok();
+    let actions = [
+        empty_workspace_action(
+            "showcase-new-session",
+            key("enter"),
+            "New session",
+            true,
+            true,
+            cx,
+        )
+        .into_any_element(),
+        empty_workspace_action(
+            "showcase-open-settings",
+            key("cmd-,"),
+            "Settings",
+            false,
+            false,
+            cx,
+        )
+        .into_any_element(),
+        empty_workspace_caption("In a session", cx).into_any_element(),
+    ];
+    let hints = SESSION_KEYS.iter().map(|(chord, label)| {
+        empty_workspace_hint(key(PREFIX).into_iter().chain(key(chord)), *label, cx)
+            .into_any_element()
+    });
+    window_tile(
+        "showcase-empty-session",
+        empty_workspace(
+            "showcase-empty-workspace",
+            empty_workspace_keys(actions.into_iter().chain(hints)),
+            cx,
+        ),
+        cx,
+    )
+}
+
+fn first_run(cx: &App) -> AnyElement {
+    window_tile(
+        "showcase-first-run",
+        empty_workspace(
+            "showcase-first-run-workspace",
+            empty_workspace_connect(
+                Button::new("showcase-add-host")
+                    .primary()
+                    .label("Add host…"),
+                cx,
+            ),
+            cx,
+        ),
+        cx,
+    )
+}
+
+fn new_pane(cx: &App) -> AnyElement {
+    let gaps = crate::pane().gaps;
+    let rows = PANE_CHOICES
+        .iter()
+        .enumerate()
+        .map(|(index, (title, icon, shortcut))| {
+            pane_picker_row(
+                ("showcase-pane-choice", index),
+                title,
+                icon.clone(),
+                shortcut,
+                index == 0,
+                true,
+                cx,
+            )
+            .into_any_element()
+        })
+        .collect::<Vec<_>>();
+    let pane = pane_surface(
+        "showcase-new-pane-surface",
+        pane_picker_surface("showcase-new-pane-picker", radii(gaps), rows, cx),
+        Vec::new(),
+        chrome(true, false, gaps, cx),
+        cx,
+    );
+    window_tile(
+        "showcase-new-pane",
+        div().size_full().p(gap(gaps)).child(pane),
+        cx,
+    )
+}
+
+fn window_tile(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
+    div()
+        .id(id)
+        .w_full()
+        .h(px(START_HEIGHT))
+        .overflow_hidden()
+        .rounded(cx.theme().radius)
+        .framed(cx)
+        .bg(cx.theme().background)
+        .child(content)
+        .into_any_element()
+}
+
 fn reading(cx: &App) -> AnyElement {
     let style = TextViewStyle {
         highlight_theme: Arc::clone(&cx.theme().highlight_theme),
@@ -886,23 +1245,29 @@ fn reading(cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn start_page(cx: &App) -> AnyElement {
+fn start_page(address: &Entity<InputState>, window: &Window, cx: &App) -> AnyElement {
     let recents = v_flex().w_full().max_w(px(360.0)).gap(px(4.0)).children(
         RECENT
             .into_iter()
             .enumerate()
             .map(|(index, url)| browser_recent_row(("showcase-recent", index), url, None, cx)),
     );
-    div()
+    v_flex()
         .id("showcase-start-page")
-        .relative()
         .w_full()
-        .h(px(220.0))
+        .h(BrowserHeader::HEIGHT + px(START_PAGE_HEIGHT))
         .overflow_hidden()
         .rounded(cx.theme().radius)
         .framed(cx)
         .bg(cx.theme().background.opaque())
-        .child(browser_start_surface(recents))
+        .child(browser_header(true, 2, 1, address, false, window, cx))
+        .child(
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .child(browser_start_surface(recents)),
+        )
         .into_any_element()
 }
 

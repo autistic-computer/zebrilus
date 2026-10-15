@@ -1,6 +1,6 @@
 use crate::Colorize as _;
 use crate::foundation::restyle;
-use crate::{ActiveTheme, Disableable, Kind, PaintState, StyledExt, h_flex};
+use crate::{ActiveTheme, Disableable, PaintState, StyledExt, SurfaceRole, h_flex};
 use smallvec::SmallVec;
 use zz_gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
@@ -98,7 +98,7 @@ impl ParentElement for MenuItemElement {
 impl RenderOnce for MenuItemElement {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
-        let role = Kind::Row.role();
+        let role = SurfaceRole::MENU_ITEM;
         let state = if self.disabled {
             PaintState::Rest
         } else if self.submenu_open {

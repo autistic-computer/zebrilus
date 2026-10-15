@@ -131,7 +131,7 @@ pub fn sheet_option(
 ) -> Stateful<Div> {
     sheet_row(
         id,
-        Kind::Row.role(),
+        SurfaceRole::MENU_ITEM,
         checked.then(|| Icon::new(IconName::Check)),
         label,
         cx,
@@ -149,7 +149,7 @@ pub fn sheet_action(
     let muted = cx.theme().foreground.muted();
     sheet_row(
         id,
-        Kind::Row.role(),
+        SurfaceRole::MENU_ITEM,
         Some(Icon::new(icon).text_color(muted)),
         label,
         cx,
@@ -343,7 +343,7 @@ impl RenderOnce for BottomSheet {
         };
         let theme = cx.theme();
         let enter = ENTER;
-        let sheet = self.surface_role.unwrap_or(Kind::Sheet.role());
+        let sheet = self.surface_role.unwrap_or(SurfaceRole::SHEET);
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
             fill: theme

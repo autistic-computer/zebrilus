@@ -58,7 +58,6 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
         .map(|(index, name)| {
             status_window(
                 ("settings-preview-window", index),
-                index.to_string().into(),
                 name.into(),
                 WorkspaceStatusWindowState {
                     connected: true,

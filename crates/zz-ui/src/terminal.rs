@@ -3383,8 +3383,8 @@ mod overlays {
     use zz_terminal::{SearchCase, SearchMode, SearchQuery, SearchStatus};
 
     use crate::{
-        ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Kind, PaintState,
-        Selectable as _, StyledExt as _,
+        ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, PaintState,
+        Selectable as _, StyledExt as _, SurfaceRole,
         button::{Button, ButtonVariants as _},
         input::{Input, InputState},
         roles,
@@ -3561,7 +3561,7 @@ mod overlays {
                     div()
                         .size(px(IMAGE_PREVIEW_SIDE))
                         .p_1()
-                        .surface(Kind::Popover, cx)
+                        .surface(SurfaceRole::POPOVER, cx)
                         .child(
                             img(ImageSource::Image(image))
                                 .size_full()

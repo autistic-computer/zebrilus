@@ -998,12 +998,12 @@ mod tests {
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(&loaded.active, interface_theme::default_theme());
 
-        let mut parsed = parse_config("interface-theme = macos\n");
+        let mut parsed = parse_config("interface-theme = default\n");
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(loaded.selected.as_ref(), "macos");
+        assert_eq!(loaded.selected.as_ref(), "default");
         assert_eq!(
             Some(&loaded.active),
-            interface_theme::builtin_theme("macos")
+            interface_theme::builtin_theme("default")
         );
         assert_f32_eq(
             parsed.config.widget_corner_radius.value,
@@ -1044,13 +1044,13 @@ mod tests {
         assert!(error.contains("did you mean `row-inset`"), "{error}");
         assert!(error.ends_with("Showing Neon until it does."), "{error}");
 
-        let mut parsed = parse_config("interface-theme = macos\n");
-        let macos = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(macos.error, None);
+        let mut parsed = parse_config("interface-theme = default\n");
+        let shown = load_themes(&path, &mut parsed, &Themes::default());
+        assert_eq!(shown.error, None);
         let mut parsed = parse_config("interface-theme = neon\n");
-        let switched = load_themes(&path, &mut parsed, &macos);
-        assert_eq!(switched.active, macos.active);
-        assert_eq!(switched.selected.as_ref(), "macos");
+        let switched = load_themes(&path, &mut parsed, &shown);
+        assert_eq!(switched.active, shown.active);
+        assert_eq!(switched.selected.as_ref(), "default");
         assert!(switched.saved.is_empty());
         assert!(switched.error.is_some());
 
@@ -1067,7 +1067,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         let mut parsed = parse_config(
-            "interface-theme = macos\nwidget-corner-radius = wide\nwidget-shadow-strength = 9\n",
+            "interface-theme = default\nwidget-corner-radius = wide\nwidget-shadow-strength = 9\n",
         );
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(parsed.diagnostics.len(), 2, "{:?}", parsed.diagnostics);
@@ -1082,7 +1082,7 @@ mod tests {
         );
         assert_eq!(
             parsed.config.widget_primary,
-            ConfigValue::from_default("accent")
+            ConfigValue::from_default("foreground")
         );
     }
 
@@ -1448,7 +1448,7 @@ mod tests {
         let parsed = parse_config(
             "theme-mode = dark\n\
              app-icon = light\n\
-             interface-theme = linear # trailing comments still work\n",
+             interface-theme = default # trailing comments still work\n",
         );
 
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
@@ -1462,7 +1462,7 @@ mod tests {
             parsed.config.app_icon.provenance,
             ConfigProvenance::Override
         );
-        assert_eq!(parsed.config.interface_theme.value, "linear");
+        assert_eq!(parsed.config.interface_theme.value, "default");
         assert_eq!(
             parsed.config.interface_theme.provenance,
             ConfigProvenance::Override
@@ -2288,15 +2288,15 @@ mod tests {
             ),
         )
         .expect("write retired keys");
-        write_interface_theme_at(&path, "linear", false).expect("write theme");
+        write_interface_theme_at(&path, "default", false).expect("write theme");
 
         let source = fs::read_to_string(&path).expect("read theme settings");
         let parsed = parse_config(&source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(parsed.config.theme_mode.value, ThemeModeSetting::System);
-        assert_eq!(parsed.config.interface_theme.value, "linear");
+        assert_eq!(parsed.config.interface_theme.value, "default");
         assert!(source.contains("theme-mode = system"));
-        assert!(source.contains("interface-theme = linear"));
+        assert!(source.contains("interface-theme = default"));
         assert!(!source.contains("chrome-background"));
         assert!(!source.contains("chrome-preset-dark"));
     }
@@ -2321,7 +2321,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         let key = ConfigKey::InterfaceTheme;
-        write_config_edit_at(&path, key.as_str(), Some("macos")).expect("write");
+        write_config_edit_at(&path, key.as_str(), Some("default")).expect("write");
         write_config_edit_at(&path, key.as_str(), None).expect("reset");
 
         let source = fs::read_to_string(path).expect("read");
@@ -2454,8 +2454,8 @@ mod tests {
 
         for (strength, outline, glass, expected) in [
             (Some("0"), Some("0"), Some("off"), (0.0, 0.0, false)),
-            (Some("0.5"), Some("1"), Some("theme"), (0.5, 1.0, true)),
-            (None, None, None, (1.0, 0.5, true)),
+            (Some("0.5"), Some("1"), Some("frosted"), (0.5, 1.0, true)),
+            (None, None, None, (1.0, 0.5, false)),
         ] {
             for (key, value) in [
                 (ConfigKey::WidgetShadowStrength, strength),
@@ -2489,7 +2489,7 @@ mod tests {
     fn chrome_contrast_validates_reloads_survives_mode_changes_and_resets(
         cx: &mut zz_gpui::TestAppContext,
     ) {
-        for value in ["0.49", "2.01", "NaN", "inf", "invalid"] {
+        for value in ["0.99", "2.01", "NaN", "inf", "invalid"] {
             let parsed = parse_config(&format!("chrome-contrast = {value}\n"));
             assert_eq!(parsed.diagnostics.len(), 1);
             assert_f32_eq(parsed.config.chrome_contrast.value, 1.0);

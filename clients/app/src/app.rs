@@ -34,8 +34,8 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Kind, Root,
-    StyledExt as _,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Root, StyledExt as _,
+    SurfaceRole,
     button::{Button, ButtonVariants as _},
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserSearch,
@@ -2019,7 +2019,7 @@ impl AppShell {
                     .right(px(8.0))
                     .top(px(8.0))
                     .p(px(8.0))
-                    .surface(Kind::Toast, cx)
+                    .surface(SurfaceRole::TOAST, cx)
                     .text_size(px(12.0))
                     .text_color(cx.theme().warning)
                     .child(self.connection.read(cx).status.clone())

@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
-description: "A theme defines its materials once (radius, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with six props (fill, outline, shadow, shape, hover, selected), resolved from its kit kind's built-in style, the theme's patch for the kind, the role's own patch and the theme's patch for the role. Built 2026-10-13: 19 kit kinds, 53 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
+description: "A theme defines its materials once (radius, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with six props (fill, outline, shadow, shape, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 57 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
 status: Built (2026-10-13)
 resource: crates/zz-gpui-kit/src/foundation/surface.rs
 tags:
@@ -9,7 +9,7 @@ tags:
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-14T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -36,7 +36,7 @@ then to a built-in value.
 | Kinds, styles, patches, `Layer` and the resolver (`Theme::style`, `Theme::layer`) | `crates/zz-gpui-kit/src/foundation/surface.rs` |
 | Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule_on`, `row_corners`, `row_radius`) | `crates/zz-gpui-kit/src/foundation/styled.rs` |
 | `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `crates/zz-gpui-kit/src/foundation/theme.rs` |
-| zz's roles by region (`REGIONS`, `all()`, `find()`) | `crates/zz-ui/src/roles.rs` |
+| zz's roles and the lookups over them (`all()`, `find()`, `members()`) | `crates/zz-ui/src/roles.rs` |
 | Theme files: `Materials`, `MaterialOverrides`, the `roles` map and its id check | `crates/zz-ui/src/interface_theme.rs`, `crates/zz-ui/themes/*.json` |
 | The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `clients/storybook/src/knobs.rs` |
 
@@ -73,13 +73,17 @@ the mode sets it, 0 casts nothing; the float shadow draws the contact shadow und
 | `outline` | `true`, `false` | draws the outline material |
 | `shadow` | `none`, `contact`, `float` | which shadow material |
 | `shape` | `square`, `round`, `pill` | `round` follows the radius material; rows take it less 4px so they sit concentric in their list, and go square when the row inset is 0 |
-| `hover` | `none`, `tint`, `lift`, `accent`, `ring`, `bar` | what pointing at it adds; press is the same highlight one wash deeper |
-| `selected` | the same six | how "this is the current, chosen or on one" shows |
+| `hover` | `none`, `tint`, `lift`, `accent`, `ring`, `bar`, `glass` | what pointing at it adds; press is the same highlight one wash deeper |
+| `selected` | the same seven | how "this is the current, chosen or on one" shows |
 
 The highlights: `tint` is a wash a step deeper than the fill; `lift` is that wash plus the outline
 and a contact shadow, as if the surface rose; `accent` fills with the accent and its text; `ring`
 is a 2px accent ring outside the edge; `bar` is a 3px accent bar along the leading edge (under a
-tab, along the bottom).
+tab, along the bottom); `glass` turns the surface into the theme's glass for that state, tinted
+with its solid fill, so a tab can be solid at rest and glass when selected. A surface already in
+glass, or sitting on glass, takes `tint` instead, and a theme with no glass takes `lift`, so the
+state never paints the same as rest. Hover and press restyle with `restyle`, which clears the
+resting fill when the state draws glass, since a fill paints over the glass under it.
 
 `selected` replaces the old split between Current (gray wash) and Selected (accent): each role says
 which it wants. Tone stays separate: the role decides what a surface is made of, the tone (neutral,
@@ -90,25 +94,94 @@ fills with its tone, primary when neutral; on glass it tints the glass with it.
 Rules are surfaces too: a divider role only uses `outline`, and `.rule_on(role, edge)` draws a 1px
 line in the divider color when the role's outline is on.
 
-### Kinds and roles
+### Kinds, groups and roles
 
-Kit widgets are **kinds** (`Kind`, 19 of them): `bar`, `panel`, `pane`, `card`, `tile`, `row`,
-`tab`, `chip`, `button`, `icon-button`, `field`, `badge`, `keycap`, `popover`, `dialog`, `sheet`,
-`toast`, `tooltip`, `rule`. Each carries a built-in style (`Kind::base`) that draws the Default
-theme as it looked before roles. The kit also names `button.quiet`, a button with no fill until
-pointed at; `SurfaceRole::KIT` holds it and the 19 kinds.
+A **kind** (`Kind`) is what a piece of UI is, broadly, so one patch can restyle everything of that
+sort. There are 10:
 
-zz's distinct pieces are **roles** (`SurfaceRole`: an id, a kind, a label and description for the
-creator, and a built-in `StylePatch`), 53 of them in `zz_ui::roles` by region. A role resolves in
-four steps (`Theme::style`):
+| Kind | What it holds |
+|---|---|
+| `bar` | strips across a window, pane or sheet: the title bar, pane headers, the phone bar |
+| `panel` | columns set into the window: the window frame, the sidebar |
+| `pane` | terminal, browser, agent and editor panes |
+| `card` | boxes in the flow: message bubbles, code blocks, figures, attachments, setting groups, previews |
+| `floating` | everything over the content: menus, palettes, dialogs, sheets, toasts, tooltips, inline panels, floating panes, pane chips, pane numbers, drag chips, drop zones |
+| `button` | everything you press to do something: buttons, icon buttons, menu items, answer options, the phone's pill and keys |
+| `item` | what you pick that stays picked or open: sidebar rows, agent steps, tabs, tray tabs, tiles |
+| `field` | text fields, selects, the composer, the address bar, the agent's pickers; selected paints the one you are typing in or whose menu is open |
+| `label` | badges, keycaps, status chips, grabbers |
+| `rule` | divider lines |
 
-1. the kind's built-in style;
-2. the theme's patch for the kind;
-3. the role's built-in patch;
-4. the theme's patch for the role.
+Kinds hold things, and things nest: a dialog is floating but its Cancel is a button, and a
+sidebar is a panel whose rows are items. So a kind never contains itself, and a patch for a kind
+never stacks fill on fill or outline in outline.
 
-A field in Settings is just a `field`; the agent composer is the role `agent.composer`, whose kind
-is `field`. A widget with no role draws as its kind.
+Within a kind, roles group the way the pieces do. A role (`SurfaceRole`: an id, its kind, the
+group it is in, a label and description for the creator, a built-in `StylePatch` and whether it is
+a row) is either a kind itself, a group the kit names, or one of zz's places, which sits in a kind
+or in a group (`SurfaceRole::under`). The kit's groups (`SurfaceRole::KIT` holds them with the
+kinds):
+
+- floating: `popover` (menus and popovers), `dialog`, `sheet`, `toast`, `tooltip`;
+- button: `icon-button` with `icon-button.flat` in it, `button.quiet`, and `menu-item`, the rows
+  you press in menus, palettes, pickers and dropdowns;
+- item: `row`, `tab`, `tile`;
+- field: `field.multiline`;
+- label: `badge` with `grabber` in it, `keycap`.
+
+So `chrome.button` is in `icon-button`, which is in `button`; `palette` is in `popover`, which is
+in `floating`; `pane.chip` is in `floating` directly. A role resolves the way author CSS beats the browser's defaults
+(`Theme::style`):
+
+1. the kind's built-in style (`Kind::base`), which draws the Default theme;
+2. each group's built-in patch from the kind inward, ending with the role's;
+3. the theme's patch for each of them in the same order, ending with the role's.
+
+So any theme patch beats every built-in, and among theme patches the closest one wins: a theme
+that makes `floating` glass makes drop zones and pane chips glass too, though both are tint or
+solid as built in, and a patch for `pane.drop-zone` takes it back. Built-in patches only say how
+the Default theme draws a role. A widget
+with no role draws as its kind. `zz_ui::roles::all()` lists the kit's kinds and groups, then zz's
+58 roles; `members(group)` lists what is directly in a group.
+
+A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
+concentric inside its list: its round corners are the radius less 4px, square when the row inset
+is 0, and a bar highlight runs down its leading edge instead of along the bottom.
+
+### Knobs: what a theme may change
+
+Not every prop means something on every kind, so each kind says which values a theme may give each
+prop (`Kind::knobs`, a `Knobs` of allowed values per prop; an empty list keeps the built-in). A role
+takes its group's knobs unless it names its own (`SurfaceRole::with_knobs`). A theme file that sets
+anything else is an error naming the role, the prop and what it takes, and the creator's Roles step
+shows only the allowed props and values:
+
+| Kind | Fill | Outline | Shadow | Shape | Hover | Selected |
+|---|---|---|---|---|---|---|
+| bar | all | yes | none, contact | fixed | fixed | fixed |
+| panel | fixed | fixed | fixed | fixed | fixed | fixed |
+| pane | all | yes | all | fixed | fixed | none, ring |
+| card | all | yes | all | square, round | fixed | fixed |
+| floating | tint, solid, glass | yes | all | all | fixed | fixed |
+| button | all | yes | all | all | all | all |
+| item | all | yes | none, contact | all | all | all |
+| field | all | yes | all | all | all | none, tint, lift, ring, bar, glass |
+| label | all | yes | none, contact | all | fixed | fixed |
+| rule | fixed | yes | fixed | fixed | fixed | fixed |
+
+`popover`, `dialog`, `sheet`, `pane.float` and `inline-panel` take only square and round, since
+a pill box that size is a stadium; `menu-item` casts no shadow. `pane.chip`, `pane.display-panes`,
+`pane.drop-zone` and `titlebar.status-chip` also take hover and selected (`Knobs::pressable`), and
+`window`, `titlebar`, `pane.header` and `sidebar` take nothing (`Knobs::FIXED`): a header
+fill ignored the pane's corner radius and stacked glass on a glass pane, and the sidebar stacked
+glass on the window's blur. That leaves nothing in `panel` a theme can change, so the kind is
+fixed too, and `bar` reaches only `phone.bar`. A theme's patch for a kind or group reaches
+each role only through that role's knobs, so a `floating` pill leaves dialogs round and a `panel`
+patch leaves the window alone. A strip's corners belong to what holds it, so bars and panels have
+no shape, and a pane's radius is the app's pane corner setting, which ignores the role's. Any
+selected highlight but none lights the active pane the same way, so a pane offers only none and
+ring. A field's selected is how it looks while focused (`PaintState::Focused`), or while a
+select's menu is open; accent would hide the caret and the selection, so fields leave it out.
 
 ### What the engine enforces
 
@@ -121,9 +194,9 @@ is `field`. A widget with no role draws as its kind.
    every role shows up in the creator.
 2. **No glass on glass.** A glass role on a glass ground paints `tint` instead, and a glass role
    in a theme without glass paints `solid`. Mail's grouped toolbar capsule falls out of it.
-3. **Controls cast shadows only on the window.** Rows, tabs, chips, buttons, icon buttons, fields,
-   badges and keycaps on a panel or a popover keep their outline and drop the shadow, since that
-   surface already stands off the window.
+3. **Controls cast shadows only on the window.** Buttons, items, fields and labels on a panel or
+   a popover keep their outline and drop the shadow, since that surface already stands off the
+   window. Floating things step their fill off the window's color wherever they sit.
 4. **Highlights never change a border's width.** A role that draws an outline, or lifts on hover
    or selection, reserves the outline width in every state and only recolors it.
 5. **Fills composite opaque under an outer shadow.** GPUI draws a shadow under the whole box, so a
@@ -131,22 +204,29 @@ is `field`. A widget with no role draws as its kind.
    ring, blends its fill over its ground first.
 6. **Ink follows the ground.** `Layer::ground` carries the composited fill, the ink, the elevation
    and whether it is glass, so text, keycaps and nested controls read on whatever the role chose.
-7. **Inspect.** `Theme.inspect` names one role id; every surface drawn through it adds a 2px
-   magenta ring just inside its edge, so a translucent fill never shows it through.
+7. **Inspect.** `Theme.inspect` names one role, group or kind id; every surface drawn through that
+   role, or through any role in that group or kind that its patch still reaches
+   (`Theme::group_reaches`: some prop the role's knobs open that no theme patch closer to the
+   role sets), adds a 2px magenta ring just inside its edge, so a translucent fill
+   never shows it through. `Theme.inspect_strength` scales its alpha, which the creator fades to
+   flash it.
+8. **Buttons go pill at the largest radius.** Past a 24px radius (`Theme::control_radius`) a round
+   button of any kind, menu items included, takes a full pill. Other kinds keep the radius, which
+   the window's adaptive corners hold under half their height.
 
 `Theme::casts_shadow(role)`, `shadows_of(shadow)`, `contact_shadows()`, `float_shadows()`,
-`shape_radius(kind, shape)` and `ground_of(surface)` expose the same answers to code that needs
+`shape_radius(role, shape)` and `ground_of(surface)` expose the same answers to code that needs
 one value.
 
 ### Theme file
 
-From `crates/zz-ui/themes/tahoe.json`, colors left out:
+A theme with glass chrome over flat pill buttons, colors left out:
 
 ```json
 {
-  "name": "Tahoe",
+  "name": "Glass chrome",
   "materials": {
-    "radius": 14,
+    "radius": 18,
     "outline": 0.5,
     "row-inset": 5,
     "primary": "accent",
@@ -155,7 +235,7 @@ From `crates/zz-ui/themes/tahoe.json`, colors left out:
   "roles": {
     "chrome.button": { "fill": "glass", "shape": "pill", "shadow": "contact", "hover": "tint", "selected": "tint" },
     "button": { "fill": "tint", "outline": false, "shadow": "none", "shape": "pill" },
-    "chip": { "fill": "tint", "outline": false, "shadow": "none", "shape": "pill", "selected": "accent" },
+    "tab": { "shape": "pill", "hover": "tint", "selected": "glass" },
     "agent.composer": { "fill": "glass", "shadow": "contact", "shape": "round" },
     "sidebar.row": { "hover": "tint", "selected": "tint" },
     "rule.bar": { "outline": false }
@@ -163,7 +243,7 @@ From `crates/zz-ui/themes/tahoe.json`, colors left out:
 }
 ```
 
-Kind names and role ids share the `roles` map. An id `zz_ui::roles::find` does not know is an
+Kind names, group ids and role ids share the `roles` map. An id `zz_ui::roles::find` does not know is an
 error that suggests the role it was probably meant to be (`chromebutton` gets `chrome.button`,
 `composer` gets `agent.composer`).
 
@@ -178,7 +258,8 @@ error that suggests the role it was probably meant to be (`chromebutton` gets `c
   the outline and a contact shadow, which Default's icon buttons, tabs, sidebar rows and quiet
   buttons take on hover and selection.
 - **Lookup.** The proposal looked up the theme's role entry, then its kind entry, then the
-  built-in. Roles carry their own built-in patch, so the order is the four steps above.
+  built-in. Roles carry their own built-in patch; since 2026-10-14 every built-in applies before
+  any theme patch, as above.
 - **Kinds.** 19, not 23: `toggle`, `slider`, `scrim` and `scrollbar` are not kinds. Switches and
   sliders paint from tone and emphasis, scrims fill with `theme.scrim`, and scrollbars keep their
   own paint.
@@ -191,6 +272,15 @@ error that suggests the role it was probably meant to be (`chromebutton` gets `c
   (proposed tile) is a pill badge.
 - **`pane.display-panes` and `pane.drag-chip`** are popovers, as their old floating look was, so a
   theme's chip patch does not reach them.
+- **Broad kinds (2026-10-14).** The 19 kinds above were narrow enough that a theme had to say the
+  same thing five times (popover, dialog, sheet, toast, tooltip) and still missed pane chips. They
+  became 10 kinds with groups under them, and every role kept its resolved Default style: popover,
+  dialog, sheet, toast and tooltip became groups of `floating`, which also took pane chips, drop
+  zones, floating panes and inline panels; `icon-button` and the old `row` (renamed `menu-item`,
+  the rows that run something) became groups of `button`, with the phone keys; `tab`, `tile` and a
+  new `row` (rows that show which one is current) became groups of `item`; `badge` and `keycap`
+  became groups of `label`; `chip` is gone; `code` is a card. `agent.control` split into
+  `agent.picker` (a field), `agent.tray` (a tab) and the queue chip, now a quiet button.
 - **New roles.** The review pass after the lanes added the roles a piece needed to keep its
   Default look while still taking a theme:
   - kit: `field.multiline` (multi-line fields and framed editors, always round so a pill field
@@ -213,96 +303,96 @@ error that suggests the role it was probably meant to be (`chromebutton` gets `c
 Four read-only sweeps covered every painted piece in `crates/zz`, `crates/zz-ui`,
 `crates/zz-gpui-kit` and `clients/app`: about 450 pieces, collapsed below into roles. "Where" names
 the shared function that drew most instances at the time of the sweep; "Drift found" names what the
-role was meant to remove, and what became of it. Kinds are as built. Paths: `ui/` is
+role was meant to remove, and what became of it. Groups are as built after the 2026-10-14 regroup. Paths: `ui/` is
 `crates/zz-ui/src`, `kit/` is `crates/zz-gpui-kit/src`, `zz/` is `crates/zz/src`, `app/` is
 `clients/app/src`.
 
 ### Window and title bar
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `window` | panel | window plane (solid or blurred), Linux frame shadow and edge | `ui/shell.rs:36`, `zz/window/frame.rs:113` | desktop 93% under blur, thin client opaque; nothing draws through the role yet |
 | `titlebar` | bar | title bar strip, the control strip above panes | `ui/shell.rs:137` | |
 | `chrome.button` | icon-button | sidebar toggle, settings gear, tree/flat eye, iPad search, window overflow | `ui/navigation.rs:101` | already one function |
-| `titlebar.window-tab` | tab | window pills with hover close and bell/activity dots | `ui/navigation.rs:162` | active looks the same as hover; Default still lifts both, a theme can tell them apart (Tahoe fills the active pill with the accent) |
-| `titlebar.status-chip` | chip | agents "2 running", update "v1.2", host name | `ui/navigation/status.rs:54`, `zz/status_bar.rs:139` | three treatments, hand-made dot; fixed, one chip |
+| `titlebar.window-tab` | tab | window pills with hover close and bell/activity dots | `ui/navigation.rs:162` | active looks the same as hover; Default still lifts both, a theme can tell them apart (`selected: glass` turns the active pill to glass) |
+| `titlebar.status-chip` | badge | agents "2 running", update "v1.2", host name | `ui/navigation/status.rs:54`, `zz/status_bar.rs:139` | three treatments, hand-made dot; fixed, one chip |
 | `titlebar.window-controls` | icon-button | minimize, maximize, close (Windows, Linux) | `kit/title_bar/mod.rs:214` | |
 
 ### Sidebar
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `sidebar` | panel | the column, slideover, bottom fade | `ui/navigation.rs:305`, `zz/app_shell.rs:286` | slideover fade band; fixed (see Bugs) |
 | `sidebar.row` | row | tree rows (host, session, window, pane), Settings section rows, Back | `ui/navigation.rs:337`, `ui/settings.rs:145` | Settings rows were a 28px Button path, tree rows 32px; fixed, Settings section rows and Back draw as `sidebar.row` |
 | `sidebar.entry` | row | flat sidebar two-line window rows | `ui/navigation/flat.rs:455` | always lit, tree lit only with focus |
 | `sidebar.row-action` | icon-button | + × … and layout on hovered rows, + on session labels | `ui/navigation.rs:454`, `ui/navigation/flat.rs:425`, `:817` | four versions with three inks; fixed, one function and one ink, muted until pointed at |
-| `pane-stack` | chip | pane tiles in flat rows and title bar pills, the hover plate | `ui/navigation/pane_stack.rs:171` | |
+| `pane-stack` | tile | pane tiles in flat rows and title bar pills, the hover plate | `ui/navigation/pane_stack.rs:171` | |
 
 ### Panes
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `pane` | pane | tiled pane (gaps or flush), active glow, inactive dim, zoomed, waiting, phone page | `ui/pane.rs:187` | dim rules differ desktop vs thin client |
-| `pane.float` | pane | floating and popup panes, the confirm-before box | `ui/pane.rs:332` | confirm box uses the Panel fill |
+| `pane.float` | floating | floating and popup panes, the confirm-before box | `ui/pane.rs:332` | confirm box uses the Panel fill |
 | `pane.header` | bar | terminal and agent title rows, the browser's two-row header | `ui/pane.rs:47`, `ui/agent.rs:3600`, `ui/browser.rs:57` | three divider treatments, wrapper copied per client; fixed, one `pane_header_frame` and the `rule.bar` divider |
 | `pane.header.button` | icon-button | split, close, drag grip | `ui/pane.rs:18` | |
-| `pane.chip` | chip | Dead, Waiting, Sync, Copy mode, status line, Unzoom, agent status pill, vim mode, "Select an element" | `ui/pane.rs:729`, `ui/agent.rs:3654`, `zz/editor/view.rs:557` | four variants; fixed, one chip with a contact shadow |
-| `pane.display-panes` | chip | display-panes number chips | `ui/pane.rs:796` | hover invisible at outline 0; fixed (see Bugs) |
+| `pane.chip` | floating | Dead, Waiting, Sync, Copy mode, status line, Unzoom, agent status pill, vim mode, "Select an element" | `ui/pane.rs:729`, `ui/agent.rs:3654`, `zz/editor/view.rs:557` | four variants; fixed, one chip with a contact shadow |
+| `pane.display-panes` | floating | display-panes number chips | `ui/pane.rs:796` | hover invisible at outline 0; fixed (see Bugs) |
 | `pane.find-bar` | popover | terminal find bar (and the browser's once it exists) | `zz/terminal/view.rs:660` | copied per client; fixed, one `terminal_find_bar` in `zz_ui::terminal` |
-| `pane.drop-zone` | chip | drop preview, armed veil, dragged-pane veil | `ui/pane.rs:425`, `:465` | hand-drawn edge |
-| `pane.drag-chip` | chip | chip following the pointer while dragging | `ui/pane.rs:479` | |
+| `pane.drop-zone` | floating | drop preview, armed veil, dragged-pane veil | `ui/pane.rs:425`, `:465` | hand-drawn edge |
+| `pane.drag-chip` | floating | chip following the pointer while dragging | `ui/pane.rs:479` | |
 
 ### Agent pane
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `agent.bubble` | card | your messages | `ui/agent.rs:2416` | |
-| `agent.composer` | field | the message box | `ui/agent/composer.rs:56` | |
+| `agent.composer` | field.multiline | the message box | `ui/agent/composer.rs:56` | |
 | `agent.send` | icon-button | send, queue, stop | `ui/agent/controls.rs:42` | stop had no fill, send was solid; fixed, stop takes send's fill |
-| `agent.control` | button | mode, model and folder pickers, plan, tasks and queue chips | `ui/agent/controls.rs:59`, `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the control's selected lift |
-| `agent.attachment` | tile | image tiles in bubbles and the composer, their remove × | `ui/agent.rs:2105` | × has no backing |
+| `agent.picker` | field | mode, model and folder pickers | `ui/agent/controls.rs:59` | |
+| `agent.tray` | tab | plan and tasks chips that open the tray over the composer (the queue chip is a quiet button) | `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the tab's selected lift |
+| `agent.attachment` | card | image tiles in bubbles and the composer, their remove × | `ui/agent.rs:2105` | × has no backing |
 | `agent.trace` | row | tool and thought rows, the trace summary, its count badges | `ui/agent.rs:2266` | clickable rows had no hover; fixed |
 | `agent.option` | button | answer tiles in question and permission cards | `ui/agent/presentation.rs:239` | |
 | `agent.jump` | icon-button | jump-to-bottom button over the transcript | `ui/agent.rs:1025` | |
-| `inline-panel` | popover | panels raised inside a pane: question cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
+| `inline-panel` | floating | panels raised inside a pane: question cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
 
 ### Reading content (markdown in agent replies)
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
-| `code` | popover | code blocks and their header, inline code | `kit/text/node.rs:719`, `kit/text/inline.rs:213` | inline code went square in paragraphs with images; fixed (see Bugs) |
+| `code` | card | code blocks and their header, inline code | `kit/text/node.rs:719`, `kit/text/inline.rs:213` | inline code went square in paragraphs with images; fixed (see Bugs) |
 | `figure` | card | Mermaid frames, markdown tables | `ui/agent.rs:3033`, `kit/text/node.rs:1544` | three card fills across bubble, tile, diagram; fixed, figures have no fill of their own and tables wear the figure look |
 
 ### Browser pane
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `browser.tab` | tab | browser tabs | `ui/browser.rs:460` | |
 | `browser.button` | icon-button | back, forward, reload, picker, more, new tab | `ui/browser.rs:526` | |
 | `browser.address` | field | the address bar and its site button | `ui/browser.rs:183` | |
-| `browser.suggestion` | row | recent pages on the blank page | `ui/browser.rs:623` | |
+| `browser.suggestion` | menu-item | recent pages on the blank page | `ui/browser.rs:623` | |
 
 ### Settings
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `settings.card` | card | grouped setting cards | `ui/settings.rs:1343` | stitched per row with hand-clipped shadows; still rounded only at a run's ends with the shadow clipped per row, now from the role's layer |
-| `settings.row` | row | a setting row, its touch press | `ui/settings.rs:1253` | some controls skipped the card ground; fixed, every control on a card sits on `settings_card_ground` |
 | `settings.tile` | tile | theme, mode and app icon tiles with the chosen ring | `ui/settings/appearance.rs:267` | 1px hand ring, 2px `chosen_ring` elsewhere; fixed, the role's 2px selected ring |
 | `settings.preview` | card | preview wells: panes, status bar, terminal, config editor | `ui/settings/panes_preview.rs:102`, `ui/settings/status_bar_preview.rs:157`, `zz/config/settings.rs:1761` | four recipes; fixed, one `settings_preview` well |
 
-Text fields, number fields, selects, switches and buttons on setting rows are plain kinds.
+Text fields, number fields, selects, switches and buttons on setting rows are plain kinds, and the rows themselves draw nothing of their own: every control on a card sits on `settings_card_ground`. `settings.row` (a whole row as a button, pressed on touch) was dropped on 2026-10-15 because no app made a row clickable.
 
 ### Phone (narrow thin client)
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `phone.bar` | bar | bottom bar strip, key strip, 44px nav bars (settings, overview, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
 | `phone.pill` | button | the bar's pane pill, its icon tile and page dots | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
 | `phone.button` | icon-button | back, close, gear, keyboard | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
-| `phone.key` | keycap | key row keys, ctrl, alt and prefix keys, arrow pad | `ui/compact/key_row.rs:50` | |
+| `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad | `ui/compact/key_row.rs:50` | |
 | `phone.card` | tile | overview pane cards, the New pane tile | `app/app/compact/overview.rs:667`, `:529` | |
-| `phone.row` | row | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `ui/compact/which_key_list.rs:54`, `ui/settings.rs:222` | four corner rules; fixed, one role |
+| `phone.row` | menu-item | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `ui/compact/which_key_list.rs:54`, `ui/settings.rs:222` | four corner rules; fixed, one role |
 | `grabber` | badge | phone bar and sheet grabbers | `ui/compact/bar.rs:46`, `kit/sheet.rs:376` | two sizes and colors |
 
 ### Overlays
@@ -310,7 +400,7 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 `popover`, `row`, `dialog`, `sheet`, `toast`, `tooltip` and `keycap` are kinds, not zz roles; the
 overlays name these roles over them:
 
-| Role | Kind | Covers | Where | Drift found |
+| Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `palette` | popover | command palette, path picker | `ui/command.rs:152` | no scrim, unlike choosers |
 | `picker` | dialog | agent history, file picker, choose-tree and choose-buffer | `ui/picker.rs:34`, `ui/chooser.rs:118` | history picker copied per client and drifting; fixed, one picker in `zz_ui::agent::history` |
@@ -321,11 +411,11 @@ What the inventory found on the kinds themselves:
 | Kind | Covers | Where | Drift found |
 |---|---|---|---|
 | `popover` | context and dropdown menus, tmux display-menu, select dropdowns, omnibox, model picker, pane-stack plate, key popovers, image preview | `kit/menu/popup_menu.rs:1184` | |
-| `row` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, pane picker, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `ui/picker.rs:111` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
+| `menu-item` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, pane picker, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `ui/picker.rs:111` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
 | `dialog` | alerts and prompts (ssh, add host, restart daemon, import) | `kit/overlay/dialog.rs:499` | |
 | `sheet` | which-key, phone bottom sheets | `ui/which_key.rs:405`, `kit/sheet.rs:355` | |
 | `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:188`, `app/app.rs:2036`, `ui/compact/hud.rs:5` | banner and HUD used the popover look; fixed, both draw as toasts |
-| `tooltip` | tooltips | `kit/tooltip/mod.rs:53` | |
+| `tooltip` | floating | `kit/tooltip/mod.rs:53` | |
 | `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus and tooltips still show bindings as text) |
 
 Scrims (dimming behind dialogs, pickers, sheets, the slideover and modal floats) are not a role:
@@ -351,15 +441,17 @@ they fill with `theme.scrim`.
 
 ## Theme creator
 
-The storybook's theme creator (`clients/storybook`) is four steps over the same live preview:
+The storybook's theme creator (`clients/storybook`) is four steps over the same live preview,
+then an App tab for the pane settings and the preview around the showcase, which are not theme:
 
-1. **Colors**: light and dark palettes, accent, font.
-2. **Materials**: shape (radius, outline, row inset, primary), glass, and both shadow materials.
-3. **Roles**: `zz_ui::roles::REGIONS` as a tree by region, with Kinds last. Each role shows its six
-   props; an unset prop shows the value it inherits and where from (the kind's built-in, the
-   theme's patch for the kind, or the role's built-in). Setting a prop writes only what differs
-   into the theme's `roles` patch. Picking or pointing at a role sets `Theme.inspect`, which rings
-   every surface drawn through it.
+1. **Colors**: color presets, light and dark palettes, accent, font.
+2. **Materials**: presets, shape (radius, outline, row inset, primary), glass, and both shadow
+   materials.
+3. **Roles**: every kind, each with its groups and roles indented under it. Each role shows the
+   props and values its knobs allow; an unset prop shows the value it inherits and from which
+   kind or group, and whether that is the built-in or this theme's patch. Setting a prop writes
+   only what differs into the theme's `roles` patch. Picking a role, group or kind shows only the
+   regions that draw it and flashes `Theme.inspect` over its surfaces for about a second.
 4. **Export**: JSON with only what differs, and Import.
 
 Every built-in starts the creator with its materials and roles. Clicking the preview to open a

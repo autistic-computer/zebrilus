@@ -9,7 +9,7 @@ use zz_gpui::{
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable, Kind, PaintState, Selectable, Size, StyledExt as _, SurfaceRole,
+    ActiveTheme as _, Disableable, PaintState, Selectable, Size, StyledExt as _, SurfaceRole,
     foundation::{restyle, row_corners},
     h_flex,
 };
@@ -148,7 +148,7 @@ impl RenderOnce for ListItem {
         let highlighted = interactive && selected;
 
         let theme = cx.theme();
-        let role = surface_role.unwrap_or(Kind::Row.role());
+        let role = surface_role.unwrap_or(SurfaceRole::MENU_ITEM);
         let layer = theme.layer(
             role,
             if highlighted {
@@ -196,8 +196,9 @@ mod tests {
     use crate::{Highlight, StylePatch};
     use zz_gpui::{Context, IntoElement, Render, TestAppContext, solid_background};
 
-    const TINTED: SurfaceRole = SurfaceRole::new("test.row", Kind::Row, "Tinted rows", "")
-        .with(StylePatch::EMPTY.selected(Highlight::Tint));
+    const TINTED: SurfaceRole =
+        SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Tinted rows", "")
+            .with(StylePatch::EMPTY.selected(Highlight::Tint));
 
     struct Rows;
 
@@ -223,7 +224,9 @@ mod tests {
             _ = window.draw(cx);
             let theme = cx.theme();
             let tinted = theme.layer(TINTED, PaintState::Selected).fill;
-            let accent = theme.layer(Kind::Row.role(), PaintState::Selected).fill;
+            let accent = theme
+                .layer(SurfaceRole::MENU_ITEM, PaintState::Selected)
+                .fill;
             assert_eq!(accent, theme.selection_background());
             assert_ne!(tinted, accent);
             let quads = window.painted_quads();

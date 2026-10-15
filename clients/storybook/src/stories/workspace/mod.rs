@@ -1,6 +1,6 @@
 use crate::story::Story;
 
-mod browser;
+pub(super) mod browser;
 pub(super) mod fixtures;
 pub(super) mod flat_sidebar;
 mod navigation;

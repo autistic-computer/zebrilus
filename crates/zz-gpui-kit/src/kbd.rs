@@ -7,7 +7,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Ground, Kind, Layer, PaintState, Sizable, Size, StyledExt as _, Surface,
+    ActiveTheme as _, Ground, Layer, PaintState, Sizable, Size, StyledExt as _, Surface,
     SurfaceRole, Theme, h_flex, rems_from_px,
 };
 
@@ -234,7 +234,7 @@ impl Keycap {
 
     fn surface_layer(&self, theme: &Theme) -> Layer {
         theme.layer(
-            Surface::new(self.surface_role.unwrap_or(Kind::Keycap.role())).on_maybe(self.on),
+            Surface::new(self.surface_role.unwrap_or(SurfaceRole::KEYCAP)).on_maybe(self.on),
             PaintState::Rest,
         )
     }
