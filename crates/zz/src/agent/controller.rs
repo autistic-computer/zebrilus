@@ -170,6 +170,7 @@ struct AgentThread {
     transcript: AgentTranscript<Arc<Image>>,
     provider: AgentProvider,
     connection: AgentConnectionState,
+    background_turn: bool,
     auth_methods: Arc<[AgentAuthMethod]>,
     error: Option<Arc<str>>,
     agent_name: Option<Arc<str>>,
@@ -206,6 +207,7 @@ impl AgentThread {
             transcript: AgentTranscript::new(transcript_image),
             provider,
             connection: AgentConnectionState::Starting,
+            background_turn: false,
             auth_methods: Arc::from([]),
             error: None,
             agent_name: None,
@@ -328,6 +330,7 @@ impl AgentThread {
     fn begin_prompt(&mut self, prompt: String, images: Vec<Arc<Image>>) {
         self.transcript.begin_prompt(prompt, images);
         self.connection = AgentConnectionState::Running;
+        self.background_turn = false;
         self.error = None;
     }
 
@@ -1621,14 +1624,15 @@ impl AgentController {
                 thread.error = state.error.as_deref().map(Arc::from);
             }
             AgentConnectionPhase::Ready => {
-                if matches!(
+                let settled = matches!(
                     thread.connection,
                     AgentConnectionState::Starting
                         | AgentConnectionState::Failed
                         | AgentConnectionState::Disconnected
-                ) && !session_change_pending
-                {
+                ) || (thread.background_turn && thread.connection.has_active_turn());
+                if settled && !session_change_pending {
                     thread.connection = AgentConnectionState::Ready;
+                    thread.background_turn = false;
                 }
                 if was_failed || state.error.is_some() {
                     thread.error = state.error.as_deref().map(Arc::from);
@@ -1637,6 +1641,7 @@ impl AgentController {
             AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission => {
                 if !thread.connection.has_active_turn() {
                     thread.connection = AgentConnectionState::Running;
+                    thread.background_turn = true;
                 }
                 thread.error = state.error.as_deref().map(Arc::from);
             }
@@ -4021,6 +4026,54 @@ mod tests {
                 assert!(pane_state.config_options.is_empty());
                 assert!(pane_state.pending_permissions.is_empty());
                 assert_eq!(pane_state.git, None);
+            });
+        });
+    }
+
+    #[zz_gpui::test]
+    fn a_turn_the_agent_starts_on_its_own_ends_when_the_daemon_is_ready(cx: &mut TestAppContext) {
+        let (controller, _sink) = proxy_controller(cx);
+        let pane = PaneId(5);
+        let wire = |phase| AgentPaneWire {
+            phase,
+            queued_prompts: 0,
+            session_id: None,
+            title: None,
+            error: None,
+            auth_methods: String::new(),
+            config_options: String::new(),
+            modes: String::new(),
+            pending_permission: None,
+            git: None,
+            tasks: Vec::new(),
+        };
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                let connection = |controller: &AgentController| {
+                    controller.pane_state(pane).expect("pane").connection
+                };
+
+                controller.apply_pane_state(pane, &wire(AgentConnectionPhase::Running), cx);
+                assert_eq!(connection(controller), AgentConnectionState::Running);
+                controller.apply_pane_state(pane, &wire(AgentConnectionPhase::Ready), cx);
+                assert_eq!(connection(controller), AgentConnectionState::Ready);
+
+                controller.apply_pane_state(pane, &wire(AgentConnectionPhase::Running), cx);
+                controller.cancel(pane, cx);
+                assert_eq!(connection(controller), AgentConnectionState::Cancelling);
+                controller.apply_pane_state(pane, &wire(AgentConnectionPhase::Ready), cx);
+                assert_eq!(connection(controller), AgentConnectionState::Ready);
+
+                controller
+                    .prompt(pane, "hello", Vec::new(), cx)
+                    .expect("a ready pane takes a prompt");
+                controller.apply_pane_state(pane, &wire(AgentConnectionPhase::Ready), cx);
+                assert_eq!(
+                    connection(controller),
+                    AgentConnectionState::Running,
+                    "a Ready published before the daemon saw the prompt does not end it"
+                );
             });
         });
     }
