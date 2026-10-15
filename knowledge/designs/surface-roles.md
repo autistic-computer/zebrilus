@@ -9,7 +9,7 @@ tags:
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-14T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -37,7 +37,7 @@ then to a built-in value.
 | Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule_on`, `row_corners`, `row_radius`) | `crates/zz-gpui-kit/src/foundation/styled.rs` |
 | `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `crates/zz-gpui-kit/src/foundation/theme.rs` |
 | zz's roles and the lookups over them (`all()`, `find()`, `members()`) | `crates/zz-ui/src/roles.rs` |
-| Theme files: `Materials`, `MaterialOverrides`, the `roles` map and its id check | `crates/zz-ui/src/interface_theme.rs`, `crates/zz-ui/themes/*.json` |
+| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `crates/zz-ui/src/interface_theme.rs`, `crates/zz-ui/themes/*.json` |
 | The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `clients/storybook/src/knobs.rs` |
 
 ## The model
@@ -54,7 +54,8 @@ Everything painted is a surface. A surface has a role. A role picks materials.
 | `outline` | the width of every outline in pixels; 0 draws none |
 | `row-inset` | how far list rows sit in from their list's edges; 0 makes them square bands that touch |
 | `primary` | what a prominent fill paints: `foreground` or `accent` |
-| `font` | the interface font family, or none for the platform's |
+| `flat-highlights` | whether a `lift` highlight stays flat: it washes one step deeper (selected 0.16 where a tint is 0.12) and draws no outline or shadow; other highlights are unchanged |
+| `font` | the interface font family, or none for the platform's; a family the machine lacks draws in the platform's (Inter in the storybook) |
 | `glass` | `null`, a glass preset name, or a preset with the fields it changes |
 | `contact` | the tight shadow of things resting on the window: `y`, `blur`, `spread`, `strength` |
 | `float` | the deep shadow of things floating over it, with the same four fields |
@@ -107,7 +108,7 @@ sort. There are 10:
 | `card` | boxes in the flow: message bubbles, code blocks, figures, attachments, setting groups, previews |
 | `floating` | everything over the content: menus, palettes, dialogs, sheets, toasts, tooltips, inline panels, floating panes, pane chips, pane numbers, drag chips, drop zones |
 | `button` | everything you press to do something: buttons, icon buttons, menu items, answer options, the phone's pill and keys |
-| `item` | what you pick that stays picked or open: sidebar rows, agent steps, tabs, tray tabs, tiles |
+| `item` | what you pick that stays picked or open: sidebar rows, tabs, tray tabs, tiles |
 | `field` | text fields, selects, the composer, the address bar, the agent's pickers; selected paints the one you are typing in or whose menu is open |
 | `label` | badges, keycaps, status chips, grabbers |
 | `rule` | divider lines |
@@ -210,9 +211,15 @@ select's menu is open; accent would hide the caret and the selection, so fields 
    role sets), adds a 2px magenta ring just inside its edge, so a translucent fill
    never shows it through. `Theme.inspect_strength` scales its alpha, which the creator fades to
    flash it.
-8. **Buttons go pill at the largest radius.** Past a 24px radius (`Theme::control_radius`) a round
-   button of any kind, menu items included, takes a full pill. Other kinds keep the radius, which
-   the window's adaptive corners hold under half their height.
+8. **Capsules go pill at the largest radius.** Past a 24px radius (`Theme::control_radius`) a
+   round role that is a capsule takes a full pill. `SurfaceRole::capsule` says which, resolved
+   from the role, then its groups, then its kind: buttons and fields are capsules; menu items
+   (menus, palettes, pickers, recent pages, phone rows) and multi-line fields are not, so a menu
+   highlight stays a rounded row concentric in its list; the `row` and `tab` groups (sidebar rows
+   and entries, window pills, browser and tray tabs), badges (status chips
+   included), pane chips, drag chips and `pane-stack` (the icon tiles in flat sidebar rows and
+   window pills, which turn into circles) are. Everything else, keycaps and other tiles included, keeps
+   the radius, which the window's adaptive corners hold under half its height.
 
 `Theme::casts_shadow(role)`, `shadows_of(shadow)`, `contact_shadows()`, `float_shadows()`,
 `shape_radius(role, shape)` and `ground_of(surface)` expose the same answers to code that needs
@@ -267,8 +274,8 @@ error that suggests the role it was probably meant to be (`chromebutton` gets `c
   tile) and `pane.drop-zone` (proposed scrim) are chips, so their washes deepen and their edges
   follow the row or pill they sit on; `inline-panel` and `code` (proposed card) are popovers, so
   their fill steps off the window as before, with `code` a solid fill without an outline or
-  shadow; `agent.option` (proposed tile) is a button, so a danger option keeps its red wash and
-  hairline; `titlebar.window-controls` (proposed button) is a square icon button; `grabber`
+  shadow; `agent.option` (proposed tile) was a button with a red wash on a danger option until 10-15,
+  when it joined `menu-item` so answer options look like the pane's other lists; `titlebar.window-controls` (proposed button) is a square icon button; `grabber`
   (proposed tile) is a pill badge.
 - **`pane.display-panes` and `pane.drag-chip`** are popovers, as their old floating look was, so a
   theme's chip patch does not reach them.
@@ -352,10 +359,12 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 | `agent.picker` | field | mode, model and folder pickers | `ui/agent/controls.rs:59` | |
 | `agent.tray` | tab | plan and tasks chips that open the tray over the composer (the queue chip is a quiet button) | `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the tab's selected lift |
 | `agent.attachment` | card | image tiles in bubbles and the composer, their remove × | `ui/agent.rs:2105` | × has no backing |
-| `agent.trace` | row | tool and thought rows, the trace summary, its count badges | `ui/agent.rs:2266` | clickable rows had no hover; fixed |
-| `agent.option` | button | answer tiles in question and permission cards | `ui/agent/presentation.rs:239` | |
+| `agent.option` | menu-item | answer tiles in question and permission cards | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
 | `agent.jump` | icon-button | jump-to-bottom button over the transcript | `ui/agent.rs:1025` | |
+| `agent.action` | icon-button | copy on answers, code blocks and diagrams, rewind on prompts | `ui/agent.rs:2464` | washed and lifted under the pointer, and the copy buttons always showed; since 10-15 no fill in any state, shown only while their message, block or figure is pointed at |
 | `inline-panel` | floating | panels raised inside a pane: question cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
+
+The agent's step rows (the trace line, thoughts and tool calls) had `agent.trace`, a `row`, until 2026-10-15. They draw no fill now: their ink is muted and a row you can open brightens it under the pointer, so the role had nothing left to style.
 
 ### Reading content (markdown in agent replies)
 
@@ -444,7 +453,7 @@ they fill with `theme.scrim`.
 The storybook's theme creator (`clients/storybook`) is four steps over the same live preview,
 then an App tab for the pane settings and the preview around the showcase, which are not theme:
 
-1. **Colors**: color presets, light and dark palettes, accent, font.
+1. **Colors**: the mode with contrast and the tint, light and dark palettes, accent, font.
 2. **Materials**: presets, shape (radius, outline, row inset, primary), glass, and both shadow
    materials.
 3. **Roles**: every kind, each with its groups and roles indented under it. Each role shows the
@@ -459,12 +468,14 @@ role is not built.
 
 ## Settings
 
-Settings > Interface > Advanced ends with a Materials group: corner radius, outline, shadow
-strength, row inset, primary and glass (`widget-corner-radius`, `widget-outline-width`,
-`widget-shadow-strength`, `widget-row-inset`, `widget-primary`, `widget-glass`). Shadow strength
-scales both shadow materials from 0 to 2. Roles live in theme files, made in the creator and
-brought in with Import or Duplicate. `widget-shadows`, `widget-selection` and `widget-field` are
-gone into role props, and `shadow-strength` points to `widget-shadow-strength`; see
+Settings > Interface sets the materials all at once with Style (`interface-style`, one of the
+material presets) and only the radius on its own (`widget-corner-radius`, first under Advanced).
+The Materials group that held one key per material (`widget-outline-width`,
+`widget-shadow-strength`, `widget-row-inset`, `widget-primary`, `widget-glass`) was removed on
+2026-10-15 and its keys retired. Roles live in theme files, made in the creator and
+brought in with Import, or saved from what is on screen with Save. `widget-shadows`,
+`widget-selection` and `widget-field` are gone into role props, and `shadow-strength` points to
+`interface-style`; see [interface themes](/designs/interface-themes.md) and
 [app config](/configuration/app-config.md).
 
 ## Migration
@@ -486,7 +497,8 @@ All five steps landed on 2026-10-13.
    fade, the settings page heading and group labels, `settings_preview`, `compact_nav_bar` and
    `compact_bar_button`.
 4. Creator steps and the inspect ring in the storybook.
-5. Settings' Look group became the Materials group.
+5. Settings' Look group became the Materials group (itself replaced by the Style row on
+   2026-10-15).
 
 ## Drift and bugs found by the inventory
 

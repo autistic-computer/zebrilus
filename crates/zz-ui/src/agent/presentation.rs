@@ -7,9 +7,8 @@ use zz_gpui::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, PaintState,
-    StatefulSurfaceExt as _, StyledExt as _, Surface, Tone, badge::Badge, button::Button,
-    feedback::inline_alert, h_flex, kbd::Keycap, picker::muted_on, pulse::pulse_phase, roles,
-    v_flex,
+    StyledExt as _, Surface, Tone, badge::Badge, button::Button, feedback::inline_alert, h_flex,
+    kbd::Keycap, picker::muted_on, pulse::pulse_phase, roles, v_flex,
 };
 
 pub use zz_client::agent_config::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -156,11 +155,11 @@ pub(crate) const CARD_TITLE_LINE: f32 = 18.0;
 const CARD_TITLE_SIZE: f32 = 13.0;
 const CARD_TITLE_TOP: f32 = 8.0;
 const CARD_TITLE_BOTTOM: f32 = 10.0;
-const CARD_TILE_GAP: f32 = 6.0;
+const CARD_TILE_GAP: f32 = 2.0;
 const CARD_TILE_PADDING_X: f32 = 12.0;
-const CARD_TILE_PADDING_Y: f32 = 9.0;
-const CARD_LABEL_LINE: f32 = 18.0;
-const CARD_DETAIL_LINE: f32 = 16.0;
+const CARD_TILE_PADDING_Y: f32 = 8.0;
+const CARD_LABEL_LINE: f32 = 16.0;
+const CARD_DETAIL_LINE: f32 = 14.0;
 const CARD_CLOSE: f32 = 24.0;
 
 pub(crate) fn card_surface(cx: &App) -> Div {
@@ -249,22 +248,22 @@ impl CardTile {
 
     pub(crate) fn render(self, id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
         let enabled = self.state != PaintState::Disabled;
-        h_flex()
-            .id(id)
+        let height = crate::picker::LIST_ROW_HEIGHT;
+        crate::picker::row_surface(h_flex().id(id), self.surface, self.state, height, cx)
             .w_full()
+            .min_h(height)
             .items_start()
             .gap(px(CARD_GAP))
             .px(px(CARD_TILE_PADDING_X))
             .py(px(CARD_TILE_PADDING_Y))
-            .surface_interactive(self.surface, self.state, cx)
-            .text_size(crate::rems_from_px(13.0))
+            .text_size(crate::rems_from_px(12.0))
             .line_height(px(CARD_LABEL_LINE))
             .when(enabled, zz_gpui::Styled::cursor_pointer)
     }
 
     pub(crate) fn detail(self, text: impl Into<SharedString>) -> Div {
         div()
-            .text_size(crate::rems_from_px(12.0))
+            .text_size(crate::rems_from_px(11.0))
             .line_height(px(CARD_DETAIL_LINE))
             .text_color(self.muted)
             .child(text.into())

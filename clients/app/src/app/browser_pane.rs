@@ -642,11 +642,7 @@ impl Render for BrowserPane {
         let view = tab.view.clone();
         let visible = self.visible && self.profile.available();
         let theme = cx.theme();
-        let edge = if theme.pane_frames {
-            theme.pane_edge_width
-        } else {
-            px(0.0)
-        };
+        let edge = theme.pane_edge_width();
         let radius = (self.radii.bottom_left.min(self.radii.bottom_right) - edge).max(px(0.0));
         let waiting = !self.profile.available();
         let error = tab.error.clone().filter(|_| !waiting);

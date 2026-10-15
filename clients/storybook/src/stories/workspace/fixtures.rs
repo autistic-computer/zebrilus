@@ -14,6 +14,15 @@ use zz_ui::{
     pane::{PaneChrome, pane_drag_button, pane_surface, terminal_pane_header},
 };
 
+/// What a freshly split pane offers, as the desktop and thin clients list
+/// it: title, icon and the key that picks it.
+pub const PANE_CHOICES: [(&str, IconName, &str); 4] = [
+    ("Terminal", IconName::SquareTerminal, "t"),
+    ("Browser", IconName::BrandChrome, "b"),
+    ("Editor", IconName::File, "e"),
+    ("Agent", IconName::RobotFace, "a"),
+];
+
 #[derive(Clone, Copy)]
 pub enum Tone {
     Plain,
@@ -53,8 +62,12 @@ pub fn noop() -> StatusAction {
     Rc::new(|_, _| {})
 }
 
-pub fn radii(gaps: bool) -> Corners<Pixels> {
-    Corners::all(px(if gaps { crate::pane().radius } else { 0.0 }))
+pub fn radii(gaps: bool, cx: &App) -> Corners<Pixels> {
+    Corners::all(if gaps {
+        cx.theme().pane_radius()
+    } else {
+        px(0.0)
+    })
 }
 
 pub fn gap(gaps: bool) -> Pixels {
@@ -62,7 +75,7 @@ pub fn gap(gaps: bool) -> Pixels {
 }
 
 pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
-    PaneChrome::new(radii(gaps), gaps)
+    PaneChrome::new(radii(gaps, cx), gaps)
         .active(active)
         .dimmed(!active && scrim, crate::pane().inactive)
         .frame(gaps.then(|| {
@@ -176,7 +189,7 @@ impl TerminalPane {
         overlays: Vec<AnyElement>,
         cx: &App,
     ) -> Stateful<zz_gpui::Div> {
-        let radii = radii(self.gaps);
+        let radii = radii(self.gaps, cx);
         let header = terminal_pane_header(
             self.active,
             self.title,
@@ -238,7 +251,7 @@ pub fn placeholder_pane(
 ) -> Stateful<zz_gpui::Div> {
     pane_surface(
         scope,
-        placeholder_body(icon, title, detail, cx).rounded(radii(gaps).top_left),
+        placeholder_body(icon, title, detail, cx).rounded(radii(gaps, cx).top_left),
         overlays,
         chrome(active, true, gaps, cx),
         cx,

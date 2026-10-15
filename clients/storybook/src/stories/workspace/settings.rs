@@ -9,9 +9,11 @@ use zz_ui::{
     ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, Sizable as _, StylePatch,
     SurfaceRole, ThemeMode, Tone,
     button::{Button, ButtonVariants as _},
+    color_picker::{ColorPicker, ColorPickerState},
     input::{InputState, NumberInput},
     interface_theme::{
-        InterfaceTheme, Materials, ThemeModeSetting, builtin_themes, pinned_theme_mode,
+        InterfaceTheme, Materials, ThemeModeSetting, ThemeOverrides, builtin_themes,
+        pinned_theme_mode,
     },
     select::{Select, SelectState},
     settings::{
@@ -20,7 +22,9 @@ use zz_ui::{
             ABOUT_LOGO_SIZE, about_build_stack, about_copy_button, about_hero, about_project_stack,
         },
         appearance::{
-            PickerStrip, interface_theme_preview, picker_tile, theme_preview, ui_font_select,
+            AppearancePageItem, SWATCH, ThemePicks, accent_swatches, contrast_slider,
+            corner_radius_slider, interface_theme_preview, picker_tile, style_strip, theme_preview,
+            themes_strip, tint_hue_slider, tint_slider, ui_font_select,
         },
         panes_page,
         panes_preview::PanesPreview,
@@ -58,7 +62,7 @@ pub const STORY: Story = Story {
         Section {
             id: "appearance",
             name: "Appearance pickers",
-            summary: "The mode tiles, the interface theme strip with a saved theme beside the built-ins, the UI font select and the Advanced heading from the Interface page.",
+            summary: "The Interface page's Theme rows: the mode tiles, the Style strip drawn over the look on screen, the accent swatches with a custom picker (all following the corner radius), the tint sliders (they follow the tint knobs), the saved themes strip, the Advanced heading, and the corner radius and contrast sliders under it.",
             build: |window, cx| stateful(window, cx, Controls::new, appearance),
         },
         Section {
@@ -92,6 +96,7 @@ struct Controls {
     numbers: [Entity<InputState>; 8],
     choice: Entity<SelectState<Vec<SettingsSelectItem>>>,
     font: Entity<SelectState<Vec<SettingsSelectItem>>>,
+    accent: Entity<ColorPickerState>,
 }
 
 impl Controls {
@@ -113,10 +118,12 @@ impl Controls {
             )
         });
         let font = ui_font_select(Some("Inter Variable"), window, cx);
+        let accent = cx.new(|cx| ColorPickerState::new(None, window, cx));
         Self {
             numbers,
             choice,
             font,
+            accent,
         }
     }
 
@@ -307,7 +314,8 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
-    let active = crate::knobs().interface_theme();
+    let knobs = crate::knobs();
+    let active = knobs.interface_theme();
     let light = active.colors(ThemeMode::Light);
     let dark = active.colors(ThemeMode::Dark);
     let tiles =
@@ -330,18 +338,36 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         name: "theme-1".to_owned(),
         materials: Materials {
             radius: 4.0,
-            ..builtin_themes()[1].1.materials.clone()
+            ..active.materials.clone()
         },
         roles: [(
             SurfaceRole::MENU_ITEM.id.to_owned(),
             StylePatch::EMPTY.selected(Highlight::Tint),
         )]
         .into(),
-        ..builtin_themes()[1].1.clone()
+        ..active.clone()
     };
+    let overrides = ThemeOverrides {
+        tint: Some(knobs.tint),
+        tint_hue: Some(knobs.tint_hue),
+        ..ThemeOverrides::default()
+    };
+    let picks = ThemePicks {
+        themes: vec![("default".into(), &active), ("theme-1".into(), &saved)],
+        selected: 0,
+        overrides: &overrides,
+    };
+    let text = |item: AppearancePageItem| item.text().unwrap_or_default();
+    let entry = |item: AppearancePageItem| {
+        let (title, description) = text(item);
+        SettingEntry::new(title, description)
+    };
+    let custom = ColorPicker::new(&controls.accent, zz_gpui::transparent_black())
+        .label("Accent")
+        .swatch(px(SWATCH));
     states()
         .state(
-            "mode, theme and font",
+            "theme rows",
             SettingsStack::titled("Interface")
                 .child(
                     SettingEntry::new("Theme", "Follow the system light/dark setting, or pin one.")
@@ -352,33 +378,38 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         ))
                         .control(tiles),
                 )
+                .child(entry(AppearancePageItem::Style).child(style_strip(
+                    &picks,
+                    mode,
+                    |_, _, _| {},
+                    cx,
+                )))
+                .child(entry(AppearancePageItem::Accent).control(accent_swatches(
+                    &picks,
+                    mode,
+                    custom,
+                    |_, _, _| {},
+                    cx,
+                )))
                 .child(
-                    SettingEntry::new(
-                        "Interface theme",
-                        "The look of the whole interface and its colors in light and dark.",
-                    )
-                    .title_actions(
-                        div()
-                            .flex()
-                            .gap(px(4.0))
-                            .child(
-                                Button::new("theme-duplicate")
-                                    .ghost()
-                                    .small()
-                                    .label("Duplicate"),
-                            )
-                            .child(Button::new("theme-import").ghost().small().label("Import")),
-                    )
-                    .child(
-                        PickerStrip::new("settings-story-theme", 0)
-                            .tiles(builtin_themes().iter().map(|(_, theme)| {
-                                (theme.name.clone(), interface_theme_preview(theme, mode, cx))
-                            }))
-                            .tile(
-                                saved.name.clone(),
-                                interface_theme_preview(&saved, mode, cx),
-                            ),
-                    ),
+                    entry(AppearancePageItem::TintHue)
+                        .control(tint_hue_slider(knobs.tint_hue, |_, _, _| {})),
+                )
+                .child(entry(AppearancePageItem::Tint).control(tint_slider(
+                    knobs.tint,
+                    |_, _, _| {},
+                    cx,
+                )))
+                .child(
+                    entry(AppearancePageItem::Themes)
+                        .title_actions(
+                            div()
+                                .flex()
+                                .gap(px(4.0))
+                                .child(Button::new("theme-save").ghost().small().label("Save"))
+                                .child(Button::new("theme-import").ghost().small().label("Import")),
+                        )
+                        .child(themes_strip(&picks, mode, |_, _, _| {}, cx)),
                 )
                 .child(
                     SettingEntry::new("UI font", "Choose an available font for the interface.")
@@ -399,18 +430,36 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 .flex_col()
                 .gap(px(8.0))
                 .children([false, true].map(|expanded| {
-                settings_list_disclosure_header(
-                    if expanded {
-                        "advanced-expanded"
-                    } else {
-                        "advanced-collapsed"
-                    },
-                    "Advanced",
-                    Some("Fonts, zoom, contrast, and the corner and shadow sizes the theme sets."),
-                    expanded,
-                    cx,
+                    settings_list_disclosure_header(
+                        if expanded {
+                            "advanced-expanded"
+                        } else {
+                            "advanced-collapsed"
+                        },
+                        "Advanced",
+                        Some("Corner radius, contrast, fonts, zoom and the window."),
+                        expanded,
+                        cx,
+                    )
+                })),
+        )
+        .state(
+            "advanced sliders",
+            SettingsStack::new()
+                .child(
+                    entry(AppearancePageItem::CornerRadius).control(corner_radius_slider(
+                        active.materials.radius,
+                        |_, _, _| {},
+                        cx,
+                    )),
                 )
-            })),
+                .child(
+                    entry(AppearancePageItem::ChromeContrast).control(contrast_slider(
+                        knobs.contrast,
+                        |_, _, _| {},
+                        cx,
+                    )),
+                ),
         )
         .into_any_element()
 }
@@ -449,7 +498,6 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             PanesPreview {
                 gaps,
                 margin: pane.margin,
-                radius: pane.radius,
                 inactive_opacity: pane.inactive,
             },
             [
@@ -487,17 +535,6 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     .disabled(!gaps)
                     .title_actions(reset("margin-reset"))
                     .control(controls.number(3, cx)),
-                pane_entry("Pane corner radius", "Rounds every pane corner, in logical pixels (0-32).")
-                    .disabled(!gaps)
-                    .title_actions(reset("radius-reset"))
-                    .control(controls.number(4, cx)),
-                pane_entry(
-                    "Pane edge width",
-                    "Width of the bright line along each pane's glass edge, in logical pixels (0-8). Set to 0 to turn it off.",
-                )
-                .disabled(!gaps)
-                .title_actions(reset("border-reset"))
-                .control(controls.number(5, cx)),
             ],
             cx,
         )

@@ -308,12 +308,17 @@ pub(super) struct PaneFrame {
     pub radius: f32,
 }
 
-pub(super) fn pane_frame(terminal: bool, floating: bool, preferences: &Preferences) -> PaneFrame {
+pub(super) fn pane_frame(
+    terminal: bool,
+    floating: bool,
+    preferences: &Preferences,
+    pane_radius: f32,
+) -> PaneFrame {
     let gaps = preferences.gaps && !floating;
     PaneFrame {
         header: terminal && !floating,
         framed: gaps,
-        radius: if gaps { preferences.pane_radius } else { 0.0 },
+        radius: if gaps { pane_radius } else { 0.0 },
     }
 }
 
@@ -423,23 +428,26 @@ mod tests {
     fn a_floating_terminal_keeps_its_whole_box_for_the_grid() {
         let preferences = Preferences {
             gaps: true,
-            pane_radius: 10.0,
-            pane_border_width: 1.0,
             ..Preferences::default()
         };
         assert_eq!(
-            pane_frame(true, true, &preferences),
+            pane_frame(true, true, &preferences, 10.0),
             super::PaneFrame {
                 header: false,
                 framed: false,
                 radius: 0.0,
             }
         );
-        let tiled = pane_frame(true, false, &preferences);
+        let tiled = pane_frame(true, false, &preferences, 10.0);
         assert!(tiled.header);
         assert!(tiled.framed);
         assert_eq!(tiled.radius, 10.0);
-        assert!(!pane_frame(false, false, &preferences).header);
+        assert!(!pane_frame(false, false, &preferences, 10.0).header);
+        let gapless = Preferences {
+            gaps: false,
+            ..preferences
+        };
+        assert_eq!(pane_frame(true, false, &gapless, 10.0).radius, 0.0);
     }
 
     #[test]

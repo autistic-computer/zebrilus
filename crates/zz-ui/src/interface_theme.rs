@@ -9,7 +9,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use zz_gpui::{GlassMaterial, Hsla, SharedString, px};
 
 pub use zz_client::appearance::{
-    BUILTIN_THEMES, DEFAULT_THEME, ThemeModeSetting, is_builtin_theme,
+    ACCENTS, AccentSetting, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE, MAX_CORNER_RADIUS,
+    STYLE_PRESETS, ThemeModeSetting, is_builtin_theme,
 };
 
 use crate::{PrimaryStyle, ShadowMaterial, StylePatch, Theme, ThemeColor, ThemeMode};
@@ -26,6 +27,10 @@ pub struct Materials {
     /// square bands that touch.
     pub row_inset: f32,
     pub primary: PrimaryStyle,
+    /// Hovered and selected surfaces that would rise wash a step deeper
+    /// instead, with no outline or shadow.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub flat_highlights: bool,
     /// The interface font family; `None` keeps the platform's.
     pub font: Option<SharedString>,
     /// What surfaces whose role takes glass become; `None` fills them
@@ -48,6 +53,7 @@ impl Default for Materials {
             outline: 0.5,
             row_inset: 4.0,
             primary: PrimaryStyle::Foreground,
+            flat_highlights: false,
             font: None,
             glass: None,
             contact: ShadowMaterial::CONTACT,
@@ -62,6 +68,7 @@ impl Materials {
         theme.outline = px(self.outline);
         theme.row_inset = px(self.row_inset);
         theme.primary = self.primary;
+        theme.flat_highlights = self.flat_highlights;
         if let Some(font) = &self.font {
             theme.font_family = font.clone();
         }
@@ -71,70 +78,90 @@ impl Materials {
     }
 }
 
-/// Material values Settings sets over the active theme, each `None` while
-/// it follows the theme. Picking a theme clears them.
+/// The named accents, each tuned for light and for dark so it reads at any
+/// tint: `(name, light, dark)`.
+const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
+    ("blue", "#146ae3", "#76abfd"),
+    ("purple", "#8a4fd7", "#bd97fe"),
+    ("pink", "#c63187", "#f585bd"),
+    ("red", "#d32e33", "#ff877f"),
+    ("orange", "#b35407", "#f88e4f"),
+    ("yellow", "#8d6a07", "#d3a229"),
+    ("green", "#028132", "#59be6d"),
+    ("graphite", "#6f6f6f", "#aaaaaa"),
+];
+
+/// The accent `value` names in `mode`: one of [`ACCENTS`], or a hex color for
+/// both modes.
+pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
+    let value = value.trim();
+    match ACCENT_COLORS.iter().find(|(name, ..)| *name == value) {
+        Some((_, light, dark)) => crate::parse_hex(if mode.is_dark() { dark } else { light }).ok(),
+        None => crate::parse_hex(value).ok(),
+    }
+}
+
+/// What Settings sets over the active theme, each `None` while it follows
+/// the theme. Picking a theme clears the style and radius; the accent and
+/// the tint stay.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-pub struct MaterialOverrides {
+pub struct ThemeOverrides {
+    /// A material preset id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub radius: Option<f32>,
+    /// One of [`ACCENTS`] or a hex color.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub outline: Option<f32>,
-    /// Scales both of the theme's shadows: 1 keeps them, 0 turns them off.
+    pub accent: Option<String>,
+    /// How far the background leans toward `tint-hue`, from 0 to 1.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub shadow_strength: Option<f32>,
+    pub tint: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub row_inset: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub primary: Option<PrimaryStyle>,
-    /// `off`, or the name of a glass preset.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub glass: Option<String>,
+    pub tint_hue: Option<f32>,
 }
 
-impl MaterialOverrides {
-    /// `materials` with every override set here.
-    pub fn apply(&self, materials: &mut Materials) {
+impl ThemeOverrides {
+    /// `theme` with every override set here.
+    pub fn apply_to(&self, theme: &mut InterfaceTheme) {
+        if let Some(preset) = self.style.as_deref().and_then(material_preset) {
+            preset.apply_to(theme);
+        }
         if let Some(radius) = self.radius {
-            materials.radius = radius;
+            theme.materials.radius = radius;
         }
-        if let Some(outline) = self.outline {
-            materials.outline = outline;
-        }
-        if let Some(strength) = self.shadow_strength {
-            materials.contact.strength *= strength;
-            materials.float.strength *= strength;
-        }
-        if let Some(row_inset) = self.row_inset {
-            materials.row_inset = row_inset;
-        }
-        if let Some(primary) = self.primary {
-            materials.primary = primary;
-        }
-        match self.glass.as_deref() {
-            Some("off") => materials.glass = None,
-            Some(name) => {
-                if let Some(material) = GlassMaterial::preset(name) {
-                    materials.glass = Some(material);
-                }
+        let tint = self.tint.unwrap_or(0.0).clamp(0.0, 1.0);
+        let hue = self.tint_hue.unwrap_or(DEFAULT_TINT_HUE);
+        for (colors, mode) in [
+            (&mut theme.light, ThemeMode::Light),
+            (&mut theme.dark, ThemeMode::Dark),
+        ] {
+            if let Some(accent) = self
+                .accent
+                .as_deref()
+                .and_then(|accent| accent_color(accent, mode))
+            {
+                colors.accent = Some(accent);
+                colors.on_accent = None;
             }
-            None => {}
+            if tint > 0.0 {
+                colors.background = Some(colors.resolve(mode).tinted(hue, tint).background);
+            }
         }
     }
-}
 
-/// A material setting spelled as a theme file and `zz/config` spell it, such
-/// as `accent` for [`PrimaryStyle::Accent`].
-pub fn choice_name<T: Serialize>(value: T) -> Option<String> {
-    match serde_json::to_value(value) {
-        Ok(serde_json::Value::String(name)) => Some(name),
-        _ => None,
+    /// Follow a newly picked theme's style and radius.
+    pub fn pick_theme(&mut self) {
+        self.style = None;
+        self.radius = None;
     }
-}
 
-/// The material setting `name` spells, the inverse of [`choice_name`].
-pub fn parse_choice<T: serde::de::DeserializeOwned>(name: &str) -> Option<T> {
-    serde_json::from_value(serde_json::Value::String(name.trim().to_owned())).ok()
+    /// Draw in `style`, with its radius.
+    pub fn pick_style(&mut self, style: &str) {
+        self.style = Some(style.to_owned());
+        self.radius = None;
+    }
 }
 
 /// A JSON object over `base`: the fields it names, `base` for the rest.
@@ -415,15 +442,13 @@ impl MaterialPreset {
     }
 }
 
-const PRESET_SOURCES: [(&str, &str); 7] = [
+const PRESET_SOURCES: [(&str, &str); 5] = [
     (
         "liquid-glass",
         include_str!("../themes/materials/liquid-glass.json"),
     ),
-    ("frosted", include_str!("../themes/materials/frosted.json")),
+    ("capsule", include_str!("../themes/materials/capsule.json")),
     ("flat", include_str!("../themes/materials/flat.json")),
-    ("tactile", include_str!("../themes/materials/tactile.json")),
-    ("soft", include_str!("../themes/materials/soft.json")),
     ("brutal", include_str!("../themes/materials/brutal.json")),
     (
         "terminal",
@@ -451,66 +476,11 @@ pub fn material_presets() -> &'static [(&'static str, MaterialPreset)] {
     &PRESETS
 }
 
-/// Colors for both modes and nothing else: one `themes/colors/<name>.json`
-/// file.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
-pub struct ColorPreset {
-    pub name: String,
-    pub about: String,
-    pub light: ThemeColors,
-    pub dark: ThemeColors,
-}
-
-impl ColorPreset {
-    pub fn apply_to(&self, theme: &mut InterfaceTheme) {
-        theme.light = self.light.clone();
-        theme.dark = self.dark.clone();
-    }
-}
-
-const COLOR_SOURCES: [(&str, &str); 14] = [
-    ("macos", include_str!("../themes/colors/macos.json")),
-    ("windows", include_str!("../themes/colors/windows.json")),
-    ("gnome", include_str!("../themes/colors/gnome.json")),
-    ("ubuntu", include_str!("../themes/colors/ubuntu.json")),
-    ("breeze", include_str!("../themes/colors/breeze.json")),
-    ("ayu", include_str!("../themes/colors/ayu.json")),
-    ("nord", include_str!("../themes/colors/nord.json")),
-    ("solarized", include_str!("../themes/colors/solarized.json")),
-    ("gruvbox", include_str!("../themes/colors/gruvbox.json")),
-    (
-        "catppuccin",
-        include_str!("../themes/colors/catppuccin.json"),
-    ),
-    ("dracula", include_str!("../themes/colors/dracula.json")),
-    (
-        "tokyo-night",
-        include_str!("../themes/colors/tokyo-night.json"),
-    ),
-    ("github", include_str!("../themes/colors/github.json")),
-    ("one", include_str!("../themes/colors/one.json")),
-];
-
-static COLORS: LazyLock<Vec<(&'static str, ColorPreset)>> = LazyLock::new(|| {
-    let default = default_theme();
-    let plain = ColorPreset {
-        name: default.name.clone(),
-        about: "The Default theme's colors.".to_owned(),
-        light: default.light.clone(),
-        dark: default.dark.clone(),
-    };
-    std::iter::once((DEFAULT_THEME, plain))
-        .chain(COLOR_SOURCES.iter().map(|(id, source)| {
-            let preset = serde_json::from_str(source)
-                .unwrap_or_else(|error| panic!("color preset {id} does not parse: {error}"));
-            (*id, preset)
-        }))
-        .collect()
-});
-
-pub fn color_presets() -> &'static [(&'static str, ColorPreset)] {
-    &COLORS
+pub fn material_preset(id: &str) -> Option<&'static MaterialPreset> {
+    material_presets()
+        .iter()
+        .find(|(preset, _)| *preset == id.trim())
+        .map(|(_, preset)| preset)
 }
 
 pub const fn pinned_theme_mode(setting: ThemeModeSetting) -> Option<ThemeMode> {
@@ -607,36 +577,6 @@ mod tests {
     fn builtin_text_and_status_colors_read_on_their_surfaces() {
         for (id, theme) in builtin_themes() {
             assert_reads(id, theme);
-        }
-    }
-
-    #[test]
-    fn every_color_preset_sets_both_palettes_that_read_and_nothing_else() {
-        let ids = color_presets()
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>();
-        assert_eq!(ids.len(), COLOR_SOURCES.len() + 1);
-        for (id, preset) in color_presets() {
-            assert!(!preset.name.is_empty() && !preset.about.is_empty(), "{id}");
-            sets_every_root(id, &preset.light, &preset.dark);
-            let mut theme = default_theme().clone();
-            theme.materials.font = Some("Inter".into());
-            theme.materials.radius = 3.0;
-            theme.roles.insert(
-                "pane.chip".to_owned(),
-                StylePatch::EMPTY.shape(crate::Shape::Pill),
-            );
-            let before = theme.clone();
-            preset.apply_to(&mut theme);
-            assert_eq!(
-                theme.materials, before.materials,
-                "{id} leaves the materials"
-            );
-            assert_eq!(theme.roles, before.roles, "{id} leaves the roles");
-            assert_eq!(theme.light, preset.light, "{id}");
-            assert_reads(id, &theme);
-            assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme, "{id}");
         }
     }
 
@@ -773,45 +713,96 @@ mod tests {
     }
 
     #[test]
-    fn overrides_replace_only_what_they_set() {
-        let theme = default_theme();
-        let mut materials = theme.materials.clone();
-        MaterialOverrides {
-            outline: Some(1.0),
-            shadow_strength: Some(0.5),
-            glass: Some("frosted".to_owned()),
-            ..MaterialOverrides::default()
-        }
-        .apply(&mut materials);
-        assert_eq!(materials.outline, 1.0);
-        assert_eq!(
-            materials.float.strength,
-            theme.materials.float.strength * 0.5
+    fn overrides_compose_a_style_radius_accent_and_tint_over_the_theme() {
+        let mut theme = default_theme().clone();
+        theme.materials.font = Some("Inter".into());
+        theme.roles.insert(
+            "pane.chip".to_owned(),
+            StylePatch::EMPTY.shape(crate::Shape::Pill),
         );
-        assert_eq!(materials.glass, GlassMaterial::preset("frosted"));
-        assert_eq!(materials.radius, theme.materials.radius);
-        assert_eq!(materials.primary, theme.materials.primary);
-
-        MaterialOverrides {
-            glass: Some("off".to_owned()),
-            ..MaterialOverrides::default()
+        theme.dark.on_accent = Some(crate::parse_hex("#000000").unwrap());
+        let roles = theme.roles.clone();
+        let colors = theme.dark.clone();
+        ThemeOverrides {
+            style: Some("flat".to_owned()),
+            radius: Some(14.0),
+            accent: Some("green".to_owned()),
+            tint: Some(1.0),
+            tint_hue: Some(145.0),
         }
-        .apply(&mut materials);
-        assert_eq!(materials.glass, None);
+        .apply_to(&mut theme);
+        let flat = &material_preset("flat").unwrap().materials;
+        assert_eq!(theme.roles, roles);
+        assert_eq!(theme.materials.font.as_deref(), Some("Inter"));
+        assert_eq!(theme.materials.outline, flat.outline);
+        assert_eq!(theme.materials.radius, 14.0);
+        assert_eq!(theme.dark.foreground, colors.foreground);
+        assert_eq!(theme.light.accent, accent_color("green", ThemeMode::Light));
+        assert_eq!(theme.dark.accent, accent_color("green", ThemeMode::Dark));
+        assert_eq!(theme.dark.on_accent, None);
+        let tinted = colors.resolve(ThemeMode::Dark).tinted(145.0, 1.0);
+        assert_eq!(theme.dark.background, Some(tinted.background));
+
+        let mut plain = default_theme().clone();
+        ThemeOverrides::default().apply_to(&mut plain);
+        assert_eq!(&plain, default_theme());
+        assert_eq!(
+            accent_color("#ff8800", ThemeMode::Dark),
+            crate::parse_hex("#ff8800").ok()
+        );
+        assert_eq!(accent_color("chartreuse", ThemeMode::Dark), None);
     }
 
     #[test]
-    fn choices_spell_the_way_settings_and_config_do() {
-        use zz_client::appearance::{GLASS_CHOICES, PRIMARY_CHOICES};
-        for name in PRIMARY_CHOICES {
-            let primary = parse_choice::<PrimaryStyle>(name).unwrap();
-            assert_eq!(choice_name(primary).as_deref(), Some(name));
+    fn picking_a_theme_or_style_keeps_the_accent_and_tint() {
+        let mut overrides = ThemeOverrides {
+            style: Some("flat".to_owned()),
+            radius: Some(14.0),
+            accent: Some("green".to_owned()),
+            tint: Some(0.5),
+            tint_hue: Some(145.0),
+        };
+        overrides.pick_style("capsule");
+        assert_eq!(overrides.style.as_deref(), Some("capsule"));
+        assert_eq!(overrides.radius, None);
+        overrides.pick_theme();
+        assert_eq!(
+            overrides,
+            ThemeOverrides {
+                accent: Some("green".to_owned()),
+                tint: Some(0.5),
+                tint_hue: Some(145.0),
+                ..ThemeOverrides::default()
+            }
+        );
+    }
+
+    #[test]
+    fn every_named_accent_reads_at_any_tint() {
+        let names = ACCENT_COLORS.map(|(name, ..)| name);
+        assert_eq!(names, ACCENTS);
+        for hue in (0..360).step_by(30) {
+            for accent in ACCENTS {
+                let mut theme = default_theme().clone();
+                ThemeOverrides {
+                    accent: Some(accent.to_owned()),
+                    tint: Some(1.0),
+                    tint_hue: Some(hue as f32),
+                    ..ThemeOverrides::default()
+                }
+                .apply_to(&mut theme);
+                assert_reads(&format!("{accent} at hue {hue}"), &theme);
+            }
         }
-        let presets = GlassMaterial::PRESETS
+    }
+
+    #[test]
+    fn preset_ids_match_what_config_accepts() {
+        let styles = material_presets()
             .iter()
-            .map(|(name, _)| *name)
+            .map(|(id, _)| *id)
             .collect::<Vec<_>>();
-        assert_eq!(GLASS_CHOICES[2..], presets[..]);
+        assert_eq!(styles, STYLE_PRESETS);
     }
 
     #[test]

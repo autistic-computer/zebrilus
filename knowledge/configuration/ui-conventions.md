@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, gpui, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # Overview
@@ -149,7 +149,8 @@ materials decide what those look like, and the theme can change any role by id. 
    foreground, without a button fill. Other embedded actions keep their wash.
    Gapped panes cast the `pane` role's shadow (the contact shadow in every built-in) and draw their frame
    only in glass: no border, the glass edge (glint, fresnel, thin contour) is the frame, tinted
-   with the pane's own color. The
+   with the pane's own color, its glint as wide as the theme's outline and its corners the theme
+   radius plus 3.5 (`Theme::pane_edge_width()`, `Theme::pane_radius()`). The
    continuous app background sits beneath both pane and shadow. Flush panes have no
    outer shadow. Only shared divider segments touching the active flush pane use the accent
    color; exterior edges stay unoutlined. The settings preview follows the same rule.
@@ -226,7 +227,7 @@ Which surfaces cast drop shadows is each role's `shadow`, all drawn in the theme
 `contact` is the tight shadow a surface sits on (panes, cards, resting controls on the window) and
 `float` the contact shadow with a deep, soft one under it (popovers, dialogs, floating panes, a
 dragged pane chip). The theme's `contact` and `float` materials set their offset, blur, spread and
-strength, and `widget-shadow-strength` scales both. `lifted_shadow` is the small shadow under a
+strength, and a style (`interface-style`) replaces both with its own. `lifted_shadow` is the small shadow under a
 switch thumb and follows the contact strength. `Theme::shadows_of`, `contact_shadows`,
 `float_shadows` and `casts_shadow(role)` read them.
 
@@ -236,8 +237,9 @@ widgets read the layer rather than a literal: `row_corners(element, layer, heigh
 and `inner_radius(inset)` to keep other nested corners concentric, and `outlined()`, `inset_rows()`
 and `casts_shadow(role)` for the theme's switches. Control heights, fills, rules and transitions
 no longer change per theme: `Theme::dense`, `Theme::control_background` and `Theme::duration` are
-gone, `Size::control_h()` and `input_py()` take no density, and `divider_color()` is just
-`border()`.
+gone, `Size::control_h()` and `input_py()` take no density, and `divider_color()` is the
+foreground at the edge weight, translucent so a rule lightens glass in a dark theme the way it does
+a solid fill.
 
 Picker search fields draw the soft field paint on the popover ground with no border and no focus
 ring, since they are always focused. Command palettes embed a bare shared Input
@@ -317,15 +319,17 @@ restating it.
    their padding so the glyph, not the hover box, meets the gutter.
 2. **One left edge.** The title and the tiles start on the same line; tile content is padded 12px
    inside the tile.
-3. **Closer inside a group than between groups.** Tiles are 6px apart, a title is 10px above its
+3. **Closer inside a group than between groups.** Tiles are 2px apart, a title is 10px above its
    first tile, and separate groups (another question, the footer) sit 12px or a divider away.
-4. **Tiles are controls.** An option tile is the `agent.option` role, a button, so it takes the
-   same corner as the buttons and fields beside it and every clickable thing in a card reads as
-   one family. The 12px gutter is deeper than any built-in theme's card radius, so a concentric
-   inner corner would round to square and fall to an arbitrary floor instead.
+4. **Tiles are list rows.** An option tile is the `agent.option` role, under `menu-item`, so it
+   looks like the other lists a pane shows (the new-session actions, the pane picker, recent
+   pages): at least `picker::LIST_ROW_HEIGHT` (32px) tall, 12px text with 11px descriptions, no
+   fill at rest, a tint on hover, the accent when picked, and the row corner for that height. The 12px gutter is deeper
+   than any built-in theme's card radius, so a concentric inner corner would round to square and
+   fall to an arbitrary floor instead.
 
-Options are tiles (`CardTile`) drawn as `agent.option`: a tint, in the danger tone for a
-destructive choice, that deepens on hover and takes the accent when picked (a tint in Glass; see
+Options are tiles (`CardTile`) drawn as `agent.option`: bare at rest, with danger-toned text for a
+destructive choice, a tint on hover and the accent when picked (a tint in Glass; see
 [Design system](/designs/design-system.md)). Hover only changes the fill, which GPUI repaints;
 text color cannot follow a hover style. What sits on a tile paints on the tile's ground, so it
 stays legible on an accent selection: the description (`CardTile::detail`, the tile's
@@ -380,7 +384,8 @@ chrome (borders, labels, hover states, badges, and reset controls) still reads i
 # Chrome chroma is independent of the terminal
 
 **Application colors come from the interface theme (`interface-theme` in `zz/config`): its
-materials, roles and colors for light and for dark, never from the terminal.** The mode follows the OS appearance
+materials, roles and colors for light and for dark, with the style, accent and tint `zz/config`
+sets over it, never from the terminal.** The mode follows the OS appearance
 unless `theme-mode` pins one, and only picks which of the theme's color sets applies. There is no
 knob that derives chrome from terminal colors, and a Ghostty palette cannot repaint the window.
 
@@ -391,27 +396,28 @@ configuration. It holds the latest immutable `TerminalAppearance` and `Appearanc
 GPUI globals (used by settings badges and the detach action, not to color anything).
 `apply_zz_overrides` layers these values over the zz-ui base:
 
-- the active theme (`config::themes(cx).active`, a built-in or a saved file from the `themes`
-  folder): its colors for the effective mode (`InterfaceTheme::colors`), then its materials with
-  the `widget-*` keys `zz/config` sets folded in (`config::material_overrides`, a
-  `MaterialOverrides`), applied with `Materials::apply`: radius, outline width, both shadows, row
-  inset, primary, the interface font and the glass; then its role patches
+- the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved file from
+  the `themes` folder, with the `interface-style`, `widget-corner-radius`, `chrome-accent` and
+  tint keys `zz/config` sets composed over it by
+  `ThemeOverrides::apply_to`): its colors for the effective mode (`InterfaceTheme::colors`), then
+  its materials, applied with `Materials::apply`: radius, outline width, both shadows, row inset,
+  primary, the interface font and the glass; then its role patches
   (`InterfaceTheme::apply_roles` into `Theme.styles`). One radius therefore reaches every role
-  that rounds and survives a light/dark switch. Corner smoothing is not a material: every window
-  draws `CORNER_SMOOTHING` (4);
+  that rounds, and gapped pane corners (`Theme::pane_radius()`), and survives a light/dark switch.
+  Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4);
 - `font_family` from `ui-font-family` when present (a System default line keeps the system UI
   font even under a theme with its own), else the theme's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
 - `theme.contrast` from `chrome-contrast`, preserved across the same refreshes.
 
-The thin clients keep the selected theme id, their own saved themes and their material overrides
-in their preferences, and `Preferences::apply` draws the theme's colors, `Preferences::materials()`
-(the theme's materials with the device's `MaterialOverrides`) and the theme's roles, with the UI
+The thin clients keep the selected theme id, their own saved themes and their overrides in their
+preferences, and `Preferences::apply` draws `Preferences::shown_theme()` (the theme with the
+device's `ThemeOverrides` composed the same way): its colors, materials and roles, with the UI
 font taken from the preference, else the theme's font, else the bundled Inter.
 
 `chrome-contrast` defaults to 1.0 and accepts 1.0–2.0; other values are reported like any numeric
-key. The Appearance page shows 100–200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and
+key. The Interface page shows it as a slider from 100% to 200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and
 `active()`, the alpha factors in `fill()`, `glow()`, and `wash()`, and the foreground weight in
 `border()`. It divides the `muted()` amount, keeping muted text closer to foreground as contrast
 rises. Those factors clamp to 0–1. `on()`, `outline()`, `subtle()`, `floating()`, explicit opacity,
@@ -424,6 +430,20 @@ glyph with a 0.5px downward optical adjustment. The titlebar, sidebar row action
 and Agent pane share this constructor, which fixes padding and icon scale in one place. Browser
 controls override the hover surface to 28px while retaining the shared icon scale. Workspace settings
 and sidebar buttons use 26px surfaces to match the titlebar pills, with the same 14px glyphs.
+
+Text and icons take a hover color only from the `hover` of an element with an id. GPUI shapes text
+and resolves an icon's color at layout; an element with an id records its own hover and lays out
+with it on the next frame, while without an id `hover` and `group_hover` apply at paint only, where
+fills, borders and visibility change but text and icons keep their color. So muted ink that
+brightens under the pointer is a `hover` text color on the element with the id: a button does it
+for itself, which is how sidebar row actions and browser tab close buttons brighten. The agent
+pane's step rows draw no fill, take muted ink, and turn foreground under the pointer when the row
+opens something (`activity_row_marked`); a label in its own color (a running tool, "Waiting for
+you") keeps it. Its message actions (copy on answers, code blocks and diagrams, rewind on prompts)
+are `agent.action` icon buttons with muted ink and no fill in any state (`message_action`), shown
+only while their message, code block (`text::CODE_BLOCK_GROUP`) or figure is pointed at, and
+always under a coarse pointer (`shown_on_hover`). The slash menu's rows are 40px: the command at 12px over its description at
+11px.
 
 Icons next to text are centred on the text's cap height, as Apple places SF Symbols. The icon is
 centred on the line, then moved down by `zz_gpui_kit::icon::cap_center_drop(font_size, icon_size,
@@ -451,8 +471,8 @@ takes the radius through the adaptive corners described above, so a large radius
 control nearly into a pill without making it one; rows take their separate inset corner rule.
 Pills are a role's choice: the `pill` shape resolves to GPUI's `FULL_CORNER_RADIUS`, the same
 value as `rounded_full()`, so the piece stays a pill or a circle at any radius (a theme makes
-its buttons and chips pills this way). Desktop settings apply changes
-immediately, and still title a radius above 24 “Corner radius (Full)”. `Theme::control_radius`,
+its buttons and chips pills this way). The Corner radius slider applies changes
+immediately and shows the radius in pixels beside it. `Theme::control_radius`,
 which turns a radius above 24 into a pill, now rounds only the kit's slider.
 
 Switch tracks, status dots, avatars, and scrollbar thumbs still use `rounded_full()` at any

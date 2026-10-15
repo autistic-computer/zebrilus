@@ -2,7 +2,6 @@ use crate::ActiveTheme as _;
 use crate::Colorize as _;
 use crate::StyledExt as _;
 use crate::kbd::Kbd;
-use crate::list::ListItem;
 use crate::{Edge, Emphasis, Ground, PaintState, Surface, SurfaceRole, Tone, roles};
 use zz_gpui::{
     AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, Keystroke,
@@ -209,7 +208,6 @@ pub fn workspace_status_bar(
 const EMPTY_WORKSPACE_WIDTH: f32 = 340.0;
 const EMPTY_KEY_COLUMN: f32 = 92.0;
 const EMPTY_KEY_GAP: f32 = 10.0;
-const EMPTY_ACTION_HEIGHT: f32 = 32.0;
 const EMPTY_HINT_HEIGHT: f32 = 24.0;
 
 pub fn empty_workspace(
@@ -247,20 +245,13 @@ pub fn empty_workspace_action(
     strong: bool,
     selected: bool,
     cx: &App,
-) -> ListItem {
-    let state = if selected {
-        PaintState::Selected
-    } else {
-        PaintState::Rest
-    };
+) -> Stateful<zz_gpui::Div> {
+    let state = crate::picker::row_state(selected, true);
     let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
-    ListItem::new(id)
-        .selected(selected)
-        .h(px(EMPTY_ACTION_HEIGHT))
+    crate::picker::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, true, cx)
         .px(px(12.0))
-        .py_0()
         .cursor_pointer()
-        .child(key_hint(keys, label, strong, ground, cx))
+        .child(key_hint(keys, label, strong, ground, cx).flex_1().min_w_0())
 }
 
 pub fn empty_workspace_caption(label: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {

@@ -4,7 +4,7 @@ title: zz crate (the GPUI client)
 description: The long-lived GPUI desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser, and native Agent panes.
 resource: crates/zz/src/lib.rs
 tags: [gpui, crate, client, terminal, browser, agent, ui]
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # Overview
@@ -206,10 +206,10 @@ Browser, Terminal, Hosts, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Theme (`theme-mode` and the `interface-theme` strip with Duplicate and Import), Advanced (system UI font picker, transient UI zoom, macOS app-icon pickers, contrast, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`, then the Materials group: the six `widget-*` material keys, each with a Reset back to the theme's value) |
+| Interface | Theme (`theme-mode`, the Style preset strip for `interface-style`, the Accent swatches for `chrome-accent`, the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`, and the Saved themes strip for `interface-theme` with Save and Import), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, system UI font picker, transient UI zoom, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
-| Panes | Layout (`pane-gaps`), Appearance (`pane-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`, `pane-corner-radius`, `pane-border-width`); gapped panes draw their frame in glass |
+| Panes | Layout (`pane-gaps`), Appearance (`pane-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners and edge from the theme's radius and outline |
 | Multiplexer | Full-file `zz/mux.conf` editor without line numbers, 12px text, Save, and tmux import |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Full-file Ghostty-compatible configuration editor with Save and Import Ghostty |
@@ -283,10 +283,11 @@ effect without a restart.
 
 `apply_zz_overrides` writes, in this order:
 
-- the active theme's colors for the mode (`InterfaceTheme::colors`: the six roots, the shadow
-  color and the text on the accent), then its materials with the `widget-*` keys `zz/config` sets
-  folded in (`config::material_overrides` returns them as a `MaterialOverrides`, applied over the
-  theme's `Materials` before `Materials::apply`), then its role patches
+- the theme on screen, `config::shown_theme`: the active theme with the style, radius, accent
+  and tint keys `zz/config` sets composed over it (`config::theme_overrides`
+  returns them as a `ThemeOverrides`, and `ThemeOverrides::apply_to` composes them). Its colors
+  for the mode (`InterfaceTheme::colors`: the six roots, the shadow color and the text on the
+  accent), then its materials (`Materials::apply`), then its role patches
   (`InterfaceTheme::apply_roles`). Only the roots are written; every elevation, hover state, muted
   text, and focus ring derives from them at paint time, and every surface resolves its role
   against the materials when it paints, so a theme and its overrides reach the whole UI with no

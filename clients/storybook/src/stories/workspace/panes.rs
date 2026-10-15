@@ -9,16 +9,17 @@ use zz_ui::{
         FloatingSurface, PaneDragOverlayState, PaneOverlayCorner, PaneSplitAxis,
         PaneSplitHighlight, PaneSplitSide, TERMINAL_HEADER_HEIGHT, pane_drag_chip,
         pane_drag_overlay, pane_drop_preview, pane_indicator, pane_indicator_overlay,
-        pane_overlay_stack, pane_picker_choices, pane_picker_row, pane_split_surface,
-        pane_status_badge, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
-        terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
+        pane_overlay_stack, pane_picker_choices, pane_picker_row, pane_picker_surface,
+        pane_split_surface, pane_status_badge, pane_sync_badge, pane_unzoom_control,
+        pane_waiting_state, terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
         terminal_status_popup,
     },
     settings::panes_preview::PanesPreview,
 };
 
 use super::fixtures::{
-    BUILD, LOGS, SERVER, TerminalPane, gap, pane_background, placeholder_pane, radii, terminal_body,
+    BUILD, LOGS, PANE_CHOICES, SERVER, TerminalPane, gap, pane_background, placeholder_pane, radii,
+    terminal_body,
 };
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
@@ -32,7 +33,7 @@ pub const STORY: Story = Story {
         Section {
             id: "frames",
             name: "Frames",
-            summary: "pane_surface with and without pane gaps. A gapped pane draws its frame in glass: the theme's glass edge, or a plain lit edge when the theme has none, tinted with the pane's color; the active pane lights its edge in the accent. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-gaps, pane-glow, pane-border-width and pane-opacity knobs: with pane-gaps on the frame owns the pane fill, as in the app.",
+            summary: "pane_surface with and without pane gaps. A gapped pane draws its frame in glass: the theme's glass edge, or a plain lit edge when the theme has none, tinted with the pane's color; the active pane lights its edge in the accent. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-gaps, pane-glow and pane-opacity knobs: with pane-gaps on the frame owns the pane fill, as in the app.",
             build: |_, cx| stateless(frames, cx),
         },
         Section {
@@ -74,7 +75,7 @@ pub const STORY: Story = Story {
         Section {
             id: "picker",
             name: "New pane picker",
-            summary: "A freshly split pane asks what it should become. pane_picker_row in its selected, resting and read-only states.",
+            summary: "A freshly split pane asks what it should become: pane_picker_surface with the four pane_picker_row choices, in their selected, resting and read-only states.",
             build: |_, cx| stateless(picker, cx),
         },
         Section {
@@ -586,7 +587,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
                     pane_drag_overlay(
                         ("armed-overlay", index),
                         PaneDragOverlayState::Armed,
-                        radii(true),
+                        radii(true, cx),
                         cx,
                     )
                     .into_any_element(),
@@ -620,7 +621,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
                 pane_drag_overlay(
                     "source-overlay",
                     PaneDragOverlayState::Source,
-                    radii(true),
+                    radii(true, cx),
                     cx,
                 )
                 .into_any_element(),
@@ -633,7 +634,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
             pane_drag_overlay(
                 "target-overlay",
                 PaneDragOverlayState::Armed,
-                radii(true),
+                radii(true, cx),
                 cx,
             )
             .into_any_element(),
@@ -659,11 +660,15 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
             cx,
         ))
         .child(
-            pane_drop_preview(px(pane.radius), px(pane.border.max(1.0)), cx)
-                .top(px(pane.margin))
-                .bottom(px(pane.margin))
-                .right(px(pane.margin))
-                .w(relative(0.24)),
+            pane_drop_preview(
+                cx.theme().pane_radius(),
+                cx.theme().pane_edge_width().max(px(1.0)),
+                cx,
+            )
+            .top(px(pane.margin))
+            .bottom(px(pane.margin))
+            .right(px(pane.margin))
+            .w(relative(0.24)),
         )
         .child(
             div()
@@ -699,7 +704,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
                         .relative()
                         .w(px(160.0))
                         .h(px(90.0))
-                        .child(pane_drop_preview(px(pane.radius), px(1.0), cx).inset_0()),
+                        .child(pane_drop_preview(cx.theme().pane_radius(), px(1.0), cx).inset_0()),
                 )
                 .child(
                     div()
@@ -764,14 +769,8 @@ fn floating(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-const CHOICES: [(&str, IconName, &str); 3] = [
-    ("Terminal", IconName::SquareTerminal, "t"),
-    ("Agent", IconName::RobotFace, "a"),
-    ("Browser", IconName::Globe, "b"),
-];
-
 fn picker_pane(id: &'static str, selected: usize, enabled: bool, cx: &App) -> impl IntoElement {
-    let rows = CHOICES
+    let rows = PANE_CHOICES
         .iter()
         .enumerate()
         .map(|(index, (title, icon, shortcut))| {
@@ -792,16 +791,7 @@ fn picker_pane(id: &'static str, selected: usize, enabled: bool, cx: &App) -> im
         220.0,
         zz_ui::pane::pane_surface(
             "pane",
-            div()
-                .flex()
-                .size_full()
-                .items_center()
-                .justify_center()
-                .px(px(12.0))
-                .rounded(px(crate::pane().radius))
-                .bg(pane_background(cx))
-                .text_color(cx.theme().foreground)
-                .child(pane_picker_choices(rows)),
+            pane_picker_surface("picker", radii(true, cx), rows, cx),
             Vec::new(),
             super::fixtures::chrome(true, false, true, cx),
             cx,
@@ -816,7 +806,7 @@ fn picker(_: &mut Window, cx: &mut App) -> AnyElement {
             "terminal selected",
             picker_pane("picker-terminal", 0, true, cx),
         )
-        .state("agent selected", picker_pane("picker-agent", 1, true, cx))
+        .state("agent selected", picker_pane("picker-agent", 3, true, cx))
         .state(
             "read-only client: rows dim and stop taking clicks",
             picker_pane("picker-readonly", 0, false, cx),
@@ -825,7 +815,7 @@ fn picker(_: &mut Window, cx: &mut App) -> AnyElement {
             "rows at full width",
             div()
                 .w_full()
-                .child(pane_picker_choices(CHOICES.iter().enumerate().map(
+                .child(pane_picker_choices(PANE_CHOICES.iter().enumerate().map(
                     |(index, (title, icon, shortcut))| {
                         pane_picker_row(
                             ("bare-choice", index),
@@ -848,7 +838,6 @@ fn preview(_: &mut Window, _: &mut App) -> AnyElement {
     let preview = |gaps: bool| PanesPreview {
         gaps,
         margin: pane.margin,
-        radius: pane.radius,
         inactive_opacity: pane.inactive,
     };
     states()
@@ -865,7 +854,6 @@ fn preview(_: &mut Window, _: &mut App) -> AnyElement {
             div().id("preview-wide").child(PanesPreview {
                 gaps: true,
                 margin: 16.0,
-                radius: 20.0,
                 inactive_opacity: 0.4,
             }),
         )

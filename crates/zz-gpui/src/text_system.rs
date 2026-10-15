@@ -358,6 +358,13 @@ impl TextSystem {
         }
     }
 
+    /// Whether the platform can load `family`. A missing family resolves
+    /// through the fallback stack, which starts with a monospace face, so a
+    /// caller that wants a proportional font checks first and picks its own.
+    pub fn has_font(&self, family: &str) -> bool {
+        self.font_id(&font(family.to_owned())).is_ok()
+    }
+
     /// Get the Font for the Font Id.
     pub fn get_font_for_id(&self, id: FontId) -> Option<Font> {
         let lock = self.font_ids_by_font.read();
@@ -1571,6 +1578,18 @@ mod font_resolution_tests {
             assert_eq!(text_system.resolve_font(&requested), FontId(20));
             assert_eq!(text_system.resolve_font(&requested), FontId(20));
         }
+    }
+
+    #[test]
+    fn has_font_reports_whether_the_family_loads() {
+        let text_system = TextSystem::new(Arc::new(NoopTextSystem));
+        text_system
+            .font_ids_by_font
+            .write()
+            .insert(font("Missing Sans"), Err(anyhow!("missing family")));
+
+        assert!(!text_system.has_font("Missing Sans"));
+        assert!(text_system.has_font("Installed Sans"));
     }
 
     #[test]

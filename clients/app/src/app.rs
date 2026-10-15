@@ -1466,17 +1466,14 @@ impl AppShell {
     fn pane_drop_preview(&self, cx: &App) -> Option<AnyElement> {
         let preview = self.pane_drag.as_ref()?.preview?;
         let rendered = Rc::clone(&self.rendered_drop_preview);
+        let theme = cx.theme();
         let surface = pane_drop_preview(
-            px(if self.preferences.gaps {
-                self.preferences.pane_radius
+            if self.preferences.gaps {
+                theme.pane_radius()
             } else {
-                0.0
-            }),
-            px(if self.preferences.gaps {
-                self.preferences.pane_border_width.max(1.0)
-            } else {
-                1.0
-            }),
+                px(0.0)
+            },
+            theme.pane_edge_width().max(px(1.0)),
             cx,
         );
         if !self.preferences.animations || cx.reduce_motion() {
@@ -1640,6 +1637,7 @@ impl AppShell {
                 matches!(pane.kind, PaneKindSnapshot::Terminal),
                 is_float,
                 &self.preferences,
+                f32::from(cx.theme().pane_radius()),
             );
             let radii = Corners::all(px(frame.radius));
             let dead_label = pane.dead.then(|| {

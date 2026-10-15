@@ -27,6 +27,10 @@ pub struct Knobs {
     pub light: ThemeColors,
     pub dark: ThemeColors,
     pub contrast: f32,
+    /// The Oklch hue, in degrees, every surface leans toward.
+    pub tint_hue: f32,
+    /// How far surfaces lean toward the tint hue, from 0 to 1.
+    pub tint: f32,
     pub zoom: f32,
     pub pane: PaneKnobs,
     pub motion: bool,
@@ -37,8 +41,6 @@ pub struct Knobs {
 pub struct PaneKnobs {
     pub gaps: bool,
     pub margin: f32,
-    pub radius: f32,
-    pub border: f32,
     pub background: f32,
     pub inactive: f32,
     pub glow: f32,
@@ -49,8 +51,6 @@ impl Default for PaneKnobs {
         Self {
             gaps: false,
             margin: 6.0,
-            radius: 13.5,
-            border: 0.5,
             background: 0.5,
             inactive: 0.7,
             glow: 1.0,
@@ -200,6 +200,8 @@ impl Knobs {
             light: theme.light.clone(),
             dark: theme.dark.clone(),
             contrast: 1.0,
+            tint_hue: interface_theme::DEFAULT_TINT_HUE,
+            tint: 0.0,
             zoom: 1.0,
             pane: PaneKnobs::default(),
             motion: true,
@@ -272,16 +274,25 @@ impl Knobs {
                         }
                     }
                 }
+                "highlights" => {
+                    knobs.materials.flat_highlights = match value {
+                        "lift" => false,
+                        "flat" => true,
+                        _ => {
+                            return Err(format!("highlights must be lift or flat, not {value}"));
+                        }
+                    }
+                }
                 "font" => {
                     let family = decode(value);
                     knobs.materials.font = (!family.is_empty()).then(|| family.into());
                 }
                 "contrast" => knobs.contrast = number(key, value)?,
+                "tint-hue" => knobs.tint_hue = number(key, value)?,
+                "tint" => knobs.tint = number(key, value)?,
                 "zoom" => knobs.zoom = number(key, value)?,
                 "pane-gaps" => knobs.pane.gaps = flag(value),
                 "pane-margin" => knobs.pane.margin = number(key, value)?,
-                "pane-corner-radius" => knobs.pane.radius = number(key, value)?,
-                "pane-border-width" => knobs.pane.border = number(key, value)?,
                 "pane-opacity" => knobs.pane.background = number(key, value)?,
                 "pane-inactive-opacity" => knobs.pane.inactive = number(key, value)?,
                 "pane-glow" => knobs.pane.glow = number(key, value)?,
@@ -349,15 +360,17 @@ impl Knobs {
         });
         Theme::change(mode, None, cx);
         cx.set_reduce_motion(!self.motion);
+        let font_loads =
+            (self.materials.font.as_ref()).is_some_and(|family| cx.text_system().has_font(family));
         let theme = Theme::global_mut(cx);
         self.interface_theme().apply(theme);
-        if self.materials.font.is_none() {
+        theme.colors = theme.colors.tinted(self.tint_hue, self.tint);
+        if !font_loads {
             theme.font_family = UI_FONT.into();
         }
         theme.pane_background_opacity = self.pane.background;
         theme.pane_glow_strength = self.pane.glow;
         theme.pane_frames = self.pane.gaps;
-        theme.pane_edge_width = px(self.pane.border);
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();
@@ -375,14 +388,22 @@ impl Knobs {
 }
 
 /// The knob values that reproduce `materials`, by knob name, for the page to
-/// load: every length, both shadows, the primary style, the font and the
-/// glass.
+/// load: every length, both shadows, the primary style, how highlights
+/// rise, the font and the glass.
 pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_json::Value> {
     let mut knobs = MATERIAL_KNOBS
         .iter()
         .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(materials))))
         .collect::<serde_json::Map<_, _>>();
     knobs.insert("primary".to_owned(), serde_json::json!(materials.primary));
+    knobs.insert(
+        "highlights".to_owned(),
+        serde_json::json!(if materials.flat_highlights {
+            "flat"
+        } else {
+            "lift"
+        }),
+    );
     knobs.insert(
         "font".to_owned(),
         serde_json::json!(materials.font.as_ref().map_or("", |font| font.as_ref())),
@@ -418,7 +439,7 @@ pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json
 }
 
 /// Each color knob's value in `mode`, as `#rrggbb`.
-pub fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static str, String)> {
+fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static str, String)> {
     let colors = theme.colors(mode);
     let ink = accent_ink(colors);
     let rgb = |color: Hsla| zz_ui::to_hex(color.alpha(1.0));
@@ -615,11 +636,11 @@ mod tests {
             Knobs::parse("pane-glass=on").unwrap().pane,
             PaneKnobs::default()
         );
-        let pane = Knobs::parse("pane-gaps=1&pane-corner-radius=20&pane-inactive-opacity=0.4")
+        let pane = Knobs::parse("pane-gaps=1&pane-margin=20&pane-inactive-opacity=0.4")
             .unwrap()
             .pane;
         assert!(pane.gaps);
-        assert_eq!(pane.radius, 20.0);
+        assert_eq!(pane.margin, 20.0);
         assert_eq!(pane.inactive, 0.4);
         assert!(Knobs::parse("pane-margin=wide").is_err());
         assert!(Knobs::parse("radius=wide").is_err());

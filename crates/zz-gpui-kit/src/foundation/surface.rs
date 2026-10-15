@@ -547,6 +547,9 @@ pub struct SurfaceRole {
     /// A row in a list: its round corners sit concentric inside the list,
     /// and a bar highlight runs down its leading edge.
     pub row: bool,
+    /// Whether its round shape turns into a pill at the largest radius; its
+    /// group's, or its kind's, when unset.
+    pub capsule: Option<bool>,
 }
 
 impl SurfaceRole {
@@ -565,6 +568,7 @@ impl SurfaceRole {
             patch: StylePatch::EMPTY,
             knobs: None,
             row: false,
+            capsule: None,
         }
     }
 
@@ -595,6 +599,21 @@ impl SurfaceRole {
 
     pub const fn rows(self) -> Self {
         Self { row: true, ..self }
+    }
+
+    pub const fn capsule(self, capsule: bool) -> Self {
+        Self {
+            capsule: Some(capsule),
+            ..self
+        }
+    }
+
+    pub const fn capsules(&self) -> bool {
+        match (self.capsule, self.parent) {
+            (Some(capsule), _) => capsule,
+            (None, Some(parent)) => parent.capsules(),
+            (None, None) => matches!(self.kind, Kind::Button | Kind::Field),
+        }
     }
 
     pub const fn knobs(&self) -> Knobs {
@@ -732,6 +751,7 @@ impl SurfaceRole {
         "Rows you press to run or pick something: menus, palettes, pickers, dropdowns",
     )
     .rows()
+    .capsule(false)
     .with(
         StylePatch::EMPTY
             .fill(Fill::None)
@@ -752,9 +772,11 @@ impl SurfaceRole {
         "Rows",
         "Rows that show which one is open or current",
     )
-    .rows();
+    .rows()
+    .capsule(true);
 
-    pub const TAB: Self = Self::new("tab", Kind::Item, "Tabs", "Tabs and window pills");
+    pub const TAB: Self =
+        Self::new("tab", Kind::Item, "Tabs", "Tabs and window pills").capsule(true);
 
     /// A pickable thumbnail, raised like a card.
     pub const TILE: Self = Self::new("tile", Kind::Item, "Tiles", "Pickable thumbnails").with(
@@ -774,9 +796,11 @@ impl SurfaceRole {
         "Text areas",
         "Fields that hold more than one line, and framed code editors",
     )
-    .with(StylePatch::EMPTY.shape(Shape::Round));
+    .with(StylePatch::EMPTY.shape(Shape::Round))
+    .capsule(false);
 
-    pub const BADGE: Self = Self::new("badge", Kind::Label, "Badges", "Small labels and counts");
+    pub const BADGE: Self =
+        Self::new("badge", Kind::Label, "Badges", "Small labels and counts").capsule(true);
 
     pub const KEYCAP: Self = Self::new("keycap", Kind::Label, "Keycaps", "Key hints");
 
@@ -966,6 +990,9 @@ pub struct Layer {
 
 impl Layer {
     pub(crate) fn muted_text(&self) -> Hsla {
+        if super::color::is_colored(self.ground.fill) {
+            return self.text;
+        }
         self.text
             .mix_oklab(self.ground.fill, 1.0 - super::color::muted_weight())
     }
@@ -1045,11 +1072,9 @@ impl Theme {
             Shape::Square => px(0.0),
             Shape::Pill => FULL_CORNER_RADIUS,
             Shape::Round if role.row && !self.inset_rows() => px(0.0),
-            Shape::Round if role.kind == Kind::Button => match self.control_radius() {
-                FULL_CORNER_RADIUS => FULL_CORNER_RADIUS,
-                _ if role.row => self.menu_radius(),
-                radius => radius,
-            },
+            Shape::Round if role.capsules() && self.control_radius() == FULL_CORNER_RADIUS => {
+                FULL_CORNER_RADIUS
+            }
             Shape::Round if role.row => self.menu_radius(),
             Shape::Round => self.radius,
         }
@@ -1175,13 +1200,25 @@ impl Theme {
             Highlight::Glass if self.drawn_glass().is_none() => Highlight::Lift,
             highlight => highlight,
         };
+        let flattened = self.flat_highlights && highlight == Highlight::Lift;
+        let highlight = if flattened {
+            Highlight::Tint
+        } else {
+            highlight
+        };
         if highlight == Highlight::Glass {
             glass = self.drawn_glass();
         }
-        let washed = |paint: &super::Paint| match state {
-            PaintState::Hover => paint.hover,
-            PaintState::Active => paint.active,
-            _ => paint.current,
+        let washed = |paint: &super::Paint| {
+            let step = (paint.current.a - paint.hover.a).max(0.0);
+            let deeper = |wash: Hsla| wash.alpha((wash.a + step).min(1.0));
+            match (state, flattened) {
+                (PaintState::Hover, false) => paint.hover,
+                (PaintState::Active, false) | (PaintState::Hover, true) => paint.active,
+                (PaintState::Active, true) => deeper(paint.active),
+                (_, false) => paint.current,
+                (_, true) => deeper(paint.current),
+            }
         };
         let (mut fill_color, mut text) = match highlight {
             Highlight::Tint | Highlight::Lift => (washed(&paint), paint.text),
@@ -1204,10 +1241,11 @@ impl Theme {
         } else {
             self.border()
         };
-        let lifts = [style.hover, style.selected].into_iter().any(|highlight| {
-            highlight == Highlight::Lift
-                || (highlight == Highlight::Glass && self.drawn_glass().is_none())
-        });
+        let lifts = !self.flat_highlights
+            && [style.hover, style.selected].into_iter().any(|highlight| {
+                highlight == Highlight::Lift
+                    || (highlight == Highlight::Glass && self.drawn_glass().is_none())
+            });
         let border_width = if (style.outline || lifts) && self.outlined() {
             self.outline
         } else {
@@ -1388,6 +1426,28 @@ mod tests {
 
     fn theme() -> Theme {
         Theme::from(&*ThemeColor::dark())
+    }
+
+    #[test]
+    fn flat_highlights_wash_a_step_deeper_instead_of_lifting() {
+        let mut theme = theme();
+        let lifted = theme.layer(SurfaceRole::TAB, PaintState::Selected);
+        assert!(!lifted.shadow.is_empty());
+        assert!(lifted.border_width > px(0.0));
+        let tinted = SurfaceRole::under(&SurfaceRole::TAB, "test.tab", "Test", "")
+            .with(StylePatch::EMPTY.selected(Highlight::Tint));
+        let tint = theme.layer(tinted, PaintState::Selected);
+
+        theme.flat_highlights = true;
+        let flat = theme.layer(SurfaceRole::TAB, PaintState::Selected);
+        assert!(flat.shadow.is_empty());
+        assert_eq!(flat.border_width, px(0.0));
+        assert!(flat.fill.a > tint.fill.a);
+        assert_eq!(
+            theme.layer(SurfaceRole::TILE, PaintState::Hover).fill,
+            theme.layer(SurfaceRole::TILE, PaintState::Rest).fill,
+            "a surface that does not highlight stays bare"
+        );
     }
 
     #[test]

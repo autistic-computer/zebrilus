@@ -8,14 +8,16 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _, Theme, ThemeMode,
     UiZoom,
     button::{Button, ButtonVariants as _},
+    color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
     input::{InputEvent, InputState, NumberInput},
     interface_theme::{self, ThemeModeSetting},
     select::{Select, SelectEvent, SelectState},
     settings::{
         SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack, StackPosition,
         appearance::{
-            AppearancePageItem, PickerStrip, appearance_page, appearance_page_items,
-            interface_theme_preview, picker_tile, theme_preview, ui_font_select,
+            AppearancePageItem, SWATCH, ThemePicks, accent_swatches, appearance_page,
+            appearance_page_items, contrast_slider, corner_radius_slider, picker_tile, style_strip,
+            theme_preview, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
         },
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
         settings_preview, settings_reset_button, settings_scroll_column,
@@ -142,16 +144,16 @@ impl Preferences {
         } else {
             Theme::sync_system_appearance(Some(window), cx);
         }
+        let shown = self.shown_theme();
         let theme = Theme::global_mut(cx);
-        theme.colors = self.interface_theme().colors(theme.mode);
-        self.materials().apply(theme);
-        self.interface_theme().apply_roles(theme);
+        theme.colors = shown.colors(theme.mode);
+        shown.materials.apply(theme);
+        shown.apply_roles(theme);
         window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
         Theme::global_mut(cx).set_contrast(contrast);
         Theme::global_mut(cx).pane_background_opacity = self.pane_background_opacity;
         Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
         Theme::global_mut(cx).pane_frames = self.gaps;
-        Theme::global_mut(cx).pane_edge_width = px(self.pane_border_width);
         let available_fonts = cx.text_system().all_font_names();
         let wanted_font = self.shown_ui_font();
         let ui_font = if available_fonts
@@ -204,16 +206,8 @@ impl Preferences {
 
 pub(super) struct Controls {
     zoom: Entity<InputState>,
-    radius: Entity<InputState>,
-    contrast: Entity<InputState>,
-    outline: Entity<InputState>,
-    shadow_strength: Entity<InputState>,
-    row_inset: Entity<InputState>,
-    material_selects: Vec<(
-        AppearancePageItem,
-        Entity<SelectState<Vec<SettingsSelectItem>>>,
-    )>,
-    panes: [Entity<InputState>; 6],
+    accent: Entity<ColorPickerState>,
+    panes: [Entity<InputState>; 4],
     ui_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     terminal_scale: Entity<InputState>,
@@ -238,47 +232,6 @@ impl Controls {
                 .min(50.0)
                 .max(300.0)
         });
-        let radius = cx.new(|cx| {
-            InputState::new(window, cx)
-                .input_mode(TextInputMode::Decimal)
-                .default_value(format!("{:.0}", preferences.widget_corner_radius()))
-                .step(1.0)
-                .min(0.0)
-                .max(25.0)
-        });
-        let contrast = cx.new(|cx| {
-            InputState::new(window, cx)
-                .input_mode(TextInputMode::Decimal)
-                .default_value(number_text(preferences.contrast * 100.0))
-                .step(5.0)
-                .min(50.0)
-                .max(200.0)
-        });
-        let materials = preferences.materials();
-        let outline = cx.new(|cx| {
-            InputState::new(window, cx)
-                .input_mode(TextInputMode::Decimal)
-                .default_value(number_text(materials.outline))
-                .step(0.5)
-                .min(0.0)
-                .max(2.0)
-        });
-        let shadow_strength = cx.new(|cx| {
-            InputState::new(window, cx)
-                .input_mode(TextInputMode::Decimal)
-                .default_value(number_text(shadow_strength_of(preferences)))
-                .step(0.1)
-                .min(0.0)
-                .max(2.0)
-        });
-        let row_inset = cx.new(|cx| {
-            InputState::new(window, cx)
-                .input_mode(TextInputMode::Decimal)
-                .default_value(number_text(materials.row_inset))
-                .step(1.0)
-                .min(0.0)
-                .max(12.0)
-        });
         let terminal_scale = cx.new(|cx| {
             InputState::new(window, cx)
                 .input_mode(TextInputMode::Decimal)
@@ -288,15 +241,7 @@ impl Controls {
                 .max(300.0)
         });
         let mut subscriptions = Vec::new();
-        for (input, key) in [
-            (&zoom, "zoom"),
-            (&radius, "radius"),
-            (&contrast, "contrast"),
-            (&outline, "outline"),
-            (&shadow_strength, "shadow-strength"),
-            (&row_inset, "row-inset"),
-            (&terminal_scale, "terminal-scale"),
-        ] {
+        for (input, key) in [(&zoom, "zoom"), (&terminal_scale, "terminal-scale")] {
             subscriptions.push(cx.subscribe_in(
                 input,
                 window,
@@ -306,17 +251,12 @@ impl Controls {
                     if !commit && !matches!(event, InputEvent::Change) {
                         return;
                     }
-                    let (min, max, previous) = match key {
-                        "zoom" => (50.0, 300.0, this.preferences.zoom * 100.0),
-                        "contrast" => (100.0, 200.0, this.preferences.contrast * 100.0),
-                        "outline" => (0.0, 2.0, this.preferences.materials().outline),
-                        "shadow-strength" => (0.0, 2.0, shadow_strength_of(&this.preferences)),
-                        "row-inset" => (0.0, 12.0, this.preferences.materials().row_inset),
-                        "terminal-scale" => {
-                            (50.0, 300.0, this.preferences.terminal_font_scale * 100.0)
-                        }
-                        _ => (0.0, 25.0, this.preferences.widget_corner_radius()),
-                    };
+                    let previous = if key == "zoom" {
+                        this.preferences.zoom
+                    } else {
+                        this.preferences.terminal_font_scale
+                    } * 100.0;
+                    let (min, max) = (50.0, 300.0);
                     let parsed = input
                         .read(cx)
                         .value()
@@ -329,32 +269,14 @@ impl Controls {
                         _ if commit => previous,
                         _ => return,
                     };
-                    match key {
-                        "zoom" => this.preferences.zoom = value / 100.0,
-                        "contrast" => this.preferences.contrast = value / 100.0,
-                        "outline" if value != this.preferences.materials().outline => {
-                            this.preferences.materials.outline = Some(value);
-                        }
-                        "shadow-strength" if value != shadow_strength_of(&this.preferences) => {
-                            this.preferences.materials.shadow_strength = Some(value);
-                        }
-                        "row-inset" if value != this.preferences.materials().row_inset => {
-                            this.preferences.materials.row_inset = Some(value);
-                        }
-                        "terminal-scale" => this.preferences.terminal_font_scale = value / 100.0,
-                        "radius" if value != this.preferences.widget_corner_radius() => {
-                            this.preferences.materials.radius = Some(value);
-                        }
-                        _ => {}
+                    if key == "zoom" {
+                        this.preferences.zoom = value / 100.0;
+                    } else {
+                        this.preferences.terminal_font_scale = value / 100.0;
                     }
                     if commit {
-                        let text = if matches!(key, "outline" | "shadow-strength" | "row-inset") {
-                            number_text(value)
-                        } else {
-                            format!("{value:.0}")
-                        };
                         input.update(cx, |input, cx| {
-                            input.set_value(text, window, cx);
+                            input.set_value(format!("{value:.0}"), window, cx);
                         });
                     }
                     this.preferences.save();
@@ -362,48 +284,23 @@ impl Controls {
                 },
             ));
         }
-        let material_selects = AppearancePageItem::MATERIALS
-            .into_iter()
-            .filter(|item| !item.material_choices().is_empty())
-            .map(|item| {
-                let items = item
-                    .material_choices()
-                    .iter()
-                    .map(|(title, value)| SettingsSelectItem::new(*title, *value))
-                    .collect::<Vec<_>>();
-                let current = material_choice(preferences, item);
-                let index = item
-                    .material_choices()
-                    .iter()
-                    .position(|(_, value)| *value == current);
-                let select = cx.new(|cx| {
-                    SelectState::new(items, index.map(zz_ui::IndexPath::new), window, cx)
-                });
-                subscriptions.push(cx.subscribe_in(
-                    &select,
-                    window,
-                    move |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
-                        let SelectEvent::Confirm(Some(value)) = event else {
-                            return;
-                        };
-                        if material_choice(&this.preferences, item) == *value {
-                            return;
-                        }
-                        set_material_choice(&mut this.preferences, item, value);
-                        this.preferences.save();
-                        this.preferences.apply(&this.connection, window, cx);
-                    },
-                ));
-                (item, select)
-            })
-            .collect::<Vec<_>>();
+        let accent = cx.new(|cx| ColorPickerState::new(custom_accent(preferences), window, cx));
+        subscriptions.push(cx.subscribe_in(
+            &accent,
+            window,
+            |this, _, event: &ColorPickerEvent, window, cx| {
+                let ColorPickerEvent::Change(color) = event;
+                this.preferences.overrides.accent =
+                    color.map(|color| zz_ui::to_hex(color.opaque()));
+                this.preferences.save();
+                this.preferences.apply(&this.connection, window, cx);
+            },
+        ));
         let pane_values = [
             preferences.pane_background_opacity,
             preferences.pane_inactive_opacity,
             preferences.pane_glow_strength,
             preferences.pane_margin,
-            preferences.pane_radius,
-            preferences.pane_border_width,
         ];
         let panes = PaneControl::ALL.map(|control| {
             let (min, max, step) = control.limits();
@@ -454,7 +351,6 @@ impl Controls {
                     Theme::global_mut(cx).pane_background_opacity =
                         this.preferences.pane_background_opacity;
                     Theme::global_mut(cx).pane_glow_strength = this.preferences.pane_glow_strength;
-                    Theme::global_mut(cx).pane_edge_width = px(this.preferences.pane_border_width);
                     cx.refresh_windows();
                     cx.notify();
                 },
@@ -536,12 +432,7 @@ impl Controls {
         }
         Self {
             zoom,
-            radius,
-            contrast,
-            outline,
-            shadow_strength,
-            row_inset,
-            material_selects,
+            accent,
             panes,
             ui_font,
             terminal_font,
@@ -553,27 +444,12 @@ impl Controls {
         }
     }
 
-    /// Shows the materials and UI font the preferences resolve to, after a
-    /// theme change or a reset.
+    /// Shows the custom accent and UI font the preferences resolve to,
+    /// after a theme change or a reset.
     fn sync_theme_inputs(&self, preferences: &Preferences, window: &mut Window, cx: &mut App) {
-        let materials = preferences.materials();
-        for (input, value) in [
-            (&self.radius, format!("{:.0}", materials.radius)),
-            (&self.outline, number_text(materials.outline)),
-            (
-                &self.shadow_strength,
-                number_text(shadow_strength_of(preferences)),
-            ),
-            (&self.row_inset, number_text(materials.row_inset)),
-        ] {
-            input.update(cx, |input, cx| input.set_value(value, window, cx));
-        }
-        for (item, select) in &self.material_selects {
-            let value = material_choice(preferences, *item);
-            select.update(cx, |select, cx| {
-                select.set_selected_value(&value, window, cx);
-            });
-        }
+        let accent = custom_accent(preferences);
+        self.accent
+            .update(cx, |picker, cx| picker.set_color(accent, window, cx));
         let font = preferences.shown_ui_font().to_owned();
         self.ui_font.update(cx, |select, cx| {
             select.set_selected_value(&font, window, cx);
@@ -773,17 +649,16 @@ impl AppShell {
                                 | AppearancePageItem::Group { .. }
                                 | AppearancePageItem::Advanced { .. }
                                 | AppearancePageItem::ThemeMode
-                                | AppearancePageItem::InterfaceTheme
+                                | AppearancePageItem::Style
+                                | AppearancePageItem::Accent
+                                | AppearancePageItem::TintHue
+                                | AppearancePageItem::Tint
+                                | AppearancePageItem::Themes
+                                | AppearancePageItem::CornerRadius
+                                | AppearancePageItem::ChromeContrast
                                 | AppearancePageItem::UiFontFamily
                                 | AppearancePageItem::UiZoom
-                                | AppearancePageItem::ChromeContrast
                                 | AppearancePageItem::Animations
-                                | AppearancePageItem::WidgetCornerRadius
-                                | AppearancePageItem::OutlineWidth
-                                | AppearancePageItem::ShadowStrength
-                                | AppearancePageItem::RowInset
-                                | AppearancePageItem::Primary
-                                | AppearancePageItem::Glass
                         )
                     })
                     .filter(|item| {
@@ -805,7 +680,7 @@ impl AppShell {
                 .into_any_element();
             }
             SettingsSection::Panes => {
-                let [background, inactive, glow, margin, radius, border] =
+                let [background, inactive, glow, margin] =
                     PaneControl::ALL.map(|control| self.pane_setting(control, cx));
                 let gaps =
                     SettingEntry::new("Pane gaps", "Separate panes with spacing and borders.")
@@ -830,13 +705,12 @@ impl AppShell {
                     zz_ui::settings::panes_preview::PanesPreview {
                         gaps: self.preferences.gaps,
                         margin: self.preferences.pane_margin,
-                        radius: self.preferences.pane_radius,
                         inactive_opacity: self.preferences.pane_inactive_opacity,
                     },
                     [gaps, agent],
                     [background],
                     [inactive, glow],
-                    [margin, radius, border],
+                    [margin],
                     cx,
                 )
                 .into_any_element();
@@ -1018,11 +892,6 @@ impl AppShell {
         let controls = &self.settings_controls;
         let input = match item {
             AppearancePageItem::UiZoom => &controls.zoom,
-            AppearancePageItem::ChromeContrast => &controls.contrast,
-            AppearancePageItem::WidgetCornerRadius => &controls.radius,
-            AppearancePageItem::OutlineWidth => &controls.outline,
-            AppearancePageItem::ShadowStrength => &controls.shadow_strength,
-            AppearancePageItem::RowInset => &controls.row_inset,
             _ => return None,
         };
         Some(input.focus_handle(cx))
@@ -1037,7 +906,7 @@ impl AppShell {
     ) -> AnyElement {
         let entry = match item {
             AppearancePageItem::ThemeMode => {
-                let theme = self.preferences.interface_theme();
+                let theme = self.preferences.shown_theme();
                 let light = theme.colors(ThemeMode::Light);
                 let dark = theme.colors(ThemeMode::Dark);
                 let tiles = div().flex().flex_none().flex_wrap().gap(px(8.0)).children(
@@ -1113,27 +982,38 @@ impl AppShell {
                 })),
             )
             .control(number_control(&self.settings_controls.zoom, cx)),
-            AppearancePageItem::ChromeContrast => SettingEntry::new(
-                "Contrast",
-                "Raise surface, text, and edge contrast from 100% to 200%.",
-            )
-            .title_actions(
-                settings_reset_button(
-                    "settings-contrast-reset",
-                    "Reset contrast to 100%",
-                    self.preferences.contrast != 1.0,
+            AppearancePageItem::ChromeContrast => {
+                let (title, description) = item.text().unwrap_or_default();
+                let view = cx.entity().downgrade();
+                let slider = contrast_slider(
+                    self.preferences.contrast,
+                    move |contrast, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.contrast = contrast;
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        });
+                    },
+                    cx,
+                );
+                with_control(
+                    SettingEntry::new(title, description).title_actions(
+                        settings_reset_button(
+                            "settings-contrast-reset",
+                            "Reset contrast to 100%",
+                            self.preferences.contrast != 1.0,
+                        )
+                        .on(settings_card_ground(cx))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.preferences.contrast = 1.0;
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        })),
+                    ),
+                    slider,
+                    narrow,
                 )
-                .on(settings_card_ground(cx))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.preferences.contrast = 1.0;
-                    this.settings_controls
-                        .contrast
-                        .update(cx, |input, cx| input.set_value("100", window, cx));
-                    this.preferences.save();
-                    this.preferences.apply(&this.connection, window, cx);
-                })),
-            )
-            .control(number_control(&self.settings_controls.contrast, cx)),
+            }
             AppearancePageItem::Animations => SettingEntry::new(
                 "Animations",
                 "Animate interface transitions, loading indicators, and image frames.",
@@ -1153,52 +1033,160 @@ impl AppShell {
                         this.preferences.apply(&this.connection, window, cx);
                     })),
             ),
-            AppearancePageItem::InterfaceTheme => {
-                let selected = self.preferences.theme_id().to_owned();
-                let mode = cx.theme().mode;
-                let choices = interface_theme::builtin_themes()
-                    .iter()
-                    .map(|(id, theme)| (SharedString::from(*id), theme))
-                    .chain(
-                        self.preferences
-                            .themes
-                            .iter()
-                            .map(|(id, theme)| (SharedString::from(id.clone()), theme)),
-                    )
-                    .collect::<Vec<_>>();
-                let index = choices
-                    .iter()
-                    .position(|(id, _)| *id == selected)
-                    .unwrap_or(0);
-                let ids = choices.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+            AppearancePageItem::Style => {
+                let (title, description) = item.text().unwrap_or_default();
+                let picks = theme_picks(&self.preferences);
+                let custom = picks.custom();
                 let view = cx.entity().downgrade();
-                let strip = PickerStrip::new("settings-interface-theme", index)
-                    .tiles(choices.iter().map(|(id, theme)| {
-                        let label = if theme.name.is_empty() {
-                            id.clone()
-                        } else {
-                            SharedString::from(theme.name.clone())
-                        };
-                        (label, interface_theme_preview(theme, mode, cx))
-                    }))
-                    .on_select(move |index, window, cx| {
+                let strip = style_strip(
+                    &picks,
+                    cx.theme().mode,
+                    move |id, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            let overrides = &mut this.preferences.overrides;
+                            if custom || id != interface_theme::DEFAULT_THEME {
+                                overrides.pick_style(id);
+                            } else {
+                                overrides.style = None;
+                                overrides.radius = None;
+                            }
+                            this.theme_changed(window, cx);
+                        });
+                    },
+                    cx,
+                );
+                SettingEntry::new(title, description)
+                    .title_actions(reset_button(
+                        "settings-style-reset",
+                        self.preferences.overrides.style.is_some(),
+                        |this, window, cx| {
+                            this.preferences.overrides.style = None;
+                            this.settings_controls
+                                .sync_theme_inputs(&this.preferences, window, cx);
+                        },
+                        cx,
+                    ))
+                    .child(strip)
+            }
+            AppearancePageItem::Accent => {
+                let (title, description) = item.text().unwrap_or_default();
+                let custom =
+                    ColorPicker::new(&self.settings_controls.accent, zz_gpui::transparent_black())
+                        .label("Accent")
+                        .swatch(px(SWATCH));
+                let view = cx.entity().downgrade();
+                let swatches = accent_swatches(
+                    &theme_picks(&self.preferences),
+                    cx.theme().mode,
+                    custom,
+                    move |name, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.overrides.accent = name.map(str::to_owned);
+                            this.theme_changed(window, cx);
+                        });
+                    },
+                    cx,
+                );
+                with_control(
+                    SettingEntry::new(title, description).title_actions(reset_button(
+                        "settings-accent-reset",
+                        self.preferences.overrides.accent.is_some(),
+                        |this, window, cx| {
+                            this.preferences.overrides.accent = None;
+                            this.settings_controls
+                                .sync_theme_inputs(&this.preferences, window, cx);
+                        },
+                        cx,
+                    )),
+                    swatches,
+                    narrow,
+                )
+            }
+            AppearancePageItem::TintHue => {
+                let (title, description) = item.text().unwrap_or_default();
+                let hue = self
+                    .preferences
+                    .overrides
+                    .tint_hue
+                    .unwrap_or(interface_theme::DEFAULT_TINT_HUE);
+                let view = cx.entity().downgrade();
+                let slider = tint_hue_slider(hue, move |hue, window, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.preferences.overrides.tint_hue = Some(hue);
+                        this.preferences.save();
+                        this.preferences.apply(&this.connection, window, cx);
+                    });
+                });
+                with_control(
+                    SettingEntry::new(title, description).title_actions(reset_button(
+                        "settings-tint-hue-reset",
+                        self.preferences.overrides.tint_hue.is_some(),
+                        |this, _, _| this.preferences.overrides.tint_hue = None,
+                        cx,
+                    )),
+                    slider,
+                    narrow,
+                )
+            }
+            AppearancePageItem::Tint => {
+                let (title, description) = item.text().unwrap_or_default();
+                let tint = self.preferences.overrides.tint.unwrap_or(0.0);
+                let view = cx.entity().downgrade();
+                let slider = tint_slider(
+                    tint,
+                    move |tint, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.overrides.tint = Some(tint);
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        });
+                    },
+                    cx,
+                );
+                with_control(
+                    SettingEntry::new(title, description).title_actions(reset_button(
+                        "settings-tint-reset",
+                        self.preferences.overrides.tint.is_some(),
+                        |this, _, _| this.preferences.overrides.tint = None,
+                        cx,
+                    )),
+                    slider,
+                    narrow,
+                )
+            }
+            AppearancePageItem::Themes => {
+                let (title, description) = item.text().unwrap_or_default();
+                let picks = theme_picks(&self.preferences);
+                let ids = picks
+                    .themes
+                    .iter()
+                    .map(|(id, _)| id.clone())
+                    .collect::<Vec<_>>();
+                let view = cx.entity().downgrade();
+                let strip = themes_strip(
+                    &picks,
+                    cx.theme().mode,
+                    move |index, window, cx| {
                         let id = ids[index].clone();
                         let _ = view.update(cx, |this, cx| {
                             this.preferences.set_interface_theme(&id);
                             this.theme_changed(window, cx);
                         });
-                    });
+                    },
+                    cx,
+                );
+                let selected = self.preferences.theme_id();
                 let actions = div()
                     .flex()
                     .flex_none()
                     .items_center()
                     .gap(px(4.0))
                     .child(
-                        Button::new("settings-interface-theme-duplicate")
+                        Button::new("settings-themes-save")
                             .ghost()
                             .small()
-                            .label("Duplicate")
-                            .tooltip("Save a copy of this theme and use it")
+                            .label("Save")
+                            .tooltip("Save the look on screen as a theme and use it")
                             .on(settings_card_ground(cx))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 let saved = this.preferences.duplicate_theme();
@@ -1206,7 +1194,7 @@ impl AppShell {
                             })),
                     )
                     .child(
-                        Button::new("settings-interface-theme-import")
+                        Button::new("settings-themes-import")
                             .ghost()
                             .small()
                             .label("Import")
@@ -1217,10 +1205,10 @@ impl AppShell {
                             })),
                     )
                     .when(
-                        self.preferences.saved_theme(&selected).is_some(),
+                        self.preferences.saved_theme(selected).is_some(),
                         |actions| {
                             actions.child(
-                                Button::new("settings-interface-theme-delete")
+                                Button::new("settings-themes-delete")
                                     .ghost()
                                     .small()
                                     .label("Delete")
@@ -1235,7 +1223,7 @@ impl AppShell {
                         },
                     );
                 let reset = reset_button(
-                    "settings-interface-theme-reset",
+                    "settings-themes-reset",
                     selected != interface_theme::DEFAULT_THEME,
                     |this, window, cx| {
                         this.preferences
@@ -1245,10 +1233,7 @@ impl AppShell {
                     },
                     cx,
                 );
-                let entry = SettingEntry::new(
-                    "Interface theme",
-                    "The look of the whole interface and its colors in light and dark. Duplicate saves a copy on this device; Import adds one from the clipboard.",
-                );
+                let entry = SettingEntry::new(title, description);
                 if narrow {
                     entry.title_actions(reset).child(strip).child(actions)
                 } else {
@@ -1269,7 +1254,7 @@ impl AppShell {
                 return settings_list_disclosure_header(
                     "settings-appearance-advanced",
                     "Advanced",
-                    Some("Fonts, zoom, contrast, and the theme's materials: corners, outlines, shadows, rows and glass."),
+                    Some("Corner radius, contrast, fonts and zoom."),
                     expanded,
                     cx,
                 )
@@ -1279,50 +1264,34 @@ impl AppShell {
                 }))
                 .into_any_element();
             }
-            item @ (AppearancePageItem::WidgetCornerRadius
-            | AppearancePageItem::OutlineWidth
-            | AppearancePageItem::ShadowStrength
-            | AppearancePageItem::RowInset
-            | AppearancePageItem::Primary
-            | AppearancePageItem::Glass) => self.material_setting(item, cx),
+            AppearancePageItem::CornerRadius => {
+                let (title, description) = item.text().unwrap_or_default();
+                let view = cx.entity().downgrade();
+                let slider = corner_radius_slider(
+                    self.preferences.widget_corner_radius(),
+                    move |radius, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.overrides.radius = Some(radius);
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        });
+                    },
+                    cx,
+                );
+                with_control(
+                    SettingEntry::new(title, description).title_actions(reset_button(
+                        "settings-corner-radius-reset",
+                        self.preferences.overrides.radius.is_some(),
+                        |this, _, _| this.preferences.overrides.radius = None,
+                        cx,
+                    )),
+                    slider,
+                    narrow,
+                )
+            }
             _ => return div().into_any_element(),
         };
         entry.position(position).into_any_element()
-    }
-
-    /// A material setting: a number field for a length or a strength, a
-    /// select for a choice, with a reset back to the theme's value.
-    fn material_setting(&self, item: AppearancePageItem, cx: &mut Context<Self>) -> SettingEntry {
-        let (title, description) = item.material_text().unwrap_or_default();
-        let controls = &self.settings_controls;
-        let input = match item {
-            AppearancePageItem::WidgetCornerRadius => Some(&controls.radius),
-            AppearancePageItem::OutlineWidth => Some(&controls.outline),
-            AppearancePageItem::ShadowStrength => Some(&controls.shadow_strength),
-            AppearancePageItem::RowInset => Some(&controls.row_inset),
-            _ => None,
-        };
-        let entry = SettingEntry::new(title, description).title_actions(reset_button(
-            SharedString::from(format!("settings-material-{title}-reset")),
-            material_overridden(&self.preferences, item),
-            move |this, window, cx| {
-                clear_material(&mut this.preferences, item);
-                this.settings_controls
-                    .sync_theme_inputs(&this.preferences, window, cx);
-            },
-            cx,
-        ));
-        if let Some(input) = input {
-            return entry.control(number_control(input, cx));
-        }
-        match controls
-            .material_selects
-            .iter()
-            .find(|(select_item, _)| *select_item == item)
-        {
-            Some((_, select)) => entry.control(choice_select(select, title, cx)),
-            None => entry,
-        }
     }
 
     fn agent_panes_setting(&self, cx: &mut Context<Self>) -> SettingEntry {
@@ -1595,59 +1564,39 @@ pub(super) fn finish_field(window: &mut Window, cx: &mut App) {
     }
 }
 
-/// The shadow strength the preferences set over the theme, 1 while it
-/// follows the theme.
-fn shadow_strength_of(preferences: &Preferences) -> f32 {
-    preferences.materials.shadow_strength.unwrap_or(1.0)
+/// The color the custom accent picker holds: a hex accent, or none while
+/// the accent is the theme's or a named one.
+fn custom_accent(preferences: &Preferences) -> Option<zz_gpui::Hsla> {
+    preferences
+        .overrides
+        .accent
+        .as_deref()
+        .filter(|accent| !interface_theme::ACCENTS.contains(accent))
+        .and_then(|accent| interface_theme::accent_color(accent, ThemeMode::Dark))
 }
 
-/// The value a material select shows: the theme's choice, or `theme` for
-/// glass nothing overrides.
-fn material_choice(preferences: &Preferences, item: AppearancePageItem) -> String {
-    let name = match item {
-        AppearancePageItem::Primary => {
-            interface_theme::choice_name(preferences.materials().primary)
-        }
-        AppearancePageItem::Glass => preferences.materials.glass.clone(),
-        _ => None,
-    };
-    name.unwrap_or_else(|| "theme".to_owned())
-}
-
-fn set_material_choice(preferences: &mut Preferences, item: AppearancePageItem, value: &str) {
-    let overrides = &mut preferences.materials;
-    match item {
-        AppearancePageItem::Primary => overrides.primary = interface_theme::parse_choice(value),
-        AppearancePageItem::Glass => {
-            overrides.glass = (value != "theme").then(|| value.to_owned());
-        }
-        _ => {}
-    }
-}
-
-fn material_overridden(preferences: &Preferences, item: AppearancePageItem) -> bool {
-    let overrides = &preferences.materials;
-    match item {
-        AppearancePageItem::WidgetCornerRadius => overrides.radius.is_some(),
-        AppearancePageItem::OutlineWidth => overrides.outline.is_some(),
-        AppearancePageItem::ShadowStrength => overrides.shadow_strength.is_some(),
-        AppearancePageItem::RowInset => overrides.row_inset.is_some(),
-        AppearancePageItem::Primary => overrides.primary.is_some(),
-        AppearancePageItem::Glass => overrides.glass.is_some(),
-        _ => false,
-    }
-}
-
-fn clear_material(preferences: &mut Preferences, item: AppearancePageItem) {
-    let overrides = &mut preferences.materials;
-    match item {
-        AppearancePageItem::WidgetCornerRadius => overrides.radius = None,
-        AppearancePageItem::OutlineWidth => overrides.outline = None,
-        AppearancePageItem::ShadowStrength => overrides.shadow_strength = None,
-        AppearancePageItem::RowInset => overrides.row_inset = None,
-        AppearancePageItem::Primary => overrides.primary = None,
-        AppearancePageItem::Glass => overrides.glass = None,
-        _ => {}
+/// The themes the Theme rows offer, the built-in first, with the active one
+/// picked and the overrides set over it.
+fn theme_picks(preferences: &Preferences) -> ThemePicks<'_> {
+    let themes = interface_theme::builtin_themes()
+        .iter()
+        .map(|(id, theme)| (SharedString::from(*id), theme))
+        .chain(
+            preferences
+                .themes
+                .iter()
+                .map(|(id, theme)| (SharedString::from(id.clone()), theme)),
+        )
+        .collect::<Vec<_>>();
+    let active = preferences.theme_id();
+    let selected = themes
+        .iter()
+        .position(|(id, _)| **id == *active)
+        .unwrap_or(0);
+    ThemePicks {
+        themes,
+        selected,
+        overrides: &preferences.overrides,
     }
 }
 
@@ -1883,18 +1832,14 @@ enum PaneControl {
     Opacity,
     Glow,
     Margin,
-    Radius,
-    Border,
 }
 
 impl PaneControl {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 4] = [
         Self::BackgroundOpacity,
         Self::Opacity,
         Self::Glow,
         Self::Margin,
-        Self::Radius,
-        Self::Border,
     ];
 
     fn value(self, preferences: &mut Preferences) -> &mut f32 {
@@ -1903,8 +1848,6 @@ impl PaneControl {
             Self::Opacity => &mut preferences.pane_inactive_opacity,
             Self::Glow => &mut preferences.pane_glow_strength,
             Self::Margin => &mut preferences.pane_margin,
-            Self::Radius => &mut preferences.pane_radius,
-            Self::Border => &mut preferences.pane_border_width,
         }
     }
 
@@ -1912,8 +1855,7 @@ impl PaneControl {
         match self {
             Self::BackgroundOpacity | Self::Opacity => (0.0, 1.0, 0.05),
             Self::Glow => (0.0, 2.0, 0.05),
-            Self::Margin | Self::Radius => (0.0, 32.0, 0.5),
-            Self::Border => (0.0, 8.0, 0.5),
+            Self::Margin => (0.0, 32.0, 0.5),
         }
     }
 
@@ -1923,8 +1865,6 @@ impl PaneControl {
             Self::Opacity => "Inactive pane opacity",
             Self::Glow => "Selected pane edge",
             Self::Margin => "Pane margin",
-            Self::Radius => "Pane corner radius",
-            Self::Border => "Pane edge width",
         }
     }
 
@@ -1940,10 +1880,6 @@ impl PaneControl {
                 "How brightly the selected pane's edge lights in the accent, from 0% to 200%. Set to 0 to light it like the others."
             }
             Self::Margin => "Space around each pane, in logical pixels (0–32).",
-            Self::Radius => "Rounds every pane corner, in logical pixels (0–32).",
-            Self::Border => {
-                "Width of the bright line along each pane's glass edge, in logical pixels (0–8). Set to 0 to turn it off."
-            }
         }
     }
 }
@@ -2052,8 +1988,9 @@ mod tests {
             )
             .unwrap();
         let expected = preferences.interface_theme().colors(ThemeMode::Dark).accent;
-        cx.add_empty_window().update(|window, cx| {
-            let connection = cx.new(crate::connection::Connection::new);
+        let window = cx.add_empty_window();
+        let connection = window.update(|_, cx| cx.new(crate::connection::Connection::new));
+        window.update(|window, cx| {
             preferences.apply(&connection, window, cx);
             let theme = cx.theme();
             assert_eq!(theme.mode, ThemeMode::Dark);
@@ -2065,6 +2002,18 @@ mod tests {
                 theme.style(zz_ui::Kind::Button.role()).shape,
                 zz_ui::Shape::Pill
             );
+        });
+        preferences.overrides.radius = Some(5.0);
+        preferences.overrides.accent = Some("green".into());
+        window.update(|window, cx| {
+            preferences.apply(&connection, window, cx);
+            let theme = cx.theme();
+            assert_eq!(
+                Some(theme.accent),
+                zz_ui::interface_theme::accent_color("green", ThemeMode::Dark)
+            );
+            assert_eq!(theme.radius, px(5.0));
+            assert_eq!(theme.outline, px(0.4));
         });
     }
 }

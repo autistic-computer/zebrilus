@@ -10,7 +10,7 @@ tags:
 - design-system
 - zz-gpui-kit
 - design-plan
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # Why
@@ -99,12 +99,13 @@ A pane fills with `theme.pane_background(fill)`: its own fill (the window color,
 
 ## Lines and backdrops
 
-- A rule between sections is `.rule_on(role, edge)`: `RULE_WIDTH` (1px) in `theme.divider_color()`, which is just `theme.border()`, drawn when the rule role's outline is on (`rule.bar`, `rule.sidebar`, `rule.split`, `rule.list`, `rule.tree`). It replaces the separate rule recipes the audit found.
+- A rule between sections is `.rule_on(role, edge)`: `RULE_WIDTH` (1px) in `theme.divider_color()`, the foreground at the edge weight, translucent so a rule lightens glass in a dark theme the way it does a solid fill, drawn when the rule role's outline is on (`rule.bar`, `rule.sidebar`, `rule.split`, `rule.list`, `rule.tree`). It replaces the separate rule recipes the audit found.
 - The edge of a surface is its role's `outline`: the theme's outline width, the border color on surfaces and 10% of the ground's ink on controls, and no edge at all when the outline is 0. Glass draws its own rim, so a surface in glass hides the hairline and keeps its width. Highlights recolor the edge and never change its width.
 - A focus ring is `focus_ring(&paint)`: `FOCUS_RING_WIDTH` (1.5px) in the paint's focus color. A chosen tile is its role's `selected: ring`, 2px in the accent.
 - Anything that dims the window behind a modal, a sheet or a slide-over fills with `theme.scrim`.
 - Every drop shadow is drawn in `theme.shadow_color`, which the theme sets per mode, so a light theme on a tinted background can tint its shadows instead of graying them.
-- Which surfaces cast a shadow is each role's `shadow` (`none`, `contact` or `float`); what the two shadows look like is the theme's `contact` and `float` materials, scaled together by `widget-shadow-strength`. `Theme::shadows_of`, `contact_shadows`, `float_shadows` and `casts_shadow(role)` read them. `lifted_shadow` is the small shadow under a switch thumb, and it follows the contact strength.
+- The tint (`chrome-tint` and `chrome-tint-hue`, see [interface themes](/designs/interface-themes.md)) changes only the background root (`ThemeColor::tinted`). Planes, washes, edges and glass tints derive from the background, so they all lean with it and no widget has to know.
+- Which surfaces cast a shadow is each role's `shadow` (`none`, `contact` or `float`); what the two shadows look like is the theme's `contact` and `float` materials, which a style (`interface-style`) replaces along with the other materials. `Theme::shadows_of`, `contact_shadows`, `float_shadows` and `casts_shadow(role)` read them. `lifted_shadow` is the small shadow under a switch thumb, and it follows the contact strength.
 
 ## Text
 
@@ -153,7 +154,7 @@ The shared chrome, `field_chrome` in `input/field.rs`, takes a `Surface` or a ro
 
 Kit widgets on the model:
 - **`Badge`**: tone, emphasis, size, optional icon, any children after the label, and `.surface_role(role)`. `.opaque()` for a badge floating over content. One widget for chips, pills, status and counts.
-- **`Keycap`**: a key as a cap, drawn as the `keycap` kind (a tint with the outline) or `.surface_role(role)`, with `.on(ground)` inside another paint and its label muted on the cap.
+- **`Keycap`**: a key as a cap, drawn as the `keycap` kind (a tint with the outline) or `.surface_role(role)`, with `.on(ground)` inside another paint and its label muted on the cap, or at full ink on an accent or other colored fill, where muting would wash it into the color.
 - **`Kbd`**: a `Keystroke` formatted for the platform and drawn as that same `Keycap`, with the same `.surface_role()` and `.on(ground)`, so every key hint is one cap. Menus and tooltips show a binding as text (`Kbd::text`) in the row's ink instead of a cap.
 - **`Check`**: `Check::checkbox(checked)` and `Check::radio(checked)`.
   - Off: a neutral outline.
@@ -161,11 +162,13 @@ Kit widgets on the model:
   - Corners: a checkbox at half the theme radius, a radio round.
 - **`Button::tone(..)` / `.emphasis(..)`**: `ButtonVariant` is `Paint(Tone, Emphasis)`, `Link` or `Text`. The shorthands name the common pairs: `primary` (primary solid), `secondary` (neutral soft, the default), `ghost` (neutral ghost), `danger`, `warning` and `success` (soft). A dialog's destructive OK is `Paint(Danger, Solid)`.
 - **Tiles and rows** are surfaces of the `tile` and `row` item groups, or the `menu-item` button group for rows you press, or a role in one of them. `zz_ui::picker::row_surface` draws a row of a given height as a role with its hover and press, and `zz_ui::picker::list_row` builds a list row on it. A list of rows takes `list_inset`: padded in by the theme's row inset, with a hair of space between rows while they float. Rows round with `row_corners(element, layer, height)`: the layer's radius held to 40% of the row's height, square when the row inset is 0, a pill when the role asks for one.
+- **`ColorPicker`**: a swatch that opens a saturation and brightness field over a hue `Slider` and a hex field with a clear button, in a popover or, on a touch screen, a bottom sheet. It keeps the last hue picked while the color is gray or black, and `.swatch(size)` draws the trigger as a bare swatch to sit in a row of swatches.
 - **`touch::press_highlight`**: the press layer under a control on a touch screen. Without a color it paints the neutral ghost paint's pressed fill, and its corners resolve through `Window::resolve_corner_radii`, the same curve the control's own corners take. Add it before the control's content: a role's pressed fill is often opaque, and painted last it hides the label.
 
 **Corners:**
 - Badges and keycaps round with their role's shape, like buttons: the theme radius for `round`, half circles for `pill`, square for `square`.
 - Checkboxes round at half the theme radius; radios are round.
+- Color swatches round with `Theme::swatch_radius()`: half the theme radius, so a swatch rounds in step with the controls beside it, square at radius 0. The window's adaptive corner cap keeps it from turning into a circle at large radii, like every other ordinary radius.
 
 # Rules
 

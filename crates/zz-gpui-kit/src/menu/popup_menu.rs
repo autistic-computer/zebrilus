@@ -1347,7 +1347,7 @@ mod tests {
                         assert!((radius / window.scale_factor() - expected).abs() < 0.001);
                         assert!(radius < pill);
                     }
-                    None => assert!((radius - pill).abs() < 0.001, "{radius} {pill}"),
+                    None => assert!(radius < pill, "{radius} {pill}"),
                 }
                 assert!(surface.bounds.contains(&highlight.bounds.origin));
                 assert!(surface.bounds.contains(&highlight.bounds.bottom_right()));

@@ -47,10 +47,12 @@ use crate::{
 use zz_browser::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
+use zz_ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use zz_ui::feedback::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::appearance::{
-    PickerStrip, interface_theme_preview, picker_tile, ui_font_select,
+    SWATCH, ThemePicks, accent_swatches, contrast_slider, corner_radius_slider, picker_tile,
+    style_strip, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -118,17 +120,10 @@ pub(crate) struct SettingsView {
     pane_background_opacity: Entity<InputState>,
     pane_glow_strength: Entity<InputState>,
     pane_inactive_opacity: Entity<InputState>,
-    pane_corner_radius: Entity<InputState>,
     pane_margin: Entity<InputState>,
     editor_font_size: Entity<InputState>,
     which_key_delay: Entity<InputState>,
-    pane_border_width: Entity<InputState>,
-    widget_corner_radius: Entity<InputState>,
-    widget_outline_width: Entity<InputState>,
-    widget_shadow_strength: Entity<InputState>,
-    widget_row_inset: Entity<InputState>,
-    material_selects: Vec<(ConfigKey, Entity<SelectState<Vec<SettingsSelectItem>>>)>,
-    chrome_contrast: Entity<InputState>,
+    accent_picker: Entity<ColorPickerState>,
     window_corner_radius: Entity<InputState>,
     mux_config_editor: Option<ConfigFileEditor>,
     mux_split_controls: Option<multiplexer::SplitControls>,
@@ -187,13 +182,6 @@ impl SettingsView {
             window,
             cx,
         );
-        let pane_corner_radius = numeric_value_input(
-            ConfigKey::PaneCornerRadius,
-            observed.pane_corner_radius.value,
-            1.0,
-            window,
-            cx,
-        );
         let pane_margin = numeric_value_input(
             ConfigKey::PaneMargin,
             observed.pane_margin.value,
@@ -215,59 +203,9 @@ impl SettingsView {
             window,
             cx,
         );
-        let pane_border_width = numeric_value_input(
-            ConfigKey::PaneBorderWidth,
-            observed.pane_border_width.value,
-            1.0,
-            window,
-            cx,
-        );
-        let widget_corner_radius = numeric_value_input(
-            ConfigKey::WidgetCornerRadius,
-            observed.widget_corner_radius.value,
-            1.0,
-            window,
-            cx,
-        );
-        let chrome_contrast = numeric_value_input(
-            ConfigKey::ChromeContrast,
-            observed.chrome_contrast.value,
-            5.0,
-            window,
-            cx,
-        );
-        let widget_outline_width = numeric_value_input(
-            ConfigKey::WidgetOutlineWidth,
-            observed.widget_outline_width.value,
-            0.5,
-            window,
-            cx,
-        );
-        let widget_shadow_strength = numeric_value_input(
-            ConfigKey::WidgetShadowStrength,
-            observed.widget_shadow_strength.value,
-            0.1,
-            window,
-            cx,
-        );
-        let widget_row_inset = numeric_value_input(
-            ConfigKey::WidgetRowInset,
-            observed.widget_row_inset.value,
-            1.0,
-            window,
-            cx,
-        );
-        let material_selects = AppearancePageItem::MATERIALS
-            .into_iter()
-            .filter_map(|item| {
-                let key = material_key(item)?;
-                let selected = observed.choice_value(key)?;
-                Some((
-                    key,
-                    settings_select_state(item.material_choices(), selected, window, cx),
-                ))
-            })
-            .collect::<Vec<_>>();
+        let accent_picker = cx.new(|cx| {
+            ColorPickerState::new(custom_accent(observed.chrome_accent.value), window, cx)
+        });
         let window_corner_radius = numeric_value_input(
             ConfigKey::WindowCornerRadius,
             observed.window_corner_radius.value,
@@ -275,7 +213,7 @@ impl SettingsView {
             window,
             cx,
         );
-        let mut subscriptions = vec![
+        let subscriptions = vec![
             cx.observe(&mux, |_, _, cx| cx.notify()),
             cx.observe_global::<config::FleetHosts>(|_, cx| cx.notify()),
             cx.observe_global::<crate::update::UpdateState>(|_, cx| cx.notify()),
@@ -301,35 +239,17 @@ impl SettingsView {
                 window,
                 cx,
             ),
-            numeric_input_subscription(
-                &pane_corner_radius,
-                ConfigKey::PaneCornerRadius,
-                window,
-                cx,
-            ),
             numeric_input_subscription(&pane_margin, ConfigKey::PaneMargin, window, cx),
-            numeric_input_subscription(&pane_border_width, ConfigKey::PaneBorderWidth, window, cx),
             numeric_input_subscription(&which_key_delay, ConfigKey::WhichKeyDelay, window, cx),
-            numeric_input_subscription(
-                &widget_corner_radius,
-                ConfigKey::WidgetCornerRadius,
-                window,
-                cx,
-            ),
-            numeric_input_subscription(&chrome_contrast, ConfigKey::ChromeContrast, window, cx),
-            numeric_input_subscription(
-                &widget_outline_width,
-                ConfigKey::WidgetOutlineWidth,
-                window,
-                cx,
-            ),
-            numeric_input_subscription(
-                &widget_shadow_strength,
-                ConfigKey::WidgetShadowStrength,
-                window,
-                cx,
-            ),
-            numeric_input_subscription(&widget_row_inset, ConfigKey::WidgetRowInset, window, cx),
+            cx.subscribe(&accent_picker, |_, _, event: &ColorPickerEvent, cx| {
+                let ColorPickerEvent::Change(color) = event;
+                let key = ConfigKey::ChromeAccent;
+                let result = match color {
+                    Some(color) => set_config_key(key, &zz_ui::to_hex(color.opaque())),
+                    None => remove_config_key(key),
+                };
+                written(key, result, cx);
+            }),
             numeric_input_subscription(
                 &window_corner_radius,
                 ConfigKey::WindowCornerRadius,
@@ -337,11 +257,6 @@ impl SettingsView {
                 cx,
             ),
         ];
-        subscriptions.extend(
-            material_selects
-                .iter()
-                .map(|(key, select)| material_select_subscription(select, *key, window, cx)),
-        );
         let observed_appearance_overrides = config::daemon_config_overrides(cx);
         let settings = Self {
             mux,
@@ -357,17 +272,10 @@ impl SettingsView {
             pane_background_opacity,
             pane_glow_strength,
             pane_inactive_opacity,
-            pane_corner_radius,
             pane_margin,
             editor_font_size,
             which_key_delay,
-            pane_border_width,
-            widget_corner_radius,
-            widget_outline_width,
-            widget_shadow_strength,
-            widget_row_inset,
-            material_selects,
-            chrome_contrast,
+            accent_picker,
             window_corner_radius,
             mux_config_editor: None,
             mux_split_controls: None,
@@ -559,12 +467,6 @@ impl SettingsView {
                 window,
                 cx,
             );
-            synchronize_f32_input(
-                &self.pane_corner_radius,
-                resolved.pane_corner_radius.value,
-                window,
-                cx,
-            );
             synchronize_f32_input(&self.pane_margin, resolved.pane_margin.value, window, cx);
             synchronize_f32_input(
                 &self.editor_font_size,
@@ -578,56 +480,10 @@ impl SettingsView {
                 window,
                 cx,
             );
-            synchronize_f32_input(
-                &self.pane_border_width,
-                resolved.pane_border_width.value,
-                window,
-                cx,
-            );
-            synchronize_f32_input(
-                &self.widget_corner_radius,
-                resolved.widget_corner_radius.value,
-                window,
-                cx,
-            );
-            if !numeric_input_matches_value(
-                ConfigKey::ChromeContrast,
-                &self.chrome_contrast.read(cx).value(),
-                resolved.chrome_contrast.value,
-            ) {
-                synchronize_text_input(
-                    &self.chrome_contrast,
-                    &numeric_input_text(ConfigKey::ChromeContrast, resolved.chrome_contrast.value),
-                    window,
-                    cx,
-                );
-            }
-            synchronize_f32_input(
-                &self.widget_outline_width,
-                resolved.widget_outline_width.value,
-                window,
-                cx,
-            );
-            synchronize_f32_input(
-                &self.widget_shadow_strength,
-                resolved.widget_shadow_strength.value,
-                window,
-                cx,
-            );
-            synchronize_f32_input(
-                &self.widget_row_inset,
-                resolved.widget_row_inset.value,
-                window,
-                cx,
-            );
-            for (key, select) in &self.material_selects {
-                if let Some(value) = resolved.choice_value(*key) {
-                    let value = value.to_owned();
-                    select.update(cx, |select, cx| {
-                        select.set_selected_value(&value, window, cx);
-                    });
-                }
-            }
+            let accent = custom_accent(resolved.chrome_accent.value);
+            self.accent_picker.update(cx, |picker, cx| {
+                picker.set_color(accent, window, cx);
+            });
             if !numeric_input_matches_value(
                 ConfigKey::PaneBackgroundOpacity,
                 &self.pane_background_opacity.read(cx).value(),
@@ -890,6 +746,19 @@ impl SettingsView {
         )
     }
 
+    fn slider_setting(
+        item: AppearancePageItem,
+        key: ConfigKey,
+        provenance: ConfigProvenance,
+        slider: impl IntoElement,
+        cx: &Context<Self>,
+    ) -> SettingEntry {
+        let (title, description) = item.text().unwrap_or_default();
+        SettingEntry::new(title, description)
+            .title_actions(key_annotations(key, provenance, cx))
+            .control(slider)
+    }
+
     fn numeric_setting(
         key: ConfigKey,
         title: &'static str,
@@ -901,50 +770,6 @@ impl SettingsView {
         SettingEntry::new(title, description)
             .title_actions(key_annotations(key, setting.provenance, cx))
             .control(numeric_control(input, cx))
-    }
-
-    /// A material setting: a number field for a length or a strength, a
-    /// select for a choice.
-    fn material_setting(
-        &self,
-        item: AppearancePageItem,
-        resolved: &AppConfig,
-        cx: &Context<Self>,
-    ) -> SettingEntry {
-        let (title, description) = item.material_text().unwrap_or_default();
-        let Some(key) = material_key(item) else {
-            return SettingEntry::new(title, description);
-        };
-        let input = match key {
-            ConfigKey::WidgetCornerRadius => Some(&self.widget_corner_radius),
-            ConfigKey::WidgetOutlineWidth => Some(&self.widget_outline_width),
-            ConfigKey::WidgetShadowStrength => Some(&self.widget_shadow_strength),
-            ConfigKey::WidgetRowInset => Some(&self.widget_row_inset),
-            _ => None,
-        };
-        if let Some(input) = input {
-            return Self::numeric_setting(
-                key,
-                title,
-                description,
-                numeric_config_value(resolved, key),
-                input,
-                cx,
-            );
-        }
-        let provenance = resolved
-            .choice_setting(key)
-            .map_or(ConfigProvenance::Default, |setting| setting.provenance);
-        let entry = SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, provenance, cx));
-        match self
-            .material_selects
-            .iter()
-            .find(|(select_key, _)| *select_key == key)
-        {
-            Some((_, select)) => entry.control(select_control(select, cx)),
-            None => entry,
-        }
     }
 }
 
@@ -987,7 +812,7 @@ impl SettingsView {
                 return settings_list_disclosure_header(
                     "settings-appearance-advanced",
                     "Advanced",
-                    Some("Fonts, zoom, contrast, and the theme's materials: corners, outlines, shadows, rows and glass."),
+                    Some("Corner radius, contrast, fonts, zoom and the window."),
                     expanded,
                     cx,
                 )
@@ -1007,16 +832,40 @@ impl SettingsView {
                 unreachable!("returned above")
             }
             AppearancePageItem::ThemeMode => Self::theme_mode_setting(resolved, cx),
-            AppearancePageItem::InterfaceTheme => Self::interface_theme_setting(resolved, cx),
+            AppearancePageItem::Style => Self::style_setting(resolved, cx),
+            AppearancePageItem::Accent => self.accent_setting(resolved, cx),
+            AppearancePageItem::TintHue => Self::tint_hue_setting(resolved, cx),
+            AppearancePageItem::Tint => Self::tint_setting(resolved, cx),
+            AppearancePageItem::Themes => Self::themes_setting(resolved, cx),
+            AppearancePageItem::CornerRadius => Self::slider_setting(
+                item,
+                ConfigKey::WidgetCornerRadius,
+                resolved.widget_corner_radius.provenance,
+                corner_radius_slider(
+                    resolved.widget_corner_radius.value,
+                    |radius, _, cx| {
+                        let key = ConfigKey::WidgetCornerRadius;
+                        written(key, set_config_key(key, &format!("{radius:.0}")), cx);
+                    },
+                    cx,
+                ),
+                cx,
+            ),
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
             AppearancePageItem::UiZoom => self.ui_zoom_setting(cx),
             AppearancePageItem::AppIcon => Self::app_icon_setting(resolved, cx),
-            AppearancePageItem::ChromeContrast => Self::numeric_setting(
+            AppearancePageItem::ChromeContrast => Self::slider_setting(
+                item,
                 ConfigKey::ChromeContrast,
-                "Contrast",
-                "Raise surface, text, and edge contrast from 100% to 200%.",
-                resolved.chrome_contrast,
-                &self.chrome_contrast,
+                resolved.chrome_contrast.provenance,
+                contrast_slider(
+                    resolved.chrome_contrast.value,
+                    |contrast, _, cx| {
+                        let key = ConfigKey::ChromeContrast;
+                        written(key, set_config_key(key, &format!("{contrast:.2}")), cx);
+                    },
+                    cx,
+                ),
                 cx,
             ),
             AppearancePageItem::Animations => Self::boolean_setting(
@@ -1026,12 +875,6 @@ impl SettingsView {
                 resolved.animations,
                 cx,
             ),
-            AppearancePageItem::WidgetCornerRadius
-            | AppearancePageItem::OutlineWidth
-            | AppearancePageItem::ShadowStrength
-            | AppearancePageItem::RowInset
-            | AppearancePageItem::Primary
-            | AppearancePageItem::Glass => self.material_setting(item, resolved, cx),
             AppearancePageItem::WindowBackgroundBlur => Self::boolean_setting(
                 ConfigKey::WindowBackgroundBlur,
                 "Window blur",
@@ -1103,7 +946,7 @@ impl SettingsView {
                     picker_tile(
                         format!("settings-theme-mode-{}", mode.as_str()).into(),
                         mode.title(),
-                        theme_preview(mode, &config::themes(cx).active, cx),
+                        theme_preview(mode, &config::shown_theme(cx), cx),
                         mode == setting.value,
                         cx,
                     )
@@ -1116,65 +959,149 @@ impl SettingsView {
             ))
     }
 
-    fn interface_theme_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let setting = resolved.interface_theme;
-        let themes = config::themes(cx);
+    fn style_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
+        let (title, description) = AppearancePageItem::Style.text().unwrap_or_default();
         let mode = cx.theme().mode;
-        let choices = interface_theme::builtin_themes()
-            .iter()
-            .map(|(id, theme)| (SharedString::from(*id), theme.clone()))
-            .chain(themes.saved.iter().cloned())
-            .collect::<Vec<(SharedString, InterfaceTheme)>>();
-        let selected = choices
-            .iter()
-            .position(|(id, _)| *id == themes.selected)
-            .unwrap_or(0);
-        let ids = choices
-            .iter()
-            .map(|(id, theme)| (id.clone(), theme.materials.font.is_some()))
-            .collect::<Vec<_>>();
-        let strip = PickerStrip::new("settings-interface-theme", selected)
-            .tiles(choices.iter().map(|(id, theme)| {
-                let label = if theme.name.is_empty() {
-                    id.clone()
-                } else {
-                    SharedString::from(theme.name.clone())
-                };
-                (label, interface_theme_preview(theme, mode, cx))
-            }))
-            .on_select(move |index, _, cx| {
-                let (id, sets_font) = &ids[index];
-                if let Err(error) = set_interface_theme(id, *sets_font) {
-                    report_write_error("set", ConfigKey::InterfaceTheme.as_str(), &error, cx);
-                    return;
-                }
-                refresh_settings_preview(ConfigKey::InterfaceTheme, cx);
-            });
-        SettingEntry::new(
-            "Interface theme",
-            "The look of the whole interface and its colors in light and dark. Duplicate saves a copy to edit in the themes folder; Import adds one from the clipboard.",
-        )
-        .title_actions(
-            key_annotations(ConfigKey::InterfaceTheme, setting.provenance, cx)
+        let strip = with_theme_picks(cx, |picks| {
+            let custom = picks.custom();
+            style_strip(
+                picks,
+                mode,
+                move |id, _, cx| write_preset(ConfigKey::InterfaceStyle, id, custom, cx),
+                cx,
+            )
+        });
+        SettingEntry::new(title, description)
+            .title_actions(key_annotations(
+                ConfigKey::InterfaceStyle,
+                resolved.interface_style.provenance,
+                cx,
+            ))
+            .child(strip)
+    }
+
+    fn accent_setting(&self, resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
+        let (title, description) = AppearancePageItem::Accent.text().unwrap_or_default();
+        let mode = cx.theme().mode;
+        let custom = ColorPicker::new(&self.accent_picker, zz_gpui::transparent_black())
+            .label("Accent")
+            .swatch(px(SWATCH));
+        let swatches = with_theme_picks(cx, |picks| {
+            accent_swatches(
+                picks,
+                mode,
+                custom,
+                |name, _, cx| {
+                    let key = ConfigKey::ChromeAccent;
+                    let result = match name {
+                        Some(name) => set_config_key(key, name),
+                        None => remove_config_key(key),
+                    };
+                    written(key, result, cx);
+                },
+                cx,
+            )
+        });
+        SettingEntry::new(title, description)
+            .title_actions(key_annotations(
+                ConfigKey::ChromeAccent,
+                resolved.chrome_accent.provenance,
+                cx,
+            ))
+            .control(swatches)
+    }
+
+    fn tint_hue_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
+        let (title, description) = AppearancePageItem::TintHue.text().unwrap_or_default();
+        SettingEntry::new(title, description)
+            .title_actions(key_annotations(
+                ConfigKey::ChromeTintHue,
+                resolved.chrome_tint_hue.provenance,
+                cx,
+            ))
+            .control(tint_hue_slider(
+                resolved.chrome_tint_hue.value,
+                |hue, _, cx| {
+                    let key = ConfigKey::ChromeTintHue;
+                    written(key, set_config_key(key, &format!("{hue:.0}")), cx);
+                },
+            ))
+    }
+
+    fn tint_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
+        let (title, description) = AppearancePageItem::Tint.text().unwrap_or_default();
+        SettingEntry::new(title, description)
+            .title_actions(key_annotations(
+                ConfigKey::ChromeTint,
+                resolved.chrome_tint.provenance,
+                cx,
+            ))
+            .control(tint_slider(
+                resolved.chrome_tint.value,
+                |tint, _, cx| {
+                    let key = ConfigKey::ChromeTint;
+                    written(key, set_config_key(key, &format!("{tint:.2}")), cx);
+                },
+                cx,
+            ))
+    }
+
+    fn themes_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
+        let (title, description) = AppearancePageItem::Themes.text().unwrap_or_default();
+        let mode = cx.theme().mode;
+        let strip = with_theme_picks(cx, |picks| {
+            let ids = picks
+                .themes
+                .iter()
+                .map(|(id, theme)| (id.clone(), theme.materials.font.is_some()))
+                .collect::<Vec<_>>();
+            themes_strip(
+                picks,
+                mode,
+                move |index, _, cx| {
+                    let (id, sets_font) = &ids[index];
+                    written(
+                        ConfigKey::InterfaceTheme,
+                        set_interface_theme(id, *sets_font),
+                        cx,
+                    );
+                },
+                cx,
+            )
+        });
+        SettingEntry::new(title, description)
+            .title_actions(
+                key_annotations(
+                    ConfigKey::InterfaceTheme,
+                    resolved.interface_theme.provenance,
+                    cx,
+                )
                 .child(
-                    Button::new("settings-interface-theme-duplicate")
+                    Button::new("settings-themes-save")
                         .ghost()
                         .small()
-                        .label("Duplicate")
-                        .tooltip("Save a copy of this theme to edit and use it")
+                        .label("Save")
+                        .tooltip("Save the look on screen as a theme and use it")
                         .on(settings_card_ground(cx))
                         .on_click(|_, _, cx| {
-                            let mut theme = config::themes(cx).active.clone();
-                            config::material_overrides(cx).apply(&mut theme.materials);
+                            let mut theme = config::shown_theme(cx);
                             let font = config::ui_font_family(cx);
                             if font.provenance == ConfigProvenance::Override {
                                 theme.materials.font = font.value.map(SharedString::from);
                             }
-                            save_and_select_theme(theme, cx);
+                            save_and_select_theme(
+                                theme,
+                                &[
+                                    ConfigKey::ChromeAccent,
+                                    ConfigKey::ChromeTint,
+                                    ConfigKey::ChromeTintHue,
+                                ],
+                                cx,
+                            );
                         }),
                 )
                 .child(
-                    Button::new("settings-interface-theme-import")
+                    Button::new("settings-themes-import")
                         .ghost()
                         .small()
                         .label("Import")
@@ -1182,8 +1109,8 @@ impl SettingsView {
                         .on(settings_card_ground(cx))
                         .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
                 ),
-        )
-        .child(strip)
+            )
+            .child(strip)
     }
 
     fn app_icon_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
@@ -1806,7 +1733,6 @@ impl SettingsView {
             zz_ui::settings::panes_preview::PanesPreview {
                 gaps,
                 margin: resolved.pane_margin.value,
-                radius: resolved.pane_corner_radius.value,
                 inactive_opacity: resolved.pane_inactive_opacity.value,
             },
 [Self::boolean_setting(
@@ -1848,23 +1774,6 @@ Self::numeric_setting(
                             "Space around each pane on all platforms, in logical pixels (0–32).",
                             resolved.pane_margin,
                             &self.pane_margin,
-                            cx,
-                        ).disabled(!gaps),
-Self::numeric_setting(
-                            ConfigKey::PaneCornerRadius,
-                            "Pane corner radius",
-                            "Rounds every pane corner on all platforms, in logical pixels (0–32).",
-                            resolved.pane_corner_radius,
-                            &self.pane_corner_radius,
-                            cx,
-                        ).disabled(!gaps),
-Self::numeric_setting(
-                            ConfigKey::PaneBorderWidth,
-                            "Pane edge width",
-                            "Width of the bright line along each pane's glass edge, in logical \
-                             pixels (0–8). Set to 0 to turn it off.",
-                            resolved.pane_border_width,
-                            &self.pane_border_width,
                             cx,
                         ).disabled(!gaps)], cx).into_any_element()
     }
@@ -2337,50 +2246,62 @@ fn search_provider_subscription(
     )
 }
 
-/// The config key a material setting edits.
-fn material_key(item: AppearancePageItem) -> Option<ConfigKey> {
-    Some(match item {
-        AppearancePageItem::WidgetCornerRadius => ConfigKey::WidgetCornerRadius,
-        AppearancePageItem::OutlineWidth => ConfigKey::WidgetOutlineWidth,
-        AppearancePageItem::ShadowStrength => ConfigKey::WidgetShadowStrength,
-        AppearancePageItem::RowInset => ConfigKey::WidgetRowInset,
-        AppearancePageItem::Primary => ConfigKey::WidgetPrimary,
-        AppearancePageItem::Glass => ConfigKey::WidgetGlass,
-        _ => return None,
+/// The themes Settings offers, the built-in first, with the active one
+/// picked and the overrides `zz/config` sets over it.
+fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
+    let themes = config::themes(cx);
+    let choices = interface_theme::builtin_themes()
+        .iter()
+        .map(|(id, theme)| (SharedString::from(*id), theme))
+        .chain(themes.saved.iter().map(|(id, theme)| (id.clone(), theme)))
+        .collect::<Vec<_>>();
+    let selected = choices
+        .iter()
+        .position(|(id, _)| *id == themes.selected)
+        .unwrap_or(0);
+    let overrides = config::theme_overrides(cx);
+    show(&ThemePicks {
+        themes: choices,
+        selected,
+        overrides: &overrides,
     })
 }
 
-/// Writes a material choice. Glass's Theme follows the theme again, so it
-/// drops the key instead of writing it.
-fn material_select_subscription(
-    select: &Entity<SelectState<Vec<SettingsSelectItem>>>,
-    key: ConfigKey,
-    window: &mut Window,
-    cx: &mut Context<SettingsView>,
-) -> Subscription {
-    cx.subscribe_in(
-        select,
-        window,
-        move |_, _, event: &SelectEvent<Vec<SettingsSelectItem>>, _, cx| {
-            let SelectEvent::Confirm(Some(value)) = event else {
-                return;
-            };
-            if config::resolved_config(cx).choice_value(key) == Some(value.as_str()) {
-                return;
-            }
-            let result =
-                if key == ConfigKey::WidgetGlass && value == zz_config::DEFAULT_WIDGET_GLASS {
-                    remove_config_key(key)
-                } else {
-                    set_config_key(key, value)
-                };
-            if let Err(error) = result {
-                report_write_error("set", key.as_str(), &error, cx);
-            } else {
-                refresh_settings_preview(key, cx);
-            }
-        },
-    )
+/// Writes a picked color or style preset. Default on the built-in theme is
+/// the theme's own, so it drops the key; a style brings its own radius.
+fn write_preset(key: ConfigKey, id: &str, custom: bool, cx: &mut App) {
+    let result = if id == interface_theme::DEFAULT_THEME && !custom {
+        remove_config_key(key)
+    } else {
+        set_config_key(key, id)
+    }
+    .and_then(|()| {
+        if key == ConfigKey::InterfaceStyle {
+            remove_config_key(ConfigKey::WidgetCornerRadius)
+        } else {
+            Ok(())
+        }
+    });
+    written(key, result, cx);
+}
+
+/// Reports a failed write, or shows a successful one at once.
+fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App) {
+    match result {
+        Ok(()) => refresh_settings_preview(key, cx),
+        Err(error) => report_write_error("set", key.as_str(), &error, cx),
+    }
+}
+
+/// The color the custom accent picker holds: a set color, or none while the
+/// accent is the theme's or a named one.
+fn custom_accent(accent: zz_client::appearance::AccentSetting) -> Option<zz_gpui::Hsla> {
+    match accent {
+        zz_client::appearance::AccentSetting::Color([r, g, b, a]) => {
+            Some(zz_gpui::Rgba { r, g, b, a }.into())
+        }
+        _ => None,
+    }
 }
 
 /// The family the UI font select shows: the configured one, or the theme's
@@ -2478,17 +2399,7 @@ fn numeric_input_subscription(
         move |settings, input, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
                 settings.commit_numeric_input(key, input, true, window, cx);
-            } else if (is_pane_setting(key)
-                || matches!(
-                    key,
-                    ConfigKey::ChromeContrast
-                        | ConfigKey::WidgetCornerRadius
-                        | ConfigKey::WidgetOutlineWidth
-                        | ConfigKey::WidgetShadowStrength
-                        | ConfigKey::WidgetRowInset
-                ))
-                && matches!(event, InputEvent::Change)
-            {
+            } else if is_pane_setting(key) && matches!(event, InputEvent::Change) {
                 settings.commit_numeric_input(key, input, false, window, cx);
             }
         },
@@ -2503,8 +2414,6 @@ fn is_pane_setting(key: ConfigKey) -> bool {
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
-            | ConfigKey::PaneCornerRadius
-            | ConfigKey::PaneBorderWidth
     )
 }
 
@@ -2513,12 +2422,12 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
         && !matches!(
             key,
             ConfigKey::WidgetCornerRadius
-                | ConfigKey::WidgetOutlineWidth
-                | ConfigKey::WidgetShadowStrength
-                | ConfigKey::WidgetRowInset
-                | ConfigKey::WidgetPrimary
-                | ConfigKey::WidgetGlass
+                | ConfigKey::ChromeContrast
                 | ConfigKey::InterfaceTheme
+                | ConfigKey::InterfaceStyle
+                | ConfigKey::ChromeAccent
+                | ConfigKey::ChromeTint
+                | ConfigKey::ChromeTintHue
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteHostPrefix
                 | ConfigKey::PaletteShowKeys
@@ -2576,7 +2485,7 @@ fn numeric_range(key: ConfigKey) -> (f32, f32) {
 fn numeric_input_scale(key: ConfigKey) -> f32 {
     if matches!(
         key,
-        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity | ConfigKey::ChromeContrast
+        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity
     ) {
         100.0
     } else {
@@ -2587,7 +2496,7 @@ fn numeric_input_scale(key: ConfigKey) -> f32 {
 fn numeric_input_text(key: ConfigKey, value: f32) -> String {
     if matches!(
         key,
-        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity | ConfigKey::ChromeContrast
+        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity
     ) {
         format!("{:.2}", value * numeric_input_scale(key))
             .trim_end_matches('0')
@@ -2618,14 +2527,11 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::PaneBackgroundOpacity => config.pane_background_opacity,
         ConfigKey::PaneGlowStrength => config.pane_glow_strength,
         ConfigKey::PaneInactiveOpacity => config.pane_inactive_opacity,
-        ConfigKey::PaneCornerRadius => config.pane_corner_radius,
         ConfigKey::PaneMargin => config.pane_margin,
-        ConfigKey::PaneBorderWidth => config.pane_border_width,
         ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
-        ConfigKey::WidgetOutlineWidth => config.widget_outline_width,
-        ConfigKey::WidgetShadowStrength => config.widget_shadow_strength,
-        ConfigKey::WidgetRowInset => config.widget_row_inset,
         ConfigKey::ChromeContrast => config.chrome_contrast,
+        ConfigKey::ChromeTint => config.chrome_tint,
+        ConfigKey::ChromeTintHue => config.chrome_tint_hue,
         ConfigKey::WindowCornerRadius => config.window_corner_radius,
         ConfigKey::EditorFontSize => config.editor_font_size,
         ConfigKey::WhichKeyDelay => config.which_key_delay,
@@ -2660,8 +2566,8 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
-        | ConfigKey::WidgetPrimary
-        | ConfigKey::WidgetGlass => {
+        | ConfigKey::InterfaceStyle
+        | ConfigKey::ChromeAccent => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }
@@ -2770,7 +2676,7 @@ fn import_theme_from_clipboard(cx: &mut App) {
         .and_then(|item| item.text())
         .unwrap_or_default();
     match interface_theme::parse_theme(&source) {
-        Ok(theme) => save_and_select_theme(theme, cx),
+        Ok(theme) => save_and_select_theme(theme, &[], cx),
         Err(error) => toast::push(
             Notification::error(format!(
                 "The clipboard holds no theme: {error}. Copy one with Copy JSON in the storybook."
@@ -2780,14 +2686,18 @@ fn import_theme_from_clipboard(cx: &mut App) {
     }
 }
 
-/// Writes `theme` to the next free `themes/theme-N.json` and selects it. A
-/// theme without a name of its own is named after its file.
-fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
+/// Writes `theme` to the next free `themes/theme-N.json`, selects it and
+/// drops `folded`, the keys it now carries. A theme without a name of its
+/// own is named after its file.
+fn save_and_select_theme(mut theme: InterfaceTheme, folded: &[ConfigKey], cx: &mut App) {
     let saved = config::themes::themes_directory().and_then(|directory| {
         let name = config::themes::next_theme_name(&directory);
         theme.name_after(&name);
         let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
         set_interface_theme(&name, theme.materials.font.is_some())?;
+        for key in folded {
+            remove_config_key(*key)?;
+        }
         Ok(path)
     });
     match saved {
@@ -2816,29 +2726,6 @@ fn report_write_error(operation: &str, key: &str, error: &std::io::Error, cx: &m
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn contrast_input_uses_100_to_200_percent_under_advanced() {
-        let key = ConfigKey::ChromeContrast;
-        assert_eq!(numeric_range(key), (100.0, 200.0));
-        for (factor, text) in [(1.0, "100"), (1.05, "105"), (2.0, "200")] {
-            assert_eq!(numeric_input_text(key, factor), text);
-            assert!(numeric_input_matches_value(key, text, factor));
-        }
-        for value in ["99", "201", "NaN", "invalid"] {
-            assert!(validate_numeric_value(key, value).is_err());
-        }
-        assert_eq!(
-            numeric_input_text(key, numeric_config_value(&AppConfig::default(), key).value),
-            "100"
-        );
-        let items = appearance_page_items(true, true);
-        assert!(
-            items
-                .iter()
-                .any(|item| matches!(item, AppearancePageItem::ChromeContrast))
-        );
-    }
 
     #[test]
     fn percentage_inputs_convert_and_reject_invalid_edits() {
@@ -2884,7 +2771,7 @@ mod tests {
         assert!(
             !collapsed
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::WidgetCornerRadius))
+                .any(|item| matches!(item, AppearancePageItem::CornerRadius))
         );
 
         let expanded = appearance_page_items(true, true);
@@ -2895,12 +2782,12 @@ mod tests {
         assert!(
             expanded[..advanced]
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::InterfaceTheme))
+                .any(|item| matches!(item, AppearancePageItem::Style))
         );
         assert!(
             expanded[advanced..]
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::WidgetCornerRadius))
+                .any(|item| matches!(item, AppearancePageItem::CornerRadius))
         );
     }
 

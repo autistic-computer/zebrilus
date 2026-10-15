@@ -2,7 +2,10 @@
 
 use zz_gpui::Hsla;
 
-use super::{Colorize as _, color::edge_weight};
+use super::{
+    Colorize as _,
+    color::{edge_weight, tint},
+};
 
 /// The six palette roots, the scrim and the shadow ink the widget layer names. Read them off `cx.theme()`; derive
 /// everything else with [`Colorize`].
@@ -42,5 +45,16 @@ impl ThemeColor {
         self.background
             .mix_oklab(self.foreground, 1.0 - edge_weight())
             .opaque()
+    }
+
+    /// These colors with the background leaning toward the Oklch `hue`, in
+    /// degrees, by `intensity` from 0 to 1. Every surface, edge and glass
+    /// tint derives from the background, so they all lean with it.
+    #[must_use]
+    pub fn tinted(&self, hue: f32, intensity: f32) -> Self {
+        Self {
+            background: tint(self.background, hue, intensity),
+            ..*self
+        }
     }
 }

@@ -15,12 +15,12 @@ pub const STORY: Story = Story {
     id: "color-picker",
     name: "Color picker",
     group: "Kit",
-    summary: "A swatch button for one color override. It opens a hex field and a grid of preset swatches; clearing it falls back to the inherited color.",
+    summary: "A swatch button for one color override. It opens a saturation and brightness field over a hue slider, and a hex field; clearing it falls back to the inherited color.",
     sections: &[
         Section {
             id: "states",
             name: "States",
-            summary: "An override, an inherited color (None state), disabled, and the three sizes, each in a settings row.",
+            summary: "An override, an inherited color (None state), disabled, the sizes, and a bare swatch for a row of swatches.",
             build: |window, cx| Pickers::view(window, cx),
         },
         Section {
@@ -50,6 +50,7 @@ struct Pickers {
     inherited: Entity<ColorPickerState>,
     disabled: Entity<ColorPickerState>,
     sizes: Vec<(Size, Entity<ColorPickerState>)>,
+    swatch: Entity<ColorPickerState>,
 }
 
 impl Pickers {
@@ -65,11 +66,13 @@ impl Pickers {
             .into_iter()
             .map(|size| (size, make(Some("#e0af68"), window, cx)))
             .collect();
+        let swatch = make(Some("#f7768e"), window, cx);
         cx.new(|_| Self {
             set,
             inherited,
             disabled,
             sizes,
+            swatch,
         })
         .into()
     }
@@ -109,6 +112,12 @@ impl Render for Pickers {
                 ),
             )
             .state("small, medium", h_flex().gap_3().children(sized))
+            .state(
+                "bare swatch",
+                ColorPicker::new(&self.swatch, inherited)
+                    .label("Accent")
+                    .swatch(px(18.0)),
+            )
     }
 }
 
@@ -141,7 +150,7 @@ impl Open {
 impl Render for Open {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let inherited = hex("#bb9af7", cx);
-        div().h(px(300.0)).child(
+        div().h(px(340.0)).child(
             h_flex().justify_end().w(px(320.0)).child(
                 div()
                     .relative()

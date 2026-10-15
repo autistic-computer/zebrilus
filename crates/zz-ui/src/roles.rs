@@ -109,7 +109,8 @@ pub const PANE_STACK: SurfaceRole = SurfaceRole::under(
     P.shadow(Shadow::None)
         .hover(Highlight::Tint)
         .selected(Highlight::Tint),
-);
+)
+.capsule(true);
 
 pub const PANE: SurfaceRole = Kind::Pane.role();
 pub const FLOATING_PANE: SurfaceRole = SurfaceRole::new(
@@ -141,7 +142,8 @@ pub const PANE_CHIP: SurfaceRole = SurfaceRole::new(
     "Status over a pane: Dead, Waiting, Sync, Copy mode, the agent's status, the vim mode",
 )
 .with(P.shadow(Shadow::Contact).selected(Highlight::Tint))
-.with_knobs(Kind::Floating.knobs().pressable());
+.with_knobs(Kind::Floating.knobs().pressable())
+.capsule(true);
 pub const DISPLAY_PANES: SurfaceRole = SurfaceRole::new(
     "pane.display-panes",
     Kind::Floating,
@@ -174,7 +176,8 @@ pub const DRAG_CHIP: SurfaceRole = SurfaceRole::new(
     Kind::Floating,
     "Drag chips",
     "The chip that follows the pointer while you drag a pane",
-);
+)
+.capsule(true);
 
 pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "agent.bubble",
@@ -225,24 +228,18 @@ pub const AGENT_ATTACHMENT: SurfaceRole = SurfaceRole::new(
     "Attachments",
     "Image tiles in messages and the composer",
 );
-pub const AGENT_TRACE: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::ROW,
-    "agent.trace",
-    "Agent steps",
-    "Tool and thought rows in an agent's work, and their summary",
+pub const AGENT_ACTION: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::ICON_BUTTON,
+    "agent.action",
+    "Message actions",
+    "Copy, rewind and open on messages, code blocks and diagrams, shown under the pointer",
 )
-.with(P.hover(Highlight::Tint).selected(Highlight::Tint));
-pub const AGENT_OPTION: SurfaceRole = SurfaceRole::new(
+.with(P.hover(Highlight::None).selected(Highlight::None));
+pub const AGENT_OPTION: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::MENU_ITEM,
     "agent.option",
-    Kind::Button,
     "Answer options",
     "The choices in question and permission cards",
-)
-.with(
-    P.fill(Fill::Tint)
-        .shadow(Shadow::None)
-        .hover(Highlight::Tint)
-        .selected(Highlight::Accent),
 );
 pub const AGENT_JUMP: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
@@ -471,6 +468,7 @@ const ZZ: &[SurfaceRole] = &[
     PANE_HEADER_BUTTON,
     AGENT_SEND,
     AGENT_JUMP,
+    AGENT_ACTION,
     BROWSER_BUTTON,
     PHONE_BUTTON,
     BROWSER_SUGGESTION,
@@ -479,7 +477,6 @@ const ZZ: &[SurfaceRole] = &[
     SIDEBAR_ROW,
     SIDEBAR_ENTRY,
     SIDEBAR_CURSOR,
-    AGENT_TRACE,
     WINDOW_TAB,
     BROWSER_TAB,
     AGENT_TRAY,

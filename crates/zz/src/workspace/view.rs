@@ -3129,7 +3129,7 @@ impl AppView {
     fn pane_drop_preview_element(&self, drag: &PaneDragState, cx: &App) -> Option<AnyElement> {
         let preview = drag.preview?;
         let radius = config::pane_content_radii(cx, WindowCorners::NONE).top_left;
-        let border = config::pane_border_width(cx).max(px(1.0));
+        let border = cx.theme().pane_edge_width().max(px(1.0));
         let rendered = self.pane_drop_preview.clone();
         Some(
             pane_drop_preview(radius, border, cx)

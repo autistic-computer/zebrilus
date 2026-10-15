@@ -12,7 +12,6 @@ use zz_gpui::{App, Corners, IntoElement, Pixels, RenderOnce, Window, div, prelud
 pub struct PanesPreview {
     pub gaps: bool,
     pub margin: f32,
-    pub radius: f32,
     pub inactive_opacity: f32,
 }
 
@@ -22,7 +21,11 @@ impl RenderOnce for PanesPreview {
             window.use_keyed_state("settings-pane-preview-selection", cx, |_, _| 0_usize);
         let selected = *selection.read(cx);
         let margin = px(if self.gaps { self.margin } else { 0.0 });
-        let radius = px(if self.gaps { self.radius } else { 0.0 });
+        let radius = if self.gaps {
+            cx.theme().pane_radius()
+        } else {
+            px(0.0)
+        };
         let height = (f32::from(window.viewport_size().height) * 0.32)
             .clamp(180.0, 280.0)
             .max(f32::from(margin) * 3.0 + 112.0);
@@ -278,7 +281,6 @@ mod tests {
         PanesPreview {
             gaps: true,
             margin: 8.0,
-            radius: 12.0,
             inactive_opacity: 0.6,
         }
     }

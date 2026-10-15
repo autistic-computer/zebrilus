@@ -250,13 +250,11 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     let announce = loaded.error.is_some() && loaded.error != themes(cx).error;
     log::info!(
         target: "zz::config",
-        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_corner_radius={} pane_margin={} pane_border_width={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} agent_working_directory={:?} daemon_override_entries={}",
+        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} agent_working_directory={:?} daemon_override_entries={}",
         path.display(),
         parsed.config.pane_gaps.value,
         parsed.config.pane_inactive_opacity.value,
-        parsed.config.pane_corner_radius.value,
         parsed.config.pane_margin.value,
-        parsed.config.pane_border_width.value,
         parsed.config.widget_corner_radius.value,
         parsed.config.chrome_contrast.value,
         parsed.config.window_corner_radius.value,
@@ -377,9 +375,13 @@ fn load_themes(config_path: &Path, parsed: &mut ParsedConfig, previous: &Themes)
             },
         ))
     });
-    parsed
-        .config
-        .apply_material_defaults(&material_defaults(&active.materials));
+    let mut shown = active.clone();
+    interface_theme::ThemeOverrides {
+        radius: None,
+        ..theme_overrides_from(&parsed.config)
+    }
+    .apply_to(&mut shown);
+    parsed.config.follow_theme_radius(shown.materials.radius);
     Themes {
         active,
         selected,
@@ -482,52 +484,32 @@ pub(crate) fn pane_margin(cx: &App) -> Pixels {
     ))
 }
 
-pub(crate) fn pane_border_width(cx: &App) -> Pixels {
-    let config = resolved_config(cx);
-    px(effective_pane_geometry(
-        config.pane_gaps.value,
-        config.pane_border_width.value,
-    ))
+/// The active theme with everything `zz/config` sets over it: the theme on
+/// screen.
+pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
+    let mut theme = themes(cx).active.clone();
+    theme_overrides(cx).apply_to(&mut theme);
+    theme
 }
 
-/// The material values `zz/config` sets over the active theme: each
-/// material key the file sets, and nothing for the keys it leaves to the
-/// theme.
-pub(crate) fn material_overrides(cx: &App) -> interface_theme::MaterialOverrides {
-    material_overrides_from(&resolved_config(cx))
+/// What `zz/config` sets over the active theme: each key the file sets, and
+/// nothing for the keys it leaves to the theme.
+pub(crate) fn theme_overrides(cx: &App) -> interface_theme::ThemeOverrides {
+    theme_overrides_from(&resolved_config(cx))
 }
 
-fn material_overrides_from(config: &AppConfig) -> interface_theme::MaterialOverrides {
+fn theme_overrides_from(config: &zz_config::AppConfig) -> interface_theme::ThemeOverrides {
     fn set<T: Copy>(value: ConfigValue<T>) -> Option<T> {
         (value.provenance == ConfigProvenance::Override).then_some(value.value)
     }
-    interface_theme::MaterialOverrides {
+    interface_theme::ThemeOverrides {
+        style: set(config.interface_style).map(str::to_owned),
         radius: set(config.widget_corner_radius),
-        outline: set(config.widget_outline_width),
-        shadow_strength: set(config.widget_shadow_strength),
-        row_inset: set(config.widget_row_inset),
-        primary: set(config.widget_primary).and_then(interface_theme::parse_choice),
-        glass: set(config.widget_glass)
-            .filter(|glass| *glass != "theme")
-            .map(str::to_owned),
-    }
-}
-
-/// `materials` spelled as the material keys spell them, to show in every
-/// key nothing overrides.
-fn material_defaults(materials: &interface_theme::Materials) -> zz_config::MaterialDefaults {
-    use zz_client::appearance::PRIMARY_CHOICES;
-    let primary = interface_theme::choice_name(materials.primary).unwrap_or_default();
-    zz_config::MaterialDefaults {
-        radius: materials.radius,
-        outline_width: materials.outline,
-        row_inset: materials.row_inset,
-        primary: PRIMARY_CHOICES
-            .iter()
-            .copied()
-            .find(|choice| *choice == primary)
-            .unwrap_or(PRIMARY_CHOICES[0]),
-        glass: zz_config::DEFAULT_WIDGET_GLASS,
+        accent: set(config.chrome_accent)
+            .filter(|accent| *accent != zz_client::appearance::AccentSetting::Theme)
+            .map(zz_client::appearance::AccentSetting::spelled),
+        tint: set(config.chrome_tint),
+        tint_hue: set(config.chrome_tint_hue),
     }
 }
 
@@ -583,10 +565,11 @@ const fn effective_pane_geometry(gaps_enabled: bool, value: f32) -> f32 {
 /// Per-corner radii for the pane surface.
 pub(crate) fn pane_content_radii(cx: &App, corners: WindowCorners) -> Corners<Pixels> {
     let config = resolved_config(cx);
-    let base = px(effective_pane_geometry(
-        config.pane_gaps.value,
-        config.pane_corner_radius.value,
-    ));
+    let base = if config.pane_gaps.value {
+        zz_ui::Theme::global(cx).pane_radius()
+    } else {
+        px(0.0)
+    };
     let margin = effective_pane_geometry(config.pane_gaps.value, config.pane_margin.value);
     let exposed = if margin > 0.0 {
         base
@@ -988,11 +971,20 @@ mod tests {
         assert_eq!(loaded.active.name, "Square");
         assert_f32_eq(loaded.active.materials.radius, 3.0);
         assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
-        assert_eq!(parsed.config.widget_primary.value, "accent");
 
         let mut parsed = parse_config("interface-theme = square\nwidget-corner-radius = 9\n");
         load_themes(&path, &mut parsed, &Themes::default());
         assert_f32_eq(parsed.config.widget_corner_radius.value, 9.0);
+
+        let mut parsed = parse_config("interface-theme = square\ninterface-style = capsule\n");
+        load_themes(&path, &mut parsed, &Themes::default());
+        assert_f32_eq(
+            parsed.config.widget_corner_radius.value,
+            interface_theme::material_preset("capsule")
+                .expect("the Capsule style")
+                .materials
+                .radius,
+        );
 
         let mut parsed = parse_config("interface-theme = missing\n");
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
@@ -1076,28 +1068,13 @@ mod tests {
             parsed.config.widget_corner_radius,
             ConfigValue::from_default(loaded.active.materials.radius)
         );
-        assert_eq!(
-            parsed.config.widget_shadow_strength,
-            ConfigValue::from_default(zz_config::DEFAULT_WIDGET_SHADOW_STRENGTH)
-        );
-        assert_eq!(
-            parsed.config.widget_primary,
-            ConfigValue::from_default("foreground")
-        );
     }
 
     #[test]
     fn config_defaults_match_the_default_theme() {
-        let materials = &interface_theme::default_theme().materials;
-        assert_eq!(
-            material_defaults(materials),
-            zz_config::MaterialDefaults {
-                radius: zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
-                outline_width: zz_config::DEFAULT_WIDGET_OUTLINE_WIDTH,
-                row_inset: zz_config::DEFAULT_WIDGET_ROW_INSET,
-                primary: zz_config::DEFAULT_WIDGET_PRIMARY,
-                glass: zz_config::DEFAULT_WIDGET_GLASS,
-            }
+        assert_f32_eq(
+            interface_theme::default_theme().materials.radius,
+            zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
         );
     }
 
@@ -1302,9 +1279,7 @@ mod tests {
              # $XDG_CONFIG_HOME/zz/config\n\
              pane-gaps = true\n\
              pane-inactive-opacity = 0.85\n\
-             pane-corner-radius = 9 # inline comments are allowed\n\
-             pane-margin = 6\n\
-             pane-border-width = 2.5\n\
+             pane-margin = 6 # inline comments are allowed\n\
              window-corner-radius = 10\n\
              use-system-titlebar = true\n\
              window-background-blur = true\n\
@@ -1351,9 +1326,7 @@ mod tests {
         );
         assert!(parsed.config.pane_gaps.value);
         assert_f32_eq(parsed.config.pane_inactive_opacity.value, 0.85);
-        assert_f32_eq(parsed.config.pane_corner_radius.value, 9.0);
         assert_f32_eq(parsed.config.pane_margin.value, 6.0);
-        assert_f32_eq(parsed.config.pane_border_width.value, 2.5);
         assert_eq!(
             parsed.config.pane_gaps.provenance,
             ConfigProvenance::Override
@@ -1363,15 +1336,7 @@ mod tests {
             ConfigProvenance::Override
         );
         assert_eq!(
-            parsed.config.pane_corner_radius.provenance,
-            ConfigProvenance::Override
-        );
-        assert_eq!(
             parsed.config.pane_margin.provenance,
-            ConfigProvenance::Override
-        );
-        assert_eq!(
-            parsed.config.pane_border_width.provenance,
             ConfigProvenance::Override
         );
         assert_f32_eq(parsed.config.window_corner_radius.value, 10.0);
@@ -1827,7 +1792,7 @@ mod tests {
             "\
              background = #101010\n\
              palette = 1=#112233\n\
-             pane-corner-radius = 24\n\
+             pane-margin = 24\n\
              font-family = First Mono\n\
              palette = 2=#445566 # trailing comment\n\
              font-family = Emoji Fallback\n",
@@ -2109,7 +2074,7 @@ mod tests {
     fn invalid_and_unknown_entries_warn_without_replacing_defaults() {
         let parsed = parse_config(
             "\
-             pane-corner-radius = -1\n\
+             chrome-tint = -1\n\
              pane-margin = NaN\n\
              window-corner-radius = 300\n\
              use-system-titlebar = sometimes\n\
@@ -2118,7 +2083,7 @@ mod tests {
              malformed\n",
         );
 
-        assert_f32_eq(parsed.config.pane_corner_radius.value, 13.5);
+        assert_f32_eq(parsed.config.chrome_tint.value, 0.0);
         assert_f32_eq(parsed.config.pane_margin.value, 6.0);
         assert_f32_eq(parsed.config.window_corner_radius.value, 13.5);
         assert_eq!(
@@ -2136,7 +2101,7 @@ mod tests {
             ConfigProvenance::Override
         );
         assert_eq!(
-            parsed.config.pane_corner_radius.provenance,
+            parsed.config.chrome_tint.provenance,
             ConfigProvenance::Override
         );
         assert_eq!(
@@ -2144,7 +2109,7 @@ mod tests {
             ConfigProvenance::Override
         );
         assert_eq!(parsed.diagnostics.len(), 7);
-        assert!(parsed.diagnostics[0].message.contains("between 0 and 32"));
+        assert!(parsed.diagnostics[0].message.contains("between 0 and 1"));
         assert!(parsed.diagnostics[1].message.contains("finite"));
         assert!(parsed.diagnostics[2].message.contains("between 0 and 32"));
         assert!(parsed.diagnostics[3].message.contains("expected a boolean"));
@@ -2156,17 +2121,17 @@ mod tests {
     #[test]
     fn parser_accepts_a_tmux_spelled_switch_and_validates_numeric_values() {
         let parsed =
-            parse_config("pane-gaps = yes\npane-border-width = 9\npane-inactive-opacity = 1.1\n");
+            parse_config("pane-gaps = yes\npane-margin = 99\npane-inactive-opacity = 1.1\n");
 
         assert!(parsed.config.pane_gaps.value);
-        assert_f32_eq(parsed.config.pane_border_width.value, 0.5);
+        assert_f32_eq(parsed.config.pane_margin.value, 6.0);
         assert_f32_eq(parsed.config.pane_inactive_opacity.value, 0.7);
         assert_eq!(
             parsed.config.pane_gaps.provenance,
             ConfigProvenance::Override
         );
         assert_eq!(
-            parsed.config.pane_border_width.provenance,
+            parsed.config.pane_margin.provenance,
             ConfigProvenance::Override
         );
         assert_eq!(
@@ -2174,7 +2139,7 @@ mod tests {
             ConfigProvenance::Override
         );
         assert_eq!(parsed.diagnostics.len(), 2);
-        assert!(parsed.diagnostics[0].message.contains("between 0 and 8"));
+        assert!(parsed.diagnostics[0].message.contains("between 0 and 32"));
         assert!(parsed.diagnostics[1].message.contains("between 0 and 1"));
     }
 
@@ -2182,40 +2147,40 @@ mod tests {
     fn later_valid_entries_replace_earlier_values() {
         let parsed = parse_config(
             "\
-             pane-corner-radius = 12\n\
-             pane-corner-radius = nope\n\
-             pane-corner-radius = 16\n",
+             window-corner-radius = 12\n\
+             window-corner-radius = nope\n\
+             window-corner-radius = 16\n",
         );
 
-        assert_f32_eq(parsed.config.pane_corner_radius.value, 16.0);
+        assert_f32_eq(parsed.config.window_corner_radius.value, 16.0);
         assert_eq!(parsed.diagnostics.len(), 1);
     }
 
     #[test]
     fn invalid_duplicate_retains_the_previous_valid_value() {
         let parsed = parse_config(
-            "pane-corner-radius = 12\n\
-             pane-corner-radius = nope\n",
+            "window-corner-radius = 12\n\
+             window-corner-radius = nope\n",
         );
 
-        assert_f32_eq(parsed.config.pane_corner_radius.value, 12.0);
+        assert_f32_eq(parsed.config.window_corner_radius.value, 12.0);
         assert_eq!(parsed.diagnostics.len(), 1);
     }
 
     #[test]
     fn writer_edits_only_the_last_occurrence_and_preserves_surrounding_bytes() {
         let source = "# keep this comment\r\n\
-                      pane-corner-radius=12 # earlier value\r\n\
+                      window-corner-radius=12 # earlier value\r\n\
                       future syntax without equals\r\n\
-                      pane-corner-radius = 20.0  # effective value\r\n\
+                      window-corner-radius = 20.0  # effective value\r\n\
                       unknown-key = untouched\r\n";
 
         assert_eq!(
-            edit_config_source(source, ConfigKey::PaneCornerRadius.as_str(), Some("24"),),
+            edit_config_source(source, ConfigKey::WindowCornerRadius.as_str(), Some("24"),),
             "# keep this comment\r\n\
-             pane-corner-radius=12 # earlier value\r\n\
+             window-corner-radius=12 # earlier value\r\n\
              future syntax without equals\r\n\
-             pane-corner-radius = 24  # effective value\r\n\
+             window-corner-radius = 24  # effective value\r\n\
              unknown-key = untouched\r\n"
         );
     }
@@ -2256,7 +2221,7 @@ mod tests {
         for (key, value) in [
             (ConfigKey::PaneGaps, "true"),
             (ConfigKey::PaneInactiveOpacity, "0.85"),
-            (ConfigKey::PaneBorderWidth, "2.5"),
+            (ConfigKey::PaneMargin, "2.5"),
         ] {
             write_config_edit_at(&path, key.as_str(), Some(value))
                 .expect("write pane chrome setting");
@@ -2267,7 +2232,7 @@ mod tests {
         assert!(parsed.diagnostics.is_empty());
         assert!(parsed.config.pane_gaps.value);
         assert_f32_eq(parsed.config.pane_inactive_opacity.value, 0.85);
-        assert_f32_eq(parsed.config.pane_border_width.value, 2.5);
+        assert_f32_eq(parsed.config.pane_margin.value, 2.5);
     }
 
     #[test]
@@ -2447,40 +2412,44 @@ mod tests {
     }
 
     #[zz_gpui::test]
-    fn material_keys_redraw_the_theme_and_reset_to_it(cx: &mut zz_gpui::TestAppContext) {
+    fn appearance_keys_redraw_the_theme_and_reset_to_it(cx: &mut zz_gpui::TestAppContext) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
 
-        for (strength, outline, glass, expected) in [
-            (Some("0"), Some("0"), Some("off"), (0.0, 0.0, false)),
-            (Some("0.5"), Some("1"), Some("frosted"), (0.5, 1.0, true)),
-            (None, None, None, (1.0, 0.5, false)),
+        for (style, accent, tint) in [
+            (Some("brutal"), Some("green"), Some("1")),
+            (Some("capsule"), Some("#ff8800"), None),
+            (None, None, None),
         ] {
             for (key, value) in [
-                (ConfigKey::WidgetShadowStrength, strength),
-                (ConfigKey::WidgetOutlineWidth, outline),
-                (ConfigKey::WidgetGlass, glass),
+                (ConfigKey::InterfaceStyle, style),
+                (ConfigKey::ChromeAccent, accent),
+                (ConfigKey::ChromeTint, tint),
             ] {
-                write_config_edit_at(&path, key.as_str(), value).expect("write material key");
+                write_config_edit_at(&path, key.as_str(), value).expect("write appearance key");
             }
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
+                let mut expected = interface_theme::default_theme().clone();
+                interface_theme::ThemeOverrides {
+                    style: style.map(str::to_owned),
+                    accent: accent.map(str::to_owned),
+                    tint: tint.map(|tint| tint.parse().expect("a number")),
+                    ..interface_theme::ThemeOverrides::default()
+                }
+                .apply_to(&mut expected);
                 let theme = zz_ui::Theme::global(cx);
+                assert_eq!(theme.colors, expected.colors(theme.mode));
+                assert_eq!(theme.outline, px(expected.materials.outline));
+                assert_eq!(theme.radius, px(expected.materials.radius));
                 assert_f32_eq(
-                    theme.contact_shadow.strength,
-                    zz_ui::ShadowMaterial::CONTACT.strength * expected.0,
+                    resolved_config(cx).widget_corner_radius.value,
+                    expected.materials.radius,
                 );
-                assert_f32_eq(
-                    theme.float_shadow.strength,
-                    zz_ui::ShadowMaterial::FLOAT.strength * expected.0,
-                );
-                assert_eq!(theme.float_shadows().is_empty(), expected.0 == 0.0);
-                assert_eq!(theme.outline, px(expected.1));
-                assert_eq!(theme.glass.is_some(), expected.2);
-                let provenance = resolved_config(cx).widget_shadow_strength.provenance;
-                assert_eq!(provenance == ConfigProvenance::Override, strength.is_some());
+                let provenance = resolved_config(cx).interface_style.provenance;
+                assert_eq!(provenance == ConfigProvenance::Override, style.is_some());
             });
         }
     }
@@ -2541,8 +2510,8 @@ mod tests {
         }
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
-        write_config_edit_at(&path, ConfigKey::WidgetShadowStrength.as_str(), Some("0.5"))
-            .expect("write shadow strength");
+        write_config_edit_at(&path, ConfigKey::InterfaceStyle.as_str(), Some("brutal"))
+            .expect("write style");
         cx.update(zz_ui::init);
         let shadows = cx.update(|cx| {
             install_config(Some(&path), Some(load_config(&path)), cx);
@@ -2694,7 +2663,7 @@ mod tests {
         fs::write(
             &zz_config,
             "# existing local settings and unknown lines survive\n\
-             pane-corner-radius = 12\n\
+             pane-margin = 12\n\
              future-key = byte-identical\n",
         )
         .expect("write zz config");
@@ -2713,7 +2682,7 @@ mod tests {
         let imported = fs::read_to_string(&zz_config).expect("read imported zz config");
         assert!(imported.starts_with(
             "# existing local settings and unknown lines survive\n\
-             pane-corner-radius = 12\n\
+             pane-margin = 12\n\
              future-key = byte-identical\n"
         ));
         let parsed = parse_config(&imported);
@@ -2728,12 +2697,12 @@ mod tests {
     fn gpui_global_exposes_configured_pane_geometry(cx: &mut zz_gpui::TestAppContext) {
         assert_eq!(cx.update(|cx| resolved_config(cx)), AppConfig::default());
 
-        let config = parse_config("pane-corner-radius = 9\npane-margin = 6\n").config;
+        let config = parse_config("pane-gaps = true\npane-margin = 9\n").config;
         cx.update(|cx| cx.set_global(AppConfig::from(config)));
 
         let resolved = cx.update(|cx| resolved_config(cx));
-        assert_f32_eq(resolved.pane_corner_radius.value, 9.0);
-        assert_f32_eq(resolved.pane_margin.value, 6.0);
+        assert!(resolved.pane_gaps.value);
+        assert_f32_eq(resolved.pane_margin.value, 9.0);
     }
 
     #[zz_gpui::test]
@@ -2874,97 +2843,80 @@ mod tests {
         );
     }
 
+    fn corners(radius: f32) -> Corners<Pixels> {
+        Corners::all(px(radius))
+    }
+
     #[zz_gpui::test]
-    fn pane_content_radius_matches_the_pane_surface(cx: &mut zz_gpui::TestAppContext) {
-        let config =
-            parse_config("pane-gaps = true\npane-corner-radius = 9\npane-margin = 6\n").config;
-        cx.update(|cx| cx.set_global(AppConfig::from(config)));
+    fn pane_content_radius_follows_the_theme_radius(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(zz_ui::init);
+        let config = parse_config("pane-gaps = true\npane-margin = 6\n").config;
+        cx.update(|cx| {
+            cx.set_global(AppConfig::from(config));
+            zz_ui::Theme::global_mut(cx).radius = px(5.5);
+        });
 
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            Corners {
-                top_left: px(9.0),
-                top_right: px(9.0),
-                bottom_right: px(9.0),
-                bottom_left: px(9.0),
-            }
+            corners(9.0)
         );
     }
 
     #[zz_gpui::test]
     fn pane_gap_effective_values_follow_the_toggle(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(zz_ui::init);
+        cx.update(|cx| zz_ui::Theme::global_mut(cx).radius = px(10.0));
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(0.0));
-        assert_eq!(cx.update(|cx| pane_border_width(cx)), px(0.0));
 
         let config = parse_config("pane-gaps = true\n").config;
         cx.update(|cx| cx.set_global(AppConfig::from(config)));
         assert!(cx.update(|cx| pane_gaps(cx)));
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(6.0));
-        assert_eq!(cx.update(|cx| pane_border_width(cx)), px(0.5));
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            Corners {
-                top_left: px(13.5),
-                top_right: px(13.5),
-                bottom_right: px(13.5),
-                bottom_left: px(13.5),
-            }
+            corners(13.5)
         );
 
-        let config = parse_config(
-            "pane-gaps = true\n\
-             pane-margin = 3\n\
-             pane-corner-radius = 4\n\
-             pane-border-width = 0\n",
-        )
-        .config;
-        cx.update(|cx| cx.set_global(AppConfig::from(config)));
+        let config = parse_config("pane-gaps = true\npane-margin = 3\n").config;
+        cx.update(|cx| {
+            cx.set_global(AppConfig::from(config));
+            zz_ui::Theme::global_mut(cx).radius = px(0.0);
+        });
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(3.0));
-        assert_eq!(cx.update(|cx| pane_border_width(cx)), px(0.0));
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            Corners {
-                top_left: px(4.0),
-                top_right: px(4.0),
-                bottom_right: px(4.0),
-                bottom_left: px(4.0),
-            }
+            corners(0.0)
         );
 
-        let config =
-            parse_config("pane-gaps = false\npane-margin = 2\npane-corner-radius = 3\n").config;
-        cx.update(|cx| cx.set_global(AppConfig::from(config)));
+        let config = parse_config("pane-gaps = false\npane-margin = 2\n").config;
+        cx.update(|cx| {
+            cx.set_global(AppConfig::from(config));
+            zz_ui::Theme::global_mut(cx).radius = px(10.0);
+        });
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(0.0));
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            Corners {
-                top_left: px(0.0),
-                top_right: px(0.0),
-                bottom_right: px(0.0),
-                bottom_left: px(0.0),
-            }
+            corners(0.0)
         );
-        assert_eq!(cx.update(|cx| pane_border_width(cx)), px(0.0));
     }
 
     #[zz_gpui::test]
     fn flush_panes_inherit_the_derived_frame_curve_at_exposed_corners(
         cx: &mut zz_gpui::TestAppContext,
     ) {
-        let config = parse_config("pane-corner-radius = 9\npane-margin = 0\n").config;
-        cx.update(|cx| cx.set_global(AppConfig::from(config)));
+        cx.update(zz_ui::init);
+        let config = parse_config("pane-gaps = true\npane-margin = 0\n").config;
+        cx.update(|cx| {
+            cx.set_global(AppConfig::from(config));
+            zz_ui::Theme::global_mut(cx).radius = px(5.5);
+        });
 
         assert_eq!(
             cx.update(|cx| pane_content_radii(
                 cx,
                 WindowCorners::from_tiling(zz_gpui::Tiling::default()),
             )),
-            Corners {
-                top_left: px(12.5),
-                top_right: px(12.5),
-                bottom_right: px(12.5),
-                bottom_left: px(12.5),
-            }
+            corners(12.5)
         );
     }
 
@@ -2972,7 +2924,7 @@ mod tests {
     fn missing_watched_file_restores_built_in_defaults(cx: &mut zz_gpui::TestAppContext) {
         cx.update(|cx| {
             cx.set_global(AppConfig(
-                parse_config("pane-corner-radius = 9\npane-margin = 6\n").config,
+                parse_config("pane-gaps = true\npane-margin = 9\n").config,
             ));
             install_config(None, None, cx);
         });
@@ -3107,7 +3059,7 @@ mod tests {
         let existing = directory.path().join("existing/config");
         fs::create_dir_all(existing.parent().expect("config parent"))
             .expect("create config directory");
-        fs::write(&existing, "pane-corner-radius = 12\n").expect("write config");
+        fs::write(&existing, "pane-margin = 12\n").expect("write config");
 
         assert_eq!(
             discover_config_path(&[missing, existing.clone()]),
@@ -3129,7 +3081,7 @@ mod tests {
 
         fs::create_dir_all(second.parent().expect("second config parent"))
             .expect("create second config directory");
-        fs::write(&second, "pane-corner-radius = 12\n").expect("write second config");
+        fs::write(&second, "pane-margin = 12\n").expect("write second config");
         assert_eq!(
             ConfigFileStamp::detect(&candidates).path,
             Some(second.clone())
@@ -3137,7 +3089,7 @@ mod tests {
 
         fs::create_dir_all(first.parent().expect("first config parent"))
             .expect("create first config directory");
-        fs::write(&first, "pane-corner-radius = 24\n").expect("write first config");
+        fs::write(&first, "pane-margin = 24\n").expect("write first config");
         assert_eq!(
             ConfigFileStamp::detect(&candidates).path,
             Some(first.clone())
@@ -3159,10 +3111,10 @@ mod tests {
     fn file_stamp_changes_when_configuration_length_changes() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
-        fs::write(&path, "pane-corner-radius = 1\n").expect("write initial config");
+        fs::write(&path, "pane-margin = 1\n").expect("write initial config");
         let initial = ConfigFileStamp::detect(std::slice::from_ref(&path));
 
-        fs::write(&path, "pane-corner-radius = 120\n").expect("rewrite config");
+        fs::write(&path, "pane-margin = 120\n").expect("rewrite config");
         let changed = ConfigFileStamp::detect(std::slice::from_ref(&path));
 
         assert_ne!(initial, changed);
@@ -3211,16 +3163,12 @@ mod tests {
             "pane-background-opacity",
             "pane-glow-strength",
             "pane-inactive-opacity",
-            "pane-corner-radius",
             "pane-margin",
-            "pane-border-width",
             "widget-corner-radius",
-            "widget-outline-width",
-            "widget-shadow-strength",
-            "widget-row-inset",
-            "widget-primary",
-            "widget-glass",
             "chrome-contrast",
+            "chrome-accent",
+            "chrome-tint",
+            "chrome-tint-hue",
             "editor-font-size",
             "editor-line-numbers",
             "editor-relative-line-numbers",
@@ -3231,6 +3179,7 @@ mod tests {
             "browser-egress",
             "theme-mode",
             "interface-theme",
+            "interface-style",
             "ui-font-family",
             "app-icon",
         ];
@@ -3242,6 +3191,7 @@ mod tests {
             .chain(RETIRED_PANE_KEYS)
             .chain(RETIRED_STATUS_KEYS)
             .chain(zz_config::RETIRED_LOOK_KEYS)
+            .chain(zz_config::RETIRED_MATERIAL_KEYS)
         {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }

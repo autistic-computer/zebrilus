@@ -28,7 +28,7 @@ pub use markdown_ext::{
     MarkdownBlockParserFn, MarkdownBlockRenderFn, MarkdownExtensions, MarkdownNode,
     MarkdownParseContext, MarkdownPlugin, markdown_ast,
 };
-pub use node::CodeBlock;
+pub use node::{CODE_BLOCK_GROUP, CodeBlock};
 pub use state::TextViewState;
 pub use style::TextViewStyle;
 // `TextViewLayoutState` is exported because it is `<TextView as

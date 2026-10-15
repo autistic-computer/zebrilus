@@ -476,12 +476,7 @@ mod tests {
                 );
                 assert!(surface.bounds.contains(&selection.bounds.origin));
                 assert!(surface.bounds.contains(&selection.bounds.bottom_right()));
-                let pill = selection.bounds.size.height.0 / 2.0;
-                if radius > 24.0 {
-                    assert!((selection.corner_radii.top_left.0 - pill).abs() < 0.001);
-                } else {
-                    assert!(selection.corner_radii.top_left.0 < pill);
-                }
+                assert!(selection.corner_radii.top_left.0 < selection.bounds.size.height.0 / 2.0);
                 assert!(
                     quads.iter().any(|quad| {
                         quad.border_color

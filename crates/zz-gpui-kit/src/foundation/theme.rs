@@ -107,6 +107,9 @@ pub struct Theme {
     pub row_inset: Pixels,
     /// What the primary tone is drawn in.
     pub primary: PrimaryStyle,
+    /// Whether highlights stay flat: a lift draws its wash a step deeper
+    /// instead of the outline and shadow that raise it.
+    pub flat_highlights: bool,
     /// What a surface whose role takes glass becomes, and the edge pane
     /// frames take. Each surface tints it with its own color; the material's
     /// tint alpha says how much of that color covers the glass.
@@ -122,8 +125,6 @@ pub struct Theme {
     /// Whether panes draw a [`Self::pane_frame`], which then owns their
     /// fill: set while panes have gaps.
     pub pane_frames: bool,
-    /// The width of the glint along a pane frame's edge; 0 turns it off.
-    pub pane_edge_width: Pixels,
     /// How strongly the active pane's frame lights its edge in the accent:
     /// 1 is the look's own glint, 0 lights it like any other pane.
     pub pane_glow_strength: f32,
@@ -142,6 +143,7 @@ impl Default for Theme {
 /// The corner smoothing every window draws with.
 pub const CORNER_SMOOTHING: f32 = 4.0;
 const PANE_GLOW_REACH: Pixels = px(128.0);
+const PANE_CORNER_INSET: Pixels = px(3.5);
 const PANE_GLOW: f32 = 0.16;
 
 impl Deref for Theme {
@@ -167,6 +169,12 @@ impl Theme {
         } else {
             self.radius
         }
+    }
+
+    /// The corner radius of a color swatch: half the theme's, so a swatch
+    /// rounds in step with the controls beside it.
+    pub fn swatch_radius(&self) -> Pixels {
+        self.radius / 2.0
     }
 
     /// The fill of the row a list's cursor is on.
@@ -265,8 +273,8 @@ impl Theme {
             .noise(0.0)
             .tint(tint)
             .fallback(tint)
-            .glint_width(self.pane_edge_width);
-        let frame = if self.pane_edge_width > px(0.0) {
+            .glint_width(self.outline);
+        let frame = if self.outline > px(0.0) {
             frame
         } else {
             frame.specular(0.0)
@@ -286,9 +294,26 @@ impl Theme {
         }
     }
 
-    /// The color of a divider rule.
+    /// The width of the glint along a pane frame's edge: the theme's
+    /// outline while panes have frames, otherwise none.
+    pub fn pane_edge_width(&self) -> Pixels {
+        if self.pane_frames {
+            self.outline
+        } else {
+            px(0.0)
+        }
+    }
+
+    /// The corner radius of a gapped pane, concentric with the controls in
+    /// its header.
+    pub fn pane_radius(&self) -> Pixels {
+        self.outer_radius(PANE_CORNER_INSET)
+    }
+
+    /// The color of a divider rule: translucent foreground, so it lightens
+    /// glass in a dark theme the way it does a solid fill.
     pub fn divider_color(&self) -> Hsla {
-        self.border()
+        self.foreground.opacity(color::edge_weight())
     }
 
     /// The radius of a surface whose content sits `inset` inside it, so the
@@ -403,13 +428,13 @@ impl From<&ThemeColor> for Theme {
             float_shadow: ShadowMaterial::FLOAT,
             row_inset: px(4.0),
             primary: PrimaryStyle::Foreground,
+            flat_highlights: false,
             glass: None,
             styles: HashMap::default(),
             inspect: None,
             inspect_strength: 1.0,
             pane_background_opacity: 0.5,
             pane_frames: false,
-            pane_edge_width: px(0.5),
             pane_glow_strength: 1.0,
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
@@ -520,12 +545,21 @@ mod tests {
                 (frame.blur, frame.refraction, frame.dispersion, frame.noise),
                 (px(0.0), px(0.0), 0.0, 0.0)
             );
-            assert_eq!(frame.glint_width, theme.pane_edge_width);
+            assert_eq!(frame.glint_width, theme.outline);
             assert_eq!(frame.light_color, GlassMaterial::regular().light_color);
         }
 
-        theme.pane_edge_width = px(0.0);
+        theme.outline = px(0.0);
         assert_eq!(theme.pane_frame(fill, plane, false).specular, 0.0);
+        assert_eq!(theme.pane_edge_width(), px(0.0));
+        theme.outline = px(2.0);
+        assert_eq!(theme.pane_edge_width(), px(0.0));
+        theme.pane_frames = true;
+        assert_eq!(theme.pane_edge_width(), px(2.0));
+        theme.radius = px(10.0);
+        assert_eq!(theme.pane_radius(), px(13.5));
+        theme.radius = px(0.0);
+        assert_eq!(theme.pane_radius(), px(0.0));
     }
 
     #[test]

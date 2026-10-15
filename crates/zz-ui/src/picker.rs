@@ -12,6 +12,9 @@ use zz_gpui::{
 };
 
 const PICKER_ROW_HEIGHT: Pixels = px(26.0);
+/// The height of a row in a pane's own lists: the new-session actions, the
+/// pane picker, recent pages and answer options.
+pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
 const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
 /// A row `height` tall drawn as `surface` in `state`, with its hover and
 /// press while it rests.

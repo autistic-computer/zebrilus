@@ -106,6 +106,18 @@ mod tests {
     }
 
     #[test]
+    fn a_tint_leans_only_the_background_toward_its_hue() {
+        let lightness = super::super::color::oklab_lightness;
+        for palette in [ThemeColor::light(), ThemeColor::dark()] {
+            let tinted = palette.tinted(145.0, 1.0);
+            assert_eq!(tinted.foreground, palette.foreground);
+            assert!((lightness(tinted.background) - lightness(palette.background)).abs() < 0.01);
+            let rgb = zz_gpui::Rgba::from(tinted.background);
+            assert!(rgb.g > rgb.r && rgb.g > rgb.b, "{rgb:?}");
+        }
+    }
+
+    #[test]
     fn panels_stay_on_the_background_side_of_the_foreground() {
         for palette in [ThemeColor::light(), ThemeColor::dark()] {
             let distance = |color: Hsla| (color.l - palette.background.l).abs();

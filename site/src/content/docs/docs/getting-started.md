@@ -364,12 +364,12 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | --- | --- | --- |
 | `theme-mode` | `system` | `system`, `light`, or `dark` |
 | `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, or the name of a theme saved as `themes/<name>.json` next to the config file |
-| `pane-gaps` | `false` | The card treatment: spaced panes framed in glass. Off pins the next three to zero |
+| `interface-style` | the theme's | Corners, outlines, shadows and glass all at once: `default`, `liquid-glass`, `capsule`, `flat`, `brutal`, or `terminal` |
+| `chrome-accent` | `theme` | The accent color: the theme's own, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or a `#rrggbb` color |
+| `chrome-tint` | `0` | How far the window's surfaces lean toward `chrome-tint-hue` (0–360, default `260`), 0–1 |
+| `widget-corner-radius` | from the style | Corners of every rounded surface, 0–25px. Which pieces are pills is up to the theme |
+| `pane-gaps` | `false` | The card treatment: spaced panes framed in glass, their corners a little rounder than the theme's. Off makes them flush and square |
 | `pane-margin` | `6` | Gap between panes and at the window edge, 0–32 |
-| `pane-corner-radius` | `13.5` | 0–32 |
-| `pane-border-width` | `0.5` | 0–8, the bright line along a gapped pane's glass edge; zero turns it off |
-| `widget-corner-radius` | from the theme | Corners of every rounded surface, 0–25px. Which pieces are pills is up to the theme |
-| `widget-shadow-strength` | `1` | How dark the theme's shadows are, 0–2: `0` turns them off, `2` doubles them |
 | `animations` | `true` | Interface transitions, loading indicators, scrollbars, and animated UI images |
 | `theme` | unset | A Ghostty theme file by name, or `light:a,dark:b` |
 | `font-family` | platform default | Terminal font stack. `font-size` is `13` |
@@ -384,13 +384,16 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `browser-search-provider` | `google` | `google`, `duckduckgo`, or `brave` |
 | `browser-egress` | `true` | Route a remote pane's traffic through its host |
 
-`widget-corner-radius` and `widget-shadow-strength` are two of the six material
-keys, each of which overrides one material of the interface theme until you
-remove it. The others are `widget-outline-width` (0–2px, 0 for no outlines),
-`widget-row-inset`, `widget-primary`, and `widget-glass`. Settings edits all six
-under Interface → Advanced → Materials, and picking a theme clears them. Which
-pieces of the interface take a shadow, glass or an outline, and how a selected
-row shows, is set per piece by the theme file itself.
+The style, accent, tint and corner radius sit on top of the interface theme, so
+any theme goes with any style, and the tint leans its background toward a hue of
+your choice. Settings → Interface edits them with a tile strip, swatches and
+sliders. Picking a theme clears the style and radius so it shows as designed; the
+accent and tint stay. Save turns what is
+on screen into a new theme file. Which pieces of the interface take a shadow,
+glass or an outline, and how a selected row shows, is set per piece by the theme
+file itself. The older `widget-outline-width`, `widget-shadow-strength`,
+`widget-row-inset`, `widget-primary`, `widget-glass`, `pane-corner-radius` and
+`pane-border-width` keys are gone: zz reports the line and ignores it.
 
 Terminal appearance uses Ghostty's spellings, so `theme`, `font-family`,
 `font-feature`, `palette`, `cursor-style`, `minimum-contrast`, and per-edge

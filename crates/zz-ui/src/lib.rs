@@ -22,8 +22,9 @@ pub use zz_gpui_kit::{
     Side, Sizable, Size, StatefulSurfaceExt, Style, StylePatch, StyledExt, Surface, SurfaceRole,
     TITLE_BAR_HEIGHT, Theme, ThemeColor, ThemeMode, TitleBar, Tone, UiZoom, WindowControls,
     WindowExt, cubic_ease, drawn_roles, draws_window_controls, h_flex, init, lifted_shadow,
-    macos_traffic_light_clearance, note_drawn_roles, oklab_lightness, parse_hex, rems_from_px,
-    row_corners, row_radius, to_hex, v_flex, window_border, window_controls_width, window_paddings,
+    macos_traffic_light_clearance, note_drawn_roles, oklab_lightness, oklch, parse_hex,
+    rems_from_px, row_corners, row_radius, to_hex, v_flex, window_border, window_controls_width,
+    window_paddings,
 };
 
 #[cfg(feature = "agent")]

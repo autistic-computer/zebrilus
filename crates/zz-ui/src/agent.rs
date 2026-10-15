@@ -27,8 +27,8 @@ use crate::{
     h_flex,
     mend::{PENDING_LINK_URL, mend},
     text::{
-        CodeBlock, MarkdownExtensions, MarkdownNode, MarkdownParseContext, MarkdownPlugin,
-        TextView, TextViewState, TextViewStyle, markdown_ast,
+        CODE_BLOCK_GROUP, CodeBlock, MarkdownExtensions, MarkdownNode, MarkdownParseContext,
+        MarkdownPlugin, TextView, TextViewState, TextViewStyle, markdown_ast,
     },
     v_flex,
 };
@@ -52,7 +52,6 @@ const ACTIVITY_ROW_FONT_SIZE: f32 = 13.0;
 /// [`ACTIVITY_ROW_FONT_SIZE`] (15.31px), so `overflow_hidden` never clips a
 /// descender.
 const ACTIVITY_ROW_LINE_HEIGHT: f32 = 16.0;
-const ACTIVITY_ROW_INSET: f32 = 8.0;
 const ACTIVITY_DISCLOSURE_SIZE: f32 = 12.0;
 const MERMAID_CACHE_CAPACITY: usize = 16;
 const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
@@ -1556,6 +1555,8 @@ fn render_answer(
     let copy = markdown.clone();
     v_flex()
         .id(("agent-assistant-entry", id))
+        .debug_selector(|| "agent-answer".to_owned())
+        .group(ASSISTANT_ENTRY_GROUP)
         .w_full()
         .gap_1()
         .text_size(crate::rems_from_px(13.0))
@@ -1563,9 +1564,8 @@ fn render_answer(
         .when(copyable, |this| {
             this.child(
                 h_flex().w_full().h(px(28.0)).items_center().child(
-                    div()
-                        .debug_selector(|| "agent-assistant-copy".to_owned())
-                        .child(
+                    shown_on_hover(ASSISTANT_ENTRY_GROUP, cx).child(
+                        message_action(
                             Button::compact_icon(("agent-copy-assistant", id), IconName::Copy)
                                 .tooltip("Copy message")
                                 .on_click(move |_, _, cx| {
@@ -1573,7 +1573,10 @@ fn render_answer(
                                         copy.full_text(),
                                     ));
                                 }),
-                        ),
+                            cx,
+                        )
+                        .debug_selector(|| "agent-assistant-copy".to_owned()),
+                    ),
                 ),
             )
         })
@@ -1662,14 +1665,6 @@ fn trace_header(
             return (mark, "Waiting for you".into());
         }
         mark.spin = Some(spinner_phase(store.entity_id(), cx));
-        let steps = trace.tools().count();
-        mark.trailing = Some(match elapsed {
-            Some(elapsed) if steps > 0 => {
-                format!("{} · {}", step_count(steps), clock_label(elapsed)).into()
-            }
-            Some(elapsed) => clock_label(elapsed).into(),
-            None => step_count(steps).into(),
-        });
         let label = match trace.entries().next_back() {
             Some(AgentEntry::Tool(tool)) if tool_running(tool.status) => {
                 mark.label_color = Some(cx.theme().foreground);
@@ -1689,14 +1684,6 @@ fn trace_header(
         (false, None) => "Worked".to_owned(),
     };
     (mark, label.into())
-}
-
-fn step_count(count: usize) -> String {
-    if count == 1 {
-        "1 step".to_owned()
-    } else {
-        format!("{count} steps")
-    }
 }
 
 fn trace_counts(trace: &Trace<'_>) -> Vec<TraceCount> {
@@ -1747,11 +1734,6 @@ fn trace_counts(trace: &Trace<'_>) -> Vec<TraceCount> {
         }))
         .filter(|count| count.count > 0)
         .collect()
-}
-
-fn clock_label(elapsed: Duration) -> String {
-    let seconds = elapsed.as_secs();
-    format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
 fn duration_label(elapsed: Duration) -> String {
@@ -1858,11 +1840,8 @@ fn render_trace_tool(
     cx: &mut App,
 ) -> AnyElement {
     let mut mark = tool_mark(tool, live, store, cx);
-    if substeps > 0 {
-        if mark.spin.is_none() {
-            mark.icon = Some(IconName::Bot);
-        }
-        mark.trailing = Some(step_count(substeps).into());
+    if substeps > 0 && mark.spin.is_none() {
+        mark.icon = Some(IconName::Bot);
     }
     let open = open_output.filter(|_| tool_opens_output(tool)).cloned();
     let row = activity_row_marked(
@@ -2193,7 +2172,6 @@ struct ActivityMark {
     detail: Option<SharedString>,
     counts: Vec<TraceCount>,
     tag: Option<(SharedString, Tone)>,
-    trailing: Option<SharedString>,
 }
 
 impl ActivityMark {
@@ -2206,7 +2184,6 @@ impl ActivityMark {
             detail: None,
             counts: Vec::new(),
             tag: None,
-            trailing: None,
         }
     }
 
@@ -2277,7 +2254,8 @@ enum RowEnd {
 
 /// The one row shape every activity wears: the trace line, a thought, a tool
 /// call. One builder so the font, the metrics and the hover can never drift
-/// apart between the callers.
+/// apart between the callers. It draws no fill: a clickable row brightens its
+/// muted ink under the pointer.
 fn activity_row_marked(
     id: impl Into<ElementId>,
     mark: ActivityMark,
@@ -2304,105 +2282,86 @@ fn activity_row_marked(
         RowEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
         RowEnd::Open => Some(IconName::ExternalLink),
     };
-    let row = h_flex()
+    let clickable = end != RowEnd::None;
+    h_flex()
         .id(id)
-        .mx(px(-ACTIVITY_ROW_INSET))
-        .px(px(ACTIVITY_ROW_INSET))
         .h(px(ACTIVITY_ROW_HEIGHT))
         .flex_none()
         .gap_2()
-        .overflow_hidden();
-    let height = px(ACTIVITY_ROW_HEIGHT);
-    let clickable = end != RowEnd::None;
-    let trace = Surface::new(crate::roles::AGENT_TRACE).on(transcript_ground(cx));
-    if clickable {
-        crate::picker::row_surface(row, trace, PaintState::Rest, height, cx)
-    } else {
-        crate::row_corners(
-            row.surface(trace, cx),
-            &cx.theme().layer(trace, PaintState::Rest),
-            height,
-        )
-    }
-    .font_family(cx.theme().font_family.clone())
-    .text_size(crate::rems_from_px(ACTIVITY_ROW_FONT_SIZE))
-    .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
-    .text_color(timeline_affordance_color(cx))
-    .when(clickable, zz_gpui::Styled::cursor_pointer)
-    .when_some(glyph, |this, glyph| {
-        this.child(
+        .overflow_hidden()
+        .font_family(cx.theme().font_family.clone())
+        .text_size(crate::rems_from_px(ACTIVITY_ROW_FONT_SIZE))
+        .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
+        .text_color(timeline_affordance_color(cx))
+        .when(clickable, |row| {
+            let foreground = cx.theme().foreground;
+            row.cursor_pointer()
+                .hover(move |row| row.text_color(foreground))
+        })
+        .when_some(glyph, |this, glyph| {
+            this.child(
+                div()
+                    .debug_selector(|| "agent-activity-glyph".to_owned())
+                    .flex_none()
+                    .relative()
+                    .top(drop)
+                    .child(glyph),
+            )
+        })
+        .child(
             div()
-                .debug_selector(|| "agent-activity-glyph".to_owned())
-                .flex_none()
-                .relative()
-                .top(drop)
-                .child(glyph),
-        )
-    })
-    .child(
-        div()
-            .debug_selector(|| "agent-activity-label".to_owned())
-            .min_w_0()
-            .flex_shrink_0()
-            .max_w_full()
-            .overflow_hidden()
-            .text_ellipsis()
-            .whitespace_nowrap()
-            .when_some(mark.label_color, zz_gpui::Styled::text_color)
-            .child(single_line(label)),
-    )
-    .when_some(mark.detail, |this, detail| {
-        this.child(
-            div()
-                .debug_selector(|| "agent-activity-detail".to_owned())
+                .debug_selector(|| "agent-activity-label".to_owned())
                 .min_w_0()
+                .flex_shrink_0()
+                .max_w_full()
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .text_color(cx.theme().foreground.faint())
-                .child(detail),
+                .when_some(mark.label_color, zz_gpui::Styled::text_color)
+                .child(single_line(label)),
         )
-    })
-    .when(!mark.counts.is_empty(), |this| {
-        this.child(
-            h_flex()
-                .debug_selector(|| "agent-activity-counts".to_owned())
-                .flex_none()
-                .gap(px(TRACE_COUNT_GAP))
-                .pl_1()
-                .pr(px(TRACE_COUNT_BADGE_OVERHANG))
-                .children(
-                    mark.counts
-                        .into_iter()
-                        .enumerate()
-                        .map(|(slot, count)| trace_count_glyph(slot, count, drop, cx)),
-                ),
-        )
-    })
-    .when_some(mark.tag, |this, (tag, tone)| {
-        this.child(
-            div()
-                .debug_selector(|| "agent-activity-tag".to_owned())
-                .flex_none()
-                .child(Badge::new(tag).tone(tone)),
-        )
-    })
-    .when_some(end_icon, |this, icon| {
-        this.child(
-            activity_row_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
-                .debug_selector(|| "agent-activity-chevron".to_owned()),
-        )
-    })
-    .when_some(mark.trailing, |this, trailing| {
-        this.child(div().flex_1()).child(
-            div()
-                .debug_selector(|| "agent-activity-trailing".to_owned())
-                .flex_none()
-                .text_size(crate::rems_from_px(11.0))
-                .text_color(cx.theme().foreground.faint())
-                .child(trailing),
-        )
-    })
+        .when_some(mark.detail, |this, detail| {
+            this.child(
+                div()
+                    .debug_selector(|| "agent-activity-detail".to_owned())
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .whitespace_nowrap()
+                    .text_color(cx.theme().foreground.faint())
+                    .child(detail),
+            )
+        })
+        .when(!mark.counts.is_empty(), |this| {
+            this.child(
+                h_flex()
+                    .debug_selector(|| "agent-activity-counts".to_owned())
+                    .flex_none()
+                    .gap(px(TRACE_COUNT_GAP))
+                    .pl_1()
+                    .pr(px(TRACE_COUNT_BADGE_OVERHANG))
+                    .children(
+                        mark.counts
+                            .into_iter()
+                            .enumerate()
+                            .map(|(slot, count)| trace_count_glyph(slot, count, drop, cx)),
+                    ),
+            )
+        })
+        .when_some(mark.tag, |this, (tag, tone)| {
+            this.child(
+                div()
+                    .debug_selector(|| "agent-activity-tag".to_owned())
+                    .flex_none()
+                    .child(Badge::new(tag).tone(tone)),
+            )
+        })
+        .when_some(end_icon, |this, icon| {
+            this.child(
+                activity_row_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
+                    .debug_selector(|| "agent-activity-chevron".to_owned()),
+            )
+        })
 }
 
 const TRACE_COUNT_BADGE: f32 = 15.0;
@@ -2474,6 +2433,27 @@ fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> 
 }
 
 const USER_ENTRY_GROUP: &str = "agent-user-entry";
+const ASSISTANT_ENTRY_GROUP: &str = "agent-assistant-entry";
+const FIGURE_GROUP: &str = "agent-figure";
+
+/// An icon action on a message, a code block or a diagram: no fill, its ink
+/// muted until pointed at.
+fn message_action(button: Button, cx: &App) -> Button {
+    button
+        .surface_role(crate::roles::AGENT_ACTION)
+        .text_color(timeline_affordance_color(cx))
+}
+
+/// A slot that shows its actions only while `group` is pointed at, or always
+/// under a coarse pointer, where nothing hovers.
+fn shown_on_hover(group: &'static str, cx: &App) -> Div {
+    div()
+        .flex_none()
+        .when(!crate::touch::CoarsePointer::get(cx), |slot| {
+            slot.invisible()
+                .group_hover(group, zz_gpui::Styled::visible)
+        })
+}
 
 fn render_user_entry(
     store: &Entity<AgentTimelineStore>,
@@ -2527,13 +2507,13 @@ fn render_user_entry(
                 .justify_end()
                 .items_center()
                 .gap_1()
-                .child(rewind_button(id, rewind, message_id))
+                .child(rewind_button(id, rewind, message_id, cx))
                 .child(bubble.min_w_0()),
         )
         .into_any_element()
 }
 
-fn rewind_button(id: u64, rewind: &TimelineRewind, message_id: SharedString) -> Div {
+fn rewind_button(id: u64, rewind: &TimelineRewind, message_id: SharedString, cx: &App) -> Div {
     let handler = Rc::clone(&rewind.handler);
     div()
         .flex_none()
@@ -2542,15 +2522,15 @@ fn rewind_button(id: u64, rewind: &TimelineRewind, message_id: SharedString) -> 
             slot.group_hover(USER_ENTRY_GROUP, zz_gpui::Styled::visible)
         })
         .child(
-            div()
-                .debug_selector(|| "agent-user-rewind".to_owned())
-                .child(
+            message_action(
                 Button::compact_icon(("agent-rewind", id), IconName::History)
                     .tooltip(
                         "Rewind to here: continue from before this prompt. Files stay as they are.",
                     )
                     .on_click(move |_, window, cx| handler(&message_id, window, cx)),
-            ),
+                cx,
+            )
+            .debug_selector(|| "agent-user-rewind".to_owned()),
         )
 }
 
@@ -2838,13 +2818,17 @@ fn agent_code_block_chrome(
                 .child(language),
         )
         .child(
-            div().debug_selector(|| "agent-code-copy".to_owned()).child(
-                Button::compact_icon(("agent-copy-code", source_offset), IconName::Copy)
-                    .on(cx.theme().ground_of(crate::roles::CODE))
-                    .tooltip("Copy code")
-                    .on_click(move |_, _, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(code.to_string()));
-                    }),
+            shown_on_hover(CODE_BLOCK_GROUP, cx).child(
+                message_action(
+                    Button::compact_icon(("agent-copy-code", source_offset), IconName::Copy)
+                        .on(cx.theme().ground_of(crate::roles::CODE))
+                        .tooltip("Copy code")
+                        .on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(code.to_string()));
+                        }),
+                    cx,
+                )
+                .debug_selector(|| "agent-code-copy".to_owned()),
             ),
         )
         .into_any_element()
@@ -3107,7 +3091,10 @@ impl MarkdownPlugin for MermaidPlugin {
                 .into_any_element(),
         };
 
+        let figure = cx.theme().ground_of(crate::roles::FIGURE);
         div()
+            .id(("agent-figure", source_offset))
+            .group(FIGURE_GROUP)
             .relative()
             .w_full()
             .p_3()
@@ -3116,32 +3103,44 @@ impl MarkdownPlugin for MermaidPlugin {
             .child(content)
             .child(
                 div().absolute().top_1().right_1().child(
-                    h_flex()
-                        .gap_1()
-                        .child(
-                            Button::compact_icon(
-                                ("agent-mermaid-copy", source_offset),
-                                IconName::Copy,
-                            )
-                            .tooltip("Copy source")
-                            .on_click(move |_, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(
-                                    mermaid_source.clone(),
-                                ));
-                            }),
-                        )
-                        .when_some(preview_image, |this, image| {
-                            this.child(
+                    shown_on_hover(FIGURE_GROUP, cx).child(
+                        h_flex()
+                            .gap_1()
+                            .child(message_action(
                                 Button::compact_icon(
-                                    ("agent-mermaid-preview", source_offset),
-                                    IconName::WindowMaximize,
+                                    ("agent-mermaid-copy", source_offset),
+                                    IconName::Copy,
                                 )
-                                .tooltip("Open full diagram")
-                                .on_click(move |_, window, cx| {
-                                    open_render_image_preview(Arc::clone(&image), window, cx);
+                                .on(figure)
+                                .tooltip("Copy source")
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        mermaid_source.clone(),
+                                    ));
                                 }),
-                            )
-                        }),
+                                cx,
+                            ))
+                            .when_some(preview_image, |this, image| {
+                                this.child(message_action(
+                                    Button::compact_icon(
+                                        ("agent-mermaid-preview", source_offset),
+                                        IconName::WindowMaximize,
+                                    )
+                                    .on(figure)
+                                    .tooltip("Open full diagram")
+                                    .on_click(
+                                        move |_, window, cx| {
+                                            open_render_image_preview(
+                                                Arc::clone(&image),
+                                                window,
+                                                cx,
+                                            );
+                                        },
+                                    ),
+                                    cx,
+                                ))
+                            }),
+                    ),
                 ),
             )
     }
@@ -4161,9 +4160,7 @@ mod tests {
     }
 
     #[test]
-    fn trace_times_read_as_a_clock_while_live_and_words_after() {
-        assert_eq!(clock_label(Duration::from_secs(42)), "0:42");
-        assert_eq!(clock_label(Duration::from_secs(134)), "2:14");
+    fn finished_trace_times_read_as_words() {
         assert_eq!(duration_label(Duration::from_millis(300)), "1s");
         assert_eq!(duration_label(Duration::from_secs(38)), "38s");
         assert_eq!(duration_label(Duration::from_secs(134)), "2m 14s");
@@ -4331,7 +4328,7 @@ mod tests {
         assert!(trace.size.height <= px(ACTIVITY_ROW_HEIGHT + 1.0));
         assert!(cx.debug_bounds("agent-trace-steps").is_none());
         assert!(
-            cx.debug_bounds("agent-assistant-copy").is_some(),
+            cx.debug_bounds("agent-answer").is_some(),
             "the answer stays out"
         );
 
@@ -4423,9 +4420,18 @@ mod tests {
         let language = cx
             .debug_bounds("agent-code-language")
             .expect("the code language should be painted");
+        assert!(
+            cx.debug_bounds("agent-code-copy").is_none()
+                && cx.debug_bounds("agent-assistant-copy").is_none(),
+            "the actions wait for the pointer"
+        );
+        cx.simulate_mouse_move(language.center(), None, zz_gpui::Modifiers::none());
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
         let code_copy = cx
             .debug_bounds("agent-code-copy")
-            .expect("the code copy button should be painted");
+            .expect("pointing at the code block reveals its copy button");
         assert!(language.right() < code_copy.left());
         cx.simulate_click(code_copy.center(), zz_gpui::Modifiers::none());
         assert_eq!(

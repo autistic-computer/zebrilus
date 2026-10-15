@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # Overview
@@ -117,15 +117,12 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-glow-strength` | `1` | `0..=2` | How brightly the active gapped pane's frame lights its edge in the accent; Panes settings display it as Selected pane edge, 0–200%. `0` lights it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
-| `pane-corner-radius` | `13.5` | `0..=32` | All four corners of every pane, on every platform; applies only with `pane-gaps` |
-| `pane-border-width` | `0.5` | `0..=8` | Width of the glint, the bright line along a gapped pane's glass edge; `0` turns it off. Settings calls it Pane edge width |
-| `interface-theme` | `default` | `default`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. It decides the six `widget-*` material keys below unless they are set; picking a theme in Settings removes them |
-| `widget-corner-radius` | from the theme (`10` in Default) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme; Settings titles a value above 24 "Corner radius (Full)" |
-| `widget-outline-width` | from the theme (`0.5`; Glass `0`) | `0..=2` | The outline material: the width in pixels of every outline a role draws; `0` draws none. A surface drawn in glass shows the glass rim instead |
-| `widget-shadow-strength` | `1` | `0..=2` | Scales both of the theme's shadows, the contact shadow and the float shadow: `1` keeps them, `0` turns them off, `2` doubles them. Which pieces cast which shadow is up to the theme's roles |
-| `widget-row-inset` | from the theme (`4` in Default) | `0..=12` | How far list rows float in from the list's edges, in pixels. At `0`, menu and tree rows become full-width bands with no gaps, and menu rows lose their corners |
-| `widget-primary` | from the theme (`foreground` in Default) | `foreground`, `accent` | What the primary tone, the main action of a view, is drawn in |
-| `widget-glass` | `theme` | `theme`, `off`, `regular`, `clear`, `frosted`, `bubble`, `smoked` | The glass material, what surfaces whose role takes glass are made of: `theme` keeps the theme's own glass, `off` fills them plainly, and the rest name a glass preset |
+| `interface-theme` | `default` | `default`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `interface-style` and `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
+| `interface-style` | the theme's | a material preset id: `default`, `liquid-glass`, `capsule`, `flat`, `brutal`, `terminal` | Draws the theme with a material preset (corners, outlines, shadows, glass, row inset, primary), keeping its colors, roles and font. Picking a style in Settings also removes `widget-corner-radius`, so the style's radius shows |
+| `widget-corner-radius` | from the theme, or the style (`10` in Default) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
+| `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
+| `chrome-tint` | `0` | `0..=1` | How far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it. Settings shows it as Tint strength, 0–100% |
+| `chrome-tint-hue` | `260` | `0..=360` | The hue the tint leans toward, in Oklch degrees; `260` is a cool blue. Settings shows it as Tint |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
 | `which-key-delay` | `400` | `0..=2000` | Milliseconds after the prefix, or inside a `switch-client -T` table, before the which-key sheet lists the next keys; `0` turns the sheet off. Read when the timer starts |
 | `editor-line-numbers` | `true` | `true` or `false` | Whether editor panes draw the line-number rail |
@@ -139,17 +136,28 @@ The client-local schema includes these scalar settings and chrome colors.
 | `ui-font-family` | System default | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
-| `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as 100–200% in steps of 5. |
+| `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as a slider from 100% to 200% in steps of 5, written with two decimals. |
 
-`interface-style`, `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
-`chrome-foreground`, `chrome-accent`, `chrome-success`, `chrome-warning` and `chrome-danger` are
+`chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
+`chrome-foreground`, `chrome-success`, `chrome-warning` and `chrome-danger` are
 retired (`zz_config::RETIRED_APPEARANCE_KEYS`): a line with one of them is reported, skipped and
-hidden from the Terminal page's editor, and picking a theme in Settings removes it. Colors now
-come only from the theme. `pane-glass` is retired the same way (`zz_config::RETIRED_PANE_KEYS`):
-gapped panes always draw a glass frame, so the line is reported and otherwise ignored.
+hidden from the Terminal page's editor, and picking a theme in Settings removes it. Chrome colors
+come from the theme, the accent and the tint, never from per-color keys.
+`interface-style` and `chrome-accent` were on that list from 2026-10-11 to 2026-10-15 and are live again with
+new meanings: a material preset and the accent above. An old `interface-style = flat` happens to
+name a preset and now draws it, while `modern` and `full` are reported as invalid; an old
+`chrome-accent = #rrggbb` sets the accent again.
+`widget-outline-width`, `widget-shadow-strength`, `widget-row-inset`, `widget-primary` and
+`widget-glass` are retired too (`zz_config::RETIRED_MATERIAL_KEYS`): a line with one is reported
+with `` `<key>` was removed: pick a style with `interface-style`, or make a theme in the theme
+creator ``, ignored, hidden from the Terminal page's editor and removed when a theme is picked.
+`pane-glass`, `pane-corner-radius` and `pane-border-width` are retired pane keys
+(`zz_config::RETIRED_PANE_KEYS`), each reported with what replaced it: gapped panes always draw a
+glass frame, pane corners follow `widget-corner-radius`, and the pane edge follows the style's
+outline width. They are otherwise ignored.
 `shadow-strength`, `widget-shadows`, `widget-selection` and `widget-field` are retired too
 (`zz_config::RETIRED_LOOK_KEYS`). A `shadow-strength` line is reported with
-`` `shadow-strength` was removed: set `widget-shadow-strength`, from 0 (none) to 2 ``, and the
+`` `shadow-strength` was removed: pick a style with `interface-style` ``, and the
 other three with `` `<key>` was removed: themes set this per role now ``, since which surfaces
 cast shadows, how a selected row shows and how a field draws are role props now (see
 [surface roles](/designs/surface-roles.md)). Each is otherwise ignored, and removed when a theme
@@ -160,16 +168,18 @@ normal watched-config refresh. The clock never shows seconds. `AppShell` aligns 
 the next minute boundary, then requests one redraw per minute while the bar and clock are visible;
 `time-date` renders `%H:%M · %b %d`.
 
-`interface-theme`, the six `widget-*` material keys, `chrome-contrast`, `pane-background-opacity`, and `theme-mode` land on the **zz-ui theme** rather than being read
-per-frame by a renderer: `zz::theme::apply_zz_overrides` folds the material keys the file sets
-into the active theme's materials (`config::material_overrides` returns them as a
-`zz_ui::interface_theme::MaterialOverrides`), pushes the materials and the theme's roles onto the
-`Theme` global, and every surface already resolves its role from there, so no component is plumbed
-individually. Because the theme
-and the overrides are reapplied on every theme rebuild, they survive a light/dark switch, the same
-treatment `mono_font_family` gets. `widget-corner-radius` is distinct
-from `pane-corner-radius`, which is pane *geometry* and is resolved per corner in
-`config::pane_content_radii`.
+`interface-theme`, `interface-style`, `widget-corner-radius`, `chrome-accent`, `chrome-tint`,
+`chrome-tint-hue`, `chrome-contrast`, `pane-background-opacity`, and `theme-mode`
+land on the **zz-ui theme** rather than being read per-frame by a renderer:
+`zz::theme::apply_zz_overrides` draws `config::shown_theme`, the active theme with the keys the
+file sets composed over it (`config::theme_overrides` returns them as a
+`zz_ui::interface_theme::ThemeOverrides`; see Interface themes for the order), pushes its colors,
+materials and roles onto the `Theme` global, and every surface already resolves its role from
+there, so no component is plumbed individually. Because the theme and the overrides are reapplied
+on every theme rebuild, they survive a light/dark switch, the same treatment `mono_font_family`
+gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
+`Theme::pane_radius()`, the theme radius plus 3.5 so the pane stays concentric with the controls
+in its header (13.5 at Default's 10, 0 for a square style), and resolves it per corner.
 
 Every rounded surface is a **squircle** . iOS-style continuous corners, set once as the GPUI window
 default (`zz_ui::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) rather than plumbed
@@ -188,7 +198,8 @@ font even under a theme that names its own; Reset removes the current override. 
 select shows the active theme's font when it sets one. The 500 ms config watcher reapplies the family
 to `Theme.font_family` and redraws open windows. Quoted names preserve spaces, Unicode, quotes, and
 backslashes. Picking or importing a theme that sets `materials.font` drops `ui-font-family`, like
-the material keys it decides; other theme changes keep the chosen font. Terminal, editor, and
+the colors, style and radius keys it decides; other theme changes keep the chosen font, and so does
+picking a style, since a material preset never sets the font. Terminal, editor, and
 code-block fonts use their existing monospace settings.
 
 `browser-element-selector-hotkey` lives in a separate `BrowserConfig` GPUI global so `AppConfig`
@@ -264,22 +275,35 @@ planes (`#fcfcfc` / `#18181a`), near-black and near-white ink, a blue accent (`#
 in, such as `macos`, `tahoe`, `linear` or `glass` before 2026-10-14, shows Default and logs a
 warning.
 
-Seven material presets in `crates/zz-ui/themes/materials/` (Liquid glass, Frosted, Flat, Tactile, Soft, Brutal and Terminal) are
-starting points for the storybook's theme creator, not themes: each sets only the materials and
-leaves the roles, colors and font alone (`zz_ui::interface_theme::material_presets`). Fourteen
-color presets in `crates/zz-ui/themes/colors/` (macOS, Windows, GNOME, Ubuntu, Breeze, Ayu, Nord,
-Solarized, Gruvbox, Catppuccin, Dracula, Tokyo Night, GitHub and One) do the same for colors:
-each sets the six roots of both palettes and nothing else (`color_presets`). Where a scheme's own
-color fell under the contrast floors below on zz's window or popover, its lightness moved just
-enough to pass, keeping its hue.
+Five material presets in `crates/zz-ui/themes/materials/` (Liquid glass, Capsule, Flat, Brutal and Terminal) are
+not themes: each sets only the materials and leaves the roles, colors and font alone
+(`zz_ui::interface_theme::material_presets`, which lists them after a Default preset built from
+the Default theme's materials). `interface-style` and Settings' Style row draw the theme with one,
+and the storybook's theme creator starts from one. The ids `interface-style` accepts are
+`zz_client::appearance::STYLE_PRESETS`, and a test holds them to the preset list. There are no
+color presets (the ones added on 2026-10-14 were removed the next day, before release): the
+accent and the tint below are how Settings colors the interface.
+
+`ThemeOverrides::apply_to` puts the keys over the active theme in a fixed order. The style
+replaces the materials, keeping the theme's font.
+`widget-corner-radius` sets the radius. The accent replaces the accent root in each mode (a named
+accent takes its light or its dark color, `zz_ui::interface_theme::accent_color`) and drops the
+theme's `on-accent`, so text on the accent is picked by the accent's lightness again. Last, the
+tint mixes each mode's background in Oklab toward the color of the same lightness at the tint hue
+with 0.02 chroma, reaching it at full strength (`ThemeColor::tinted`). Every surface, edge and glass
+tint is derived from the background, so the whole window leans with it while text, the accent and
+the status colors keep theirs. Roles always stay the theme's. The thin clients compose the same
+`ThemeOverrides` from their preferences.
 
 A surface whose role takes glass draws the theme's glass tinted with its own fill, with the glass
 rim in place of the outline. On a glass ground it paints a tint instead, and under a theme without
 glass a solid fill.
 
-A test in `crates/zz-ui/src/interface_theme.rs` holds every built-in and every color preset to
+A test in `crates/zz-ui/src/interface_theme.rs` holds every built-in to
 contrast floors in both modes: foreground at least 7:1 on the background and on a popover, the accent and status colors
-at least 3:1, and text on the accent at least 3:1.
+at least 3:1, and text on the accent at least 3:1. Another (`every_named_accent_reads_at_any_tint`)
+holds each of the eight named accents to the same floors on Default at full tint, with the tint
+hue every 30 degrees.
 
 Saved themes live one per file in a `themes` folder beside the configuration file
 (`~/.config/zz/themes/<name>.json`; zz Dev keeps its own), named by letters, digits, `-` and `_`;
@@ -294,20 +318,22 @@ applies as usual. A broken file that is not selected keeps its last good version
 only logs a warning. When zz starts with a broken selected file there is nothing to keep, so it
 draws `default` and says so in the same toast once the window opens.
 
-Settings > Interface > Interface theme shows the built-ins and then the saved themes as tiles.
-Duplicate writes the active theme to the first free `themes/theme-N.json` and selects it, so a
-theme is customized by editing that file. The copy folds every material key the file sets
-(`config::material_overrides`) and an explicit UI font into its materials first, so nothing on
-screen changes. A duplicated or imported theme whose name is empty or a built-in's is saved under its file name
+Settings > Interface > Saved themes shows the built-in Default and then the saved themes as tiles.
+Save writes the look on screen (`config::shown_theme`: the theme with its colors, style, radius,
+accent and tint keys) and an explicit UI font to the first free `themes/theme-N.json` and selects
+it, so nothing on screen changes and the theme can be edited further in that file. Before it
+selects the copy it removes `chrome-accent`, `chrome-tint` and `chrome-tint-hue`, which are now in
+the file, so the tint is not applied twice; selecting it removes the colors, style and radius keys
+as any theme pick does. A saved or imported theme whose name is empty or a built-in's is saved under its file name
 (`theme-N`), so Settings never shows two tiles called Default. Import reads a theme from the clipboard (the storybook's
 theme creator copies one with Copy JSON), saves it the same way and selects it. Thin clients (web,
 iOS) never read this folder: they keep their own saved themes in their preferences, with the same
-Duplicate and Import (Import uses the browser's async clipboard read on web) and a Delete for the
+Save and Import (Import uses the browser's async clipboard read on web) and a Delete for the
 selected saved theme. A stored theme the build cannot read, one with an unknown key included, is
 skipped without touching the other preferences.
 
-Chrome colors come from the theme alone, never from the terminal's palette: there is no key that
-makes application chrome follow terminal colors.
+Chrome colors come from the theme and the keys above, never from the terminal's palette: there
+is no key that makes application chrome follow terminal colors.
 
 `chrome-contrast` adjusts derived surfaces, muted text, fills, and edges without storing colors.
 The default is 1.0; desktop and browser Settings show it as 100%. Reset removes the override.
@@ -385,17 +411,18 @@ plane. Under a theme with glass, a pane whose role takes glass draws the frame i
 glass with blur and refraction off: tiled panes sit on the flat app background, so there is
 nothing to frost. On an opaque window the tint is solid and the glass draws in place with no
 backdrop copy, costing about what a bordered fill does. The glass edge (glint, fresnel, thin
-contour) is the frame, `pane-border-width` sets the glint's width, and the active pane lights its
+contour) is the frame, the glint is as wide as the theme's outline (`Theme::pane_edge_width()`,
+0 without gaps; a style with no outlines turns it off), and the active pane lights its
 glint and contour in the accent and widens its rim into a soft accent wash, both by
 `pane-glow-strength`. Under a theme without glass (Default) the frame is a
-plain fill at the pane opacity with an even line over the content, `pane-border-width` wide, in the
+plain fill at the pane opacity with an even line over the content, the outline width wide, in the
 divider color and the accent on the active pane, because a lit glass edge there drew a bright top
 and a dark band along the bottom that differed from pane to pane. The same line stands in for the
 glass edge where the window cannot sample its backdrop (WebGL, DirectX), since glass paints only
 its fill there. A content root that paints an opaque fill under a frame hides the frame's color and
 the inside of its edge, which is why a browser shows its opaque page fill only behind a live page.
 The iPad browser's page is a native web view laid over everything GPUI draws, so it is mounted
-inside the frame by `pane-border-width` on its sides and bottom, with its corners eased by the same
+inside the frame by the pane edge width on its sides and bottom, with its corners eased by the same
 amount, and the pane's root paints the pane background like every other pane.
 Floating panes take the theme's full glass like every popover. Settings previews that are not
 inside a frame use `Theme::pane_color`.
@@ -435,14 +462,15 @@ the effect region. KWin changes pixels even where the client surface is transpar
 does not extend into the client-side shadow inset. Transparent shadow and corner pixels retain the
 compositor's unmodified background; tiled and square corners remain square.
 
-`pane-gaps = false` keeps the regular workspace flush: margin, corner radius, and border width
+`pane-gaps = false` keeps the regular workspace flush: margin, corner radius, and edge width
 resolve to `0`, and split nodes retain their neutral 1px hairline. The active pane colors only its
 half of each adjacent separator with a washed foreground accent; nested T-junctions limit the
-segment to the edge the pane touches. With `pane-gaps = true` every value applies exactly as
-configured, defaults included . a 6px margin and a 13.5px radius, the window's own corner, so a
+segment to the edge the pane touches. With `pane-gaps = true` the margin applies exactly as
+configured, defaults included, and the corners and edge come from the theme: a 6px margin and,
+under Default, a 13.5px radius (the theme's 10 plus 3.5), the window's own corner, so a
 maximized grid reads as one rounded surface. There is
 no second tier of gapped defaults: the number Settings shows is the number the panes use, which is
-what lets the disabled Frame rows stay honest. Gapped panes draw their frame in glass, as above,
+what lets the disabled Frame row stay honest. Gapped panes draw their frame in glass, as above,
 and keep the contact shadow. This treatment is built in; the retired `pane-shadow` key produces the
 normal unsupported-key diagnostic.
 Split divider visuals disappear in this mode because the gap is the separator, but the unchanged
@@ -454,7 +482,7 @@ Browser panes apply it to the toolbar while keeping Chromium page pixels unchang
 pane surfaces fade toward the opaque window background. Setting it to `1` removes every inactive
 pane dimming treatment.
 
-All four frame keys render app-side and therefore apply on every platform. While the effective margin
+The pane frame renders app-side and therefore applies on every platform. While the effective margin
 is zero, window-exposed pane corners keep the larger of the pane radius and derived frame-content
 curve; a nonzero margin detaches panes from the frame, so the pane radius alone shapes all four
 corners. The margin is single-counted everywhere: the layout root insets the window edge by one
@@ -589,12 +617,12 @@ loaded file contains no assignment for that key and `Override` when the key is p
 recorded even when its value is invalid; the diagnostic still follows the warn-and-keep rule, so an
 invalid override can display the preceding/default effective value with an `Overridden` badge. This
 definition lets Reset remove a stale invalid line instead of incorrectly presenting it as absent.
-The six material keys (`ConfigKey::MATERIALS`) are the exception. Their default is the active
-theme's: `AppConfig::apply_material_defaults` writes the theme's `MaterialDefaults` into every
-material key nothing overrides, `widget-shadow-strength` shows `1` (it scales the theme's shadows),
-and `widget-glass` shows `theme`. Only a line that parses marks one `Override`, and an
-invalid one leaves the theme's value in place; for a choice key, the diagnostic lists the values it
-accepts.
+`widget-corner-radius` and `interface-style` are the exception. The radius's default is the
+radius on screen: `load_themes` composes the active theme with the file's style but not its
+radius, and `AppConfig::follow_theme_radius` shows that radius while nothing overrides the
+key. Only a line that parses marks one of these `Override`, and an invalid one leaves the theme's
+value in place; for `interface-style` the diagnostic lists the presets it accepts. `chrome-accent` follows the usual rule, and its diagnostic lists `theme`, the eight
+names and `#rrggbb`.
 
 Appearance provenance is resolved by the daemon and arrives with `ServerHello` and
 `AppearanceChanged` as a complete per-key map. `AppearanceSource` has four tiers . `default`,
@@ -661,18 +689,18 @@ device/pairing page that sat before Terminal was deleted on 2026-08-01 along wit
 fleet hosts live in `zz/config` and can be managed from the sidebar or **Settings › Hosts**.
 
 Pages use `SettingsStack` groups of `SettingEntry` rows. `SettingEntry::disabled` dims a row and
-blocks interaction, which is how the Frame group shows that `pane-margin`,
-`pane-corner-radius`, and `pane-border-width` are all inert while `pane-gaps` is off
-(`config` forces them to `0` there). Layout holds the `pane-gaps` switch alone. Focus holds the
+blocks interaction, which is how the Frame group shows that `pane-margin` is inert while
+`pane-gaps` is off (`config` forces it to `0` there). Pane corners and the pane edge have no rows:
+they follow the theme's radius and outline. Layout holds the `pane-gaps` switch alone. Focus holds the
 always-live inactive-opacity factor and the selected pane's edge strength, which needs gaps.
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Theme** (`theme-mode` as three drawn window previews, `interface-theme` as a sideways-scrolling tile strip with Duplicate and Import) · **Advanced**, collapsed until opened (`UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `chrome-contrast`, `animations`, `window-background-blur` as "Window blur", Linux `window-corner-radius` and `use-system-titlebar`, then the **Materials** group: `widget-corner-radius` as Corner radius, `widget-outline-width` as Outline, `widget-shadow-strength` as Shadow strength, `widget-row-inset` as Row inset, `widget-primary` as Primary buttons, `widget-glass` as Glass) |
+| Interface | **Theme** (`theme-mode` as three drawn window previews, `interface-style` as Style, a tile strip of the 6 styles, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders, then `interface-theme` as Saved themes, a strip of Default and the saved themes with Save and Import) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-agents`, `status-host`, `status-update`; `status-show-session` was removed with the session menu and is reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
-| Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, `pane-corner-radius`, `pane-border-width` as Pane edge width . all disabled without gaps) |
+| Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
 | System | **Tray** (`tray`, only where the profile has one) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, `experimental-agent-pane`, each row present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
@@ -684,24 +712,46 @@ a Reset button that removes the corresponding key. Multiplexer uses effective pr
 without per-key provenance badges or Reset controls. All chrome colors come from `cx.theme()`
 semantic values.
 
-The Theme group is two picker cards rather than rows of buttons, because both choices are about
+The Theme group is picker cards rather than rows of buttons, because its choices are about
 appearance: `theme-mode` offers three tiles carrying a drawn 84×56 window mockup . sidebar strip,
-title-bar lights, two lines of body text . painted from the active theme's colors for that mode,
+title-bar lights, two lines of body text . painted from the colors on screen
+(`config::shown_theme`) for that mode,
 with System showing one window in both color sets (the dark copy is drawn full width and clipped
-to the right half). The interface theme strip draws each theme as `interface_theme_preview`: the
+to the right half). The Style strip draws each preset as it would look over what is on
+screen (`ThemePicks::composed`: the active theme and its overrides with that one preset swapped
+in), and the Saved themes strip draws each theme as it draws on its own. Every tile is
+`interface_theme_preview`: the
 same window in the theme's colors for the current mode, a menu drawn the way its materials and
 its `popover` and `row` roles draw one (corners, outline, shadow in its shadow color, frosted or
 plain, an accent or a tinted selection) and a primary button in its primary fill and text.
-`app-icon` offers three tiles of the real artwork through `crate::app_icon::icon_preview` . macOS's
+
+Accent is a row of 18px swatches: Theme, in the accent the theme would show with the key
+removed, the eight named accents in the current mode's color, each named in a tooltip, and a
+custom color picker drawn as a bare swatch (`ColorPicker::swatch`). Swatches round with
+`Theme::swatch_radius`, half the theme radius, so they are square at radius 0 and rounder as the
+radius grows, short of a circle (the adaptive corner cap). The selected swatch wears a
+foreground ring concentric with it. The picker opens a saturation and brightness field with a
+handle to drag, a hue slider over a rainbow and a hex field with a clear button, in a popover, or
+a bottom sheet on touch screens; it keeps the last hue picked while the color is gray or black. Theme removes `chrome-accent`, a
+name writes it, and a color from the picker writes it as `#rrggbb` (clearing the picker removes
+the key). Tint is a hue slider over a rainbow track with a dot in the picked hue, writing
+`chrome-tint-hue` in whole degrees, and Tint strength a 0 to 1 slider with its percentage beside
+it, writing `chrome-tint` to two decimals. Both are the kit's continuous `Slider`
+(`zz_ui::slider::Slider`, beside `DiscreteSlider`): drag the thumb, click the track, or step it
+with the arrow keys (Shift steps ten, Home and End jump to the ends), and each new value is written
+as the thumb moves.
+
+`app-icon`, under Advanced, offers three tiles of the real artwork through `crate::app_icon::icon_preview` . macOS's
 own renders of `assets/zz.icon`, committed as `assets/zz-{light,dark}-512.png` . where Automatic
 renders the variant `cx.window_appearance()` resolves to right now. The preview is Lanczos-filtered
 once from 512px to a cached 96px raster before GPUI paints it into the 48pt tile, avoiding the
 rounded-edge aliasing caused by a large atlas downscale without mipmaps. The card is macOS-only,
-since X11 takes its icon from the window options and Wayland from the desktop file. Both pickers use
-the same selection treatment: a plain foreground border around the selected preview (transparent
-border otherwise, so nothing shifts), no fill and no hover state, keeping the artwork unchanged.
+since X11 takes its icon from the window options and Wayland from the desktop file. Every tile
+picker uses the same selection treatment: a plain foreground border around the selected preview
+(transparent border otherwise, so nothing shifts), no fill and no hover state, keeping the artwork
+unchanged.
 
-The Theme group also carries one non-persisted row: **UI zoom**. It is the same bounded `NumberInput`
+Advanced also carries one non-persisted row: **UI zoom**. It is the same bounded `NumberInput`
 the geometry rows use, over the root rem as a percentage of the 16px default, with the reset control
 in the title where every other row keeps it. Because it writes nothing to disk it is also the one
 field here that applies as it changes . a stepper press zooms on the press, and a typed value zooms
@@ -711,12 +761,18 @@ not enter `zz/config`;
 it follows Zed's per-run UI font-size adjustment and leaves browser page zoom and terminal font size
 under their existing pane-local controls.
 
-The interface theme strip is a `PickerStrip`: a sideways-scrolling row of tiles that bleeds to the
-row's edges, keeps its own scroll offset and focus handle keyed on its id in window state, and
-moves the selection with the left and right arrows once focused. Picking a tile writes
-`interface-theme` through `zz_config::set_interface_theme`, which also drops every material key
-(`ConfigKey::MATERIALS`), `ui-font-family` when the theme sets its own font, and every retired
-appearance and look key, so the theme shows as designed.
+The Style and Saved themes strips are each a `PickerStrip`: a sideways-scrolling row of
+tiles that bleeds to the row's edges, keeps its own scroll offset and focus handle keyed on its id
+in window state, and moves the selection with the left and right arrows once focused. A strip can
+have no selection: on a saved theme, Style selects nothing until a preset is picked, since the
+theme's own materials are no preset (on the built-in theme it selects Default), and the arrows
+then start at the first tile. Picking a style tile writes `interface-style`; Default on the
+built-in theme removes the key instead, since that is the theme's own, and a style also removes
+`widget-corner-radius` so the style's radius shows. Picking a saved theme tile writes
+`interface-theme` through `zz_config::set_interface_theme`, which also drops `interface-style` and
+`widget-corner-radius` (`ConfigKey::THEME_PICKS`), `ui-font-family` when the theme sets its own
+font, and every retired appearance, look and material key, so the theme shows as designed. The
+accent and the tint stay.
 
 Terminal reads saved appearance entries into its controls and writes edits back through the
 bounded, comment-preserving `zz/config` writer. Multiplexer mounts the native rope-backed
@@ -762,20 +818,20 @@ The first-run prompt (`crates/zz/src/config/import_prompt.rs`) uses marker
 read those files on its own. Accepting imports the found donors; Cancel imports nothing. Settings
 accepts other paths. Existing installs receive this offer once more after the ownership change.
 
-The Materials group ends Interface's Advanced section, with a note that which piece uses which
-material is up to the theme. The desktop and the thin clients build that page from the same item
-list (`zz_ui::settings::appearance::appearance_page_items`, `AppearancePageItem::MATERIALS`); the
-thin clients keep the values in their own preferences instead of `zz/config` (see
-[interface themes](/designs/interface-themes.md)). On desktop, Corner radius, Outline, Shadow
-strength and Row inset are number fields, stepping by 1, 0.5, 0.1 and 1. Primary buttons and
-Glass are selects whose values are what `zz/config` spells
-(`AppearancePageItem::material_choices`). Valid numbers save as they are typed; partial or
-invalid values stay in the field until Enter or blur restores the effective value. Enter or blur
-on a material field with no override writes nothing while its value is unchanged, so visiting one
-does not pin the theme's value. Picking a select item
-writes its key, except Glass's Theme, which removes `widget-glass` so the theme's own glass shows.
-Each row's Reset removes its key and shows the theme's value again through the normal config
-watcher.
+The desktop and the thin clients build the Interface page from the same item list
+(`zz_ui::settings::appearance::appearance_page_items`), the same row titles and descriptions
+(`AppearancePageItem::text`) and the same strips, swatches and sliders (`style_strip`,
+`themes_strip` and `accent_swatches` over a `ThemePicks`, `tint_hue_slider`, `tint_slider`,
+`corner_radius_slider`, `contrast_slider`); the thin clients keep the values in their own preferences instead of `zz/config`
+(see [interface themes](/designs/interface-themes.md)). The Materials group that ended Advanced
+until 2026-10-15 is gone: a style sets outlines, shadows, row inset, primary and glass together,
+and only Corner radius stays, first under Advanced. Corner radius and Contrast are sliders like
+the tint's, with their value beside them: the radius from 0 to 25 in whole pixels ("10px"), the
+contrast from 100% to 200% in steps of 5, written as `chrome-contrast` with two decimals. Each new
+value is written as the thumb moves, so Contrast previews live like the other appearance keys, and
+the radius follows the style until the slider moves, so opening Advanced does not pin the theme's
+radius. Each row's Reset removes its key and shows the theme's value again through the normal
+config watcher.
 
 Structured control callbacks, including Terminal, only write `zz/config`; they never mutate the
 GPUI config global directly. Multiplexer writes `zz/mux.conf` and requests a daemon reload. The
@@ -797,7 +853,8 @@ window-background-blur = true
 # Set every interface transition to its static state.
 animations = false
 
-# The toggle uses a 6px margin, a 13.5px radius, and a glass frame with a 0.5px glint.
+# The toggle uses a 6px margin, corners 3.5px rounder than the theme's (13.5px under
+# Default), and a glass frame whose glint is as wide as the theme's outlines.
 pane-gaps = true
 
 # Keep inactive pane content at 70% strength. Set 1 to disable dimming.
@@ -805,8 +862,12 @@ pane-inactive-opacity = 0.7
 
 # Optional explicit chrome overrides
 pane-margin = 8
-pane-corner-radius = 6
-pane-border-width = 0.5
+
+# Soft, rounded materials, a green accent and a slight teal tint.
+interface-style = soft
+chrome-accent = green
+chrome-tint = 0.4
+chrome-tint-hue = 190
 
 # Off by default . the daemon outliving the app is what preserves sessions.
 quit-daemon-on-exit = false

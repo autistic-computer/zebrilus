@@ -1,6 +1,10 @@
 use super::{SettingsSelectItem, StackPosition};
+use crate::interface_theme::{
+    ACCENTS, InterfaceTheme, MAX_CORNER_RADIUS, STYLE_PRESETS, ThemeOverrides, material_presets,
+};
 use crate::scroll::{GUTTER_WIDTH, Scrollbar, ScrollbarShow};
 use crate::select::{SelectItem as _, SelectState};
+use crate::slider::Slider;
 use crate::{ActiveTheme as _, Colorize as _, StyledExt as _, ThemeColor, ThemeMode};
 use std::{rc::Rc, sync::Arc};
 use zz_gpui::{
@@ -47,21 +51,20 @@ pub enum AppearancePageItem {
         description: Option<&'static str>,
     },
     ThemeMode,
-    InterfaceTheme,
+    Style,
+    Accent,
+    TintHue,
+    Tint,
+    Themes,
     Advanced {
         expanded: bool,
     },
+    CornerRadius,
+    ChromeContrast,
     UiFontFamily,
     UiZoom,
     AppIcon,
-    ChromeContrast,
     Animations,
-    WidgetCornerRadius,
-    OutlineWidth,
-    ShadowStrength,
-    RowInset,
-    Primary,
-    Glass,
     WindowBackgroundBlur,
     #[cfg(target_os = "linux")]
     WindowCornerRadius,
@@ -77,66 +80,39 @@ impl AppearancePageItem {
         )
     }
 
-    /// The material settings that override the active theme, in the order
-    /// the page lists them.
-    pub const MATERIALS: [Self; 6] = [
-        Self::WidgetCornerRadius,
-        Self::OutlineWidth,
-        Self::ShadowStrength,
-        Self::RowInset,
-        Self::Primary,
-        Self::Glass,
-    ];
-
-    /// The title and description of a material setting.
-    pub const fn material_text(self) -> Option<(&'static str, &'static str)> {
+    /// The title and description of a row every client draws the same way.
+    pub const fn text(self) -> Option<(&'static str, &'static str)> {
         Some(match self {
-            Self::WidgetCornerRadius => ("Corner radius", "How round corners are, from 0 to 25px."),
-            Self::OutlineWidth => (
-                "Outline",
-                "The width of every outline the theme draws, from 0 (none) to 2px.",
+            Self::Style => (
+                "Style",
+                "Corners, outlines, shadows and glass, all at once.",
             ),
-            Self::ShadowStrength => (
-                "Shadow strength",
-                "How dark the theme's shadows are. 0 turns them off, 2 doubles them.",
+            Self::Accent => (
+                "Accent",
+                "The one color that stands out: switches, selection, the active pane.",
             ),
-            Self::RowInset => (
-                "Row inset",
-                "How far list rows float in from the edges. At 0 they become full-width bands.",
+            Self::TintHue => ("Tint", "The color every surface leans toward."),
+            Self::Tint => ("Tint strength", "How far surfaces lean toward the tint."),
+            Self::Themes => (
+                "Saved themes",
+                "Themes saved here or imported, each with its own colors, style and roles. Save keeps the look on screen as a theme; Import adds one from the clipboard.",
             ),
-            Self::Primary => (
-                "Primary buttons",
-                "What the main action of a view is drawn in.",
+            Self::CornerRadius => (
+                "Corner radius",
+                "How round corners are, from 0 to 25px. Follows the style until changed.",
             ),
-            Self::Glass => (
-                "Glass",
-                "What glass surfaces are made of. Theme keeps the theme's own.",
+            Self::ChromeContrast => (
+                "Contrast",
+                "Raise surface, text, and edge contrast from 100% to 200%.",
             ),
             _ => return None,
         })
     }
-
-    /// The choices of a material setting that is a choice, as title and
-    /// value. The values are what theme files and `zz/config` spell.
-    pub const fn material_choices(self) -> &'static [(&'static str, &'static str)] {
-        match self {
-            Self::Primary => &[("Text color", "foreground"), ("Accent", "accent")],
-            Self::Glass => &[
-                ("Theme", "theme"),
-                ("Off", "off"),
-                ("Regular", "regular"),
-                ("Clear", "clear"),
-                ("Frosted", "frosted"),
-                ("Bubble", "bubble"),
-                ("Smoked", "smoked"),
-            ],
-            _ => &[],
-        }
-    }
 }
 
-/// The Interface page: the mode and the theme up front, every other knob
-/// behind the Advanced heading, listed only while `advanced` is expanded.
+/// The Interface page: the mode and how the theme looks up front, every
+/// other knob behind the Advanced heading, listed only while `advanced` is
+/// expanded.
 pub fn appearance_page_items(
     macos: bool,
     has_window_blur: bool,
@@ -149,20 +125,26 @@ pub fn appearance_page_items(
             description: None,
         },
         AppearancePageItem::ThemeMode,
-        AppearancePageItem::InterfaceTheme,
+        AppearancePageItem::Style,
+        AppearancePageItem::Accent,
+        AppearancePageItem::TintHue,
+        AppearancePageItem::Tint,
+        AppearancePageItem::Themes,
         AppearancePageItem::Advanced { expanded: advanced },
     ];
     if !advanced {
         return items;
     }
-    items.extend([AppearancePageItem::UiFontFamily, AppearancePageItem::UiZoom]);
+    items.extend([
+        AppearancePageItem::CornerRadius,
+        AppearancePageItem::ChromeContrast,
+        AppearancePageItem::UiFontFamily,
+        AppearancePageItem::UiZoom,
+    ]);
     if macos {
         items.push(AppearancePageItem::AppIcon);
     }
-    items.extend([
-        AppearancePageItem::ChromeContrast,
-        AppearancePageItem::Animations,
-    ]);
+    items.push(AppearancePageItem::Animations);
     if has_window_blur {
         items.push(AppearancePageItem::WindowBackgroundBlur);
     }
@@ -171,14 +153,286 @@ pub fn appearance_page_items(
         AppearancePageItem::WindowCornerRadius,
         AppearancePageItem::UseSystemTitlebar,
     ]);
-    items.push(AppearancePageItem::Group {
-        title: "Materials",
-        description: Some(
-            "Change what the theme's corners, outlines, shadows and glass look like. Which piece uses which is up to the theme. Picking a theme resets these.",
-        ),
-    });
-    items.extend(AppearancePageItem::MATERIALS);
     items
+}
+
+/// The look the Theme rows show and pick from: the themes a client offers
+/// (the built-in first, then saved ones), which one the overrides sit on,
+/// and the overrides.
+pub struct ThemePicks<'a> {
+    pub themes: Vec<(SharedString, &'a InterfaceTheme)>,
+    pub selected: usize,
+    pub overrides: &'a ThemeOverrides,
+}
+
+impl ThemePicks<'_> {
+    fn base(&self) -> &InterfaceTheme {
+        self.themes.get(self.selected).map_or_else(
+            || crate::interface_theme::default_theme(),
+            |(_, theme)| *theme,
+        )
+    }
+
+    /// Whether the overrides sit on a saved theme rather than the built-in.
+    pub fn custom(&self) -> bool {
+        self.selected > 0
+    }
+
+    /// The theme on screen with `change` made to the overrides first.
+    pub fn composed(&self, change: impl FnOnce(&mut ThemeOverrides)) -> InterfaceTheme {
+        let mut overrides = self.overrides.clone();
+        change(&mut overrides);
+        let mut theme = self.base().clone();
+        overrides.apply_to(&mut theme);
+        theme
+    }
+
+    fn style_index(&self) -> Option<usize> {
+        match self.overrides.style.as_deref() {
+            Some(id) => STYLE_PRESETS.iter().position(|preset| *preset == id),
+            None => (!self.custom()).then_some(0),
+        }
+    }
+}
+
+/// The material presets as tiles, each drawn over the look on screen.
+/// Reports the picked preset's id.
+pub fn style_strip(
+    picks: &ThemePicks,
+    mode: ThemeMode,
+    on_pick: impl Fn(&'static str, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> PickerStrip {
+    PickerStrip::new("settings-style", picks.style_index())
+        .tiles(material_presets().iter().map(|(id, preset)| {
+            let theme = picks.composed(|overrides| overrides.pick_style(id));
+            (
+                SharedString::from(preset.name.clone()),
+                interface_theme_preview(&theme, mode, cx),
+            )
+        }))
+        .on_select(move |index, window, cx| on_pick(STYLE_PRESETS[index], window, cx))
+}
+
+/// The built-in theme and the saved ones as tiles, each as it draws on its
+/// own. Reports the picked theme's index in [`ThemePicks::themes`].
+pub fn themes_strip(
+    picks: &ThemePicks,
+    mode: ThemeMode,
+    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> PickerStrip {
+    PickerStrip::new("settings-themes", picks.selected)
+        .tiles(picks.themes.iter().map(|(id, theme)| {
+            let label = if theme.name.is_empty() {
+                id.clone()
+            } else {
+                SharedString::from(theme.name.clone())
+            };
+            (label, interface_theme_preview(theme, mode, cx))
+        }))
+        .on_select(on_pick)
+}
+
+pub const SWATCH: f32 = 18.0;
+const SWATCH_RING_GAP: f32 = 2.0;
+const SWATCH_RING: f32 = 1.5;
+
+/// The theme's own accent, the named accents and `custom`, a color picker
+/// for any other, as swatches [`SWATCH`] across. Reports `None` for the theme's own and
+/// the name of a named one.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a swatch shows the accent it picks, not the live one"
+)]
+pub fn accent_swatches(
+    picks: &ThemePicks,
+    mode: ThemeMode,
+    custom: impl IntoElement,
+    on_pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    let selected = picks.overrides.accent.as_deref().unwrap_or("theme");
+    let own = picks
+        .composed(|overrides| overrides.accent = None)
+        .colors(mode)
+        .accent;
+    let on_pick = Rc::new(on_pick);
+    let ring = cx.theme().foreground;
+    let radius = cx.theme().swatch_radius();
+    let swatch = |id: &'static str, name: SharedString, color: zz_gpui::Hsla| {
+        let on_pick = Rc::clone(&on_pick);
+        ringed(
+            selected == id,
+            ring,
+            radius,
+            div()
+                .id(SharedString::from(format!("settings-accent-{id}")))
+                .role(zz_gpui::Role::Button)
+                .aria_label(name.clone())
+                .size(px(SWATCH))
+                .rounded(radius)
+                .bg(color)
+                .cursor_pointer()
+                .tooltip(move |window, cx| {
+                    crate::tooltip::Tooltip::new(name.clone()).build(window, cx)
+                })
+                .on_click(move |_, window, cx| {
+                    on_pick((id != "theme").then_some(id), window, cx);
+                }),
+        )
+    };
+    let named = ACCENTS.iter().filter_map(|name| {
+        let color = crate::interface_theme::accent_color(name, mode)?;
+        let mut title = name.to_string();
+        title[..1].make_ascii_uppercase();
+        Some(swatch(name, title.into(), color))
+    });
+    let custom_selected = selected != "theme" && !ACCENTS.contains(&selected);
+    div()
+        .flex()
+        .flex_none()
+        .flex_wrap()
+        .items_center()
+        .gap(px(4.0))
+        .child(swatch("theme", "Theme".into(), own))
+        .children(named)
+        .child(ringed(custom_selected, ring, radius, custom))
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the chosen swatch's ring, the same width in every theme"
+)]
+fn ringed(
+    selected: bool,
+    ring: zz_gpui::Hsla,
+    radius: zz_gpui::Pixels,
+    swatch: impl IntoElement,
+) -> zz_gpui::Div {
+    let inset = px(SWATCH_RING_GAP + SWATCH_RING);
+    div()
+        .flex_none()
+        .p(px(SWATCH_RING_GAP))
+        .rounded(if radius > px(0.0) {
+            radius + inset
+        } else {
+            px(0.0)
+        })
+        .border(px(SWATCH_RING))
+        .border_color(if selected {
+            ring
+        } else {
+            zz_gpui::transparent_black()
+        })
+        .child(swatch)
+}
+
+const SLIDER_WIDTH: f32 = 180.0;
+const HUE_STOPS: u16 = 12;
+
+/// The tint hue as a slider over a rainbow, with a dot in the hue it picks.
+pub fn tint_hue_slider(
+    hue: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+) -> zz_gpui::Div {
+    let stops =
+        (0..=HUE_STOPS).map(|stop| hue_swatch(f32::from(stop) * 360.0 / f32::from(HUE_STOPS)));
+    div()
+        .flex()
+        .items_center()
+        .gap(px(10.0))
+        .child(
+            div().w(px(SLIDER_WIDTH)).child(
+                Slider::new("settings-tint-hue", "Tint hue", hue, 0.0..=360.0, on_change)
+                    .step(1.0)
+                    .track(stops),
+            ),
+        )
+        .child(
+            div()
+                .flex_none()
+                .size(px(SWATCH))
+                .rounded_full()
+                .bg(hue_swatch(hue)),
+        )
+}
+
+/// How strongly the tint applies, as a slider with its percentage.
+pub fn tint_slider(
+    tint: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    value_slider(
+        Slider::new("settings-tint", "Tint strength", tint, 0.0..=1.0, on_change).step(0.01),
+        format!("{:.0}%", tint * 100.0),
+        cx,
+    )
+}
+
+/// The corner radius as a slider with its length.
+pub fn corner_radius_slider(
+    radius: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    value_slider(
+        Slider::new(
+            "settings-corner-radius",
+            "Corner radius",
+            radius,
+            0.0..=MAX_CORNER_RADIUS,
+            on_change,
+        )
+        .step(1.0),
+        format!("{radius:.0}px"),
+        cx,
+    )
+}
+
+/// The contrast, from 1 to 2, as a slider with its percentage.
+pub fn contrast_slider(
+    contrast: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    value_slider(
+        Slider::new(
+            "settings-contrast",
+            "Contrast",
+            contrast,
+            1.0..=2.0,
+            on_change,
+        )
+        .step(0.05),
+        format!("{:.0}%", contrast * 100.0),
+        cx,
+    )
+}
+
+fn value_slider(slider: Slider, shown: String, cx: &App) -> zz_gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(10.0))
+        .child(div().w(px(SLIDER_WIDTH)).child(slider))
+        .child(
+            div()
+                .flex_none()
+                .w(px(SWATCH * 2.0))
+                .text_size(crate::rems_from_px(12.0))
+                .text_color(cx.theme().foreground.muted())
+                .child(shown),
+        )
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the hue picker shows every hue, not a theme color"
+)]
+fn hue_swatch(hue: f32) -> zz_gpui::Hsla {
+    crate::oklch(0.72, 0.13, hue)
 }
 
 pub fn appearance_page(
@@ -332,16 +586,16 @@ fn around(radius: zz_gpui::Pixels, inset: f32) -> zz_gpui::Pixels {
 #[derive(IntoElement)]
 pub struct PickerStrip {
     id: &'static str,
-    selected: usize,
+    selected: Option<usize>,
     tiles: Vec<(SharedString, AnyElement)>,
     on_select: Option<Rc<dyn Fn(usize, &mut Window, &mut App)>>,
 }
 
 impl PickerStrip {
-    pub fn new(id: &'static str, selected: usize) -> Self {
+    pub fn new(id: &'static str, selected: impl Into<Option<usize>>) -> Self {
         Self {
             id,
-            selected,
+            selected: selected.into(),
             tiles: Vec::new(),
             on_select: None,
         }
@@ -383,7 +637,9 @@ impl RenderOnce for PickerStrip {
             .clone();
         let focused = focus.is_focused(window);
         let count = self.tiles.len();
-        let selected = self.selected.min(count.saturating_sub(1));
+        let selected = self
+            .selected
+            .map(|selected| selected.min(count.saturating_sub(1)));
         let on_select = self.on_select;
         let select = Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
             if let Some(on_select) = &on_select {
@@ -408,9 +664,10 @@ impl RenderOnce for PickerStrip {
             .overflow_x_scroll()
             .restrict_scroll_to_axis()
             .on_key_down(move |event, window, cx| {
-                let next = match event.keystroke.key.as_str() {
-                    "left" => selected.checked_sub(1),
-                    "right" => (selected + 1 < count).then_some(selected + 1),
+                let next = match (event.keystroke.key.as_str(), selected) {
+                    ("left", Some(selected)) => selected.checked_sub(1),
+                    ("right", Some(selected)) => (selected + 1 < count).then_some(selected + 1),
+                    ("left" | "right", None) => (count > 0).then_some(0),
                     _ => return,
                 };
                 cx.stop_propagation();
@@ -430,8 +687,8 @@ impl RenderOnce for PickerStrip {
                             format!("{id}-{index}").into(),
                             label,
                             preview,
-                            index == selected,
-                            focused && index == selected,
+                            selected == Some(index),
+                            focused && selected == Some(index),
                             cx,
                         )
                         .on_click(move |_, window, cx| select(index, window, cx))

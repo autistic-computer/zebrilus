@@ -71,6 +71,8 @@ const SUBTLE_ALPHA: f32 = 0.75;
 const GLOW_ALPHA: f32 = 0.35;
 const WASH_ALPHA: f32 = 0.28;
 const FLOATING_ALPHA: f32 = 0.90;
+const TINT_CHROMA: f32 = 0.02;
+const COLORED_CHROMA: f32 = 0.06;
 
 thread_local! {
     static CONTRAST: Cell<f32> = const { Cell::new(1.0) };
@@ -114,6 +116,25 @@ pub(super) fn readable_on(fill: Hsla) -> Hsla {
 
 pub(super) fn edge_weight() -> f32 {
     scaled(EDGE_WEIGHT)
+}
+
+pub(super) fn is_colored(color: Hsla) -> bool {
+    let (_, a, b) = oklab::rgb_to_oklab(color.into());
+    a.hypot(b) > COLORED_CHROMA
+}
+
+/// The color at Oklch `lightness`, `chroma` and `hue` in degrees, clipped
+/// to sRGB.
+#[must_use]
+pub fn oklch(lightness: f32, chroma: f32, hue: f32) -> Hsla {
+    let (sin, cos) = hue.to_radians().sin_cos();
+    oklab::oklab_to_rgb(lightness, chroma * cos, chroma * sin).into()
+}
+
+pub(super) fn tint(color: Hsla, hue: f32, intensity: f32) -> Hsla {
+    let (lightness, ..) = oklab::rgb_to_oklab(color.into());
+    let tinted = oklch(lightness, TINT_CHROMA, hue);
+    color.mix_oklab(tinted.opacity(color.a), 1.0 - intensity.clamp(0.0, 1.0))
 }
 
 /// Presentation transforms on a color. Each is a function of the receiver's

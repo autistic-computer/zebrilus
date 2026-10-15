@@ -108,7 +108,7 @@ fn apply_zz_overrides(cx: &mut App) {
         .as_deref()
         .map(crate::terminal::view::terminal_font)
         .map(|font| font.family);
-    let active = config::themes(cx).active.clone();
+    let active = config::shown_theme(cx);
     let ui_font = config::ui_font_family(cx);
     let ui_font_family = ui_font
         .value
@@ -118,18 +118,16 @@ fn apply_zz_overrides(cx: &mut App) {
                 .then(|| active.materials.font.clone())
                 .flatten()
         })
+        .filter(|family| cx.text_system().has_font(family))
         .unwrap_or_else(|| zz_gpui::Font::default().family);
-    let mut materials = active.materials.clone();
-    config::material_overrides(cx).apply(&mut materials);
     let chrome_contrast = config::chrome_contrast(cx);
     let pane_background_opacity = config::pane_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
     let pane_frames = config::pane_gaps(cx);
-    let pane_edge_width = config::pane_border_width(cx);
     let theme = Theme::global_mut(cx);
 
     theme.colors = active.colors(theme.mode);
-    materials.apply(theme);
+    active.materials.apply(theme);
     active.apply_roles(theme);
     theme.font_family = ui_font_family;
     if let Some(font_family) = terminal_mono_font_family {
@@ -140,7 +138,6 @@ fn apply_zz_overrides(cx: &mut App) {
     theme.pane_background_opacity = pane_background_opacity;
     theme.pane_glow_strength = pane_glow_strength;
     theme.pane_frames = pane_frames;
-    theme.pane_edge_width = pane_edge_width;
 }
 
 #[cfg(test)]
@@ -301,14 +298,17 @@ mod tests {
                 });
                 let mut config = config::AppConfig::default();
                 config.pane_gaps.value = gaps;
-                config.pane_border_width.value = 1.5;
                 cx.set_global(config);
                 refresh_current_theme(cx);
                 let theme = Theme::global(cx);
                 assert_eq!(theme.pane_frames, gaps, "{id} with gaps {gaps}");
                 assert_eq!(
-                    theme.pane_edge_width,
-                    zz_gpui::px(if gaps { 1.5 } else { 0.0 }),
+                    theme.pane_edge_width(),
+                    if gaps {
+                        theme.outline
+                    } else {
+                        zz_gpui::px(0.0)
+                    },
                     "{id} with gaps {gaps}"
                 );
                 assert_alpha(app_pane_background(cx), if gaps { 0.0 } else { 0.5 });
