@@ -82,8 +82,9 @@ pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
 /// draws, with the hover highlight while it rests. A role with no fill and
 /// no outline draws no box. The border is always at least a pixel wide,
 /// clear when the role has none, so focusing a field never moves its text;
-/// focus turns it to the field's focus color. A field that holds more than
-/// its text, like the agent composer, draws its shell with this.
+/// focus turns it to the field's focus color, unless the theme draws no
+/// outlines or the field is glass, whose rim is its edge. A field that holds
+/// more than its text, like the agent composer, draws its shell with this.
 pub fn field_chrome<E: Styled + InteractiveElement>(
     element: E,
     surface: impl Into<Surface>,
@@ -112,7 +113,7 @@ pub fn field_chrome<E: Styled + InteractiveElement>(
 fn field_layer(theme: &Theme, surface: Surface, state: PaintState, focus_bordered: bool) -> Layer {
     let mut layer = theme.layer(surface, state);
     layer.border_width = layer.border_width.max(px(1.0));
-    if state == PaintState::Focused && focus_bordered {
+    if state == PaintState::Focused && focus_bordered && theme.outlined() && layer.glass.is_none() {
         layer.border = theme
             .paint_on(
                 surface.ground.unwrap_or_else(|| theme.ground()),
@@ -476,5 +477,24 @@ mod tests {
         let focused = field_layer(&theme, bare, PaintState::Focused, true);
         assert_eq!(focused.border_width, rest.border_width);
         assert!(focused.border.a > 0.0);
+    }
+
+    #[test]
+    fn focus_draws_no_border_without_outlines_or_on_glass() {
+        let mut theme = Theme::from(&*ThemeColor::dark());
+        theme.outline = px(0.0);
+        let field = Surface::new(Kind::Field.role());
+        let focused = field_layer(&theme, field, PaintState::Focused, true);
+        assert_eq!(focused.border.a, 0.0);
+
+        let mut theme = Theme::from(&*ThemeColor::dark());
+        theme.glass = zz_gpui::GlassMaterial::preset("regular");
+        let glass = Surface::new(
+            SurfaceRole::new("test.glass-field", Kind::Field, "Glass fields", "")
+                .with(StylePatch::EMPTY.fill(Fill::Glass)),
+        );
+        let focused = field_layer(&theme, glass, PaintState::Focused, true);
+        assert!(focused.glass.is_some());
+        assert_eq!(focused.border.a, 0.0);
     }
 }

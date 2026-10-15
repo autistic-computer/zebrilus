@@ -4,24 +4,13 @@
 /// The interface themes compiled into every client, by the id
 /// `interface-theme` names. Each one bundles a look with its light and dark
 /// colors.
-pub const BUILTIN_THEMES: [&str; 1] = ["default"];
+pub const BUILTIN_THEMES: [&str; 2] = ["default", "liquid-glass"];
 
 /// The theme a fresh install uses.
 pub const DEFAULT_THEME: &str = "default";
 
 /// The roundest corner radius `widget-corner-radius` takes.
 pub const MAX_CORNER_RADIUS: f32 = 25.0;
-
-/// The material presets `interface-style` names: Default's materials, then
-/// the presets.
-pub const STYLE_PRESETS: [&str; 6] = [
-    "default",
-    "liquid-glass",
-    "capsule",
-    "flat",
-    "brutal",
-    "terminal",
-];
 
 /// The named accents `chrome-accent` takes besides a `#rrggbb` color, each
 /// tuned for light and for dark.

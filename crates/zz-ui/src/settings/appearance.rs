@@ -1,6 +1,6 @@
 use super::{SettingsSelectItem, StackPosition};
 use crate::interface_theme::{
-    ACCENTS, InterfaceTheme, MAX_CORNER_RADIUS, STYLE_PRESETS, ThemeOverrides, material_presets,
+    ACCENTS, BUILTIN_THEMES, InterfaceTheme, MAX_CORNER_RADIUS, ThemeOverrides,
 };
 use crate::scroll::{GUTTER_WIDTH, Scrollbar, ScrollbarShow};
 use crate::select::{SelectItem as _, SelectState};
@@ -51,7 +51,6 @@ pub enum AppearancePageItem {
         description: Option<&'static str>,
     },
     ThemeMode,
-    Style,
     Accent,
     TintHue,
     Tint,
@@ -83,10 +82,6 @@ impl AppearancePageItem {
     /// The title and description of a row every client draws the same way.
     pub const fn text(self) -> Option<(&'static str, &'static str)> {
         Some(match self {
-            Self::Style => (
-                "Style",
-                "Corners, outlines, shadows and glass, all at once.",
-            ),
             Self::Accent => (
                 "Accent",
                 "The one color that stands out: switches, selection, the active pane.",
@@ -94,12 +89,12 @@ impl AppearancePageItem {
             Self::TintHue => ("Tint", "The color every surface leans toward."),
             Self::Tint => ("Tint strength", "How far surfaces lean toward the tint."),
             Self::Themes => (
-                "Saved themes",
-                "Themes saved here or imported, each with its own colors, style and roles. Save keeps the look on screen as a theme; Import adds one from the clipboard.",
+                "Themes",
+                "Corners, outlines, shadows, glass and colors, all at once. Save keeps the look on screen as a theme; Import adds one from the clipboard.",
             ),
             Self::CornerRadius => (
                 "Corner radius",
-                "How round corners are, from 0 to 25px. Follows the style until changed.",
+                "How round corners are, from 0 to 25px. Follows the theme until changed.",
             ),
             Self::ChromeContrast => (
                 "Contrast",
@@ -125,11 +120,10 @@ pub fn appearance_page_items(
             description: None,
         },
         AppearancePageItem::ThemeMode,
-        AppearancePageItem::Style,
+        AppearancePageItem::Themes,
         AppearancePageItem::Accent,
         AppearancePageItem::TintHue,
         AppearancePageItem::Tint,
-        AppearancePageItem::Themes,
         AppearancePageItem::Advanced { expanded: advanced },
     ];
     if !advanced {
@@ -157,8 +151,8 @@ pub fn appearance_page_items(
 }
 
 /// The look the Theme rows show and pick from: the themes a client offers
-/// (the built-in first, then saved ones), which one the overrides sit on,
-/// and the overrides.
+/// (the built-in ones first, then saved ones), which one the overrides sit
+/// on, and the overrides.
 pub struct ThemePicks<'a> {
     pub themes: Vec<(SharedString, &'a InterfaceTheme)>,
     pub selected: usize,
@@ -173,9 +167,9 @@ impl ThemePicks<'_> {
         )
     }
 
-    /// Whether the overrides sit on a saved theme rather than the built-in.
+    /// Whether the overrides sit on a saved theme rather than a built-in.
     pub fn custom(&self) -> bool {
-        self.selected > 0
+        self.selected >= BUILTIN_THEMES.len()
     }
 
     /// The theme on screen with `change` made to the overrides first.
@@ -186,35 +180,9 @@ impl ThemePicks<'_> {
         overrides.apply_to(&mut theme);
         theme
     }
-
-    fn style_index(&self) -> Option<usize> {
-        match self.overrides.style.as_deref() {
-            Some(id) => STYLE_PRESETS.iter().position(|preset| *preset == id),
-            None => (!self.custom()).then_some(0),
-        }
-    }
 }
 
-/// The material presets as tiles, each drawn over the look on screen.
-/// Reports the picked preset's id.
-pub fn style_strip(
-    picks: &ThemePicks,
-    mode: ThemeMode,
-    on_pick: impl Fn(&'static str, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> PickerStrip {
-    PickerStrip::new("settings-style", picks.style_index())
-        .tiles(material_presets().iter().map(|(id, preset)| {
-            let theme = picks.composed(|overrides| overrides.pick_style(id));
-            (
-                SharedString::from(preset.name.clone()),
-                interface_theme_preview(&theme, mode, cx),
-            )
-        }))
-        .on_select(move |index, window, cx| on_pick(STYLE_PRESETS[index], window, cx))
-}
-
-/// The built-in theme and the saved ones as tiles, each as it draws on its
+/// The built-in themes and the saved ones as tiles, each as it draws on its
 /// own. Reports the picked theme's index in [`ThemePicks::themes`].
 pub fn themes_strip(
     picks: &ThemePicks,

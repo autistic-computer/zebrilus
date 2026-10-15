@@ -283,8 +283,9 @@ clear instead of discarding (0.01 ms).
 without the key keep white. The glint adds light; the fresnel mixes the rim toward the light color
 (since 2026-10-15; it added before, which could not show on a white surface), so a wide bezel with
 a colored fresnel is a soft inner glow on any surface. `GlassMaterial::edge_color` (black by
-default) colors the contour, its alpha folded into the edge shadow strength on the CPU side, and
-zz's active pane frame sets both to the accent and widens its bezel into that glow. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
+default) colors the contour, its alpha folded into the edge shadow strength on the CPU side. zz's
+active pane frame sets only the light color to the accent, keeping its alpha, so the glint and the
+fresnel rim glow show the focus. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
 blur or refraction, a 1 px glint, faint fresnel, a 0.5 px contour), meant for surfaces that cover
 most of the window, such as pane frames.
 

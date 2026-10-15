@@ -40,8 +40,9 @@ use zz_ui::{
         composer_attachment,
         controls::{
             AgentControlChoice, AgentControlSelection, ComposerAction, agent_chrome_button,
-            agent_config_picker, agent_directory_button, agent_model_picker, agent_queue_chip,
-            composer_action, composer_action_button, context_usage_meter, git_summary_footer,
+            agent_config_picker, agent_directory_button, agent_model_picker, agent_pane_title,
+            agent_queue_chip, composer_action, composer_action_button, context_usage_meter,
+            git_summary_footer,
         },
         fold_timeline_rows,
         history::{
@@ -59,7 +60,7 @@ use zz_ui::{
     button::{Button, ButtonVariants as _},
     feedback::alert_actions,
     input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    pane::{PaneDrag, pane_drag_button, pane_header_icon_button},
+    pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     scroll::Scrollbar,
 };
 
@@ -2654,31 +2655,27 @@ impl Render for AgentPane {
             .find_map(|window| window.panes.get(&self.pane))
             .map_or_else(|| "New session".to_owned(), |pane| pane.title.clone());
         let title_connection = self.connection.clone();
-        let header_controls = zz_ui::h_flex()
-            .min_w_0()
-            .gap(px(zz_ui::CHROME_GAP))
-            .child(zz_ui::agent::controls::agent_provider_label(provider, cx))
-            .child(agent_thread_title_editor(
-                ("web-agent-title", pane.0),
-                &title,
-                writable,
-                move |title, cx| {
-                    title_connection.update(cx, |connection, cx| {
-                        connection.command(
-                            "select-pane",
-                            vec![
-                                "-t".to_owned(),
-                                pane.to_string(),
-                                "-T".to_owned(),
-                                title.to_owned(),
-                            ],
-                            cx,
-                        );
-                    });
-                },
-                window,
-                cx,
-            ));
+        let title_editor = agent_thread_title_editor(
+            ("web-agent-title", pane.0),
+            &title,
+            writable,
+            move |title, cx| {
+                title_connection.update(cx, |connection, cx| {
+                    connection.command(
+                        "select-pane",
+                        vec![
+                            "-t".to_owned(),
+                            pane.to_string(),
+                            "-T".to_owned(),
+                            title.to_owned(),
+                        ],
+                        cx,
+                    );
+                });
+            },
+            window,
+            cx,
+        );
         let can_drag = writable
             && self.header_drag_handler.is_some()
             && self
@@ -2695,25 +2692,24 @@ impl Render for AgentPane {
                         && window.panes.len() > 1
                 });
         let drag_handler = self.header_drag_handler.clone();
-        let header_drag = pane_drag_button(
-            ("agent-pane-drag", pane.0),
-            pane,
-            title,
-            can_drag,
-            move |drag, window, cx| {
-                if let Some(handler) = &drag_handler {
-                    handler(drag, window, cx);
-                }
-            },
-            cx,
-        )
-        .relative()
-        .when(can_drag, |grip| {
-            grip.when_some(self.header_touch_drag_handler.clone(), |grip, handler| {
-                grip.child(super::touch_drag_handle(move |event, window, cx| {
-                    handler(event, window, cx);
-                }))
-            })
+        let mut drag = PaneDragSource::new(pane, title, can_drag, move |drag, window, cx| {
+            if let Some(handler) = &drag_handler {
+                handler(drag, window, cx);
+            }
+        });
+        if let Some(handler) = self.header_touch_drag_handler.clone() {
+            drag = drag.touch(super::touch_drag_handle(move |event, window, cx| {
+                handler(event, window, cx);
+            }));
+        }
+        let close_connection = self.connection.clone();
+        let header_controls = agent_pane_title(provider, title_editor, drag, move |_, cx| {
+            if !writable {
+                return;
+            }
+            close_connection.update(cx, |connection, cx| {
+                connection.command("kill-pane", vec!["-t".to_owned(), pane.to_string()], cx);
+            });
         });
         let empty = self.rows.is_empty().then(|| {
             let empty_message = if connected {
@@ -2791,60 +2787,43 @@ impl Render for AgentPane {
                     .any(|window| window.active_pane == self.pane),
                 header_controls,
                 self.render_status(&state, connected, writable, cx),
-                zz_ui::h_flex()
-                    .gap(px(zz_ui::CHROME_GAP))
-                    .children(
-                        [
-                            (
-                                "web-agent-split-bottom",
-                                IconName::PanelBottom,
-                                "Split bottom",
-                                "-v",
-                            ),
-                            (
-                                "web-agent-split-right",
-                                IconName::PanelRight,
-                                "Split right",
-                                "-h",
-                            ),
-                        ]
-                        .into_iter()
-                        .map(|(id, icon, label, flag)| {
-                            pane_header_icon_button(id, icon, writable, cx)
-                                .tooltip(label)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.connection.update(cx, |connection, cx| {
-                                        connection.command(
-                                            "split-window",
-                                            vec![
-                                                "--kind".into(),
-                                                "picker".into(),
-                                                flag.to_owned(),
-                                                "-t".to_owned(),
-                                                this.pane.to_string(),
-                                            ],
-                                            cx,
-                                        );
-                                    });
-                                    cx.stop_propagation();
-                                }))
-                        }),
-                    )
-                    .child(header_drag)
-                    .child(
-                        pane_header_icon_button("web-agent-close", IconName::Xmark, writable, cx)
-                            .tooltip("Close pane")
-                            .on_click(cx.listener(|this, _, _, cx| {
+                zz_ui::h_flex().gap(px(zz_ui::CHROME_GAP)).children(
+                    [
+                        (
+                            "web-agent-split-bottom",
+                            IconName::PanelBottom,
+                            "Split bottom",
+                            "-v",
+                        ),
+                        (
+                            "web-agent-split-right",
+                            IconName::PanelRight,
+                            "Split right",
+                            "-h",
+                        ),
+                    ]
+                    .into_iter()
+                    .map(|(id, icon, label, flag)| {
+                        pane_header_icon_button(id, icon, writable, cx)
+                            .tooltip(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 this.connection.update(cx, |connection, cx| {
                                     connection.command(
-                                        "kill-pane",
-                                        vec!["-t".to_owned(), this.pane.to_string()],
+                                        "split-window",
+                                        vec![
+                                            "--kind".into(),
+                                            "picker".into(),
+                                            flag.to_owned(),
+                                            "-t".to_owned(),
+                                            this.pane.to_string(),
+                                        ],
                                         cx,
                                     );
                                 });
                                 cx.stop_propagation();
-                            })),
-                    ),
+                            }))
+                    }),
+                ),
                 !self.rows.is_empty(),
                 cx,
             ))

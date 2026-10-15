@@ -105,7 +105,7 @@ A pane fills with `theme.pane_background(fill)`: its own fill (the window color,
 - Anything that dims the window behind a modal, a sheet or a slide-over fills with `theme.scrim`.
 - Every drop shadow is drawn in `theme.shadow_color`, which the theme sets per mode, so a light theme on a tinted background can tint its shadows instead of graying them.
 - The tint (`chrome-tint` and `chrome-tint-hue`, see [interface themes](/designs/interface-themes.md)) changes only the background root (`ThemeColor::tinted`). Planes, washes, edges and glass tints derive from the background, so they all lean with it and no widget has to know.
-- Which surfaces cast a shadow is each role's `shadow` (`none`, `contact` or `float`); what the two shadows look like is the theme's `contact` and `float` materials, which a style (`interface-style`) replaces along with the other materials. `Theme::shadows_of`, `contact_shadows`, `float_shadows` and `casts_shadow(role)` read them. `lifted_shadow` is the small shadow under a switch thumb, and it follows the contact strength.
+- Which surfaces cast a shadow is each role's `shadow` (`none`, `contact` or `float`); what the two shadows look like is the theme's `contact` and `float` materials, which the theme sets with the other materials. `Theme::shadows_of`, `contact_shadows`, `float_shadows` and `casts_shadow(role)` read them. `lifted_shadow` is the small shadow under a switch thumb, and it follows the contact strength.
 
 ## Text
 
@@ -130,7 +130,7 @@ Text, number and select fields are neutral paints at their field role's emphasis
 The shared chrome, `field_chrome` in `input/field.rs`, takes a `Surface` or a role and does three things:
 - it always draws at least a 1px border, clear unless the role draws one, so focusing never moves the text (a role with no fill and no outline draws no box);
 - it hovers to the soft hover fill;
-- it focuses to the focus color.
+- it focuses to the focus color when the theme draws outlines (`Theme::outlined()`) and the field is not glass, whose rim is its edge; a bare field (no fill, no outline) still shows the focus frame then.
 
 `input::field_chrome` and `input::field_paint` are public, for a field that holds more than its text. The agent composer is a field shell built this way, not a card: the `agent.composer` role around its attachments, input and controls, and the focus border while its input has focus.
 
@@ -219,6 +219,7 @@ Kit widgets on the model:
 | tmux display-menu | a popover menu; neutral · ghost rows; literal tmux colours override |
 | Display-panes chip | `pane.display-panes`: glass with the float shadow; accent ring when active or pointed at |
 | Pane status badge, pane overlay lines | `pane.chip`: floating, with a contact shadow, and the focus ring when focused |
+| Agent status (Running, Waiting for you, Exited) | `agent.status`: a badge in the agent pane's header |
 | Status dot (bell, activity, agent state, host) | `navigation::status_dot`: one 6px dot in the state's color; a working agent is the muted ink |
 | A pane's failure (browser, editor, agent) | `inline_alert`: the `inline-panel` role in the alert layout; primary · solid Try again last |
 

@@ -363,11 +363,10 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | Key | Default | Does |
 | --- | --- | --- |
 | `theme-mode` | `system` | `system`, `light`, or `dark` |
-| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, or the name of a theme saved as `themes/<name>.json` next to the config file |
-| `interface-style` | the theme's | Corners, outlines, shadows and glass all at once: `default`, `liquid-glass`, `capsule`, `flat`, `brutal`, or `terminal` |
+| `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, `liquid-glass`, or the name of a theme saved as `themes/<name>.json` next to the config file |
 | `chrome-accent` | `theme` | The accent color: the theme's own, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or a `#rrggbb` color |
 | `chrome-tint` | `0` | How far the window's surfaces lean toward `chrome-tint-hue` (0–360, default `260`), 0–1 |
-| `widget-corner-radius` | from the style | Corners of every rounded surface, 0–25px. Which pieces are pills is up to the theme |
+| `widget-corner-radius` | from the theme | Corners of every rounded surface, 0–25px. Which pieces are pills is up to the theme |
 | `pane-gaps` | `false` | The card treatment: spaced panes framed in glass, their corners a little rounder than the theme's. Off makes them flush and square |
 | `pane-margin` | `6` | Gap between panes and at the window edge, 0–32 |
 | `animations` | `true` | Interface transitions, loading indicators, scrollbars, and animated UI images |
@@ -384,16 +383,17 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `browser-search-provider` | `google` | `google`, `duckduckgo`, or `brave` |
 | `browser-egress` | `true` | Route a remote pane's traffic through its host |
 
-The style, accent, tint and corner radius sit on top of the interface theme, so
-any theme goes with any style, and the tint leans its background toward a hue of
-your choice. Settings → Interface edits them with a tile strip, swatches and
-sliders. Picking a theme clears the style and radius so it shows as designed; the
-accent and tint stay. Save turns what is
+The accent, tint and corner radius sit on top of the interface theme, and the
+tint leans its background toward a hue of your choice. Settings → Interface
+picks the theme from a tile strip and edits the rest with swatches and sliders.
+Picking a theme clears the radius so it shows as designed; the accent and tint
+stay. Save turns what is
 on screen into a new theme file. Which pieces of the interface take a shadow,
 glass or an outline, and how a selected row shows, is set per piece by the theme
-file itself. The older `widget-outline-width`, `widget-shadow-strength`,
-`widget-row-inset`, `widget-primary`, `widget-glass`, `pane-corner-radius` and
-`pane-border-width` keys are gone: zz reports the line and ignores it.
+file itself. The older `interface-style`, `widget-outline-width`,
+`widget-shadow-strength`, `widget-row-inset`, `widget-primary`, `widget-glass`,
+`pane-corner-radius` and `pane-border-width` keys are gone: zz reports the line
+and ignores it.
 
 Terminal appearance uses Ghostty's spellings, so `theme`, `font-family`,
 `font-feature`, `palette`, `cursor-style`, `minimum-contrast`, and per-edge

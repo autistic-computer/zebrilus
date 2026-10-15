@@ -30,8 +30,7 @@ pub struct Preferences {
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
     pub zoom: f32,
-    /// What Settings sets over the theme. Picking a theme clears the style
-    /// and radius.
+    /// What Settings sets over the theme. Picking a theme clears the radius.
     #[serde(flatten)]
     pub overrides: ThemeOverrides,
     pub contrast: f32,
@@ -107,10 +106,6 @@ impl Preferences {
                 .filter(|value| value.is_finite())
                 .map(|value| value.clamp(0.0, max));
         }
-        overrides.style = overrides
-            .style
-            .take()
-            .filter(|id| interface_theme::material_preset(id).is_some());
         overrides.accent = overrides
             .accent
             .take()
@@ -199,8 +194,8 @@ impl Preferences {
     }
 
     /// Selects the built-in or saved theme `id`, or the default for any other
-    /// id, and drops the overrides of what the theme decides: its style and
-    /// radius, and the UI font when it sets one, so it shows as designed.
+    /// id, and drops the overrides of what the theme decides: its radius,
+    /// and the UI font when it sets one, so it shows as designed.
     /// The accent and the tint stay.
     pub fn set_interface_theme(&mut self, id: &str) {
         self.theme = self.knows_theme(id).then(|| id.to_owned());
@@ -506,10 +501,7 @@ mod tests {
             status_badges: false,
             status_agents: false,
             animations: false,
-            overrides: ThemeOverrides {
-                style: Some("flat".into()),
-                ..ThemeOverrides::default()
-            },
+            theme: Some("liquid-glass".into()),
             sidebar_width: 320.0,
             ..defaults
         };
@@ -522,9 +514,11 @@ mod tests {
             changed.status_bar_settings()
         );
         assert!(!restored.animations);
-        let flat = &interface_theme::material_preset("flat").unwrap().materials;
-        assert_eq!(restored.shown_theme().materials.outline, flat.outline);
-        assert_eq!(restored.widget_corner_radius(), flat.radius);
+        let glass = &interface_theme::builtin_theme("liquid-glass")
+            .unwrap()
+            .materials;
+        assert_eq!(restored.shown_theme().materials.outline, glass.outline);
+        assert_eq!(restored.widget_corner_radius(), glass.radius);
         assert_eq!(restored.sidebar_width, 320.0);
     }
 
@@ -547,7 +541,6 @@ mod tests {
         let invalid = Preferences {
             sidebar_width: f32::NAN,
             overrides: ThemeOverrides {
-                style: Some("stained".into()),
                 radius: Some(f32::INFINITY),
                 accent: Some("chartreuse".into()),
                 tint: Some(f32::NAN),
@@ -585,7 +578,6 @@ mod tests {
         }
         for accent in ["green", "#ff8800"] {
             let valid = ThemeOverrides {
-                style: Some("flat".into()),
                 accent: Some(accent.into()),
                 ..ThemeOverrides::default()
             };
@@ -653,7 +645,6 @@ mod tests {
             tuned.overrides
         );
 
-        tuned.overrides.style = Some("flat".into());
         tuned.set_interface_theme("default");
         let picked = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
         assert_eq!(picked.theme_id(), "default");
@@ -683,10 +674,7 @@ mod tests {
         assert_eq!(restored.interface_theme().name, "Neon");
 
         let mut glass = Preferences {
-            overrides: ThemeOverrides {
-                style: Some("liquid-glass".into()),
-                ..ThemeOverrides::default()
-            },
+            theme: Some("liquid-glass".into()),
             ..Preferences::default()
         };
         glass.duplicate_theme().unwrap();
@@ -753,7 +741,6 @@ mod tests {
     #[test]
     fn duplicate_keeps_what_is_on_screen() {
         let overrides = ThemeOverrides {
-            style: Some("flat".into()),
             radius: Some(7.0),
             accent: Some("green".into()),
             tint: Some(0.5),

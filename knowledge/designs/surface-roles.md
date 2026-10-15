@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
-description: "A theme defines its materials once (radius, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with six props (fill, outline, shadow, shape, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 57 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
+description: "A theme defines its materials once (radius, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with six props (fill, outline, shadow, shape, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 59 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
 status: Built (2026-10-13)
 resource: crates/zz-gpui-kit/src/foundation/surface.rs
 tags:
@@ -143,7 +143,7 @@ that makes `floating` glass makes drop zones and pane chips glass too, though bo
 solid as built in, and a patch for `pane.drop-zone` takes it back. Built-in patches only say how
 the Default theme draws a role. A widget
 with no role draws as its kind. `zz_ui::roles::all()` lists the kit's kinds and groups, then zz's
-58 roles; `members(group)` lists what is directly in a group.
+59 roles; `members(group)` lists what is directly in a group.
 
 A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
 concentric inside its list: its round corners are the radius less 4px, square when the row inset
@@ -342,8 +342,9 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 | `pane` | pane | tiled pane (gaps or flush), active glow, inactive dim, zoomed, waiting, phone page | `ui/pane.rs:187` | dim rules differ desktop vs thin client |
 | `pane.float` | floating | floating and popup panes, the confirm-before box | `ui/pane.rs:332` | confirm box uses the Panel fill |
 | `pane.header` | bar | terminal and agent title rows, the browser's two-row header | `ui/pane.rs:47`, `ui/agent.rs:3600`, `ui/browser.rs:57` | three divider treatments, wrapper copied per client; fixed, one `pane_header_frame` and the `rule.bar` divider |
-| `pane.header.button` | icon-button | split, close, drag grip | `ui/pane.rs:18` | |
-| `pane.chip` | floating | Dead, Waiting, Sync, Copy mode, status line, Unzoom, agent status pill, vim mode, "Select an element" | `ui/pane.rs:729`, `ui/agent.rs:3654`, `zz/editor/view.rs:557` | four variants; fixed, one chip with a contact shadow |
+| `pane.header.button` | icon-button | split, the X in a pane title, the browser's drag grip and close | `ui/pane.rs:19` | |
+| `pane.header.title` | button.quiet | pane titles in terminal and agent headers: drag to move, X closes; tinted on hover and when selected | `ui/pane.rs:46` (`PaneTitle`) | the grip and Close were separate buttons; since 10-15 the title is both |
+| `pane.chip` | floating | Dead, Waiting, Sync, Copy mode, status line, Unzoom, vim mode, "Select an element" | `ui/pane.rs:729`, `zz/editor/view.rs:557` | four variants; fixed, one chip with a contact shadow |
 | `pane.display-panes` | floating | display-panes number chips | `ui/pane.rs:796` | hover invisible at outline 0; fixed (see Bugs) |
 | `pane.find-bar` | popover | terminal find bar (and the browser's once it exists) | `zz/terminal/view.rs:660` | copied per client; fixed, one `terminal_find_bar` in `zz_ui::terminal` |
 | `pane.drop-zone` | floating | drop preview, armed veil, dragged-pane veil | `ui/pane.rs:425`, `:465` | hand-drawn edge |
@@ -357,6 +358,7 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 | `agent.composer` | field.multiline | the message box | `ui/agent/composer.rs:56` | |
 | `agent.send` | icon-button | send, queue, stop | `ui/agent/controls.rs:42` | stop had no fill, send was solid; fixed, stop takes send's fill |
 | `agent.picker` | field | mode, model and folder pickers | `ui/agent/controls.rs:59` | |
+| `agent.status` | badge | Running, Waiting for you and Exited in an agent pane's header | `ui/agent.rs:3712` (`agent_status_pill`) | was a `pane.chip`, so styling the floating chips restyled it; its own role since 10-15 |
 | `agent.tray` | tab | plan and tasks chips that open the tray over the composer (the queue chip is a quiet button) | `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the tab's selected lift |
 | `agent.attachment` | card | image tiles in bubbles and the composer, their remove × | `ui/agent.rs:2105` | × has no backing |
 | `agent.option` | menu-item | answer tiles in question and permission cards | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
@@ -468,14 +470,15 @@ role is not built.
 
 ## Settings
 
-Settings > Interface sets the materials all at once with Style (`interface-style`, one of the
-material presets) and only the radius on its own (`widget-corner-radius`, first under Advanced).
+Settings > Interface sets the materials all at once by picking a theme under Themes
+(`interface-theme`) and only the radius on its own (`widget-corner-radius`, first under Advanced).
 The Materials group that held one key per material (`widget-outline-width`,
 `widget-shadow-strength`, `widget-row-inset`, `widget-primary`, `widget-glass`) was removed on
 2026-10-15 and its keys retired. Roles live in theme files, made in the creator and
 brought in with Import, or saved from what is on screen with Save. `widget-shadows`,
 `widget-selection` and `widget-field` are gone into role props, and `shadow-strength` points to
-`interface-style`; see [interface themes](/designs/interface-themes.md) and
+`interface-theme`. Settings' Style row and `interface-style`, which drew a theme with material
+presets, were removed later the same day: a look is a whole theme now; see [interface themes](/designs/interface-themes.md) and
 [app config](/configuration/app-config.md).
 
 ## Migration
@@ -498,7 +501,7 @@ All five steps landed on 2026-10-13.
    `compact_bar_button`.
 4. Creator steps and the inspect ring in the storybook.
 5. Settings' Look group became the Materials group (itself replaced by the Style row on
-   2026-10-15).
+   2026-10-15, and that by the Themes strip the same day).
 
 ## Drift and bugs found by the inventory
 

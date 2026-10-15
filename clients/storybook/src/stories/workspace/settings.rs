@@ -23,7 +23,7 @@ use zz_ui::{
         },
         appearance::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, contrast_slider,
-            corner_radius_slider, interface_theme_preview, picker_tile, style_strip, theme_preview,
+            corner_radius_slider, interface_theme_preview, picker_tile, theme_preview,
             themes_strip, tint_hue_slider, tint_slider, ui_font_select,
         },
         panes_page,
@@ -353,7 +353,11 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         ..ThemeOverrides::default()
     };
     let picks = ThemePicks {
-        themes: vec![("default".into(), &active), ("theme-1".into(), &saved)],
+        themes: builtin_themes()
+            .iter()
+            .map(|(id, theme)| ((*id).into(), theme))
+            .chain([("theme-1".into(), &saved)])
+            .collect(),
         selected: 0,
         overrides: &overrides,
     };
@@ -370,7 +374,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             "theme rows",
             SettingsStack::titled("Interface")
                 .child(
-                    SettingEntry::new("Theme", "Follow the system light/dark setting, or pin one.")
+                    SettingEntry::new("Mode", "Follow the system light/dark setting, or pin one.")
                         .title_actions(settings_reset_button(
                             "theme-reset",
                             "Reset to default",
@@ -378,12 +382,17 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         ))
                         .control(tiles),
                 )
-                .child(entry(AppearancePageItem::Style).child(style_strip(
-                    &picks,
-                    mode,
-                    |_, _, _| {},
-                    cx,
-                )))
+                .child(
+                    entry(AppearancePageItem::Themes)
+                        .title_actions(
+                            div()
+                                .flex()
+                                .gap(px(4.0))
+                                .child(Button::new("theme-save").ghost().small().label("Save"))
+                                .child(Button::new("theme-import").ghost().small().label("Import")),
+                        )
+                        .child(themes_strip(&picks, mode, |_, _, _| {}, cx)),
+                )
                 .child(entry(AppearancePageItem::Accent).control(accent_swatches(
                     &picks,
                     mode,
@@ -400,17 +409,6 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     |_, _, _| {},
                     cx,
                 )))
-                .child(
-                    entry(AppearancePageItem::Themes)
-                        .title_actions(
-                            div()
-                                .flex()
-                                .gap(px(4.0))
-                                .child(Button::new("theme-save").ghost().small().label("Save"))
-                                .child(Button::new("theme-import").ghost().small().label("Import")),
-                        )
-                        .child(themes_strip(&picks, mode, |_, _, _| {}, cx)),
-                )
                 .child(
                     SettingEntry::new("UI font", "Choose an available font for the interface.")
                         .control(

@@ -48,8 +48,8 @@ use zz_ui::{
         workspace_sidebar_view_button,
     },
     pane::{
-        DropPreview, DropPreviewFrame, PaneChrome, PaneDrag, PaneDragOverlayState, PaneSplitAxis,
-        PaneSplitHighlight, PaneSplitSide, TerminalPaneAction, pane_drag_button, pane_drag_overlay,
+        DropPreview, DropPreviewFrame, PaneChrome, PaneDrag, PaneDragOverlayState, PaneDragSource,
+        PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, TerminalPaneAction, pane_drag_overlay,
         pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
         pane_split_surface, pane_surface, terminal_pane_header,
     },
@@ -1765,24 +1765,14 @@ impl AppShell {
                 let header = terminal_pane_header(
                     active_window.active_pane == pane_id,
                     title.clone(),
-                    pane_drag_button(
-                        ("web-terminal-drag", pane_id.0),
-                        pane_id,
-                        title,
-                        can_drag,
-                        move |drag, _, cx| {
-                            view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
-                        },
-                        cx,
-                    )
-                    .relative()
-                    .when(can_drag, |handle| {
-                        handle.child(touch_drag_handle(move |event, window, cx| {
-                            let _ = touch_view.update(cx, |this, cx| {
-                                this.touch_pane_drag(pane_id, event, window, cx);
-                            });
-                        }))
-                    }),
+                    PaneDragSource::new(pane_id, title, can_drag, move |drag, _, cx| {
+                        view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
+                    })
+                    .touch(touch_drag_handle(move |event, window, cx| {
+                        let _ = touch_view.update(cx, |this, cx| {
+                            this.touch_pane_drag(pane_id, event, window, cx);
+                        });
+                    })),
                     move |action, _, cx| {
                         connection.update(cx, |connection, cx| {
                             if !connection.connected || connection.core.attached_read_only() {

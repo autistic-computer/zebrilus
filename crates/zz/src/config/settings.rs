@@ -52,7 +52,7 @@ use zz_ui::feedback::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::appearance::{
     SWATCH, ThemePicks, accent_swatches, contrast_slider, corner_radius_slider, picker_tile,
-    style_strip, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
+    themes_strip, tint_hue_slider, tint_slider, ui_font_select,
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -832,7 +832,6 @@ impl SettingsView {
                 unreachable!("returned above")
             }
             AppearancePageItem::ThemeMode => Self::theme_mode_setting(resolved, cx),
-            AppearancePageItem::Style => Self::style_setting(resolved, cx),
             AppearancePageItem::Accent => self.accent_setting(resolved, cx),
             AppearancePageItem::TintHue => Self::tint_hue_setting(resolved, cx),
             AppearancePageItem::Tint => Self::tint_setting(resolved, cx),
@@ -935,7 +934,7 @@ impl SettingsView {
 
     fn theme_mode_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
         let setting = resolved.theme_mode;
-        SettingEntry::new("Theme", "Follow the system light/dark setting, or pin one.")
+        SettingEntry::new("Mode", "Follow the system light/dark setting, or pin one.")
             .title_actions(key_annotations(
                 ConfigKey::ThemeMode,
                 setting.provenance,
@@ -957,27 +956,6 @@ impl SettingsView {
                     })
                 }),
             ))
-    }
-
-    fn style_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let (title, description) = AppearancePageItem::Style.text().unwrap_or_default();
-        let mode = cx.theme().mode;
-        let strip = with_theme_picks(cx, |picks| {
-            let custom = picks.custom();
-            style_strip(
-                picks,
-                mode,
-                move |id, _, cx| write_preset(ConfigKey::InterfaceStyle, id, custom, cx),
-                cx,
-            )
-        });
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(
-                ConfigKey::InterfaceStyle,
-                resolved.interface_style.provenance,
-                cx,
-            ))
-            .child(strip)
     }
 
     fn accent_setting(&self, resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
@@ -2246,7 +2224,7 @@ fn search_provider_subscription(
     )
 }
 
-/// The themes Settings offers, the built-in first, with the active one
+/// The themes Settings offers, the built-in ones first, with the active one
 /// picked and the overrides `zz/config` sets over it.
 fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
     let themes = config::themes(cx);
@@ -2265,24 +2243,6 @@ fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
         selected,
         overrides: &overrides,
     })
-}
-
-/// Writes a picked color or style preset. Default on the built-in theme is
-/// the theme's own, so it drops the key; a style brings its own radius.
-fn write_preset(key: ConfigKey, id: &str, custom: bool, cx: &mut App) {
-    let result = if id == interface_theme::DEFAULT_THEME && !custom {
-        remove_config_key(key)
-    } else {
-        set_config_key(key, id)
-    }
-    .and_then(|()| {
-        if key == ConfigKey::InterfaceStyle {
-            remove_config_key(ConfigKey::WidgetCornerRadius)
-        } else {
-            Ok(())
-        }
-    });
-    written(key, result, cx);
 }
 
 /// Reports a failed write, or shows a successful one at once.
@@ -2424,7 +2384,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
             ConfigKey::WidgetCornerRadius
                 | ConfigKey::ChromeContrast
                 | ConfigKey::InterfaceTheme
-                | ConfigKey::InterfaceStyle
                 | ConfigKey::ChromeAccent
                 | ConfigKey::ChromeTint
                 | ConfigKey::ChromeTintHue
@@ -2566,7 +2525,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
-        | ConfigKey::InterfaceStyle
         | ConfigKey::ChromeAccent => {
             unreachable!("only numeric settings use numeric inputs")
         }
@@ -2782,7 +2740,7 @@ mod tests {
         assert!(
             expanded[..advanced]
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::Style))
+                .any(|item| matches!(item, AppearancePageItem::Themes))
         );
         assert!(
             expanded[advanced..]

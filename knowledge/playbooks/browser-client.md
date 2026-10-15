@@ -90,9 +90,10 @@ images. Popup terminals, command output, and search retain text paste behavior.
 Page blur and local dialogs cancel the daemon prefix; ordinary keys wait for the cancellation
 acknowledgement after the dialog closes or the page regains focus.
 
-Terminal panes show the shared desktop header with the pane title, split controls, drag handle,
-and close button. Inactive pane headers reveal their controls on hover. Drag the handle, or arm
-the daemon prefix and drag any pane, to swap at another pane's center or join at an edge. The
+Terminal panes show the shared desktop header: the title pill, which is the drag handle and
+shows an X that closes the pane when pointed at, and the split controls. Inactive pane headers
+reveal their controls on hover. Drag the title, or arm the daemon prefix and drag any pane, to
+swap at another pane's center or join at an edge. The
 browser draws the shared drop preview and predicts the resulting layout until the daemon sends
 its next snapshot. Both clients use `zz-client` for drop targets and commands, and `zz-protocol`
 for the layout transforms. Recursive split surfaces keep one divider between panes,
@@ -119,8 +120,8 @@ the accent and tint stay.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
 color pickers, theme previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and
-Frame groups for gaps, inactive opacity, the selected pane's edge and margins; pane corners and the
-pane edge follow the theme's radius and outline. Sidebar rows share desktop labels, markers, layout and
+Frame groups for gaps, inactive opacity, the selected pane's edge and margins; pane corners follow
+the theme's radius and the pane edge its glass, or its outline without glass. Sidebar rows share desktop labels, markers, layout and
 rename menus, add/split/close actions, and keyboard navigation. Drag the sidebar’s right edge to
 resize it; the browser saves the width and clamps it to 160–640 logical pixels and half the viewport,
 with a 160-pixel minimum. The window strip shares tabs, overflow, rename/close menus, and agent

@@ -142,9 +142,7 @@ impl Default for Theme {
 
 /// The corner smoothing every window draws with.
 pub const CORNER_SMOOTHING: f32 = 4.0;
-const PANE_GLOW_REACH: Pixels = px(128.0);
 const PANE_CORNER_INSET: Pixels = px(3.5);
-const PANE_GLOW: f32 = 0.16;
 
 impl Deref for Theme {
     type Target = ThemeColor;
@@ -255,40 +253,35 @@ impl Theme {
     }
 
     /// The glass a gapped pane draws as its frame and fill: the look's glass
-    /// edge, or a plain lit edge when the look has no glass, with no frost or
-    /// lensing, tinted with the pane's color over `plane`, the window color
-    /// behind the pane. On an opaque window the tint is solid, so the glass
-    /// paints in place without reading the backdrop. The active pane lights
-    /// its edge in the accent: the glint, a glow that fades in from the edge
-    /// over `PANE_GLOW_REACH`, both scaled by [`Self::pane_glow_strength`],
-    /// and the contour.
+    /// as the theme defines it, or a plain lit edge the outline's width when
+    /// the look has none, tinted with the pane's color over `plane`, the
+    /// window color behind the pane. The tint is solid, so the glass paints
+    /// in place without reading the backdrop and its frost and lensing are
+    /// off. The active pane paints its rim's light, the glint and the fresnel
+    /// glow, in the accent, scaled by [`Self::pane_glow_strength`].
     pub fn pane_frame(&self, fill: Hsla, plane: Hsla, active: bool) -> GlassMaterial {
         let tint = plane.blend(self.pane_color(fill));
         let frame = self
             .glass_effect()
-            .unwrap_or_else(|| GlassMaterial::edge(tint))
+            .unwrap_or_else(|| {
+                let edge = GlassMaterial::edge(tint).glint_width(self.outline);
+                if self.outline > px(0.0) {
+                    edge
+                } else {
+                    edge.specular(0.0)
+                }
+            })
             .blur(px(0.0))
             .refraction(px(0.0))
             .dispersion(0.0)
-            .noise(0.0)
             .tint(tint)
-            .fallback(tint)
-            .glint_width(self.outline);
-        let frame = if self.outline > px(0.0) {
-            frame
-        } else {
-            frame.specular(0.0)
-        };
+            .fallback(tint);
         if active && self.lights_active_pane() {
             let strength = self.pane_glow_strength;
             frame
-                .light_color(self.accent.opaque())
+                .light_color(self.accent.opaque().alpha(frame.light_color.a))
                 .specular(frame.specular * strength)
-                .bezel(PANE_GLOW_REACH)
-                .fresnel(PANE_GLOW * strength)
-                .edge_color(self.accent.opaque())
-                .edge_shadow(strength.min(1.0))
-                .edge_width(frame.edge_width.max(px(1.0)))
+                .fresnel(frame.fresnel * strength)
         } else {
             frame
         }
@@ -523,33 +516,47 @@ mod tests {
         let fill = theme.accent;
         let plane = theme.background;
         let tint = plane.blend(theme.pane_color(fill));
-        for (glass, bezel) in [
-            (None, GlassMaterial::edge(tint).bezel),
+        let edge = GlassMaterial::edge(tint).glint_width(theme.outline);
+        let frosted = GlassMaterial::frosted();
+        for (glass, rim) in [
+            (None, edge),
             (
                 Some(GlassMaterial::regular().vanished().tint(plane.opaque())),
-                GlassMaterial::edge(tint).bezel,
+                edge,
             ),
-            (
-                Some(GlassMaterial::frosted()),
-                GlassMaterial::frosted().bezel,
-            ),
+            (Some(frosted), frosted),
         ] {
             theme.glass = glass;
             let frame = theme.pane_frame(fill, plane, false);
             assert_eq!(frame.tint, tint);
             assert_eq!(frame.fallback, Some(tint));
-            assert_eq!(frame.bezel, bezel);
             assert!(!frame.reads_backdrop());
             assert!(!frame.is_opaque_fill());
             assert_eq!(
-                (frame.blur, frame.refraction, frame.dispersion, frame.noise),
-                (px(0.0), px(0.0), 0.0, 0.0)
+                (frame.blur, frame.refraction, frame.dispersion),
+                (px(0.0), px(0.0), 0.0)
             );
-            assert_eq!(frame.glint_width, theme.outline);
-            assert_eq!(frame.light_color, GlassMaterial::regular().light_color);
+            assert_eq!(
+                (
+                    frame.bezel,
+                    frame.glint_width,
+                    frame.specular,
+                    frame.fresnel
+                ),
+                (rim.bezel, rim.glint_width, rim.specular, rim.fresnel)
+            );
+            assert_eq!(
+                (frame.noise, frame.light_color),
+                (rim.noise, rim.light_color)
+            );
         }
 
         theme.outline = px(0.0);
+        assert_eq!(
+            theme.pane_frame(fill, plane, false).specular,
+            frosted.specular
+        );
+        theme.glass = None;
         assert_eq!(theme.pane_frame(fill, plane, false).specular, 0.0);
         assert_eq!(theme.pane_edge_width(), px(0.0));
         theme.outline = px(2.0);
@@ -563,25 +570,25 @@ mod tests {
     }
 
     #[test]
-    fn the_active_pane_frame_lights_its_edge_in_the_accent() {
+    fn the_active_pane_frame_paints_its_rim_light_in_the_accent() {
         let mut theme = Theme::default();
         let (fill, plane) = (theme.background, theme.background);
         let inactive = theme.pane_frame(fill, plane, false);
         let active = theme.pane_frame(fill, plane, true);
         assert_eq!(active.light_color, theme.accent.opaque());
-        assert_eq!(active.edge_color, theme.accent.opaque());
-        assert_eq!(inactive.edge_color, GlassMaterial::regular().edge_color);
-        assert_eq!(active.edge_shadow, 1.0);
-        assert!(active.edge_width >= px(1.0));
-        assert_eq!(active.specular, inactive.specular);
-        assert_eq!((active.bezel, active.fresnel), (PANE_GLOW_REACH, PANE_GLOW));
-        assert!(inactive.bezel < PANE_GLOW_REACH);
+        assert_eq!(
+            GlassMaterial {
+                light_color: inactive.light_color,
+                ..active
+            },
+            inactive
+        );
 
         theme.pane_glow_strength = 2.0;
         let bright = theme.pane_frame(fill, plane, true);
         assert_eq!(
             (bright.specular, bright.fresnel),
-            (inactive.specular * 2.0, PANE_GLOW * 2.0)
+            (inactive.specular * 2.0, inactive.fresnel * 2.0)
         );
 
         theme.pane_glow_strength = 0.0;

@@ -12,7 +12,7 @@ use zz_ui::{
         AgentPaneStatus, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
         agent_jump_to_bottom_button, agent_pane_header, agent_status_pill,
         composer::COMPOSER_OUTER_PADDING,
-        controls::agent_provider_label,
+        controls::agent_pane_title,
         fold_timeline_rows,
         presentation::{card_button, empty_state, error_card, spinner_phase, welcome_state},
         title::agent_thread_title_editor,
@@ -20,7 +20,7 @@ use zz_ui::{
     button::{Button, ButtonVariants as _},
     feedback::alert_actions,
     h_flex,
-    pane::{pane_drag_button, pane_header_icon_button},
+    pane::{PaneDragSource, pane_header_icon_button},
     scroll::Scrollbar,
 };
 
@@ -135,18 +135,24 @@ fn header(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let leading = h_flex()
-        .min_w_0()
-        .gap(px(CHROME_GAP))
-        .child(agent_provider_label(case.provider, cx))
-        .child(agent_thread_title_editor(
+    let leading = agent_pane_title(
+        case.provider,
+        agent_thread_title_editor(
             ("header-title", index),
             case.title,
             case.enabled,
             |_, _| {},
             window,
             cx,
-        ));
+        ),
+        PaneDragSource::new(
+            PaneId(index as u64 + 1),
+            case.title,
+            case.enabled,
+            |_, _, _| {},
+        ),
+        |_, _| {},
+    );
     let trailing = h_flex()
         .gap(px(CHROME_GAP))
         .child(
@@ -166,18 +172,6 @@ fn header(
                 cx,
             )
             .tooltip("Split right"),
-        )
-        .child(pane_drag_button(
-            ("header-drag", index),
-            PaneId(index as u64 + 1),
-            case.title.to_owned(),
-            case.enabled,
-            |_, _, _| {},
-            cx,
-        ))
-        .child(
-            pane_header_icon_button(("header-close", index), IconName::Xmark, case.enabled, cx)
-                .tooltip("Close pane"),
         );
     let status = case.status.map(|status| {
         let restart = case.restart.then(|| {

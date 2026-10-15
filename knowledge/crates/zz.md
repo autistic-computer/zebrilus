@@ -206,10 +206,10 @@ Browser, Terminal, Hosts, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Theme (`theme-mode`, the Style preset strip for `interface-style`, the Accent swatches for `chrome-accent`, the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`, and the Saved themes strip for `interface-theme` with Save and Import), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, system UI font picker, transient UI zoom, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | Theme (Mode tiles for `theme-mode`, the Themes strip for `interface-theme` with Save and Import, the Accent swatches for `chrome-accent`, and the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, system UI font picker, transient UI zoom, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
-| Panes | Layout (`pane-gaps`), Appearance (`pane-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners and edge from the theme's radius and outline |
+| Panes | Layout (`pane-gaps`), Appearance (`pane-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners from the theme's radius and the rim from the theme's glass (a hairline the outline's width without glass) |
 | Multiplexer | Full-file `zz/mux.conf` editor without line numbers, 12px text, Save, and tmux import |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Full-file Ghostty-compatible configuration editor with Save and Import Ghostty |
@@ -425,8 +425,9 @@ built:
 `div()` tree. Flush layouts use draggable 1px split-owned separators; the active pane colors only
 its half of each adjacent segment with a washed foreground accent, including the projected edge at
 nested T-junctions. Gapped layouts draw each pane's frame and fill in glass from
-`Theme::pane_frame`, with no border: the edge is the glass's glint and contour, lit in the accent
-on the active pane, and a hairline stands in where the window cannot sample its backdrop.
+`Theme::pane_frame`, with no border: the edge is the theme glass's own glint, fresnel and contour,
+the glint and fresnel glow painted in the accent on the active pane, and a hairline stands in
+where the window cannot sample its backdrop or the theme has no glass.
 `pane-inactive-opacity` controls the retained strength of inactive content from `0` to `1`, with
 `1` disabling dimming. Native picker, editor, Agent, and waiting surfaces use the inverse as a
 theme-background scrim. Terminal panes apply the factor to glyphs and decorations only. Browser
@@ -668,9 +669,10 @@ imports reload the page.
   arithmetic — `(TITLE_BAR_HEIGHT - 14) / 2` — because the platform layer centres them in a
   container of `glyph + 2y`; move the strip height without moving y and the lights stop sharing its
   centre line. The 35px strip and 10.5px traffic-light inset match the compact Cursor reference;
-  settings and the sidebar toggle keep Small 14px icons with a 0.5px optical drop inside 24px
-  controls, the same `Button::compact_icon` geometry used by sidebar row actions and the Agent and
-  browser panes. The toggle changes chrome mode and opens no menu.
+  settings and the sidebar toggle are `Button::compact_icon` buttons, like sidebar row actions and
+  the Agent and browser panes, with the 0.5px optical drop, sized up to 28px buttons with 15px
+  glyphs (from 26 and 14; `WORKSPACE_CHROME_BUTTON_SIZE` in `zz_ui::navigation`). The toggle
+  changes chrome mode and opens no menu.
   `status_bar.rs` renders native session, window, Agent, host, update, and clock items from
   `zz_client::StatusBarModel` and app settings. The bar appears only in the title bar when the
   sidebar is retracted; an expanded sidebar has no status bar. Window controls select by stable

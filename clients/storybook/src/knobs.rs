@@ -608,17 +608,10 @@ mod tests {
     use super::*;
 
     fn themes() -> Vec<(String, InterfaceTheme)> {
-        let built_in = interface_theme::builtin_themes()
+        interface_theme::builtin_themes()
             .iter()
-            .map(|(id, theme)| ((*id).to_owned(), theme.clone()));
-        let dressed = interface_theme::material_presets()
-            .iter()
-            .map(|(id, preset)| {
-                let mut theme = interface_theme::default_theme().clone();
-                preset.apply_to(&mut theme);
-                (format!("preset {id}"), theme)
-            });
-        built_in.chain(dressed).collect()
+            .map(|(id, theme)| ((*id).to_owned(), theme.clone()))
+            .collect()
     }
 
     #[test]

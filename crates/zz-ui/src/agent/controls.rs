@@ -11,7 +11,7 @@ use crate::{
     button::{Button, ButtonVariants},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
-    pane::agent_provider_icon,
+    pane::{PaneDragSource, PaneTitle, agent_provider_icon},
     picker::{muted_on, row_surface},
     popover::Popover,
     roles,
@@ -678,22 +678,27 @@ pub fn agent_model_picker(
         .into_any_element()
 }
 
-pub fn agent_provider_label(provider: zz_protocol::AgentProvider, cx: &App) -> impl IntoElement {
-    h_flex()
-        .flex_none()
-        .h(px(24.0))
-        .gap(px(6.0))
-        .pl_2()
-        .text_size(crate::rems_from_px(12.0))
-        .line_height(px(16.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(
-            Icon::new(agent_provider_icon(provider))
-                .medium()
-                .relative()
-                .top(crate::icon::cap_center_drop(px(12.0), px(14.0), cx)),
-        )
-        .child(provider.label())
+/// The agent pane's title: the provider's icon and name, then `title`, the
+/// session title or its editor. Dragged, it moves the pane; its X closes it.
+pub fn agent_pane_title(
+    provider: zz_protocol::AgentProvider,
+    title: impl IntoElement,
+    drag: PaneDragSource,
+    on_close: impl Fn(&mut Window, &mut App) + 'static,
+) -> PaneTitle {
+    PaneTitle::new(
+        "agent-pane-title",
+        agent_provider_icon(provider),
+        h_flex()
+            .min_w_0()
+            .gap(px(2.0))
+            .text_size(crate::rems_from_px(12.0))
+            .line_height(px(16.0))
+            .child(div().flex_none().child(provider.label()))
+            .child(title),
+        drag,
+    )
+    .on_close(on_close)
 }
 
 pub fn agent_thread_title(title: &str) -> String {

@@ -488,7 +488,7 @@ impl Controls {
                 SettingsStack::titled("Interface")
                     .child(
                         SettingEntry::new(
-                            "Theme",
+                            "Mode",
                             "Follow the system light/dark setting, or pin one.",
                         )
                         .child(tiles),

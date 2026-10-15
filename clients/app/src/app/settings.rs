@@ -16,7 +16,7 @@ use zz_ui::{
         SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack, StackPosition,
         appearance::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, appearance_page,
-            appearance_page_items, contrast_slider, corner_radius_slider, picker_tile, style_strip,
+            appearance_page_items, contrast_slider, corner_radius_slider, picker_tile,
             theme_preview, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
         },
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
@@ -649,7 +649,6 @@ impl AppShell {
                                 | AppearancePageItem::Group { .. }
                                 | AppearancePageItem::Advanced { .. }
                                 | AppearancePageItem::ThemeMode
-                                | AppearancePageItem::Style
                                 | AppearancePageItem::Accent
                                 | AppearancePageItem::TintHue
                                 | AppearancePageItem::Tint
@@ -933,7 +932,7 @@ impl AppShell {
                     }),
                 );
                 with_control(
-                    SettingEntry::new("Theme", "Follow the system light/dark setting, or pin one.")
+                    SettingEntry::new("Mode", "Follow the system light/dark setting, or pin one.")
                         .title_actions(reset_button(
                             "settings-theme-reset",
                             self.preferences.theme_mode() != Preferences::default().theme_mode(),
@@ -1033,41 +1032,6 @@ impl AppShell {
                         this.preferences.apply(&this.connection, window, cx);
                     })),
             ),
-            AppearancePageItem::Style => {
-                let (title, description) = item.text().unwrap_or_default();
-                let picks = theme_picks(&self.preferences);
-                let custom = picks.custom();
-                let view = cx.entity().downgrade();
-                let strip = style_strip(
-                    &picks,
-                    cx.theme().mode,
-                    move |id, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            let overrides = &mut this.preferences.overrides;
-                            if custom || id != interface_theme::DEFAULT_THEME {
-                                overrides.pick_style(id);
-                            } else {
-                                overrides.style = None;
-                                overrides.radius = None;
-                            }
-                            this.theme_changed(window, cx);
-                        });
-                    },
-                    cx,
-                );
-                SettingEntry::new(title, description)
-                    .title_actions(reset_button(
-                        "settings-style-reset",
-                        self.preferences.overrides.style.is_some(),
-                        |this, window, cx| {
-                            this.preferences.overrides.style = None;
-                            this.settings_controls
-                                .sync_theme_inputs(&this.preferences, window, cx);
-                        },
-                        cx,
-                    ))
-                    .child(strip)
-            }
             AppearancePageItem::Accent => {
                 let (title, description) = item.text().unwrap_or_default();
                 let custom =

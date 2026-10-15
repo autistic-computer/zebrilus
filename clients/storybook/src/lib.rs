@@ -127,25 +127,6 @@ pub fn theme_file_json() -> String {
     knobs().interface_theme().to_json()
 }
 
-pub fn material_presets_json() -> String {
-    json!(
-        zz_ui::interface_theme::material_presets()
-            .iter()
-            .map(|(id, preset)| {
-                let mut values = knobs::material_knobs(&preset.materials);
-                values.remove("font");
-                json!({
-                    "id": id,
-                    "name": preset.name,
-                    "about": preset.about,
-                    "knobs": values,
-                })
-            })
-            .collect::<Vec<_>>()
-    )
-    .to_string()
-}
-
 /// zz's roles by kind, for the creator's Roles step: each kind, then the
 /// roles in it with how deep in its groups they sit, each role's patch from
 /// the theme, what it inherits and from where, and the style it resolves to.
@@ -411,11 +392,6 @@ mod web {
     #[wasm_bindgen]
     pub fn interface_themes() -> String {
         super::interface_themes_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn material_presets() -> String {
-        super::material_presets_json()
     }
 
     #[wasm_bindgen]

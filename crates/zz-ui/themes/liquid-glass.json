@@ -1,0 +1,66 @@
+{
+  "name": "Liquid Glass",
+  "materials": {
+    "radius": 25,
+    "outline": 0,
+    "row-inset": 5,
+    "primary": "foreground",
+    "glass": {
+      "blur": 40,
+      "bezel": 3,
+      "refraction": 38,
+      "dispersion": 0.04,
+      "tint": "#ffffff7a",
+      "saturation": 1.8,
+      "brightness": 0.04,
+      "contrast": 1,
+      "specular": 0.3,
+      "glint_width": 0.6,
+      "light_angle": -2.3561945,
+      "light_color": "#ffffff",
+      "fresnel": 0.08,
+      "edge_shadow": 0.95,
+      "edge_width": 0.9,
+      "edge_color": "#000000",
+      "noise": 0,
+      "glow": 0,
+      "glow_radius": 90,
+      "glow_center": { "x": 0.5, "y": 0.5 },
+      "merge": 20,
+      "opacity": 1
+    },
+    "contact": { "y": 0, "blur": 0, "spread": 0, "strength": 0 },
+    "float": { "y": 0, "blur": 0, "spread": -48, "strength": 0 }
+  },
+  "roles": {
+    "agent.attachment": { "fill": "glass" },
+    "agent.composer": { "fill": "glass", "outline": false, "hover": "none" },
+    "agent.jump": { "fill": "glass" },
+    "badge": { "fill": "none" },
+    "browser.address": { "fill": "glass" },
+    "browser.tab": { "selected": "glass" },
+    "pane.chip": { "fill": "solid" },
+    "pane.drop-zone": { "fill": "glass" },
+    "pane.header.button": { "hover": "lift", "selected": "lift" },
+    "sidebar.entry": { "selected": "glass" },
+    "titlebar.status-chip": { "hover": "lift", "selected": "lift" },
+    "titlebar.window-tab": { "selected": "glass" },
+    "tooltip": { "fill": "solid" }
+  },
+  "light": {
+    "background": "#ffffff",
+    "foreground": "#262626",
+    "accent": "#007aff",
+    "success": "#029437",
+    "warning": "#c66702",
+    "danger": "#f62d34"
+  },
+  "dark": {
+    "background": "#1e1e1e",
+    "foreground": "#dddddd",
+    "accent": "#007aff",
+    "success": "#30d158",
+    "warning": "#ff9230",
+    "danger": "#ff4245"
+  }
+}
