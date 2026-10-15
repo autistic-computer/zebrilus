@@ -1,6 +1,8 @@
 use super::AGENT_CONTENT_MAX_WIDTH;
 use crate::input::{Input, InputState, field_chrome, field_paint};
-use crate::{ActiveTheme as _, CHROME_GAP, Ground, PaintState, h_flex, roles, v_flex};
+use crate::{
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Ground, PaintState, h_flex, roles, v_flex,
+};
 use zz_gpui::{
     AnyElement, App, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
     prelude::*, px,
@@ -41,6 +43,11 @@ impl RenderOnce for AgentComposer {
         } else {
             PaintState::Rest
         };
+        let layer = cx.theme().layer(roles::AGENT_COMPOSER, state);
+        let backing = layer
+            .glass
+            .is_none()
+            .then(|| cx.theme().background.opaque());
         v_flex()
             .flex_none()
             .w_full()
@@ -58,59 +65,65 @@ impl RenderOnce for AgentComposer {
                             .gap(px(COMPOSER_SECTION_GAP))
                             .children(self.prefix)
                             .child(
-                                field_chrome(
-                                    v_flex().w_full().min_h(px(COMPOSER_MIN_HEIGHT)),
-                                    roles::AGENT_COMPOSER,
-                                    state,
-                                    true,
-                                    true,
-                                    cx,
-                                )
-                                .children(self.attachments)
-                                .child(
-                                    Input::new(&self.input)
-                                        .w_full()
-                                        .min_w_0()
-                                        .pt(px(COMPOSER_INPUT_PADDING_TOP))
-                                        .px(px(COMPOSER_INPUT_PADDING_X))
-                                        .text_size(crate::rems_from_px(13.0))
-                                        .appearance(false)
-                                        .bordered(false)
-                                        .focus_bordered(false),
-                                )
-                                .when_some(self.command_hint, |this, hint| {
-                                    this.child(
-                                        div()
-                                            .px_3()
-                                            .pb_1()
-                                            .text_size(crate::rems_from_px(10.0))
-                                            .text_color(paint.muted_at(state))
-                                            .child(hint),
-                                    )
-                                })
-                                .child(
-                                    h_flex()
-                                        .w_full()
-                                        .min_h(px(40.0))
-                                        .items_end()
-                                        .justify_between()
-                                        .gap(px(CHROME_GAP))
-                                        .p(px(CHROME_GAP))
-                                        .child(
-                                            h_flex()
-                                                .min_w_0()
-                                                .flex_wrap()
-                                                .gap(px(CHROME_GAP))
-                                                .children(self.settings),
+                                div()
+                                    .w_full()
+                                    .rounded(layer.radius)
+                                    .when_some(backing, Styled::bg)
+                                    .child(
+                                        field_chrome(
+                                            v_flex().w_full().min_h(px(COMPOSER_MIN_HEIGHT)),
+                                            roles::AGENT_COMPOSER,
+                                            state,
+                                            true,
+                                            true,
+                                            cx,
                                         )
+                                        .children(self.attachments)
+                                        .child(
+                                            Input::new(&self.input)
+                                                .w_full()
+                                                .min_w_0()
+                                                .pt(px(COMPOSER_INPUT_PADDING_TOP))
+                                                .px(px(COMPOSER_INPUT_PADDING_X))
+                                                .text_size(crate::rems_from_px(13.0))
+                                                .appearance(false)
+                                                .bordered(false)
+                                                .focus_bordered(false),
+                                        )
+                                        .when_some(self.command_hint, |this, hint| {
+                                            this.child(
+                                                div()
+                                                    .px_3()
+                                                    .pb_1()
+                                                    .text_size(crate::rems_from_px(10.0))
+                                                    .text_color(paint.muted_at(state))
+                                                    .child(hint),
+                                            )
+                                        })
                                         .child(
                                             h_flex()
-                                                .flex_none()
+                                                .w_full()
+                                                .min_h(px(40.0))
+                                                .items_end()
+                                                .justify_between()
                                                 .gap(px(CHROME_GAP))
-                                                .children(self.usage)
-                                                .child(self.action),
+                                                .p(px(CHROME_GAP))
+                                                .child(
+                                                    h_flex()
+                                                        .min_w_0()
+                                                        .flex_wrap()
+                                                        .gap(px(CHROME_GAP))
+                                                        .children(self.settings),
+                                                )
+                                                .child(
+                                                    h_flex()
+                                                        .flex_none()
+                                                        .gap(px(CHROME_GAP))
+                                                        .children(self.usage)
+                                                        .child(self.action),
+                                                ),
                                         ),
-                                ),
+                                    ),
                             ),
                     ),
             )
