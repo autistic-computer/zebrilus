@@ -924,6 +924,7 @@ pub const Page = struct {
         } else {
             // We have managed memory, so we have to do a slower copy to
             // get all of that right.
+            var last_hyperlink: ?struct { src: hyperlink.Id, dst: hyperlink.Id } = null;
             for (cells, other_cells) |*dst_cell, *src_cell| {
                 dst_cell.* = src_cell.*;
 
@@ -964,8 +965,14 @@ pub const Page = struct {
                         return error.HyperlinkMapOutOfMemory;
                     }
 
-                    const other_link = other.hyperlink_set.get(other.memory, id);
                     const dst_id = dst_id: {
+                        if (last_hyperlink) |last| {
+                            if (last.src == id) {
+                                self.hyperlink_set.use(self.memory, last.dst);
+                                break :dst_id last.dst;
+                            }
+                        }
+                        const other_link = other.hyperlink_set.get(other.memory, id);
                         // First check if the link already exists in our page,
                         // and increment its refcount if so, since we're about
                         // to use it.
@@ -1009,6 +1016,7 @@ pub const Page = struct {
                     };
 
                     try self.setHyperlink(dst_row, dst_cell, dst_id);
+                    last_hyperlink = .{ .src = id, .dst = dst_id };
                 }
                 if (src_cell.style_id != stylepkg.default_id) style: {
                     dst_row.styled = true;
@@ -3340,6 +3348,107 @@ test "Page cloneFrom hyperlinks exact capacity" {
 
     // We should have the same number of hyperlinks
     try testing.expectEqual(page2.hyperlinkCount(), page.hyperlinkCount());
+}
+
+test "Page cloneRowFrom hyperlink runs remap ids and release references" {
+    var src = try Page.init(.{ .cols = 10, .rows = 1, .hyperlink_bytes = 32 * @sizeOf(hyperlink.Set.Item) });
+    defer src.deinit();
+    var dst = try Page.init(src.capacity);
+    defer dst.deinit();
+
+    const a = try src.insertHyperlink(.{ .id = .{ .explicit = "a" }, .uri = "https://example.com/a" });
+    const b = try src.insertHyperlink(.{ .id = .{ .implicit = 1 }, .uri = "https://example.com/b" });
+    const unrelated = try dst.insertHyperlink(.{ .id = .{ .implicit = 9 }, .uri = "https://other.example" });
+    const existing = try dst.insertHyperlink(.{ .id = .{ .explicit = "a" }, .uri = "https://example.com/a" });
+    try testing.expect(a != existing);
+    const ids = [_]?hyperlink.Id{ a, a, null, a, b, b, a, null, b, b };
+    for (ids, 0..) |maybe_id, x| {
+        const rac = src.getRowAndCell(x, 0);
+        rac.cell.* = .{ .content_tag = .codepoint, .content = .{ .codepoint = .{ .data = 'a' } } };
+        if (maybe_id) |id| {
+            src.hyperlink_set.use(src.memory, id);
+            try src.setHyperlink(rac.row, rac.cell, id);
+        }
+    }
+
+    for (0..2) |_| {
+        try dst.cloneRowFrom(&src, dst.getRow(0), src.getRow(0));
+        try testing.expectEqual(8, dst.hyperlinkCount());
+        try testing.expectEqual(5, dst.hyperlink_set.refCount(dst.memory, existing));
+        try testing.expectEqual(1, dst.hyperlink_set.refCount(dst.memory, unrelated));
+        for (ids, 0..) |maybe_id, x| {
+            const actual = dst.lookupHyperlink(dst.getRowAndCell(x, 0).cell);
+            if (maybe_id) |id| {
+                const mapped = actual.?;
+                const expected = src.hyperlink_set.get(src.memory, id);
+                const link = dst.hyperlink_set.get(dst.memory, mapped);
+                try testing.expectEqualStrings(expected.uri.slice(src.memory), link.uri.slice(dst.memory));
+                if (id == a) {
+                    try testing.expectEqual(existing, mapped);
+                } else {
+                    try testing.expectEqual(4, dst.hyperlink_set.refCount(dst.memory, mapped));
+                }
+            } else {
+                try testing.expectEqual(null, actual);
+            }
+        }
+    }
+    dst.clearCells(dst.getRow(0), 0, dst.size.cols);
+    try testing.expectEqual(0, dst.hyperlinkCount());
+    try testing.expectEqual(1, dst.hyperlink_set.refCount(dst.memory, existing));
+    try testing.expectEqual(5, src.hyperlink_set.refCount(src.memory, a));
+    try testing.expectEqual(5, src.hyperlink_set.refCount(src.memory, b));
+}
+
+test "Page cloneRowFrom repeated hyperlink respects map capacity after partial failure" {
+    var src = try Page.init(.{ .cols = 128, .rows = 1, .hyperlink_bytes = 32 * @sizeOf(hyperlink.Set.Item) });
+    defer src.deinit();
+    var dst = try Page.init(.{
+        .cols = 128,
+        .rows = 1,
+        .hyperlink_bytes = 4 * @sizeOf(hyperlink.Set.Item),
+    });
+    defer dst.deinit();
+    const id = try src.insertHyperlink(.{ .id = .{ .implicit = 1 }, .uri = "https://example.com" });
+    for (0..src.size.cols) |x| {
+        const rac = src.getRowAndCell(x, 0);
+        src.hyperlink_set.use(src.memory, id);
+        try src.setHyperlink(rac.row, rac.cell, id);
+    }
+    const capacity = dst.hyperlinkCapacity();
+    try testing.expect(capacity < src.size.cols);
+    for (0..2) |_| {
+        try testing.expectError(error.HyperlinkMapOutOfMemory, dst.cloneRowFrom(&src, dst.getRow(0), src.getRow(0)));
+        try testing.expectEqual(capacity, dst.hyperlinkCount());
+        const mapped = dst.lookupHyperlink(dst.getRowAndCell(0, 0).cell).?;
+        try testing.expectEqual(capacity, dst.hyperlink_set.refCount(dst.memory, mapped));
+        for (0..src.size.cols) |x| {
+            try testing.expectEqual(x < capacity, dst.getRowAndCell(x, 0).cell.hyperlink);
+        }
+    }
+    dst.clearCells(dst.getRow(0), 0, dst.size.cols);
+    try testing.expectEqual(0, dst.hyperlinkCount());
+}
+
+test "Page cloneRowFrom hyperlink memo preserves references on string failure" {
+    var src = try Page.init(.{ .cols = 3, .rows = 1, .string_bytes = 8192 });
+    defer src.deinit();
+    var dst = try Page.init(.{ .cols = 3, .rows = 1, .string_bytes = 128 });
+    defer dst.deinit();
+    const short = try src.insertHyperlink(.{ .id = .{ .implicit = 1 }, .uri = "https://a" });
+    const long = try src.insertHyperlink(.{ .id = .{ .implicit = 2 }, .uri = "x" ** 4096 });
+    const existing = try dst.insertHyperlink(.{ .id = .{ .implicit = 1 }, .uri = "https://a" });
+    for ([_]hyperlink.Id{ short, short, long }, 0..) |id, x| {
+        const rac = src.getRowAndCell(x, 0);
+        src.hyperlink_set.use(src.memory, id);
+        try src.setHyperlink(rac.row, rac.cell, id);
+    }
+    try testing.expectError(error.StringAllocOutOfMemory, dst.cloneRowFrom(&src, dst.getRow(0), src.getRow(0)));
+    try testing.expectEqual(2, dst.hyperlinkCount());
+    try testing.expectEqual(3, dst.hyperlink_set.refCount(dst.memory, existing));
+    try testing.expect(!dst.getRowAndCell(2, 0).cell.hyperlink);
+    dst.clearCells(dst.getRow(0), 0, dst.size.cols);
+    try testing.expectEqual(1, dst.hyperlink_set.refCount(dst.memory, existing));
 }
 
 test "Page cloneFrom graphemes" {
