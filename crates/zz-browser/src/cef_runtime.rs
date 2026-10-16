@@ -3056,12 +3056,6 @@ impl AcceleratedPoolLayout {
                         plane.fd, plane.stride
                     )));
                 }
-                if plane.offset > u64::from(u32::MAX) {
-                    return Err(AcceleratedFrameError::InvalidMetadata(format!(
-                        "DMA-BUF plane offset {} exceeds the importer limit",
-                        plane.offset
-                    )));
-                }
                 Ok(())
             })?;
         }
@@ -3285,6 +3279,10 @@ impl AcceleratedFrameProducer {
         }
 
         let import_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        #[cfg(target_os = "linux")]
+        let imported = crate::linux_dmabuf::import_texture(info, &gpu.device)
+            .map_err(AcceleratedFrameError::Import);
+        #[cfg(not(target_os = "linux"))]
         let imported = cef::osr_texture_import::SharedTextureHandle::new(info)
             .import_texture(&gpu.device)
             .map_err(AcceleratedFrameError::Import);
