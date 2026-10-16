@@ -47,8 +47,9 @@ pub use agent::stream::{
 };
 pub use daemon::path_listing::path_walk_enters;
 pub use daemon::{
-    CommandStdinSink, Daemon, agent_send_reads_stdin, append_stdin_payload, command_stdin_sink,
-    exec_resume_kind, load_buffer_reads_stdin, send_text_reads_stdin,
+    CommandStdinSink, Daemon, WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, WORKSPACE_STUB_SKILL,
+    agent_send_reads_stdin, append_stdin_payload, command_stdin_sink, exec_resume_kind,
+    load_buffer_reads_stdin, send_text_reads_stdin, workspace_context,
 };
 
 fn tmux_shim_environment(

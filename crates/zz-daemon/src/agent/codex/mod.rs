@@ -135,6 +135,7 @@ pub(crate) async fn run_codex_runtime(
         sides: HashMap::new(),
         tasks: Vec::new(),
         loading: None,
+        instructions: None,
     };
     let commands = channels.commands;
     let controls = channels.controls;
@@ -175,6 +176,7 @@ struct Starting {
 
 enum Outgoing {
     Initialize,
+    Instructions,
     Models,
     Thread {
         start: Start,
@@ -411,6 +413,7 @@ struct Runtime {
     sides: HashMap<String, Side>,
     tasks: Vec<AgentTaskWire>,
     loading: Option<Loading>,
+    instructions: Option<String>,
 }
 
 struct Loading {
@@ -737,6 +740,9 @@ impl Runtime {
         for (name, value) in self.workspace.entries() {
             command.env(name, value);
         }
+        if self.workspace.pane.is_some() {
+            command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
+        }
         for (name, value) in &self.command.env {
             command.env(name, value);
         }
@@ -782,12 +788,34 @@ impl Runtime {
                 &json!({ "threadId": thread, "cwd": cwd_text }),
                 Outgoing::Thread { start, cwd },
             ),
-            (_, None) => self.request(
-                "thread/start",
-                &json!({ "cwd": cwd_text }),
-                Outgoing::Thread { start, cwd },
-            ),
+            (_, None) => {
+                let params = self.start_params(&cwd_text);
+                self.request("thread/start", &params, Outgoing::Thread { start, cwd });
+            }
         }
+    }
+
+    fn start_params(&self, cwd: &str) -> Value {
+        let mut params = json!({ "cwd": cwd });
+        if let Some(instructions) = &self.instructions {
+            params["developerInstructions"] = Value::from(instructions.as_str());
+        }
+        params
+    }
+
+    fn read_instructions(&mut self) {
+        let Some(pane) = self.workspace.pane.as_deref() else {
+            self.initialized = true;
+            self.open_thread();
+            return;
+        };
+        let session = self.workspace.session.as_deref().unwrap_or_default();
+        self.instructions = Some(crate::workspace_context(pane, session));
+        let params = self.starting.as_ref().map_or_else(
+            || json!({}),
+            |starting| json!({ "cwd": starting.cwd.display().to_string() }),
+        );
+        self.request("config/read", &params, Outgoing::Instructions);
     }
 
     async fn fail_start(&mut self, start: Start, message: String) -> Result<(), String> {
@@ -1252,9 +1280,29 @@ impl Runtime {
     ) -> Result<(), String> {
         match (outgoing, result) {
             (Outgoing::Initialize, Ok(_)) => {
-                self.initialized = true;
                 self.send(&json!({ "method": "initialized" }));
                 self.request("model/list", &json!({}), Outgoing::Models);
+                self.read_instructions();
+                Ok(())
+            }
+            (Outgoing::Instructions, result) => {
+                match result {
+                    Ok(response) => {
+                        if let (Some(own), Some(context)) = (
+                            response["config"]["developer_instructions"]
+                                .as_str()
+                                .filter(|own| !own.trim().is_empty()),
+                            self.instructions.as_mut(),
+                        ) {
+                            *context = format!("{own}\n\n{context}");
+                        }
+                    }
+                    Err(error) => {
+                        log::warn!(target: "zz::agent", "could not read the Codex config, so zz sends no instructions: {error}");
+                        self.instructions = None;
+                    }
+                }
+                self.initialized = true;
                 self.open_thread();
                 Ok(())
             }
@@ -1296,11 +1344,8 @@ impl Runtime {
                     && starting.resume.take().is_some()
                 {
                     log::warn!(target: "zz::agent", "could not resume the Codex thread: {error}");
-                    self.request(
-                        "thread/start",
-                        &json!({ "cwd": cwd.display().to_string() }),
-                        Outgoing::Thread { start, cwd },
-                    );
+                    let params = self.start_params(&cwd.display().to_string());
+                    self.request("thread/start", &params, Outgoing::Thread { start, cwd });
                     return Ok(());
                 }
                 self.fail_start(start, format!("Codex could not open the thread: {error}"))
@@ -2185,8 +2230,10 @@ mod tests {
     const FAKE_CODEX: &str = r#"#!/bin/sh
 [ "$1" = app-server ] || exit 2
 while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$0.log"
   id=$(printf '%s' "$line" | sed -n 's/^{\("method":"[^"]*",\)\{0,1\}"id":\([0-9][0-9]*\),.*/\2/p')
   case "$line" in
+    *'"method":"config/read"'*) printf '{"id":%s,"result":{"config":{"developer_instructions":"be terse"},"origins":{}}}\n' "$id" ;;
     *'"method":"thread/resume"'*'"threadId":"t2"'*) printf '{"id":%s,"result":{"thread":{"id":"t2"}}}\n' "$id" ;;
     *'"method":"thread/read"'*'"threadId":"t2"'*)
       printf '{"id":%s,"result":{"thread":{"id":"t2","turns":[{"id":"u0","items":[{"type":"userMessage","id":"m0","clientId":null,"content":[{"type":"text","text":"one"}]}]},{"id":"u1","items":[{"type":"userMessage","id":"m1","clientId":"zz-prompt-2-x","content":[{"type":"text","text":"two"}]}]}]}}}\n' "$id" ;;
@@ -2221,6 +2268,18 @@ done
         async_channel::Receiver<AgentStreamPayload>,
         impl std::future::Future<Output = Result<(), String>>,
     ) {
+        fake_codex_in(directory, AgentWorkspaceEnvironment::default())
+    }
+
+    #[cfg(unix)]
+    fn fake_codex_in(
+        directory: &Path,
+        workspace: AgentWorkspaceEnvironment,
+    ) -> (
+        async_channel::Sender<RuntimeCommand>,
+        async_channel::Receiver<AgentStreamPayload>,
+        impl std::future::Future<Output = Result<(), String>>,
+    ) {
         use std::os::unix::fs::PermissionsExt as _;
 
         let program = directory.join("codex");
@@ -2233,7 +2292,7 @@ done
         let (events, event_rx) = async_channel::unbounded();
         let runtime = run_codex_runtime(
             command,
-            AgentWorkspaceEnvironment::default(),
+            workspace,
             AgentProvider::Codex,
             RuntimeChannels {
                 auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
@@ -2263,6 +2322,55 @@ done
                 return payload;
             }
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_thread_carries_the_workspace_context_after_the_users_instructions() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let workspace = AgentWorkspaceEnvironment {
+            pane: Some("%3".to_owned()),
+            session: Some("work".to_owned()),
+            ..AgentWorkspaceEnvironment::default()
+        };
+        let (commands, events, runtime) = fake_codex_in(directory.path(), workspace);
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        let log = std::fs::read_to_string(directory.path().join("codex.log")).expect("log");
+        let requests = log
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .collect::<Vec<_>>();
+        let position = |method: &str| {
+            requests
+                .iter()
+                .position(|request| request["method"] == method)
+                .unwrap_or_else(|| panic!("no {method} in {log}"))
+        };
+        assert!(position("config/read") < position("thread/start"));
+        let instructions = requests[position("thread/start")]["params"]["developerInstructions"]
+            .as_str()
+            .expect("developer instructions")
+            .to_owned();
+        assert!(instructions.starts_with("be terse\n\n"), "{instructions}");
+        assert!(instructions.contains("ZZ_PANE=%3\n"), "{instructions}");
     }
 
     #[cfg(unix)]

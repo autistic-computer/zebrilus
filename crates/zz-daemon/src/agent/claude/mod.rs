@@ -63,6 +63,12 @@ const BASE_ARGS: [&str; 11] = [
     "stdio",
     "--await-initialize",
 ];
+const SYSTEM_PROMPT_FLAGS: [&str; 4] = [
+    "--system-prompt",
+    "--system-prompt-file",
+    "--append-system-prompt",
+    "--append-system-prompt-file",
+];
 const MODES: [(&str, &str, &str); 5] = [
     ("default", "Default", "Ask before edits and commands"),
     ("acceptEdits", "Accept edits", "Edit files without asking"),
@@ -119,6 +125,17 @@ impl ClaudeCommand {
             }
         }
         None
+    }
+
+    fn sets_system_prompt(&self) -> bool {
+        self.args.iter().any(|arg| {
+            SYSTEM_PROMPT_FLAGS.iter().any(|flag| {
+                arg == flag
+                    || arg
+                        .strip_prefix(flag)
+                        .is_some_and(|rest| rest.starts_with('='))
+            })
+        })
     }
 
     fn mode_flag(&self) -> Option<String> {
@@ -808,6 +825,16 @@ impl Runtime {
         command.args(&self.command.args).current_dir(cwd);
         for name in crate::PARENT_CLAUDE_SESSION_ENVIRONMENT {
             command.env_remove(name);
+        }
+        if !self.command.sets_system_prompt()
+            && let Some(pane) = self.workspace.pane.as_deref()
+        {
+            let session = self.workspace.session.as_deref().unwrap_or_default();
+            command.args([
+                "--append-system-prompt",
+                &crate::workspace_context(pane, session),
+            ]);
+            command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
         }
         if let Some(path) = agent_path() {
             command.env("PATH", path);
@@ -1940,6 +1967,20 @@ mod tests {
             None
         );
         assert_eq!(ClaudeCommand::parse("claude-agent-acp --stdio"), None);
+    }
+
+    #[test]
+    fn a_user_system_prompt_keeps_the_workspace_context_out() {
+        let sets = |command: &str| {
+            ClaudeCommand::parse(command)
+                .expect("native")
+                .sets_system_prompt()
+        };
+        assert!(!sets("claude --model opus"));
+        assert!(!sets("claude --system-prompts-are-not-a-flag"));
+        assert!(sets("claude --append-system-prompt be-brief"));
+        assert!(sets("claude --system-prompt=terse"));
+        assert!(sets("claude --append-system-prompt-file /tmp/p.md"));
     }
 
     #[test]

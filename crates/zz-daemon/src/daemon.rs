@@ -52176,9 +52176,14 @@ fn workspace_tools_catalog(args: &[RawText]) -> Result<Execution, ServerError> {
                 effects: Vec::new(),
             });
         }
+        [flag] if WORKSPACE_TOOLS_LOCAL_FLAGS.contains(&flag.as_str()) => {
+            return Err(ServerError::CommandParse(format!(
+                "tools {flag} runs in the local zz CLI"
+            )));
+        }
         _ => {
             return Err(ServerError::CommandParse(
-                "usage: tools [agent|terminal|browser|advanced | --skill]".to_owned(),
+                "usage: tools [agent|terminal|browser|advanced | --skill | --context | --install-hooks | --remove-hooks]".to_owned(),
             ));
         }
     };
@@ -52198,6 +52203,45 @@ description: Drive the surrounding zz workspace from inside a zz Agent pane usin
 
 ";
 
+pub const WORKSPACE_STUB_SKILL: &str = r#"---
+name: zz-workspace
+description: Drive the surrounding zz workspace (panes, windows, terminal output, agent and browser panes) with the `zz` CLI. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, or a browser page.
+metadata:
+  zz-stub: "1"
+---
+
+Run `zz tools --skill` and follow the guide it prints. The guide comes from the installed zz, so it describes the commands this version has.
+"#;
+
+const WORKSPACE_CONTEXT: &str = r#"You're running in a zz pane. zz is a tmux-compatible multiplexer: the `zz` CLI (also reachable as `tmux`) is on PATH and already targets this workspace.
+
+```text
+ZZ_SESSION={session}
+ZZ_PANE={pane}
+```
+
+`ZZ_PANE` is your own pane and `ZZ_SESSION` your session; both are set in your shell. The user may be looking at a different pane. Pick the target from the request:
+
+- "Here", "beside you", or no place named: your own pane, `-t "$ZZ_PANE"`.
+- "The pane I'm looking at" or "the focused pane": the session's active pane, `zz display-message -p -t "$ZZ_SESSION" '#{pane_id}'`.
+- A pane or window by name: find it with `zz list-panes -s -t "$ZZ_SESSION" -F '#{pane_id} #{window_name} #{pane_current_command}'`. An explicit target wins.
+
+Target panes by id (`-t %N`), never `session:%N`. Keep the ids that creating commands print (`-P -F '#{pane_id}'`), and pass `-d` so you don't take focus from the user. If a creating command times out, list panes before retrying.
+
+Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output and exits with its status); read a pane with `zz capture-pane -p -J -t %N -S -`. Run `zz tools --skill` for the full guide.
+"#;
+
+pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
+
+const WORKSPACE_TOOLS_LOCAL_FLAGS: [&str; 3] = ["--context", "--install-hooks", "--remove-hooks"];
+
+#[must_use]
+pub fn workspace_context(pane: &str, session: &str) -> String {
+    WORKSPACE_CONTEXT
+        .replace("{session}", session)
+        .replace("{pane}", pane)
+}
+
 macro_rules! workspace_tools_sections {
     ($($name:ident = $text:literal;)+) => {
         $(const $name: &str = $text;)+
@@ -52213,6 +52257,10 @@ for the full catalog or `zz tools agent` for agent verbs. Run `zz tools --skill`
 for the agent guide with skill frontmatter. Regenerate it with `just tools skill`.
 Run `zz tools terminal` for terminal verbs, `zz tools browser` for browser verbs,
 and `zz tools advanced` for state subscriptions and terminal-agent integration.
+`zz tools --context` prints the short startup context for the calling pane.
+Agent panes get it without a hook; run `zz tools --install-hooks` once so
+Claude Code and Codex started by hand in a terminal pane get it too, and
+`zz tools --remove-hooks` to take the hook and stub skill out again.
 
 ## Environment
 
@@ -83696,9 +83744,14 @@ set-option -g @alias-mixed-next yes
     #[test]
     fn tools_catalog_accepts_sections_and_skill_flag() {
         let spec = zz_protocol::catalog_command_spec("tools").expect("tools spec");
-        assert_eq!(spec.options.len(), 1);
-        assert_eq!(spec.options[0].name, "--skill");
-        assert!(spec.options[0].value.is_none());
+        assert_eq!(
+            spec.options
+                .iter()
+                .map(|option| option.name)
+                .collect::<Vec<_>>(),
+            ["--skill", "--context", "--install-hooks", "--remove-hooks"]
+        );
+        assert!(spec.options.iter().all(|option| option.value.is_none()));
         assert_eq!(spec.positional_maximum(), Some(1));
         assert_eq!(spec.positional_minimum(), 0);
         for args in [
@@ -83715,6 +83768,28 @@ set-option -g @alias-mixed-next yes
             let args = args.into_iter().map(RawText::from).collect::<Vec<_>>();
             assert!(workspace_tools_catalog(&args).is_err(), "accepted {args:?}");
         }
+    }
+
+    #[test]
+    fn tools_local_flags_are_refused_by_the_daemon() {
+        for flag in WORKSPACE_TOOLS_LOCAL_FLAGS {
+            let error = workspace_tools_catalog(&[RawText::from(flag)]).expect_err(flag);
+            assert!(
+                error.to_string().contains("local zz CLI"),
+                "{flag}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn workspace_context_names_the_pane_and_session() {
+        let text = workspace_context("%4", "work");
+        assert!(text.contains("ZZ_SESSION=work\nZZ_PANE=%4\n"));
+        assert!(text.contains("'#{pane_id}'"));
+        assert!(!text.contains("{pane}") && !text.contains("{session}"));
+        assert!(text.len() < 1600, "context grew to {} bytes", text.len());
+        assert!(WORKSPACE_STUB_SKILL.contains("zz-stub:"));
+        assert!(WORKSPACE_STUB_SKILL.contains("zz tools --skill"));
     }
 
     #[test]
