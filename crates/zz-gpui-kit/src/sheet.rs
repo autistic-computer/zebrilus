@@ -10,10 +10,11 @@ use zz_gpui::{
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Kind, Layer, PaintState,
-    StyledExt as _, Surface, SurfaceRole, Tone,
+    ActiveTheme as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, StyledExt as _, Surface,
+    SurfaceRole, Tone,
     button::{Button, ButtonVariants as _},
-    foundation::{row_corners, row_radius},
+    foundation::{muted_on, row_radius, row_surface},
+    h_flex,
 };
 
 const ENTER: Duration = Duration::from_millis(240);
@@ -24,6 +25,7 @@ const PADDING_X: f32 = 16.0;
 const CLOSE: f32 = 40.0;
 const OPTION_HEIGHT: f32 = 44.0;
 const MAX_HEIGHT: f32 = 0.85;
+const FLOAT_MARGIN: f32 = 8.0;
 const RISE: f32 = 0.3;
 const FLING_HEIGHTS: f32 = 2.0;
 const COMMIT_FRACTION: f32 = 0.48;
@@ -146,7 +148,10 @@ pub fn sheet_action(
     label: impl Into<SharedString>,
     cx: &App,
 ) -> Stateful<Div> {
-    let muted = cx.theme().foreground.muted();
+    let muted = muted_on(
+        &cx.theme().layer(SurfaceRole::MENU_ITEM, PaintState::Rest),
+        cx,
+    );
     sheet_row(
         id,
         SurfaceRole::MENU_ITEM,
@@ -156,9 +161,10 @@ pub fn sheet_action(
     )
 }
 
-/// A row of a picker sheet drawn as `role`, a row role: `slot` in front
-/// where an option shows its check, then the label. Touch rows show the
-/// row's press, never a hover.
+/// A row of a picker sheet drawn as `role`, a row role: the list row of a
+/// pane's own lists at touch height, `slot` in front where an option shows
+/// its check, then the label. Touch rows show the row's press as the finger
+/// lands.
 pub fn sheet_row(
     id: impl Into<ElementId>,
     role: SurfaceRole,
@@ -169,40 +175,40 @@ pub fn sheet_row(
     let id = id.into();
     let layer = cx.theme().layer(role, PaintState::Rest);
     let height = px(OPTION_HEIGHT);
-    div()
-        .id(id.clone())
-        .relative()
-        .flex()
-        .items_center()
-        .gap(px(10.0))
-        .h(height)
-        .px(px(12.0))
-        .flex_none()
-        .cursor_pointer()
-        .layer(&layer)
-        .map(|this| row_corners(this, &layer, height))
-        .child(crate::touch::instant_press_highlight(
-            id,
-            None,
-            row_radius(&layer, height),
-        ))
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .w(px(16.0))
-                .children(slot.map(|icon| icon.size(px(16.0)))),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_size(px(15.0))
-                .child(label.into()),
-        )
+    row_surface(
+        h_flex().id(id.clone()).flex_none().h(height),
+        role,
+        PaintState::Rest,
+        height,
+        cx,
+    )
+    .relative()
+    .w_full()
+    .gap(px(10.0))
+    .px(px(12.0))
+    .cursor_pointer()
+    .child(crate::touch::instant_press_highlight(
+        id,
+        cx.theme().layer(role, PaintState::Active).fill,
+        crate::touch::PressCorners::Row(row_radius(&layer, height)),
+    ))
+    .child(
+        div()
+            .flex()
+            .flex_none()
+            .w(px(16.0))
+            .children(slot.map(|icon| icon.size(px(16.0)))),
+    )
+    .child(
+        div()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .text_size(px(15.0))
+            .child(label.into()),
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -343,6 +349,8 @@ impl RenderOnce for BottomSheet {
         };
         let theme = cx.theme();
         let enter = ENTER;
+        let margin = px(FLOAT_MARGIN);
+        let rest = self.bottom_inset.max(margin);
         let sheet = self.surface_role.unwrap_or(SurfaceRole::SHEET);
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
@@ -410,10 +418,7 @@ impl RenderOnce for BottomSheet {
             .flex_col()
             .occlude()
             .surface(sheet, cx)
-            .rounded_bl(px(0.0))
-            .rounded_br(px(0.0))
             .font_family(theme.font_family.clone())
-            .pb(self.bottom_inset)
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(|_, _, cx| cx.stop_propagation())
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
@@ -481,10 +486,10 @@ impl RenderOnce for BottomSheet {
             .child(
                 div()
                     .absolute()
-                    .left_0()
-                    .right_0()
+                    .left(margin)
+                    .right(margin)
                     .top(offset)
-                    .bottom(-offset)
+                    .bottom(rest - offset)
                     .child(panel),
             )
     }
@@ -574,10 +579,11 @@ mod tests {
         let panel = panel(cx);
         let scrim = cx.debug_bounds("bottom-sheet-scrim").expect("scrim");
         assert!(panel.top() > scrim.top());
-        assert_eq!(panel.bottom(), scrim.bottom());
+        assert_eq!(scrim.bottom() - panel.bottom(), px(20.0));
+        assert_eq!(panel.left() - scrim.left(), px(FLOAT_MARGIN));
+        assert_eq!(scrim.right() - panel.right(), px(FLOAT_MARGIN));
         let body = cx.debug_bounds("sheet-body").expect("body");
         assert_eq!(body.size.height, px(120.0));
-        assert!(panel.bottom() - body.bottom() >= px(20.0));
 
         cx.simulate_click(panel.center(), Modifiers::none());
         assert_eq!(dismissed.get(), 0);
@@ -594,8 +600,9 @@ mod tests {
         let (_, cx) = host(5000.0, cx);
         let panel = panel(cx);
         let scrim = cx.debug_bounds("bottom-sheet-scrim").expect("scrim");
-        assert!(panel.size.height <= scrim.size.height * MAX_HEIGHT + px(0.5));
-        assert!(panel.size.height >= scrim.size.height * MAX_HEIGHT - px(0.5));
+        let room = scrim.size.height - px(20.0);
+        assert!(panel.size.height <= room * MAX_HEIGHT + px(0.5));
+        assert!(panel.size.height >= room * MAX_HEIGHT - px(0.5));
         let body = cx.debug_bounds("sheet-body").expect("body");
         assert_eq!(body.size.height, px(5000.0));
     }

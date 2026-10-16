@@ -203,20 +203,20 @@ fn with_status_bar(
 fn app(state: &Shell, window: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
-            "sidebar open, no gaps (the default)",
+            "sidebar open",
             window_frame(
                 "shell-sidebar",
                 540.0,
-                with_sidebar(false, state, 0, window, cx),
+                with_sidebar(crate::pane().gaps, state, 0, window, cx),
                 cx,
             ),
         )
         .state(
-            "sidebar hidden, pane gaps on",
+            "sidebar hidden",
             window_frame(
                 "shell-status",
                 540.0,
-                with_status_bar(true, state, 1, window, cx),
+                with_status_bar(crate::pane().gaps, state, 1, window, cx),
                 cx,
             ),
         )
@@ -291,6 +291,7 @@ fn titlebar_strip(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(app_titlebar_strip(
                     "titlebar-strip",
                     div().pr(px(8.0)).child(chrome_controls()),
+                    cx,
                 )),
         )
         .into_any_element()

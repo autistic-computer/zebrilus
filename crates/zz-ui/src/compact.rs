@@ -16,7 +16,7 @@ mod which_key_list;
 pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
 pub use bar::{
     COMPACT_BAR_HEIGHT, COMPACT_NAV_BAR_HEIGHT, compact_bar, compact_bar_button, compact_bar_pill,
-    compact_nav_bar, compact_session_switcher,
+    compact_bar_row, compact_nav_bar,
 };
 pub use dots::{PageDot, page_dots};
 pub use header::{COMPACT_PANE_HEADER_HEIGHT, compact_pane_header};

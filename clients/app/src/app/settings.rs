@@ -154,6 +154,7 @@ impl Preferences {
         Theme::global_mut(cx).pane_background_opacity = self.pane_background_opacity;
         Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
         Theme::global_mut(cx).pane_frames = self.gaps;
+        Theme::global_mut(cx).pane_margin = self.margin();
         let available_fonts = cx.text_system().all_font_names();
         let wanted_font = self.shown_ui_font();
         let ui_font = if available_fonts
@@ -351,6 +352,7 @@ impl Controls {
                     Theme::global_mut(cx).pane_background_opacity =
                         this.preferences.pane_background_opacity;
                     Theme::global_mut(cx).pane_glow_strength = this.preferences.pane_glow_strength;
+                    Theme::global_mut(cx).pane_margin = this.preferences.margin();
                     cx.refresh_windows();
                     cx.notify();
                 },
@@ -540,10 +542,13 @@ impl AppShell {
         .when(picked, |swipe| {
             swipe.under(self.settings_route(section, false, cx))
         })
+        .pushed(picked)
+        .leaving(self.settings_leaving)
         .into_any_element()
     }
 
     fn settings_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_leaving = false;
         if self.settings_picked {
             self.settings_picked = false;
         } else {
@@ -603,8 +608,9 @@ impl AppShell {
                 zz_ui::compact::compact_nav_bar(cx)
                     .child(
                         zz_ui::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.settings_back(window, cx);
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.settings_leaving = true;
+                                cx.notify();
                             })),
                     )
                     .child(
@@ -1074,13 +1080,17 @@ impl AppShell {
                     .tint_hue
                     .unwrap_or(interface_theme::DEFAULT_TINT_HUE);
                 let view = cx.entity().downgrade();
-                let slider = tint_hue_slider(hue, move |hue, window, cx| {
-                    let _ = view.update(cx, |this, cx| {
-                        this.preferences.overrides.tint_hue = Some(hue);
-                        this.preferences.save();
-                        this.preferences.apply(&this.connection, window, cx);
-                    });
-                });
+                let slider = tint_hue_slider(
+                    hue,
+                    move |hue, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.overrides.tint_hue = Some(hue);
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        });
+                    },
+                    cx,
+                );
                 with_control(
                     SettingEntry::new(title, description).title_actions(reset_button(
                         "settings-tint-hue-reset",
@@ -1140,52 +1150,53 @@ impl AppShell {
                     cx,
                 );
                 let selected = self.preferences.theme_id();
+                let saved = self.preferences.saved_theme(selected).is_some();
                 let actions = div()
                     .flex()
                     .flex_none()
                     .items_center()
                     .gap(px(4.0))
-                    .child(
-                        Button::new("settings-themes-save")
-                            .ghost()
-                            .small()
-                            .label("Save")
-                            .tooltip("Save the look on screen as a theme and use it")
-                            .on(settings_card_ground(cx))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                let saved = this.preferences.duplicate_theme();
-                                this.theme_saved(saved, window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("settings-themes-import")
-                            .ghost()
-                            .small()
-                            .label("Import")
-                            .tooltip("Save the theme on the clipboard and use it")
-                            .on(settings_card_ground(cx))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.import_theme(window, cx);
-                            })),
-                    )
-                    .when(
-                        self.preferences.saved_theme(selected).is_some(),
-                        |actions| {
-                            actions.child(
-                                Button::new("settings-themes-delete")
+                    .when(!narrow, |actions| {
+                        actions
+                            .child(
+                                Button::new("settings-themes-save")
                                     .ghost()
                                     .small()
-                                    .label("Delete")
-                                    .tooltip("Delete this saved theme and use the default one")
+                                    .label("Save")
+                                    .tooltip("Save the look on screen as a theme and use it")
                                     .on(settings_card_ground(cx))
                                     .on_click(cx.listener(|this, _, window, cx| {
-                                        let id = this.preferences.theme_id().to_owned();
-                                        this.preferences.delete_theme(&id);
-                                        this.theme_changed(window, cx);
+                                        let saved = this.preferences.duplicate_theme();
+                                        this.theme_saved(saved, window, cx);
                                     })),
                             )
-                        },
-                    );
+                            .child(
+                                Button::new("settings-themes-import")
+                                    .ghost()
+                                    .small()
+                                    .label("Import")
+                                    .tooltip("Save the theme on the clipboard and use it")
+                                    .on(settings_card_ground(cx))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.import_theme(window, cx);
+                                    })),
+                            )
+                    })
+                    .when(saved, |actions| {
+                        actions.child(
+                            Button::new("settings-themes-delete")
+                                .ghost()
+                                .small()
+                                .label("Delete")
+                                .tooltip("Delete this saved theme and use the default one")
+                                .on(settings_card_ground(cx))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    let id = this.preferences.theme_id().to_owned();
+                                    this.preferences.delete_theme(&id);
+                                    this.theme_changed(window, cx);
+                                })),
+                        )
+                    });
                 let reset = reset_button(
                     "settings-themes-reset",
                     selected != interface_theme::DEFAULT_THEME,
@@ -1199,7 +1210,10 @@ impl AppShell {
                 );
                 let entry = SettingEntry::new(title, description);
                 if narrow {
-                    entry.title_actions(reset).child(strip).child(actions)
+                    entry
+                        .title_actions(reset)
+                        .child(strip)
+                        .when(saved, |entry| entry.child(actions))
                 } else {
                     entry
                         .title_actions(

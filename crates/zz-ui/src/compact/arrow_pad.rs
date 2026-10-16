@@ -5,7 +5,7 @@ use zz_gpui::{
 };
 
 use super::{
-    key_row::{KEY_HEIGHT, KEY_WIDTH, KeyLook, key_surface},
+    key_row::{KEY_SIZE, KeyLook, key_surface},
     popover_key::popover_above,
     press::{Grip, Press, press_listeners},
 };
@@ -253,8 +253,7 @@ impl Render for ArrowPad {
             .flex_none()
             .items_center()
             .justify_center()
-            .w(rems_from_px(KEY_WIDTH))
-            .h(rems_from_px(KEY_HEIGHT))
+            .size(rems_from_px(KEY_SIZE))
             .child(Icon::new(IconName::ArrowsMove).size(rems_from_px(18.0)))
             .child(press_listeners(cx.entity().downgrade()))
             .when(held, |pad| {

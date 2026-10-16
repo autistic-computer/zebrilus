@@ -12,8 +12,8 @@ use zz_ui::{
     compact::{
         COMPACT_NAV_BAR_HEIGHT, COMPACT_PANE_HEADER_HEIGHT, Instant, OVERVIEW_CARD_GAP,
         OVERVIEW_CARD_HEIGHT, OVERVIEW_CARD_WIDTH, bottom_sheet, compact_bar_button,
-        compact_nav_bar, compact_session_switcher, overview_add_tile, overview_card,
-        overview_count, overview_section_heading, sheet_row, yield_back_swipe,
+        compact_bar_pill, compact_bar_row, overview_add_tile, overview_card, overview_count,
+        overview_section_heading, sheet_row, yield_back_swipe,
     },
     rems_from_px, roles,
     terminal::terminal_background,
@@ -184,7 +184,6 @@ impl AppShell {
             .flex_col()
             .pt(top_inset)
             .bg(cx.theme().background)
-            .child(self.overview_top_bar(model, cx))
             .child(
                 div()
                     .id("overview-scroll")
@@ -192,10 +191,11 @@ impl AppShell {
                     .min_h_0()
                     .overflow_y_scroll()
                     .track_scroll(&self.compact.overview_scroll)
-                    .pb(bottom_inset + px(16.0))
+                    .pb(px(16.0))
                     .children(sections)
                     .child(new_window),
-            );
+            )
+            .child(self.overview_bar(model, bottom_inset, cx));
         page.into_any_element()
     }
 
@@ -257,7 +257,7 @@ impl AppShell {
             .copied()
             .unwrap_or_else(|| {
                 Bounds::new(
-                    point(px(16.0), top_inset + px(COMPACT_NAV_BAR_HEIGHT * 2.0)),
+                    point(px(16.0), top_inset + px(COMPACT_NAV_BAR_HEIGHT)),
                     size(px(OVERVIEW_CARD_WIDTH), px(OVERVIEW_CARD_HEIGHT)),
                 )
             });
@@ -406,7 +406,12 @@ impl AppShell {
         row.scroll_to_item(card + 1);
     }
 
-    fn overview_top_bar(&self, model: &StatusBarModel, cx: &mut Context<Self>) -> AnyElement {
+    fn overview_bar(
+        &self,
+        model: &StatusBarModel,
+        bottom_inset: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         #[cfg(target_os = "ios")]
         let host = self
             .connection
@@ -415,10 +420,21 @@ impl AppShell {
             .map(super::super::hosts::host_title);
         #[cfg(not(target_os = "ios"))]
         let host: Option<String> = None;
-        let muted = cx.theme().foreground.muted();
-        let switcher = compact_session_switcher(
+        let windows = overview_count(model.windows.len(), "window");
+        let meta = match host {
+            Some(host) => format!("{host} · {windows}"),
+            None => windows,
+        };
+        let caret = Icon::new(IconName::ChevronUp)
+            .size(rems_from_px(12.0))
+            .text_color(cx.theme().foreground.muted());
+        let switcher = compact_bar_pill(
             "overview-session",
+            IconName::Layers,
             model.session_name.clone().unwrap_or_default(),
+            meta,
+            false,
+            caret,
             cx,
         )
         .on_click(cx.listener(|this, _, _, cx| {
@@ -435,21 +451,17 @@ impl AppShell {
         let current = self.active_window(cx).map(|window| window.active_pane);
         let close = compact_bar_button("overview-close", IconName::Xmark)
             .on_click(cx.listener(move |this, _, _, cx| this.land_overview(current, cx)));
-        compact_nav_bar(cx)
-            .child(switcher)
-            .children(host.map(|host| {
-                div()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .text_size(px(13.0))
-                    .text_color(muted)
-                    .child(host)
-            }))
-            .child(div().flex_1())
-            .child(settings)
-            .child(close)
+        div()
+            .flex_none()
+            .w_full()
+            .pb(bottom_inset)
+            .surface(roles::PHONE_BAR, cx)
+            .rule_on(roles::BAR_RULE, Edge::Top, cx)
+            .child(compact_bar_row(
+                switcher,
+                div().flex().child(settings).child(close),
+                cx,
+            ))
             .into_any_element()
     }
 
@@ -655,7 +667,7 @@ impl AppShell {
             div()
                 .flex()
                 .flex_col()
-                .px(px(8.0))
+                .list_inset(cx)
                 .pb(px(8.0))
                 .children(rows)
                 .child(

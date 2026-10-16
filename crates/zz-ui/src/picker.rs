@@ -1,14 +1,14 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Icon, IconName, Layer, PaintState,
-    Sizable as _, StatefulSurfaceExt as _, StyledExt as _, Surface, SurfaceRole, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Icon, IconName, Layer,
+    Sizable as _, StyledExt as _, SurfaceRole, Tone,
     badge::Badge,
     h_flex,
     input::{Input, InputState},
     roles, v_flex,
 };
 use zz_gpui::{
-    AnimationElement, App, Div, ElementId, Entity, FULL_CORNER_RADIUS, FontWeight, Hsla,
-    MouseButton, Pixels, SharedString, Stateful, div, prelude::*, px, relative,
+    AnimationElement, App, Div, ElementId, Entity, FULL_CORNER_RADIUS, FontWeight, MouseButton,
+    Pixels, SharedString, Stateful, div, prelude::*, px, relative,
 };
 
 const PICKER_ROW_HEIGHT: Pixels = px(26.0);
@@ -16,39 +16,7 @@ const PICKER_ROW_HEIGHT: Pixels = px(26.0);
 /// pane picker, recent pages and answer options.
 pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
 const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
-/// A row `height` tall drawn as `surface` in `state`, with its hover and
-/// press while it rests.
-pub fn row_surface<E: StatefulInteractiveElement + Styled>(
-    element: E,
-    surface: impl Into<Surface>,
-    state: PaintState,
-    height: Pixels,
-    cx: &App,
-) -> E {
-    let surface = surface.into();
-    let layer = cx.theme().layer(surface, state);
-    crate::row_corners(
-        element.surface_interactive(surface, state, cx),
-        &layer,
-        height,
-    )
-}
-
-/// Secondary text on what `layer` paints: its ink pulled toward its fill.
-pub fn muted_on(layer: &Layer, cx: &App) -> Hsla {
-    cx.theme()
-        .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest)
-}
-
-/// The state of a row the cursor may be on.
-pub const fn row_state(selected: bool, enabled: bool) -> PaintState {
-    match (enabled, selected) {
-        (false, _) => PaintState::Disabled,
-        (true, true) => PaintState::Selected,
-        (true, false) => PaintState::Rest,
-    }
-}
+pub use zz_gpui_kit::{list_row, muted_on, row_state, row_surface};
 
 /// The radius of a surface drawn as `layer` whose rows sit `inset` inside
 /// it, so the two stay concentric. Square and pill shapes keep theirs.
@@ -157,22 +125,6 @@ pub fn picker_footer(cx: &App) -> Div {
         .pr(px(CHROME_GAP))
         .text_size(crate::rems_from_px(10.0))
         .text_color(cx.theme().foreground.muted())
-}
-
-pub fn list_row(
-    id: impl Into<ElementId>,
-    height: Pixels,
-    selected: bool,
-    enabled: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    row_surface(
-        h_flex().id(id).flex_none().h(height),
-        SurfaceRole::MENU_ITEM,
-        row_state(selected, enabled),
-        height,
-        cx,
-    )
 }
 
 pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {

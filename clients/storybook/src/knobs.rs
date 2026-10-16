@@ -2,12 +2,10 @@ use std::collections::BTreeMap;
 
 use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
-    CORNER_SMOOTHING, Emphasis, PrimaryStyle, Style, StylePatch, SurfaceRole, Theme, ThemeColor,
-    ThemeMode, Tone, UiZoom,
+    ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Style, StylePatch,
+    SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
     interface_theme::{self, InterfaceTheme, Materials, ThemeColors},
 };
-
-const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
 
 /// The interface font the storybook loads and falls back to.
 pub const UI_FONT: &str = "Inter Variable";
@@ -50,7 +48,7 @@ impl Default for PaneKnobs {
     fn default() -> Self {
         Self {
             gaps: false,
-            margin: 6.0,
+            margin: 8.0,
             background: 0.5,
             inactive: 0.7,
             glow: 1.0,
@@ -371,6 +369,11 @@ impl Knobs {
         theme.pane_background_opacity = self.pane.background;
         theme.pane_glow_strength = self.pane.glow;
         theme.pane_frames = self.pane.gaps;
+        theme.pane_margin = px(if self.pane.gaps {
+            self.pane.margin
+        } else {
+            0.0
+        });
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         let knobs = self.clone();

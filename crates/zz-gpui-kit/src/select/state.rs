@@ -427,7 +427,7 @@ impl<D: SelectDelegate> SelectState<D> {
                         .pb(px(8.0))
                         .child(Input::new(search).cleanable(true))
                 }))
-                .child(div().flex().flex_col().px(px(8.0)).children(rows)),
+                .child(div().flex().flex_col().list_inset(cx).children(rows)),
             sheet_inset(window),
             move |_, cx| {
                 _ = dismiss.update(cx, Self::close_menu);

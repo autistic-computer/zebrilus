@@ -368,7 +368,7 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `chrome-tint` | `0` | How far the window's surfaces lean toward `chrome-tint-hue` (0–360, default `260`), 0–1 |
 | `widget-corner-radius` | from the theme | Corners of every rounded surface, 0–25px. Which pieces are pills is up to the theme |
 | `pane-gaps` | `false` | The card treatment: spaced panes framed in glass, their corners a little rounder than the theme's. Off makes them flush and square |
-| `pane-margin` | `6` | Gap between panes and at the window edge, 0–32 |
+| `pane-margin` | `8` | Gap between panes and at the window edge, 0–32 |
 | `animations` | `true` | Interface transitions, loading indicators, scrollbars, and animated UI images |
 | `theme` | unset | A Ghostty theme file by name, or `light:a,dark:b` |
 | `font-family` | platform default | Terminal font stack. `font-size` is `13` |

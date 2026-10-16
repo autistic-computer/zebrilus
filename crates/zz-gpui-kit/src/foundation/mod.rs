@@ -23,9 +23,10 @@ pub use color::{Colorize, oklab_lightness, oklch, parse_hex, to_hex};
 pub use element_ext::{ElementExt, InteractiveElementExt};
 pub use geometry::Side;
 pub use index_path::IndexPath;
+pub(crate) use styled::ROW_CORNER_SMOOTHING;
 pub use styled::{
     Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, Selectable, Sizable, Size, StyledExt, h_flex,
-    lifted_shadow, row_corners, row_radius, v_flex,
+    lifted_shadow, list_row, muted_on, row_corners, row_radius, row_state, row_surface, v_flex,
 };
 pub(crate) use surface::restyle;
 pub use surface::{
@@ -33,7 +34,10 @@ pub use surface::{
     Shape, StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole, drawn_roles,
     note_drawn_roles,
 };
-pub use theme::{ActiveTheme, CHROME_GAP, CORNER_SMOOTHING, ScrollbarShow, Theme, ThemeMode};
+pub use theme::{
+    ADAPTIVE_CORNER_FRACTION, ActiveTheme, CHROME_GAP, CORNER_SMOOTHING,
+    PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, ScrollbarShow, Theme, ThemeMode,
+};
 pub use theme_color::ThemeColor;
 pub use units::{BASE_UI_FONT_SIZE, UiZoom, rems_from_px};
 pub use variant::{

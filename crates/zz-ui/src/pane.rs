@@ -36,7 +36,6 @@ pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconNa
 }
 
 const PANE_TITLE_GROUP: &str = "pane-title";
-const PANE_TITLE_HEIGHT: f32 = 24.0;
 const PANE_TITLE_ICON_SIZE: f32 = 14.0;
 
 /// A pane header's title as a button: dragged, it moves the pane; pointed at,
@@ -127,7 +126,7 @@ impl RenderOnce for PaneTitle {
             .flex()
             .flex_initial()
             .min_w_0()
-            .h(px(PANE_TITLE_HEIGHT))
+            .h(crate::PANE_HEADER_CONTROL_HEIGHT)
             .items_center()
             .gap(px(6.0))
             .pl(px(6.0))
@@ -185,8 +184,7 @@ pub fn terminal_pane_header(
         .flex_none()
         .items_center()
         .gap(px(8.0))
-        .pl(px(4.0))
-        .pr(px(8.0))
+        .px(px(crate::CHROME_GAP))
         .surface(Surface::new(roles::PANE_HEADER), cx)
         .font_family(cx.theme().font_family.clone())
         .text_size(crate::rems_from_px(13.0))

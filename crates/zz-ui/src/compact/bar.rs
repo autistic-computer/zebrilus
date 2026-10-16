@@ -28,6 +28,19 @@ pub fn compact_bar(
     held: bool,
     cx: &App,
 ) -> Div {
+    compact_bar_row(pill, trailing, cx).child(
+        div()
+            .absolute()
+            .top(rems_from_px(GRABBER_TOP))
+            .left_0()
+            .right_0()
+            .flex()
+            .justify_center()
+            .child(grabber(held, cx)),
+    )
+}
+
+pub fn compact_bar_row(pill: impl IntoElement, trailing: impl IntoElement, cx: &App) -> Div {
     let theme = cx.theme();
     div()
         .debug_selector(|| "compact-bar".to_owned())
@@ -42,16 +55,6 @@ pub fn compact_bar(
         .gap(rems_from_px(8.0))
         .font_family(theme.font_family.clone())
         .text_color(theme.foreground)
-        .child(
-            div()
-                .absolute()
-                .top(rems_from_px(GRABBER_TOP))
-                .left_0()
-                .right_0()
-                .flex()
-                .justify_center()
-                .child(grabber(held, cx)),
-        )
         .child(div().flex().flex_1().min_w_0().child(pill))
         .child(div().flex().flex_none().child(trailing))
 }
@@ -89,34 +92,8 @@ pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
 }
 
-/// The session switcher at the start of the overview's bar: the attached
-/// session's name between the layers icon and a caret, as wide as they are.
-pub fn compact_session_switcher(
-    id: impl Into<ElementId>,
-    name: impl Into<SharedString>,
-    cx: &App,
-) -> Button {
-    compact_bar_button(id, IconName::Layers)
-        .flex_none()
-        .w_auto()
-        .gap(rems_from_px(6.0))
-        .px(rems_from_px(10.0))
-        .child(
-            div()
-                .text_size(rems_from_px(17.0))
-                .font_semibold()
-                .whitespace_nowrap()
-                .child(name.into()),
-        )
-        .child(
-            Icon::new(IconName::ChevronDown)
-                .size(rems_from_px(14.0))
-                .text_color(cx.theme().foreground.muted()),
-        )
-}
-
 /// A 44pt bar across the top of a phone page, drawn as [`roles::PHONE_BAR`]:
-/// the settings and overview bars.
+/// the settings bar.
 pub fn compact_nav_bar(cx: &App) -> Div {
     div()
         .flex()

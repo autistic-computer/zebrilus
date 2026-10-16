@@ -1,10 +1,13 @@
 //! The shared styling vocabulary: one [`Size`] scale, one set of state traits,
 //! one set of [`zz_gpui::Styled`] extensions.
 
-use super::{ActiveTheme, Edge, Layer, PaintState, Surface, SurfaceRole};
+use super::{
+    ActiveTheme, Edge, Emphasis, Layer, PaintState, StatefulSurfaceExt, Surface, SurfaceRole, Tone,
+};
 use zz_gpui::{
-    AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, FULL_CORNER_RADIUS, Hsla, Pixels,
-    Refineable, StyleRefinement, Styled, div, point, px,
+    AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS,
+    Hsla, InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
+    StyleRefinement, Styled, div, point, px,
 };
 
 use super::rems_from_px;
@@ -184,7 +187,57 @@ pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
 }
 
 const ROW_RADIUS_SHARE: f32 = 0.40;
-const ROW_CORNER_SMOOTHING: f32 = 2.5;
+pub(crate) const ROW_CORNER_SMOOTHING: f32 = 2.5;
+
+/// A row `height` tall drawn as `surface` in `state`, with its hover and
+/// press while it rests.
+pub fn row_surface<E: StatefulInteractiveElement + Styled>(
+    element: E,
+    surface: impl Into<Surface>,
+    state: PaintState,
+    height: Pixels,
+    cx: &App,
+) -> E {
+    let surface = surface.into();
+    let layer = cx.theme().layer(surface, state);
+    row_corners(
+        element.surface_interactive(surface, state, cx),
+        &layer,
+        height,
+    )
+}
+
+/// Secondary text on what `layer` paints: its ink pulled toward its fill.
+pub fn muted_on(layer: &Layer, cx: &App) -> Hsla {
+    cx.theme()
+        .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
+        .muted_at(PaintState::Rest)
+}
+
+/// The state of a row the cursor may be on.
+pub const fn row_state(selected: bool, enabled: bool) -> PaintState {
+    match (enabled, selected) {
+        (false, _) => PaintState::Disabled,
+        (true, true) => PaintState::Selected,
+        (true, false) => PaintState::Rest,
+    }
+}
+
+pub fn list_row(
+    id: impl Into<ElementId>,
+    height: Pixels,
+    selected: bool,
+    enabled: bool,
+    cx: &App,
+) -> Stateful<Div> {
+    row_surface(
+        h_flex().id(id).flex_none().h(height),
+        SurfaceRole::MENU_ITEM,
+        row_state(selected, enabled),
+        height,
+        cx,
+    )
+}
 
 /// The width of every divider rule.
 pub const RULE_WIDTH: Pixels = px(1.0);

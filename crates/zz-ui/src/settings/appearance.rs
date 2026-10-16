@@ -203,6 +203,7 @@ pub fn themes_strip(
 }
 
 pub const SWATCH: f32 = 18.0;
+const SHEET_SWATCH: f32 = 30.0;
 const SWATCH_RING_GAP: f32 = 2.0;
 const SWATCH_RING: f32 = 1.5;
 
@@ -216,7 +217,7 @@ const SWATCH_RING: f32 = 1.5;
 pub fn accent_swatches(
     picks: &ThemePicks,
     mode: ThemeMode,
-    custom: impl IntoElement,
+    custom: crate::color_picker::ColorPicker,
     on_pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> zz_gpui::Div {
@@ -228,6 +229,8 @@ pub fn accent_swatches(
     let on_pick = Rc::new(on_pick);
     let ring = cx.theme().foreground;
     let radius = cx.theme().swatch_radius();
+    let coarse = crate::touch::CoarsePointer::get(cx);
+    let size = if coarse { SHEET_SWATCH } else { SWATCH };
     let swatch = |id: &'static str, name: SharedString, color: zz_gpui::Hsla| {
         let on_pick = Rc::clone(&on_pick);
         ringed(
@@ -238,7 +241,7 @@ pub fn accent_swatches(
                 .id(SharedString::from(format!("settings-accent-{id}")))
                 .role(zz_gpui::Role::Button)
                 .aria_label(name.clone())
-                .size(px(SWATCH))
+                .size(px(size))
                 .rounded(radius)
                 .bg(color)
                 .cursor_pointer()
@@ -252,20 +255,34 @@ pub fn accent_swatches(
     };
     let named = ACCENTS.iter().filter_map(|name| {
         let color = crate::interface_theme::accent_color(name, mode)?;
-        let mut title = name.to_string();
-        title[..1].make_ascii_uppercase();
-        Some(swatch(name, title.into(), color))
+        Some(swatch(name, accent_title(name), color))
     });
-    let custom_selected = selected != "theme" && !ACCENTS.contains(&selected);
-    div()
+    let row = div()
         .flex()
         .flex_none()
         .flex_wrap()
         .items_center()
+        .when(coarse, |row| row.w_full().justify_between())
         .gap(px(4.0))
         .child(swatch("theme", "Theme".into(), own))
-        .children(named)
-        .child(ringed(custom_selected, ring, radius, custom))
+        .children(named);
+    if coarse {
+        let chosen = match selected {
+            "theme" => "Theme".into(),
+            name if ACCENTS.contains(&name) => accent_title(name),
+            hex => hex.to_uppercase().into(),
+        };
+        let color = crate::interface_theme::accent_color(selected, mode).unwrap_or(own);
+        return div().w_full().child(custom.presets(chosen, color, row));
+    }
+    let custom_selected = selected != "theme" && !ACCENTS.contains(&selected);
+    row.child(ringed(custom_selected, ring, radius, custom))
+}
+
+fn accent_title(name: &str) -> SharedString {
+    let mut title = name.to_string();
+    title[..1].make_ascii_uppercase();
+    title.into()
 }
 
 #[allow(
@@ -303,19 +320,25 @@ const HUE_STOPS: u16 = 12;
 pub fn tint_hue_slider(
     hue: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> zz_gpui::Div {
     let stops =
         (0..=HUE_STOPS).map(|stop| hue_swatch(f32::from(stop) * 360.0 / f32::from(HUE_STOPS)));
+    let coarse = crate::touch::CoarsePointer::get(cx);
     div()
         .flex()
         .items_center()
         .gap(px(10.0))
         .child(
-            div().w(px(SLIDER_WIDTH)).child(
-                Slider::new("settings-tint-hue", "Tint hue", hue, 0.0..=360.0, on_change)
-                    .step(1.0)
-                    .track(stops),
-            ),
+            div()
+                .when(coarse, |this| this.flex_1().min_w_0())
+                .when(!coarse, |this| this.w(px(SLIDER_WIDTH)))
+                .child(
+                    Slider::new("settings-tint-hue", "Tint hue", hue, 0.0..=360.0, on_change)
+                        .step(1.0)
+                        .track(stops)
+                        .display(|hue| format!("{hue:.0}°").into()),
+                ),
         )
         .child(
             div()
@@ -333,8 +356,9 @@ pub fn tint_slider(
     cx: &App,
 ) -> zz_gpui::Div {
     value_slider(
-        Slider::new("settings-tint", "Tint strength", tint, 0.0..=1.0, on_change).step(0.01),
-        format!("{:.0}%", tint * 100.0),
+        Slider::new("settings-tint", "Tint strength", tint, 0.0..=1.0, on_change)
+            .step(0.01)
+            .display(|tint| format!("{:.0}%", tint * 100.0).into()),
         cx,
     )
 }
@@ -353,8 +377,8 @@ pub fn corner_radius_slider(
             0.0..=MAX_CORNER_RADIUS,
             on_change,
         )
-        .step(1.0),
-        format!("{radius:.0}px"),
+        .step(1.0)
+        .display(|radius| format!("{radius:.0}px").into()),
         cx,
     )
 }
@@ -373,13 +397,17 @@ pub fn contrast_slider(
             1.0..=2.0,
             on_change,
         )
-        .step(0.05),
-        format!("{:.0}%", contrast * 100.0),
+        .step(0.05)
+        .display(|contrast| format!("{:.0}%", contrast * 100.0).into()),
         cx,
     )
 }
 
-fn value_slider(slider: Slider, shown: String, cx: &App) -> zz_gpui::Div {
+fn value_slider(slider: Slider, cx: &App) -> zz_gpui::Div {
+    if crate::touch::CoarsePointer::get(cx) {
+        return div().w_full().child(slider);
+    }
+    let shown = slider.shown();
     div()
         .flex()
         .items_center()

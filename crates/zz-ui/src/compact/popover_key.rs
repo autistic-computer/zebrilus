@@ -5,13 +5,14 @@ use std::{
 
 use web_time::Duration;
 use zz_gpui::{
-    Anchor, AnyElement, Bounds, Context, ElementId, EventEmitter, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString,
-    Styled as _, Task, Window, anchored, canvas, deferred, div, point, prelude::*, px, relative,
+    Anchor, AnyElement, Bounds, Context, ElementId, EventEmitter, IntoElement, Keystroke,
+    MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle,
+    SharedString, Styled as _, Task, Window, anchored, canvas, deferred, div, point, prelude::*,
+    px, relative,
 };
 
 use super::{
-    key_row::{KEY_HEIGHT, KEY_WIDTH, KeyLook, key_look, key_surface},
+    key_row::{KEY_SIZE, KeyLook, key_glyph, key_look, key_surface, keystroke_glyph},
     press::{Grip, Press, key_slop, press_listeners},
     sticky::{StickyModifier, StickyModifiers},
 };
@@ -143,6 +144,8 @@ struct Touch {
 
 pub struct PopoverKey {
     label: SharedString,
+    icon: Option<IconName>,
+    keystroke: Option<Keystroke>,
     tap: PopoverKeyTap,
     columns: u16,
     items: Vec<PopoverKeyItem>,
@@ -163,6 +166,8 @@ impl PopoverKey {
     pub fn new(label: impl Into<SharedString>, tap: PopoverKeyTap, _: &mut Context<Self>) -> Self {
         Self {
             label: label.into(),
+            icon: None,
+            keystroke: None,
             tap,
             columns: 1,
             items: Vec::new(),
@@ -176,6 +181,12 @@ impl PopoverKey {
             hold: None,
             scroll: None,
         }
+    }
+
+    #[must_use]
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
     }
 
     #[must_use]
@@ -211,6 +222,13 @@ impl PopoverKey {
     pub fn open(&mut self, cx: &mut Context<Self>) {
         if !self.items.is_empty() {
             self.open = Some(Open::Pinned);
+            cx.notify();
+        }
+    }
+
+    pub fn set_keystroke(&mut self, keystroke: Option<Keystroke>, cx: &mut Context<Self>) {
+        if self.keystroke != keystroke {
+            self.keystroke = keystroke;
             cx.notify();
         }
     }
@@ -513,10 +531,12 @@ impl Render for PopoverKey {
             .flex_none()
             .items_center()
             .justify_center()
-            .w(rems_from_px(KEY_WIDTH))
-            .h(rems_from_px(KEY_HEIGHT))
+            .size(rems_from_px(KEY_SIZE))
             .whitespace_nowrap()
-            .child(self.label.clone())
+            .child(match &self.keystroke {
+                Some(keystroke) => keystroke_glyph(keystroke),
+                None => key_glyph(self.label.clone(), self.icon.clone()),
+            })
             .child(
                 div()
                     .absolute()

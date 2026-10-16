@@ -286,7 +286,7 @@ fn run_app(
                 minimum_window_size,
             );
             let window_decorations = config::window_decorations(cx);
-            let mut titlebar = config::titlebar_options();
+            let mut titlebar = config::titlebar_options(cx);
             if cfg!(target_os = "linux") {
                 titlebar.title = Some(zz_protocol::app_identity::DISPLAY_NAME.into());
             }

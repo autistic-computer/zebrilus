@@ -75,13 +75,14 @@ pub fn app_shell_surface(
 pub fn app_titlebar_strip(
     id: impl Into<ElementId>,
     controls: impl IntoElement,
+    cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     div()
         .id(id)
         .flex()
         .flex_none()
         .w_full()
-        .h(crate::TITLE_BAR_HEIGHT)
+        .h(cx.theme().title_bar_height())
         .items_center()
         .child(
             div()
@@ -143,7 +144,7 @@ pub fn workspace_status_bar(
     slots: WorkspaceStatusSlots,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    use crate::TITLE_BAR_HEIGHT;
+    let height = cx.theme().title_bar_height();
     let window_strip = div()
         .flex()
         .flex_1()
@@ -168,7 +169,7 @@ pub fn workspace_status_bar(
     let leading = div()
         .flex_none()
         .w(leading_inset)
-        .h(TITLE_BAR_HEIGHT)
+        .h(height)
         .window_control_area(WindowControlArea::Drag);
     let titlebar_controls = slots.titlebar_controls.map(|(controls, width)| {
         div()
@@ -176,14 +177,14 @@ pub fn workspace_status_bar(
             .flex_none()
             .items_center()
             .w(width)
-            .h(TITLE_BAR_HEIGHT)
+            .h(height)
             .child(controls)
             .into_any_element()
     });
     let window_controls = slots.window_controls.map(|controls| {
         div()
             .flex_none()
-            .h(TITLE_BAR_HEIGHT)
+            .h(height)
             .child(controls)
             .into_any_element()
     });
@@ -195,7 +196,7 @@ pub fn workspace_status_bar(
         .flex_none()
         .items_center()
         .w_full()
-        .h(TITLE_BAR_HEIGHT)
+        .h(height)
         .overflow_hidden()
         .surface(Surface::new(roles::TITLEBAR), cx)
         .when(!gaps, |bar| bar.rule_on(roles::BAR_RULE, Edge::Bottom, cx))

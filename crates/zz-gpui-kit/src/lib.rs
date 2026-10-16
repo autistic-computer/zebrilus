@@ -57,20 +57,21 @@ pub mod theme {
 }
 
 pub use foundation::{
-    ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING, Colorize, Disableable, Edge,
-    ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, Fill, Ground, Highlight, IndexPath,
-    InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt, Kind, Knobs, Layer, Paint,
-    PaintExt, PaintState, PrimaryStyle, RULE_WIDTH, ScrollbarShow, Selectable, Shadow,
-    ShadowMaterial, Shape, Side, Sizable, Size, StatefulSurfaceExt, Style, StylePatch, StyledExt,
-    Surface, SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, drawn_roles,
-    h_flex, lifted_shadow, note_drawn_roles, oklab_lightness, oklch, parse_hex, rems_from_px,
-    row_corners, row_radius, to_hex, v_flex, window_border, window_paddings,
+    ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
+    Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, Fill, Ground,
+    Highlight, IndexPath, InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt, Kind,
+    Knobs, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint, PaintExt, PaintState,
+    PrimaryStyle, RULE_WIDTH, ScrollbarShow, Selectable, Shadow, ShadowMaterial, Shape, Side,
+    Sizable, Size, StatefulSurfaceExt, Style, StylePatch, StyledExt, Surface, SurfaceRole, Theme,
+    ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, drawn_roles, h_flex, lifted_shadow, list_row,
+    muted_on, note_drawn_roles, oklab_lightness, oklch, parse_hex, rems_from_px, row_corners,
+    row_radius, row_state, row_surface, to_hex, v_flex, window_border, window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};
 pub use title_bar::{
-    MACOS_TRAFFIC_LIGHT_INSET, MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar,
-    WindowControls, draws_window_controls, macos_traffic_light_clearance, window_controls_width,
+    MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WindowControls, draws_window_controls,
+    macos_traffic_light_clearance, window_controls_width,
 };
 
 /// Initialize the kit. Must run once, before any window opens. The foundation

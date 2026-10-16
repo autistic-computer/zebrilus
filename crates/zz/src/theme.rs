@@ -70,16 +70,15 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
     let corner_smoothing = zz_ui::CORNER_SMOOTHING;
     for window in cx.windows() {
         window
-            .update(cx, |_, window, _| {
+            .update(cx, |_, window, cx| {
                 window.set_default_corner_smoothing(corner_smoothing);
-                window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
+                window.set_adaptive_corner_fraction(Some(zz_ui::ADAPTIVE_CORNER_FRACTION));
+                crate::ui_scale::place_traffic_lights(window, cx);
             })
             .ok();
     }
     cx.refresh_windows();
 }
-
-const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
 
 /// Sync the zz-ui theme with the OS appearance, then reapply zz's overrides.
 pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
@@ -90,7 +89,7 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
     cx.set_global(SystemThemeMode(system_mode));
     if let Some(window) = window.as_deref_mut() {
         window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
-        window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
+        window.set_adaptive_corner_fraction(Some(zz_ui::ADAPTIVE_CORNER_FRACTION));
     }
     Theme::sync_system_appearance(window, cx);
     crate::app_icon::apply(cx);
@@ -124,6 +123,7 @@ fn apply_zz_overrides(cx: &mut App) {
     let pane_background_opacity = config::pane_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
     let pane_frames = config::pane_gaps(cx);
+    let pane_margin = config::pane_margin(cx);
     let theme = Theme::global_mut(cx);
 
     theme.colors = active.colors(theme.mode);
@@ -138,6 +138,7 @@ fn apply_zz_overrides(cx: &mut App) {
     theme.pane_background_opacity = pane_background_opacity;
     theme.pane_glow_strength = pane_glow_strength;
     theme.pane_frames = pane_frames;
+    theme.pane_margin = pane_margin;
 }
 
 #[cfg(test)]

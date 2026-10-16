@@ -80,7 +80,7 @@ const DEFAULTS = {
     tint: "0",
     zoom: "1",
     "pane-gaps": "0",
-    "pane-margin": "6",
+    "pane-margin": "8",
     "pane-opacity": "0.5",
     "pane-inactive-opacity": "0.7",
     "pane-glow": "1",

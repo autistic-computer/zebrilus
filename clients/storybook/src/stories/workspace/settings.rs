@@ -400,10 +400,11 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     |_, _, _| {},
                     cx,
                 )))
-                .child(
-                    entry(AppearancePageItem::TintHue)
-                        .control(tint_hue_slider(knobs.tint_hue, |_, _, _| {})),
-                )
+                .child(entry(AppearancePageItem::TintHue).control(tint_hue_slider(
+                    knobs.tint_hue,
+                    |_, _, _| {},
+                    cx,
+                )))
                 .child(entry(AppearancePageItem::Tint).control(tint_slider(
                     knobs.tint,
                     |_, _, _| {},

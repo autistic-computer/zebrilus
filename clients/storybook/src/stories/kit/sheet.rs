@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _,
     compact::{bottom_sheet, sheet_action, sheet_close, sheet_option},
     h_flex, v_flex,
 };
@@ -14,7 +14,7 @@ pub const STORY: Story = Story {
     id: "sheet",
     name: "Sheet",
     group: "Kit",
-    summary: "The bottom sheet a touch screen opens in place of a dropdown. It rises from the bottom of its parent over a scrim and drags down to dismiss.",
+    summary: "The bottom sheet a touch screen opens in place of a dropdown. It floats up from the bottom of its parent over a scrim, rounded on every corner, and drags down to dismiss.",
     sections: &[Section {
         id: "bottom-sheet",
         name: "Bottom sheet",
@@ -61,7 +61,7 @@ fn sheets(_: &mut Window, cx: &mut App) -> AnyElement {
         "Language",
         [sheet_close("language-close").into_any_element()],
         v_flex()
-            .px(px(8.0))
+            .list_inset(cx)
             .pb(px(8.0))
             .children(LANGUAGES.iter().enumerate().map(|(ix, name)| {
                 sheet_option(("language", ix), SharedString::from(*name), ix == 1, cx)
@@ -80,7 +80,7 @@ fn sheets(_: &mut Window, cx: &mut App) -> AnyElement {
         "Pane",
         [sheet_close("pane-close").into_any_element()],
         v_flex()
-            .px(px(8.0))
+            .list_inset(cx)
             .pb(px(8.0))
             .child(sheet_action(
                 "pane-split",

@@ -126,6 +126,22 @@ pub fn press_feedback(
     }
 }
 
+/// How a press highlight rounds: like any element, through the window's
+/// adaptive corners, or like a row drawn with [`crate::row_corners`], holding
+/// its radius with the row's smoothing so the press lands on the hover's
+/// shape.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PressCorners {
+    Adaptive(Pixels),
+    Row(Pixels),
+}
+
+impl From<Pixels> for PressCorners {
+    fn from(radius: Pixels) -> Self {
+        Self::Adaptive(radius)
+    }
+}
+
 /// [`press_feedback`] for builders without a window: a layer that tracks
 /// presses over its own bounds and paints `color` at the press amount, the
 /// neutral ghost paint's pressed fill when `None`. Its corners are `radius`,
@@ -134,24 +150,24 @@ pub fn press_feedback(
 pub fn press_highlight(
     id: impl Into<ElementId>,
     color: impl Into<Option<Hsla>>,
-    radius: Pixels,
+    radius: impl Into<PressCorners>,
 ) -> impl IntoElement + Styled {
-    highlight(id.into(), color.into(), radius, DELAY)
+    highlight(id.into(), color.into(), radius.into(), DELAY)
 }
 
 /// [`press_highlight`] that lights at touch-down, for keys that never scroll.
 pub fn instant_press_highlight(
     id: impl Into<ElementId>,
     color: impl Into<Option<Hsla>>,
-    radius: Pixels,
+    radius: impl Into<PressCorners>,
 ) -> impl IntoElement + Styled {
-    highlight(id.into(), color.into(), radius, Duration::ZERO)
+    highlight(id.into(), color.into(), radius.into(), Duration::ZERO)
 }
 
 fn highlight(
     id: ElementId,
     color: Option<Hsla>,
-    radius: Pixels,
+    corners: PressCorners,
     delay: Duration,
 ) -> impl IntoElement + Styled {
     canvas(
@@ -168,8 +184,15 @@ fn highlight(
         },
         move |bounds, (hitbox, state, amount, color), window, _| {
             if amount > 0.0 {
-                let corners = window.resolve_corner_radii(Corners::all(radius), bounds.size);
-                window.paint_quad(fill(bounds, color.opacity(amount)).corner_radii(corners));
+                let quad = fill(bounds, color.opacity(amount));
+                window.paint_quad(match corners {
+                    PressCorners::Adaptive(radius) => quad.corner_radii(
+                        window.resolve_corner_radii(Corners::all(radius), bounds.size),
+                    ),
+                    PressCorners::Row(radius) => quad
+                        .corner_radii(Corners::all(radius).clamp_radii_for_quad_size(bounds.size))
+                        .corner_smoothing(crate::foundation::ROW_CORNER_SMOOTHING),
+                });
             }
             listen(&state, hitbox, delay, window);
         },

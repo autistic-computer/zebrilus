@@ -9,7 +9,7 @@ timestamp: 2026-10-13T00:00:00Z
 
 # Overview
 
-zz has its own icon set: 76 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
+zz has its own icon set: 83 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
 `brand-chrome`, `zz`), which keep their own artwork as files in `crates/zz-gpui-kit/assets/icons`. The
 set lives as skeletons in `crates/zz-gpui-kit/src/icon/mac.json`, not as SVG files, and is drawn at
 paint time for the current theme, so radius 0 gives flat icons and higher radii round them the way zz
@@ -91,6 +91,11 @@ a missing scale means a sharp vertex.
 - Arrow shafts stop about 1.25 units short of the tip. At radius 0 the shaft's square cap would
   otherwise stick out of the mitered head and the tip reads as a star.
 - U-turns (undo, redo) are true half circles drawn with `d`, round at every radius.
+- Keys are drawn the way keyboards print them, in two sets: Apple's (`key-control` ⌃, `key-option` ⌥,
+  `key-tab` ⇥) and ISO 9995-7's for every other keyboard (`key-control-iso` ⎈, `key-alt-iso` ⎇,
+  `key-tab-iso` ↹), with `key-escape` ⎋ shared. The phone key row picks the set at build time, the way
+  `Kbd` picks ⌃⌥ or Ctrl Alt. The prefix key has no glyph of its own: it shows the prefix it sends,
+  the control mark and the letter (⌃B, ⎈B), so it follows a rebinding.
 - Meanings follow use, not names: `panel-right` and `panel-bottom` are the split right and split down
   actions (two equal panes, no plus); `layout-columns` is the "Window layout" menu (one tall pane and two
   stacked); `layers` is a session (a stack of window cards); `loader` is the Mac activity spinner.

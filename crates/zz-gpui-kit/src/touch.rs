@@ -7,7 +7,9 @@ use crate::{Size, rems_from_px};
 
 mod press;
 
-pub use press::{PressFeedback, instant_press_highlight, press_feedback, press_highlight};
+pub use press::{
+    PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
+};
 
 pub const TOUCH_TARGET: f32 = 44.0;
 

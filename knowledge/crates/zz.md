@@ -661,18 +661,21 @@ imports reload the page.
   medium weight. A row that is both reads active. The
   toggle flips `ChromeMode` between the full-height sidebar and the native status bar in the
   titlebar. The chrome starts its first control at `WORKSPACE_CONTROL_TRAFFIC_LIGHT_INSET`, which
-  clears the macOS traffic lights and is derived rather than chosen:
-  `2 * MACOS_TRAFFIC_LIGHT_INSET + MACOS_TRAFFIC_LIGHT_SPAN`
-  = 81px, so the gap between the cluster and the first control equals the gap between the window
-  edge and the cluster. Both numbers are measured, not guessed: on macOS 27 each window button is a
-  14x14 frame with origins 23 apart, so three of them span 60. The lights' y falls out of the same
-  arithmetic — `(TITLE_BAR_HEIGHT - 14) / 2` — because the platform layer centres them in a
-  container of `glyph + 2y`; move the strip height without moving y and the lights stop sharing its
-  centre line. The 35px strip and 10.5px traffic-light inset match the compact Cursor reference;
-  settings and the sidebar toggle are `Button::compact_icon` buttons, like sidebar row actions and
-  the Agent and browser panes, with the 0.5px optical drop, sized up to 28px buttons with 15px
-  glyphs (from 26 and 14; `WORKSPACE_CHROME_BUTTON_SIZE` in `zz_ui::navigation`). The toggle
-  changes chrome mode and opens no menu.
+  clears the macOS traffic lights and is derived rather than chosen
+  (`macos_traffic_light_clearance`): the lights sit as far in from the leading edge as from the
+  top, `y = (title bar height - 14) / 2`, and the clearance is `2y + MACOS_TRAFFIC_LIGHT_SPAN`, so
+  the gap between the cluster and the first control equals the gap between the window edge and the
+  cluster. The glyph numbers are measured, not guessed: on macOS 27 each window button is a 14x14
+  frame with origins 23 apart, so three of them span 60. The lights' y is that arithmetic because
+  the platform layer centres them in a container of `glyph + 2y`; `ui_scale::place_traffic_lights`
+  moves them whenever the theme rebuilds or the zoom changes, so they keep the strip's centre line.
+  The strip is `Theme::title_bar_height()`: a pane header (36px) with the pane margin above and
+  below it, 52px with gaps at the default 8px margin and 36px with flush panes, so the lights, the
+  sidebar's buttons and the status bar share the pane headers' centre line. Settings and the
+  sidebar toggle are `Button::compact_icon` buttons, like sidebar row actions and the Agent and
+  browser panes, with the 0.5px optical drop, sized up to 32px buttons with 17px glyphs (from 28
+  and 15; `WORKSPACE_CHROME_BUTTON_SIZE` in `zz_ui::navigation`). The toggle changes chrome mode
+  and opens no menu.
   `status_bar.rs` renders native session, window, Agent, host, update, and clock items from
   `zz_client::StatusBarModel` and app settings. The bar appears only in the title bar when the
   sidebar is retracted; an expanded sidebar has no status bar. Window controls select by stable
