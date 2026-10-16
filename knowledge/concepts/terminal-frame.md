@@ -4,7 +4,7 @@ title: Terminal frame (TerminalViewport)
 description: The immutable, renderer-neutral terminal snapshot (packed cells, interned styles, overlays, cursor, and modes) published from the worker thread and diffed into retained-grid patches.
 resource: crates/zz-terminal/src/model.rs
 tags: [frame, viewport, packed-cell, patch, immutable, snapshot]
-timestamp: 2026-10-05T00:00:00Z
+timestamp: 2026-10-16T15:50:00Z
 ---
 
 # Overview
@@ -71,7 +71,10 @@ whole terminal, and with nothing streaming the last bound stays. The cursor, ove
 placements outside the region are dropped, the scrollbar stays the terminal's, and history chunks
 are cut to the frame's columns. The terminal and its pty keep their size, so capture-pane, copy
 mode and the pane formats read it directly; `TerminalSession::size()` is the size the latest
-frames were built at. Copy-mode frames are still built at the terminal's size.
+frames were built at. Copy-mode frames apply the same consumer-derived bound
+to packed cells and overlays. Their cache includes the bounded extent, while
+the frozen revision, selection text, search coordinates, and scrollbar retain
+the terminal's full extent. A later larger bound extracts the additional cells.
 
 One publish carries one frame per **active view**, and a view is an attached client:
 `publish_active_views` restores each view's scroll anchor, selection, copy-mode, and search state

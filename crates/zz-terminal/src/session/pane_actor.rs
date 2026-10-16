@@ -556,6 +556,8 @@ impl PaneActor {
         } else {
             CONTENT_PUBLISH_STALENESS
         };
+        #[cfg(all(test, target_os = "linux"))]
+        let publish_interval = profile_tests::publish_interval(publish_interval);
         self.publish_interval = publish_interval;
         let echo_due = self.output_pending && self.echo.due();
         if self.output_pending
@@ -566,6 +568,8 @@ impl PaneActor {
                 || self.engine_filter.metadata_hint
                 || self.last_content_publish.elapsed() >= publish_interval)
         {
+            #[cfg(all(test, target_os = "linux"))]
+            let publication_started = Instant::now();
             if echo_due {
                 self.echo.spend();
             }
@@ -612,6 +616,10 @@ impl PaneActor {
                 SessionStatus::Running,
             )?;
             self.last_content_publish = Instant::now();
+            #[cfg(all(test, target_os = "linux"))]
+            if profile_tests::publish_from_start() {
+                self.last_content_publish = publication_started;
+            }
             self.output_pending = false;
             self.vt_diagnostics.emit();
         }
