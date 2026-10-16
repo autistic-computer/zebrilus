@@ -1,0 +1,348 @@
+zz	gpt-oss-120b-medium	none	t2	1	7	1	1	0	81	13742	322	0	4711 
+zz	gpt-oss-120b-medium	none	t3	1	9	1	1	0	0	6909	326	0	done 
+zz	gpt-oss-120b-medium	none	t5	1	12	1	1	0	0	6941	709	0	done 
+zz	gpt-oss-120b-medium	none	t6	1	15	1	3	1	130	16650	617	0	done 
+zz	gpt-oss-120b-medium	none	t4	0	26	1	5	0	450	15329	2346	0	DONE-e  ​​​  ​   
+zz	gpt-oss-120b-medium	none	t7	1	10	1	1	0	0	6939	224	0	done 
+zz	gpt-oss-120b-medium	none	t9	1	8	1	0	0	0	13648	515	0	ls: cannot access '/definitely-missing-dir-mx': No such file or directory 
+zz	gpt-oss-120b-medium	skill	t3	1	8	1	1	0	0	13891	237	0	done 
+zz	gpt-oss-120b-medium	skill	t2	1	9	1	1	0	81	14080	466	0	4711 
+zz	gpt-oss-120b-medium	skill	t6	1	11	1	2	1	0	14267	436	0	done 
+zz	gpt-oss-120b-medium	skill	t5	1	13	1	1	0	0	14008	1285	0	done 
+zz	gpt-oss-120b-medium	none	t8	1	42	1	7	2	22730	28993	2622	0	pong 
+zz	gpt-oss-120b-medium	skill	t7	1	9	1	2	0	3633	17091	386	0	done 
+zz	gpt-oss-120b-medium	skill	t9	1	40	1	13	1	1183	18491	3990	0	ls: /definitely-missing-dir-mx: No such file or directory 
+zz	gpt-oss-120b-medium	inline	t2	1	8	1	1	0	81	20361	390	0	4711 
+zz	gpt-oss-120b-medium	inline	t3	1	11	1	1	0	0	10221	480	0	done 
+zz	gpt-oss-120b-medium	inline	t4	1	13	1	4	0	409	20429	853	0	DONE-6b75e0e2 
+zz	gpt-oss-120b-medium	inline	t5	1	17	1	2	0	9	20564	1721	0	done 
+zz	gpt-oss-120b-medium	inline	t6	1	8	1	1	0	0	10249	276	0	done 
+zz	gpt-oss-120b-medium	inline	t7	1	14	1	3	0	506	21011	474	0	done 
+zz	gpt-oss-120b-medium	inline	t9	1	21	1	3	2	8752	26975	1147	0	`/definitely-missing-dir-mx: No such file or directory (os error 2)` 
+zz	gpt-oss-120b-medium	skill	t4	0	152	1	2	2	0	7331	1000	0	[Awaiting task completion…] 
+zz	gpt-oss-120b-medium	hook	t2	1	9	1	1	0	82	7516	302	0	4711 
+zz	gpt-oss-120b-medium	inline	t8	1	23	1	4	0	28	21159	1764	0	pong 
+zz	gpt-oss-120b-medium	skill	t8	0	126	1	13	1	290	45653	7992	0	The requested **agent pane** was opened, the prompt was sent, and its output was captured.
+zz	gpt-oss-120b-medium	hook	t3	1	8	1	1	0	0	7393	300	0	done 
+zz	gpt-oss-120b-medium	hook	t4	1	14	1	5	0	531	14627	857	0	DONE-98d43e28 
+zz	gpt-oss-120b-medium	hook	t5	1	11	1	2	0	59	14648	787	0	done 
+zz	gpt-oss-120b-medium	hook	t7	1	8	1	1	0	0	7387	556	0	done 
+zz	gpt-oss-120b-medium	hook	t6	1	16	1	5	3	8683	18563	1158	0	done 
+zz	gpt-oss-120b-medium	hook	t9	1	8	1	1	1	69	7418	367	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-oss-120b-medium	stub	t3	1	10	1	2	1	0	14249	564	0	done 
+zz	gpt-oss-120b-medium	stub	t2	1	13	1	1	0	81	15481	455	0	4711 
+zz	gpt-oss-120b-medium	stub	t6	1	6	1	1	0	0	7006	302	0	done 
+zz	gpt-oss-120b-medium	stub	t4	1	14	1	6	0	629	15191	1294	0	DONE-d8c552ae 
+zz	gpt-oss-120b-medium	stub	t7	1	7	1	1	0	0	13800	293	0	done 
+zz	gpt-oss-120b-medium	stub	t9	0	22	1	5	1	93	15625	1907	0	The error line printed was:  ``` ls: cannot access '/definitely-missing-dir-mx': No No 
+zz	gpt-oss-120b-medium	stub	t5	0	41	1	7	0	7399	24121	3232	0	done 
+zz	gpt-oss-120b-medium	hook	t8	1	103	1	15	7	21331	44707	8064	0	[No further action – awaiting the agent’s response.] pong 
+zz	gpt-oss-120b-medium	stubhook	t2	1	7	1	1	0	82	14660	241	0	4711 
+zz	gpt-oss-120b-medium	stubhook	t3	1	7	1	1	0	0	14513	380	0	done 
+zz	gpt-oss-120b-medium	stubhook	t5	1	10	1	2	0	63	7424	752	0	done 
+zz	gpt-oss-120b-medium	stubhook	t7	1	7	1	1	0	0	7382	383	0	done 
+zz	gpt-oss-120b-medium	stubhook	t6	1	14	1	3	1	8683	17968	1303	0	done 
+zz	gpt-oss-120b-medium	stubhook	t9	1	9	1	2	2	69	7569	496	0	`"/definitely-missing-dir-mx": No such file or directory (os error 2)` 
+zz	claude-haiku-5-5	none	t2	1	7	2	1	0	81	62402	93	0.00222508	4711 
+zz	claude-haiku-5-5	none	t3	1	9	3	2	0	564	94127	183	0.0026781400000000003	done 
+zz	claude-haiku-5-5	none	t4	1	16	4	7	0	852	126059	582	0.0032408400000000005	DONE-7af3fafc 
+zz	gpt-oss-120b-medium	stubhook	t8	1	59	1	3	0	13633	26033	3889	0	pong 
+zz	claude-haiku-5-5	none	t5	1	10	3	3	0	209	94128	347	0.00274495	done 
+zz	claude-haiku-5-5	none	t6	1	11	3	3	1	20	93899	285	0.00267708	done 
+zz	claude-haiku-5-5	none	t7	1	8	3	3	0	39	93775	235	0.0026371600000000004	done 
+zz	claude-haiku-5-5	none	t9	1	11	3	3	0	402	94031	329	0.0027194	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-oss-120b-medium	stubhook	t4	1	154	1	385	0	51795	17136	2745	0	DONE-5e91053f 
+zz	gpt-oss-120b-medium	stub	t8	0	180	1	25	13	46570	61830	17446	0	I was unable to locate a `zz` command that directly creates an agent pane. It appears agen
+zz	claude-haiku-5-5	skill	t2	1	6	2	1	0	81	62827	212	0.00234051	4711 
+zz	claude-haiku-5-5	skill	t3	1	7	2	2	0	564	63074	113	0.00234117	done 
+zz	claude-haiku-5-5	none	t8	1	19	5	11	1	24489	177419	996	0.00548257	pong 
+zz	claude-haiku-5-5	skill	t6	1	7	2	2	0	9	62844	274	0.0023766200000000003	done 
+zz	claude-haiku-5-5	skill	t5	1	11	4	6	0	353	127514	807	0.0034353400000000003	done 
+zz	claude-haiku-5-5	skill	t7	1	8	3	3	0	788	95120	284	0.00281343	done 
+zz	claude-haiku-5-5	skill	t4	1	16	6	4	0	1486	180971	762	0.0050038	DONE-90727feb 
+zz	claude-haiku-5-5	skill	t9	1	15	6	5	0	797	179709	745	0.00491219	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	claude-haiku-5-5	inline	t2	1	7	2	1	0	81	72569	98	0.00329559	4711 
+zz	claude-haiku-5-5	inline	t3	1	7	2	2	0	564	72917	106	0.00337052	done 
+zz	claude-haiku-5-5	skill	t8	1	16	5	2	0	8	141756	466	0.0042943700000000005	pong 
+zz	claude-haiku-5-5	inline	t6	1	7	2	2	0	16	72552	125	0.00330797	done 
+zz	claude-haiku-5-5	inline	t5	1	11	3	3	0	192	109437	465	0.00393573	done 
+zz	claude-haiku-5-5	inline	t7	1	6	3	3	0	44	109013	217	0.0037440300000000006	done 
+zz	claude-haiku-5-5	inline	t4	1	16	3	2	0	629	109554	234	0.0038081	DONE-caa535e1 
+zz	claude-haiku-5-5	inline	t9	1	14	4	7	0	1608	147358	897	0.0046599400000000004	``` "/definitely-missing-dir-mx": No such file or directory (os error 2) ``` 
+zz	claude-haiku-5-5	hook	t2	1	7	2	1	0	82	63749	100	0.00161581	4711 
+zz	claude-haiku-5-5	hook	t3	1	8	2	1	0	3	63726	124	0.00237979	done 
+zz	claude-haiku-5-5	inline	t8	1	14	3	2	0	187	109151	342	0.00381684	pong 
+zz	claude-haiku-5-5	hook	t6	1	6	2	2	0	85	63804	176	0.0024234800000000004	done 
+zz	claude-haiku-5-5	hook	t5	1	11	4	4	0	149	128324	379	0.00323761	done 
+zz	claude-haiku-5-5	hook	t7	1	9	3	3	0	81	95956	334	0.00286142	done 
+zz	claude-haiku-5-5	hook	t4	1	19	3	4	0	432	96038	438	0.0029290600000000003	DONE-f99a1a8b 
+zz	claude-haiku-5-5	hook	t9	1	8	2	1	1	69	63917	466	0.0025867100000000003	`"/definitely-missing-dir-mx": No such file or directory (os error 2)` 
+zz	claude-haiku-5-5	hook	t8	1	15	3	3	0	13633	106435	324	0.00395282	pong 
+zz	claude-haiku-5-5	stub	t2	1	7	2	1	0	81	62636	107	0.00225798	4711 
+zz	claude-haiku-5-5	stub	t3	1	9	3	2	0	564	94462	197	0.0027114799999999996	done 
+zz	claude-haiku-5-5	stub	t7	1	8	3	3	0	171	94279	284	0.0027041300000000003	done 
+zz	claude-haiku-5-5	stub	t6	1	9	5	3	0	13640	136709	439	0.0042475	done 
+zz	claude-haiku-5-5	stub	t4	1	17	6	4	0	20398	177687	687	0.0051798899999999995	DONE-5735f028 
+zz	claude-haiku-5-5	stub	t5	1	15	6	6	0	14088	174402	700	0.00419366	done 
+zz	claude-haiku-5-5	stub	t9	1	16	6	5	0	19970	177856	834	0.00528396	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	claude-haiku-5-5	stubhook	t2	1	6	2	1	0	82	63669	98	0.00236109	4711 
+zz	claude-haiku-5-5	stub	t8	1	14	5	3	0	13633	136876	588	0.0043517899999999995	pong 
+zz	claude-haiku-5-5	stubhook	t3	1	11	3	4	0	190	96098	515	0.0029799400000000004	done 
+zz	claude-haiku-5-5	stubhook	t5	1	9	3	4	0	183	95988	397	0.0029006500000000003	done 
+zz	claude-haiku-5-5	stubhook	t6	1	7	2	3	1	85	63742	177	0.00241861	done 
+zz	claude-haiku-5-5	stubhook	t7	1	9	3	3	0	81	95806	327	0.0028454	done 
+zz	claude-haiku-5-5	stubhook	t4	1	19	3	5	0	487	96192	511	0.00298173	DONE-870e0005 
+zz	claude-haiku-5-5	stubhook	t9	1	9	2	1	1	69	63689	676	0.0026544700000000004	`"/definitely-missing-dir-mx": No such file or directory (os error 2)`  The format doesn't
+zz	claude-haiku-5-5	stubhook	t8	1	16	5	3	0	13633	138943	534	0.00444426	pong 
+rex	gpt-oss-120b-medium	none	t2	1	15	1	1	0	104	9087	650	0	4711 
+rex	gpt-oss-120b-medium	none	t3	1	25	1	5	1	4426	19151	1341	0	done 
+rex	gpt-oss-120b-medium	none	t6	1	21	1	2	0	1142	16977	851	0	done 
+rex	gpt-oss-120b-medium	none	t5	1	32	1	2	0	86	17762	2078	0	done 
+rex	gpt-oss-120b-medium	none	t9	0	17	1	1	1	0	14787	1047	0	Error: --block requires --split 
+rex	gpt-oss-120b-medium	none	t7	1	64	1	4	0	3570	17686	782	0	done 
+rex	gpt-oss-120b-medium	skill	t2	1	11	1	4	1	3545	16794	812	0	4711 
+rex	gpt-oss-120b-medium	skill	t4	1	17	1	1	0	133	7871	1037	0	DONE-e1e5b767 
+rex	gpt-oss-120b-medium	skill	t3	1	38	1	2	1	44	21422	1639	0	done 
+rex	gpt-oss-120b-medium	none	t4	1	154	1	11	2	7316	23814	4384	0	DONE-0d23ebd4 
+rex	gpt-oss-120b-medium	skill	t6	1	59	1	5	2	1883	32158	2287	0	done 
+rex	gpt-oss-120b-medium	skill	t7	1	54	1	5	0	3675	29476	2010	0	done 
+rex	gpt-oss-120b-medium	skill	t5	1	73	1	9	6	86	27540	6902	0	done 
+rex	gpt-oss-120b-medium	inline	t2	1	8	1	1	0	104	23762	577	0	4711 
+rex	gpt-oss-120b-medium	skill	t9	1	67	1	8	1	665	28652	3992	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	gpt-oss-120b-medium	inline	t3	1	9	1	1	0	44	11933	516	0	done 
+rex	gpt-oss-120b-medium	inline	t5	1	10	1	1	0	43	23786	1014	0	done 
+rex	gpt-oss-120b-medium	inline	t6	1	7	1	1	0	0	11969	217	0	done 
+rex	gpt-oss-120b-medium	inline	t7	1	12	1	4	1	8148	26217	784	0	done 
+rex	gpt-oss-120b-medium	inline	t9	1	17	1	3	0	226	24494	1465	0	`"/definitely-missing-dir-mx": No such file or directory (os error 2)` 
+rex	gpt-oss-120b-medium	hook	t2	1	12	1	1	0	105	8672	385	0	4711 
+rex	gpt-oss-120b-medium	hook	t3	0	36	1	2	0	43	24026	2426	0	done 
+rex	gpt-oss-120b-medium	hook	t6	1	9	1	1	0	0	14633	539	0	done 
+rex	gpt-oss-120b-medium	hook	t5	0	41	1	11	6	4698	21923	5063	0	done 
+rex	gpt-oss-120b-medium	inline	t4	0	153	1	3	1	0	24708	1852	0	*Waiting for the job in pane `01a14196-d92a-7e29-a084-092ca4ea857e` to finish…* 
+rex	gpt-oss-120b-medium	hook	t7	1	74	1	3	1	105	39984	2383	0	done 
+rex	gpt-oss-120b-medium	hook	t4	0	154	1	3	1	1931	19806	1750	0	(Waiting for the pane to finish; will reply with the `DONE-…` line as soon as it appears
+rex	claude-haiku-5-5	none	t2	1	11	5	6	2	5601	162847	515	0.00392177	4711 
+rex	claude-haiku-5-5	none	t3	1	9	4	6	1	4552	128711	360	0.00335225	done 
+rex	gpt-oss-120b-medium	hook	t9	1	121	1	8	4	227	44201	4487	0	`"/definitely-missing-dir-mx": No such file or directory (os error 2)` 
+rex	claude-haiku-5-5	none	t4	1	17	7	8	1	6835	230912	1073	0.00499806	DONE-4ee5ffdb 
+rex	claude-haiku-5-5	none	t6	1	13	5	6	1	4964	161564	507	0.00382305	done 
+rex	claude-haiku-5-5	none	t5	1	24	6	9	1	8984	200599	974	0.0047921199999999995	done 
+rex	claude-haiku-5-5	none	t7	1	11	5	6	0	3759	160528	492	0.0037094300000000005	done 
+rex	claude-haiku-5-5	none	t9	1	22	6	8	0	2772	192969	892	0.00426385	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	claude-haiku-5-5	skill	t2	1	12	4	4	1	3544	128654	499	0.00338717	4711 
+rex	claude-haiku-5-5	skill	t3	1	15	6	7	0	6073	196556	636	0.00432334	done 
+rex	claude-haiku-5-5	skill	t5	1	15	6	5	0	57499	182046	778	0.0050176100000000005	done 
+rex	claude-haiku-5-5	skill	t4	1	19	5	8	1	3989	162928	853	0.00404788	DONE-05bd598d 
+rex	claude-haiku-5-5	skill	t6	1	11	6	5	0	24133	182355	663	0.005458149999999999	done 
+rex	claude-haiku-5-5	skill	t7	1	12	5	6	0	3759	161993	591	0.0038410300000000005	done 
+rex	claude-haiku-5-5	skill	t9	1	14	7	6	1	23500	222567	1030	0.006081760000000001	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	claude-haiku-5-5	inline	t2	1	7	2	1	0	104	77189	129	0.00380151	4711 
+rex	claude-haiku-5-5	inline	t3	1	16	6	7	0	12213	204462	1394	0.00655354	done 
+rex	claude-haiku-5-5	inline	t5	1	12	4	4	0	3123	157676	829	0.00525105	done 
+rex	claude-haiku-5-5	inline	t6	1	11	4	7	1	80158	159068	767	0.0053000899999999995	done 
+rex	claude-haiku-5-5	inline	t7	1	8	3	3	0	7183	119030	313	0.00464156	done 
+rex	claude-haiku-5-5	inline	t4	1	24	3	3	0	887	117147	599	0.0045975799999999995	DONE-c1d53af6 
+rex	claude-haiku-5-5	inline	t9	1	13	4	6	0	2578	159604	824	0.0053616900000000006	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	claude-haiku-5-5	hook	t2	1	9	3	4	0	3575	98089	490	0.00265656	4711 
+rex	claude-haiku-5-5	hook	t3	1	14	5	6	0	6767	168639	967	0.004435970000000001	done 
+rex	claude-haiku-5-5	hook	t4	1	16	5	8	0	14980	169231	1446	0.004712930000000001	DONE-a17c08fb 
+rex	claude-haiku-5-5	hook	t5	1	16	5	7	1	23997	175579	1419	0.00504354	done 
+rex	claude-haiku-5-5	hook	t6	1	12	4	5	0	2252	130851	799	0.0036507200000000005	done 
+rex	claude-haiku-5-5	hook	t7	1	11	4	5	0	27412	153422	641	0.005325409999999999	done 
+rex	claude-haiku-5-5	hook	t9	1	12	4	7	1	20532	151176	938	0.0052409299999999995	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-oss-120b-medium	none	t3	1	8	1	1	0	0	13611	349	0	done 
+zz	gpt-oss-120b-medium	none	t2	1	9	1	1	0	81	7004	352	0	4711 
+zz	gpt-oss-120b-medium	none	t4	1	14	1	2	0	233	6958	896	0	DONE-5bdf145f 
+zz	gpt-oss-120b-medium	none	t5	1	11	1	1	0	0	13666	503	0	done 
+zz	gpt-oss-120b-medium	none	t7	1	8	1	1	0	0	13583	252	0	done 
+zz	gpt-oss-120b-medium	none	t6	1	28	1	3	1	130	15187	1163	0	done 
+zz	gpt-oss-120b-medium	none	t9	1	62	1	15	4	770	20697	6711	0	ls: cannot access '/definitely-missing-dir-mx': No such file or directory 
+zz	gpt-oss-120b-medium	skill	t2	1	15	1	1	0	81	7152	403	0	4711 
+zz	gpt-oss-120b-medium	skill	t3	1	9	1	1	0	0	13881	409	0	done 
+zz	gpt-oss-120b-medium	skill	t4	1	16	1	3	0	332	7113	693	0	DONE-1fb3487a 
+zz	gpt-oss-120b-medium	skill	t5	1	11	1	2	0	3	7106	786	0	done 
+zz	gpt-oss-120b-medium	skill	t6	1	9	1	2	1	0	7248	371	0	done 
+zz	gpt-oss-120b-medium	skill	t7	1	10	1	1	0	0	7022	263	0	done 
+zz	gpt-oss-120b-medium	skill	t9	1	39	1	4	1	321	22658	2169	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-oss-120b-medium	none	t8	1	153	1	18	4	46945	49637	11815	0	pong 
+zz	gpt-oss-120b-medium	inline	t2	1	15	1	2	0	848	21386	372	0	4711 
+zz	gpt-oss-120b-medium	inline	t3	1	9	1	1	0	0	10258	377	0	done 
+zz	gpt-oss-120b-medium	inline	t4	1	15	1	3	0	233	21439	939	0	[I’m waiting for the background task to finish and will reply with the `DONE-` line as s
+zz	gpt-oss-120b-medium	inline	t5	1	10	1	2	0	67	10267	773	0	done 
+zz	gpt-oss-120b-medium	inline	t6	1	10	1	1	0	0	20236	192	0	done 
+zz	gpt-oss-120b-medium	inline	t7	1	8	1	1	0	0	20218	312	0	done 
+zz	gpt-oss-120b-medium	inline	t9	1	16	1	3	1	8129	23705	771	0	/definitely-missing-dir-mx: No such file or directory (os error 2) 
+zz	gpt-oss-120b-medium	skill	t8	1	88	1	7	2	22732	37718	5010	0	pong 
+zz	gpt-oss-120b-medium	inline	t8	1	21	1	4	1	47	22530	1502	0	pong 
+zz	gpt-oss-120b-medium	hook	t2	1	7	1	1	0	82	14669	265	0	4711 
+zz	gpt-oss-120b-medium	hook	t4	1	14	1	5	0	531	14621	552	0	DONE-b59851c0 
+zz	gpt-oss-120b-medium	hook	t5	1	31	1	3	1	59	14994	1311	0	done 
+zz	gpt-oss-120b-medium	hook	t9	1	10	1	2	2	69	14989	438	0	`/definitely-missing-dir-mx: No such file or directory (os error 2)` 
+zz	gpt-oss-120b-medium	hook	t3	1	67	1	1	0	0	7385	448	0	done 
+zz	gpt-oss-120b-medium	hook	t7	1	66	1	1	0	0	13337	292	0	done 
+zz	gpt-oss-120b-medium	stub	t2	1	7	1	1	0	81	7170	393	0	4711 
+zz	gpt-oss-120b-medium	stub	t3	1	7	1	1	0	0	13818	426	0	done 
+zz	gpt-oss-120b-medium	hook	t6	0	153	1	2	1	13625	11112	891	0	 
+zz	gpt-oss-120b-medium	stub	t5	1	13	1	2	0	0	7047	737	0	done 
+zz	gpt-oss-120b-medium	stub	t4	1	21	1	2	0	134	7531	865	0	DONE-7aab7d37 
+zz	gpt-oss-120b-medium	stub	t6	1	28	1	8	4	3986	19548	2537	0	done 
+zz	gpt-oss-120b-medium	stub	t7	1	20	1	1	0	0	7029	284	0	done 
+zz	gpt-oss-120b-medium	stub	t9	1	13	1	1	0	0	7245	1013	0	ls: cannot access '/definitely‑‑    ‑  ‑  ‑ ‑  ‑ ‑ ‑ ‑
+zz	gpt-oss-120b-medium	stubhook	t2	1	10	1	1	0	82	7469	379	0	4711 
+zz	gpt-oss-120b-medium	stubhook	t3	1	11	1	1	0	0	7398	516	0	done 
+zz	gpt-oss-120b-medium	stub	t8	1	92	1	8	1	18863	37787	4875	0	pong 
+zz	gpt-oss-120b-medium	stubhook	t5	1	27	1	2	0	63	7433	541	0	done 
+zz	gpt-oss-120b-medium	stubhook	t4	1	30	1	1	0	134	7404	782	0	DONE-5231af83 
+zz	gpt-oss-120b-medium	stubhook	t7	1	11	1	2	1	0	7565	532	0	done 
+zz	gpt-oss-120b-medium	stubhook	t6	1	12	1	3	2	0	15281	821	0	done 
+zz	gpt-oss-120b-medium	hook	t8	0	248	1	20	11	27677	62746	17255	0	I wasn’t able to locate a command for directly opening an “agent pane” in this zz wo
+zz	gpt-oss-120b-medium	stubhook	t9	1	13	1	2	2	69	7569	644	0	`"/definitely-missing-dir-mx": No such file or directory (os error 2)` 
+rex	gpt-oss-120b-medium	none	t2	1	13	1	4	1	3545	17206	738	0	4711 
+rex	gpt-oss-120b-medium	none	t3	0	39	1	2	0	2100	24114	1691	0	done 
+rex	gpt-oss-120b-medium	none	t5	1	46	1	6	1	4157	25455	2545	0	done 
+rex	gpt-oss-120b-medium	none	t6	1	15	1	4	0	3940	16967	775	0	done 
+rex	gpt-oss-120b-medium	none	t7	1	7	1	2	0	105	13861	288	0	done 
+rex	gpt-oss-120b-medium	none	t9	1	46	1	13	5	8194	25027	4087	0	ls: cannot access '/definitely-missing-dir-mx': No such file or directory 
+rex	gpt-oss-120b-medium	skill	t2	1	13	1	1	0	105	14514	537	0	4711 
+rex	gpt-oss-120b-medium	none	t4	0	156	1	3	1	2057	16026	994	0	(Waiting for the block to finish – I’ll reply with the `DONE-` line as soon as it appe
+zz	gpt-oss-120b-medium	stubhook	t8	1	198	1	37	15	9591	48685	18124	0	pong 
+rex	gpt-oss-120b-medium	skill	t3	0	21	1	1	0	43	14819	423	0	done 
+rex	gpt-oss-120b-medium	skill	t5	1	19	1	1	0	43	15151	770	0	done 
+rex	gpt-oss-120b-medium	skill	t7	1	29	1	4	0	3570	23847	961	0	done 
+rex	gpt-oss-120b-medium	skill	t9	1	24	1	1	0	0	16925	1992	0	ls: /definitely-missing-dir-mx: No such file or directory 
+rex	gpt-oss-120b-medium	skill	t6	1	44	1	3	1	39	26887	1595	0	done 
+rex	gpt-oss-120b-medium	inline	t2	1	8	1	1	0	104	12029	413	0	4711 
+rex	gpt-oss-120b-medium	inline	t3	1	9	1	1	0	153	23742	252	0	done 
+rex	gpt-oss-120b-medium	inline	t5	1	13	1	1	0	229	12160	699	0	done 
+rex	gpt-oss-120b-medium	inline	t6	1	11	1	1	0	0	23684	429	0	done 
+rex	gpt-oss-120b-medium	inline	t7	1	14	1	3	0	8148	26497	854	0	done 
+rex	gpt-oss-120b-medium	inline	t9	1	15	1	3	0	226	24327	1109	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	gpt-oss-120b-medium	skill	t4	1	154	1	5	0	5504	19970	3164	0	DONE-f6c6d13d 
+rex	gpt-oss-120b-medium	hook	t2	1	18	1	2	0	105	17278	895	0	4711 
+rex	gpt-oss-120b-medium	hook	t3	0	55	1	4	1	20245	32953	2516	0	done 
+rex	gpt-oss-120b-medium	inline	t4	1	153	1	7	1	829	28157	3134	0	DONE-54d47912 DONE-54d47912 
+rex	gpt-oss-120b-medium	hook	t5	0	37	1	2	0	43	22266	2539	0	done 
+rex	gpt-oss-120b-medium	hook	t6	1	30	1	2	0	15	21117	1105	0	done 
+rex	gpt-oss-120b-medium	hook	t7	1	53	1	5	0	3570	32218	1817	0	done 
+rex	gpt-oss-120b-medium	hook	t4	1	153	1	110	1	19099	25754	4672	0	DONE-5b53a272 
+rex	gpt-oss-120b-medium	hook	t9	0	92	1	30	3	10700	34168	10582	0	Error: No such file or directory 
+zz	gpt-oss-120b-medium	none	t12	0	10	1	1	0	0	6856	590	0	done 
+zz	gpt-oss-120b-medium	none	t11	0	10	1	1	0	0	6779	807	0	%0 
+zz	gpt-oss-120b-medium	none	t1	0	13	1	2	0	0	13907	1007	0	done 
+zz	gpt-oss-120b-medium	skill	t11	0	9	1	2	0	93	13627	446	0	%0 
+zz	gpt-oss-120b-medium	none	t10	1	30	1	4	0	175568	29066	1557	0	test parser::rejects_trailing_comma_e84e2df4 
+zz	gpt-oss-120b-medium	skill	t12	0	10	1	0	0	0	13734	727	0	done 
+zz	gpt-oss-120b-medium	skill	t1	0	25	1	6	2	682	16946	2270	0	done 
+zz	gpt-oss-120b-medium	inline	t1	1	13	1	2	0	0	20464	855	0	done. 
+zz	gpt-oss-120b-medium	inline	t10	1	13	1	3	0	86639	28013	1039	0	test parser::rejects_trailing_comma_a2b24a21 
+zz	gpt-oss-120b-medium	skill	t10	1	43	1	4	0	172124	28711	2254	0	test parser::rejects_trailing_comma_336783c3 
+zz	gpt-oss-120b-medium	inline	t12	1	13	1	2	0	5404	23143	765	0	done 
+zz	gpt-oss-120b-medium	inline	t11	0	23	1	6	0	17129	38649	1805	0	%0 
+zz	gpt-oss-120b-medium	hook	t1	1	11	1	1	0	0	14138	523	0	done 
+zz	gpt-oss-120b-medium	hook	t10	1	22	1	4	0	257892	18527	1794	0	parser::rejects_trailing_comma_43f862ef 
+zz	gpt-oss-120b-medium	hook	t12	0	19	1	4	1	2	14689	1373	0	done 
+zz	gpt-oss-120b-medium	hook	t11	1	24	1	6	0	435	16891	2047	0	%3 
+zz	gpt-oss-120b-medium	stub	t11	0	9	1	2	0	10	13872	706	0	%0 
+zz	gpt-oss-120b-medium	stub	t12	0	8	1	1	0	0	13744	573	0	done 
+zz	gpt-oss-120b-medium	stub	t10	1	24	1	2	0	86062	18619	1482	0	parser::rejects_trailing_comma_b928f1f7 
+zz	gpt-oss-120b-medium	stubhook	t10	0	32	1	4	1	172188	42874	2665	0	case_3001 
+zz	gpt-oss-120b-medium	stubhook	t11	1	26	1	10	0	595	15497	2951	0	%3 
+zz	gpt-oss-120b-medium	stubhook	t12	1	12	1	4	1	6	14720	851	0	done 
+zz	claude-haiku-5-5	none	t1	1	11	3	1	0	0	94113	347	0.00206061	done 
+zz	claude-haiku-5-5	none	t10	1	16	4	7	0	344552	126537	779	0.0027224400000000004	parser::rejects_trailing_comma_faa54972 
+zz	claude-haiku-5-5	none	t11	1	17	6	15	0	820	191378	1120	0.0036416500000000006	%3 
+zz	claude-haiku-5-5	none	t12	1	10	3	2	0	34	94347	419	0.00212764	done 
+zz	claude-haiku-5-5	skill	t1	1	11	6	4	0	2071	181702	778	0.004432580000000001	done 
+zz	claude-haiku-5-5	skill	t10	1	16	6	4	1	144778	187498	668	0.0047710800000000005	parser::rejects_trailing_comma_f5c07352 
+zz	claude-haiku-5-5	skill	t11	1	19	7	16	0	7243	230694	1310	0.004549699999999999	%3 
+zz	claude-haiku-5-5	skill	t12	1	15	5	4	1	53	142276	774	0.00386172	done 
+zz	claude-haiku-5-5	inline	t1	1	10	2	3	1	0	72863	494	0.0019145899999999999	done  The file `/tmp/mxb-runs/zz-claude-haiku-5-5-inline-t1/t1.ok` exists. I sent the `tou
+zz	gpt-oss-120b-medium	stub	t1	0	154	1	1	0	0	14352	1358	0	done 
+zz	claude-haiku-5-5	inline	t11	1	13	5	13	0	4001	185521	930	0.00356238	%3 
+zz	claude-haiku-5-5	inline	t12	1	10	3	2	0	28	109590	440	0.0022957000000000003	done 
+zz	claude-haiku-5-5	inline	t10	1	18	4	6	0	258285	146287	528	0.0027250900000000003	parser::rejects_trailing_comma_1fe1c154 
+zz	claude-haiku-5-5	hook	t1	1	8	2	1	0	0	64131	365	0.00181027	done 
+zz	claude-haiku-5-5	hook	t11	1	11	5	9	0	835	161357	714	0.0030681500000000004	%3 
+zz	claude-haiku-5-5	hook	t10	1	13	4	3	0	172199	135761	912	0.00348196	parser::rejects_trailing_comma_53d9d547 
+zz	gpt-oss-120b-medium	stubhook	t1	0	154	1	6	2	356	20348	4674	0	done 
+zz	claude-haiku-5-5	hook	t12	1	9	3	2	0	3	96025	274	0.0020597600000000003	done 
+zz	claude-haiku-5-5	stub	t1	1	15	6	4	0	15032	175637	1416	0.004659010000000001	done 
+zz	claude-haiku-5-5	stub	t10	1	15	9	5	0	101129	293279	1775	0.0063113	parser::rejects_trailing_comma_1c6708ae 
+zz	claude-haiku-5-5	stub	t12	1	13	6	3	0	13722	174566	808	0.00425443	done 
+zz	claude-haiku-5-5	stub	t11	1	17	8	11	0	14541	249932	1055	0.0052127	%3 
+zz	claude-haiku-5-5	stubhook	t1	1	9	3	2	0	55	96493	589	0.00229319	done 
+zz	claude-haiku-5-5	stubhook	t10	1	11	4	3	0	172193	135592	984	0.0035231100000000003	test parser::rejects_trailing_comma_6b3ad1a8 
+zz	claude-haiku-5-5	stubhook	t11	1	14	5	10	0	906	161012	610	0.00298534	%3 
+zz	claude-haiku-5-5	stubhook	t12	1	14	3	2	0	3	95976	318	0.00208032	done 
+rex	gpt-oss-120b-medium	none	t11	0	12	1	5	0	3306	16722	838	0	01a141c0-a5d7-7e3c-98a5-575288e779a5 
+rex	gpt-oss-120b-medium	none	t12	0	9	1	0	0	0	6894	502	0	done 
+rex	gpt-oss-120b-medium	none	t1	1	23	1	4	1	2057	18413	1398	0	done 
+rex	gpt-oss-120b-medium	skill	t11	0	21	1	4	1	2952	17798	1711	0	01a141c0-ed07-73e4-989e-da3b7c6e4b72 
+rex	gpt-oss-120b-medium	skill	t1	1	28	1	3	0	0	16732	1629	0	done 
+rex	gpt-oss-120b-medium	none	t10	1	54	1	11	3	175876	32554	4241	0	test parser::rejects_trailing_comma_47e052b4 
+rex	gpt-oss-120b-medium	skill	t12	0	10	1	0	0	0	6896	725	0	done 
+rex	gpt-oss-120b-medium	inline	t1	0	12	1	1	0	0	23945	897	0	done 
+rex	gpt-oss-120b-medium	inline	t11	0	13	1	3	0	33015	28925	1001	0	block:01a141c1-7978-72d6-841a-41ef37c298c1 
+rex	gpt-oss-120b-medium	inline	t12	1	18	1	6	0	17318	34109	1926	0	done 
+rex	gpt-oss-120b-medium	hook	t1	1	41	1	5	2	0	20282	4116	0	done 
+rex	gpt-oss-120b-medium	inline	t10	1	69	1	10	1	994	29542	6473	0	rejects_trailing_comma_4343fa7f rejects_trailing_comma_4343fa7f 
+rex	gpt-oss-120b-medium	hook	t10	0	47	1	14	1	92498	52332	4183	0	case_2731 
+rex	gpt-oss-120b-medium	skill	t10	0	120	1	23	2	1008	40022	9368	0	test parser::rejects_trailing_comma_3f6575dc 
+rex	gpt-oss-120b-medium	hook	t11	0	34	1	5	0	21701	31812	1741	0	block:01a141c2-620d-7a9e-9938-25f4c3a204b8 
+rex	claude-haiku-5-5	none	t10	1	32	5	9	0	93521	165556	1215	0.003945270000000001	parser::rejects_trailing_comma_76333203 
+rex	claude-haiku-5-5	none	t11	1	24	9	18	3	10827	308330	1401	0.005794860000000001	01a141c2-f0ba-7318-beb6-a45aa7a2da9f 
+rex	claude-haiku-5-5	none	t12	1	17	6	9	1	5614	196863	855	0.00393754	done 
+rex	claude-haiku-5-5	skill	t1	1	13	6	6	0	25151	183300	930	0.0051413	done 
+rex	gpt-oss-120b-medium	hook	t12	0	72	1	9	5	2995	31966	5648	0	done 
+rex	claude-haiku-5-5	skill	t11	1	17	8	9	0	22217	262731	1118	0.006053340000000001	block:01a141c3-957b-71e0-bf87-42752190ba10 
+rex	claude-haiku-5-5	none	t1	1	83	9	7	0	3890	297403	1519	0.00532963	done 
+rex	claude-haiku-5-5	skill	t12	1	16	7	4	0	24787	226161	821	0.005656190000000001	done 
+rex	claude-haiku-5-5	skill	t10	1	23	9	7	0	27324	308097	1865	0.007098039999999999	parser::rejects_trailing_comma_fda1f96d 
+rex	claude-haiku-5-5	inline	t1	1	12	4	4	0	3176	158404	869	0.00475032	done 
+rex	claude-haiku-5-5	inline	t11	1	12	4	7	0	1889	157899	767	0.00468705	block:01a141c3-f1bb-74a3-ac93-8ad6c23dcf47 
+rex	claude-haiku-5-5	inline	t12	1	12	4	3	0	4585	160942	564	0.00476418	done 
+rex	claude-haiku-5-5	inline	t10	1	21	5	7	1	89906	201600	1958	0.0060528100000000005	parser::rejects_trailing_comma_7679ed8b 
+rex	claude-haiku-5-5	hook	t1	1	11	4	6	1	20306	151242	927	0.00469079	done 
+rex	claude-haiku-5-5	hook	t11	1	15	6	13	3	6290	203566	1252	0.00451201	block:01a141c4-2d9c-7c40-9a53-7d0d2b7163db 
+rex	claude-haiku-5-5	hook	t10	1	18	5	8	1	21424	195135	1599	0.005779970000000001	parser::rejects_trailing_comma_10802577 
+rex	claude-haiku-5-5	hook	t12	0	20	6	13	2	9932	206257	1822	0.00505154	I didn't run the touch command, so I can't reply "done" yet. Session "work" doesn't exist 
+zz	gpt-oss-120b-medium	none	t12	0	16	1	0	0	0	13608	799	0	done 
+zz	gpt-oss-120b-medium	none	t10	0	42	1	9	4	239	19104	3485	0	TestB  We need to consider if this answer is correct. The user asked: "Run ./test-log.sh i
+zz	gpt-oss-120b-medium	none	t11	0	46	1	1	0	0	13490	367	0	%0 
+zz	gpt-oss-120b-medium	skill	t11	0	22	1	5	1	159	14563	1498	0	%1 
+zz	gpt-oss-120b-medium	skill	t12	0	8	1	1	0	0	13474	526	0	done 
+zz	gpt-oss-120b-medium	skill	t10	1	58	1	6	0	344569	44046	4199	0	test parser::rejects_trailing_comma_3b5e9f06 
+zz	gpt-oss-120b-medium	inline	t10	1	15	1	3	0	257892	24180	1257	0	test parser::rejects_trailing_comma_bb5c6e23 
+zz	gpt-oss-120b-medium	inline	t11	1	21	1	6	0	22986	40458	1644	0	%3 
+zz	gpt-oss-120b-medium	inline	t12	1	11	1	2	0	10	20469	625	0	done 
+zz	gpt-oss-120b-medium	none	t1	0	159	1	1	0	0	13920	854	0	done 
+zz	gpt-oss-120b-medium	skill	t1	0	153	1	1	0	0	6945	881	0	done 
+zz	gpt-oss-120b-medium	hook	t10	0	12	1	3	1	172188	25520	665	0	test suite::case_2731 
+zz	gpt-oss-120b-medium	hook	t12	1	10	1	2	0	3	14495	689	0	done 
+zz	gpt-oss-120b-medium	hook	t11	0	16	1	7	0	414	14676	1886	0	%0 
+zz	gpt-oss-120b-medium	stub	t1	1	10	1	1	0	0	6929	747	0	done 
+zz	gpt-oss-120b-medium	inline	t1	1	137	1	3	2	129	21348	1558	0	done done 
+zz	gpt-oss-120b-medium	stub	t11	0	24	1	9	0	481	15105	1944	0	%0 
+zz	gpt-oss-120b-medium	stub	t12	1	19	1	4	0	4813	18758	1516	0	done 
+zz	gpt-oss-120b-medium	stubhook	t10	1	18	1	4	2	86063	18593	1506	0	parser::rejects_trailing_comma_e02af73b 
+zz	gpt-oss-120b-medium	stubhook	t11	0	15	1	2	0	36	14858	947	0	%2 %2 
+zz	gpt-oss-120b-medium	stubhook	t12	1	12	1	5	2	6	14956	932	0	done 
+zz	gpt-oss-120b-medium	hook	t1	1	143	1	5	2	54	17116	2385	0	done done. The response should  The            The          ...       ...
+rex	gpt-oss-120b-medium	none	t1	1	19	1	3	0	2057	17465	1415	0	done 
+rex	gpt-oss-120b-medium	none	t11	0	16	1	4	1	2952	16185	1066	0	block:01a141c9-79b0-7d7d-9f07-1e1529bb7163 
+rex	gpt-oss-120b-medium	none	t12	0	8	1	0	0	0	13478	385	0	done 
+zz	gpt-oss-120b-medium	stub	t10	1	152	1	20	0	3010	31250	7817	0	test parser::rejects_trailing_comma_4a88744b Is there anything else you’d like help with
+rex	gpt-oss-120b-medium	none	t10	1	43	1	6	1	258390	31497	3435	0	test parser::rejects_trailing_comma_8c2f7263 
+rex	gpt-oss-120b-medium	skill	t11	0	15	1	2	0	0	14427	724	0	01a141c9-f817-799c-974b-41ebd97cae0a 
+zz	gpt-oss-120b-medium	stubhook	t1	1	154	1	8	4	0	22608	3971	0	done done.done. done"}done done  We need to respond with "done". Already responded. The us
+rex	gpt-oss-120b-medium	skill	t1	1	34	1	4	0	0	19252	3293	0	done 
+rex	gpt-oss-120b-medium	inline	t1	1	13	1	3	0	187	23875	1494	0	done 
+rex	gpt-oss-120b-medium	skill	t10	1	52	1	9	0	452	21119	5665	0	rejects_trailing_comma_f5368cbb 
+rex	gpt-oss-120b-medium	skill	t12	0	36	1	3	1	2057	23701	2088	0	done 
+rex	gpt-oss-120b-medium	inline	t11	0	10	1	2	0	0	11824	564	0	block:01a141ca-b495-7b1f-8e5e-b0a60dfcd642 
+rex	gpt-oss-120b-medium	inline	t12	0	14	1	6	0	4585	24240	1432	0	done 
+rex	gpt-oss-120b-medium	inline	t10	1	33	1	6	0	258355	32281	3494	0	test parser::rejects_trailing_comma_5b9e2f1 
+rex	gpt-oss-120b-medium	hook	t11	0	28	1	2	0	0	16207	2014	0	block:01a141ca-fe6a-74da-93ef-c24e0a9a8614 
+rex	gpt-oss-120b-medium	hook	t12	0	31	1	2	0	0	17819	3430	0	done 
+rex	gpt-oss-120b-medium	hook	t10	0	46	1	14	4	236822	39398	4202	0	test suite::case_2983 
+rex	gpt-oss-120b-medium	hook	t1	0	99	1	9	2	220	35742	7053	0	done 

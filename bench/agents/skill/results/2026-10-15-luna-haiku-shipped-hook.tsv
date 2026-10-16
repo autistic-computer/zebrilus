@@ -1,0 +1,140 @@
+zz	gpt-6-luna	none	t2	1	9	1	1	0	81	27302	67	0	4711 
+zz	gpt-6-luna	none	t3	1	11	1	1	0	0	27292	90	0	done 
+zz	gpt-6-luna	none	t1	1	13	1	1	0	0	27384	128	0	done 
+zz	gpt-6-luna	none	t4	1	23	1	1	0	134	27178	83	0	DONE-97399575 
+zz	gpt-6-luna	none	t5	1	12	3	3	0	276	55293	220	0	done 
+zz	gpt-6-luna	none	t6	1	12	2	3	1	9	41136	223	0	done 
+zz	gpt-6-luna	none	t7	1	11	2	3	0	788	41637	118	0	done 
+zz	gpt-6-luna	none	t9	1	13	2	3	0	312	41173	183	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-6-luna	none	t10	1	15	3	4	0	172219	68772	319	0	parser::rejects_trailing_comma_8a27b226 
+zz	gpt-6-luna	none	t12	1	14	2	2	0	10	41192	150	0	done 
+zz	gpt-6-luna	none	t11	0	19	5	5	1	273	83493	455	0	%1 
+zz	gpt-6-luna	none	t8	1	17	6	6	0	24647	142719	425	0	pong 
+zz	gpt-6-luna	skill	t2	1	11	2	1	0	81	48501	136	0	4711 
+zz	gpt-6-luna	skill	t3	1	14	3	2	0	788	66388	190	0	done 
+zz	gpt-6-luna	skill	t4	1	16	3	4	0	840	66491	233	0	DONE-16bc21d9 
+zz	gpt-6-luna	skill	t5	1	16	4	5	0	2965	84091	329	0	done 
+zz	gpt-6-luna	skill	t6	1	11	1	2	0	9	42379	126	0	done 
+zz	gpt-6-luna	skill	t9	1	44	3	2	1	392	64798	181	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-6-luna	skill	t7	1	49	3	3	0	788	66166	164	0	done 
+zz	gpt-6-luna	skill	t10	1	48	4	3	0	86386	103216	446	0	parser::rejects_trailing_comma_cc7586f4 
+zz	gpt-6-luna	skill	t12	1	17	4	3	0	361	83934	251	0	done 
+zz	gpt-6-luna	skill	t11	0	26	7	6	0	9622	145584	655	0	%1 
+zz	gpt-6-luna	skill	t8	1	32	4	3	0	53	101515	342	0	pong 
+zz	gpt-6-luna	inline	t1	1	14	2	1	0	0	51394	196	0	done 
+zz	gpt-6-luna	inline	t2	1	16	1	1	0	81	34079	74	0	4711 
+zz	gpt-6-luna	skill	t1	1	135	3	1	0	0	66178	221	0	done 
+zz	gpt-6-luna	inline	t3	1	16	2	2	0	788	51628	119	0	done 
+zz	gpt-6-luna	inline	t4	1	17	2	2	0	629	51608	138	0	DONE-fa640963 
+zz	gpt-6-luna	inline	t5	1	17	2	2	0	3	51266	129	0	done 
+zz	gpt-6-luna	inline	t6	1	15	1	2	0	1080	34054	89	0	done 
+zz	gpt-6-luna	inline	t9	1	19	1	1	1	69	34120	105	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-6-luna	inline	t7	1	24	3	3	0	38	68472	167	0	done 
+zz	gpt-6-luna	inline	t10	1	19	3	4	0	87144	75647	280	0	parser::rejects_trailing_comma_c2e78cf7 
+zz	gpt-6-luna	inline	t12	1	23	2	3	0	28	51362	159	0	done 
+zz	gpt-6-luna	inline	t8	1	24	3	3	0	63	68603	210	0	pong 
+zz	gpt-6-luna	hook	t1	1	22	2	1	0	0	49612	195	0	done 
+zz	gpt-6-luna	inline	t11	0	50	7	7	0	2099	123183	583	0	%1 
+zz	gpt-6-luna	hook	t2	1	14	1	1	0	82	31792	111	0	4711 
+zz	gpt-6-luna	hook	t3	1	13	2	1	0	0	49470	141	0	done 
+zz	gpt-6-luna	hook	t7	1	13	2	2	0	26	49473	142	0	done 
+zz	gpt-6-luna	hook	t6	1	15	1	1	0	0	30285	88	0	done 
+zz	gpt-6-luna	hook	t4	1	29	3	2	0	234	85445	304	0	DONE-31cf2595 
+zz	gpt-6-luna	hook	t5	1	21	4	3	0	1354	86482	231	0	done 
+zz	gpt-6-luna	hook	t9	1	13	2	1	1	69	49558	171	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-6-luna	hook	t10	1	16	3	2	0	86063	73483	245	0	parser::rejects_trailing_comma_9d3c0ef7 
+zz	gpt-6-luna	hook	t11	1	22	4	5	0	443	85638	297	0	%3 
+zz	gpt-6-luna	hook	t12	1	20	2	2	0	3	49609	177	0	done 
+zz	gpt-6-luna	hook	t8	1	25	2	2	0	8	49592	208	0	pong 
+zz	gpt-6-luna	stub	t3	1	16	4	3	0	14713	80660	217	0	done 
+zz	gpt-6-luna	stub	t1	1	23	5	5	0	15697	99804	377	0	done 
+zz	gpt-6-luna	stub	t2	1	18	3	2	0	14006	62688	173	0	4711 
+zz	gpt-6-luna	stub	t6	1	17	3	3	0	15003	62864	163	0	done 
+zz	gpt-6-luna	stub	t4	1	22	3	2	0	14059	62668	163	0	DONE-61bda3ab 
+zz	gpt-6-luna	stub	t5	1	22	5	6	0	16889	100109	290	0	done 
+zz	gpt-6-luna	stub	t7	1	29	4	3	0	14375	80572	178	0	done 
+zz	gpt-6-luna	stub	t9	1	14	4	3	1	14317	80429	220	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-6-luna	stub	t10	1	28	5	6	0	194864	113410	408	0	parser::rejects_trailing_comma_d2e2fc2b 
+zz	gpt-6-luna	stub	t12	1	22	5	4	0	22299	105310	504	0	done 
+zz	gpt-6-luna	stub	t11	1	33	7	9	0	19769	141499	574	0	%3 
+zz	gpt-6-luna	stub	t8	1	26	5	4	0	13979	98273	359	0	pong 
+zz	gpt-6-luna	stubhook	t1	1	17	4	2	0	13925	82187	247	0	done 
+zz	gpt-6-luna	stubhook	t3	1	14	4	3	0	14713	82339	200	0	done 
+zz	gpt-6-luna	stubhook	t2	1	22	3	2	0	14007	64007	157	0	4711 
+zz	gpt-6-luna	stubhook	t4	1	21	3	2	0	14060	64109	189	0	DONE-d69ae884 
+zz	gpt-6-luna	stubhook	t5	1	21	4	3	0	15279	82890	288	0	done 
+zz	gpt-6-luna	stubhook	t6	1	16	3	2	0	13925	63996	186	0	done 
+zz	gpt-6-luna	stubhook	t7	1	19	4	3	0	13951	81920	225	0	done 
+zz	gpt-6-luna	stubhook	t9	1	15	3	2	1	13994	64022	187	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	gpt-6-luna	stubhook	t10	1	21	4	3	0	186113	109025	292	0	parser::rejects_trailing_comma_2493e5f9 
+zz	gpt-6-luna	stubhook	t11	1	24	5	4	0	24815	108395	251	0	%3 
+zz	gpt-6-luna	stubhook	t12	1	21	4	3	0	13928	82125	216	0	done 
+zz	gpt-6-luna	stubhook	t8	1	24	4	3	0	13933	100313	317	0	pong 
+rex	gpt-6-luna	none	t2	1	27	3	3	0	3544	106367	213	0	4711 
+rex	gpt-6-luna	none	t3	1	22	4	5	0	6641	73633	191	0	done 
+rex	gpt-6-luna	none	t4	1	17	3	3	0	3572	106407	351	0	DONE-2fb46e37 
+rex	gpt-6-luna	none	t6	1	17	3	5	0	6583	57971	198	0	done 
+rex	gpt-6-luna	none	t7	1	16	4	7	0	5423	72765	198	0	done 
+rex	gpt-6-luna	none	t5	1	23	6	9	1	8392	106364	413	0	done 
+rex	gpt-6-luna	none	t1	1	63	8	6	0	3105	274037	963	0	done 
+rex	gpt-6-luna	none	t10	1	29	5	8	0	178104	100205	513	0	parser::rejects_trailing_comma_92cb8008 
+rex	gpt-6-luna	none	t9	1	33	6	9	0	6387	180300	602	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	gpt-6-luna	none	t12	1	22	6	12	0	38378	111906	604	0	done 
+rex	gpt-6-luna	none	t11	1	29	11	13	0	8383	138280	543	0	block:01a141f9-3287-7737-ab87-926d014dfc06 
+rex	gpt-6-luna	skill	t3	1	17	4	3	0	24940	84725	222	0	done 
+rex	gpt-6-luna	skill	t4	1	19	4	2	0	20334	80076	400	0	DONE-1937aa4f 
+rex	gpt-6-luna	skill	t2	1	22	3	2	0	20306	65954	233	0	4711 
+rex	gpt-6-luna	skill	t1	1	25	6	8	1	56347	131657	852	0	done 
+rex	gpt-6-luna	skill	t7	1	17	4	4	0	27385	88430	271	0	done 
+rex	gpt-6-luna	skill	t6	1	21	5	8	0	89585	106672	554	0	done 
+rex	gpt-6-luna	skill	t5	1	26	7	7	1	25166	151985	722	0	done 
+rex	gpt-6-luna	skill	t9	1	29	6	7	1	51988	131945	639	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	gpt-6-luna	skill	t12	1	18	5	5	0	24890	108928	399	0	done 
+rex	gpt-6-luna	skill	t10	1	23	6	9	1	228557	151394	782	0	parser::rejects_trailing_comma_48216493 
+rex	gpt-6-luna	inline	t1	1	21	2	2	0	0	56344	203	0	done 
+rex	gpt-6-luna	inline	t2	1	16	1	1	0	104	37447	102	0	4711 
+rex	gpt-6-luna	inline	t3	1	16	1	1	0	153	37379	95	0	done 
+rex	gpt-6-luna	skill	t11	1	49	7	7	0	22025	106172	549	0	block:01a141fa-5bae-7a7f-bc33-85c416c5ecb5 
+rex	gpt-6-luna	inline	t5	1	15	2	2	0	246	56497	178	0	done 
+rex	gpt-6-luna	inline	t6	1	14	3	4	0	3385	76669	165	0	done 
+rex	gpt-6-luna	inline	t7	1	16	3	3	0	7183	59641	203	0	done 
+rex	gpt-6-luna	inline	t10	1	14	3	4	0	172210	91506	368	0	parser::rejects_trailing_comma_d1e26f25 
+rex	gpt-6-luna	inline	t9	1	19	3	4	1	226	75465	342	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	gpt-6-luna	inline	t4	1	45	2	2	1	132	56313	220	0	DONE-eb67c5b7 
+rex	gpt-6-luna	inline	t11	1	14	6	7	0	1852	77475	370	0	block:01a141fb-6cc1-7dcb-a1ea-ceba16b4c31d 
+rex	gpt-6-luna	inline	t12	1	12	2	4	0	4689	59232	218	0	done 
+rex	gpt-6-luna	hook	t2	1	19	5	4	0	21805	102337	289	0	4711 
+rex	gpt-6-luna	hook	t1	1	23	6	7	0	52509	130084	758	0	done 
+rex	gpt-6-luna	hook	t3	1	19	3	3	0	20246	64942	194	0	done 
+rex	gpt-6-luna	hook	t5	1	19	3	5	0	22302	72835	329	0	done 
+rex	gpt-6-luna	hook	t6	1	16	4	6	0	53541	89405	331	0	done 
+rex	gpt-6-luna	hook	t7	1	17	5	5	0	27398	101483	384	0	done 
+rex	gpt-6-luna	hook	t11	0	22	6	9	0	23590	118684	424	0	block:01a141fc-4eb6-7da8-852c-833e5c602c38 
+rex	gpt-6-luna	hook	t9	1	26	5	7	0	51988	111947	581	0	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+rex	gpt-6-luna	hook	t10	1	33	6	13	0	225592	148828	854	0	parser::rejects_trailing_comma_21863294 
+rex	gpt-6-luna	hook	t12	1	26	7	7	0	25033	146061	722	0	done 
+rex	gpt-6-luna	hook	t4	0	170	5	5	0	53589	0	0	0	 
+zz	claude-haiku-5-5	hook	t2	1	8	2	1	0	82	63739	100	0.0067574900000000005	4711 
+zz	claude-haiku-5-5	hook	t1	1	8	2	1	0	0	64142	380	0.006970490000000001	done 
+zz	claude-haiku-5-5	hook	t3	1	8	2	1	0	3	63724	189	0.006799940000000001	done 
+zz	claude-haiku-5-5	hook	t4	1	18	2	16	0	1620	63993	372	0.0069431499999999995	DONE-3da582ba 
+zz	claude-haiku-5-5	hook	t6	1	9	3	3	1	85	96058	364	0.0028932100000000002	done 
+zz	claude-haiku-5-5	hook	t5	1	10	3	5	0	254	96162	357	0.0029031000000000005	done 
+zz	claude-haiku-5-5	hook	t7	1	9	3	3	0	81	95872	259	0.0028082600000000004	done 
+zz	claude-haiku-5-5	hook	t9	1	7	2	1	1	69	63882	258	0.0024770400000000002	"/definitely-missing-dir-mx": No such file or directory (os error 2) 
+zz	claude-haiku-5-5	hook	t12	1	7	3	2	0	3	95935	231	0.0027926099999999996	done 
+zz	claude-haiku-5-5	hook	t10	1	12	4	1	0	85964	131804	589	0.0036133899999999993	parser::rejects_trailing_comma_e96ae621 
+zz	claude-haiku-5-5	hook	t11	1	13	6	10	0	983	193929	691	0.00413932	%3 
+zz	claude-haiku-5-5	stubhook	t1	1	7	2	1	0	0	64053	354	0.0025588599999999996	done 
+zz	claude-haiku-5-5	stubhook	t2	1	6	2	1	0	82	63654	97	0.00235892	4711 
+zz	claude-haiku-5-5	hook	t8	1	16	4	3	0	13925	144822	734	0.00464485	pong 
+zz	claude-haiku-5-5	stubhook	t3	1	11	3	3	0	170	95976	464	0.00293954	done 
+zz	claude-haiku-5-5	stubhook	t5	1	9	3	4	0	183	95969	382	0.00289239	done 
+zz	claude-haiku-5-5	stubhook	t6	1	7	2	2	0	9	63631	125	0.0023706000000000005	done 
+zz	claude-haiku-5-5	stubhook	t4	1	17	4	6	0	586	128624	741	0.00347576	DONE-1eb5503d 
+zz	claude-haiku-5-5	stubhook	t7	1	8	3	3	0	81	95809	322	0.00284255	done 
+zz	claude-haiku-5-5	stubhook	t9	1	10	3	2	1	428	96160	831	0.0031433100000000003	`"/definitely-missing-dir-mx": No such file or directory (os error 2)`  This line came bac
+zz	claude-haiku-5-5	stubhook	t12	1	9	3	2	0	3	95893	265	0.00280881	done 
+zz	claude-haiku-5-5	stubhook	t10	1	15	4	3	0	172215	135829	1027	0.00433282	parser::rejects_trailing_comma_90da80e4 
+zz	claude-haiku-5-5	stubhook	t11	1	12	5	9	0	835	160954	610	0.0037377300000000003	%3 
+zz	claude-haiku-5-5	stubhook	t8	1	29	5	3	0	13925	139452	714	0.00458666	pong 

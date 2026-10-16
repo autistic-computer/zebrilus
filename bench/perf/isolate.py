@@ -90,6 +90,7 @@ class Env:
 
 class Mux:
     detach_keys = b"\x02d"
+    stop_args = ("kill-server",)
 
     def __init__(self, name, binary, env):
         self.name = name
@@ -135,7 +136,7 @@ class Mux:
     def kill(self):
         tree = descendants(self.server_pids())
         try:
-            self.run("kill-server", timeout=10)
+            self.run(*self.stop_args, timeout=10)
         except subprocess.TimeoutExpired:
             pass
         deadline = time.monotonic() + 5
@@ -206,6 +207,61 @@ class Tmux(Mux):
 
     def server_pids(self):
         return [pid for pid, ppid, _ in processes(f"-L {self.label} ") if ppid != os.getpid()]
+
+
+class Rex(Mux):
+    stop_args = ("server", "stop")
+
+    def __init__(self, binary, env):
+        super().__init__("rex", binary, env)
+        self.socket = f"/tmp/{env.tag}-rex.sock"
+        self.config = env.path("rex.lua")
+        open(self.config, "w").close()
+        self.env["REX_CONFIG"] = self.config
+        self.server = None
+
+    def argv(self, *args):
+        return [self.binary, "-S", self.socket, "--autostart=false", *args]
+
+    def start(self):
+        if self.server and self.server.poll() is None:
+            return
+        log = open(self.envobj.path("rex-server.log"), "ab")
+        self.server = subprocess.Popen(
+            [self.binary, "server", "run", "--listen", self.socket, "--state-dir", self.envobj.path("rexstate"), "--config", self.config],
+            env=self.env,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
+        log.close()
+        deadline = time.monotonic() + 10
+        while self.run("ls").returncode != 0:
+            if self.server.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError(f"rex server did not start (see {self.envobj.path('rex-server.log')})")
+            time.sleep(0.05)
+
+    def pid(self):
+        return self.server.pid
+
+    def socket_path(self):
+        return self.socket
+
+    def server_pids(self):
+        return [pid for pid, _, _ in processes(f"--listen {self.socket} ")]
+
+    def kill(self):
+        super().kill()
+        if self.server:
+            try:
+                self.server.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            self.server = None
+
+    def attach_argv(self, target, cols=180, rows=50):
+        return ["/bin/sh", "-c", f"stty cols {cols} rows {rows}; exec \"$0\" -S {self.socket} --autostart=false attach {target}", self.binary]
 
 
 def processes(needle):

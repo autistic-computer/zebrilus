@@ -18,7 +18,8 @@
   "attach.wire_frames.*",
   "attach.wire_c2s.*",
   "echo.wire_bytes.busy30",
-  "statusjob.tty_kibps"
+  "statusjob.tty_kibps",
+  "rex.*"
  ],
  "metrics": {
   "cli.wall.*": {"wave1": {"ratio": 1.10}, "final": {"ratio": 1.05}},
