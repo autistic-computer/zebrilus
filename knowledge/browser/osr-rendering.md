@@ -4,7 +4,7 @@ title: Off-screen rendering & the frame mailbox
 description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, and how zz paces visible sessions.
 resource: crates/zz-browser/src/frame.rs
 tags: [browser, osr, frame, gpu, iosurface, hidpi, wayland, pacing]
-timestamp: 2026-09-24T00:00:00Z
+timestamp: 2026-10-16T00:00:00Z
 ---
 
 # Overview
@@ -15,7 +15,7 @@ payload depends on the active rendering tier:
 
 | Tier | Platforms | CEF callback | Mailbox payload | GPUI paint path |
 | --- | --- | --- | --- | --- |
-| Readback | Universal fallback | `on_paint` | `OsrFrame::OwnedBgra` with owned premultiplied BGRA bytes | `RenderImage` through `BrowserElement::paint_image` |
+| Readback | Universal fallback | `on_paint` | `OsrFrame::OwnedBgra` with owned premultiplied BGRA bytes | Linux/FreeBSD update a persistent BGRA texture; other platforms use `RenderImage` through `BrowserElement::paint_image` |
 | Linux wgpu | Linux/FreeBSD where GPUI exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | GPUI `external_texture` |
 | macOS Metal-IOSurface | macOS | `on_accelerated_paint` | `OsrFrame::MacGpu` with a retained zz-owned `IOSurface` | a per-pane `CALayer` under the window behind a GPUI `paint_underlay_hole`; `CVPixelBuffer` through `paint_surface` until the layer exists |
 | Windows D3D11 | Windows where GPUI exposes its DirectX context | `on_accelerated_paint` | `OsrFrame::WinGpu` with a zz-owned `ID3D11Texture2D` | GPUI `external_texture` |
@@ -35,14 +35,31 @@ CEF on_paint (callback-scoped BGRA buffer)
   -> validate width × height × 4 and the 512 MiB safety limit
   -> copy once into an owned Vec<u8>
   -> FrameMailbox::publish -> OsrFrame::OwnedBgra
+  -> Linux/FreeBSD upload damage into a persistent BGRA texture
   -> controller moves the Vec into one RenderImage
-  -> BrowserElement paints the shared Arc<RenderImage>
+  -> GPUI paints that texture, or the shared RenderImage on other platforms
 ```
 
 The callback buffer must be copied before `on_paint` returns. After that copy,
 the allocation moves through the mailbox and image construction without another
 CPU pixel copy. Replaced or retired readback images return their buffers to a
 bounded three-entry recycle pool when ownership is unique.
+
+On Linux/FreeBSD, `ReadbackTexture` reuses the tab's texture and uploads the
+dirty rectangle from each consecutive frame. It uploads the full image after
+a skipped frame, unknown damage, resize, or session change. The mailbox unions
+damage when it replaces an unread frame; the desktop still chooses a full upload
+when the generation skips. The controller keeps the CPU image for screenshots
+and recycling, and the view paints the texture through `external_texture`.
+The CEF callback still copies the complete CPU buffer so TUI consumers and
+screenshots receive a complete frame.
+
+The texture uses `Bgra8Unorm`, preserving the callback's premultiplied BGRA
+bytes without a color-space conversion. CEF currently receives an opaque
+background color. The view paints either the texture or its matching CPU image;
+the retained image is not a separate loading placeholder. Empty and error
+states hide both. Tab changes and session retries clear both, while resize keeps
+the last frame until a frame with the new dimensions arrives.
 
 ## Linux wgpu
 
@@ -52,8 +69,17 @@ destination texture. `pool_generation` distinguishes resize generations and
 `sequence` tracks accelerated callbacks. CEF may recycle its source after the
 callback, so only the zz-owned copy crosses the mailbox.
 
-The platform-specific DMA-BUF import, Wayland physical-OSR scale path, and GPUI
-external-texture element are unchanged by the macOS tier.
+`crates/zz-browser/src/linux_dmabuf.rs` owns the imported Vulkan image and memory
+until it transfers both to wgpu. `TextureMemory::Dedicated` lets wgpu destroy
+the image and free its imported memory after queued GPU work completes. On an
+import error, the local guard destroys the image before freeing any allocated
+memory; `OwnedFd` closes the duplicated descriptor unless a successful Vulkan
+allocation consumed it. This releases the imported memory objects that previously
+accumulated during long animations. Repeated imports can refer to the
+same backing storage, so allocation counts do not measure physical VRAM growth.
+
+The local importer derives from cef-rs's DMA-BUF implementation. Its upstream
+revision, license, and removal conditions are in `crates/zz-browser/UPSTREAM.md`.
 
 ## macOS Metal-IOSurface
 
@@ -208,10 +234,12 @@ the newest frame.
 
 # Frame pacing
 
-The paint ceiling is computed once when `BrowserController` starts. An explicit
-`ZZ_BROWSER_FPS=1..240` wins; otherwise macOS uses the maximum
-`NSScreen.maximumFramesPerSecond` across attached displays and other platforms
-retain the 60 FPS default. Focused sessions use the ceiling. Visible unfocused
+Before creating a session, `BrowserController::resolve_frame_rate_ceiling`
+resolves the paint ceiling. An explicit `ZZ_BROWSER_FPS=1..240` wins; otherwise
+zz uses the fastest attached display: `NSScreen.maximumFramesPerSecond` on macOS,
+GPUI's reported refresh rates elsewhere. The controller caches the first available
+rate; when no display reports one, it uses 60 FPS and retries on the next session
+creation. Focused sessions use the ceiling. Visible unfocused
 sessions normally use `min(ceiling, 30)`, but wheel input temporarily raises
 them to the ceiling and restarts a one-second decay timer. Hidden panes call
 `was_hidden` and do not paint.
@@ -251,9 +279,9 @@ default and enable the same pump-driven scheduler only for exact
 - hidden sessions receive no external BeginFrames.
 
 The external BeginFrame scheduler controls Chromium compositor cadence. It is
-separate from CEF's external message pump. Linux/FreeBSD still use a 60 FPS
-display ceiling unless `ZZ_BROWSER_FPS` overrides it; no display refresh query
-exists there yet. Adaptive tiers stay opt-in because delivery is demand-driven:
+separate from CEF's external message pump. Linux/FreeBSD use GPUI's reported
+display rates, with a 60 FPS fallback; `ZZ_BROWSER_FPS` overrides that ceiling.
+Adaptive tiers stay opt-in because delivery is demand-driven:
 a scroll pause inside the hot window reads as a delivery shortfall and
 downshifts a tier the renderer could sustain, which compounded into a one-way
 ratchet to the 30 FPS floor when adaptation defaulted on.
