@@ -5052,7 +5052,12 @@ impl ViewportDictionary {
 
     fn commit_cell_plane(&mut self, plane: Arc<[PackedCell]>) {
         let previous = std::mem::replace(&mut self.shared_cells, plane);
-        self.retain_cell_plane(previous);
+        if previous.len() == self.shared_cells.len() {
+            self.retain_cell_plane(previous);
+        } else {
+            self.cell_pool
+                .retain(|pooled| pooled.len() == self.shared_cells.len());
+        }
     }
 
     fn acquire_overlay_plane(&mut self, overlays: &[OverlaySpan]) -> Arc<[OverlaySpan]> {
@@ -19904,6 +19909,62 @@ mod tests {
 
         assert_eq!(retained.len(), 8);
         assert_eq!(dictionary.cell_pool.len(), RETAINED_CELL_PLANES);
+    }
+
+    #[test]
+    fn viewport_dictionary_geometry_changes_release_incompatible_planes() {
+        for (previous_len, next_len) in [(8, 2), (2, 8)] {
+            let original = PackedCell::new(u32::from('a'), 0, CellWidth::Narrow);
+            let mut dictionary = ViewportDictionary {
+                shared_cells: std::iter::repeat_n(original, previous_len).collect(),
+                ..ViewportDictionary::default()
+            };
+            let retained_snapshot = Arc::clone(&dictionary.shared_cells);
+            let incompatible: Arc<[PackedCell]> =
+                std::iter::repeat_n(original, previous_len).collect();
+            let released = Arc::downgrade(&incompatible);
+            let compatible: Arc<[PackedCell]> =
+                std::iter::repeat_n(PackedCell::EMPTY, next_len).collect();
+            let reusable = compatible.as_ptr();
+            dictionary.cell_pool.extend([incompatible, compatible]);
+
+            let next = std::iter::repeat_n(PackedCell::EMPTY, next_len).collect();
+            dictionary.commit_cell_plane(next);
+
+            assert!(released.upgrade().is_none());
+            assert_eq!(dictionary.cell_pool.len(), 1);
+            assert_eq!(dictionary.cell_pool[0].len(), next_len);
+            assert_eq!(Arc::strong_count(&retained_snapshot), 1);
+            assert!(retained_snapshot.iter().all(|cell| *cell == original));
+            let next = dictionary.acquire_cell_plane(next_len, false);
+            assert_eq!(next.as_ptr(), reusable);
+            dictionary.commit_cell_plane(next);
+            assert_eq!(dictionary.cell_pool.len(), 1);
+            assert_eq!(dictionary.cell_pool[0].len(), next_len);
+        }
+    }
+
+    #[test]
+    fn viewport_dictionary_recycles_an_uncommitted_resized_plane() {
+        let original = PackedCell::new(u32::from('a'), 0, CellWidth::Narrow);
+        let mut dictionary = ViewportDictionary {
+            shared_cells: Arc::from([original; 8]),
+            ..ViewportDictionary::default()
+        };
+        let retained_snapshot = Arc::clone(&dictionary.shared_cells);
+        let mut uncommitted = dictionary.acquire_cell_plane(2, false);
+        let allocation = uncommitted.as_ptr();
+        Arc::get_mut(&mut uncommitted).expect("unique plane")[0] = original;
+        dictionary.retain_cell_plane(uncommitted);
+
+        assert!(Arc::ptr_eq(&dictionary.shared_cells, &retained_snapshot));
+        assert_eq!(dictionary.cell_pool.len(), 1);
+        let retried = dictionary.acquire_cell_plane(2, false);
+        assert_eq!(retried.as_ptr(), allocation);
+        assert_eq!(retried.as_ref(), [PackedCell::EMPTY; 2]);
+        dictionary.commit_cell_plane(retried);
+        assert!(dictionary.cell_pool.is_empty());
+        assert_eq!(retained_snapshot.as_ref(), [original; 8]);
     }
 
     #[test]
