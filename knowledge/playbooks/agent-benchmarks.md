@@ -4,7 +4,7 @@ title: Agent benchmarks
 description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, and whether the zz-workspace skill helps weak agents; harness layout, prerequisites, results, and traps."
 resource: bench/agents/browser/matrix.sh
 tags: [agents, browser, cdp, benchmark, skill, agent-browser, playwright-mcp, chrome-devtools-mcp]
-timestamp: 2026-09-10T00:00:00Z
+timestamp: 2026-10-15T00:00:00Z
 ---
 
 # What the benchmarks answer
@@ -150,6 +150,17 @@ second agent addressed by `@name`) to separate the Gemini models. The failure mo
 exposed went into `zz tools`: session-prefixed pane targets, hunting for help in the tmux usage
 banner, running the bare binary, `set-option` without `-p`, `agent-send` without `-t`.
 
+## zz against Rex, and how to hand the guide over (2026-10-15)
+
+The harness now takes `BACKEND=zz|rex`, drives `claude -p` for `claude-*` models, and has
+`hook`, `stub` and `stubhook` arms plus tasks t10-t12 (one failing test in 3000 lines, the pane
+waiting for an answer, the focused pane). 348 runs, Haiku 5.5 once and gpt-oss-120b twice per
+cell; results and numbers in `knowledge/research/2026-10-15-zz-vs-rex.md`, rows in
+`bench/agents/skill/results/2026-10-15-zz-vs-rex.tsv`. Short version: inline still wins for
+gpt-oss (21/22), a ~1 KB startup hook gets zz to 18-19/22 from 14-15 and is the cheapest arm for
+Haiku; Rex's hook drops gpt-oss to 9/22 because it sends the agent to rename the session first;
+Haiku passes everything on both products but spends 1.7x the tokens on Rex.
+
 # Traps
 
 - `agy` print mode does not read `<cwd>/.agents/skills`, `.agent/skills`, or `~/.gemini/skills`;
@@ -160,6 +171,19 @@ banner, running the bare binary, `set-option` without `-p`, `agent-send` without
 - `agent-browser` CSS selectors do not pierce shadow roots; refs from `snapshot` do, and so do
   Playwright selectors. Iframes need either the inlined ref or `frame <sel>`.
 - A form submit that navigates is not awaited by `click`; wait on text from the next page.
+- Run agents from a directory under `/tmp`: a cwd inside the checkout hands them zz's own
+  AGENTS.md. `claude -p --setting-sources project --strict-mcp-config` keeps the user's skills,
+  hooks (Rex installs a SessionStart hook globally) and CLAUDE.md out.
+- `codex exec` runs commands in a login shell, so macOS path_helper moves the wrapper directory
+  behind `/opt/homebrew/bin` and a bare `zz` reaches the user's real daemon. The harness gives
+  Codex a throwaway HOME whose profile files put the wrappers first again; `--ignore-user-config`
+  alone still loads `~/.agents/skills` and `~/.codex/AGENTS.md`.
+- With `set -o pipefail`, `CMD | rg -q PAT` fails on a match whenever CMD writes in several
+  chunks (SIGPIPE). Match against `"$(CMD)"`.
+- A fixture script in the agent's cwd is readable: compute answers at run time and require
+  evidence in the pane, not just the reply.
+- `REX_SERVER=unix:/path` with one slash silently falls back to the default Rex server; pin
+  `-S` in the wrapper.
 - `#!/usr/bin/env bash` resolves to bash 3.2 on macOS, which has no `EPOCHREALTIME`; the scripts
   fall back to `perl -MTime::HiRes`.
 - Only one CEF instance can host browser panes per cache directory: run the matrix against the
