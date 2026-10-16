@@ -222,7 +222,7 @@ fn pending_frozen_search_keeps_its_direction_when_retained(direction: SearchDire
         );
         thread::sleep(Duration::from_millis(10));
     }
-    let _ = revision.viewport_cells(0, (revision.columns, revision.viewport_rows));
+    let _ = revision.viewport_cells(0);
     let blocked_search = revision.search.search_gate.lock();
     session.view_action(
         view,

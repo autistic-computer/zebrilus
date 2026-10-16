@@ -12,12 +12,6 @@ mod page_zoom;
 mod profile;
 mod url_input;
 
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-mod readback_texture;
-
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-pub use readback_texture::ReadbackTexture;
-
 #[cfg(feature = "cef-runtime")]
 #[allow(
     unsafe_code,
@@ -25,10 +19,6 @@ pub use readback_texture::ReadbackTexture;
     reason = "CEF callbacks expose a scoped raw BGRA paint buffer"
 )]
 mod cef_runtime;
-
-#[cfg(all(feature = "cef-runtime", target_os = "linux"))]
-#[allow(unsafe_code)]
-mod linux_dmabuf;
 
 #[cfg(any(feature = "cef-runtime", test))]
 pub use element_picker::ElementPickerAppearance;

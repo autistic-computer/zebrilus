@@ -247,41 +247,6 @@ fn pinned_views_build_their_own_frames() {
 }
 
 #[test]
-fn frozen_views_apply_the_streaming_area_bound() {
-    let mut terminal = new_terminal(80, 30, 32).expect("terminal");
-    terminal.vt_write(b"frozen content");
-    let (publisher, _events, mut active, mut frames) = fixture(1);
-    frames.areas.insert(TerminalViewId(1), (12, 4));
-    let state = active
-        .get_mut(&TerminalViewId(1))
-        .expect("view")
-        .active_mut();
-    enter_copy_mode(
-        &mut terminal,
-        &mut state.selection,
-        &mut state.copy_mode,
-        false,
-        false,
-        None,
-        true,
-    )
-    .expect("copy mode");
-    publish(
-        &mut terminal,
-        &publisher,
-        &mut frames,
-        &mut active,
-        SnapshotChange::View,
-    );
-    let latest = publisher.latest.read();
-    let viewport = &latest.by_view[&TerminalViewId(1)];
-    assert_eq!((viewport.columns, viewport.rows), (12, 4));
-    assert_eq!(viewport.cells.len(), 48);
-    assert_eq!(viewport.scrollbar.len, 30);
-    assert!(matches!(viewport.mode, TerminalMode::Copy { .. }));
-}
-
-#[test]
 fn live_views_share_only_matching_frame_options() {
     let mut terminal = new_terminal(8, 3, 32).expect("terminal");
     terminal.vt_write(b"link");

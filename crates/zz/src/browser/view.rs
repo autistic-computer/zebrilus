@@ -1640,10 +1640,7 @@ impl BrowserView {
                 }
                 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
                 {
-                    self.gpu_texture = frame
-                        .readback_texture
-                        .as_ref()
-                        .map(|texture| texture.texture().clone());
+                    self.gpu_texture = None;
                 }
                 #[cfg(target_os = "windows")]
                 {
@@ -3847,8 +3844,6 @@ impl Render for BrowserView {
         } else {
             self.image.clone()
         };
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-        let visible_image = visible_image.filter(|_| self.gpu_texture.is_none());
         let browser_element = BrowserElement::new(cx.entity(), visible_image, surface_radii);
         #[cfg(target_os = "macos")]
         let browser_element = browser_element

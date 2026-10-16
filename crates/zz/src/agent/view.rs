@@ -122,7 +122,7 @@ struct TimelineModel {
     entry_revisions: Vec<u64>,
     entry_to_row: Vec<usize>,
     markdown: HashMap<u64, AgentMarkdown>,
-    tool_payloads: HashMap<u64, Vec<Option<AgentToolPayload>>>,
+    tool_payloads: HashMap<(u64, usize), AgentToolPayload>,
     plan: Option<u64>,
 }
 
@@ -3061,7 +3061,7 @@ fn replaced_markdown(
 fn ui_entry_with_markdown(
     entry: &AgentThreadEntry,
     markdown_sources: &mut HashMap<u64, AgentMarkdown>,
-    tool_payloads: &mut HashMap<u64, Vec<Option<AgentToolPayload>>>,
+    tool_payloads: &mut HashMap<(u64, usize), AgentToolPayload>,
 ) -> AgentEntry {
     match entry {
         AgentThreadEntry::User {
@@ -3111,11 +3111,11 @@ fn ui_entry_with_markdown(
             exit_code,
             ..
         } => {
-            let payloads = tool_payloads.entry(*id).or_default();
-            payloads.resize_with(output.len() + 1, || None);
-            if input.is_none() {
-                payloads[0] = None;
-            }
+            tool_payloads.retain(|(entry_id, slot), _| {
+                *entry_id != *id
+                    || (*slot == 0 && input.is_some())
+                    || (*slot > 0 && *slot <= output.len())
+            });
             AgentEntry::Tool(AgentToolEntry {
                 id: *id,
                 kind: match kind {
@@ -3143,12 +3143,12 @@ fn ui_entry_with_markdown(
                 location: location.clone().map(SharedString::from),
                 input: input
                     .as_ref()
-                    .map(|payload| retained_tool_payload(&mut payloads[0], payload)),
+                    .map(|payload| retained_tool_payload(tool_payloads, *id, 0, payload)),
                 output: output
                     .iter()
                     .enumerate()
                     .map(|(index, payload)| {
-                        retained_tool_payload(&mut payloads[index + 1], payload)
+                        retained_tool_payload(tool_payloads, *id, index + 1, payload)
                     })
                     .collect::<Vec<_>>()
                     .into(),
@@ -3183,10 +3183,13 @@ fn synchronize_entry_store(
 }
 
 fn retained_tool_payload(
-    retained: &mut Option<AgentToolPayload>,
+    retained: &mut HashMap<(u64, usize), AgentToolPayload>,
+    entry_id: u64,
+    slot: usize,
     payload: &ToolPayload,
 ) -> AgentToolPayload {
-    let next = match (retained.as_ref(), payload) {
+    let key = (entry_id, slot);
+    let next = match (retained.get(&key), payload) {
         (
             Some(AgentToolPayload::Diff {
                 old: retained_old,
@@ -3226,7 +3229,7 @@ fn retained_tool_payload(
         (_, ToolPayload::Json(text)) => AgentToolPayload::Json(AgentToolText::new(text)),
         (_, ToolPayload::Terminal(text)) => AgentToolPayload::Terminal(AgentToolText::new(text)),
     };
-    *retained = Some(next.clone());
+    retained.insert(key, next.clone());
     next
 }
 
@@ -5175,7 +5178,7 @@ mod tests {
         let mut tool_payloads = HashMap::new();
 
         ui_entry_with_markdown(&entry, &mut markdown, &mut tool_payloads);
-        assert_eq!(tool_payloads[&7].len(), 4);
+        assert_eq!(tool_payloads.len(), 4);
 
         let AgentThreadEntry::Tool { input, output, .. } = &mut entry else {
             unreachable!();
@@ -5184,53 +5187,8 @@ mod tests {
         output.truncate(1);
         ui_entry_with_markdown(&entry, &mut markdown, &mut tool_payloads);
 
-        assert_eq!(tool_payloads[&7].len(), 2);
-        assert!(tool_payloads[&7][0].is_none());
-        assert!(matches!(
-            &tool_payloads[&7][1],
-            Some(AgentToolPayload::Text(text)) if text == "one"
-        ));
-    }
-
-    #[test]
-    fn tool_payload_updates_preserve_live_handles_and_other_tools() {
-        let mut markdown = HashMap::new();
-        let mut tool_payloads = HashMap::new();
-        let mut first = thread_tool(7, "first", AgentToolStatusModel::Running);
-        let mut second = thread_tool(8, "second", AgentToolStatusModel::Running);
-        for entry in [&mut first, &mut second] {
-            let AgentThreadEntry::Tool { input, output, .. } = entry else {
-                unreachable!();
-            };
-            *input = Some(ToolPayload::Json("input".to_owned()));
-            output.push(ToolPayload::Text("initial".to_owned()));
-            ui_entry_with_markdown(entry, &mut markdown, &mut tool_payloads);
-        }
-        let Some(AgentToolPayload::Text(retained_first)) = tool_payloads[&7][1].clone() else {
-            panic!("first text handle");
-        };
-        let Some(AgentToolPayload::Text(retained_second)) = tool_payloads[&8][1].clone() else {
-            panic!("second text handle");
-        };
-        let AgentThreadEntry::Tool { input, output, .. } = &mut first else {
-            unreachable!();
-        };
-        *input = None;
-        output[0] = ToolPayload::Text("initial, continued".to_owned());
-        output.push(ToolPayload::Terminal("another output".to_owned()));
-        ui_entry_with_markdown(&first, &mut markdown, &mut tool_payloads);
-        assert_eq!(retained_first, *"initial, continued");
-        assert_eq!(retained_second, *"initial");
-        assert_eq!(tool_payloads[&8].len(), 2);
-        assert!(tool_payloads[&8][0].is_some());
-        assert!(tool_payloads[&7][0].is_none());
-        let AgentThreadEntry::Tool { output, .. } = &mut first else {
-            unreachable!();
-        };
-        output.clear();
-        ui_entry_with_markdown(&first, &mut markdown, &mut tool_payloads);
-        assert_eq!(tool_payloads[&7].len(), 1);
-        assert_eq!(retained_second, *"initial");
+        assert_eq!(tool_payloads.len(), 1);
+        assert!(tool_payloads.contains_key(&(7, 1)));
     }
 
     #[test]
