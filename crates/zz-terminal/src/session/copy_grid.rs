@@ -81,7 +81,18 @@ impl CopyGrid {
     }
 
     pub(super) fn row(&mut self, row: u32) -> Result<Arc<CopyRow>, WorkerError> {
-        if let Some(cached) = self.cached.get(&row) {
+        self.row_bounded(row, self.columns)
+    }
+
+    pub(super) fn row_bounded(
+        &mut self,
+        row: u32,
+        columns: u16,
+    ) -> Result<Arc<CopyRow>, WorkerError> {
+        let columns = columns.min(self.columns);
+        if let Some(cached) = self.cached.get(&row)
+            && cached.cells.len() >= usize::from(columns)
+        {
             return Ok(Arc::clone(cached));
         }
         if !self.viewport {
@@ -110,13 +121,13 @@ impl CopyGrid {
             raw_row.is_wrap_continuation()?,
             raw_row.semantic_prompt()?,
         );
-        let mut cells = Vec::with_capacity(usize::from(self.columns));
-        let mut semantics = Vec::with_capacity(usize::from(self.columns));
+        let mut cells = Vec::with_capacity(usize::from(columns));
+        let mut semantics = Vec::with_capacity(usize::from(columns));
         let mut stack = ['\0'; 8];
         let mut extra = Vec::new();
         let mut text = String::new();
         let mut last_style = None;
-        for column in 0..self.columns {
+        for column in 0..columns {
             let reference = native_row.cell(column).expect("snapshot column");
             let cell = reference.cell()?;
             let style_id = cell.style_id()?;
@@ -198,12 +209,14 @@ impl CopyGrid {
             semantics: semantics.into_boxed_slice(),
             meta,
         });
-        if self.order.len() == CACHED_ROWS
-            && let Some(oldest) = self.order.pop_front()
-        {
-            self.cached.remove(&oldest);
+        if !self.cached.contains_key(&row) {
+            if self.order.len() == CACHED_ROWS
+                && let Some(oldest) = self.order.pop_front()
+            {
+                self.cached.remove(&oldest);
+            }
+            self.order.push_back(row);
         }
-        self.order.push_back(row);
         self.cached.insert(row, Arc::clone(&captured));
         Ok(captured)
     }

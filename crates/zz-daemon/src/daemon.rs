@@ -28942,7 +28942,7 @@ impl Shared {
                 .collect::<Vec<_>>();
             let mut changes = Vec::new();
             let mut affected_panes = BTreeSet::new();
-            for (session, client) in attachments {
+            for &(session, client) in &attachments {
                 let next_visible = visible_terminal_panes(&inner, client, session);
                 let next_streamed = streamed_terminal_panes(&inner, client, session, &next_visible);
                 let previous_visible = inner
@@ -29011,6 +29011,9 @@ impl Shared {
             }
             refresh_preview_watches(&mut inner);
             let layout_changed = write_back_terminal_geometries(&mut inner, &affected_panes);
+            for (_, client) in attachments {
+                sync_client_view_areas(&inner, client);
+            }
             let resizes = terminal_resizes_for_panes(&inner, &affected_panes);
             (changes, resizes, layout_changed)
         };
