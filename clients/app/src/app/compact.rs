@@ -76,6 +76,7 @@ pub(super) struct CompactState {
     landing: Option<(PaneId, Instant)>,
     cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
     text: Option<TerminalText>,
+    page_background: Option<zz_gpui::Hsla>,
 }
 
 impl CompactState {
@@ -737,6 +738,9 @@ impl AppShell {
         });
         let header = matches!(pane.kind, PaneKindSnapshot::Terminal)
             .then(|| compact_pane_header(kind_icon(&pane.kind), slot.title.clone(), actions, cx));
+        if current {
+            self.compact.page_background = Some(background);
+        }
         #[cfg(target_os = "ios")]
         if current {
             zz_gpui_platform::ios::set_status_bar_on_dark(Some(background.l < 0.5));
@@ -1135,8 +1139,13 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let keys = self.tool_keys(window, cx);
-        let armed = self.connection.read(cx).core.prefix_armed();
-        keys.prefix.update(cx, |key, cx| key.set_armed(armed, cx));
+        let core = &self.connection.read(cx).core;
+        let armed = core.prefix_armed();
+        let prefix = tmux_keystroke(&prefix_spelling(core));
+        keys.prefix.update(cx, |key, cx| {
+            key.set_armed(armed, cx);
+            key.set_keystroke(prefix, cx);
+        });
         let row = KeyRow::new(keys.row())
             .track_scroll(&keys.scroll)
             .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
@@ -1147,8 +1156,10 @@ impl AppShell {
             .w_full()
             .h(px(KEY_ROW_HEIGHT) + bottom)
             .pb(bottom)
-            .surface(roles::PHONE_BAR, cx)
-            .rule_on(roles::BAR_RULE, Edge::Top, cx)
+            .bg(self
+                .compact
+                .page_background
+                .unwrap_or(cx.theme().background))
             .child(row)
             .into_any_element()
     }

@@ -6,7 +6,7 @@ use zz_client::{
     resolve_menu_mouse,
 };
 use zz_gpui::{
-    AnchoredPositionMode, AnyElement, Bounds, Context, MouseDownEvent, MouseMoveEvent,
+    AnchoredPositionMode, AnyElement, App, Bounds, Context, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, Pixels, Point, ScrollWheelEvent, Window, anchored, div, point, prelude::*, px,
     size,
 };
@@ -26,7 +26,7 @@ use super::AppShell;
 use crate::preferences::Preferences;
 
 impl AppShell {
-    pub(super) fn floating_canvas_size(&self, window: &Window) -> zz_gpui::Size<Pixels> {
+    pub(super) fn floating_canvas_size(&self, window: &Window, cx: &App) -> zz_gpui::Size<Pixels> {
         let viewport = window.fully_visible_bounds().size;
         size(
             (viewport.width
@@ -38,7 +38,7 @@ impl AppShell {
             .max(px(0.0)),
             (viewport.height
                 - if self.settings.is_none() && !self.inline_sidebar(window) {
-                    zz_ui::TITLE_BAR_HEIGHT
+                    cx.theme().title_bar_height()
                 } else {
                     px(0.0)
                 })
@@ -52,7 +52,7 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let core = &self.connection.read(cx).core;
-        let canvas = self.floating_canvas_size(window);
+        let canvas = self.floating_canvas_size(window, cx);
         if let Some(state) = core.menu().cloned() {
             let frame = floating_frame(
                 state.left,

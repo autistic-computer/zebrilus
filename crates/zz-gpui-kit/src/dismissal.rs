@@ -124,6 +124,17 @@ impl Dismissal {
         commit
     }
 
+    pub fn enter(&mut self, extent: f32, now: Instant) {
+        self.extent = extent.max(1.0);
+        self.offset = self.extent;
+        self.settle(0.0, 0.0, now);
+    }
+
+    pub fn leave(&mut self, extent: f32, now: Instant) {
+        self.extent = extent.max(1.0);
+        self.settle(self.extent, 0.0, now);
+    }
+
     pub fn cancel(&mut self, now: Instant) {
         if self.motion == Motion::Drag {
             self.settle(0.0, 0.0, now);

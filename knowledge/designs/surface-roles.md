@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
-description: "A theme defines its materials once (radius, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with six props (fill, outline, shadow, shape, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 59 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
+description: "A theme defines its materials once (radius, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with six props (fill, outline, shadow, shape, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 60 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
 status: Built (2026-10-13)
 resource: crates/zz-gpui-kit/src/foundation/surface.rs
 tags:
@@ -143,7 +143,7 @@ that makes `floating` glass makes drop zones and pane chips glass too, though bo
 solid as built in, and a patch for `pane.drop-zone` takes it back. Built-in patches only say how
 the Default theme draws a role. A widget
 with no role draws as its kind. `zz_ui::roles::all()` lists the kit's kinds and groups, then zz's
-59 roles; `members(group)` lists what is directly in a group.
+60 roles; `members(group)` lists what is directly in a group.
 
 A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
 concentric inside its list: its round corners are the radius less 4px, square when the row inset
@@ -398,11 +398,12 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
-| `phone.bar` | bar | bottom bar strip, key strip, 44px nav bars (settings, overview, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
+| `phone.bar` | bar | bottom bar strip, the overview's bottom bar, key strip, 44px nav bars (settings, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
 | `phone.pill` | button | the bar's pane pill, its icon tile and page dots | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
 | `phone.button` | icon-button | back, close, gear, keyboard | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
 | `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad | `ui/compact/key_row.rs:50` | |
-| `phone.card` | tile | overview pane cards, the New pane tile | `app/app/compact/overview.rs:667`, `:529` | |
+| `phone.card` | tile | overview pane cards | `ui/compact/overview.rs:28` | |
+| `phone.add` | tile | the New pane tile that ends each overview row, as big as a card | `ui/compact/overview.rs:101` | shared `phone.card` with the live cards and was narrower than them; split out |
 | `phone.row` | menu-item | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `ui/compact/which_key_list.rs:54`, `ui/settings.rs:222` | four corner rules; fixed, one role |
 | `grabber` | badge | phone bar and sheet grabbers | `ui/compact/bar.rs:46`, `kit/sheet.rs:376` | two sizes and colors |
 

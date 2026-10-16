@@ -12,17 +12,76 @@ use super::{
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Icon, IconName, PaintState, StyledExt as _, Surface, rems_from_px, roles,
+    ActiveTheme as _, Icon, IconName, PaintState, StyledExt as _, Surface, kbd::Kbd, rems_from_px,
+    roles,
 };
 
 pub const KEY_ROW_HEIGHT: f32 = 44.0;
-pub(super) const KEY_HEIGHT: f32 = 32.0;
-
-pub(super) const KEY_WIDTH: f32 = 52.0;
+pub(super) const KEY_SIZE: f32 = 40.0;
+pub(super) const KEY_ICON: f32 = 18.0;
+const KEY_MARK: f32 = 14.0;
 const ROW_PADDING_X: f32 = 6.0;
 const KEY_GAP: f32 = 3.0;
 const KEY_GROUP: &str = "key-row-key";
-pub(super) const KEY_SLOP: (f32, f32) = (KEY_GAP / 2.0, (KEY_ROW_HEIGHT - KEY_HEIGHT) / 2.0);
+pub(super) const KEY_SLOP: (f32, f32) = (KEY_GAP / 2.0, (KEY_ROW_HEIGHT - KEY_SIZE) / 2.0);
+const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
+
+fn modifier_icon(modifier: StickyModifier) -> IconName {
+    match (modifier, APPLE) {
+        (StickyModifier::Control, true) => IconName::KeyControl,
+        (StickyModifier::Control, false) => IconName::KeyControlIso,
+        (StickyModifier::Alt, true) => IconName::KeyOption,
+        (StickyModifier::Alt, false) => IconName::KeyAltIso,
+    }
+}
+
+fn tab_icon() -> IconName {
+    if APPLE {
+        IconName::KeyTab
+    } else {
+        IconName::KeyTabIso
+    }
+}
+
+pub(super) fn keystroke_glyph(keystroke: &Keystroke) -> AnyElement {
+    let modifiers = keystroke.modifiers;
+    if modifiers.shift || modifiers.platform || modifiers.function {
+        return SharedString::from(Kbd::format(keystroke)).into_any_element();
+    }
+    let key = Kbd::format(&Keystroke {
+        modifiers: Modifiers::default(),
+        key: keystroke.key.clone(),
+        key_char: None,
+    });
+    let mark = |modifier| {
+        let icon = modifier_icon(modifier);
+        let tight = icon == IconName::KeyControl;
+        div()
+            .when(tight, |mark| mark.mr(rems_from_px(-3.0)))
+            .child(Icon::new(icon).size(rems_from_px(KEY_MARK)))
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap(rems_from_px(1.0))
+        .when(modifiers.control, |glyph| {
+            glyph.child(mark(StickyModifier::Control))
+        })
+        .when(modifiers.alt, |glyph| {
+            glyph.child(mark(StickyModifier::Alt))
+        })
+        .child(key)
+        .into_any_element()
+}
+
+pub(super) fn key_glyph(label: SharedString, icon: Option<IconName>) -> AnyElement {
+    match icon {
+        Some(icon) => Icon::new(icon)
+            .size(rems_from_px(KEY_ICON))
+            .into_any_element(),
+        None => label.into_any_element(),
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum KeyLook {
@@ -46,7 +105,7 @@ pub(super) fn key_look(look: KeyLook) -> (Surface, PaintState) {
 pub(super) fn key_surface<E: Styled>(element: E, look: KeyLook, cx: &App) -> E {
     let (surface, state) = key_look(look);
     let element = element
-        .h(rems_from_px(KEY_HEIGHT))
+        .h(rems_from_px(KEY_SIZE))
         .surface_at(surface, state, cx);
     if look == KeyLook::Inverted {
         element.font_semibold()
@@ -60,6 +119,7 @@ pub enum KeyRowKey {
     Hide,
     Key {
         label: SharedString,
+        icon: Option<IconName>,
         keystroke: Keystroke,
     },
     Modifier(StickyModifier),
@@ -77,18 +137,28 @@ impl KeyRowKey {
                 key_char: Some(label.to_string()),
             },
             label,
+            icon: None,
         }
     }
 
     pub fn named(label: impl Into<SharedString>, key: impl Into<String>) -> Self {
         Self::Key {
             label: label.into(),
+            icon: None,
             keystroke: Keystroke {
                 modifiers: Modifiers::default(),
                 key: key.into(),
                 key_char: None,
             },
         }
+    }
+
+    #[must_use]
+    pub fn icon(mut self, glyph: IconName) -> Self {
+        if let Self::Key { icon, .. } = &mut self {
+            *icon = Some(glyph);
+        }
+        self
     }
 }
 
@@ -107,6 +177,7 @@ impl ToolKeys {
         let latch = |label: &'static str, modifier, items: Vec<PopoverKeyItem>, cx: &mut App| {
             cx.new(|cx| {
                 PopoverKey::new(label, PopoverKeyTap::Latch(modifier), cx)
+                    .icon(modifier_icon(modifier))
                     .items(items)
                     .columns(2)
                     .scrolls(scroll.clone())
@@ -134,8 +205,8 @@ impl ToolKeys {
             KeyRowKey::Popover(self.prefix.clone()),
             KeyRowKey::Popover(self.control.clone()),
             KeyRowKey::Popover(self.alt.clone()),
-            KeyRowKey::named("tab", "tab"),
-            KeyRowKey::named("esc", "escape"),
+            KeyRowKey::named("tab", "tab").icon(tab_icon()),
+            KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
             KeyRowKey::text("/"),
             KeyRowKey::text("@"),
             KeyRowKey::Arrows(self.arrows.clone()),
@@ -214,7 +285,7 @@ impl KeyRow {
                     .flex_none()
                     .items_center()
                     .justify_center()
-                    .w(rems_from_px(KEY_WIDTH))
+                    .w(rems_from_px(KEY_SIZE))
                     .whitespace_nowrap()
                     .relative()
                     .child(crate::touch::instant_press_highlight(
@@ -243,9 +314,13 @@ impl KeyRow {
                 })
                 .into_any_element()
             }
-            KeyRowKey::Key { label, keystroke } => {
+            KeyRowKey::Key {
+                label,
+                icon,
+                keystroke,
+            } => {
                 let on_key = self.on_key.clone();
-                Self::cap(index, KeyLook::Rest, label, cx)
+                Self::cap(index, KeyLook::Rest, key_glyph(label, icon), cx)
                     .on_click(move |_, window, cx| {
                         let keystroke = StickyModifiers::apply(&keystroke, cx);
                         window.refresh();
@@ -265,12 +340,17 @@ impl KeyRow {
                     StickyModifier::Control => "ctrl",
                     StickyModifier::Alt => "alt",
                 };
-                Self::cap(index, look, label, cx)
-                    .on_click(move |_, window, cx| {
-                        StickyModifiers::toggle(modifier, cx);
-                        window.refresh();
-                    })
-                    .into_any_element()
+                Self::cap(
+                    index,
+                    look,
+                    key_glyph(label.into(), Some(modifier_icon(modifier))),
+                    cx,
+                )
+                .on_click(move |_, window, cx| {
+                    StickyModifiers::toggle(modifier, cx);
+                    window.refresh();
+                })
+                .into_any_element()
             }
             KeyRowKey::Popover(key) => Self::slot(ElementId::named_usize("key-row-slot", index))
                 .child(key)
@@ -407,7 +487,7 @@ mod tests {
         let row = cx.debug_bounds("key-row").expect("row");
         let esc = cx.debug_bounds("key-row-key-4").expect("esc");
         assert_eq!(row.size.height, zz_gpui::px(KEY_ROW_HEIGHT));
-        assert_eq!(esc.size.height, zz_gpui::px(KEY_HEIGHT));
+        assert_eq!(esc.size.height, zz_gpui::px(KEY_SIZE));
         for at in [
             zz_gpui::point(esc.center().x, row.top() + zz_gpui::px(1.0)),
             zz_gpui::point(esc.center().x, row.bottom() - zz_gpui::px(1.0)),
@@ -452,7 +532,7 @@ mod tests {
         ]
         .map(|selector| cx.debug_bounds(selector).expect(selector));
         for key in &keys {
-            assert_eq!(key.size.width, zz_gpui::px(KEY_WIDTH));
+            assert_eq!(key.size.width, zz_gpui::px(KEY_SIZE));
         }
         for pair in keys.windows(2) {
             assert!(pair[0].right() < pair[1].left());

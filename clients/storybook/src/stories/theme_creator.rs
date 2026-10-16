@@ -19,9 +19,9 @@ use zz_ui::{
     },
     compact::{
         ArrowDirection, ToolKeys, WhichKeyList, arrow_pad_bubble, bottom_sheet, compact_bar,
-        compact_bar_button, compact_bar_pill, compact_hud, compact_nav_bar, compact_pane_header,
-        compact_session_switcher, overview_add_tile, overview_card, overview_count,
-        overview_section_heading, page_dots, sheet_row,
+        compact_bar_button, compact_bar_pill, compact_bar_row, compact_hud, compact_pane_header,
+        overview_add_tile, overview_card, overview_count, overview_section_heading, page_dots,
+        sheet_row,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -790,20 +790,32 @@ impl Phone {
                 .children(CARD_LINES.map(|line| div().whitespace_nowrap().child(line)))
                 .into_any_element()
         };
-        let top = compact_nav_bar(cx)
-            .child(compact_session_switcher(
-                "showcase-overview-session",
-                "work",
+        let bar = div()
+            .w_full()
+            .surface(zz_ui::roles::PHONE_BAR, cx)
+            .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
+            .child(compact_bar_row(
+                compact_bar_pill(
+                    "showcase-overview-session",
+                    IconName::Layers,
+                    "work",
+                    "macbook · 2 windows",
+                    false,
+                    zz_ui::Icon::new(IconName::ChevronUp)
+                        .size(px(12.0))
+                        .text_color(muted),
+                    cx,
+                ),
+                h_flex()
+                    .child(compact_bar_button(
+                        "showcase-overview-settings",
+                        IconName::Settings,
+                    ))
+                    .child(compact_bar_button(
+                        "showcase-overview-close",
+                        IconName::Xmark,
+                    )),
                 cx,
-            ))
-            .child(div().flex_1())
-            .child(compact_bar_button(
-                "showcase-overview-settings",
-                IconName::Settings,
-            ))
-            .child(compact_bar_button(
-                "showcase-overview-close",
-                IconName::Xmark,
             ));
         let sections = OVERVIEW.iter().map(|(index, name, panes)| {
             v_flex()
@@ -839,9 +851,9 @@ impl Phone {
         });
         phone_frame("showcase-phone-overview", cx)
             .bg(theme.surface(Elevation::Panel).fill)
-            .pb(px(12.0))
-            .child(top)
             .children(sections)
+            .child(div().flex_1().min_h(px(12.0)))
+            .child(bar)
             .into_any_element()
     }
 
@@ -872,7 +884,7 @@ impl Phone {
             "Sessions",
             [compact_bar_button("showcase-sessions-close", IconName::Xmark).into_any_element()],
             v_flex()
-                .px(px(8.0))
+                .list_inset(cx)
                 .pb(px(8.0))
                 .children(rows)
                 .child(div().mx(px(12.0)).my(px(4.0)).rule_on(

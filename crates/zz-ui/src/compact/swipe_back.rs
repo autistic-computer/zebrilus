@@ -55,6 +55,8 @@ pub struct SwipeBack {
     id: ElementId,
     page: AnyElement,
     under: Option<AnyElement>,
+    pushed: bool,
+    leaving: bool,
     on_back: Back,
 }
 
@@ -67,6 +69,8 @@ pub fn swipe_back(
         id: id.into(),
         page: page.into_any_element(),
         under: None,
+        pushed: false,
+        leaving: false,
         on_back: Rc::new(on_back),
     }
 }
@@ -77,6 +81,18 @@ impl SwipeBack {
         self.under = Some(under.into_any_element());
         self
     }
+
+    #[must_use]
+    pub fn pushed(mut self, pushed: bool) -> Self {
+        self.pushed = pushed;
+        self
+    }
+
+    #[must_use]
+    pub fn leaving(mut self, leaving: bool) -> Self {
+        self.leaving = leaving;
+        self
+    }
 }
 
 struct SwipeState {
@@ -85,6 +101,8 @@ struct SwipeState {
     width: f32,
     gesture: Option<Point<Pixels>>,
     pending: Option<Point<Pixels>>,
+    pushed: bool,
+    leaving: bool,
 }
 
 impl SwipeState {
@@ -154,16 +172,27 @@ impl SwipeState {
 
 impl RenderOnce for SwipeBack {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let (pushed, leaving) = (self.pushed, self.leaving);
         let state = window.use_keyed_state(self.id.clone(), cx, |_, _| SwipeState {
             dismissal: Dismissal::new(Overdrag::Clamp),
             left: 0.0,
             width: 0.0,
             gesture: None,
             pending: None,
+            pushed,
+            leaving: false,
         });
         let now = cx.background_executor().now();
         let reduce_motion = cx.reduce_motion();
         let tick = state.update(cx, |state, _| {
+            if pushed && !state.pushed && state.width > 0.0 {
+                state.dismissal.enter(state.width, now);
+            }
+            if leaving && !state.leaving {
+                state.dismissal.leave(state.width, now);
+            }
+            state.pushed = pushed;
+            state.leaving = leaving;
             if reduce_motion {
                 state.dismissal.finish();
             }
@@ -405,6 +434,40 @@ mod tests {
         settle(cx);
         assert_eq!(backs.get(), 1);
         assert_eq!(page(cx).left(), px(0.0));
+    }
+
+    struct Pusher {
+        pushed: Rc<Cell<bool>>,
+    }
+
+    impl Render for Pusher {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                swipe_back("pushed", div().size_full(), |_, _| {})
+                    .when(self.pushed.get(), |swipe| swipe.under(div().size_full()))
+                    .pushed(self.pushed.get()),
+            )
+        }
+    }
+
+    #[zz_gpui::test]
+    fn a_pushed_page_slides_in_over_the_one_under_it(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let pushed = Rc::new(Cell::new(false));
+        let flag = Rc::clone(&pushed);
+        let (view, cx) = cx.add_window_view(move |_, _| Pusher { pushed: flag });
+        redraw(cx);
+        let rest = page(cx);
+        pushed.set(true);
+        cx.update(|_, cx| view.update(cx, |_, cx| cx.notify()));
+        redraw(cx);
+        cx.executor().advance_clock(Duration::from_millis(16));
+        redraw(cx);
+        assert!(page(cx).left() > rest.size.width / 2.0);
+        assert!(cx.debug_bounds("swipe-back-under").is_some());
+        settle(cx);
+        assert_eq!(page(cx).left(), px(0.0));
+        assert!(cx.debug_bounds("swipe-back-under").is_none());
     }
 
     #[zz_gpui::test]

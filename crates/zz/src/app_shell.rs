@@ -242,7 +242,7 @@ impl AppShell {
     fn render_control_strip(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         draws_window_controls(window).then(|| {
             let title_corners = WindowCorners::for_window(window).top();
-            let strip = app_titlebar_strip("app-titlebar", self.window_controls())
+            let strip = app_titlebar_strip("app-titlebar", self.window_controls(), cx)
                 .surface(Surface::new(roles::TITLEBAR), cx)
                 .when(title_corners.top_right(), |strip| {
                     strip.rounded_tr(frame_content_corner_radius(cx))

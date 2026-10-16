@@ -1003,6 +1003,7 @@ impl SettingsView {
                     let key = ConfigKey::ChromeTintHue;
                     written(key, set_config_key(key, &format!("{hue:.0}")), cx);
                 },
+                cx,
             ))
     }
 
@@ -1996,7 +1997,7 @@ impl Render for SettingsView {
                             .top_0()
                             .left_0()
                             .right_0()
-                            .h(zz_ui::TITLE_BAR_HEIGHT)
+                            .h(cx.theme().title_bar_height())
                             .window_control_area(WindowControlArea::Drag),
                         window,
                         cx,

@@ -185,7 +185,7 @@ Settings > Status bar scrolls its live preview with the controls. The titlebar h
 sidebar toggle, with no divider; settings lives in the sidebar footer. With the sidebar open the toggle
 sits at the top-right corner of the sidebar, and the navigation fades into the footer through the kit's
 `bottom_fade` (40px toward the sidebar's ground, solid for its last 12px) while rows remain below. The agent button shares the active window pill’s background,
-theme border, shadow, and 26px height, with widths sized to their contents. The 35px titlebar leaves 4.5px above and below each pill. Window pills always align left, and the right edge shows an
+theme border, shadow, and 26px height, with widths sized to their contents. The titlebar, a pane header tall (36px) plus the pane margin above and below it, leaves at least 5px above and below each pill. Window pills always align left, and the right edge shows an
 agent status dot and summary with a pane-selection menu. Time/date and alignment controls are absent. Window pills share the
 production pane deck, the flat sidebar's stack drawn at 20px (`navigation::pane_stack`): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color,
 5px apart inside a vertically centered 26px pill. Pointing at it opens every pane in a row on a
@@ -436,11 +436,11 @@ Icon-only chrome controls use `Button::compact_icon`: a 24px hover surface aroun
 glyph with a 0.5px downward optical adjustment. The titlebar, sidebar row actions, browser pane,
 and Agent pane share this constructor, which fixes padding and icon scale in one place. Browser
 controls override the hover surface to 28px while retaining the shared icon scale. The sidebar
-toggle, Settings, the view switch (eye) and the iOS palette button are 28px buttons with 15px
-glyphs (from 26 and 14), a little larger than the 26px titlebar pills so their glyphs read at a
-glance (`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`). Tree-row actions center under the
-toggle from that size, inset the row inset plus 8px (`workspace_row_action_gap`), and a titlebar
-window pill's hover close sits the same 8px from the pill's edge.
+toggle, Settings, the view switch (eye) and the iOS palette button are 32px buttons with 17px
+glyphs (from 28 and 15), larger than the 26px titlebar pills so their glyphs read at a glance
+(`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`). Tree-row actions center under the toggle
+from that size, inset the row inset plus 10px (`workspace_row_action_gap`), and a titlebar window
+pill's hover close sits the same 10px from the pill's edge.
 
 Text and icons take a hover color only from the `hover` of an element with an id. GPUI shapes text
 and resolves an icon's color at layout; an element with an id records its own hover and lays out

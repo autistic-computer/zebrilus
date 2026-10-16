@@ -116,7 +116,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-background-opacity` | `0.5` | `0..=1` | Pane and Agent composer background strength; Panes settings display 0–100%. Browser panes apply it only to the toolbar |
 | `pane-glow-strength` | `1` | `0..=2` | How brightly the active gapped pane's glass rim shines in the accent, scaling its glint and fresnel glow (a theme without glass draws an accent hairline at any value above 0); Panes settings display it as Selected pane edge, 0–200%. `0` lights it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
-| `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps` |
+| `pane-margin` | `8` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, so its buttons stay on the pane headers' center line |
 | `interface-theme` | `default` | `default`, `liquid-glass`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
 | `widget-corner-radius` | from the theme (`10` in Default, `25` in Liquid Glass) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
 | `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
@@ -175,8 +175,10 @@ materials and roles onto the `Theme` global, and every surface already resolves 
 there, so no component is plumbed individually. Because the theme and the overrides are reapplied
 on every theme rebuild, they survive a light/dark switch, the same treatment `mono_font_family`
 gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
-`Theme::pane_radius()`, the theme radius plus 3.5 so the pane stays concentric with the controls
-in its header (13.5 at Default's 10, 0 for a square theme), and resolves it per corner.
+`Theme::pane_radius()`, the radius a 24px header control rounds to plus the 6px (`CHROME_GAP`) it
+sits in from the pane's top and sides, so the pane stays concentric with the controls in its header
+(about 13.9 at Default's 10, 18 once the controls are capsules, 0 for a square theme), and resolves
+it per corner.
 
 Every rounded surface is a **squircle** . iOS-style continuous corners, set once as the GPUI window
 default (`zz_ui::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) rather than plumbed
@@ -461,9 +463,12 @@ compositor's unmodified background; tiled and square corners remain square.
 resolve to `0`, and split nodes retain their neutral 1px hairline. The active pane colors only its
 half of each adjacent separator with a washed foreground accent; nested T-junctions limit the
 segment to the edge the pane touches. With `pane-gaps = true` the margin applies exactly as
-configured, defaults included, and the corners and edge come from the theme: a 6px margin and,
-under Default, a 13.5px radius (the theme's 10 plus 3.5), the window's own corner, so a
-maximized grid reads as one rounded surface. There is
+configured, defaults included, and the corners and edge come from the theme: an 8px margin and,
+under Default, a radius of about 13.9px, concentric with the controls in the pane header, so a
+maximized grid reads as one rounded surface. The strip along the window's top (the macOS traffic
+lights, the sidebar's buttons, the status bar) is a pane header tall plus the margin above and
+below it (`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line;
+flush panes leave it one header tall. There is
 no second tier of gapped defaults: the number Settings shows is the number the panes use, which is
 what lets the disabled Frame row stay honest. Gapped panes draw their frame in glass, as above,
 and keep the contact shadow. This treatment is built in; the retired `pane-shadow` key produces the
@@ -839,8 +844,8 @@ window-background-blur = true
 # Set every interface transition to its static state.
 animations = false
 
-# The toggle uses a 6px margin, corners 3.5px rounder than the theme's (13.5px under
-# Default), and a glass frame lit like the theme's glass, or with a line as wide as
+# The toggle uses an 8px margin, corners concentric with the pane header's controls
+# (about 14px under Default), and a glass frame lit like the theme's glass, or with a line as wide as
 # the theme's outlines when it has no glass.
 pane-gaps = true
 

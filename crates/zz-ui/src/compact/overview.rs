@@ -11,7 +11,6 @@ use crate::{
 pub const OVERVIEW_CARD_WIDTH: f32 = 108.0;
 pub const OVERVIEW_CARD_HEIGHT: f32 = 192.0;
 pub const OVERVIEW_CARD_GAP: f32 = 10.0;
-const ADD_WIDTH: f32 = 76.0;
 const CARD_STRIP: f32 = 20.0;
 
 /// `n` of `noun`, as the overview counts panes and windows.
@@ -97,14 +96,16 @@ pub fn overview_card(
         .child(press_highlight(press, None, radius))
 }
 
-/// The New pane tile that ends a window's row of cards.
+/// The New pane tile that ends a window's row of cards, as big as a card
+/// and drawn as [`roles::PHONE_ADD`].
 pub fn overview_add_tile(
     id: impl Into<ElementId>,
     press: impl Into<ElementId>,
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let tile = theme.layer(roles::PHONE_CARD, PaintState::Rest);
+    let tile = theme.layer(roles::PHONE_ADD, PaintState::Rest);
+    let pressed = theme.layer(roles::PHONE_ADD, PaintState::Active).fill;
     let radius = tile.radius;
     div()
         .id(id)
@@ -115,14 +116,14 @@ pub fn overview_add_tile(
         .items_center()
         .justify_center()
         .gap(px(8.0))
-        .w(px(ADD_WIDTH))
+        .w(px(OVERVIEW_CARD_WIDTH))
         .h(px(OVERVIEW_CARD_HEIGHT))
         .layer(&tile)
         .text_size(px(12.0))
         .text_color(theme.foreground.muted())
         .child(Icon::new(IconName::Plus).size(px(16.0)))
         .child("New pane")
-        .child(press_highlight(press, None, radius))
+        .child(press_highlight(press, pressed, radius))
 }
 
 /// The line over a window's cards: its index, its name and how many panes

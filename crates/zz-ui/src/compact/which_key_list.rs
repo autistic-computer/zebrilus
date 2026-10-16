@@ -2,7 +2,7 @@ use std::{rc::Rc, sync::Arc};
 
 use zz_gpui::{
     AnyElement, App, ElementId, IntoElement, MouseButton, ParentElement as _, RenderOnce,
-    SharedString, Styled as _, Window, div, prelude::*,
+    SharedString, Styled as _, Window, div, prelude::*, px,
 };
 
 use crate::{
@@ -56,45 +56,54 @@ impl WhichKeyList {
         let id = row.id.clone();
         let on_pick = self.on_pick.clone();
         let element_id = ElementId::named_usize("which-key-list-row", index);
+        let height = px(ROW_HEIGHT);
         let pressed = cx.theme().layer(roles::PHONE_ROW, PaintState::Active);
-        let press = crate::touch::press_highlight(element_id.clone(), pressed.fill, pressed.radius);
-        div()
-            .id(element_id)
-            .relative()
-            .debug_selector(move || selector)
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap(rems_from_px(12.0))
-            .min_w_0()
-            .h(rems_from_px(ROW_HEIGHT))
-            .px(rems_from_px(INSET))
-            .surface(roles::PHONE_ROW, cx)
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-            .child(press)
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .min_w(rems_from_px(CAP_MIN_WIDTH))
-                    .gap(rems_from_px(6.0))
-                    .children(row.caps.iter().map(|cap| Self::cap(cap, cx))),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .child(row.label.clone()),
-            )
-            .on_click(move |_, window, cx| {
-                if let Some(on_pick) = &on_pick {
-                    on_pick(&id, window, cx);
-                }
-            })
-            .into_any_element()
+        let press = crate::touch::press_highlight(
+            element_id.clone(),
+            pressed.fill,
+            crate::touch::PressCorners::Row(crate::row_radius(&pressed, height)),
+        );
+        crate::row_surface(
+            div().id(element_id),
+            roles::PHONE_ROW,
+            PaintState::Rest,
+            height,
+            cx,
+        )
+        .relative()
+        .debug_selector(move || selector)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(rems_from_px(12.0))
+        .min_w_0()
+        .h(rems_from_px(ROW_HEIGHT))
+        .px(rems_from_px(INSET))
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(press)
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .min_w(rems_from_px(CAP_MIN_WIDTH))
+                .gap(rems_from_px(6.0))
+                .children(row.caps.iter().map(|cap| Self::cap(cap, cx))),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(row.label.clone()),
+        )
+        .on_click(move |_, window, cx| {
+            if let Some(on_pick) = &on_pick {
+                on_pick(&id, window, cx);
+            }
+        })
+        .into_any_element()
     }
 }
 
@@ -130,7 +139,7 @@ impl RenderOnce for WhichKeyList {
             .flex()
             .flex_col()
             .w_full()
-            .px(rems_from_px(INSET))
+            .list_inset(cx)
             .pb(rems_from_px(INSET))
             .font_family(cx.theme().font_family.clone())
             .text_size(rems_from_px(17.0))

@@ -7,7 +7,7 @@ pub mod tree;
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Ground, Icon, IconName,
     InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _, Surface,
-    SurfaceRole, TITLE_BAR_HEIGHT, Tone,
+    SurfaceRole, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     rems_from_px, roles,
     tooltip::Tooltip,
@@ -37,8 +37,8 @@ pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(26.0);
 /// The sidebar toggle, settings and view switch: icon buttons a little
 /// larger than the status pills, with 15px glyphs.
-pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = px(28.0);
-const WORKSPACE_CHROME_ICON_SIZE: Pixels = px(15.0);
+pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = px(32.0);
+const WORKSPACE_CHROME_ICON_SIZE: Pixels = px(17.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(16.0);
 const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
@@ -250,7 +250,7 @@ pub fn workspace_sidebar_titlebar(
         .flex()
         .flex_none()
         .w_full()
-        .h(TITLE_BAR_HEIGHT)
+        .h(cx.theme().title_bar_height())
         .items_center()
         .justify_end()
         .pl(workspace_controls_leading_inset(cx))

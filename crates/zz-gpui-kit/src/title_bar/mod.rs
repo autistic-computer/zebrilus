@@ -17,30 +17,32 @@ use crate::{
     h_flex,
 };
 
-/// Height of the title bar, and of every strip that has to line up with it
-/// (the sidebar headers in zz-ui's navigation and settings).
-pub const TITLE_BAR_HEIGHT: Pixels = px(35.);
+/// Height of the title bar while panes sit flush: one pane header. With a
+/// pane margin it grows to [`Theme::title_bar_height`](crate::Theme::title_bar_height),
+/// which every strip that lines up with it (the sidebar headers in zz-ui's
+/// navigation and settings) reads.
+pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
 
 /// Side of a native macOS window-button frame, and the width of all three
 /// plus their gaps. Measured on macOS 27: each frame is 14x14, origins sit 23
 /// apart, so the cluster spans 60 from the first left edge to the last right
 /// edge. The platform layer centres the buttons in a container of
-/// `glyph + 2 * traffic_light_position.y`, which is what ties them to
-/// [`TITLE_BAR_HEIGHT`]: keep the two in step or the lights stop sharing a
+/// `glyph + 2 * traffic_light_position.y`, which is what ties them to the
+/// title bar's height: keep the two in step or the lights stop sharing a
 /// centre line with the strip's own controls.
 pub const MACOS_TRAFFIC_LIGHT_GLYPH: f32 = 14.;
 pub const MACOS_TRAFFIC_LIGHT_SPAN: f32 = 60.;
 
-/// Leading margin the macOS traffic lights keep from the window edge at 100%
-/// zoom. The strip's own controls keep the same margin from the cluster's far
-/// edge, so the gap on either side of the lights reads as one measurement.
-pub const MACOS_TRAFFIC_LIGHT_INSET: f32 = 10.5;
-
-/// Space a strip reserves for the macOS traffic lights: both margins ride the
-/// zoom with the lights' placement, the native glyphs do not.
+/// Space a strip reserves for the macOS traffic lights: the lights keep as
+/// much room from the window's leading edge as from its top, and the strip's
+/// own controls the same from the cluster's far edge, so the gap on either
+/// side of the lights reads as one measurement. Both margins ride the zoom
+/// with the lights' placement, the native glyphs do not.
 #[must_use]
 pub fn macos_traffic_light_clearance(cx: &App) -> Pixels {
-    px(2. * MACOS_TRAFFIC_LIGHT_INSET) + UiZoom::unzoomed(px(MACOS_TRAFFIC_LIGHT_SPAN), cx)
+    let margin =
+        (cx.theme().title_bar_height() - UiZoom::unzoomed(px(MACOS_TRAFFIC_LIGHT_GLYPH), cx)) / 2.;
+    margin * 2. + UiZoom::unzoomed(px(MACOS_TRAFFIC_LIGHT_SPAN), cx)
 }
 
 /// Whether the app draws the window's minimize / maximize / close buttons:
@@ -95,25 +97,24 @@ impl TitleBar {
 
     /// The [`TitlebarOptions`] a window must open with for [`TitleBar`] to sit
     /// correctly in it: transparent, untitled, traffic lights placed to match
-    /// this bar's height and left padding.
+    /// a bar `height` tall and its left padding.
     #[must_use]
-    pub fn title_bar_options() -> TitlebarOptions {
+    pub fn title_bar_options(height: Pixels) -> TitlebarOptions {
         TitlebarOptions {
             title: None,
             appears_transparent: true,
-            traffic_light_position: Some(Self::traffic_light_position(1.)),
+            traffic_light_position: Some(Self::traffic_light_position(height, 1.)),
             ..TitlebarOptions::default()
         }
     }
 
-    /// Where the macOS traffic lights sit at `zoom`, in window points: on this
-    /// bar's zoomed centre line, behind its zoomed margin, at native size.
+    /// Where the macOS traffic lights sit at `zoom` in a bar `height` tall, in
+    /// window points: on the bar's zoomed centre line, as far in from the
+    /// leading edge as from the top, at native size.
     #[must_use]
-    pub fn traffic_light_position(zoom: f32) -> Point<Pixels> {
-        point(
-            px(MACOS_TRAFFIC_LIGHT_INSET * zoom),
-            (TITLE_BAR_HEIGHT * zoom - px(MACOS_TRAFFIC_LIGHT_GLYPH)) / 2.,
-        )
+    pub fn traffic_light_position(height: Pixels, zoom: f32) -> Point<Pixels> {
+        let margin = (height * zoom - px(MACOS_TRAFFIC_LIGHT_GLYPH)) / 2.;
+        point(margin, margin)
     }
 
     /// Run `f` instead of `Window::remove_window` when the close button is
@@ -413,7 +414,7 @@ impl RenderOnce for TitleBar {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .h(TITLE_BAR_HEIGHT)
+                .h(cx.theme().title_bar_height())
                 .pl(title_bar_left_padding(cx))
                 .rule_on(Kind::Rule.role(), Edge::Bottom, cx)
                 .bg(cx.theme().background)

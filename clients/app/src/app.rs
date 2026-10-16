@@ -147,6 +147,7 @@ pub struct AppShell {
     slideover: bool,
     settings: Option<SettingsSection>,
     settings_picked: bool,
+    settings_leaving: bool,
     preferences: settings::Preferences,
     settings_controls: settings::Controls,
     pub focus: FocusHandle,
@@ -370,6 +371,7 @@ impl AppShell {
             slideover: false,
             settings: None,
             settings_picked: false,
+            settings_leaving: false,
             preferences,
             settings_controls,
             focus: cx.focus_handle(),
@@ -2659,6 +2661,7 @@ impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.settings.is_none() {
             self.settings_picked = false;
+            self.settings_leaving = false;
         }
         let page_inset = if self.preferences.extend_bottom_safe_area {
             (window.visual_viewport_bounds().bottom() - window.fully_visible_bounds().bottom())

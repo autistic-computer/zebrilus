@@ -2,26 +2,29 @@
 //! over a hue slider, and a hex field.
 
 use zz_gpui::{
-    Anchor, App, AppContext as _, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseMoveEvent, MouseUpEvent,
-    ParentElement as _, Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled as _,
-    Subscription, Window, canvas, div, linear_color_stop, linear_gradient,
+    Anchor, AnyElement, App, AppContext as _, Bounds, Context, Entity, EventEmitter, FocusHandle,
+    Focusable, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton,
+    MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, RenderOnce, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled as _, Subscription, TouchDragEvent,
+    TouchPhase, Window, canvas, div, linear_color_stop, linear_gradient,
     prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Sizable, Size, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable, Kind, PaintState, Sizable, Size, StyledExt as _,
+    Surface,
     button::{Button, ButtonVariants as _},
     h_flex,
-    input::{Input, InputEvent, InputState},
+    input::{Input, InputEvent, InputState, field_chrome, field_text},
     popover::Popover,
     sheet::{bottom_sheet, floating_sheet, sheet_close, sheet_inset},
-    slider::{Slider, THUMB},
+    slider::{Slider, thumb},
     v_flex,
 };
 
 const TRIGGER_SWATCH_SIZE: Pixels = px(16.0);
 const TOUCH_TRIGGER_SWATCH: Pixels = px(24.0);
+const FIELD_SWATCH: Pixels = px(20.0);
 const POPOVER_WIDTH: f32 = 248.0;
 const FIELD_HEIGHT: f32 = 148.0;
 const SHEET_FIELD_HEIGHT: f32 = 200.0;
@@ -87,6 +90,7 @@ pub struct ColorPickerState {
     picked: Option<Hsv>,
     field: Bounds<Pixels>,
     dragging: bool,
+    touch: bool,
     sheet: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -121,6 +125,7 @@ impl ColorPickerState {
             picked: None,
             field: Bounds::default(),
             dragging: false,
+            touch: false,
             sheet: false,
             _subscriptions: subscriptions,
         }
@@ -218,6 +223,7 @@ pub struct ColorPicker {
     style: StyleRefinement,
     size: Size,
     swatch: Option<Pixels>,
+    presets: Option<(SharedString, AnyElement)>,
     disabled: bool,
 }
 
@@ -231,6 +237,7 @@ impl ColorPicker {
             style: StyleRefinement::default(),
             size: Size::Medium,
             swatch: None,
+            presets: None,
             disabled: false,
         }
     }
@@ -247,6 +254,18 @@ impl ColorPicker {
     #[must_use]
     pub fn swatch(mut self, size: Pixels) -> Self {
         self.swatch = Some(size);
+        self
+    }
+
+    #[must_use]
+    pub fn presets(
+        mut self,
+        chosen: impl Into<SharedString>,
+        color: Hsla,
+        presets: impl IntoElement,
+    ) -> Self {
+        self.inherited = color;
+        self.presets = Some((chosen.into(), presets.into_any_element()));
         self
     }
 
@@ -270,15 +289,48 @@ impl ColorPicker {
         height: Pixels,
         cx: &App,
     ) -> impl IntoElement {
-        let radius = cx.theme().swatch_radius();
+        let radius = cx.theme().radius;
         let listeners = canvas(
             {
                 let state = state.clone();
-                move |bounds, _, cx| state.update(cx, |picker, _| picker.field = bounds)
+                move |bounds, window, cx| {
+                    state.update(cx, |picker, _| picker.field = bounds);
+                    window.insert_hitbox(bounds, HitboxBehavior::Normal)
+                }
             },
             {
                 let state = state.clone();
-                move |_, (), window, _| {
+                move |_, hitbox, window, _| {
+                    let touched = state.clone();
+                    window.on_mouse_event(move |event: &TouchDragEvent, phase, window, cx| {
+                        if !phase.bubble() {
+                            return;
+                        }
+                        match event.phase {
+                            TouchPhase::Started => {
+                                if window.default_prevented()
+                                    || !hitbox.is_hovered_at(event.start_position, window)
+                                {
+                                    return;
+                                }
+                                window.prevent_default();
+                                touched.update(cx, |picker, cx| {
+                                    picker.picked = Some(hsv);
+                                    picker.touch = true;
+                                    picker.drag_to(event.position, window, cx);
+                                });
+                            }
+                            TouchPhase::Moved if touched.read(cx).touch => {
+                                touched.update(cx, |picker, cx| {
+                                    picker.drag_to(event.position, window, cx);
+                                });
+                            }
+                            TouchPhase::Ended | TouchPhase::Cancelled if touched.read(cx).touch => {
+                                touched.update(cx, |picker, _| picker.touch = false);
+                            }
+                            TouchPhase::Moved | TouchPhase::Ended | TouchPhase::Cancelled => {}
+                        }
+                    });
                     let moved = state.clone();
                     window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
                         if !phase.bubble() || !moved.read(cx).dragging {
@@ -352,7 +404,7 @@ impl ColorPicker {
             })
     }
 
-    fn hue(state: &Entity<ColorPickerState>, hsv: Hsv) -> impl IntoElement {
+    fn hue(state: &Entity<ColorPickerState>, hsv: Hsv, cx: &App) -> impl IntoElement {
         let stops = (0..=HUE_STOPS).map(|stop| {
             Hsv {
                 hue: f32::from(stop) / f32::from(HUE_STOPS),
@@ -361,7 +413,7 @@ impl ColorPicker {
             .pure()
         });
         let state = state.clone();
-        div().mx(px(-THUMB / 2.0)).child(
+        div().mx(px(-thumb(cx) / 2.0)).child(
             Slider::new(
                 ("zz-color-picker-hue", state.entity_id()),
                 "Hue",
@@ -381,7 +433,8 @@ impl ColorPicker {
                 },
             )
             .step(1.0)
-            .track(stops),
+            .track(stops)
+            .inline(),
         )
     }
 
@@ -412,7 +465,7 @@ impl ColorPicker {
         v_flex()
             .gap(px(8.0))
             .child(Self::field(state, hsv, px(field_height), cx))
-            .child(Self::hue(state, hsv))
+            .child(Self::hue(state, hsv, cx))
             .child(Self::hex_row(state, cx))
     }
 
@@ -461,7 +514,54 @@ impl ColorPicker {
         })
     }
 
-    fn touch_sheet(&self, window: &Window, cx: &App) -> zz_gpui::AnyElement {
+    fn field_trigger(&self, chosen: SharedString, shown: Hsla, cx: &App) -> impl IntoElement {
+        let size = Size::Medium;
+        let state = if self.state.read(cx).sheet {
+            PaintState::Focused
+        } else {
+            PaintState::Rest
+        };
+        let opener = self.state.clone();
+        field_chrome(
+            field_text(
+                h_flex()
+                    .id(("zz-color-picker-field-trigger", self.state.entity_id()))
+                    .w_full()
+                    .h(size.control_h())
+                    .px(size.input_px())
+                    .gap(px(10.0))
+                    .justify_between()
+                    .cursor_pointer(),
+                size,
+            ),
+            Surface::new(Kind::Field.role()),
+            state,
+            true,
+            true,
+            cx,
+        )
+        .child(div().min_w_0().truncate().child(chosen))
+        .child(
+            div()
+                .flex_none()
+                .size(FIELD_SWATCH)
+                .rounded(cx.theme().swatch_radius())
+                .bg(shown)
+                .surface_edge(cx),
+        )
+        .when(!self.disabled, |this| {
+            this.on_click(move |_, _, cx| {
+                opener.update(cx, |picker, cx| picker.set_sheet(true, cx));
+            })
+        })
+    }
+
+    fn touch_sheet(
+        &self,
+        presets: Option<AnyElement>,
+        window: &Window,
+        cx: &App,
+    ) -> zz_gpui::AnyElement {
         let close = self.state.clone();
         let dismiss = self.state.clone();
         floating_sheet(
@@ -476,6 +576,7 @@ impl ColorPicker {
                 div()
                     .px(px(SHEET_PADDING_X))
                     .pb(px(12.0))
+                    .children(presets.map(|presets| div().pb(px(12.0)).child(presets)))
                     .child(Self::controls(
                         &self.state,
                         self.inherited,
@@ -511,19 +612,26 @@ impl zz_gpui::Styled for ColorPicker {
 }
 
 impl RenderOnce for ColorPicker {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let shown = self.state.read(cx).color.unwrap_or(self.inherited);
         if crate::touch::CoarsePointer::get(cx) {
+            let (chosen, presets) = self.presets.take().unzip();
             let sheet = self
                 .state
                 .read(cx)
                 .sheet
-                .then(|| self.touch_sheet(window, cx));
-            return div()
-                .flex_none()
-                .child(self.trigger(shown, true, cx))
-                .children(sheet)
-                .into_any_element();
+                .then(|| self.touch_sheet(presets, window, cx));
+            return match chosen {
+                Some(chosen) => div()
+                    .w_full()
+                    .child(self.field_trigger(chosen, shown, cx))
+                    .children(sheet),
+                None => div()
+                    .flex_none()
+                    .child(self.trigger(shown, true, cx))
+                    .children(sheet),
+            }
+            .into_any_element();
         }
         let state = self.state.clone();
         let inherited = self.inherited;

@@ -49,22 +49,31 @@ pub fn set_percent(percent: f32, cx: &mut App) {
         next,
     );
     cx.defer(|cx| {
-        let zoom = UiZoom::get(cx);
         for window in cx.windows() {
-            window.update(cx, |_, window, _| apply(window, zoom)).ok();
+            window.update(cx, |_, window, cx| apply(window, cx)).ok();
         }
     });
 }
 
 /// Start a freshly opened window at the zoom already in effect.
 pub fn apply_to_new_window(window: &mut Window, cx: &App) {
-    apply(window, UiZoom::get(cx));
+    apply(window, cx);
 }
 
-fn apply(window: &mut Window, zoom: f32) {
-    window.set_zoom(zoom);
+fn apply(window: &mut Window, cx: &App) {
+    window.set_zoom(UiZoom::get(cx));
+    place_traffic_lights(window, cx);
+}
+
+/// Seat the macOS traffic lights on the title bar's center line at the zoom
+/// in effect.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+pub(crate) fn place_traffic_lights(window: &Window, cx: &App) {
     #[cfg(target_os = "macos")]
-    window.set_traffic_light_position(zz_ui::TitleBar::traffic_light_position(zoom));
+    window.set_traffic_light_position(zz_ui::TitleBar::traffic_light_position(
+        zz_ui::Theme::global(cx).title_bar_height(),
+        UiZoom::get(cx),
+    ));
 }
 
 /// The effective zoom, rounded for display.

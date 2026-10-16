@@ -385,7 +385,14 @@ pub const PHONE_CARD: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "phone.card",
     "Pane cards",
-    "Pane thumbnails in the phone overview, and the New pane tile",
+    "Pane thumbnails in the phone overview",
+)
+.with(P.fill(Fill::Tint));
+pub const PHONE_ADD: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::TILE,
+    "phone.add",
+    "New pane tile",
+    "The New pane tile that ends each window's cards in the phone overview",
 )
 .with(P.fill(Fill::Tint));
 pub const PHONE_ROW: SurfaceRole = SurfaceRole::under(
@@ -496,6 +503,7 @@ const ZZ: &[SurfaceRole] = &[
     AGENT_TRAY,
     SETTINGS_TILE,
     PHONE_CARD,
+    PHONE_ADD,
     PANE_STACK,
     AGENT_COMPOSER,
     AGENT_PICKER,

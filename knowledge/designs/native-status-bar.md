@@ -61,7 +61,7 @@ support rebinding and take priority over pane shortcuts.
 The agent button shares the active window pill’s background, theme border, shadow, and 26px
 height, with its width sized to its contents.
 
-Window pills are 26px high and vertically centered inside the 35px titlebar, leaving 4.5px at both edges. They
+Window pills are 26px high and vertically centered inside the titlebar, a pane header tall (36px) plus the pane margin above and below it, leaving at least 5px at both edges. They
 start at 240px wide regardless of the title and shrink together only when the window strip runs
 out of room; titles truncate within the remaining space. Their pane deck is the shared
 `navigation::pane_stack` at its 20px size: the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color, 5px apart, so it is never

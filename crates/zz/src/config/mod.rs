@@ -598,9 +598,10 @@ fn apply_animations(cx: &mut App) {
 }
 
 /// The titlebar every zz window opens with: a transparent strip, nothing else.
-/// The macOS traffic lights keep their native size and placement.
-pub(crate) fn titlebar_options() -> zz_gpui::TitlebarOptions {
-    zz_ui::TitleBar::title_bar_options()
+/// The macOS traffic lights keep their native size, on the title bar's center
+/// line.
+pub(crate) fn titlebar_options(cx: &App) -> zz_gpui::TitlebarOptions {
+    zz_ui::TitleBar::title_bar_options(zz_ui::Theme::global(cx).title_bar_height())
 }
 
 fn apply_window_decorations(cx: &mut App) {
@@ -2078,7 +2079,10 @@ mod tests {
         );
 
         assert_f32_eq(parsed.config.chrome_tint.value, 0.0);
-        assert_f32_eq(parsed.config.pane_margin.value, 6.0);
+        assert_f32_eq(
+            parsed.config.pane_margin.value,
+            zz_config::DEFAULT_PANE_MARGIN,
+        );
         assert_f32_eq(parsed.config.window_corner_radius.value, 13.5);
         assert_eq!(
             parsed.config.window_corner_radius.provenance,
@@ -2118,7 +2122,10 @@ mod tests {
             parse_config("pane-gaps = yes\npane-margin = 99\npane-inactive-opacity = 1.1\n");
 
         assert!(parsed.config.pane_gaps.value);
-        assert_f32_eq(parsed.config.pane_margin.value, 6.0);
+        assert_f32_eq(
+            parsed.config.pane_margin.value,
+            zz_config::DEFAULT_PANE_MARGIN,
+        );
         assert_f32_eq(parsed.config.pane_inactive_opacity.value, 0.7);
         assert_eq!(
             parsed.config.pane_gaps.provenance,
@@ -2848,9 +2855,11 @@ mod tests {
             zz_ui::Theme::global_mut(cx).radius = px(5.5);
         });
 
+        let radius = cx.update(|cx| zz_ui::Theme::global(cx).pane_radius());
+        assert!(radius > px(5.5));
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            corners(9.0)
+            Corners::all(radius)
         );
     }
 
@@ -2863,10 +2872,13 @@ mod tests {
         let config = parse_config("pane-gaps = true\n").config;
         cx.update(|cx| cx.set_global(AppConfig::from(config)));
         assert!(cx.update(|cx| pane_gaps(cx)));
-        assert_eq!(cx.update(|cx| pane_margin(cx)), px(6.0));
+        assert_eq!(
+            cx.update(|cx| pane_margin(cx)),
+            px(zz_config::DEFAULT_PANE_MARGIN)
+        );
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            corners(13.5)
+            Corners::all(cx.update(|cx| zz_ui::Theme::global(cx).pane_radius()))
         );
 
         let config = parse_config("pane-gaps = true\npane-margin = 3\n").config;

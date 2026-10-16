@@ -1,21 +1,43 @@
 use std::{ops::RangeInclusive, rc::Rc};
 
 use zz_gpui::{
-    App, Bounds, ElementId, FocusHandle, Hsla, IntoElement, MouseButton, MouseMoveEvent,
-    MouseUpEvent, Pixels, RenderOnce, Role, SharedString, Window, canvas, div, linear_color_stop,
-    linear_gradient, prelude::*, px, relative,
+    AnyElement, App, Bounds, Context, Div, ElementId, Entity, FocusHandle, HitboxBehavior, Hsla,
+    IntoElement, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, RenderOnce, Role, SharedString,
+    Stateful, TouchDragEvent, TouchPhase, Window, canvas, div, linear_color_stop, linear_gradient,
+    prelude::*, px, relative,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, PaintState, Size, StyledExt as _, Tone, h_flex,
-    oklab_lightness, tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Emphasis, Kind, PaintState, Size, StyledExt as _, Surface,
+    Tone, h_flex,
+    input::{field_chrome, field_text},
+    oklab_lightness,
+    sheet::{bottom_sheet, floating_sheet, sheet_close, sheet_inset},
+    tooltip::Tooltip,
+    touch::CoarsePointer,
+    v_flex,
 };
 
 type ChangeHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 type ValueHandler = Rc<dyn Fn(f32, &mut Window, &mut App)>;
+type Display = Rc<dyn Fn(f32) -> SharedString>;
 
 pub(crate) const THUMB: f32 = 16.0;
+const TOUCH_THUMB: f32 = 28.0;
 const TRACK: f32 = 6.0;
+const TOUCH_HEIGHT: f32 = 44.0;
+const PREVIEW_WIDTH: f32 = 72.0;
+const PREVIEW_TRACK: f32 = 4.0;
+const PREVIEW_THUMB: f32 = 10.0;
+const SHEET_PADDING_X: f32 = 16.0;
+
+pub(crate) fn thumb(cx: &App) -> f32 {
+    if CoarsePointer::get(cx) {
+        TOUCH_THUMB
+    } else {
+        THUMB
+    }
+}
 
 #[derive(IntoElement)]
 pub struct DiscreteSlider {
@@ -152,6 +174,8 @@ pub struct Slider {
     value: f32,
     scale: Scale,
     track: Vec<Hsla>,
+    display: Option<Display>,
+    inline: bool,
     on_change: ValueHandler,
 }
 
@@ -173,6 +197,8 @@ impl Slider {
                 step: 0.0,
             },
             track: Vec::new(),
+            display: None,
+            inline: false,
             on_change: Rc::new(on_change),
         }
     }
@@ -189,6 +215,30 @@ impl Slider {
     pub fn track(mut self, colors: impl IntoIterator<Item = Hsla>) -> Self {
         self.track = colors.into_iter().collect();
         self
+    }
+
+    #[must_use]
+    pub fn display(mut self, display: impl Fn(f32) -> SharedString + 'static) -> Self {
+        self.display = Some(Rc::new(display));
+        self
+    }
+
+    #[must_use]
+    pub fn inline(mut self) -> Self {
+        self.inline = true;
+        self
+    }
+
+    #[must_use]
+    pub fn shown(&self) -> SharedString {
+        self.read(self.value)
+    }
+
+    fn read(&self, value: f32) -> SharedString {
+        match &self.display {
+            Some(display) => display(value),
+            None => self.scale.read(value),
+        }
     }
 }
 
@@ -218,8 +268,8 @@ impl Scale {
         }
     }
 
-    fn at(self, x: Pixels, bounds: Bounds<Pixels>) -> f32 {
-        let radius = px(THUMB / 2.0);
+    fn at(self, x: Pixels, bounds: Bounds<Pixels>, thumb: f32) -> f32 {
+        let radius = px(thumb / 2.0);
         let width = (bounds.size.width - radius * 2.0).max(px(1.0));
         let fraction = ((x - bounds.left() - radius) / width).clamp(0.0, 1.0);
         self.snap(self.min + fraction * (self.max - self.min))
@@ -233,12 +283,34 @@ impl Scale {
         };
         self.snap(value + step * steps)
     }
+
+    fn read(self, value: f32) -> SharedString {
+        if self.step >= 1.0 {
+            format!("{value:.0}")
+        } else if self.step >= 0.1 {
+            format!("{value:.1}")
+        } else {
+            format!("{value:.2}")
+        }
+        .into()
+    }
 }
 
 struct Drag {
     focus: FocusHandle,
     bounds: Bounds<Pixels>,
     live: Option<f32>,
+    touch: bool,
+    sheet: bool,
+}
+
+impl Drag {
+    fn set_sheet(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.sheet != open {
+            self.sheet = open;
+            cx.notify();
+        }
+    }
 }
 
 impl RenderOnce for Slider {
@@ -247,12 +319,19 @@ impl RenderOnce for Slider {
             focus: cx.focus_handle(),
             bounds: Bounds::default(),
             live: None,
+            touch: false,
+            sheet: false,
         });
-        let scale = self.scale;
-        let focus = drag.read(cx).focus.clone();
-        let focused = focus.is_focused(window);
-        let value = scale.snap(drag.read(cx).live.unwrap_or(self.value));
-        let fraction = scale.fraction(value);
+        if CoarsePointer::get(cx) && !self.inline {
+            self.field(drag, window, cx).into_any_element()
+        } else {
+            self.slider(drag, window, cx).into_any_element()
+        }
+    }
+}
+
+impl Slider {
+    fn rail(&self, fraction: f32, track: f32, thumb: f32, focused: bool, cx: &App) -> Div {
         let theme = cx.theme();
         let filled = theme.paint(Tone::Primary, Emphasis::Solid);
         let rest = theme
@@ -263,24 +342,11 @@ impl RenderOnce for Slider {
         } else {
             theme.foreground
         };
-        let on_change = self.on_change;
-        let emit: ValueHandler = Rc::new({
-            let drag = drag.clone();
-            move |next, window, cx| {
-                let previous = drag.update(cx, |drag, cx| {
-                    cx.notify();
-                    drag.live.replace(next)
-                });
-                if previous != Some(next) {
-                    on_change(next, window, cx);
-                }
-            }
-        });
-        let track = if self.track.len() > 1 {
+        let bar = if self.track.len() > 1 {
             let last = self.track.len() - 2;
             div()
                 .flex()
-                .h(px(TRACK))
+                .h(px(track))
                 .w_full()
                 .children(self.track.windows(2).enumerate().map(|(index, pair)| {
                     div()
@@ -295,7 +361,7 @@ impl RenderOnce for Slider {
                         ))
                 }))
         } else {
-            div().h(px(TRACK)).w_full().rounded_full().bg(rest).child(
+            div().h(px(track)).w_full().rounded_full().bg(rest).child(
                 div()
                     .h_full()
                     .w(relative(fraction))
@@ -303,43 +369,193 @@ impl RenderOnce for Slider {
                     .bg(filled.fill),
             )
         };
-        let thumb = div()
+        let dot = div()
             .absolute()
-            .top(px((TRACK - THUMB) / 2.0))
+            .top(px((track - thumb) / 2.0))
             .left(relative(fraction))
-            .ml(px(-THUMB / 2.0))
-            .size(px(THUMB))
+            .ml(px(-thumb / 2.0))
+            .size(px(thumb))
             .rounded_full()
             .bg(knob)
             .shadow(crate::lifted_shadow(cx))
-            .when(focused, |thumb| thumb.focus_ring(&filled));
+            .when(focused, |dot| dot.focus_ring(&filled));
+        div().relative().w_full().child(bar).child(dot)
+    }
+
+    fn field(self, drag: Entity<Drag>, window: &Window, cx: &App) -> Div {
+        let value = self.scale.snap(drag.read(cx).live.unwrap_or(self.value));
+        let fraction = self.scale.fraction(value);
+        let shown = self.read(value);
+        let open = drag.read(cx).sheet;
+        let size = Size::Medium;
+        let state = if open {
+            PaintState::Focused
+        } else {
+            PaintState::Rest
+        };
+        let opener = drag.clone();
+        let trigger = field_chrome(
+            field_text(
+                h_flex()
+                    .id(self.id.clone())
+                    .role(Role::Slider)
+                    .aria_label(self.label.clone())
+                    .aria_value(shown.clone())
+                    .w_full()
+                    .h(size.control_h())
+                    .px(size.input_px())
+                    .gap(px(10.0))
+                    .justify_between()
+                    .cursor_pointer(),
+                size,
+            ),
+            Surface::new(Kind::Field.role()),
+            state,
+            true,
+            true,
+            cx,
+        )
+        .child(div().min_w_0().truncate().child(shown.clone()))
+        .child(
+            div()
+                .flex_none()
+                .w(px(PREVIEW_WIDTH))
+                .px(px(PREVIEW_THUMB / 2.0))
+                .child(self.rail(fraction, PREVIEW_TRACK, PREVIEW_THUMB, false, cx)),
+        )
+        .on_click(move |_, _, cx| opener.update(cx, |drag, cx| drag.set_sheet(true, cx)));
+        let sheet = open.then(|| self.sheet(drag, shown, window, cx));
+        div().w_full().child(trigger).children(sheet)
+    }
+
+    fn sheet(
+        self,
+        drag: Entity<Drag>,
+        shown: SharedString,
+        window: &Window,
+        cx: &App,
+    ) -> AnyElement {
+        let id = drag.entity_id();
+        let close = drag.clone();
+        let dismiss = drag.clone();
+        floating_sheet(
+            bottom_sheet(
+                ("zz-slider-sheet", id),
+                self.label.clone(),
+                [sheet_close(("zz-slider-sheet-close", id))
+                    .on_click(move |_, _, cx| {
+                        close.update(cx, |drag, cx| drag.set_sheet(false, cx));
+                    })
+                    .into_any_element()],
+                v_flex()
+                    .px(px(SHEET_PADDING_X))
+                    .pb(px(16.0))
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .w_full()
+                            .text_center()
+                            .text_size(px(22.0))
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child(shown),
+                    )
+                    .child(self.slider(drag, window, cx)),
+                sheet_inset(window),
+                move |_, cx| dismiss.update(cx, |drag, cx| drag.set_sheet(false, cx)),
+            ),
+            window,
+        )
+    }
+
+    fn slider(self, drag: Entity<Drag>, window: &Window, cx: &App) -> Stateful<Div> {
+        let scale = self.scale;
+        let thumb = thumb(cx);
+        let coarse = CoarsePointer::get(cx);
+        let focus = drag.read(cx).focus.clone();
+        let focused = focus.is_focused(window);
+        let value = scale.snap(drag.read(cx).live.unwrap_or(self.value));
+        let rail = self.rail(scale.fraction(value), TRACK, thumb, focused, cx);
+        let on_change = self.on_change;
+        let emit: ValueHandler = Rc::new({
+            let drag = drag.clone();
+            move |next, window, cx| {
+                let previous = drag.update(cx, |drag, cx| {
+                    cx.notify();
+                    drag.live.replace(next)
+                });
+                if previous != Some(next) {
+                    on_change(next, window, cx);
+                }
+            }
+        });
         let listeners = canvas(
             {
                 let drag = drag.clone();
-                move |bounds, _, cx| drag.update(cx, |drag, _| drag.bounds = bounds)
+                move |bounds, window, cx| {
+                    drag.update(cx, |drag, _| drag.bounds = bounds);
+                    window.insert_hitbox(bounds, HitboxBehavior::Normal)
+                }
             },
             {
                 let drag = drag.clone();
                 let emit = Rc::clone(&emit);
-                move |_, (), window, _| {
+                move |_, hitbox, window, _| {
                     let moved = drag.clone();
+                    let mouse_emit = Rc::clone(&emit);
                     window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-                        let Drag { bounds, live, .. } = *moved.read(cx);
-                        if !phase.bubble() || live.is_none() {
+                        let Drag {
+                            bounds,
+                            live,
+                            touch,
+                            ..
+                        } = *moved.read(cx);
+                        if !phase.bubble() || live.is_none() || touch {
                             return;
                         }
                         if event.pressed_button == Some(MouseButton::Left) {
-                            emit(scale.at(event.position.x, bounds), window, cx);
+                            mouse_emit(scale.at(event.position.x, bounds, thumb), window, cx);
                         } else {
                             moved.update(cx, |drag, _| drag.live = None);
                         }
                     });
+                    let released = drag.clone();
                     window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-                        if phase.bubble() && drag.read(cx).live.is_some() {
-                            drag.update(cx, |drag, cx| {
+                        let Drag { live, touch, .. } = *released.read(cx);
+                        if phase.bubble() && live.is_some() && !touch {
+                            released.update(cx, |drag, cx| {
                                 drag.live = None;
                                 cx.notify();
                             });
+                        }
+                    });
+                    window.on_mouse_event(move |event: &TouchDragEvent, phase, window, cx| {
+                        if !phase.bubble() {
+                            return;
+                        }
+                        let Drag { bounds, touch, .. } = *drag.read(cx);
+                        match event.phase {
+                            TouchPhase::Started => {
+                                if window.default_prevented()
+                                    || !hitbox.is_hovered_at(event.start_position, window)
+                                {
+                                    return;
+                                }
+                                window.prevent_default();
+                                drag.update(cx, |drag, _| drag.touch = true);
+                                emit(scale.at(event.position.x, bounds, thumb), window, cx);
+                            }
+                            TouchPhase::Moved if touch => {
+                                emit(scale.at(event.position.x, bounds, thumb), window, cx);
+                            }
+                            TouchPhase::Ended | TouchPhase::Cancelled if touch => {
+                                drag.update(cx, |drag, cx| {
+                                    drag.touch = false;
+                                    drag.live = None;
+                                    cx.notify();
+                                });
+                            }
+                            TouchPhase::Moved | TouchPhase::Ended | TouchPhase::Cancelled => {}
                         }
                     });
                 }
@@ -360,7 +576,8 @@ impl RenderOnce for Slider {
             .items_center()
             .w_full()
             .h(Size::Medium.control_h())
-            .px(px(THUMB / 2.0))
+            .when(coarse, |this| this.h(px(TOUCH_HEIGHT)))
+            .px(px(thumb / 2.0))
             .cursor_pointer()
             .on_key_down(move |event, window, cx| {
                 let steps = if event.keystroke.modifiers.shift {
@@ -382,9 +599,9 @@ impl RenderOnce for Slider {
             .on_mouse_down(MouseButton::Left, move |event, window, cx| {
                 focus.focus(window, cx);
                 let bounds = drag.read(cx).bounds;
-                emit(scale.at(event.position.x, bounds), window, cx);
+                emit(scale.at(event.position.x, bounds, thumb), window, cx);
             })
-            .child(div().relative().w_full().child(track).child(thumb))
+            .child(rail)
             .child(listeners)
     }
 }
@@ -478,6 +695,43 @@ mod tests {
         assert_eq!(*changes.borrow(), [180.0, 360.0, 359.0, 349.0]);
     }
 
+    #[zz_gpui::test]
+    fn a_touch_drag_that_starts_on_the_slider_moves_it(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let value = Rc::new(RefCell::new(0.0));
+        let changes = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let (value, changes) = (Rc::clone(&value), Rc::clone(&changes));
+            move |_, _| SliderTest { value, changes }
+        });
+        let cx: &mut VisualTestContext = cx;
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+        };
+        let touch = |cx: &mut VisualTestContext, phase, start: f32, x: f32| {
+            cx.simulate_event(TouchDragEvent {
+                phase,
+                start_position: point(px(108.0), px(start)),
+                position: point(px(x), px(start)),
+            });
+            draw(cx);
+        };
+        draw(cx);
+        touch(cx, TouchPhase::Started, 200.0, 108.0);
+        touch(cx, TouchPhase::Moved, 200.0, 400.0);
+        touch(cx, TouchPhase::Ended, 200.0, 400.0);
+        assert!(changes.borrow().is_empty());
+        touch(cx, TouchPhase::Started, 12.0, 108.0);
+        touch(cx, TouchPhase::Moved, 12.0, 400.0);
+        touch(cx, TouchPhase::Ended, 12.0, 400.0);
+        touch(cx, TouchPhase::Moved, 12.0, 0.0);
+        assert_eq!(*value.borrow(), 360.0);
+        assert_eq!(*changes.borrow(), [180.0, 360.0]);
+    }
+
     #[test]
     fn values_snap_to_their_step_inside_the_range() {
         let scale = Scale {
@@ -493,8 +747,8 @@ mod tests {
             zz_gpui::point(px(10.0), px(0.0)),
             zz_gpui::size(px(216.0), px(24.0)),
         );
-        assert_eq!(scale.at(px(18.0), bounds), 0.0);
-        assert_eq!(scale.at(px(118.0), bounds), 180.0);
-        assert_eq!(scale.at(px(400.0), bounds), 360.0);
+        assert_eq!(scale.at(px(18.0), bounds, THUMB), 0.0);
+        assert_eq!(scale.at(px(118.0), bounds, THUMB), 180.0);
+        assert_eq!(scale.at(px(400.0), bounds, THUMB), 360.0);
     }
 }

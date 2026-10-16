@@ -38,10 +38,11 @@ pane-inactive-opacity = 0.7
 # between neighbors and at the window edge. Gapped panes draw their frame in
 # glass: the interface theme's glass edge, or a plain lit edge when the theme
 # has none, and the active pane lights its edge in the accent. Their corners
-# are 3.5px rounder than the theme's (13.5 under default). The bright line along
-# the edge is the theme glass's own glint, or as wide as the theme's outlines
-# when it has no glass.
-pane-margin = 6
+# stay concentric with the controls in the pane header (about 14 under
+# default). The bright line along the edge is the theme glass's own glint, or as
+# wide as the theme's outlines when it has no glass. The window's top strip
+# grows with the margin, so its buttons sit on the pane headers' center line.
+pane-margin = 8
 
 # The interface theme: its materials (corners, outlines, shadows, glass), which
 # piece of UI uses which (its roles), and its colors for light and for dark.

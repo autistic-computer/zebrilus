@@ -7,8 +7,8 @@ use std::{
 };
 
 use zz_gpui::{
-    Anchor, App, Edges, GlassMaterial, Global, Hsla, Pixels, SharedString, Window,
-    WindowAppearance, px,
+    Anchor, App, Corners, Edges, GlassMaterial, Global, Hsla, Pixels, SharedString, Window,
+    WindowAppearance, px, size,
 };
 
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
@@ -122,6 +122,9 @@ pub struct Theme {
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
     pub pane_background_opacity: f32,
+    /// How far panes stand in from the window's edges: zero while they sit
+    /// flush.
+    pub pane_margin: Pixels,
     /// Whether panes draw a [`Self::pane_frame`], which then owns their
     /// fill: set while panes have gaps.
     pub pane_frames: bool,
@@ -142,7 +145,14 @@ impl Default for Theme {
 
 /// The corner smoothing every window draws with.
 pub const CORNER_SMOOTHING: f32 = 4.0;
-const PANE_CORNER_INSET: Pixels = px(3.5);
+/// The share of its shorter side every window holds an ordinary corner radius
+/// to, so a large theme radius never turns a control into a pill.
+pub const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
+/// How tall the controls in a pane's header are. They sit [`CHROME_GAP`] in
+/// from the header's top and sides, which makes the header
+/// [`PANE_HEADER_HEIGHT`] tall.
+pub const PANE_HEADER_CONTROL_HEIGHT: Pixels = px(24.0);
+pub const PANE_HEADER_HEIGHT: Pixels = px(24.0 + 2.0 * CHROME_GAP);
 
 impl Deref for Theme {
     type Target = ThemeColor;
@@ -169,10 +179,10 @@ impl Theme {
         }
     }
 
-    /// The corner radius of a color swatch: half the theme's, so a swatch
+    /// The corner radius of a color swatch: the controls', so a swatch
     /// rounds in step with the controls beside it.
     pub fn swatch_radius(&self) -> Pixels {
-        self.radius / 2.0
+        self.control_radius()
     }
 
     /// The fill of the row a list's cursor is on.
@@ -254,13 +264,20 @@ impl Theme {
 
     /// The glass a gapped pane draws as its frame and fill: the look's glass
     /// as the theme defines it, or a plain lit edge the outline's width when
-    /// the look has none, tinted with the pane's color over `plane`, the
-    /// window color behind the pane. The tint is solid, so the glass paints
-    /// in place without reading the backdrop and its frost and lensing are
-    /// off. The active pane paints its rim's light, the glint and the fresnel
-    /// glow, in the accent, scaled by [`Self::pane_glow_strength`].
+    /// the look has none, tinted with the pane's color, with no frost or
+    /// lensing. Over an opaque `plane`, the window color behind the pane, the
+    /// tint is the two blended, so the glass paints in place without reading
+    /// the backdrop. Over a translucent plane it stays translucent, since the
+    /// plane already shows through it. The active pane paints its rim's
+    /// light, the glint and the fresnel glow, in the accent, scaled by
+    /// [`Self::pane_glow_strength`].
     pub fn pane_frame(&self, fill: Hsla, plane: Hsla, active: bool) -> GlassMaterial {
-        let tint = plane.blend(self.pane_color(fill));
+        let pane = self.pane_color(fill);
+        let tint = if plane.a < 1.0 {
+            pane
+        } else {
+            plane.blend(pane)
+        };
         let frame = self
             .glass_effect()
             .unwrap_or_else(|| {
@@ -297,26 +314,31 @@ impl Theme {
         }
     }
 
-    /// The corner radius of a gapped pane, concentric with the controls in
-    /// its header.
+    /// The corner radius of a gapped pane: concentric with the controls in
+    /// its header, which sit [`CHROME_GAP`] in from its top and sides and
+    /// round the way a window rounds a control their height.
     pub fn pane_radius(&self) -> Pixels {
-        self.outer_radius(PANE_CORNER_INSET)
+        if self.radius <= px(0.0) {
+            return px(0.0);
+        }
+        let control = size(PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_CONTROL_HEIGHT);
+        Corners::all(self.control_radius())
+            .resolve_radii_for_quad_size(control, ADAPTIVE_CORNER_FRACTION)
+            .top_left
+            + px(CHROME_GAP)
+    }
+
+    /// The height of the strip along the window's top edge: a pane header
+    /// with the pane margin above and below it, so the window's buttons sit
+    /// on the pane headers' center line.
+    pub fn title_bar_height(&self) -> Pixels {
+        PANE_HEADER_HEIGHT + self.pane_margin * 2.0
     }
 
     /// The color of a divider rule: translucent foreground, so it lightens
     /// glass in a dark theme the way it does a solid fill.
     pub fn divider_color(&self) -> Hsla {
         self.foreground.opacity(color::edge_weight())
-    }
-
-    /// The radius of a surface whose content sits `inset` inside it, so the
-    /// two stay concentric. Square corners stay square.
-    pub fn outer_radius(&self, inset: Pixels) -> Pixels {
-        if self.radius > px(0.0) {
-            self.radius + inset
-        } else {
-            px(0.0)
-        }
     }
 
     /// The radius of content that sits `inset` inside a surface, so the two
@@ -427,6 +449,7 @@ impl From<&ThemeColor> for Theme {
             inspect: None,
             inspect_strength: 1.0,
             pane_background_opacity: 0.5,
+            pane_margin: px(0.0),
             pane_frames: false,
             pane_glow_strength: 1.0,
             scrollbar_show: ScrollbarShow::default(),
@@ -482,9 +505,9 @@ mod tests {
             for (width, height) in [(24.0, 24.0), (120.0, 30.0), (360.0, 40.0)] {
                 let size = zz_gpui::size(px(width), px(height));
                 let control = zz_gpui::Corners::all(theme.control_radius())
-                    .resolve_radii_for_quad_size(size, 0.45);
-                let surface =
-                    zz_gpui::Corners::all(theme.radius).resolve_radii_for_quad_size(size, 0.45);
+                    .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION);
+                let surface = zz_gpui::Corners::all(theme.radius)
+                    .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION);
                 if radius > 24.0 {
                     assert_eq!(control, zz_gpui::Corners::all(px(height / 2.0)));
                     assert!(surface.top_left < control.top_left);
@@ -563,10 +586,54 @@ mod tests {
         assert_eq!(theme.pane_edge_width(), px(0.0));
         theme.pane_frames = true;
         assert_eq!(theme.pane_edge_width(), px(2.0));
-        theme.radius = px(10.0);
-        assert_eq!(theme.pane_radius(), px(13.5));
-        theme.radius = px(0.0);
-        assert_eq!(theme.pane_radius(), px(0.0));
+    }
+
+    #[test]
+    fn a_pane_frame_over_a_translucent_plane_adds_only_the_pane() {
+        let mut theme = Theme::default();
+        let fill = theme.background;
+        let plane = theme.background.alpha(0.93);
+        for opacity in [0.0, 0.4, 1.0] {
+            theme.pane_background_opacity = opacity;
+            assert_eq!(theme.pane_frame(fill, plane, false).tint.a, opacity);
+            assert_eq!(theme.pane_frame(fill, plane.opaque(), false).tint.a, 1.0);
+        }
+    }
+
+    #[test]
+    fn a_pane_rounds_concentric_with_its_header_controls() {
+        let control = size(px(96.0), PANE_HEADER_CONTROL_HEIGHT);
+        for radius in [4.0, 10.0, 24.0, 25.0] {
+            let theme = Theme {
+                radius: px(radius),
+                ..Theme::default()
+            };
+            let rounded = Corners::all(theme.control_radius())
+                .resolve_radii_for_quad_size(control, ADAPTIVE_CORNER_FRACTION);
+            let gap = theme.pane_radius() - rounded.top_left;
+            assert!((gap - px(CHROME_GAP)).abs() < px(0.001));
+        }
+        let capsules = Theme {
+            radius: px(25.0),
+            ..Theme::default()
+        };
+        assert_eq!(capsules.pane_radius(), PANE_HEADER_HEIGHT / 2.0);
+        let square = Theme {
+            radius: px(0.0),
+            ..Theme::default()
+        };
+        assert_eq!(square.pane_radius(), px(0.0));
+    }
+
+    #[test]
+    fn the_title_bar_shares_the_pane_headers_center_line() {
+        let mut theme = Theme::default();
+        assert_eq!(theme.title_bar_height(), PANE_HEADER_HEIGHT);
+        theme.pane_margin = px(8.0);
+        assert_eq!(
+            theme.title_bar_height() / 2.0,
+            theme.pane_margin + PANE_HEADER_HEIGHT / 2.0
+        );
     }
 
     #[test]

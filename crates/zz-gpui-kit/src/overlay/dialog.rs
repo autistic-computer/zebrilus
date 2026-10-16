@@ -13,7 +13,7 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, IconName, StyledExt as _, SurfaceRole, TITLE_BAR_HEIGHT, Tone,
+    ActiveTheme as _, Emphasis, IconName, StyledExt as _, SurfaceRole, Tone,
     button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
     scroll::ScrollableElement as _,
@@ -476,7 +476,7 @@ impl RenderOnce for Dialog {
                     .when(is_topmost, |this| {
                         this.window_control_area(WindowControlArea::Drag)
                             .on_any_mouse_down(move |event, window, cx| {
-                                if event.position.y < TITLE_BAR_HEIGHT {
+                                if event.position.y < cx.theme().title_bar_height() {
                                     return;
                                 }
 

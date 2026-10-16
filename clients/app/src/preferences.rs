@@ -70,7 +70,7 @@ impl Default for Preferences {
             pane_background_opacity: 0.5,
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
-            pane_margin: 6.0,
+            pane_margin: 8.0,
             palette_grouped: true,
             palette_host_prefix: "~".into(),
             palette_show_keys: true,
@@ -82,6 +82,13 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    /// How far panes stand in from the window's edges: the pane margin while
+    /// gaps are on, none while panes sit flush.
+    #[must_use]
+    pub fn margin(&self) -> zz_gpui::Pixels {
+        zz_gpui::px(if self.gaps { self.pane_margin } else { 0.0 })
+    }
+
     #[must_use]
     pub fn sanitized(mut self) -> Self {
         self.sidebar_width = bounded(
@@ -117,7 +124,7 @@ impl Preferences {
             (&mut self.pane_background_opacity, 0., 1., 0.5),
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
             (&mut self.pane_glow_strength, 0., 2., 1.),
-            (&mut self.pane_margin, 0., 32., 6.),
+            (&mut self.pane_margin, 0., 32., 8.),
         ] {
             *value = bounded(*value, min, max, fallback);
         }
@@ -834,7 +841,7 @@ mod tests {
         .sanitized();
         assert!(preferences.gaps);
         assert_eq!(preferences.overrides.radius, Some(8.0));
-        assert_eq!(preferences.pane_margin, 6.0);
+        assert_eq!(preferences.pane_margin, 8.0);
         assert_eq!(preferences.pane_background_opacity, 0.5);
         assert_eq!(preferences.pane_glow_strength, 1.0);
         assert_eq!(
