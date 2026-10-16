@@ -117,11 +117,13 @@ pub fn start_main_thread_watchdog(cx: &mut App) {
 
 fn watch_main_thread_heartbeat(heartbeat: &AtomicU64, epoch: Instant) {
     let mut stalled_since = None;
+    let mut check_interval = watchdog_check_interval(0);
     loop {
-        thread::sleep(STALL_HEARTBEAT_INTERVAL);
+        thread::sleep(check_interval);
         let now = elapsed_us_from(epoch);
         let beat = heartbeat.load(Ordering::Relaxed);
         let age = now.saturating_sub(beat);
+        check_interval = watchdog_check_interval(age);
         if age > STALL_THRESHOLD_US {
             if stalled_since.is_none() {
                 stalled_since = Some(beat);
@@ -139,6 +141,14 @@ fn watch_main_thread_heartbeat(heartbeat: &AtomicU64, epoch: Instant) {
                 beat.saturating_sub(since)
             );
         }
+    }
+}
+
+fn watchdog_check_interval(age_us: u64) -> Duration {
+    if age_us > STALL_THRESHOLD_US {
+        STALL_HEARTBEAT_INTERVAL
+    } else {
+        Duration::from_micros(STALL_THRESHOLD_US - age_us + 1)
     }
 }
 
@@ -168,5 +178,54 @@ pub(crate) fn open_logs(cx: &App) {
         && let Ok(url) = url::Url::from_directory_path(directory)
     {
         cx.open_url(url.as_str());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watchdog_deadlines_preserve_stall_detection_and_recovery() {
+        for start in (100_000_u64..2_000_000).step_by(10_000) {
+            let end = start + 900_000;
+            let last_beat = start / 100_000 * 100_000;
+            let mut now = 0;
+            let mut detected = None;
+            let mut recovered = None;
+            while now < end + 200_000 {
+                let beat = if (start..end).contains(&now) {
+                    last_beat
+                } else {
+                    now / 100_000 * 100_000
+                };
+                let age = now - beat;
+                if age > STALL_THRESHOLD_US {
+                    detected.get_or_insert(now);
+                } else if detected.is_some() {
+                    recovered.get_or_insert(now);
+                }
+                now += u64::try_from(watchdog_check_interval(age).as_micros()).unwrap();
+            }
+            let detected = detected.expect("a stranded foreground heartbeat must be detected");
+            assert!(detected > last_beat + STALL_THRESHOLD_US);
+            assert!(detected <= last_beat + STALL_THRESHOLD_US + 100_000);
+            let recovered = recovered.expect("foreground progress must clear the stall");
+            assert!((end..=end + 100_000).contains(&recovered));
+        }
+    }
+
+    #[test]
+    fn healthy_watchdog_checks_only_at_expiring_heartbeat_deadlines() {
+        let mut now = 0;
+        let mut checks = 0;
+        while now < 10_000_000 {
+            let beat = now / 100_000 * 100_000;
+            let age = now - beat;
+            assert!(age <= STALL_THRESHOLD_US);
+            now += u64::try_from(watchdog_check_interval(age).as_micros()).unwrap();
+            checks += 1;
+        }
+        assert!(checks <= 25);
     }
 }
