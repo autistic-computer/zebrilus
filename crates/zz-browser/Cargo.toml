@@ -9,7 +9,7 @@ publish = false
 
 [features]
 default = ["cef-runtime"]
-cef-runtime = ["dep:cef"]
+cef-runtime = ["dep:cef", "dep:ash"]
 
 [dependencies]
 zz-client.workspace = true
@@ -27,6 +27,9 @@ url.workspace = true
 wgpu.workspace = true
 zz-protocol.workspace = true
 zz-terminal.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ash = { version = "0.38", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 zz-gpui = { workspace = true, features = ["default"] }
