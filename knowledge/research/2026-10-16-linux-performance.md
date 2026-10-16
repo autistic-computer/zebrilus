@@ -1,7 +1,7 @@
 ---
 type: Research
 title: Linux stack performance and rendering validation
-description: Matched Linux measurements, resource lifetime checks, and acceptance decisions for browser imports, terminal processing, text shaping, agent updates, and rendering cadence.
+description: Matched Linux CPU and RAM measurements, resource lifetime checks, accepted optimizations, and cross-platform validation follow-ups for the terminal, browser, text, and rendering stack.
 resource: crates/zz-browser/src/linux_dmabuf.rs
 tags:
 - linux
@@ -9,10 +9,11 @@ tags:
 - rendering
 - cpu
 - gpu
+- memory
 - terminal
 - browser
 - agent
-timestamp: 2026-10-16T15:21:07Z
+timestamp: 2026-10-16T19:15:35Z
 ---
 
 # Measurement contract
@@ -37,7 +38,7 @@ its inclusive function percentages are not used to attribute savings. Native
 probes, equivalent-output tests, operation counts, and app pairs establish
 the accepted results.
 
-The preserved optimized baseline GUI SHA-256 is
+The original optimized baseline GUI SHA-256 is
 `309d7dd4f989d140b781d8fe729d8922c5f732222d6bee3f6f5d87f7eab1c9d4`;
 the CLI is
 `b6fa9a8be3570cc88b3b9baca8649da757f7823e54e7ba8ccbf267012c57a90e`.
@@ -47,7 +48,7 @@ between runs and use identical workload bytes and window geometry.
 
 Both variants use the `profiling` optimization profile and combined GUI/CLI
 package feature selection. A standalone CLI rebuild changed shared dependency
-features; its interrupted comparison is retained under
+features; its interrupted comparison was recorded under
 `excluded-first-matrix/` and excluded from results. The final CLI is rebuilt
 with `cargo build --profile profiling -p zz -p zz-cli --bin zz_cli`.
 The measured GUI contains the final GUI changes but predates the four-line
@@ -57,13 +58,29 @@ import ownership audits use the preserved baseline CLI and validate the
 candidate GUI importer independently.
 All final source changes are covered by the complete test and lint gates.
 
-Raw local evidence is retained in the ignored directories
-`target/profiles/linux-stack-20261016/` (investigation) and
-`target/profiles/linux-efficiency-20261016/` (changes and comparisons).
-The latter contains `ledger.json`, preserved binaries, build/test logs,
-source hashes, runtime receipts, and the paired app runner. These artifacts
-can contain process arguments and terminal text; they are not published as
-part of the knowledge bundle.
+The original investigation stored raw evidence in the ignored directories
+`target/profiles/linux-stack-20261016/` and
+`target/profiles/linux-efficiency-20261016/`. The RAM follow-up on October 16
+found that the build directory and original working checkout had been removed.
+The original raw profiles, comparison binaries, and runner are no longer
+available there. The follow-up recovered the baseline CLI through a still-running
+process's executable mapping and verified the exact SHA-256 recorded above;
+the original GUI and candidate binaries remain unavailable.
+The measurements below remain the committed campaign record;
+artifact names identify the original receipts, not currently available files.
+Fresh RAM probes use `target/profiles/linux-ram-20261016/` in the main checkout.
+They record their own source revisions, binary hashes, workloads, and results.
+
+Cross-platform runtime validation is tracked in
+[macOS #11](https://github.com/demfabris/zz/issues/11),
+[Windows/WSL #12](https://github.com/demfabris/zz/issues/12),
+[web #13](https://github.com/demfabris/zz/issues/13),
+[physical iOS #14](https://github.com/demfabris/zz/issues/14),
+[Intel/NVIDIA Linux #15](https://github.com/demfabris/zz/issues/15), and
+[experimental FreeBSD #16](https://github.com/demfabris/zz/issues/16).
+Each issue pins baseline `0d729eb36f6247f445b331503a5e7a05fdd1d6f2` and
+candidate `cda21ce33feb350be7918e8af135c4119478bf60`, lists the applicable
+changes and breakage checks, and requires matched runtime evidence.
 
 # Native terminal results
 
@@ -282,7 +299,7 @@ a 1.105-second baseline outlier during 74.4% host CPU load; it does not
 establish a throughput improvement. Live watchdog observer voluntary context
 switches fall from 10.0 to 2.5 per second in all four steady terminal phases.
 
-The CPU improvement costs memory. Combined GUI/daemon median PSS is
+The original matrix measured higher candidate memory use. Combined GUI/daemon median PSS is
 144.91 versus 160.13 MiB at initial idle, 169.15 versus 183.33 MiB after
 32 idle windows, and 297.33 versus 314.67 MiB after mixed output. Most of
 the offset already exists at initial idle; growth from initial idle through
@@ -414,3 +431,293 @@ the global terminal cadence, external texture binding cache, retained
 copy-flash resources, resize wait removal, and unconditional post-input replay
 removal. The matrix summary is `app-summary.json`; per-finding decisions are
 in `ledger.json`.
+
+# RAM follow-up
+
+The follow-up rebuilds the original baseline and shipped candidate with the
+same combined-package command, profiling settings, dependency features, and
+toolchain. New artifacts live under `target/profiles/linux-ram-20261016/`.
+The fresh CLI hashes are
+`527114d7777d78b022f913572d69206115ec4270e0cf4c5bca20a4f3dd5a7d31`
+(baseline) and
+`6a6b4da2544bbd44d445e5eb89d5413458d2b7a58b5c8f1a63044e292b04f5fd`
+(candidate). Their loadable file segments differ by 288 bytes; loadable memory
+segments differ by minus 32 bytes. Binary growth does not explain a multi-MiB
+startup difference in these rebuilds.
+
+Three alternating daemon pairs use fresh private sockets and identical
+107 × 43 terminals. A common TUI subscriber uses a separate executable inode,
+so attaching it does not divide either daemon's executable-page PSS. Each
+endpoint takes three samples. All samples have zero `SwapPss` and
+`AnonHugePages`; cleanup leaves no private processes running. At least
+23.71 GiB of host memory remains available throughout the runs.
+
+| Daemon phase | Baseline PSS | Candidate PSS | Baseline anonymous PSS | Candidate anonymous PSS |
+| --- | ---: | ---: | ---: | ---: |
+| Empty | 17.17 MiB | 16.54 MiB | 1.703 MiB | 1.695 MiB |
+| One unwatched terminal | 20.76 MiB | 20.42 MiB | 2.609 MiB | 2.598 MiB |
+| One watched terminal | 22.52 MiB | 22.05 MiB | 3.328 MiB | 3.324 MiB |
+| 32 idle terminals, one watched | 30.62 MiB | 30.68 MiB | 11.371 MiB | 11.906 MiB |
+
+The table reports independent medians, so differences between its medians
+need not equal median paired differences. The original roughly 3.9 MiB daemon
+startup offset does not reproduce. The 32-terminal phase does retain more
+anonymous memory in all three candidate runs: 592, 92, and 948 KiB. These
+measurements do not identify the responsible allocations. Both revisions use
+the same allocator policy; the native row memo lives on the stack and the
+page-preheat change reduces reservations. Neither observation assigns the
+remaining difference to a particular change.
+
+A separate sharing control starts a second private daemon from the same
+executable inode. The first daemon's PSS falls from 19.99 to 11.70 MiB;
+executable-mapping PSS falls from 18.10 to 9.80 MiB while anonymous memory
+stays at 2.402 MiB. Stopping the second process restores the first result.
+Starting a byte-identical executable from another inode does not produce
+that drop. This demonstrates PSS sensitivity to other live processes, as
+described in the [Linux proc accounting documentation](https://cdn.kernel.org/doc/html/latest/filesystems/proc.html).
+It does not establish the cause of the original matrix's offset: those raw
+maps are unavailable, and the surviving historical daemon has since paged out.
+
+Receipts: `daemon-memory-summary.json`, `matched-build-comparison.json`,
+`daemon-runs/`, and `executable-sharing/result.json` under the fresh artifact
+directory. These daemon-only runs use a TUI subscriber and do not replace the
+historical GUI workload.
+
+## Fresh GUI memory comparison
+
+Three alternating pairs compare the original baseline with shipped candidate
+`cda21ce33`, before either RAM follow-up patch. The rebuilt GUI hashes are
+`3fa9c2749a031d3a5b0ff00ac6fd98d6abac111d62887aa33bc141ca81b0b91e`
+and `89e306211daae31b9971899d7c576e7c53898eefe5935ccc76e1c6c725d884c5`.
+Both use the same full-debug profiling build and matching preserved CLI.
+Build receipts and debug files are in `baseline-bin/` and `candidate-bin/`.
+
+This is a new controlled fixture: explicit DejaVu UI/terminal fonts, a quiet
+terminal, private application/GPU cache directories, a 1280 × 900 logical
+window, a 1920 × 1350 native buffer, and a 104 × 41 pane. It does not recreate
+the unavailable original harness. System page cache remains warm between
+runs. Equal Wayland logging establishes a real main-surface buffer commit
+and frame callback, focus, and fresh presentation after each text phase.
+These are instrumented memory runs and establish no application CPU gain.
+
+All six runs and 48 checkpoints pass, with no rejection or retry. Each checks
+geometry, focus, compiler absence, and zero process `SwapPss`; cleanup leaves
+no private process running. At least 21.8 GiB of host RAM remains available.
+Neither GUI loads CEF or starts browser children in this terminal-only fixture.
+
+| Checkpoint | Baseline GUI + daemon PSS | Candidate GUI + daemon PSS | Baseline anonymous PSS | Candidate anonymous PSS |
+| --- | ---: | ---: | ---: | ---: |
+| Startup, 3 s after first presentation | 141.36 MiB | 143.41 MiB | 26.840 MiB | 26.836 MiB |
+| Startup, 22 s | 140.83 MiB | 142.84 MiB | 26.246 MiB | 26.238 MiB |
+| ASCII, 12 s after update | 142.45 MiB | 144.16 MiB | 27.711 MiB | 27.684 MiB |
+| Unsupported-character fallback, 12 s | 200.15 MiB | 203.26 MiB | 36.008 MiB | 36.875 MiB |
+
+These are independent medians. Total PSS varies substantially with file-backed
+pages, especially the first pair, and is not evidence for a stable allocation
+increase. Settled startup GUI anonymous paired differences are +0.156, +0.125,
+and −0.141 MiB. The original large startup offset does not reproduce as a
+consistent anonymous, GPU, or CEF cost in this fixture. Its original cause
+remains unknown.
+
+The first pair's settled ASCII checkpoint has 20.180 MiB less candidate
+self-executable PSS. Its executable code segment has 5.164 MiB resident,
+versus 23.812 MiB in the baseline. PSS nearly equals RSS for these mappings,
+so this is residency variation, not the proportional-sharing effect isolated
+in the daemon control. All 48 checkpoints contain exactly the four expected
+ELF load mappings, with no whole-file executable or debug-file mapping.
+Why the clean executable pages became nonresident remains unproven.
+
+The unsupported-character phase does produce a consistent GUI anonymous
+increase: +0.973, +0.957, and +0.758 MiB. GUI anonymous medians are 30.906 and
+31.777 MiB. Font-file resident medians rise from about 2.67 MiB at startup to
+52.80 and 53.26 MiB after fallback; font-file PSS is 51.82 and 52.31 MiB.
+This confirms a workload-dependent cost, but mapping names alone do not
+assign anonymous allocations to shaping plans, font objects, driver state,
+or other caches. The isolated font probes below establish the narrower
+container-storage saving; a complete GUI containing that later patch was not
+rebuilt for this comparison.
+
+AMD driver accounting has the same resident-VRAM medians in both variants:
+87.42 MiB at startup and after ASCII, and 145.11 MiB after fallback. Resident
+GTT stays at 2.004 MiB. Duplicate descriptors are deduplicated by DRM client
+and device. These counters include shared buffers; they are not unique
+physical VRAM and must not be added to process PSS. The fallback-related
+driver-memory growth is a shared workload cost, not a candidate regression.
+
+Receipts: `gui-memory-summary.json`, `gui-file-pss-attribution.json`,
+`gui_memory.py`, and the per-run records under the fresh artifact directory.
+The earlier functional pilot is retained under `gui-pilots-excluded/` and
+excluded from these results.
+
+## Terminal resize buffers
+
+The live snapshot cache retains up to two reusable cell planes. A plane only
+works for its exact cell count, but the shipped code can retain a large old
+plane indefinitely while a smaller terminal stays watched. The follow-up
+keeps reuse for matching lengths and removes incompatible cached planes when
+a live cell plane commits with a different cell count. Later frame-building
+operations can still fail; this is not a completed-frame publication gate.
+Existing snapshots held by other consumers remain valid through their `Arc`;
+their allocations remain alive until those consumers release them. Extraction
+retries keep their existing path. Frozen copy-mode history bypasses this live-frame commit path
+and is outside the change's scope.
+
+A same-binary probe copies the production pool methods and uses the daemon's
+mimalloc version, `no_thp`, and `MIMALLOC_PURGE_DELAY=0`. Growing from 107 × 43
+to 1,000 × 500 cells and then shrinking, followed by 100 ordinary updates,
+leaves 4,036,808 bytes in the shipped pool versus 36,808 bytes with pruning:
+exactly 4,000,000 bytes of obsolete cell payload are released. The logical
+plane-creation count stays at four in both variants, and output checksums
+match. This is retained payload, not an application RSS claim.
+The saving scales with the old geometry: one obsolete 240 × 80 plane contains
+150 KiB of cells. The 4 MB result uses a deliberately enormous terminal.
+
+Seven alternating timing repetitions ran after the optimized GUI build
+finished and before the next build started. Median isolated method costs are:
+
+| Workload | Shipped | Pruned | Meaning |
+| --- | ---: | ---: | --- |
+| Fixed 120 × 40 cells | 0.291 µs/update | 0.286 µs/update | Same two plane creations |
+| Alternate 120 × 40 and 160 × 50 | 0.381 µs/update | 0.397 µs/update | About 0.015 µs added per update |
+| Monotonic resize through 2,000 updates | 8.615 µs/update | 4.789 µs/update | Same creation count; fewer minor faults |
+| Alternate 107 × 43 and 1,000 × 500 | 27.3 µs/update | 664.7 µs/update | About 0.64 ms added per extreme resize |
+
+Pruning trades cross-size reuse for releasing obsolete cell buffers. The extreme
+alternating case creates 100 planes instead of two and takes 48,850 minor
+faults instead of 977; neither variant takes major faults. This cost matters
+for repeated huge geometry changes and is not represented by the ordinary
+resize result. Logical plane creations are not a count of OS allocations;
+mimalloc reuses pages in the ordinary alternating case. The loop includes
+plane acquisition, updates, and commit but excludes final cache destruction.
+Live publication computes one shared maximum frame bound before iterating
+attached views, so clients with different sizes do not by themselves cause
+the extreme alternating-size case.
+
+An earlier application probe observed anonymous memory falling from 8.31 to
+3.58 MiB after detaching the subscriber from a resized terminal. That probe
+overlapped compilation and was used only to find the retained buffer. The
+roughly 4.7 MiB change also includes other released state; it is not assigned
+entirely to this pool.
+
+The subsequent clean daemon comparison uses three alternating pairs of the
+preserved shipped CLI and a profiling CLI built with the pool change. All six
+runs and 42 checkpoints pass, with matching captured terminal output, zero
+swap, no compiler activity, and complete private-process cleanup. After
+1,000 × 500 cells shrink to 107 × 43 and remain watched, median anonymous
+memory is 8.3555 MiB shipped versus 4.5391 MiB fixed. Relative to each run's
+initial small terminal, growth falls from 5,378,048 to 1,376,256 bytes:
+exactly 4,001,792 bytes (3.8164 MiB) less in every pair. This agrees with the
+separate 4,000,000-byte cell-payload measurement. Initial, large-terminal,
+and detached memory match; detaching and reattaching also converge. The
+saving is conditional on retaining obsolete resize buffers, not a startup
+reduction. The fixed CLI SHA-256 is
+`50eed1e8e191cf15c9325a3eeffac5b054b62f618f4f92718e71227cd0c1037b`.
+
+Receipts: `pool-probe/counts.jsonl`, `pool-probe/timing-summary.json`, and
+`resize-retention/result.json` for the discovery and isolated probes;
+`resize-comparison-summary.json`, `pool-fixed-bin/build-receipt.json`, and
+`pool-fixed-build-source-receipt.json` for the clean application comparison.
+Source:
+`crates/zz-terminal/src/session.rs`, `ViewportDictionary::commit_cell_plane`.
+
+The change applies to native daemon hosts, including Linux, macOS and the
+experimental Windows path. Remote and thin clients benefit when their daemon
+is updated. It changes no wire format. The full terminal suite passes 463
+tests with three ignored, including dirty-snapshot reuse and the new resize
+ownership/retry checks. The retry test exercises retaining and clearing an
+uncommitted resized plane; it does not inject a native extraction failure.
+Terminal all-target/all-feature clippy passes with warnings denied.
+
+## Font-plan storage
+
+The shipped cache keeps at most six plans per face, but normal `VecDeque`
+growth reserves eight slots after the fifth insertion. The follow-up adds
+`reserve_exact(1)` before insertion. It preserves the six-plan
+FIFO, key matching, database invalidation, and font selection. It changes only
+container growth; it does not reduce the number of cached plans.
+
+The new standalone probes use installed fonts and four fixed corpora. They
+are separate from the deleted original shaping fixture. The fallback corpora
+deliberately include U+10FFFF and U+10FFFE, which are noncharacters, and the
+unassigned U+0378. Their unresolved glyphs drive an exhaustive font search;
+these are missing-glyph stress cases, not representative ordinary multilingual
+text. Per-scalar allocation attribution was not measured. Counting the bytes
+released when dropping only the plan cache gives:
+
+| Corpus | Shipped cache | Exact-growth cache | Saving |
+| --- | ---: | ---: | ---: |
+| ASCII or ordinary UI text, one loaded face | 2,324 B | 1,620 B | 704 B |
+| Fallback with default features, 425 faces / 437 plans | 887,008 B | 441,024 B | 445,984 B (50.3%) |
+| Fallback with five feature sets, 425 faces / 2,132 plans | 2,439,248 B | 1,992,912 B | 446,336 B (18.3%) |
+
+Preallocating six slots per face saves less in the five-feature case and adds
+297,792 bytes in the default-feature case. The follow-up rejects that policy.
+Exact growth adds 11 cold allocation calls to the default-feature fixture
+and 1,282 to the five-feature fixture. Plan constructions and hits remain
+identical. All variants match complete shaped-output hashes, glyph counts,
+and missing-glyph counts across both the system allocator and mimalloc.
+
+Separate binaries initially showed about 3% more CPU for warm ordinary text.
+A control puts both growth policies in the same binary, selects the policy
+only on cache misses, and alternates 15 pairs with mimalloc 0.1.52/no_thp.
+The apparent regression does not survive that control. Median paired warm
+CPU changes are −0.48% for ASCII, −0.82% for UI text, −0.30% for default
+fallback, and −0.88% for five-feature fallback; every range spans zero.
+The ordinary-text difference is −0.450 milliseconds per 8,192 lines, with
+a range of −2.985 to +0.759 milliseconds. Cold construction also shows no
+consistent penalty. This establishes no detected CPU regression in these
+fixtures, not a new shaping-speed claim.
+
+In the same-binary runs, first-corpus anonymous memory falls from a median
+10,788 to 10,296 KiB for default fallback and 13,096 to 12,372 KiB for
+five-feature fallback. Ordinary UI text shows no measurable resident saving.
+Both fallback fixtures load 425 faces from 399 font mappings, about 52 MiB
+of resident file pages. Dropping plans leaves approximately 8.6 MB of requested
+live allocations in either policy, including font objects, metadata, matching,
+and scratch storage. Codepoint-support caches remain empty in these fixtures.
+The ordinary fixture's 704-byte saving does not explain the historical GUI
+startup offset.
+
+Requested allocation sizes exclude allocator slack, C allocations, and font
+file mappings. Releasing plans does not immediately return all their bytes
+to the OS. Full-smaps parsing happens outside CPU timing and can retain
+temporary allocator pages; the resident figures above precede that parsing.
+The evidence supports a small reduction in fallback-heavy workloads, not a
+fixed RAM saving for every application window.
+
+The same-binary SHA-256 is
+`9f8270f5be2a9c07204d81c631e21d557f167153768dc48058569f13a4bc144a`.
+Sources: `third_party/rust/cosmic-text/src/shape.rs`, `shape_fallback`, and
+`src/font/system.rs`, `FontSystem`. Receipts and reproducible probe sources:
+`font-probe/decision.json`, `findings.json`, `policy-findings.json`, `probe.rs`,
+and `setup.py` under the fresh artifact directory.
+
+Validation of the changed production source passes all six cosmic-text unit
+tests, native `no_std`, WebAssembly default and `no_std` compilation, and
+identical cold/warm output hashes for all four corpora. The `no_std` checks
+emit two unused-import warnings in unchanged upstream imports. This is
+compilation coverage, not runtime validation on another platform.
+Receipt: `font-validation/validation-standalone.json`.
+All 28 GPUI platform text tests also pass against the changed production
+source, including bidirectional text, combining characters, ligatures and
+font changes. Receipt: `font-validation/validation-platform.json`.
+
+The changed cosmic-text path serves Linux, FreeBSD, WebAssembly and iOS.
+Native macOS uses CoreText and native Windows uses DirectWrite, so this
+storage change does not affect their text backends. Runtime evidence here is
+Linux-only. The increased allocation count on cold cache misses is the main
+tradeoff; glyph output and the six-plan eviction policy remain unchanged.
+
+The larger retained font mappings remain an investigation candidate. A missing
+cluster keeps `shape_fallback` searching; on Unix the final fallback stage can
+visit all matched faces. `FontSystem::get_font` retains `Arc<Font>` values,
+fontdb retains shared file mappings, and GPUI retains fonts selected for
+output. Clearing one owner cannot release the mappings. fontdb exposes
+`make_face_data_unshared`, but cosmic-text has no public selective font-cache
+eviction API. A standalone full-reset probe could measure a reclamation bound
+while preserving the database and IDs; it would not establish a safe app idle
+policy or avoid the CPU cost of rebuilding fallback plans. No font eviction
+policy is introduced here. The approximately 52 MiB of resident font-file
+pages are clean and file-backed, so the OS can reclaim them under memory
+pressure. They are not 52 MiB of unreclaimable private heap; a future policy
+must distinguish mapped-file residency from live private allocations.
