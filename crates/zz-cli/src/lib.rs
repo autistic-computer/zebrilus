@@ -10,6 +10,7 @@
 extern crate mimalloc;
 #[cfg(test)]
 use zz_daemon::{CommandStdinSink, append_stdin_payload};
+mod agent_hooks;
 mod control_mode;
 pub mod diagnostics;
 mod events;
@@ -725,6 +726,12 @@ fn run_command_mode(
     if command == "--help" || command == "help" {
         print!("{}", top_level_help());
         return Some(ExitCode::SUCCESS);
+    }
+    if canonical_command(&command) == "tools"
+        && let [flag] = invocation.args.as_slice()
+        && let Some(code) = agent_hooks::run(flag.as_str(), host.is_some())
+    {
+        return Some(code);
     }
     if invocation.args.iter().any(|argument| argument == "--help") {
         return Some(match command_help(&command) {

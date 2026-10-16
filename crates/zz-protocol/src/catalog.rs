@@ -1084,11 +1084,25 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         name: "tools",
         aliases: &[],
         description: "Show workspace commands, optionally limited to agent, terminal, browser, or advanced",
-        usage: "[--skill] [section]",
-        options: &[CommandOptionSpec::flag(
-            "--skill",
-            "show the agent guide with skill frontmatter; cannot combine with section",
-        )],
+        usage: "[--skill] [--context] [--install-hooks] [--remove-hooks] [section]",
+        options: &[
+            CommandOptionSpec::flag(
+                "--skill",
+                "show the agent guide with skill frontmatter; cannot combine with section",
+            ),
+            CommandOptionSpec::flag(
+                "--context",
+                "print the startup context for an agent in this pane; nothing outside zz",
+            ),
+            CommandOptionSpec::flag(
+                "--install-hooks",
+                "add the startup-context hook and stub skill to Claude Code and Codex",
+            ),
+            CommandOptionSpec::flag(
+                "--remove-hooks",
+                "remove the startup-context hook and stub skill zz installed",
+            ),
+        ],
         positionals: &[FreeForm],
         variadic: None,
     },

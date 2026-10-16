@@ -10,6 +10,10 @@ for the full catalog or `zz tools agent` for agent verbs. Run `zz tools --skill`
 for the agent guide with skill frontmatter. Regenerate it with `just tools skill`.
 Run `zz tools terminal` for terminal verbs, `zz tools browser` for browser verbs,
 and `zz tools advanced` for state subscriptions and terminal-agent integration.
+`zz tools --context` prints the short startup context for the calling pane.
+Agent panes get it without a hook; run `zz tools --install-hooks` once so
+Claude Code and Codex started by hand in a terminal pane get it too, and
+`zz tools --remove-hooks` to take the hook and stub skill out again.
 
 ## Environment
 
