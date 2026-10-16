@@ -188,6 +188,7 @@ fn shape_fallback(
             if plans.len() >= NUM_SHAPE_PLANS_PER_FONT {
                 plans.pop_front();
             }
+            plans.reserve_exact(1);
             plans.push_back(plan);
             plans.back().expect("we just pushed the shape plan")
         }
