@@ -21,7 +21,15 @@ Partitioning reduced plan construction from 246,122 to 2,125 for 1,024 lines,
 with identical glyph output, and retained about 2.5 MB more allocations on that
 machine. The earlier global six-to-64 FIFO experiment did not improve throughput.
 
+The cache reserves each additional slot explicitly instead of using geometric
+growth. This preserves the six-plan limit and avoids unused capacity. Separate
+425-face fallback probes saved about 0.43 MiB of requested allocations, with
+identical shaped output and no consistent CPU penalty in 15 alternating pairs.
+Ordinary one-face text saved only 704 bytes. See the RAM follow-up in
+`knowledge/research/2026-10-16-linux-performance.md` for workloads and limits.
+
 To refresh this snapshot, diff the library source against the pinned release,
-apply the cache and database-invalidation changes, and run the plan cache tests
-plus the GPUI platform text tests. Remove this snapshot when an upstream release
-provides equivalent bounded reuse or another measured shaping implementation.
+apply the cache, exact-growth and database-invalidation changes, and run the
+plan cache tests plus the GPUI platform text tests. Remove this snapshot when an
+upstream release provides equivalent bounded reuse or another measured shaping
+implementation.
