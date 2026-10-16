@@ -7,6 +7,7 @@
 /IDEAS.md
 /.env
 .DS_Store
+.agents/launch.json
 
 # Release signing material: Developer ID key/p12, notary API key, tap deploy
 # key. Feeds the Actions secrets consumed by .github/workflows/release.yml.
@@ -54,5 +55,6 @@ __pycache__/
 bench/agents/browser/out/
 bench/agents/browser/out-site.log
 bench/agents/browser/out-site.pid
+bench/agents/skill/out/
 bench/agents/browser/.playwright-mcp/
 bench/agents/skill/out/
