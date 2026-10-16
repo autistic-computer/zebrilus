@@ -1858,7 +1858,7 @@ mod tests {
     fn codex_counts_only_inside_the_foreground_group() {
         use std::os::unix::process::CommandExt as _;
 
-        let Some(shell_program) = ["/bin/sh", "/usr/bin/sh"]
+        let Some(sleep) = ["/bin/sleep", "/usr/bin/sleep"]
             .into_iter()
             .map(Path::new)
             .find(|path| path.exists())
@@ -1868,18 +1868,18 @@ mod tests {
         let scratch = tempfile::tempdir().expect("temp dir");
         let codex = scratch.path().join("codex");
         #[cfg(target_os = "macos")]
-        std::os::unix::fs::symlink(shell_program, &codex).expect("link shell as codex");
+        std::os::unix::fs::symlink(sleep, &codex).expect("link sleep as codex");
         #[cfg(not(target_os = "macos"))]
-        fs::copy(shell_program, &codex).expect("copy shell as codex");
+        fs::copy(sleep, &codex).expect("copy sleep as codex");
 
         let mut leader = std::process::Command::new("sh")
             .arg("-c")
-            .arg(format!("'{}' -c 'sleep 30; true'; true", codex.display()))
+            .arg(format!("'{}' 30; true", codex.display()))
             .process_group(0)
             .spawn()
             .expect("node-like leader");
         let mut background = std::process::Command::new(&codex)
-            .args(["-c", "sleep 30; true"])
+            .arg("30")
             .process_group(0)
             .spawn()
             .expect("background codex");
@@ -1892,10 +1892,8 @@ mod tests {
         let leader_group = leader.id();
         let shell_group = shell.id();
         let deadline = Instant::now() + Duration::from_secs(5);
-        while !crate::agent::codex_queue::group_runs_codex(leader_group)
-            || !crate::agent::codex_queue::group_runs_codex(background.id())
-        {
-            assert!(Instant::now() < deadline, "codex fixtures never appeared");
+        while !crate::agent::codex_queue::group_runs_codex(leader_group) {
+            assert!(Instant::now() < deadline, "codex child never appeared");
             thread::sleep(Duration::from_millis(20));
         }
 

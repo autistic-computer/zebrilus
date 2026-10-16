@@ -259,10 +259,10 @@ fn ast_to_document(source: &str, root: mdast::Node, cx: &mut NodeContext) -> Par
         .children
         .into_iter()
         .map(|c| ast_to_node(source, c, cx))
-        .collect::<Vec<_>>();
+        .collect();
     ParsedDocument {
         source: source.to_string().into(),
-        blocks: blocks.into(),
+        blocks,
     }
 }
 

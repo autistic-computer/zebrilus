@@ -258,23 +258,19 @@ impl ModeRevision {
         .unwrap_or(false)
     }
 
-    pub(super) fn viewport_cells(
-        &self,
-        offset: u32,
-        (columns, rows): (u16, u16),
-    ) -> Arc<[PackedCell]> {
+    pub(super) fn viewport_cells(&self, offset: u32) -> Arc<[PackedCell]> {
         let mut grid = self.grid.lock();
         grid.begin_viewport();
-        let stride = usize::from(columns);
-        let end = offset.saturating_add(u32::from(rows));
-        let len = stride * usize::try_from(end - offset).expect("viewport row count");
+        let columns = usize::from(self.columns);
+        let end = offset.saturating_add(u32::from(self.viewport_rows));
+        let len = columns * usize::try_from(end - offset).expect("viewport row count");
         let mut cells: Arc<[PackedCell]> = std::iter::repeat_n(PackedCell::EMPTY, len).collect();
         let output = Arc::get_mut(&mut cells).expect("new viewport cells");
         for (index, row) in (offset..end).enumerate() {
             if row < self.total {
-                let source = grid.row_bounded(row, columns).expect("frozen row");
-                let count = source.cells.len().min(stride);
-                output[index * stride..index * stride + count]
+                let source = grid.row(row).expect("frozen row");
+                let count = source.cells.len().min(columns);
+                output[index * columns..index * columns + count]
                     .copy_from_slice(&source.cells[..count]);
             }
         }

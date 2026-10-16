@@ -1359,35 +1359,6 @@ impl RowRenderCache {
                     };
                     if should_compute_raster {
                         *line.raster.borrow_mut() = RasterState::Untried;
-                        match line.line.compute_glyph_raster_data(
-                            origin,
-                            paint.line_height,
-                            line.glyph_options,
-                            window,
-                            cx,
-                        ) {
-                            Ok(Some(data)) => {
-                                let painted = line.line.paint_with_raster_data(
-                                    &data,
-                                    origin,
-                                    paint.line_height,
-                                    window,
-                                );
-                                *line.raster.borrow_mut() = RasterState::Cached(data);
-                                if painted {
-                                    continue;
-                                }
-                            }
-                            Ok(None) => {
-                                *line.raster.borrow_mut() = RasterState::SlowPathOnly;
-                            }
-                            Err(error) => {
-                                log::trace!(
-                                    target: "zz::diagnostics::terminal_render",
-                                    "failed to compute terminal glyph raster data: {error}"
-                                );
-                            }
-                        }
                     }
                     if let Err(error) = line.line.paint_with_options(
                         origin,
@@ -1399,6 +1370,28 @@ impl RowRenderCache {
                         cx,
                     ) {
                         log::error!("failed to paint terminal text: {error}");
+                    }
+                    if should_compute_raster {
+                        match line.line.compute_glyph_raster_data(
+                            origin,
+                            paint.line_height,
+                            line.glyph_options,
+                            window,
+                            cx,
+                        ) {
+                            Ok(Some(data)) => {
+                                *line.raster.borrow_mut() = RasterState::Cached(data);
+                            }
+                            Ok(None) => {
+                                *line.raster.borrow_mut() = RasterState::SlowPathOnly;
+                            }
+                            Err(error) => {
+                                log::trace!(
+                                    target: "zz::diagnostics::terminal_render",
+                                    "failed to compute terminal glyph raster data: {error}"
+                                );
+                            }
+                        }
                     }
                 }
             }

@@ -52,7 +52,6 @@ thiserror.workspace = true
 portable-pty = { workspace = true, optional = true }
 
 [dev-dependencies]
-rustix = { workspace = true, features = ["time"] }
 tempfile.workspace = true
 
 [lints]

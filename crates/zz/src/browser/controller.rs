@@ -515,34 +515,13 @@ pub(crate) struct BrowserPaneFrame {
     pub(crate) logical_height: u32,
     pub(crate) pool_generation: Option<u64>,
     pub(crate) sequence: Option<u64>,
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    pub(crate) readback_texture: Option<zz_browser::ReadbackTexture>,
     pub(crate) content: BrowserPaneFrameContent,
 }
 
 impl BrowserPaneFrame {
-    fn from_frame(
-        frame: OsrFrame,
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))] gpu: Option<&BrowserGpuContext>,
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))] previous: Option<&Self>,
-    ) -> Option<Self> {
+    fn from_frame(frame: OsrFrame) -> Option<Self> {
         match frame {
             OsrFrame::OwnedBgra(frame) => {
-                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                let readback_texture =
-                    gpu.and_then(|gpu| {
-                        match zz_browser::ReadbackTexture::upload(
-                            gpu,
-                            &frame,
-                            previous.and_then(|previous| previous.readback_texture.as_ref()),
-                        ) {
-                            Ok(texture) => Some(texture),
-                            Err(error) => {
-                                log::error!("CEF readback texture upload failed: {error}");
-                                None
-                            }
-                        }
-                    });
                 let buffer = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
                     frame.width,
                     frame.height,
@@ -558,8 +537,6 @@ impl BrowserPaneFrame {
                     logical_height: frame.height,
                     pool_generation: None,
                     sequence: None,
-                    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                    readback_texture,
                     content: BrowserPaneFrameContent::OwnedBgra(Arc::new(RenderImage::new(vec![
                         ImageFrame::new(buffer),
                     ]))),
@@ -575,8 +552,6 @@ impl BrowserPaneFrame {
                 logical_height: frame.logical_height,
                 pool_generation: Some(frame.pool_generation),
                 sequence: Some(frame.sequence),
-                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                readback_texture: None,
                 content: BrowserPaneFrameContent::Gpu(frame.texture),
             }),
             #[cfg(target_os = "macos")]
@@ -2594,13 +2569,7 @@ impl BrowserController {
                 BrowserEvent::FrameReady { .. } => {
                     if let Some(frame) = session.take_frame() {
                         if active {
-                            match BrowserPaneFrame::from_frame(
-                                frame,
-                                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                                self.gpu_contexts.get(&key),
-                                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                                self.latest_frames.get(&key),
-                            ) {
+                            match BrowserPaneFrame::from_frame(frame) {
                                 Some(frame) => {
                                     if let Some(previous) = self.latest_frames.insert(key, frame)
                                         && let BrowserPaneFrameContent::OwnedBgra(image) =

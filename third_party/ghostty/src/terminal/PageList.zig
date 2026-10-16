@@ -35,7 +35,7 @@ const native_freestanding = builtin.os.tag == .freestanding and
 /// The number of pages we preheat the page pool with. For operating systems
 /// that support it, pages are demand-paged (see PagePool) so this only
 /// costs us address space. For other operating systems, we don't preheat.
-const page_preheat = 1;
+const page_preheat = 4;
 
 /// The number of nodes we preheat the node pool with. Unlike pages, nodes
 /// are ordinary heap memory so every idle preheated node costs real
@@ -8621,18 +8621,6 @@ test "PageList incremental compression skips visible history" {
     try testing.expect(!s.page_compression.flags.verifying);
     try testing.expectEqual(@as(?u64, null), s.page_compression.last_serial);
     try testing.expectEqual(@as(u64, 0), s.page_compression.next_serial);
-}
-
-test "PageList initializes only its used pool page and grows on demand" {
-    const testing = std.testing;
-    var s = try init(testing.allocator, .{ .cols = 80, .rows = 24 });
-    defer s.deinit();
-    try testing.expectEqual(1, s.pool.pages.live);
-    try testing.expectEqual(0, s.pool.pages.free.items.len);
-    try s.growColdPagesForTest(4);
-    try testing.expectEqual(5, s.pool.pages.live);
-    try testing.expectEqual(0, s.pool.pages.free.items.len);
-    s.assertIntegrity();
 }
 
 test "PageList owns incremental compression state" {
@@ -21431,9 +21419,7 @@ test "copy-on-write unread compressed clone teardown never allocates raw mapping
     const alloc = testing.allocator;
     var source = try init(alloc, .{ .cols = 180, .rows = 24, .max_lines = 2000 });
     defer source.deinit();
-    const page_rows = initialCapacity(source.cols).rows;
-    for (0..@as(usize, page_rows) * 4) |_| _ = try source.grow();
-    try testing.expect(source.pages.last.?.rows() < page_rows);
+    for (0..1000) |_| _ = try source.grow();
     source.pin(.{ .screen = .{} }).?.rowAndCell().cell.* = .init('A');
     _ = source.compress(.full);
     const before = source.memoryStats();

@@ -1864,8 +1864,7 @@ impl Window {
                 // - Thermal pressure (Serious/Critical): cap to ~60fps
                 // - Inactive window (not focused): cap to ~30fps to save energy
                 let min_frame_interval = if request_frame_options.require_presentation
-                    || (!force_render
-                        && !invalidator.is_dirty()
+                    || (!request_frame_options.force_render
                         && next_frame_callbacks.borrow().is_empty())
                 {
                     None
@@ -5256,11 +5255,6 @@ impl Window {
             }
         }
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn glyph_lookup_count(&self) -> usize {
-        self.glyph_lookup_cache.borrow().lookups.get()
     }
 
     pub(crate) fn glyph_raster_bounds(
@@ -9111,9 +9105,6 @@ mod tests {
     fn test_frame_waker_fires_on_frame_demand(cx: &mut TestAppContext) {
         let window = cx.add_window(|_, _| EmptyView);
         let test_window = cx.test_window(window.into());
-        window
-            .update(cx, |_, window, _| window.active.set(true))
-            .unwrap();
 
         // Windows start dirty, and that can predate waker installation;
         // installing the waker must deliver the pending wake or the first
@@ -9198,89 +9189,6 @@ mod tests {
             test_window.frame_wake_count() > baseline || callback_ran.get(),
             "a frame request with pending next-frame callbacks must either run them or re-arm the frame source"
         );
-    }
-
-    #[zz_gpui::test]
-    fn inactive_dirty_frames_wait_without_losing_presentation_or_activation(
-        cx: &mut TestAppContext,
-    ) {
-        cx.update(|cx| cx.mode = crate::app::GpuiMode::Production);
-        let window = cx.update(|cx| {
-            cx.open_window(
-                WindowOptions {
-                    inactive_frame_interval: Some(Duration::from_secs(3600)),
-                    ..Default::default()
-                },
-                |_, cx| cx.new(|_| EmptyView),
-            )
-            .unwrap()
-        });
-        let test_window = cx.test_window(window.into());
-        test_window.simulate_frame_request(RequestFrameOptions::default());
-        let initial_draws = test_window.draw_count();
-        for _ in 0..120 {
-            window.update(cx, |_, window, _| window.refresh()).unwrap();
-            let wakes = test_window.frame_wake_count();
-            test_window.simulate_frame_request(RequestFrameOptions::default());
-            window
-                .update(cx, |_, window, _| assert!(window.invalidator.is_dirty()))
-                .unwrap();
-            assert!(test_window.frame_wake_count() > wakes);
-        }
-        assert_eq!(test_window.draw_count(), initial_draws);
-        test_window.simulate_frame_request(RequestFrameOptions {
-            require_presentation: true,
-            ..Default::default()
-        });
-        assert_eq!(test_window.draw_count(), initial_draws + 1);
-        window
-            .update(cx, |_, window, _| assert!(!window.invalidator.is_dirty()))
-            .unwrap();
-        let wakes = test_window.frame_wake_count();
-        test_window.simulate_frame_request(RequestFrameOptions::default());
-        assert_eq!(test_window.frame_wake_count(), wakes);
-        window
-            .update(cx, |_, window, _| {
-                window.refresh();
-                window.active.set(true);
-            })
-            .unwrap();
-        test_window.simulate_frame_request(RequestFrameOptions::default());
-        window
-            .update(cx, |_, window, _| assert!(!window.invalidator.is_dirty()))
-            .unwrap();
-    }
-
-    #[zz_gpui::test]
-    fn sustained_input_replays_clean_scenes_only_when_platform_requests_it(
-        cx: &mut TestAppContext,
-    ) {
-        cx.update(|cx| cx.mode = crate::app::GpuiMode::Production);
-        let window = cx.add_window(|_, _| EmptyView);
-        let test_window = cx.test_window(window.into());
-        test_window.simulate_frame_request(RequestFrameOptions::default());
-        window
-            .update(cx, |_, window, _| {
-                window.active.set(true);
-                window.input_rate_tracker.borrow_mut().sustain_until =
-                    super::Instant::now() + Duration::from_secs(3600);
-            })
-            .unwrap();
-        let start = test_window.draw_count();
-        for _ in 0..120 {
-            test_window.simulate_frame_request(RequestFrameOptions::default());
-        }
-        assert_eq!(test_window.draw_count() - start, 120);
-        window
-            .update(cx, |_, window, _| {
-                window.input_rate_tracker.borrow_mut().sustains_presentation = false;
-            })
-            .unwrap();
-        let start = test_window.draw_count();
-        for _ in 0..120 {
-            test_window.simulate_frame_request(RequestFrameOptions::default());
-        }
-        assert_eq!(test_window.draw_count(), start);
     }
 
     #[zz_gpui::test]
