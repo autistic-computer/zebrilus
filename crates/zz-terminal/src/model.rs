@@ -371,6 +371,17 @@ impl PackedStyle {
         Color::from_packed(self.background)
     }
 
+    /// This style drawn in `foreground` on `background`, keeping where its
+    /// colors came from.
+    #[must_use]
+    pub const fn with_grounds(self, foreground: Color, background: Color) -> Self {
+        Self {
+            foreground: self.foreground & !RGB_MASK | foreground.packed(),
+            background: background.packed(),
+            ..self
+        }
+    }
+
     #[must_use]
     pub const fn underline_color(self) -> Option<Color> {
         if self.underline_color == NO_COLOR {
@@ -647,6 +658,16 @@ impl Cursor {
     #[must_use]
     pub const fn color(self) -> Color {
         Color::from_packed(((self.0.get() >> Self::COLOR_SHIFT) & 0x00ff_ffff) as u32)
+    }
+
+    #[must_use]
+    pub const fn with_color(self, color: Color) -> Self {
+        let raw = self.0.get() & !((RGB_MASK as u64) << Self::COLOR_SHIFT)
+            | (color.packed() as u64) << Self::COLOR_SHIFT;
+        let Some(raw) = NonZeroU64::new(raw) else {
+            panic!("cursor presence bit must be set")
+        };
+        Self(raw)
     }
 }
 

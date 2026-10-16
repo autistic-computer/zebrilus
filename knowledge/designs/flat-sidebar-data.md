@@ -19,7 +19,8 @@ timestamp: 2026-10-12T21:30:00-03:00
 The flat sidebar shows one row per window on every host: a title, a second line saying what the
 window is doing, an age on the right, and a pane stack (`navigation::pane_stack`, shared with the
 titlebar's pane deck): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color. Pointing at it opens every pane in a row you can
-click. Line 2's lead carries what needs you, so the tiles have
+click, drawn on the row itself with the title and description hidden under the tiles and fading
+back in past them. Line 2's lead carries what needs you, so the tiles have
 no status dot; folded host and session headers roll attention up. Every fact it needs now rides
 the mux tree, so a client that subscribes to all sessions can draw every row without
 `AgentPaneWire`, without attaching, and without keeping its own "seen" state.

@@ -624,6 +624,21 @@ impl SurfaceRole {
         }
     }
 
+    /// Whether a theme that picks its outlines decides this one's: it is an
+    /// edge, not a divider line, and a theme can turn it on.
+    pub fn picks_outline(&self) -> bool {
+        self.kind != Kind::Rule && self.knobs().outline.contains(&true)
+    }
+
+    /// Whether a theme that picks its shadows decides this one's: a theme
+    /// can give it one.
+    pub fn picks_shadow(&self) -> bool {
+        self.knobs()
+            .shadow
+            .iter()
+            .any(|shadow| *shadow != Shadow::None)
+    }
+
     /// Whether this role is its kind, not a place within it.
     pub fn is_kind(&self) -> bool {
         self.id == self.kind.name()
@@ -1047,7 +1062,8 @@ impl Theme {
     /// The style `role` resolves to in this theme: its kind's built-in
     /// style and each group's built-in patch from the kind inward, then the
     /// theme's patches the same way, so a theme's patch for a kind beats
-    /// the built-in look of everything in it.
+    /// the built-in look of everything in it. A theme that picks its
+    /// outlines or shadows drops every built-in one first.
     pub fn style(&self, role: SurfaceRole) -> Style {
         DRAWN.with_borrow_mut(|drawn| {
             if let Some(drawn) = drawn {
@@ -1061,6 +1077,12 @@ impl Theme {
         });
         let mut style = role.kind.base();
         Self::built_in(role, &mut style);
+        if self.picked_outlines && role.picks_outline() {
+            style.outline = false;
+        }
+        if self.picked_shadows && role.picks_shadow() {
+            style.shadow = Shadow::None;
+        }
         self.themed(role, role.knobs(), &mut style);
         style
     }
@@ -1448,6 +1470,53 @@ mod tests {
             theme.layer(SurfaceRole::TILE, PaintState::Rest).fill,
             "a surface that does not highlight stays bare"
         );
+    }
+
+    #[test]
+    fn a_theme_that_picks_outlines_draws_them_only_where_it_picks() {
+        let mut theme = theme();
+        theme.picked_outlines = true;
+        let card = Kind::Card.role();
+        assert!(!theme.style(card).outline);
+        assert_eq!(theme.layer(card, PaintState::Rest).border_width, px(0.0));
+        assert!(theme.style(Kind::Rule.role()).outline, "dividers are lines");
+        let fixed = SurfaceRole::new("test.fixed", Kind::Card, "Test", "")
+            .with(StylePatch::EMPTY.outline(true))
+            .with_knobs(Knobs::FIXED);
+        assert!(theme.style(fixed).outline, "no theme could turn it back on");
+
+        theme
+            .styles
+            .insert("card".into(), StylePatch::EMPTY.outline(true));
+        assert!(theme.layer(card, PaintState::Rest).border_width > px(0.0));
+        assert!(!theme.style(Kind::Button.role()).outline);
+    }
+
+    #[test]
+    fn a_theme_that_picks_shadows_casts_them_only_where_it_picks() {
+        let mut theme = theme();
+        theme.picked_shadows = true;
+        let popover = SurfaceRole::POPOVER;
+        assert_eq!(theme.style(popover).shadow, Shadow::None);
+        assert!(theme.layer(popover, PaintState::Rest).shadow.is_empty());
+        assert!(!theme.casts_shadow(Kind::Button.role()));
+        let fixed = SurfaceRole::new("test.fixed", Kind::Card, "Test", "")
+            .with(StylePatch::EMPTY.shadow(Shadow::Float))
+            .with_knobs(Knobs::FIXED);
+        assert_eq!(theme.style(fixed).shadow, Shadow::Float);
+        assert!(
+            !theme
+                .layer(SurfaceRole::TAB, PaintState::Selected)
+                .shadow
+                .is_empty(),
+            "a lift still rises"
+        );
+
+        theme
+            .styles
+            .insert("popover".into(), StylePatch::EMPTY.shadow(Shadow::Float));
+        assert!(!theme.layer(popover, PaintState::Rest).shadow.is_empty());
+        assert!(!theme.casts_shadow(SurfaceRole::DIALOG));
     }
 
     #[test]

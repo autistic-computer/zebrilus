@@ -29,9 +29,9 @@ mod window;
 #[cfg(target_os = "ios")]
 pub(crate) use dispatcher::*;
 #[cfg(target_os = "ios")]
-pub use display::phone;
-#[cfg(target_os = "ios")]
 pub(crate) use display::*;
+#[cfg(target_os = "ios")]
+pub use display::{display_corner_radius, phone};
 #[cfg(target_os = "ios")]
 pub use ffi::*;
 #[cfg(target_os = "ios")]

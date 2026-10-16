@@ -195,14 +195,20 @@ fn glass_field(point: vec2<f32>) -> vec4<f32> {
     return field;
 }
 
-fn backdrop(frame_position: vec2<f32>) -> vec4<f32> {
+// What the frame already holds at this pixel, under the glass.
+fn under(frame_position: vec2<f32>) -> vec4<f32> {
     let position = frame_position - glass.viewport.zw;
+    let clamped = clamp(position, glass.backdrop.xy + 0.5, glass.backdrop.zw - 0.5);
+    let size = vec2<f32>(textureDimensions(sharp_backdrop));
+    return textureSampleLevel(sharp_backdrop, glass_sampler, clamped / size, 0.0);
+}
+
+fn backdrop(frame_position: vec2<f32>) -> vec4<f32> {
     let level = glass.optics.w;
     if (level < 0.5) {
-        let clamped = clamp(position, glass.backdrop.xy + 0.5, glass.backdrop.zw - 0.5);
-        let size = vec2<f32>(textureDimensions(sharp_backdrop));
-        return textureSampleLevel(sharp_backdrop, glass_sampler, clamped / size, 0.0);
+        return under(frame_position);
     }
+    let position = frame_position - glass.viewport.zw;
     let scale = exp2(-level);
     let low = floor(glass.backdrop.xy * scale) + 0.5;
     let high = ceil(glass.backdrop.zw * scale) - 0.5;
@@ -259,8 +265,12 @@ fn toned(color: vec4<f32>) -> vec3<f32> {
     return mix(rgb, glass.tint.rgb, glass.tint.a);
 }
 
-// Every renderer blends into its target the same way, leaving it
-// premultiplied, whether or not the surface composites that way.
+// Glass that reads its backdrop writes the pixel itself, with blending off:
+// its face replaces what it covers, which it already carries blurred, so
+// nothing under it shows through sharp, and past the face the frame's own
+// pixel goes back. Glass that reads nothing blends over the frame. Either
+// way the target stays premultiplied, whether or not the surface composites
+// that way.
 fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, contour: f32) -> vec4<f32> {
     var rgb = lit;
     // Touch lights the glass from inside, brightest under the finger.
@@ -274,9 +284,17 @@ fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, 
     }
     rgb = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
 
-    let body = (color.a + (1.0 - color.a) * glass.tint.a) * coverage * glass.rim.w;
-    let alpha = body + (1.0 - body) * contour * glass.rim.w;
-    return vec4<f32>(rgb * body + glass.edge_color.rgb * (alpha - body), alpha);
+    let strength = coverage * glass.rim.w;
+    let face = color.a + (1.0 - color.a) * glass.tint.a;
+    let edge = contour * glass.rim.w;
+    if (glass.tint.a < 1.0) {
+        let held = under(position);
+        let outlined = vec4<f32>(glass.edge_color.rgb * edge, edge) + held * (1.0 - edge);
+        return mix(outlined, vec4<f32>(rgb * face, face), strength);
+    }
+    let body = vec4<f32>(rgb * face, face) * strength;
+    let alpha = body.a + (1.0 - body.a) * edge;
+    return vec4<f32>(body.rgb + glass.edge_color.rgb * (alpha - body.a), alpha);
 }
 
 @fragment
@@ -316,13 +334,9 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     contour = contour * clip;
     let coverage = saturate(0.5 - distance) * clip;
     if (coverage <= 0.0) {
-        // Clear rather than discarded: a discard slows the whole draw on
+        // Written rather than discarded: a discard slows the whole draw on
         // tiled GPUs.
-        if (contour <= 0.0) {
-            return vec4<f32>(0.0);
-        }
-        let alpha = contour * glass.rim.w;
-        return vec4<f32>(glass.edge_color.rgb * alpha, alpha);
+        return finish(position, vec4<f32>(0.0, 0.0, 0.0, 1.0), vec3<f32>(0.0), 0.0, contour);
     }
 
     // The rim lenses the backdrop. Across the bezel the pull grows like a

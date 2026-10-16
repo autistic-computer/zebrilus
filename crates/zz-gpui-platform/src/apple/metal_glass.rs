@@ -11,6 +11,8 @@ use zz_gpui::{
 /// glass.
 pub(crate) struct MetalGlass {
     glass_pipeline: metal::RenderPipelineState,
+    /// For glass that reads its backdrop, which writes its pixels itself.
+    reading_pipeline: metal::RenderPipelineState,
     down_pipeline: metal::RenderPipelineState,
     up_pipeline: metal::RenderPipelineState,
     sampler: metal::SamplerState,
@@ -152,6 +154,7 @@ impl MetalGlass {
 
         Ok(Self {
             glass_pipeline: pipeline("glass", "vs_glass", "fs_glass", true)?,
+            reading_pipeline: pipeline("glass_reading", "vs_glass", "fs_glass", false)?,
             down_pipeline: pipeline("glass_down", "vs_glass_blur", "fs_glass_down", false)?,
             up_pipeline: pipeline("glass_up", "vs_glass_blur", "fs_glass_up", false)?,
             sampler: device.new_sampler(&sampler_descriptor),
@@ -311,12 +314,20 @@ impl MetalGlass {
         if draws.is_empty() {
             return;
         }
-        encoder.set_render_pipeline_state(&self.glass_pipeline);
         encoder.set_fragment_sampler_state(0, Some(&self.sampler));
         let level = |index: usize| self.levels.get(index).unwrap_or(&self.placeholder);
         encoder.set_fragment_texture(0, Some(level(0)));
         encoder.set_fragment_texture(1, Some(level(1)));
+        let mut reading = None;
         for (uniform, scissor) in draws {
+            if reading != Some(uniform.reads_backdrop()) {
+                reading = Some(uniform.reads_backdrop());
+                encoder.set_render_pipeline_state(if uniform.reads_backdrop() {
+                    &self.reading_pipeline
+                } else {
+                    &self.glass_pipeline
+                });
+            }
             let bytes = uniform.as_bytes();
             encoder.set_vertex_bytes(0, bytes.len() as u64, bytes.as_ptr() as *const c_void);
             encoder.set_fragment_bytes(0, bytes.len() as u64, bytes.as_ptr() as *const c_void);

@@ -13,15 +13,22 @@ use crate::{
 };
 use zz_gpui::{
     AnyElement, App, Context, Entity, Focusable as _, IntoElement, MouseButton, ParentElement as _,
-    Pixels, RenderOnce, ScrollHandle, SharedString, Styled as _, StyledImage as _, Window,
-    deferred, div, prelude::*, px,
+    Pixels, RenderOnce, SharedString, Styled as _, StyledImage as _, Window, canvas, deferred, div,
+    prelude::*, px,
 };
 
 pub const BROWSER_OMNIBOX_KEY_CONTEXT: &str = "BrowserOmnibox";
 const BROWSER_CONTROL_HEIGHT: f32 = 28.0;
-const BROWSER_HEADER_PADDING: f32 = 8.0;
-const BROWSER_TAB_MIN_WIDTH: f32 = 112.0;
+/// The header's first row: the title, the tabs and New tab, the tabs as
+/// tall as the address bar and as far in from the pane's top as a pane
+/// header's controls.
+const BROWSER_TAB_ROW_HEIGHT: f32 = BROWSER_CONTROL_HEIGHT + 2.0 * crate::CHROME_GAP;
 const BROWSER_TAB_MAX_WIDTH: f32 = 180.0;
+/// A tab narrowed to its favicon alone.
+const BROWSER_TAB_MIN_WIDTH: f32 = 36.0;
+/// Below this width a tab drops its label and shows only its favicon.
+const BROWSER_TAB_LABEL_WIDTH: f32 = 84.0;
+const BROWSER_TAB_GAP: f32 = 4.0;
 const SITE_CONTROLS_INSET: Pixels = px(1.5);
 const ADDRESS_EDGE_WIDTH: Pixels = px(1.0);
 
@@ -34,7 +41,9 @@ pub struct BrowserHeader {
 }
 
 impl BrowserHeader {
-    pub const HEIGHT: Pixels = px(BROWSER_CONTROL_HEIGHT * 2.0 + BROWSER_HEADER_PADDING * 3.0);
+    /// The tab row, then the toolbar with the header's inset below it.
+    pub const HEIGHT: Pixels =
+        px(BROWSER_TAB_ROW_HEIGHT + BROWSER_CONTROL_HEIGHT + crate::CHROME_GAP);
 
     pub fn new(
         active: bool,
@@ -64,18 +73,21 @@ impl RenderOnce for BrowserHeader {
             .h(Self::HEIGHT)
             .flex_none()
             .surface(crate::roles::PANE_HEADER, cx)
-            .py(px(BROWSER_HEADER_PADDING))
-            .gap(px(BROWSER_HEADER_PADDING))
+            .pb(px(crate::CHROME_GAP))
             .child(
                 div()
                     .id("browser-tab-row")
                     .debug_selector(|| "browser-tab-row".into())
                     .flex()
                     .items_center()
-                    .h(BrowserToolbar::HEIGHT)
+                    .h(px(BROWSER_TAB_ROW_HEIGHT))
                     .flex_none()
                     .gap_2()
-                    .px_2()
+                    .px(px(crate::CHROME_GAP))
+                    .font_family(cx.theme().font_family.clone())
+                    .text_size(crate::rems_from_px(13.0))
+                    .line_height(px(16.0))
+                    .text_color(cx.theme().foreground.muted())
                     .child(self.tabs)
                     .child(
                         div()
@@ -104,8 +116,8 @@ impl RenderOnce for BrowserHeader {
 #[derive(IntoElement)]
 pub struct BrowserToolbar {
     back: AnyElement,
-    forward: AnyElement,
-    reload: AnyElement,
+    forward: Option<AnyElement>,
+    reload: Option<AnyElement>,
     address: AnyElement,
     picker: AnyElement,
     more: AnyElement,
@@ -127,8 +139,8 @@ impl BrowserToolbar {
     ) -> Self {
         Self {
             back: back.into_any_element(),
-            forward: forward.into_any_element(),
-            reload: reload.into_any_element(),
+            forward: Some(forward.into_any_element()),
+            reload: Some(reload.into_any_element()),
             address: address.into_any_element(),
             picker: picker.into_any_element(),
             more: more.into_any_element(),
@@ -139,6 +151,13 @@ impl BrowserToolbar {
     #[must_use]
     pub fn show_separator(mut self, show_separator: bool) -> Self {
         self.show_separator = show_separator;
+        self
+    }
+
+    #[must_use]
+    pub fn back_only(mut self) -> Self {
+        self.forward = None;
+        self.reload = None;
         self
     }
 }
@@ -154,7 +173,7 @@ impl RenderOnce for BrowserToolbar {
             .flex()
             .items_center()
             .gap_1()
-            .px_2()
+            .px(px(crate::CHROME_GAP))
             .when(self.show_separator, |toolbar| {
                 toolbar.rule_on(crate::roles::BAR_RULE, Edge::Bottom, cx)
             })
@@ -162,8 +181,8 @@ impl RenderOnce for BrowserToolbar {
             .child(
                 browser_toolbar_cluster()
                     .child(self.back)
-                    .child(self.forward)
-                    .child(self.reload),
+                    .children(self.forward)
+                    .children(self.reload),
             )
             .child(self.address)
             .child(
@@ -317,6 +336,10 @@ impl BrowserTabInfo {
 
 type BrowserTabAction = Rc<dyn Fn(u64, &mut Window, &mut App)>;
 
+/// A browser pane's tabs, sharing the row's width like a desktop browser's:
+/// each as wide as it can be up to its full width, down to its favicon
+/// alone, with New tab right after the last one. Given a [`Self::title`], the pane's
+/// title leads the row.
 #[derive(IntoElement)]
 pub struct BrowserTabStrip {
     tabs: Vec<BrowserTabInfo>,
@@ -324,6 +347,7 @@ pub struct BrowserTabStrip {
     on_activate: BrowserTabAction,
     on_close: BrowserTabAction,
     on_new_tab: BrowserMenuAction,
+    title: Option<(crate::pane::PaneDragSource, BrowserMenuAction)>,
 }
 
 impl BrowserTabStrip {
@@ -334,7 +358,21 @@ impl BrowserTabStrip {
             on_activate: Rc::new(|_, _, _| {}),
             on_close: Rc::new(|_, _, _| {}),
             on_new_tab: Rc::new(|_, _| {}),
+            title: None,
         }
+    }
+
+    /// Leads the row with the pane's title, the way other panes title their
+    /// header: dragged by `drag`, its X closes the pane through
+    /// `on_close_pane`.
+    #[must_use]
+    pub fn title(
+        mut self,
+        drag: crate::pane::PaneDragSource,
+        on_close_pane: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.title = Some((drag, Rc::new(on_close_pane)));
+        self
     }
 
     #[must_use]
@@ -364,21 +402,31 @@ impl RenderOnce for BrowserTabStrip {
             on_activate,
             on_close,
             on_new_tab,
+            title,
         } = self;
-        let selected = tabs.get(active).map(|tab| (tab.id, active));
-        let scroll = window
-            .use_keyed_state("browser-tab-scroll", cx, |_, _| {
-                (ScrollHandle::default(), None)
-            })
-            .update(cx, |(scroll, previous), _| {
-                if *previous != selected {
-                    if selected.is_some() {
-                        scroll.scroll_to_item(active);
-                    }
-                    *previous = selected;
+        let title = title.map(|(drag, close_pane)| {
+            crate::pane::PaneTitle::new("browser-pane-title", IconName::Globe, "Browser", drag)
+                .fit()
+                .on_close(move |window, cx| close_pane(window, cx))
+        });
+        let width = window.use_keyed_state("browser-tab-strip-width", cx, |_, _| None::<Pixels>);
+        let count = f32::from(u16::try_from(tabs.len().max(1)).unwrap_or(u16::MAX));
+        let narrow = width.read(cx).is_some_and(|width| {
+            (width - px(BROWSER_TAB_GAP) * (count - 1.0)) / count < px(BROWSER_TAB_LABEL_WIDTH)
+        });
+        let measure = canvas(
+            move |bounds, window, cx| {
+                let changed = width.update(cx, |width, _| {
+                    width.replace(bounds.size.width) != Some(bounds.size.width)
+                });
+                if changed {
+                    window.request_animation_frame();
                 }
-                scroll.clone()
-            });
+            },
+            |_, (), _, _| {},
+        )
+        .absolute()
+        .size_full();
         let new_tab = browser_toolbar_button(
             cx,
             "browser-new-tab",
@@ -396,31 +444,40 @@ impl RenderOnce for BrowserTabStrip {
             .flex_1()
             .min_w_0()
             .items_center()
-            .gap_1()
-            .child(new_tab)
+            .gap_2()
+            .children(title)
             .child(
                 div()
-                    .id("browser-tabs")
-                    .debug_selector(|| "browser-tabs".into())
-                    .track_scroll(&scroll)
                     .flex()
+                    .flex_initial()
                     .min_w_0()
-                    .max_w_full()
-                    .overflow_x_scroll()
-                    .py(px(4.0))
-                    .my(px(-4.0))
                     .items_center()
-                    .gap_1()
-                    .children(tabs.into_iter().enumerate().map(|(index, tab)| {
-                        browser_tab_pill(
-                            tab,
-                            index == active,
-                            closable,
-                            &on_activate,
-                            &on_close,
-                            cx,
-                        )
-                    })),
+                    .gap(px(BROWSER_TAB_GAP))
+                    .child(
+                        div()
+                            .id("browser-tabs")
+                            .debug_selector(|| "browser-tabs".into())
+                            .relative()
+                            .flex()
+                            .flex_initial()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .items_center()
+                            .gap(px(BROWSER_TAB_GAP))
+                            .child(measure)
+                            .children(tabs.into_iter().enumerate().map(|(index, tab)| {
+                                browser_tab_pill(
+                                    tab,
+                                    index == active,
+                                    closable,
+                                    narrow,
+                                    &on_activate,
+                                    &on_close,
+                                    cx,
+                                )
+                            })),
+                    )
+                    .child(new_tab),
             )
     }
 }
@@ -429,6 +486,7 @@ fn browser_tab_pill(
     tab: BrowserTabInfo,
     active: bool,
     closable: bool,
+    narrow: bool,
     on_activate: &BrowserTabAction,
     on_close: &BrowserTabAction,
     cx: &App,
@@ -441,51 +499,25 @@ fn browser_tab_pill(
     } = tab;
     let activate = Rc::clone(on_activate);
     let close_middle = Rc::clone(on_close);
-    let content = div()
-        .flex_1()
-        .min_w_0()
-        .text_size(crate::rems_from_px(13.0))
-        .line_height(px(16.0))
-        .whitespace_nowrap()
-        .text_ellipsis()
-        .overflow_hidden()
-        .child(label);
-    browser_tab_shell(id, content, active, closable, on_close, favicon, cx)
-        .cursor_pointer()
-        .when(!detail.is_empty(), |this| {
-            this.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
-        })
-        .on_click(move |_, window, cx| activate(id, window, cx))
-        .on_mouse_down(MouseButton::Middle, move |_, window, cx| {
-            close_middle(id, window, cx);
-        })
-}
-
-fn browser_tab_shell(
-    id: u64,
-    content: impl IntoElement,
-    active: bool,
-    closable: bool,
-    on_close: &BrowserTabAction,
-    favicon: Option<Arc<[u8]>>,
-    cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
     let state = if active {
         PaintState::Current
     } else {
         PaintState::Rest
     };
+    let favicon = div()
+        .flex_none()
+        .relative()
+        .top(px(0.5))
+        .child(browser_favicon(favicon, cx));
     div()
         .id(("browser-tab", id))
         .debug_selector(move || format!("browser-tab-{id}"))
         .group(browser_tab_group(id))
         .h(px(BROWSER_CONTROL_HEIGHT))
         .w(px(BROWSER_TAB_MAX_WIDTH))
+        .min_w(px(BROWSER_TAB_MIN_WIDTH))
         .flex()
         .items_center()
-        .gap(px(6.0))
-        .pl(px(12.0))
-        .min_w(px(BROWSER_TAB_MIN_WIDTH))
         .surface_interactive(crate::roles::BROWSER_TAB, state, cx)
         .when(!active, |tab| {
             tab.text_color(crate::picker::muted_on(
@@ -493,16 +525,70 @@ fn browser_tab_shell(
                 cx,
             ))
         })
-        .child(
-            div()
-                .flex_none()
-                .relative()
-                .top(px(0.5))
-                .child(browser_favicon(favicon, cx)),
-        )
-        .child(content)
-        .when(closable, |this| {
-            this.child(browser_tab_close_button(id, on_close, cx))
+        .map(|tab| {
+            if narrow {
+                tab.justify_center().child(
+                    div()
+                        .relative()
+                        .flex()
+                        .flex_none()
+                        .size(px(BROWSER_CONTROL_HEIGHT))
+                        .items_center()
+                        .justify_center()
+                        .child(favicon.when(closable, |favicon| {
+                            favicon.group_hover(browser_tab_group(id), zz_gpui::Styled::invisible)
+                        }))
+                        .when(closable, |slot| {
+                            slot.child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .child(browser_tab_close_button(id, on_close, cx)),
+                            )
+                        }),
+                )
+            } else {
+                tab.relative()
+                    .gap(px(6.0))
+                    .pl(px(12.0))
+                    .pr(px(if closable {
+                        BROWSER_CONTROL_HEIGHT
+                    } else {
+                        12.0
+                    }))
+                    .child(favicon)
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(crate::rems_from_px(13.0))
+                            .line_height(px(16.0))
+                            .whitespace_nowrap()
+                            .overflow_hidden()
+                            .text_fade(crate::LABEL_FADE)
+                            .child(label),
+                    )
+                    .when(closable, |tab| {
+                        tab.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .bottom_0()
+                                .right_0()
+                                .flex()
+                                .items_center()
+                                .child(browser_tab_close_button(id, on_close, cx)),
+                        )
+                    })
+            }
+        })
+        .cursor_pointer()
+        .when(!detail.is_empty(), |this| {
+            this.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+        })
+        .on_click(move |_, window, cx| activate(id, window, cx))
+        .on_mouse_down(MouseButton::Middle, move |_, window, cx| {
+            close_middle(id, window, cx);
         })
 }
 
@@ -1206,8 +1292,11 @@ mod tests {
         accepted: Arc<Mutex<Vec<usize>>>,
     }
 
+    const PANE_CLOSED: u64 = u64::MAX;
+
     struct BrowserHeaderTest {
         drags: Arc<Mutex<Vec<crate::pane::PaneDrag>>>,
+        closed: Arc<Mutex<Vec<u64>>>,
         site_controls_opened: Arc<Mutex<bool>>,
         address: Entity<InputState>,
         address_clicked: bool,
@@ -1237,34 +1326,42 @@ mod tests {
                     )
                 });
             let drags = self.drags.clone();
-            div().w(px(320.0)).child(BrowserHeader::new(
+            let closed = self.closed.clone();
+            div().w(px(600.0)).child(BrowserHeader::new(
                 true,
                 BrowserTabStrip::new(
                     (0..8)
                         .map(|id| BrowserTabInfo::new(id, "Page", "Page title"))
                         .collect(),
                     self.active,
+                )
+                .title(
+                    crate::pane::PaneDragSource::new(
+                        zz_protocol::PaneId(3),
+                        "Browser",
+                        true,
+                        move |drag, _, _| drags.lock().unwrap().push(*drag),
+                    ),
+                    move |_, _| closed.lock().unwrap().push(PANE_CLOSED),
                 ),
                 browser_toolbar_cluster()
                     .child(
-                        Button::compact_icon("split-bottom", IconName::PanelBottom)
-                            .debug_selector(|| "split-bottom".into()),
+                        crate::pane::pane_header_icon_button(
+                            "split-bottom",
+                            IconName::PanelBottom,
+                            true,
+                            cx,
+                        )
+                        .debug_selector(|| "split-bottom".into()),
                     )
                     .child(
-                        Button::compact_icon("split-right", IconName::PanelRight)
-                            .debug_selector(|| "split-right".into()),
-                    )
-                    .child(crate::pane::pane_drag_button(
-                        "browser-test-drag",
-                        zz_protocol::PaneId(3),
-                        "Browser".into(),
-                        true,
-                        move |drag, _, _| drags.lock().unwrap().push(*drag),
-                        cx,
-                    ))
-                    .child(
-                        Button::compact_icon("close-pane", IconName::Xmark)
-                            .debug_selector(|| "close-pane".into()),
+                        crate::pane::pane_header_icon_button(
+                            "split-right",
+                            IconName::PanelRight,
+                            true,
+                            cx,
+                        )
+                        .debug_selector(|| "split-right".into()),
                     ),
                 BrowserToolbar::new(
                     button("back", IconName::ArrowLeft),
@@ -1295,6 +1392,7 @@ mod tests {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|window, cx| BrowserHeaderTest {
             drags: Arc::new(Mutex::new(Vec::new())),
+            closed: Arc::new(Mutex::new(Vec::new())),
             site_controls_opened: Arc::new(Mutex::new(false)),
             address: cx.new(|cx| InputState::new(window, cx)),
             address_clicked: false,
@@ -1304,37 +1402,34 @@ mod tests {
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
         let tabs = cx.debug_bounds("browser-tab-row").unwrap();
         let navigation = cx.debug_bounds("browser-navigation-row").unwrap();
-        assert_eq!(
-            navigation.origin.y - tabs.bottom(),
-            px(BROWSER_HEADER_PADDING)
-        );
-        assert_eq!(tabs.origin.y, px(BROWSER_HEADER_PADDING));
+        assert_eq!(tabs.size.height, px(BROWSER_TAB_ROW_HEIGHT));
+        assert_eq!(navigation.origin.y, tabs.bottom());
         assert_eq!(
             BrowserHeader::HEIGHT - navigation.bottom(),
-            px(BROWSER_HEADER_PADDING)
+            px(crate::CHROME_GAP)
         );
-        assert_eq!(
-            cx.debug_bounds("browser-address").unwrap().size.height,
-            cx.debug_bounds("browser-tab-0").unwrap().size.height
-        );
-        for id in [
-            "browser-new-tab",
-            "split-bottom",
-            "split-right",
-            "close-pane",
-        ] {
+        for id in ["pane-title", "split-bottom", "split-right"] {
             let bounds = cx.debug_bounds(id).unwrap();
-            assert!(bounds.origin.x >= tabs.origin.x && bounds.right() <= tabs.right());
-            assert!(bounds.origin.y >= tabs.origin.y && bounds.bottom() <= tabs.bottom());
             assert_eq!(
                 bounds.size.height,
-                px(if id == "browser-new-tab" {
-                    BROWSER_CONTROL_HEIGHT
-                } else {
-                    crate::button::COMPACT_ICON_BUTTON_SIZE
-                })
+                crate::PANE_HEADER_CONTROL_HEIGHT,
+                "{id}"
+            );
+            assert_eq!(bounds.center().y, tabs.center().y, "{id}");
+        }
+        for id in ["browser-new-tab", "browser-tab-0", "browser-tab-7"] {
+            let bounds = cx.debug_bounds(id).unwrap();
+            assert!(bounds.origin.x >= tabs.origin.x && bounds.right() <= tabs.right());
+            assert_eq!(bounds.size.height, px(BROWSER_CONTROL_HEIGHT), "{id}");
+            assert_eq!(
+                bounds.origin.y - tabs.origin.y,
+                px(crate::CHROME_GAP),
+                "{id}"
             );
         }
         for id in [
@@ -1352,19 +1447,30 @@ mod tests {
                 bounds.origin.y >= navigation.origin.y && bounds.bottom() <= navigation.bottom()
             );
         }
+        let title = cx.debug_bounds("pane-title").unwrap();
+        let strip = cx.debug_bounds("browser-tabs").unwrap();
         let new_tab = cx.debug_bounds("browser-new-tab").unwrap();
-        let back = cx.debug_bounds("back").unwrap();
-        assert_eq!(new_tab.center().x, back.center().x);
-        let drag = cx.debug_bounds("pane-drag-handle").unwrap();
-        assert!(drag.origin.x >= cx.debug_bounds("split-right").unwrap().right());
-        assert!(drag.right() <= cx.debug_bounds("close-pane").unwrap().origin.x);
-        assert!(drag.origin.y >= tabs.origin.y && drag.bottom() <= tabs.bottom());
+        assert!(title.right() <= strip.origin.x);
+        assert!(strip.right() <= new_tab.origin.x);
+        assert!(new_tab.right() <= cx.debug_bounds("split-bottom").unwrap().origin.x);
+        let first = cx.debug_bounds("browser-tab-0").unwrap();
+        let last = cx.debug_bounds("browser-tab-7").unwrap();
+        assert_eq!(first.size.width, last.size.width);
+        assert!(first.size.width >= px(BROWSER_TAB_MIN_WIDTH));
+        assert!(first.size.width < px(BROWSER_TAB_LABEL_WIDTH));
+        assert!(last.right() <= strip.right());
+        cx.simulate_mouse_move(title.center(), None, Modifiers::none());
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let close = cx.debug_bounds("pane-title-close").unwrap();
+        cx.simulate_click(close.center(), Modifiers::none());
         assert_eq!(
-            drag.size.height,
-            px(crate::button::COMPACT_ICON_BUTTON_SIZE)
+            view.read_with(cx, |view, _| view.closed.lock().unwrap().clone()),
+            [PANE_CLOSED]
         );
-        cx.simulate_mouse_down(drag.center(), MouseButton::Left, Modifiers::none());
-        let target = drag.center() + point(px(40.0), px(0.0));
+        cx.simulate_mouse_down(title.center(), MouseButton::Left, Modifiers::none());
+        let target = title.center() + point(px(40.0), px(0.0));
         cx.simulate_mouse_move(target, MouseButton::Left, Modifiers::none());
         cx.run_until_parked();
         assert!(cx.update(|_, cx| cx.has_active_drag()));
@@ -1377,7 +1483,6 @@ mod tests {
         );
         cx.simulate_mouse_up(target, MouseButton::Left, Modifiers::none());
         cx.run_until_parked();
-        assert!(new_tab.right() <= cx.debug_bounds("browser-tabs").unwrap().origin.x);
         let address = cx.debug_bounds("test-address").unwrap();
         assert!(address.size.width > px(100.0));
         let site_controls = cx.debug_bounds("browser-site-controls").unwrap();
@@ -1407,9 +1512,7 @@ mod tests {
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
-        let strip = cx.debug_bounds("browser-tabs").unwrap();
-        let active = cx.debug_bounds("browser-tab-7").unwrap();
-        assert!(active.origin.x >= strip.origin.x && active.right() <= strip.right());
+        assert!(cx.debug_bounds("browser-tab-7").is_some());
     }
 
     impl Render for BrowserOmniboxTest {
@@ -1480,6 +1583,11 @@ mod tests {
         let inactive_tab = cx
             .debug_bounds("browser-tab-2")
             .expect("the inactive tab renders");
+        assert_eq!(inactive_tab.size.width, px(BROWSER_TAB_MAX_WIDTH));
+        assert_eq!(
+            cx.debug_bounds("browser-new-tab").unwrap().origin.x,
+            inactive_tab.right() + px(BROWSER_TAB_GAP)
+        );
 
         cx.simulate_mouse_move(active_tab.center(), None, Modifiers::none());
         cx.update(|window, cx| {
@@ -1572,28 +1680,33 @@ mod tests {
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
 
         view.update(cx, |view, cx| {
-            view.width = 240.0;
+            view.width = 120.0;
             view.active = 0;
             cx.notify();
         });
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
+        for _ in 0..2 {
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        }
         let first = cx.debug_bounds("browser-tab-1").unwrap();
         let second = cx.debug_bounds("browser-tab-2").unwrap();
         let strip = cx.debug_bounds("browser-tabs").unwrap();
-        assert_eq!(first.size.width, px(BROWSER_TAB_MIN_WIDTH));
-        assert_eq!(second.size.width, px(BROWSER_TAB_MIN_WIDTH));
-        assert!(second.right() > strip.right());
-        view.update(cx, |view, cx| {
-            view.active = 1;
-            cx.notify();
-        });
+        assert_eq!(first.size.width, second.size.width);
+        assert!(first.size.width >= px(BROWSER_TAB_MIN_WIDTH));
+        assert!(first.size.width < px(BROWSER_TAB_LABEL_WIDTH));
+        assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
+        cx.simulate_mouse_move(second.center(), None, Modifiers::none());
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
-        let active = cx.debug_bounds("browser-tab-2").unwrap();
-        assert!(active.origin.x >= strip.origin.x && active.right() <= strip.right());
+        let close = cx.debug_bounds("browser-tab-close-2").unwrap();
+        assert!(close.origin.x >= second.origin.x && close.right() <= second.right());
+        cx.simulate_click(close.center(), Modifiers::none());
+        assert_eq!(
+            view.read_with(cx, |view, _| view.closed.lock().unwrap().clone()),
+            [2]
+        );
         view.update(cx, |view, cx| {
             view.width = 420.0;
             cx.notify();

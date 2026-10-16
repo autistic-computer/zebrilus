@@ -1194,6 +1194,7 @@ fn render_expanded_navigation(
         },
     )
     .size_full()
+    .pr(zz_ui::navigation::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll_handle)
     .with_decoration(decoration);
@@ -1270,18 +1271,13 @@ fn render_tree_row(
         .items_baseline()
         .gap_2()
         .text_color(node_color)
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(if node == TreeNode::Host(HostId::LOCAL) {
-                    runtime.local_hostname.clone()
-                } else {
-                    entry.label.clone()
-                }),
-        )
+        .child(div().min_w_0().overflow_hidden().whitespace_nowrap().child(
+            if node == TreeNode::Host(HostId::LOCAL) {
+                runtime.local_hostname.clone()
+            } else {
+                entry.label.clone()
+            },
+        ))
         .children(entry.index.clone().map(|index| {
             div()
                 .flex_none()

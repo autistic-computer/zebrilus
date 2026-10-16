@@ -70,7 +70,7 @@ impl Default for Preferences {
             pane_background_opacity: 0.5,
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
-            pane_margin: 8.0,
+            pane_margin: 6.0,
             palette_grouped: true,
             palette_host_prefix: "~".into(),
             palette_show_keys: true,
@@ -124,7 +124,7 @@ impl Preferences {
             (&mut self.pane_background_opacity, 0., 1., 0.5),
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
             (&mut self.pane_glow_strength, 0., 2., 1.),
-            (&mut self.pane_margin, 0., 32., 8.),
+            (&mut self.pane_margin, 0., 32., 6.),
         ] {
             *value = bounded(*value, min, max, fallback);
         }
@@ -841,7 +841,7 @@ mod tests {
         .sanitized();
         assert!(preferences.gaps);
         assert_eq!(preferences.overrides.radius, Some(8.0));
-        assert_eq!(preferences.pane_margin, 8.0);
+        assert_eq!(preferences.pane_margin, 6.0);
         assert_eq!(preferences.pane_background_opacity, 0.5);
         assert_eq!(preferences.pane_glow_strength, 1.0);
         assert_eq!(

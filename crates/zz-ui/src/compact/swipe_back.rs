@@ -17,6 +17,7 @@ const PARALLAX: f32 = 1.0 / 3.0;
 const DIM: f32 = 0.094;
 
 type Back = Rc<dyn Fn(&mut Window, &mut App)>;
+type Backdrop = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
 
 #[derive(Default)]
 struct HorizontalScrollers(HashMap<ElementId, (Hitbox, ScrollHandle)>);
@@ -55,7 +56,9 @@ pub struct SwipeBack {
     id: ElementId,
     page: AnyElement,
     under: Option<AnyElement>,
+    backdrop: Option<Backdrop>,
     pushed: bool,
+    enters: bool,
     leaving: bool,
     on_back: Back,
 }
@@ -69,7 +72,9 @@ pub fn swipe_back(
         id: id.into(),
         page: page.into_any_element(),
         under: None,
+        backdrop: None,
         pushed: false,
+        enters: false,
         leaving: false,
         on_back: Rc::new(on_back),
     }
@@ -79,6 +84,24 @@ impl SwipeBack {
     #[must_use]
     pub fn under(mut self, under: impl IntoElement) -> Self {
         self.under = Some(under.into_any_element());
+        self
+    }
+
+    /// Builds what shows under the page only while the page moves, for a
+    /// backdrop that costs something to build.
+    #[must_use]
+    pub fn under_with(
+        mut self,
+        backdrop: impl FnOnce(&mut Window, &mut App) -> AnyElement + 'static,
+    ) -> Self {
+        self.backdrop = Some(Box::new(backdrop));
+        self
+    }
+
+    /// Slides the page in when it first appears.
+    #[must_use]
+    pub fn enters(mut self, enters: bool) -> Self {
+        self.enters = enters;
         self
     }
 
@@ -173,16 +196,23 @@ impl SwipeState {
 impl RenderOnce for SwipeBack {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let (pushed, leaving) = (self.pushed, self.leaving);
-        let state = window.use_keyed_state(self.id.clone(), cx, |_, _| SwipeState {
-            dismissal: Dismissal::new(Overdrag::Clamp),
-            left: 0.0,
-            width: 0.0,
-            gesture: None,
-            pending: None,
-            pushed,
-            leaving: false,
-        });
         let now = cx.background_executor().now();
+        let enters = self.enters.then(|| f32::from(window.viewport_size().width));
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, _| {
+            let mut dismissal = Dismissal::new(Overdrag::Clamp);
+            if let Some(width) = enters {
+                dismissal.enter(width, now);
+            }
+            SwipeState {
+                dismissal,
+                left: 0.0,
+                width: 0.0,
+                gesture: None,
+                pending: None,
+                pushed,
+                leaving: false,
+            }
+        });
         let reduce_motion = cx.reduce_motion();
         let tick = state.update(cx, |state, _| {
             if pushed && !state.pushed && state.width > 0.0 {
@@ -215,6 +245,11 @@ impl RenderOnce for SwipeBack {
             )
         };
         let moving = offset > 0.0;
+        let under = match (self.under, self.backdrop) {
+            (Some(under), _) => Some(under),
+            (None, Some(backdrop)) if moving => Some(backdrop(window, cx)),
+            _ => None,
+        };
         let theme = cx.theme();
         let listener = canvas(
             {
@@ -256,7 +291,7 @@ impl RenderOnce for SwipeBack {
             .size_full()
             .overflow_hidden()
             .child(listener)
-            .when_some(self.under.filter(|_| moving), |this, under| {
+            .when_some(under.filter(|_| moving), |this, under| {
                 this.child(
                     div()
                         .id("swipe-back-under")
@@ -448,6 +483,43 @@ mod tests {
                     .pushed(self.pushed.get()),
             )
         }
+    }
+
+    #[zz_gpui::test]
+    fn an_entering_page_slides_in_over_a_backdrop_built_only_while_it_moves(
+        cx: &mut TestAppContext,
+    ) {
+        struct Entering {
+            built: Rc<Cell<usize>>,
+        }
+        impl Render for Entering {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let built = Rc::clone(&self.built);
+                div().size_full().child(
+                    swipe_back("entering", div().size_full(), |_, _| {})
+                        .enters(true)
+                        .under_with(move |_, _| {
+                            built.set(built.get() + 1);
+                            div().size_full().into_any_element()
+                        }),
+                )
+            }
+        }
+        cx.update(crate::init);
+        let built = Rc::new(Cell::new(0));
+        let count = Rc::clone(&built);
+        let (_, cx) = cx.add_window_view(move |_, _| Entering { built: count });
+        redraw(cx);
+        cx.executor().advance_clock(Duration::from_millis(16));
+        redraw(cx);
+        let width = cx.debug_bounds("swipe-back-page").expect("page").size.width;
+        assert!(page(cx).left() > width / 2.0);
+        assert!(cx.debug_bounds("swipe-back-under").is_some());
+        settle(cx);
+        assert_eq!(page(cx).left(), px(0.0));
+        let settled = built.get();
+        redraw(cx);
+        assert_eq!(built.get(), settled);
     }
 
     #[zz_gpui::test]

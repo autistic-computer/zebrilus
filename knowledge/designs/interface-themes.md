@@ -28,7 +28,7 @@ The editor palettes were made for syntax colors and gave six roots; everything e
 A theme (`InterfaceTheme`) is one object:
 
 - `name`: what Settings calls it;
-- `materials`: the `Materials`, every value that is not a color, defined once: `radius`, `outline` (the width of every outline; 0 draws none), `row-inset`, `primary` (`foreground` or `accent`), `flat-highlights` (a lift washes a step deeper instead of rising), `font`, `glass`, and the two shadows `contact` and `float`, each `y`, `blur`, `spread` and `strength`;
+- `materials`: the `Materials`, every value that is not a color, defined once: `radius`, `outline` (the width of every outline; 0 draws none), `picked-outlines` (only the roles the theme turns `outline` on for draw it), `row-inset`, `primary` (`foreground` or `accent`), `flat-highlights` (a lift washes a step deeper instead of rising), `font`, `glass`, `picked-shadows` (only the roles the theme gives a `shadow` cast one), and the two shadows `contact` and `float`, each `y`, `blur`, `spread` and `strength`;
 - `roles`: how the theme changes each kit kind and each zz role, by id, as a patch of the six style props (`fill`, `outline`, `shadow`, `shape`, `hover`, `selected`); what it leaves out draws as built in. The model is in [surface roles](/designs/surface-roles.md);
 - `light` and `dark`: a `ThemeColors` each, the six roots plus `on-accent` (text on an accent fill) and `shadow-color` (the ink of every drop shadow).
 

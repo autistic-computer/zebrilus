@@ -33,7 +33,7 @@ pub const STORY: Story = Story {
         Section {
             id: "frames",
             name: "Frames",
-            summary: "pane_surface with and without pane gaps. A gapped pane draws its frame in glass: the theme's glass edge, or a plain lit edge when the theme has none, tinted with the pane's color; the active pane lights its edge in the accent. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-gaps, pane-glow and pane-opacity knobs: with pane-gaps on the frame owns the pane fill, as in the app.",
+            summary: "pane_surface with and without pane gaps. A gapped pane draws its frame in glass: the theme's glass edge, or a plain lit edge when the theme has none, tinted with the pane's color; the active pane is the lighter one, the others veiled darker with dimmer rims. Terminals dim their text when inactive; other panes take the inactive scrim. Try the pane-gaps, pane-glow and pane-opacity knobs: with pane-gaps on the frame owns the pane fill, as in the app.",
             build: |_, cx| stateless(frames, cx),
         },
         Section {
@@ -63,7 +63,7 @@ pub const STORY: Story = Story {
         Section {
             id: "drag-and-drop",
             name: "Drag and drop",
-            summary: "With the prefix armed every pane becomes a handle. While a pane is in flight its source recedes, the drop target shows where it lands, and a chip follows the pointer.",
+            summary: "With the prefix armed every pane becomes a handle under the drop zone's veil. While a pane is in flight its source recedes, the other panes show as they are, the drop preview shows where it lands, and a chip follows the pointer.",
             build: |_, cx| stateless(drag_and_drop, cx),
         },
         Section {
@@ -626,7 +626,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
         vec![
             pane_drag_overlay(
                 "target-overlay",
-                PaneDragOverlayState::Armed,
+                PaneDragOverlayState::Target,
                 radii(true, cx),
                 cx,
             )

@@ -1,14 +1,10 @@
 use std::{rc::Rc, time::Duration};
 
 use zz_gpui::{
-    AnyElement, App, Bounds, Context, CursorStyle, Div, ElementId, Entity, IntoElement, Pixels,
-    Point, Render, Stateful, Window, div, prelude::*, px,
+    AnyElement, App, Bounds, Context, CursorStyle, Div, Entity, IntoElement, Pixels, Point, Render,
+    Stateful, Window, div, prelude::*, px,
 };
 use zz_protocol::PaneId;
-
-use crate::IconName;
-
-use super::pane_header_icon_button;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct DropPreviewFrame {
@@ -154,28 +150,6 @@ impl PaneDragSource {
     }
 }
 
-pub fn pane_drag_button(
-    id: impl Into<ElementId>,
-    pane: PaneId,
-    title: String,
-    enabled: bool,
-    on_start: impl Fn(&PaneDrag, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> Stateful<Div> {
-    PaneDragSource::new(pane, title, enabled, on_start).attach(
-        div()
-            .id(id)
-            .aria_label("Drag pane")
-            .debug_selector(|| "pane-drag-handle".into())
-            .flex_none()
-            .child(
-                pane_header_icon_button("pane-drag-control", IconName::GripVertical, enabled, cx)
-                    .tooltip("Drag pane · hold and move to split or swap")
-                    .when(enabled, |button| button.cursor(CursorStyle::OpenHand)),
-            ),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,14 +168,17 @@ mod tests {
                 .flex()
                 .w(px(240.0))
                 .h(px(100.0))
-                .child(pane_drag_button(
-                    "test-handle",
-                    PaneId(3),
-                    "Session".into(),
-                    self.enabled,
-                    move |drag, _, cx| view.update(cx, |view, _| view.started.push(*drag)),
-                    cx,
-                ))
+                .child(
+                    PaneDragSource::new(PaneId(3), "Session", self.enabled, move |drag, _, cx| {
+                        view.update(cx, |view, _| view.started.push(*drag));
+                    })
+                    .attach(
+                        div()
+                            .id("test-handle")
+                            .debug_selector(|| "pane-drag-handle".into())
+                            .size(px(24.0)),
+                    ),
+                )
                 .child(
                     div().id("test-drop").w(px(200.0)).h(px(100.0)).on_drop(
                         cx.listener(|view, drag: &PaneDrag, _, _| view.dropped.push(*drag)),

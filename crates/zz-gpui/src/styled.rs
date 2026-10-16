@@ -2,7 +2,7 @@ use crate::{
     self as zz_gpui, AbsoluteLength, AlignContent, AlignItems, AlignSelf, BorderStyle,
     CornerRadiusMode, CursorStyle, DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font,
     FontFeatures, FontStyle, FontWeight, GridPlacement, GridTemplate, GridTemplateMinSize, Hsla,
-    JustifyContent, Length, SharedString, StrikethroughStyle, StyleRefinement, TextAlign,
+    JustifyContent, Length, Pixels, SharedString, StrikethroughStyle, StyleRefinement, TextAlign,
     TextOverflow, TextStyleRefinement, UnderlineStyle, WhiteSpace, px, relative, rems,
 };
 pub use zz_gpui_macros::{
@@ -116,6 +116,13 @@ pub trait Styled: Sized {
     /// Note: This doesn't exist in Tailwind CSS.
     fn text_ellipsis_middle(mut self) -> Self {
         self.text_style().text_overflow = Some(TextOverflow::TruncateMiddle(ELLIPSIS));
+        self
+    }
+
+    /// Sets text that overflows the element to fade out across `width` at
+    /// its end instead of being cut.
+    fn text_fade(mut self, width: Pixels) -> Self {
+        self.text_style().text_overflow = Some(TextOverflow::Fade(width));
         self
     }
 

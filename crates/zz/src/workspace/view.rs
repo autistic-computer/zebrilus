@@ -3338,9 +3338,8 @@ impl AppView {
                     PaneDragLayer::Dragging(source) if source == *pane => {
                         Some(PaneDragOverlayState::Source)
                     }
-                    PaneDragLayer::Armed | PaneDragLayer::Dragging(_) => {
-                        Some(PaneDragOverlayState::Armed)
-                    }
+                    PaneDragLayer::Armed => Some(PaneDragOverlayState::Armed),
+                    PaneDragLayer::Dragging(_) => Some(PaneDragOverlayState::Target),
                 };
                 if let Some(drag_state) = drag_state {
                     let title = window

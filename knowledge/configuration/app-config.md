@@ -114,13 +114,13 @@ The client-local schema includes these scalar settings and chrome colors.
 | `experimental-editor-pane` | `false` | `true` or `false` | Whether new Editor panes can be created at all . picker row, palette completion, and the daemon's `select-pane-kind editor` |
 | `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped treatment: margin, radius, a glass frame, and no split dividers |
 | `pane-background-opacity` | `0.5` | `0..=1` | Pane and Agent composer background strength; Panes settings display 0–100%. Browser panes apply it only to the toolbar |
-| `pane-glow-strength` | `1` | `0..=2` | How brightly the active gapped pane's glass rim shines in the accent, scaling its glint and fresnel glow (a theme without glass draws an accent hairline at any value above 0); Panes settings display it as Selected pane edge, 0–200%. `0` lights it like the others |
+| `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
-| `pane-margin` | `8` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, so its buttons stay on the pane headers' center line |
+| `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
 | `interface-theme` | `default` | `default`, `liquid-glass`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
 | `widget-corner-radius` | from the theme (`10` in Default, `25` in Liquid Glass) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
-| `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
-| `chrome-tint` | `0` | `0..=1` | How far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it. Settings shows it as Tint strength, 0–100% |
+| `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active floating pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
+| `chrome-tint` | `0` | `0..=1` | How far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
 | `chrome-tint-hue` | `260` | `0..=360` | The hue the tint leans toward, in Oklch degrees; `260` is a cool blue. Settings shows it as Tint |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
 | `which-key-delay` | `400` | `0..=2000` | Milliseconds after the prefix, or inside a `switch-client -T` table, before the which-key sheet lists the next keys; `0` turns the sheet off. Read when the timer starts |
@@ -175,9 +175,9 @@ materials and roles onto the `Theme` global, and every surface already resolves 
 there, so no component is plumbed individually. Because the theme and the overrides are reapplied
 on every theme rebuild, they survive a light/dark switch, the same treatment `mono_font_family`
 gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
-`Theme::pane_radius()`, the radius a 24px header control rounds to plus the 6px (`CHROME_GAP`) it
+`Theme::pane_radius()`, the radius a 22px header control rounds to plus the 6px (`CHROME_GAP`) it
 sits in from the pane's top and sides, so the pane stays concentric with the controls in its header
-(about 13.9 at Default's 10, 18 once the controls are capsules, 0 for a square theme), and resolves
+(about 13.6 at Default's 10, 17 once the controls are capsules, 0 for a square theme), and resolves
 it per corner.
 
 Every rounded surface is a **squircle** . iOS-style continuous corners, set once as the GPUI window
@@ -408,12 +408,12 @@ glass with blur, refraction and dispersion off: tiled panes sit on the flat app 
 there is nothing to frost. On an opaque window the tint is solid and the glass draws in place with
 no backdrop copy, costing about what a bordered fill does. The glass edge (glint, fresnel, thin
 contour) is the frame, drawn as the theme's glass defines it: its own glint width, specular,
-fresnel, edge and noise, so Liquid Glass (outline 0) keeps its rim light on panes. The active pane
-paints that rim's light, the glint and the fresnel glow, in the accent (`light_color`, keeping
-the light's alpha), with specular and fresnel scaled by `pane-glow-strength`; nothing else about
-its glass changes. Under a theme without glass (Default) the frame is a
+fresnel, edge and noise, so Liquid Glass (outline 0) keeps its rim light on panes. No color marks
+the active pane: its tint is washed toward white and the other panes' tints are veiled toward
+black, their glint dimmed to 70%, all scaled by `pane-glow-strength` (see UI conventions). Under a
+theme without glass (Default) the frame is a
 plain fill at the pane opacity with an even line over the content, the outline width wide, in the
-divider color and the accent on the active pane, because a lit glass edge there drew a bright top
+divider color, dimmer on the other panes (`Theme::pane_edge_color`), because a lit glass edge there drew a bright top
 and a dark band along the bottom that differed from pane to pane; with no outlines there is no
 line. A line the glass glint's width stands in for the glass edge where the window cannot sample
 its backdrop (WebGL, DirectX), since glass paints only its fill there. A content root that paints
@@ -463,12 +463,16 @@ compositor's unmodified background; tiled and square corners remain square.
 resolve to `0`, and split nodes retain their neutral 1px hairline. The active pane colors only its
 half of each adjacent separator with a washed foreground accent; nested T-junctions limit the
 segment to the edge the pane touches. With `pane-gaps = true` the margin applies exactly as
-configured, defaults included, and the corners and edge come from the theme: an 8px margin and,
-under Default, a radius of about 13.9px, concentric with the controls in the pane header, so a
-maximized grid reads as one rounded surface. The strip along the window's top (the macOS traffic
-lights, the sidebar's buttons, the status bar) is a pane header tall plus the margin above and
-below it (`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line;
-flush panes leave it one header tall. There is
+configured, defaults included, and the corners and edge come from the theme: a 6px margin and,
+under Default, a radius of about 13.6px, concentric with the controls in the pane header, so a maximized
+grid reads as one rounded surface. The strip along the window's top (the macOS traffic lights, the
+sidebar's buttons, the status bar) is a pane header tall (34px) plus the margin above and below it
+(`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line; flush panes
+leave it one header tall. The sidebar's footer mirrors it: settings and the view switch are
+centered the margin plus half a header in from the window's bottom and leading edges, like the
+traffic lights from its top, so those sit as far from the window as Rex puts its own (25pt there,
+with an 8pt margin). The toggle and the view switch center on the column the sidebar rows' actions
+(+, …, ×) center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
 no second tier of gapped defaults: the number Settings shows is the number the panes use, which is
 what lets the disabled Frame row stay honest. Gapped panes draw their frame in glass, as above,
 and keep the contact shadow. This treatment is built in; the retired `pane-shadow` key produces the
@@ -532,6 +536,15 @@ rather than trusting a count here.
 | Fonts and geometry | `font-family` plus `-bold` / `-italic` / `-bold-italic` stacks, `font-size`, `font-feature`, `font-synthetic-style`, `font-thicken`, `font-thicken-strength` (macOS only), `adjust-cell-height`, `window-padding-x`, `window-padding-y` |
 | Policy | `minimum-contrast`, `background-opacity`, `cursor-style`, `cursor-style-blink` |
 | zz extensions | `zz-font-weight`, `zz-cursor-blink-interval-ms`, `zz-search-match-color`, `zz-search-current-color`, `zz-link-color`, `zz-copy-cursor-color`, `zz-rounded-selection` |
+
+On the iPhone the terminal draws in the interface theme's colors instead of these: the theme's
+text on its background, a block cursor in the text color, and a 16-color palette built from the
+theme (`zz_ui::terminal::theme_terminal_colors`: black and white between the background and the
+text, red and green from the theme's danger and success, blue from the accent when it is blue,
+yellow, magenta and cyan at their lightness, brights a step further from the background). The
+daemon still resolves cells with the host's colors but tags where each came from (`ColourClass`),
+so the client repaints default and palette 0-15 colors (`LocalColors::recolor`) and leaves 256-color
+and RGB picks alone; an inverted cell, whose source isn't tagged, is matched by value.
 
 `minimum-contrast` (a WCAG ratio from 1 to 21, default 2) keeps terminal text readable whatever the
 theme or the application picked: any text color below the floor against its cell background gets
@@ -853,7 +866,7 @@ pane-gaps = true
 pane-inactive-opacity = 0.7
 
 # Optional explicit chrome overrides
-pane-margin = 8
+pane-margin = 6
 
 # Liquid Glass, with a green accent and a slight teal tint.
 interface-theme = liquid-glass

@@ -125,6 +125,13 @@
                         <p class="knob-note" id="outline-note" hidden>
                             Surfaces filled with glass draw the glass rim instead.
                         </p>
+                        <div class="segmented" role="radiogroup" aria-label="Outlines">
+                            <label><input type="radio" name="outlines" value="built-in" checked /><span>Built-in outlines</span></label>
+                            <label><input type="radio" name="outlines" value="picked" /><span>Picked outlines</span></label>
+                        </div>
+                        <p class="knob-note" id="outlines-note" hidden>
+                            Only the roles you set to outline in Roles draw it.
+                        </p>
                         <label class="row slider">
                             <span>Row inset</span><output name="row-inset-value"></output>
                             <input type="range" name="row-inset" min="0" max="12" step="1" value="4" />
@@ -218,6 +225,17 @@
                     </section>
 
                     <section>
+                        <h3>Shadows</h3>
+                        <div class="segmented" role="radiogroup" aria-label="Shadows">
+                            <label><input type="radio" name="shadows" value="built-in" checked /><span>Built-in shadows</span></label>
+                            <label><input type="radio" name="shadows" value="picked" /><span>Picked shadows</span></label>
+                        </div>
+                        <p class="knob-note" id="shadows-note" hidden>
+                            Only the roles you give a shadow in Roles cast one.
+                        </p>
+                    </section>
+
+                    <section>
                         <h3>Contact shadow</h3>
                         <p class="knob-note">The tight shadow under what rests on the window.</p>
                         <label class="row slider">
@@ -298,7 +316,7 @@
                         </label>
                         <label class="row slider">
                             <span>Margin</span><output name="pane-margin-value"></output>
-                            <input type="range" name="pane-margin" min="0" max="32" step="0.5" value="8" />
+                            <input type="range" name="pane-margin" min="0" max="32" step="0.5" value="6" />
                         </label>
                         <label class="row slider">
                             <span>Background opacity</span><output name="pane-opacity-value"></output>
@@ -335,6 +353,7 @@
                 <code>storybook.inspect(id)</code>, and <code>zzGpui.find</code> / <code>zzGpui.click</code> / <code>zzGpui.capture</code> for the live UI.
             </p>
         </aside>
+        <div id="knobs-resize" role="separator" aria-orientation="vertical" aria-label="Knobs width" tabindex="0" title="Drag to resize, double-click to reset"></div>
         <dialog id="import-dialog">
             <form method="dialog">
                 <h2>Import a theme</h2>

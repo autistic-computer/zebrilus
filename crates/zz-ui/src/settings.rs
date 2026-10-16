@@ -3,7 +3,9 @@ pub mod appearance;
 pub mod panes_preview;
 pub mod status_bar_preview;
 
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
+
+use web_time::{Duration, Instant};
 
 use crate::Colorize as _;
 use crate::{
@@ -18,10 +20,12 @@ use crate::{
     separator::Separator,
 };
 use zz_gpui::{
-    AnyElement, App, Bounds, ElementId, FocusHandle, Hsla, IntoElement, ListAlignment,
+    AnyElement, App, Bounds, Corners, ElementId, FocusHandle, Hsla, IntoElement, ListAlignment,
     ListSizingBehavior, ListState, ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString,
     Styled as _, Window, div, list, prelude::*, px, relative,
 };
+
+type EntryClick = Rc<dyn Fn(&zz_gpui::ClickEvent, &mut Window, &mut App)>;
 
 /// A page in the settings sidebar, ordered by the labeled groups the sidebar
 /// shows: Appearance, Tools, Advanced.
@@ -213,40 +217,36 @@ pub fn settings_section_index(
     let faint = cx.theme().foreground.faint();
     let mut column = settings_scroll_column("settings-index");
     for (group, members) in groups {
-        let rows = members
-            .into_iter()
-            .map(|section| {
-                let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
-                let on_pick = Rc::clone(&on_pick);
-                zz_gpui_kit::sheet::sheet_row(
-                    id,
-                    roles::PHONE_ROW,
-                    Some(Icon::new(section.icon()).text_color(muted)),
-                    section.title(),
-                    cx,
-                )
-                .children(meta(section).map(|value| {
+        let entries = members.into_iter().map(|section| {
+            let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
+            let on_pick = Rc::clone(&on_pick);
+            SettingEntry::new(section.title(), "")
+                .title_icon(Icon::new(section.icon()).text_color(muted))
+                .control(
                     div()
-                        .text_size(crate::rems_from_px(11.0))
-                        .text_color(muted)
-                        .child(value)
-                }))
-                .child(
-                    Icon::new(crate::IconName::ChevronRight)
-                        .size(px(14.0))
-                        .text_color(faint),
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .gap(px(6.0))
+                        .children(meta(section).map(|value| {
+                            div()
+                                .max_w(px(160.0))
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .text_size(crate::rems_from_px(12.0))
+                                .text_color(muted)
+                                .child(value)
+                        }))
+                        .child(
+                            Icon::new(crate::IconName::ChevronRight)
+                                .size(px(14.0))
+                                .text_color(faint),
+                        ),
                 )
-                .on_click(move |_, window, cx| on_pick(section, window, cx))
-            })
-            .collect::<Vec<_>>();
-        column = column.child(
-            div()
-                .flex()
-                .flex_col()
-                .list_inset(cx)
-                .child(settings_navigation_group_label(group, cx))
-                .children(rows),
-        );
+                .on_click(id, move |_, window, cx| on_pick(section, window, cx))
+        });
+        column = column.child(SettingsStack::titled(group.title()).children(entries));
     }
     column
 }
@@ -888,8 +888,13 @@ impl RenderOnce for SettingsVirtualColumn {
             })
             .update(cx, |(list_state, applied), _| {
                 if *applied != focus {
-                    list_state.reset(0);
-                    list_state.splice_focusable(0..0, focus.iter().cloned());
+                    let kept = applied
+                        .iter()
+                        .zip(&focus)
+                        .take_while(|(was, is)| was == is)
+                        .count();
+                    list_state.splice_focusable(kept..applied.len(), focus[kept..].iter().cloned());
+                    list_state.remeasure_items(kept..focus.len());
                     *applied = focus;
                 }
                 list_state.clone()
@@ -956,52 +961,183 @@ fn settings_group_header(
         })
 }
 
+const DISCLOSURE_TURN: Duration = Duration::from_millis(220);
+const REVEAL: Duration = Duration::from_millis(280);
+const REVEAL_STAGGER: Duration = Duration::from_millis(30);
+const REVEAL_DROP: f32 = 10.0;
+const DISCLOSURE_PRESS_INSET: f32 = 6.0;
+
+#[derive(Default)]
+struct Disclosures(HashMap<&'static str, (bool, Option<Instant>)>);
+
+impl zz_gpui::Global for Disclosures {}
+
+/// When the disclosure `id` last turned to `expanded`, or `None` if it has
+/// not turned since it was first drawn.
+fn disclosure_turned(id: &'static str, expanded: bool, cx: &mut App) -> Option<Instant> {
+    let now = cx.background_executor().now();
+    let entry = cx
+        .default_global::<Disclosures>()
+        .0
+        .entry(id)
+        .or_insert((expanded, None));
+    if entry.0 != expanded {
+        *entry = (expanded, Some(now));
+    }
+    entry.1
+}
+
+fn eased(
+    since: Option<Instant>,
+    delay: Duration,
+    span: Duration,
+    window: &mut Window,
+    cx: &App,
+) -> f32 {
+    let Some(since) = since else {
+        return 1.0;
+    };
+    let now = cx.background_executor().now();
+    let t = (now.saturating_duration_since(since + delay).as_secs_f32() / span.as_secs_f32())
+        .clamp(0.0, 1.0);
+    if t < 1.0 && !cx.reduce_motion() {
+        window.request_animation_frame();
+        zz_gpui::ease_out_quint()(t)
+    } else {
+        1.0
+    }
+}
+
 /// A group heading that shows or hides the rows after it, as a standalone
-/// row in [`settings_virtual_column`].
+/// row in [`settings_virtual_column`]. Its chevron turns as it opens and
+/// closes, and a touch lights it.
 pub fn settings_list_disclosure_header(
     id: &'static str,
     title: &'static str,
     description: Option<&'static str>,
     expanded: bool,
-    cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let muted = cx.theme().foreground.muted();
+) -> SettingsDisclosure {
+    SettingsDisclosure {
+        id,
+        title,
+        description,
+        expanded,
+        on_click: None,
+    }
+}
+
+#[derive(IntoElement)]
+pub struct SettingsDisclosure {
+    id: &'static str,
+    title: &'static str,
+    description: Option<&'static str>,
+    expanded: bool,
+    on_click: Option<EntryClick>,
+}
+
+impl SettingsDisclosure {
+    #[must_use]
+    pub fn on_click(
+        mut self,
+        handler: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_click = Some(Rc::new(handler));
+        self
+    }
+}
+
+impl RenderOnce for SettingsDisclosure {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let turned = disclosure_turned(self.id, self.expanded, cx);
+        let turn = eased(turned, Duration::ZERO, DISCLOSURE_TURN, window, cx);
+        let open = if self.expanded { turn } else { 1.0 - turn };
+        let muted = cx.theme().foreground.muted();
+        let coarse = crate::touch::CoarsePointer::get(cx);
+        let radius = cx
+            .theme()
+            .layer(roles::SETTINGS_CARD, PaintState::Rest)
+            .radius;
+        let inset = px(DISCLOSURE_PRESS_INSET);
+        div()
+            .id(self.id)
+            .relative()
+            .mt(px(10.0) - inset)
+            .mb(-inset)
+            .mx(-inset)
+            .p(inset)
+            .flex()
+            .items_start()
+            .gap(px(2.0))
+            .cursor_pointer()
+            .when(coarse, |this| {
+                this.child(
+                    crate::touch::press_highlight(
+                        ElementId::from((ElementId::from(self.id), "press")),
+                        None,
+                        crate::touch::PressCorners::Adaptive(radius),
+                    )
+                    .inset_0(),
+                )
+            })
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .justify_center()
+                    .w(px(SETTINGS_DISCLOSURE_WIDTH))
+                    .h(px(SETTINGS_GROUP_TITLE_LINE))
+                    .child(
+                        Icon::new(crate::IconName::ChevronRight)
+                            .size(px(SETTINGS_GROUP_TITLE_SIZE))
+                            .text_color(muted)
+                            .transform(zz_gpui::Transformation::rotate(zz_gpui::radians(
+                                open * std::f32::consts::FRAC_PI_2,
+                            )))
+                            .relative()
+                            .top(cap_center_drop(
+                                px(SETTINGS_GROUP_TITLE_SIZE),
+                                px(SETTINGS_GROUP_TITLE_SIZE),
+                                cx,
+                            )),
+                    ),
+            )
+            .child(settings_group_header(
+                self.title.into(),
+                self.description.map(Into::into),
+                cx,
+            ))
+            .when_some(self.on_click, |this, on_click| {
+                this.on_click(move |event, window, cx| on_click(event, window, cx))
+            })
+    }
+}
+
+/// `row`, the `order`th row the disclosure `id` shows while `expanded`,
+/// fading in and settling into place while the disclosure opens.
+pub fn settings_disclosure_reveal(
+    id: &'static str,
+    expanded: bool,
+    order: usize,
+    row: AnyElement,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let turned = disclosure_turned(id, expanded, cx);
+    if !expanded || turned.is_none() {
+        return row;
+    }
+    let delay = REVEAL_STAGGER * u32::try_from(order).unwrap_or(u32::MAX).min(12);
+    let shown = eased(turned, delay, REVEAL, window, cx);
+    if shown >= 1.0 {
+        return row;
+    }
     div()
-        .id(id)
-        .pt(px(10.0))
-        .flex()
-        .items_start()
-        .gap(px(2.0))
-        .cursor_pointer()
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .w(px(SETTINGS_DISCLOSURE_WIDTH))
-                .h(px(SETTINGS_GROUP_TITLE_LINE))
-                .child(
-                    Icon::new(if expanded {
-                        crate::IconName::ChevronDown
-                    } else {
-                        crate::IconName::ChevronRight
-                    })
-                    .size(px(SETTINGS_GROUP_TITLE_SIZE))
-                    .text_color(muted)
-                    .relative()
-                    .top(cap_center_drop(
-                        px(SETTINGS_GROUP_TITLE_SIZE),
-                        px(SETTINGS_GROUP_TITLE_SIZE),
-                        cx,
-                    )),
-                ),
-        )
-        .child(settings_group_header(
-            title.into(),
-            description.map(Into::into),
-            cx,
-        ))
+        .relative()
+        .top(px(-REVEAL_DROP * (1.0 - shown)))
+        .opacity(shown)
+        .child(row)
+        .into_any_element()
 }
 
 /// Group heading used as a standalone row in [`settings_virtual_column`].
@@ -1163,6 +1299,7 @@ pub struct SettingEntry {
     disabled: bool,
     position: StackPosition,
     children: Vec<AnyElement>,
+    on_click: Option<(ElementId, EntryClick)>,
 }
 
 impl SettingEntry {
@@ -1176,7 +1313,19 @@ impl SettingEntry {
             disabled: false,
             position: StackPosition::Middle,
             children: Vec::new(),
+            on_click: None,
         }
+    }
+
+    /// Make the whole row a pressable link, like a settings index row.
+    #[must_use]
+    pub fn on_click(
+        mut self,
+        id: impl Into<ElementId>,
+        handler: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_click = Some((id.into(), Rc::new(handler)));
+        self
     }
 
     /// A state glyph drawn before the title; see [`SettingCopy::title_icon`].
@@ -1254,7 +1403,7 @@ impl RenderOnce for SettingEntry {
                                 .flex_1()
                                 .min_w_0()
                                 .items_center()
-                                .gap(px(4.0))
+                                .gap(px(8.0))
                                 .when_some(self.title_icon, |this, icon| {
                                     this.child(icon.with_size(crate::Size::Medium))
                                 })
@@ -1303,7 +1452,22 @@ impl RenderOnce for SettingEntry {
             .child(heading)
             .children(self.children);
 
+        let press = self.on_click.as_ref().map(|(id, _)| {
+            let corner = |rounds: bool| if rounds { radius } else { px(0.0) };
+            crate::touch::press_highlight(
+                ElementId::from((id.clone(), "press")),
+                None,
+                crate::touch::PressCorners::Each(Corners {
+                    top_left: corner(position.rounds_top()),
+                    top_right: corner(position.rounds_top()),
+                    bottom_left: corner(position.rounds_bottom()),
+                    bottom_right: corner(position.rounds_bottom()),
+                }),
+            )
+            .inset_0()
+        });
         let surface = div()
+            .relative()
             .flex()
             .flex_col()
             .w_full()
@@ -1315,6 +1479,7 @@ impl RenderOnce for SettingEntry {
             .map(ends)
             .when(!position.rounds_top(), zz_gpui::Styled::border_t_0)
             .when(!position.rounds_bottom(), zz_gpui::Styled::border_b_0)
+            .children(press)
             .when(position.rules_above(), |this| {
                 this.child(
                     div().flex_none().px(px(SETTINGS_STACK_PADDING)).child(
@@ -1326,7 +1491,7 @@ impl RenderOnce for SettingEntry {
             })
             .child(body);
 
-        div()
+        let entry = div()
             .relative()
             .flex()
             .flex_col()
@@ -1369,7 +1534,15 @@ impl RenderOnce for SettingEntry {
                         ),
                 )
             })
-            .child(surface)
+            .child(surface);
+        match self.on_click.filter(|_| !disabled) {
+            Some((id, handler)) => entry
+                .id(id)
+                .cursor_pointer()
+                .on_click(move |event, window, cx| handler(event, window, cx))
+                .into_any_element(),
+            None => entry.into_any_element(),
+        }
     }
 }
 

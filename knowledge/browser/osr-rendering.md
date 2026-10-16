@@ -17,7 +17,7 @@ payload depends on the active rendering tier:
 | --- | --- | --- | --- | --- |
 | Readback | Universal fallback | `on_paint` | `OsrFrame::OwnedBgra` with owned premultiplied BGRA bytes | `RenderImage` through `BrowserElement::paint_image` |
 | Linux wgpu | Linux/FreeBSD where GPUI exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | GPUI `external_texture` |
-| macOS Metal-IOSurface | macOS | `on_accelerated_paint` | `OsrFrame::MacGpu` with a retained zz-owned `IOSurface` | a per-pane `CALayer` under the window behind a GPUI `paint_underlay_hole`; `CVPixelBuffer` through `paint_surface` until the layer exists |
+| macOS Metal-IOSurface | macOS | `on_accelerated_paint` | `OsrFrame::MacGpu` with a retained zz-owned `IOSurface` | a per-pane `CALayer` under the window behind a GPUI `paint_underlay` hole, drawn by GPUI instead while glass covers it; `CVPixelBuffer` through `paint_surface` until the layer exists |
 | Windows D3D11 | Windows where GPUI exposes its DirectX context | `on_accelerated_paint` | `OsrFrame::WinGpu` with a zz-owned `ID3D11Texture2D` | GPUI `external_texture` |
 
 All tiers are bounded by a one-slot `FrameMailbox`: a slow consumer cannot build
@@ -97,8 +97,14 @@ stop going through GPUI:
   finished blit becomes the pane layer's `contents` inside a
   `CATransaction` with actions disabled;
 - `BrowserElement::paint` places the layer at the pane's bounds and calls the
-  fork's `paint_underlay_hole`, which clears that rounded rect in GPUI's
-  drawable so the layer shows through;
+  fork's `paint_underlay` with the latest frame's `CVPixelBuffer`. At
+  `Scene::finish` that becomes a hole clearing the rounded rect in GPUI's
+  drawable so the layer shows through, unless glass that blurs its backdrop
+  (a menu, a tooltip, the omnibox) is drawn over the page later in the frame:
+  glass can only blur what GPUI drew, so there the frame is drawn into the
+  scene instead, over the layer. While that lasts (`Window::underlay_covered`)
+  the view keeps redrawing on `FrameReady`, so the blurred page stays live.
+  Glass beside the page whose blur merely reaches in does not count;
 - `UnderlayFlush`, painted last by `AppShell`, hides layers that were not
   placed this frame and calls `Window::set_underlay_active`, which makes GPUI's
   Metal layer non-opaque and presents with the Core Animation transaction only

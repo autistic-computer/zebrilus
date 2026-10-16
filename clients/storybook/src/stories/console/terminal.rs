@@ -480,6 +480,7 @@ impl Render for SampleView {
                                         cursor_blink_visible: blink_visible,
                                         marked_text: marked,
                                         rows_above: None,
+                                        rows_below: None,
                                     },
                                     bounds,
                                     window,

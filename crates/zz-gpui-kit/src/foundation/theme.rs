@@ -97,6 +97,13 @@ pub struct Theme {
     /// The width of the hairline every edged thing draws: controls, cards
     /// and floating surfaces. Zero draws none.
     pub outline: Pixels,
+    /// Whether only the roles the theme turns the outline on for draw it:
+    /// every built-in outline is off, and so is every edge drawn without a
+    /// role. Dividers are lines, not outlines, and keep theirs.
+    pub picked_outlines: bool,
+    /// Whether only the roles the theme gives a shadow cast one: every
+    /// built-in shadow is off, and so is every shadow drawn without a role.
+    pub picked_shadows: bool,
     /// The tight shadow of things resting on the window.
     pub contact_shadow: ShadowMaterial,
     /// The deep shadow of things floating over it.
@@ -128,8 +135,8 @@ pub struct Theme {
     /// Whether panes draw a [`Self::pane_frame`], which then owns their
     /// fill: set while panes have gaps.
     pub pane_frames: bool,
-    /// How strongly the active pane's frame lights its edge in the accent:
-    /// 1 is the look's own glint, 0 lights it like any other pane.
+    /// How far the active pane stands apart from the others: 1 is the
+    /// default contrast, 0 draws it like any other pane.
     pub pane_glow_strength: f32,
     pub transparent: Hsla,
     /// When scrollbars are visible, default: [`ScrollbarShow::Scrolling`].
@@ -151,8 +158,14 @@ pub const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
 /// How tall the controls in a pane's header are. They sit [`CHROME_GAP`] in
 /// from the header's top and sides, which makes the header
 /// [`PANE_HEADER_HEIGHT`] tall.
-pub const PANE_HEADER_CONTROL_HEIGHT: Pixels = px(24.0);
-pub const PANE_HEADER_HEIGHT: Pixels = px(24.0 + 2.0 * CHROME_GAP);
+pub const PANE_HEADER_CONTROL_HEIGHT: Pixels = px(22.0);
+pub const PANE_HEADER_HEIGHT: Pixels = px(22.0 + 2.0 * CHROME_GAP);
+/// How the selected pane stands apart at full strength, the way Rex draws
+/// it: the others under a veil of black, it washed toward white, each by
+/// mode, and the others' rims this much dimmer (7% against its 10%).
+const PANE_VEIL: [f32; 2] = [0.05, 0.18];
+const PANE_WASH: [f32; 2] = [0.3, 0.05];
+const PANE_RIM_DIM: f32 = 0.3;
 
 impl Deref for Theme {
     type Target = ThemeColor;
@@ -216,6 +229,12 @@ impl Theme {
         self.outline > px(0.0)
     }
 
+    /// Whether an edge drawn without a role takes the hairline: the theme
+    /// has one and does not pick where it goes.
+    pub fn outlines_edges(&self) -> bool {
+        self.outlined() && !self.picked_outlines
+    }
+
     /// The theme's glass, when it draws anything a plain fill would not.
     pub fn glass_effect(&self) -> Option<GlassMaterial> {
         self.glass.filter(|material| !material.is_opaque_fill())
@@ -256,8 +275,8 @@ impl Theme {
             .opacity(self.pane_fill_opacity())
     }
 
-    /// Whether the active pane lights its edge: the look's glow is on and the
-    /// pane role's selected highlight is not none.
+    /// Whether the active pane stands apart from the others: the look's
+    /// strength is on and the pane role's selected highlight is not none.
     pub fn lights_active_pane(&self) -> bool {
         self.pane_glow_strength > 0.0 && self.style(Kind::Pane.role()).selected != Highlight::None
     }
@@ -268,21 +287,25 @@ impl Theme {
     /// lensing. Over an opaque `plane`, the window color behind the pane, the
     /// tint is the two blended, so the glass paints in place without reading
     /// the backdrop. Over a translucent plane it stays translucent, since the
-    /// plane already shows through it. The active pane paints its rim's
-    /// light, the glint and the fresnel glow, in the accent, scaled by
-    /// [`Self::pane_glow_strength`].
+    /// plane already shows through it. No color marks the active pane: it is
+    /// washed lighter and the others are veiled darker, their rims dimmer,
+    /// all scaled by [`Self::pane_glow_strength`].
     pub fn pane_frame(&self, fill: Hsla, plane: Hsla, active: bool) -> GlassMaterial {
         let pane = self.pane_color(fill);
-        let tint = if plane.a < 1.0 {
-            pane
-        } else {
-            plane.blend(pane)
-        };
+        let tint = self.pane_focus(
+            if plane.a < 1.0 {
+                pane
+            } else {
+                plane.blend(pane)
+            },
+            active,
+        );
         let frame = self
             .glass_effect()
             .unwrap_or_else(|| {
-                let edge = GlassMaterial::edge(tint).glint_width(self.outline);
-                if self.outline > px(0.0) {
+                let width = self.pane_outline();
+                let edge = GlassMaterial::edge(tint).glint_width(width);
+                if width > px(0.0) {
                     edge
                 } else {
                     edge.specular(0.0)
@@ -293,21 +316,53 @@ impl Theme {
             .dispersion(0.0)
             .tint(tint)
             .fallback(tint);
-        if active && self.lights_active_pane() {
-            let strength = self.pane_glow_strength;
-            frame
-                .light_color(self.accent.opaque().alpha(frame.light_color.a))
-                .specular(frame.specular * strength)
-                .fresnel(frame.fresnel * strength)
+        frame.specular(frame.specular * self.pane_rim(active))
+    }
+
+    /// `tint` washed lighter for the active pane, veiled darker for the
+    /// others.
+    fn pane_focus(&self, tint: Hsla, active: bool) -> Hsla {
+        if !self.lights_active_pane() {
+            return tint;
+        }
+        let (pole, weights) = if active {
+            (zz_gpui::white(), PANE_WASH)
         } else {
-            frame
+            (zz_gpui::black(), PANE_VEIL)
+        };
+        let weight = weights[usize::from(self.mode.is_dark())] * self.pane_glow_strength;
+        tint.blend(pole.alpha(weight.min(1.0)))
+    }
+
+    /// How strongly a pane's rim shows: in full on the active pane, dimmer
+    /// on the others.
+    fn pane_rim(&self, active: bool) -> f32 {
+        if active || !self.lights_active_pane() {
+            1.0
+        } else {
+            (1.0 - PANE_RIM_DIM * self.pane_glow_strength).max(0.0)
         }
     }
 
+    /// The hairline a gapped pane draws where its frame has no glass: the
+    /// divider color, dimmer on panes that are not the active one.
+    pub fn pane_edge_color(&self, active: bool) -> Hsla {
+        let divider = self.divider_color();
+        divider.alpha(divider.a * self.pane_rim(active))
+    }
+
     /// The width of the glint along a pane frame's edge: the theme's
-    /// outline while panes have frames, otherwise none.
+    /// outline while panes have frames and take it, otherwise none.
     pub fn pane_edge_width(&self) -> Pixels {
         if self.pane_frames {
+            self.pane_outline()
+        } else {
+            px(0.0)
+        }
+    }
+
+    fn pane_outline(&self) -> Pixels {
+        if self.style(Kind::Pane.role()).outline {
             self.outline
         } else {
             px(0.0)
@@ -439,6 +494,8 @@ impl From<&ThemeColor> for Theme {
             radius: px(6.),
             contrast: 1.0,
             outline: px(0.5),
+            picked_outlines: false,
+            picked_shadows: false,
             contact_shadow: ShadowMaterial::CONTACT,
             float_shadow: ShadowMaterial::FLOAT,
             row_inset: px(4.0),
@@ -535,7 +592,10 @@ mod tests {
 
     #[test]
     fn a_pane_frame_lights_an_opaque_edge_with_or_without_the_looks_glass() {
-        let mut theme = Theme::default();
+        let mut theme = Theme {
+            pane_glow_strength: 0.0,
+            ..Theme::default()
+        };
         let fill = theme.accent;
         let plane = theme.background;
         let tint = plane.blend(theme.pane_color(fill));
@@ -590,7 +650,10 @@ mod tests {
 
     #[test]
     fn a_pane_frame_over_a_translucent_plane_adds_only_the_pane() {
-        let mut theme = Theme::default();
+        let mut theme = Theme {
+            pane_glow_strength: 0.0,
+            ..Theme::default()
+        };
         let fill = theme.background;
         let plane = theme.background.alpha(0.93);
         for opacity in [0.0, 0.4, 1.0] {
@@ -637,28 +700,26 @@ mod tests {
     }
 
     #[test]
-    fn the_active_pane_frame_paints_its_rim_light_in_the_accent() {
+    fn the_active_pane_stands_apart_by_light_not_color() {
         let mut theme = Theme::default();
         let (fill, plane) = (theme.background, theme.background);
-        let inactive = theme.pane_frame(fill, plane, false);
-        let active = theme.pane_frame(fill, plane, true);
-        assert_eq!(active.light_color, theme.accent.opaque());
-        assert_eq!(
-            GlassMaterial {
-                light_color: inactive.light_color,
-                ..active
-            },
-            inactive
-        );
-
-        theme.pane_glow_strength = 2.0;
-        let bright = theme.pane_frame(fill, plane, true);
-        assert_eq!(
-            (bright.specular, bright.fresnel),
-            (inactive.specular * 2.0, inactive.fresnel * 2.0)
-        );
-
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            theme.mode = mode;
+            let active = theme.pane_frame(fill, plane, true);
+            let inactive = theme.pane_frame(fill, plane, false);
+            assert!(
+                crate::oklab_lightness(inactive.tint) < crate::oklab_lightness(active.tint),
+                "{mode:?}"
+            );
+            assert_eq!(active.light_color, inactive.light_color);
+            assert!(inactive.specular < active.specular);
+            assert!(theme.pane_edge_color(false).a < theme.pane_edge_color(true).a);
+        }
         theme.pane_glow_strength = 0.0;
-        assert_eq!(theme.pane_frame(fill, plane, true), inactive);
+        assert_eq!(
+            theme.pane_frame(fill, plane, true),
+            theme.pane_frame(fill, plane, false)
+        );
+        assert_eq!(theme.pane_edge_color(false), theme.divider_color());
     }
 }

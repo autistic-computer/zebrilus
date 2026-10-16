@@ -131,6 +131,18 @@ pub fn oklch(lightness: f32, chroma: f32, hue: f32) -> Hsla {
     oklab::oklab_to_rgb(lightness, chroma * cos, chroma * sin).into()
 }
 
+/// The Oklch lightness, chroma and hue in degrees of `color`, the inverse of
+/// [`oklch`].
+#[must_use]
+pub fn to_oklch(color: Hsla) -> (f32, f32, f32) {
+    let (lightness, a, b) = oklab::rgb_to_oklab(color.into());
+    (
+        lightness,
+        a.hypot(b),
+        b.atan2(a).to_degrees().rem_euclid(360.0),
+    )
+}
+
 pub(super) fn tint(color: Hsla, hue: f32, intensity: f32) -> Hsla {
     let (lightness, ..) = oklab::rgb_to_oklab(color.into());
     let tinted = oklch(lightness, TINT_CHROMA, hue);
@@ -234,7 +246,7 @@ pub trait Colorize: Sized {
 }
 
 /// sRGB <-> Oklab, after Björn Ottosson's reference implementation.
-mod oklab {
+pub(super) mod oklab {
     use zz_gpui::Rgba;
 
     #[inline]

@@ -17,7 +17,7 @@ use crate::{
     h_flex,
     input::{Input, InputEvent, InputState, field_chrome, field_text},
     popover::Popover,
-    sheet::{bottom_sheet, floating_sheet, sheet_close, sheet_inset},
+    sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     slider::{Slider, thumb},
     v_flex,
 };
@@ -562,16 +562,14 @@ impl ColorPicker {
         window: &Window,
         cx: &App,
     ) -> zz_gpui::AnyElement {
-        let close = self.state.clone();
+        let id = self.state.entity_id();
         let dismiss = self.state.clone();
         floating_sheet(
             bottom_sheet(
-                ("zz-color-picker-sheet", self.state.entity_id()),
+                ("zz-color-picker-sheet", id),
                 self.label.clone().unwrap_or_else(|| "Color".into()),
                 [sheet_close("zz-color-picker-sheet-close")
-                    .on_click(move |_, _, cx| {
-                        close.update(cx, |picker, cx| picker.set_sheet(false, cx));
-                    })
+                    .on_click(move |_, _, cx| close_sheet(("zz-color-picker-sheet", id), cx))
                     .into_any_element()],
                 div()
                     .px(px(SHEET_PADDING_X))

@@ -13,7 +13,7 @@ use crate::{
     Sizable as _, Size, StyledExt as _, Surface, SurfaceRole, h_flex,
     input::{Input, InputEvent, InputState, field_chrome, field_paint, field_text},
     menu::{PopupMenu, PopupMenuItem},
-    sheet::{bottom_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option},
+    sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option},
 };
 
 use super::{
@@ -241,7 +241,11 @@ impl<D: SelectDelegate> SelectState<D> {
 
         let value = item.value().clone();
         self.selected = Some(item);
-        self.close_menu(cx);
+        if self.sheet {
+            close_sheet(("select-sheet", cx.entity_id()), cx);
+        } else {
+            self.close_menu(cx);
+        }
         cx.emit(SelectEvent::Confirm(Some(value)));
         cx.notify();
     }
@@ -415,7 +419,9 @@ impl<D: SelectDelegate> SelectState<D> {
             ("select-sheet", cx.entity_id()),
             title,
             [sheet_close("select-sheet-close")
-                .on_click(cx.listener(|this, _, _, cx| this.close_menu(cx)))
+                .on_click(cx.listener(|_, _, _, cx| {
+                    close_sheet(("select-sheet", cx.entity_id()), cx);
+                }))
                 .into_any_element()],
             div()
                 .flex()

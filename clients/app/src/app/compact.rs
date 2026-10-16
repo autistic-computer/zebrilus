@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
     sync::Arc,
@@ -8,20 +8,22 @@ use std::{
 
 use zz_client::StatusBarModel;
 use zz_gpui::{
-    AnyElement, App, Bounds, Context, Corners, Entity, Focusable as _, IntoElement, Keystroke,
-    ParentElement as _, PinchEvent, Pixels, ScrollDelta, ScrollHandle, ScrollWheelEvent,
-    SharedString, Stateful, Styled as _, Subscription, TouchPhase, Window, div, linear_color_stop,
-    linear_gradient, prelude::*, px,
+    AnyElement, App, Bounds, Context, Corners, DispatchPhase, Entity, Focusable as _,
+    HitboxBehavior, IntoElement, Keystroke, ParentElement as _, PinchEvent, Pixels, ScrollDelta,
+    ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled as _, Subscription, TouchPhase,
+    Window, canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px,
 };
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Edge, IconName, PaintState, StyledExt as _,
+    ActiveTheme as _, Colorize as _, IconName, PaintState,
     compact::{
-        ArrowPadEvent, COMPACT_BAR_HEIGHT, COMPACT_PANE_HEADER_HEIGHT, Instant, KEY_ROW_HEIGHT,
-        KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent, PopoverKey, PopoverKeyEvent,
-        PopoverKeyItem, ToolKeys, WhichKeyList, bottom_sheet, compact_bar, compact_bar_button,
-        compact_bar_pill, compact_hud, compact_pane_header, page_dots, swipe_back,
+        ArrowPadEvent, COMPACT_PANE_HEADER_HEIGHT, Instant, KEY_ROW_HEIGHT, KeyRow, Lift,
+        LiftEvent, PageDot, Pager, PagerEvent, PillLabel, PillPlacement, PillSpring, PopoverKey,
+        PopoverKeyEvent, PopoverKeyItem, ToolKeys, WhichKeyList, bottom_sheet, close_sheet,
+        compact_floating_bar, compact_floating_pill, compact_hud, compact_pane_header,
+        compact_pill_collapse, compact_pill_label, compact_pill_morph, mini_pill_width,
+        page_dots_in, pill_bounds, pill_corner, pill_ink, pill_inverted_over, swipe_back,
     },
     kbd::Kbd,
     pane::pane_header_icon_button,
@@ -39,9 +41,12 @@ const SCRIM_ALPHA: f32 = 0.8;
 const SCRIM_FADE: f32 = 12.0;
 const PINCH_STEPS: f32 = 20.0;
 const SCALE_HUD_LINGER: Duration = Duration::from_secs(1);
+#[cfg(target_os = "ios")]
+const NOTICE_LINGER: Duration = Duration::from_secs(2);
 const LANDING_WAIT: Duration = Duration::from_secs(1);
 const BAR_DROP: f32 = 15.0;
 const BAR_FADE: f32 = 2.2;
+const COLLAPSE_TRAVEL: f32 = 24.0;
 
 const NEW_PANE: &str = "new-pane";
 const NEW_WINDOW: &str = "new-window";
@@ -49,6 +54,7 @@ const RENAME_PANE: &str = "rename-pane";
 const LAST_PANE: &str = "last-pane";
 const KILL_PANE: &str = "kill-pane";
 const ALL_BINDINGS: &str = "all-bindings";
+const BINDINGS_SHEET: &str = "compact-bindings-sheet";
 
 #[derive(Default)]
 pub(super) struct CompactState {
@@ -63,6 +69,7 @@ pub(super) struct CompactState {
     previous: Option<PaneId>,
     pinch: Option<(f32, f32)>,
     scale_hud: Option<Instant>,
+    notice: Option<(PaneId, &'static str, PillNotice, Instant)>,
     safe_bottom: Pixels,
     keyboard_overlap: Pixels,
     keyboard_moving: bool,
@@ -73,10 +80,15 @@ pub(super) struct CompactState {
     overview_scroll: ScrollHandle,
     overview_rows: BTreeMap<WindowId, ScrollHandle>,
     lift: Lift,
+    morph: PillSpring,
+    collapse: PillSpring,
+    collapse_travel: f32,
+    scroll_ignored: Rc<Cell<bool>>,
     landing: Option<(PaneId, Instant)>,
     cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
     text: Option<TerminalText>,
     page_background: Option<zz_gpui::Hsla>,
+    pill_inverted: Option<zz_gpui::Hsla>,
 }
 
 impl CompactState {
@@ -104,6 +116,14 @@ fn prefix_menu() -> (Vec<PopoverKeyItem>, PopoverKeyItem) {
         ],
         PopoverKeyItem::new(ALL_BINDINGS, "All bindings").icon(IconName::Keyboard),
     )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+pub(super) enum PillNotice {
+    Done,
+    Hint,
+    Failed,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -252,16 +272,30 @@ fn send_chord(
     }
 }
 
-fn key_row_lift(safe_bottom: Pixels, bar: Pixels, overlap: Pixels) -> Pixels {
-    (safe_bottom + bar - px(KEY_ROW_HEIGHT) - overlap).max(px(0.0))
+fn key_row_lift(zone: Pixels, overlap: Pixels) -> Pixels {
+    (zone - px(KEY_ROW_HEIGHT) - overlap).max(px(0.0))
 }
 
-fn key_row_top(safe_bottom: Pixels, bar: Pixels, overlap: Pixels) -> Pixels {
-    px(KEY_ROW_HEIGHT) + key_row_lift(safe_bottom, bar, overlap) + overlap
+fn key_row_top(zone: Pixels, overlap: Pixels) -> Pixels {
+    px(KEY_ROW_HEIGHT) + key_row_lift(zone, overlap) + overlap
+}
+
+fn screen_radius(window: &Window) -> Option<Pixels> {
+    #[cfg(target_os = "ios")]
+    if zz_gpui_platform::ios::phone() {
+        return zz_gpui_platform::ios::display_corner_radius()
+            .map(|radius| px(radius / window.zoom()));
+    }
+    let _ = window;
+    None
 }
 
 pub(super) fn keyboard_visible(window: &Window) -> bool {
     window.visual_viewport_bounds().size.height + px(1.0) < window.viewport_size().height
+}
+
+fn keyboard_heading_up(window: &Window) -> bool {
+    window.viewport_size().height - window.target_visual_viewport_bounds().bottom() > px(1.0)
 }
 
 fn prefix_spelling(core: &zz_client::ClientCore) -> String {
@@ -550,7 +584,7 @@ impl AppShell {
         }
     }
 
-    fn compact_pinch(&mut self, event: &PinchEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn compact_pinch(&mut self, event: &PinchEvent, cx: &mut Context<Self>) {
         match event.phase {
             TouchPhase::Started => {
                 let model = self.status_model(cx);
@@ -583,7 +617,6 @@ impl AppShell {
                     return;
                 }
                 self.preferences.save();
-                self.sync_terminal_scale_input(window, cx);
                 self.terminal_resize_suppressed.set(false);
                 self.compact.scale_hud = Some(Instant::now() + SCALE_HUD_LINGER);
                 cx.spawn(async move |this, cx| {
@@ -607,15 +640,20 @@ impl AppShell {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn compact_page(
         &mut self,
         slot: &Page,
         current: bool,
         motion: f32,
         top_inset: Pixels,
+        reserve: Pixels,
+        hole: Option<(Bounds<Pixels>, Pixels)>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        #[cfg(not(target_os = "ios"))]
+        let _ = hole;
         let radius = cx.theme().layer(roles::PANE, PaintState::Rest).radius * motion;
         let pane_id = slot.pane;
         let snapshot = self
@@ -658,6 +696,7 @@ impl AppShell {
                         cx,
                     );
                     terminal.set_rows_above(true, cx);
+                    terminal.set_rows_below(true, cx);
                 });
                 background = terminal.read(cx).pane_background(cx).opaque();
                 rows_above = terminal.read(cx).rows_above_shown(cx);
@@ -685,8 +724,17 @@ impl AppShell {
             PaneKindSnapshot::Browser(descriptor) => {
                 let browser = self.browser_entity(pane_id, descriptor, window, cx);
                 browser.update(cx, |browser, cx| {
-                    browser.synchronize(descriptor, current, Corners::all(radius), window, cx);
+                    browser.synchronize(
+                        descriptor,
+                        current,
+                        Corners::all(radius),
+                        true,
+                        window,
+                        cx,
+                    );
+                    browser.set_pill(reserve, hole, cx);
                 });
+                background = cx.theme().pane_background(cx.theme().background).opaque();
                 if can_focus && self.focused_pane != Some(pane_id) {
                     browser.read(cx).focus_handle(cx).focus(window, cx);
                     self.focused_pane = Some(pane_id);
@@ -745,11 +793,13 @@ impl AppShell {
         if current {
             zz_gpui_platform::ios::set_status_bar_on_dark(Some(background.l < 0.5));
         }
+        let browser = matches!(pane.kind, PaneKindSnapshot::Browser(_));
         div()
             .size_full()
             .flex()
             .flex_col()
             .pt(top_inset)
+            .when(!browser, |page| page.pb(reserve))
             .bg(background)
             .rounded(radius)
             .when(header.is_some(), |page| {
@@ -785,9 +835,88 @@ impl AppShell {
             .into_any_element()
     }
 
+    /// Counts how far the current page's content moved toward its end
+    /// (negative toward its start), shrinking the pill once it travels far
+    /// enough one way and bringing it back once it travels the other way.
+    pub(super) fn compact_content_scrolled(&mut self, travel: f32, cx: &mut Context<Self>) {
+        if travel == 0.0 || !travel.is_finite() {
+            return;
+        }
+        if self.compact.collapse_travel.signum() != travel.signum() {
+            self.compact.collapse_travel = 0.0;
+        }
+        self.compact.collapse_travel += travel;
+        let full = self.compact.collapse.full();
+        if (full && self.compact.collapse_travel > COLLAPSE_TRAVEL)
+            || (!full && self.compact.collapse_travel < -COLLAPSE_TRAVEL)
+        {
+            self.compact.collapse.aim(!full, Instant::now());
+            self.compact.collapse_travel = 0.0;
+            cx.notify();
+        }
+    }
+
+    #[cfg(target_os = "ios")]
+    pub(super) fn show_pill_notice(
+        &mut self,
+        pane: PaneId,
+        text: &'static str,
+        kind: PillNotice,
+        cx: &mut Context<Self>,
+    ) {
+        self.compact.notice = Some((pane, text, kind, Instant::now() + NOTICE_LINGER));
+        self.expand_pill(cx);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(NOTICE_LINGER).await;
+            this.update(cx, |_, cx| cx.notify()).ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    pub(super) fn expand_pill(&mut self, cx: &mut Context<Self>) {
+        self.compact.collapse_travel = 0.0;
+        if !self.compact.collapse.full() {
+            self.compact.collapse.aim(true, Instant::now());
+            cx.notify();
+        }
+    }
+
+    fn compact_scroll_watch(&self, pill: Bounds<Pixels>, cx: &mut Context<Self>) -> AnyElement {
+        let view = cx.weak_entity();
+        let ignored = self.compact.scroll_ignored.clone();
+        canvas(
+            |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+            move |_, hitbox, window, _| {
+                window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
+                    if phase != DispatchPhase::Capture {
+                        return;
+                    }
+                    if event.touch_phase == TouchPhase::Started {
+                        ignored.set(pill.contains(&event.position));
+                    }
+                    if ignored.get() || !hitbox.should_handle_scroll(window) {
+                        return;
+                    }
+                    let delta = event.delta.pixel_delta(window.line_height());
+                    if delta.y.abs() <= delta.x.abs() {
+                        return;
+                    }
+                    let _ = view.update(cx, |this, cx| {
+                        this.compact_content_scrolled(-f32::from(delta.y), cx);
+                    });
+                });
+            },
+        )
+        .absolute()
+        .inset_0()
+        .into_any_element()
+    }
+
     fn compact_can_focus(&self, window: &Window, cx: &App) -> bool {
         let core = &self.connection.read(cx).core;
-        self.prompt.is_none()
+        self.settings.is_none()
+            && self.prompt.is_none()
             && !self.slideover
             && !self.compact_lifted()
             && !self.sidebar_focus.is_focused(window)
@@ -832,26 +961,6 @@ impl AppShell {
         cx.notify();
     }
 
-    fn focus_current_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let output = self
-            .connection
-            .read(cx)
-            .core
-            .command_output()
-            .map(|(pane, _)| pane);
-        if let Some(pane) = self.active_window(cx).map(|window| window.active_pane)
-            && let Some(terminal) = self
-                .output_terminal
-                .as_ref()
-                .filter(|_| output == Some(pane))
-                .map(|(_, terminal)| terminal)
-                .or_else(|| self.terminals.get(&pane))
-        {
-            terminal.read(cx).focus_handle(cx).focus(window, cx);
-            self.focused_pane = Some(pane);
-        }
-    }
-
     #[cfg(target_os = "ios")]
     pub(super) fn compact_visible_panes(&self, cx: &App) -> BTreeSet<PaneId> {
         if self.compact.pager.is_moving() || self.compact_lifted() {
@@ -876,6 +985,7 @@ impl AppShell {
         if self.compact.last_current.is_some() && current_pane != self.compact.last_current {
             self.compact.zoom_intent = current_pane;
             self.compact.previous = self.compact.last_current;
+            self.compact.collapse.aim(true, Instant::now());
         }
         self.compact.last_current = current_pane;
         self.reconcile_compact_zoom(cx);
@@ -908,13 +1018,12 @@ impl AppShell {
         if safe_bottom > overlap || overlap <= px(0.0) {
             self.compact.safe_bottom = safe_bottom;
         }
-        let bar = rems_from_px(COMPACT_BAR_HEIGHT).to_pixels(window.rem_size()) + px(1.0);
+        let placement = PillPlacement::new(screen_radius(window), self.compact.safe_bottom);
+        let zone = placement.zone();
         self.compact.extra_height = if keyboard {
             let rest =
                 window.viewport_size().height - window.target_visual_viewport_bounds().bottom();
-            (key_row_top(self.compact.safe_bottom, bar, overlap)
-                - key_row_top(self.compact.safe_bottom, bar, rest))
-            .max(px(0.0))
+            (key_row_top(zone, overlap) - key_row_top(zone, rest)).max(px(0.0))
         } else {
             px(0.0)
         };
@@ -922,6 +1031,22 @@ impl AppShell {
         if self.compact.lift.tick(now) {
             window.request_animation_frame();
         }
+        let keyless = pages.get(self.compact.pager.index()).is_some_and(|page| {
+            matches!(
+                page.kind,
+                PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Agent(_)
+            )
+        });
+        self.compact
+            .morph
+            .aim(!keyboard_heading_up(window) || keyless, now);
+        if cx.reduce_motion() {
+            self.compact.morph.finish();
+        }
+        if self.compact.morph.tick(now) {
+            window.request_animation_frame();
+        }
+        let morph = self.compact.morph.progress();
         if let Some((target, since)) = self.compact.landing
             && !self.compact.lift.is_moving()
         {
@@ -936,15 +1061,69 @@ impl AppShell {
         let open = self.compact.overview && !self.compact.lift.is_moving();
         let lifting = !open
             && (progress > 0.0 || self.compact.lift.is_moving() || self.compact.landing.is_some());
+        if keyboard || open || self.compact.pager.is_moving() {
+            self.compact.collapse.aim(true, now);
+        }
+        if cx.reduce_motion() {
+            self.compact.collapse.finish();
+        }
+        if self.compact.collapse.tick(now) {
+            window.request_animation_frame();
+        }
+        let collapse = self.compact.collapse.progress();
         let shown = self.compact.pager.index();
+        let shown_page = pages.get(shown);
+        let short: SharedString = shown_page
+            .map(|page| match self.browser_page(page, cx) {
+                Some((_, host)) if !host.is_empty() => host.into(),
+                Some((title, _)) => title,
+                None => page.title.clone(),
+            })
+            .unwrap_or_default();
+        let floating = !keyboard;
+        let strip_width = px(width);
+        let mini = mini_pill_width(&short, window, cx);
+        let pill_shown = pill_bounds(collapse, strip_width, mini, &placement);
+        let pill_rest = pill_bounds(
+            if self.compact.collapse.full() {
+                1.0
+            } else {
+                0.0
+            },
+            strip_width,
+            mini,
+            &placement,
+        );
+        let zone_top = window.viewport_size().height - zone;
+        let in_window = |bounds: Bounds<Pixels>| {
+            Bounds::new(
+                point(bounds.origin.x, bounds.origin.y + zone_top),
+                bounds.size,
+            )
+        };
+        let hole = (floating && morph >= 1.0).then(|| {
+            (
+                in_window(pill_shown),
+                pill_corner(collapse, pill_shown, &placement, cx),
+            )
+        });
+        let reserve = if floating { zone } else { px(0.0) };
         let mut strip = Vec::new();
         if !lifting {
             for (index, x) in layout.pages {
                 let Some(page) = pages.get(index).cloned() else {
                     continue;
                 };
-                let element =
-                    self.compact_page(&page, index == shown, motion, top_inset, window, cx);
+                let element = self.compact_page(
+                    &page,
+                    index == shown,
+                    motion,
+                    top_inset,
+                    reserve,
+                    hole.filter(|_| index == shown),
+                    window,
+                    cx,
+                );
                 strip.push(
                     div()
                         .absolute()
@@ -965,18 +1144,21 @@ impl AppShell {
             .w_full()
             .overflow_hidden()
             .when(!lifting, |area| {
-                area.on_pinch(cx.listener(|this, event: &PinchEvent, window, cx| {
+                area.on_pinch(cx.listener(|this, event: &PinchEvent, _, cx| {
                     if event.phase == TouchPhase::Started {
-                        this.compact_pinch(event, window, cx);
+                        this.compact_pinch(event, cx);
                     }
                 }))
-                .capture_pinch(cx.listener(|this, event: &PinchEvent, window, cx| {
+                .capture_pinch(cx.listener(|this, event: &PinchEvent, _, cx| {
                     if event.phase != TouchPhase::Started {
-                        this.compact_pinch(event, window, cx);
+                        this.compact_pinch(event, cx);
                     }
                 }))
                 .children(strip)
                 .children(terminal_overlays)
+                .when(floating, |area| {
+                    area.child(self.compact_scroll_watch(in_window(pill_rest), cx))
+                })
             })
             .when(
                 self.compact.pinch.is_some()
@@ -994,64 +1176,171 @@ impl AppShell {
         if !keyboard && let Some((keys, _)) = &self.compact.tool_keys {
             keys.clone().close(cx);
         }
-        let bottom = if keyboard {
-            let lift = key_row_lift(self.compact.safe_bottom, bar, overlap);
-            self.compact_key_area(lift, window, cx)
+        let page_background = self
+            .compact
+            .page_background
+            .unwrap_or(cx.theme().background);
+        let (mut title, meta, mut warning) = self.pill_text(&model, shown_page, cx);
+        let mut icon = shown_page.map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind));
+        if let Some((pane, text, kind, until)) = self.compact.notice
+            && until > now
+            && shown_page.is_some_and(|page| page.pane == pane)
+        {
+            title = text.into();
+            warning = kind == PillNotice::Failed;
+            if kind == PillNotice::Done {
+                icon = IconName::Check;
+            }
+        }
+        let label = PillLabel {
+            icon,
+            title,
+            meta,
+            warning,
+        };
+        let floating = !keyboard && morph >= 1.0;
+        let backdrop = shown_page
+            .filter(|_| floating)
+            .and_then(|page| self.browser_backdrop(page, cx))
+            .or(self.compact.page_background.filter(|_| floating));
+        self.compact.pill_inverted = backdrop.and_then(|backdrop| {
+            pill_inverted_over(backdrop, self.compact.pill_inverted.is_some(), cx)
+        });
+        let pill_placement = PillPlacement {
+            inverted: self.compact.pill_inverted,
+            ..placement
+        };
+        let dots = page_dots_in(
+            &dot_groups(&pages, shown),
+            pill_ink(&pill_placement, cx),
+            cx,
+        );
+        let bottom = if keyboard && keyless {
+            let pill = compact_floating_pill("compact-pill", label, dots, &placement, cx);
+            div()
+                .relative()
+                .flex_none()
+                .w_full()
+                .h((zone - overlap).max(px(0.0)))
+                .overflow_hidden()
+                .bg(page_background)
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .child(compact_floating_bar(pill, &placement, cx)),
+                )
+                .into_any_element()
+        } else if keyboard {
+            let lift = key_row_lift(zone, overlap);
+            let height = px(KEY_ROW_HEIGHT) + lift;
+            let row = self.compact_key_row(window, cx);
+            let area = div()
+                .relative()
+                .flex_none()
+                .w_full()
+                .h(height)
+                .bg(page_background);
+            if morph > 0.0 {
+                let pill_top = height + overlap - zone + placement.pill_top();
+                let label = compact_pill_label(label, dots, &placement, cx);
+                area.child(compact_pill_morph(
+                    row, label, morph, pill_top, height, &placement, cx,
+                ))
+            } else {
+                area.pb(lift).child(row)
+            }
+            .into_any_element()
+        } else if morph < 1.0 {
+            let row = self.compact_key_row(window, cx);
+            let label = compact_pill_label(label, dots, &placement, cx);
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .h(zone)
+                .child(compact_pill_morph(
+                    row,
+                    label,
+                    morph,
+                    placement.pill_top(),
+                    zone,
+                    &placement,
+                    cx,
+                ))
+                .into_any_element()
         } else {
-            let page = pages.get(shown);
-            let groups = dot_groups(&pages, shown);
-            let (meta, warning) = self.pill_meta(&model, page, cx);
-            let pill = compact_bar_pill(
+            let label = compact_pill_label(label, dots, &pill_placement, cx);
+            let drop = if lifting { progress } else { 0.0 };
+            let full = self.compact.collapse.full();
+            let lowered = Bounds::new(
+                point(
+                    pill_shown.origin.x,
+                    pill_shown.origin.y + (zone + px(BAR_DROP)) * drop,
+                ),
+                pill_shown.size,
+            );
+            let pill = compact_pill_collapse(
                 "compact-pill",
-                page.map_or(IconName::SquareTerminal, |page| kind_icon(&page.kind)),
-                page.map(|page| page.title.clone()).unwrap_or_default(),
-                meta,
-                warning,
-                page_dots(&groups, cx),
+                label,
+                short,
+                collapse,
+                lowered,
+                strip_width,
+                &pill_placement,
                 cx,
             )
-            .on_click(cx.listener(|this, _, _, cx| this.open_overview(cx)))
+            .opacity((1.0 - drop.min(1.0) * BAR_FADE).max(0.0))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if full {
+                    this.open_overview(cx);
+                } else {
+                    this.expand_pill(cx);
+                }
+            }))
             .on_scroll_wheel(cx.listener(
                 |this, event: &ScrollWheelEvent, window, cx| {
                     this.compact_scroll(event, window, cx);
                 },
             ));
-            let keys = compact_bar_button("compact-keyboard", IconName::Keyboard)
-                .tooltip("Keyboard")
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.focus_current_pane(window, cx);
-                    window.request_virtual_keyboard();
-                    cx.notify();
-                }));
-            let zone = bar + safe_bottom;
-            let drop = if lifting { progress } else { 0.0 };
             div()
-                .id("compact-bar-zone")
-                .relative()
-                .flex_none()
-                .w_full()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
                 .h(zone)
-                .on_scroll_wheel(cx.listener(Self::compact_lift_scroll))
                 .child(
                     div()
+                        .id("compact-bar-zone")
                         .absolute()
-                        .left_0()
-                        .right_0()
-                        .top((zone + px(BAR_DROP)) * drop)
-                        .opacity((1.0 - drop.min(1.0) * BAR_FADE).max(0.0))
-                        .pb(safe_bottom)
-                        .surface(roles::PHONE_BAR, cx)
-                        .rule_on(roles::BAR_RULE, Edge::Top, cx)
-                        .child(compact_bar(pill, keys, self.compact.lift.is_dragging(), cx)),
+                        .left(pill_rest.origin.x)
+                        .top(pill_rest.origin.y)
+                        .w(pill_rest.size.width)
+                        .h(pill_rest.size.height)
+                        .on_scroll_wheel(cx.listener(Self::compact_lift_scroll)),
                 )
+                .child(pill)
                 .into_any_element()
         };
         let mut sheets = Vec::new();
+        let sheet_inset = if keyboard { px(0.0) } else { safe_bottom };
         if self.compact.bindings {
-            let inset = if keyboard { px(0.0) } else { safe_bottom };
-            sheets.push(self.compact_bindings_sheet(inset, cx));
+            sheets.push(self.compact_bindings_sheet(sheet_inset, cx));
+        }
+        if !self.compact.pager.is_moving()
+            && self.compact_can_focus(window, cx)
+            && let Some(page) = pages
+                .get(self.compact.pager.index())
+                .filter(|page| matches!(page.kind, PaneKindSnapshot::Picker))
+        {
+            let picker = self.picker_entity(page.pane, cx);
+            sheets.extend(picker.update(cx, |picker, cx| picker.sheet(sheet_inset, cx)));
         }
         let screen = div()
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -1064,7 +1353,7 @@ impl AppShell {
             let view = cx.weak_entity();
             swipe_back(
                 "overview-swipe-back",
-                self.compact_overview(&model, top_inset, safe_bottom, cx),
+                self.compact_overview(&model, top_inset, &placement, cx),
                 move |_, cx| {
                     let _ = view.update(cx, AppShell::close_overview);
                 },
@@ -1074,9 +1363,9 @@ impl AppShell {
         } else if lifting {
             let pane = Bounds::new(
                 zz_gpui::point(px(0.0), px(0.0)),
-                zz_gpui::size(px(width), window.viewport_size().height - bar - safe_bottom),
+                zz_gpui::size(px(width), window.viewport_size().height - zone),
             );
-            self.overview_lift(&model, pane, top_inset, safe_bottom, window, cx)
+            self.overview_lift(&model, pane, top_inset, &placement, window, cx)
                 .child(div().absolute().inset_0().child(screen))
                 .into_any_element()
         } else {
@@ -1101,14 +1390,14 @@ impl AppShell {
             ))
     }
 
-    fn pill_meta(
+    fn pill_text(
         &self,
         model: &StatusBarModel,
         page: Option<&Page>,
         cx: &App,
-    ) -> (SharedString, bool) {
+    ) -> (SharedString, SharedString, bool) {
         let Some(page) = page else {
-            return (SharedString::default(), false);
+            return (SharedString::default(), SharedString::default(), false);
         };
         let waiting = matches!(page.kind, PaneKindSnapshot::Agent(_))
             && self
@@ -1121,23 +1410,66 @@ impl AppShell {
                         == zz_client::AgentAttentionStatus::NeedsInput
                 });
         if waiting {
-            return ("Needs your permission".into(), true);
+            return (page.title.clone(), "Needs your permission".into(), true);
         }
-        let label = model
-            .windows
+        let browser = self.browser_page(page, cx);
+        if let Some((title, host)) = &browser
+            && !host.is_empty()
+        {
+            return (title.clone(), host.clone().into(), false);
+        }
+        let title = browser.map_or_else(|| page.title.clone(), |(title, _)| title);
+        let core = &self.connection.read(cx).core;
+        let meta = core
+            .snapshot()
+            .sessions
             .iter()
+            .flat_map(|session| &session.windows)
             .find(|window| window.id == page.window)
-            .map(|window| format!("{} {}", window.index, window.name))
+            .and_then(|window| {
+                window.panes.get(&page.pane).map(|pane| {
+                    zz_client::window_summary::pane_detail(window, pane, &title)
+                        .into_iter()
+                        .map(|part| part.text)
+                        .collect::<String>()
+                })
+            })
+            .or_else(|| {
+                model
+                    .windows
+                    .iter()
+                    .find(|window| window.id == page.window)
+                    .map(|window| window.label.clone())
+            })
             .unwrap_or_default();
-        (label.into(), false)
+        (title, meta.into(), false)
     }
 
-    fn compact_key_area(
-        &mut self,
-        bottom: Pixels,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn browser_backdrop(&self, page: &Page, cx: &App) -> Option<zz_gpui::Hsla> {
+        #[cfg(target_os = "ios")]
+        if let Some(browser) = self.browsers.get(&page.pane) {
+            return browser.read(cx).backdrop_color();
+        }
+        let _ = (page, cx);
+        None
+    }
+
+    pub(super) fn browser_page(&self, page: &Page, cx: &App) -> Option<(SharedString, String)> {
+        #[cfg(target_os = "ios")]
+        if let Some(browser) = self.browsers.get(&page.pane) {
+            let (title, url) = browser.read(cx).shown_page();
+            let title = if title.is_empty() {
+                page.title.clone()
+            } else {
+                title.to_owned().into()
+            };
+            return Some((title, super::browser_pane::host(url).to_owned()));
+        }
+        let _ = (page, cx);
+        None
+    }
+
+    fn compact_key_row(&mut self, window: &mut Window, cx: &mut Context<Self>) -> KeyRow {
         let keys = self.tool_keys(window, cx);
         let core = &self.connection.read(cx).core;
         let armed = core.prefix_armed();
@@ -1146,22 +1478,10 @@ impl AppShell {
             key.set_armed(armed, cx);
             key.set_keystroke(prefix, cx);
         });
-        let row = KeyRow::new(keys.row())
+        KeyRow::new(keys.row())
             .track_scroll(&keys.scroll)
             .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
-            .on_hide(|window, _| window.dismiss_virtual_keyboard());
-        div()
-            .relative()
-            .flex_none()
-            .w_full()
-            .h(px(KEY_ROW_HEIGHT) + bottom)
-            .pb(bottom)
-            .bg(self
-                .compact
-                .page_background
-                .unwrap_or(cx.theme().background))
-            .child(row)
-            .into_any_element()
+            .on_hide(|window, _| window.dismiss_virtual_keyboard())
     }
 
     fn compact_bindings_sheet(
@@ -1176,15 +1496,12 @@ impl AppShell {
         let pick = cx.weak_entity();
         let dismiss = cx.weak_entity();
         bottom_sheet(
-            "compact-bindings-sheet",
+            BINDINGS_SHEET,
             "All bindings",
             cap,
             WhichKeyList::new(rows).on_pick(move |id, _, cx| {
-                let _ = pick.update(cx, |this, cx| {
-                    this.compact.bindings = false;
-                    this.send_binding(id, cx);
-                    cx.notify();
-                });
+                let _ = pick.update(cx, |this, cx| this.send_binding(id, cx));
+                close_sheet(BINDINGS_SHEET, cx);
             }),
             bottom_inset,
             move |_, cx| {
@@ -1239,10 +1556,10 @@ mod tests {
 
     #[test]
     fn the_key_row_rests_on_the_bar_line_until_the_keyboard_passes_it() {
-        let (safe, bar) = (px(34.0), px(53.0));
-        let top = |overlap: f32| key_row_top(safe, bar, px(overlap));
-        assert_eq!(top(0.0), safe + bar);
-        assert_eq!(top(40.0), safe + bar);
+        let zone = px(92.0);
+        let top = |overlap: f32| key_row_top(zone, px(overlap));
+        assert_eq!(top(0.0), zone);
+        assert_eq!(top(30.0), zone);
         assert_eq!(top(300.0), px(KEY_ROW_HEIGHT + 300.0));
     }
 

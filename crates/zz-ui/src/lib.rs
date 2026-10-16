@@ -24,7 +24,7 @@ pub use zz_gpui_kit::{
     TitleBar, Tone, UiZoom, WindowControls, WindowExt, cubic_ease, drawn_roles,
     draws_window_controls, h_flex, init, lifted_shadow, macos_traffic_light_clearance,
     note_drawn_roles, oklab_lightness, oklch, parse_hex, rems_from_px, row_corners, row_radius,
-    row_surface, to_hex, v_flex, window_border, window_controls_width, window_paddings,
+    row_surface, to_hex, to_oklch, v_flex, window_border, window_controls_width, window_paddings,
 };
 
 #[cfg(feature = "agent")]
@@ -47,3 +47,7 @@ pub mod shell;
 pub mod terminal;
 pub mod terminal_images;
 pub mod which_key;
+
+/// How far a label too long for its box fades out at its end, instead of
+/// ending in an ellipsis.
+pub const LABEL_FADE: zz_gpui::Pixels = zz_gpui::px(28.0);

@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use zz_gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, Focusable as _, IntoElement, SharedString,
-    Subscription, TextInputMode, Window, canvas, div, prelude::*, px,
+    AnyElement, App, Context, Entity, IntoElement, SharedString, Subscription, TextInputMode,
+    Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _, Theme, ThemeMode,
@@ -16,8 +16,8 @@ use zz_ui::{
         SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack, StackPosition,
         appearance::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, appearance_page,
-            appearance_page_items, contrast_slider, corner_radius_slider, picker_tile,
-            theme_preview, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
+            appearance_page_items, contrast_slider, corner_radius_slider, percent_slider,
+            picker_tile, theme_preview, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
         },
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
         settings_preview, settings_reset_button, settings_scroll_column,
@@ -59,8 +59,8 @@ const PHONE_MAX_ZOOM: f32 = 1.35;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Setting {
     Section(SettingsSection),
-    UiZoom,
     SystemTextSize,
+    CommandPalette,
 }
 
 pub(super) fn shown(setting: Setting, phone: bool) -> bool {
@@ -68,12 +68,12 @@ pub(super) fn shown(setting: Setting, phone: bool) -> bool {
         || !matches!(
             setting,
             Setting::Section(SettingsSection::StatusBar | SettingsSection::Panes)
-                | Setting::UiZoom
                 | Setting::SystemTextSize
+                | Setting::CommandPalette
         )
 }
 
-pub(super) fn phone() -> bool {
+pub(crate) fn phone() -> bool {
     #[cfg(target_os = "ios")]
     return zz_gpui_platform::ios::phone();
     #[cfg(not(target_os = "ios"))]
@@ -90,7 +90,7 @@ pub(super) fn sections() -> Vec<SettingsSection> {
 
 fn interface_zoom(preferences: &Preferences, system_scale: f32, phone: bool) -> f32 {
     if phone {
-        system_scale.min(PHONE_MAX_ZOOM)
+        preferences.zoom * system_scale.min(PHONE_MAX_ZOOM)
     } else if preferences.system_text_size {
         preferences.zoom * system_scale
     } else {
@@ -206,12 +206,10 @@ impl Preferences {
 }
 
 pub(super) struct Controls {
-    zoom: Entity<InputState>,
     accent: Entity<ColorPickerState>,
     panes: [Entity<InputState>; 4],
     ui_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
-    terminal_scale: Entity<InputState>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
     host_prefix: Entity<SelectState<Vec<SettingsSelectItem>>>,
     /// Whether the Interface page lists the knobs under Advanced.
@@ -225,66 +223,7 @@ impl Controls {
         window: &mut Window,
         cx: &mut Context<AppShell>,
     ) -> Self {
-        let zoom = cx.new(|cx| {
-            InputState::new(window, cx)
-                .input_mode(TextInputMode::Decimal)
-                .default_value(format!("{:.0}", preferences.zoom * 100.0))
-                .step(10.0)
-                .min(50.0)
-                .max(300.0)
-        });
-        let terminal_scale = cx.new(|cx| {
-            InputState::new(window, cx)
-                .input_mode(TextInputMode::Decimal)
-                .default_value(number_text(preferences.terminal_font_scale * 100.0))
-                .step(10.0)
-                .min(50.0)
-                .max(300.0)
-        });
         let mut subscriptions = Vec::new();
-        for (input, key) in [(&zoom, "zoom"), (&terminal_scale, "terminal-scale")] {
-            subscriptions.push(cx.subscribe_in(
-                input,
-                window,
-                move |this, input, event, window, cx| {
-                    number_field_event(event, window, cx);
-                    let commit = matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. });
-                    if !commit && !matches!(event, InputEvent::Change) {
-                        return;
-                    }
-                    let previous = if key == "zoom" {
-                        this.preferences.zoom
-                    } else {
-                        this.preferences.terminal_font_scale
-                    } * 100.0;
-                    let (min, max) = (50.0, 300.0);
-                    let parsed = input
-                        .read(cx)
-                        .value()
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|value| value.is_finite());
-                    let value = match parsed {
-                        Some(value) if commit => value.clamp(min, max),
-                        Some(value) if (min..=max).contains(&value) => value,
-                        _ if commit => previous,
-                        _ => return,
-                    };
-                    if key == "zoom" {
-                        this.preferences.zoom = value / 100.0;
-                    } else {
-                        this.preferences.terminal_font_scale = value / 100.0;
-                    }
-                    if commit {
-                        input.update(cx, |input, cx| {
-                            input.set_value(format!("{value:.0}"), window, cx);
-                        });
-                    }
-                    this.preferences.save();
-                    this.preferences.apply(&this.connection, window, cx);
-                },
-            ));
-        }
         let accent = cx.new(|cx| ColorPickerState::new(custom_accent(preferences), window, cx));
         subscriptions.push(cx.subscribe_in(
             &accent,
@@ -433,12 +372,10 @@ impl Controls {
             ));
         }
         Self {
-            zoom,
             accent,
             panes,
             ui_font,
             terminal_font,
-            terminal_scale,
             palette_layout,
             host_prefix,
             advanced: false,
@@ -501,19 +438,6 @@ impl AppShell {
         .detach();
     }
 
-    pub(super) fn sync_zoom_input(&self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings_controls.zoom.update(cx, |input, cx| {
-            input.set_value(format!("{:.0}", self.preferences.zoom * 100.0), window, cx);
-        });
-    }
-
-    pub(super) fn sync_terminal_scale_input(&self, window: &mut Window, cx: &mut Context<Self>) {
-        let value = number_text(self.preferences.terminal_font_scale * 100.0);
-        self.settings_controls
-            .terminal_scale
-            .update(cx, |input, cx| input.set_value(value, window, cx));
-    }
-
     pub(super) fn render_settings(
         &self,
         section: SettingsSection,
@@ -531,7 +455,9 @@ impl AppShell {
             return self.settings_page(section, narrow, cx);
         }
         let view = cx.entity().downgrade();
+        let shell = cx.entity().downgrade();
         let picked = self.settings_picked;
+        let attached = self.active_window(cx).is_some();
         zz_ui::compact::swipe_back(
             "settings-swipe-back",
             self.settings_route(section, picked, cx),
@@ -539,8 +465,29 @@ impl AppShell {
                 let _ = view.update(cx, |this, cx| this.settings_back(window, cx));
             },
         )
+        .enters(attached)
         .when(picked, |swipe| {
             swipe.under(self.settings_route(section, false, cx))
+        })
+        .when(!picked && attached, |swipe| {
+            swipe.under_with(move |window, cx| {
+                let top = window.fully_visible_bounds().top();
+                let height = window.viewport_size().height;
+                let backdrop = shell
+                    .update(cx, |this, cx| {
+                        this.compact_shell(Vec::new(), Vec::new(), window, cx)
+                            .into_any_element()
+                    })
+                    .unwrap_or_else(|_| div().into_any_element());
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .top(-top)
+                    .h(height)
+                    .child(backdrop)
+                    .into_any_element()
+            })
         })
         .pushed(picked)
         .leaving(self.settings_leaving)
@@ -666,14 +613,7 @@ impl AppShell {
                                 | AppearancePageItem::Animations
                         )
                     })
-                    .filter(|item| {
-                        shown(Setting::UiZoom, phone) || !matches!(item, AppearancePageItem::UiZoom)
-                    })
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Description))
-                    .collect::<Vec<_>>();
-                let focus = items
-                    .iter()
-                    .map(|item| self.appearance_focus(*item, cx))
                     .collect::<Vec<_>>();
                 let view = cx.entity();
                 return appearance_page(items, move |item, position, _, cx| {
@@ -681,7 +621,6 @@ impl AppShell {
                         this.appearance_item(item, position, narrow, cx)
                     })
                 })
-                .row_focus(focus)
                 .into_any_element();
             }
             SettingsSection::Panes => {
@@ -819,10 +758,12 @@ impl AppShell {
                             cx,
                         )
                     }))
-                    .child(
-                        SettingsStack::titled("Command palette")
-                            .children(self.palette_settings(cx)),
-                    )
+                    .when(shown(Setting::CommandPalette, phone), |page| {
+                        page.child(
+                            SettingsStack::titled("Command palette")
+                                .children(self.palette_settings(cx)),
+                        )
+                    })
                     .when(
                         !shown(Setting::Section(SettingsSection::Panes), phone),
                         |page| {
@@ -893,15 +834,6 @@ impl AppShell {
         )
     }
 
-    fn appearance_focus(&self, item: AppearancePageItem, cx: &App) -> Option<FocusHandle> {
-        let controls = &self.settings_controls;
-        let input = match item {
-            AppearancePageItem::UiZoom => &controls.zoom,
-            _ => return None,
-        };
-        Some(input.focus_handle(cx))
-    }
-
     fn appearance_item(
         &self,
         item: AppearancePageItem,
@@ -970,23 +902,41 @@ impl AppShell {
                         cx,
                     ))
             }
-            AppearancePageItem::UiZoom => SettingEntry::new(
-                "UI zoom",
-                "Scales application text, icons, and controls as a percentage of the default.",
-            )
-            .title_actions(
-                settings_reset_button(
-                    "settings-zoom-reset",
-                    "Reset UI zoom to 100%",
-                    self.preferences.zoom != 1.0,
+            AppearancePageItem::UiZoom => {
+                let view = cx.entity().downgrade();
+                let slider = percent_slider(
+                    "settings-zoom",
+                    "UI zoom",
+                    self.preferences.zoom,
+                    move |zoom, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.zoom = zoom;
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        });
+                    },
+                    cx,
+                );
+                with_control(
+                    SettingEntry::new(
+                        "UI zoom",
+                        "Scales application text, icons, and controls as a percentage of the default.",
+                    )
+                    .title_actions(
+                        settings_reset_button(
+                            "settings-zoom-reset",
+                            "Reset UI zoom to 100%",
+                            self.preferences.zoom != 1.0,
+                        )
+                        .on(settings_card_ground(cx))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.preferences.reset_zoom(&this.connection, window, cx);
+                        })),
+                    ),
+                    slider,
+                    narrow,
                 )
-                .on(settings_card_ground(cx))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.preferences.reset_zoom(&this.connection, window, cx);
-                    this.sync_zoom_input(window, cx);
-                })),
-            )
-            .control(number_control(&self.settings_controls.zoom, cx)),
+            }
             AppearancePageItem::ChromeContrast => {
                 let (title, description) = item.text().unwrap_or_default();
                 let view = cx.entity().downgrade();
@@ -1230,11 +1180,10 @@ impl AppShell {
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
-                    "settings-appearance-advanced",
+                    zz_ui::settings::appearance::ADVANCED_DISCLOSURE,
                     "Advanced",
                     Some("Corner radius, contrast, fonts and zoom."),
                     expanded,
-                    cx,
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.settings_controls.advanced = !this.settings_controls.advanced;
@@ -1349,21 +1298,46 @@ impl AppShell {
             .on(settings_card_ground(cx))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.preferences.terminal_font_scale = 1.0;
-                this.settings_controls
-                    .terminal_scale
-                    .update(cx, |input, cx| input.set_value("100", window, cx));
                 this.preferences.save();
                 this.preferences.apply(&this.connection, window, cx);
             })),
-        )
-        .control(number_control(&self.settings_controls.terminal_scale, cx));
+        );
+        let view = cx.entity().downgrade();
+        let scale = with_control(
+            scale,
+            percent_slider(
+                "settings-terminal-scale",
+                "Font scale",
+                self.preferences.terminal_font_scale,
+                move |scale, window, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.preferences.terminal_font_scale = scale;
+                        this.preferences.save();
+                        this.preferences.apply(&this.connection, window, cx);
+                    });
+                },
+                cx,
+            ),
+            narrow,
+        );
+        let (host_title, host_description) = if phone() {
+            (
+                "Cursor shape and spacing",
+                "Edit the Ghostty-compatible configuration on the daemon host to change these values. Colors follow the interface theme.",
+            )
+        } else {
+            (
+                "Colors, cursor, and spacing",
+                "Edit the Ghostty-compatible configuration on the daemon host to change these values.",
+            )
+        };
         settings_scroll_column("settings-terminal")
             .children((!narrow).then(|| settings_page_heading("Terminal", "Adjust terminal text on this client. Colors, cursor, and spacing follow the host configuration.", cx)))
             .child(zz_ui::settings::settings_list_group_header("Preview", None, cx))
             .child(terminal_preview(appearance, cx))
             .child(SettingsStack::titled("Display").child(font).child(scale))
             .child(SettingsStack::titled("Host configuration")
-                .child(SettingEntry::new("Colors, cursor, and spacing", "Edit the Ghostty-compatible configuration on the daemon host to change these values.").control(div().text_size(zz_ui::rems_from_px(13.0)).text_color(cx.theme().foreground.muted()).child("Shared"))))
+                .child(SettingEntry::new(host_title, host_description).control(div().text_size(zz_ui::rems_from_px(13.0)).text_color(cx.theme().foreground.muted()).child("Shared"))))
             .into_any_element()
     }
 }
@@ -1635,14 +1609,26 @@ impl zz_gpui::RenderOnce for TerminalPreview {
         use zz_ui::terminal::{
             RowRenderCache, TerminalRenderInput, terminal_background, terminal_font_for_style,
         };
-        let appearance = Arc::new(self.appearance);
-        let viewport = Arc::new(sample_terminal_viewport(&appearance));
+        let mut appearance = self.appearance;
+        let sample = sample_terminal_viewport(&appearance);
+        appearance.local_colors = crate::terminal::phone_colors(&sample, &appearance.palette, cx);
+        let viewport = Arc::new(match appearance.local_colors {
+            Some(local) => local.viewport(&sample),
+            None => sample,
+        });
+        let appearance = Arc::new(appearance);
         let cache = Rc::new(RefCell::new(RowRenderCache::default()));
         let paint_cache = Rc::clone(&cache);
-        let background = cx.theme().pane_color(terminal_background(
-            appearance.background,
-            appearance.background_opacity,
-        ));
+        let background = if phone() {
+            cx.theme()
+                .layer(zz_ui::roles::SETTINGS_CARD, zz_ui::PaintState::Rest)
+                .fill
+        } else {
+            cx.theme().pane_color(terminal_background(
+                appearance.background,
+                appearance.background_opacity,
+            ))
+        };
         let font = terminal_font_for_style(&appearance, &cx.theme().mono_font_family, false, false);
         let font_size = px(appearance.font_size_points);
         let probe = window.text_system().shape_line(
@@ -1712,6 +1698,7 @@ impl zz_gpui::RenderOnce for TerminalPreview {
                                         cursor_blink_visible: true,
                                         marked_text: None,
                                         rows_above: None,
+                                        rows_below: None,
                                     },
                                     bounds,
                                     window,
@@ -1841,7 +1828,7 @@ impl PaneControl {
         match self {
             Self::BackgroundOpacity => "Pane background opacity",
             Self::Opacity => "Inactive pane opacity",
-            Self::Glow => "Selected pane edge",
+            Self::Glow => "Selected pane contrast",
             Self::Margin => "Pane margin",
         }
     }
@@ -1855,7 +1842,7 @@ impl PaneControl {
                 "Visible strength of inactive pane content and chrome (0–1). Set to 1 to disable dimming."
             }
             Self::Glow => {
-                "How brightly the selected pane's edge lights in the accent, from 0% to 200%. Set to 0 to light it like the others."
+                "How far the selected pane stands apart, from 0% to 200%: it lightens while the others darken and their edges dim. Set to 0 to draw it like the others."
             }
             Self::Margin => "Space around each pane, in logical pixels (0–32).",
         }
@@ -1872,7 +1859,7 @@ mod tests {
     use zz_ui::settings::SettingsSection;
 
     #[test]
-    fn phone_hides_pane_status_bar_and_zoom_settings_only() {
+    fn phone_hides_pane_status_bar_and_system_text_settings_only() {
         let visible = |phone| {
             SECTIONS
                 .into_iter()
@@ -1890,23 +1877,23 @@ mod tests {
                 SettingsSection::About,
             ]
         );
-        for setting in [Setting::UiZoom, Setting::SystemTextSize] {
+        for setting in [Setting::SystemTextSize, Setting::CommandPalette] {
             assert!(shown(setting, false));
             assert!(!shown(setting, true));
         }
     }
 
     #[test]
-    fn phone_scale_follows_system_text_size_and_ignores_stored_zoom() {
+    fn phone_scale_is_ui_zoom_over_the_capped_system_text_size() {
         let zoomed = Preferences {
             zoom: 1.5,
             system_text_size: false,
             ..Preferences::default()
         };
         assert_eq!(interface_zoom(&zoomed, 1.12, false), 1.5);
-        assert_eq!(interface_zoom(&zoomed, 1.12, true), 1.12);
-        assert_eq!(interface_zoom(&zoomed, 0.82, true), 0.82);
-        assert_eq!(interface_zoom(&zoomed, 1.9, true), 1.35);
+        assert!((interface_zoom(&zoomed, 1.12, true) - 1.68).abs() < 1e-6);
+        assert!((interface_zoom(&zoomed, 0.82, true) - 1.23).abs() < 1e-6);
+        assert!((interface_zoom(&zoomed, 1.9, true) - 2.025).abs() < 1e-6);
         let following = Preferences {
             zoom: 1.5,
             ..Preferences::default()

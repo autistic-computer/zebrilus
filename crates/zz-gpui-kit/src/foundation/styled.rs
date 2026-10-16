@@ -74,10 +74,10 @@ pub trait StyledExt: Styled + Sized {
     }
 
     /// An edge in `color` at the look's outline width, or none when the look
-    /// has no outline.
+    /// has no outline or picks the roles that take it.
     fn surface_outline(self, color: Hsla, cx: &App) -> Self {
         let this = self.border_color(color);
-        if cx.theme().outlined() {
+        if cx.theme().outlines_edges() {
             this.border(cx.theme().outline)
         } else {
             this
@@ -247,10 +247,11 @@ pub const FOCUS_RING_WIDTH: Pixels = px(1.5);
 
 const CHOSEN_RING_WIDTH: Pixels = px(2.0);
 
-/// The small shadow of a knob riding on a control, like a switch thumb.
+/// The small shadow of a knob riding on a control, like a switch thumb, or
+/// none when the theme picks the roles that cast shadows.
 pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
     let strength = cx.theme().contact_shadow.strength;
-    if strength <= 0.0 {
+    if strength <= 0.0 || cx.theme().picked_shadows {
         return Vec::new();
     }
     let ink = cx.theme().shadow_color.alpha((0.1 * strength).min(1.0));
@@ -375,6 +376,9 @@ mod tests {
         cx.update(crate::init);
         cx.update(|cx| {
             assert!(!super::lifted_shadow(cx).is_empty());
+            Theme::global_mut(cx).picked_shadows = true;
+            assert!(super::lifted_shadow(cx).is_empty());
+            Theme::global_mut(cx).picked_shadows = false;
             Theme::global_mut(cx).contact_shadow.strength = 0.0;
             assert!(super::lifted_shadow(cx).is_empty());
         });

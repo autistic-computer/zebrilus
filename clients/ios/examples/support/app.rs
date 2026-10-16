@@ -535,6 +535,7 @@ impl TerminalApp {
                 cursor_blink_visible: true,
                 marked_text: None,
                 rows_above: None,
+                rows_below: None,
             },
             bounds,
             window,

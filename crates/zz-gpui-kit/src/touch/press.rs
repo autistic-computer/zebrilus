@@ -134,6 +134,7 @@ pub fn press_feedback(
 pub enum PressCorners {
     Adaptive(Pixels),
     Row(Pixels),
+    Each(Corners<Pixels>),
 }
 
 impl From<Pixels> for PressCorners {
@@ -189,6 +190,9 @@ fn highlight(
                     PressCorners::Adaptive(radius) => quad.corner_radii(
                         window.resolve_corner_radii(Corners::all(radius), bounds.size),
                     ),
+                    PressCorners::Each(corners) => {
+                        quad.corner_radii(window.resolve_corner_radii(corners, bounds.size))
+                    }
                     PressCorners::Row(radius) => quad
                         .corner_radii(Corners::all(radius).clamp_radii_for_quad_size(bounds.size))
                         .corner_smoothing(crate::foundation::ROW_CORNER_SMOOTHING),

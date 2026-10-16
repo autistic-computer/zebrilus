@@ -1283,6 +1283,9 @@ pub struct Window {
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
     pub(crate) element_opacity: f32,
+    /// The span text fades out across, in device pixels: opaque at its
+    /// start, gone from its end on.
+    pub(crate) text_fade: Option<(ScaledPixels, ScaledPixels)>,
     /// Glass groups being prepainted, innermost last; see [`crate::glass_group`].
     pub(crate) glass_groups: Vec<crate::GlassGroupShapes>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
@@ -2166,6 +2169,7 @@ impl Window {
             element_offset_stack: Vec::new(),
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
+            text_fade: None,
             glass_groups: Vec::new(),
             requested_autoscroll: None,
             last_text_input_configuration: None,
@@ -4375,6 +4379,81 @@ impl Window {
         result
     }
 
+    /// Fades the text painted in `f` across `fade`, a horizontal span in
+    /// window coordinates from where text is opaque to where it is gone. Left
+    /// to right it fades text out toward its end; right to left it hides text
+    /// up to the span and fades it in after.
+    pub fn with_text_fade<R>(
+        &mut self,
+        fade: Option<(Pixels, Pixels)>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let Some((opaque, gone)) = fade.filter(|(opaque, gone)| opaque != gone) else {
+            return f(self);
+        };
+        let scale_factor = self.scale_factor();
+        let previous = self.text_fade.replace((
+            opaque.scale(scale_factor).round(),
+            gone.scale(scale_factor).round(),
+        ));
+        let result = f(self);
+        self.text_fade = previous;
+        result
+    }
+
+    /// Inserts a glyph sprite covering `bounds`. Under a text fade the part
+    /// across it goes in one device pixel column at a time, each column at
+    /// its own opacity, so the fade is as smooth as a mask would draw it.
+    fn insert_glyph_sprite<P: Into<crate::Primitive>>(
+        &mut self,
+        bounds: Bounds<ScaledPixels>,
+        content_mask: ContentMask<ScaledPixels>,
+        sprite: impl Fn(ContentMask<ScaledPixels>, f32) -> P,
+    ) {
+        let Some((opaque, gone)) = self.text_fade else {
+            self.next_frame
+                .scene
+                .insert_primitive(sprite(content_mask, 1.0));
+            return;
+        };
+        let clip = content_mask.bounds;
+        let left = bounds.left().max(clip.left());
+        let right = bounds.right().min(clip.right());
+        let (ramp_start, ramp_end) = (opaque.min(gone), opaque.max(gone));
+        let fades_out = opaque < gone;
+        if right <= ramp_start || left >= ramp_end {
+            if (right <= ramp_start) == fades_out {
+                self.next_frame
+                    .scene
+                    .insert_primitive(sprite(content_mask, 1.0));
+            }
+            return;
+        }
+        let column = |from, to| ContentMask {
+            bounds: Bounds::from_corners(point(from, clip.top()), point(to, clip.bottom())),
+        };
+        if fades_out && left < ramp_start {
+            self.next_frame
+                .scene
+                .insert_primitive(sprite(column(left, ramp_start), 1.0));
+        }
+        let stop = right.min(ramp_end);
+        let mut x = left.max(ramp_start).floor();
+        while x < stop {
+            let next = x + ScaledPixels(1.0);
+            let opacity = (x + ScaledPixels(0.5) - gone) / (opaque - gone);
+            self.next_frame
+                .scene
+                .insert_primitive(sprite(column(x.max(left), next.min(stop)), opacity));
+            x = next;
+        }
+        if !fades_out && right > ramp_end {
+            self.next_frame
+                .scene
+                .insert_primitive(sprite(column(ramp_end, right), 1.0));
+        }
+    }
+
     /// Perform prepaint on child elements in a "retryable" manner, so that any side effects
     /// of prepaints can be discarded before prepainting again. This is used to support autoscroll
     /// where we need to prepaint children to detect the autoscroll bounds, then adjust the
@@ -5233,25 +5312,19 @@ impl Window {
             let content_mask = self.snapped_content_mask();
 
             if subpixel_rendering {
-                self.next_frame.scene.insert_primitive(SubpixelSprite {
-                    order: 0,
-                    pad: 0,
+                self.paint_cached_subpixel_glyph(
                     bounds,
                     content_mask,
-                    color: color.opacity(element_opacity),
+                    color.opacity(element_opacity),
                     tile,
-                    transformation: TransformationMatrix::unit(),
-                });
+                );
             } else {
-                self.next_frame.scene.insert_primitive(MonochromeSprite {
-                    order: 0,
-                    pad: 0,
+                self.paint_cached_monochrome_glyph(
                     bounds,
                     content_mask,
-                    color: color.opacity(element_opacity),
+                    color.opacity(element_opacity),
                     tile,
-                    transformation: TransformationMatrix::unit(),
-                });
+                );
             }
         }
         Ok(())
@@ -5312,14 +5385,16 @@ impl Window {
         color: Hsla,
         tile: AtlasTile,
     ) {
-        self.next_frame.scene.insert_primitive(MonochromeSprite {
-            order: 0,
-            pad: 0,
-            bounds,
-            content_mask,
-            color,
-            tile,
-            transformation: TransformationMatrix::unit(),
+        self.insert_glyph_sprite(bounds, content_mask, |content_mask, opacity| {
+            MonochromeSprite {
+                order: 0,
+                pad: 0,
+                bounds,
+                content_mask,
+                color: color.opacity(opacity),
+                tile,
+                transformation: TransformationMatrix::unit(),
+            }
         });
     }
 
@@ -5330,14 +5405,16 @@ impl Window {
         color: Hsla,
         tile: AtlasTile,
     ) {
-        self.next_frame.scene.insert_primitive(SubpixelSprite {
-            order: 0,
-            pad: 0,
-            bounds,
-            content_mask,
-            color,
-            tile,
-            transformation: TransformationMatrix::unit(),
+        self.insert_glyph_sprite(bounds, content_mask, |content_mask, opacity| {
+            SubpixelSprite {
+                order: 0,
+                pad: 0,
+                bounds,
+                content_mask,
+                color: color.opacity(opacity),
+                tile,
+                transformation: TransformationMatrix::unit(),
+            }
         });
     }
 
@@ -5348,17 +5425,20 @@ impl Window {
         opacity: f32,
         tile: AtlasTile,
     ) {
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
-            order: 0,
-            pad: 0,
-            grayscale: false.into(),
-            opacity,
-            bounds,
-            content_mask,
-            corner_radii: Default::default(),
-            corner_smoothing: self.default_corner_smoothing,
-            pad2: 0,
-            tile,
+        let corner_smoothing = self.default_corner_smoothing;
+        self.insert_glyph_sprite(bounds, content_mask, |content_mask, fade| {
+            PolychromeSprite {
+                order: 0,
+                pad: 0,
+                grayscale: false.into(),
+                opacity: opacity * fade,
+                bounds,
+                content_mask,
+                corner_radii: Default::default(),
+                corner_smoothing,
+                pad2: 0,
+                tile,
+            }
         });
     }
 
@@ -5441,19 +5521,7 @@ impl Window {
             };
             let content_mask = self.snapped_content_mask();
             let opacity = self.element_opacity();
-
-            self.next_frame.scene.insert_primitive(PolychromeSprite {
-                order: 0,
-                pad: 0,
-                grayscale: false.into(),
-                bounds,
-                corner_radii: Default::default(),
-                content_mask,
-                corner_smoothing: self.default_corner_smoothing,
-                pad2: 0,
-                tile,
-                opacity,
-            });
+            self.paint_cached_polychrome_glyph(bounds, content_mask, opacity, tile);
         }
         Ok(())
     }
@@ -5654,6 +5722,7 @@ impl Window {
             corner_radii: corner_radii.scale(self.scale_factor()),
             corner_smoothing: self.default_corner_smoothing,
             image_buffer: Some(image_buffer),
+            underlay: false,
         });
     }
 
@@ -5662,9 +5731,19 @@ impl Window {
     /// later still draw over the hole. Call [`Window::set_underlay_active`]
     /// while any hole is on screen, or the opaque renderer hides the layer.
     ///
+    /// `image_buffer` holds what the layer shows. Where glass painted later
+    /// in the frame would read the hole, it is drawn instead, since glass can
+    /// only blur what this renderer drew; [`Window::underlay_covered`] says
+    /// when that happened.
+    ///
     /// This method should only be called as part of the paint phase of element drawing.
     #[cfg(target_os = "macos")]
-    pub fn paint_underlay_hole(&mut self, bounds: Bounds<Pixels>, corner_radii: Corners<Pixels>) {
+    pub fn paint_underlay(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        image_buffer: CVPixelBuffer,
+    ) {
         use crate::PaintSurface;
 
         self.invalidator.debug_assert_paint();
@@ -5677,12 +5756,24 @@ impl Window {
             content_mask,
             corner_radii: corner_radii.scale(self.scale_factor()),
             corner_smoothing: self.default_corner_smoothing,
-            image_buffer: None,
+            image_buffer: Some(image_buffer),
+            underlay: true,
         });
     }
 
+    /// Whether the last frame drew a [`Window::paint_underlay`] within
+    /// `bounds` itself because glass covered it, so the drawn image goes stale
+    /// unless the window redraws when the layer's content changes.
+    #[cfg(target_os = "macos")]
+    pub fn underlay_covered(&self, bounds: Bounds<Pixels>) -> bool {
+        let bounds = bounds.scale(self.scale_factor());
+        self.rendered_frame.scene.surfaces.iter().any(|surface| {
+            surface.underlay && surface.image_buffer.is_some() && surface.bounds.intersects(&bounds)
+        })
+    }
+
     /// Mark whether native layers sit below this window's renderer and show
-    /// through [`Window::paint_underlay_hole`]. While active, the renderer's
+    /// through [`Window::paint_underlay`]. While active, the renderer's
     /// layer is transparent where nothing is drawn and presents inside the
     /// current Core Animation transaction, so layer geometry set during paint
     /// lands in the same frame as the drawing around it.
@@ -8617,6 +8708,92 @@ mod tests {
             assert_eq!(window.text_align(), crate::TextAlign::Right);
             assert_eq!(window.text_align(), window.text_style().text_align);
             window.text_style_stack.clear();
+        })
+        .unwrap();
+    }
+
+    #[zz_gpui::test]
+    fn text_fade_paints_glyphs_in_columns_fading_either_way(cx: &mut TestAppContext) {
+        let window = cx.add_window(|_, _| Empty);
+        cx.update_window(window.into(), |_, window, _| {
+            let scaled = |left, right| {
+                Bounds::from_corners(
+                    point(ScaledPixels(left), ScaledPixels(0.0)),
+                    point(ScaledPixels(right), ScaledPixels(20.0)),
+                )
+            };
+            let tile = crate::AtlasTile {
+                texture_id: crate::AtlasTextureId {
+                    index: 0,
+                    kind: crate::AtlasTextureKind::Monochrome,
+                },
+                tile_id: crate::TileId(1),
+                padding: 0,
+                bounds: Bounds::default(),
+            };
+            let mask = ContentMask {
+                bounds: scaled(0.0, 100.0),
+            };
+            window.next_frame.scene.monochrome_sprites.clear();
+            window.text_fade = Some((ScaledPixels(10.0), ScaledPixels(14.0)));
+            window.paint_cached_monochrome_glyph(
+                scaled(6.0, 18.0),
+                mask,
+                hsla(0., 0., 1., 1.),
+                tile,
+            );
+            window.paint_cached_monochrome_glyph(
+                scaled(1.0, 5.0),
+                mask,
+                hsla(0., 0., 1., 1.),
+                tile,
+            );
+            window.paint_cached_monochrome_glyph(
+                scaled(15.0, 20.0),
+                mask,
+                hsla(0., 0., 1., 1.),
+                tile,
+            );
+            window.text_fade = Some((ScaledPixels(14.0), ScaledPixels(10.0)));
+            window.paint_cached_monochrome_glyph(
+                scaled(6.0, 18.0),
+                mask,
+                hsla(0., 0., 1., 1.),
+                tile,
+            );
+            window.paint_cached_monochrome_glyph(
+                scaled(1.0, 5.0),
+                mask,
+                hsla(0., 0., 1., 1.),
+                tile,
+            );
+            window.text_fade = None;
+            let columns: Vec<_> = window
+                .next_frame
+                .scene
+                .monochrome_sprites
+                .iter()
+                .map(|sprite| {
+                    let mask = sprite.content_mask.bounds;
+                    (mask.left().0, mask.right().0, sprite.color.a)
+                })
+                .collect();
+            assert_eq!(
+                columns,
+                [
+                    (6.0, 10.0, 1.0),
+                    (10.0, 11.0, 0.875),
+                    (11.0, 12.0, 0.625),
+                    (12.0, 13.0, 0.375),
+                    (13.0, 14.0, 0.125),
+                    (0.0, 100.0, 1.0),
+                    (10.0, 11.0, 0.125),
+                    (11.0, 12.0, 0.375),
+                    (12.0, 13.0, 0.625),
+                    (13.0, 14.0, 0.875),
+                    (14.0, 18.0, 1.0),
+                ]
+            );
         })
         .unwrap();
     }

@@ -121,6 +121,19 @@ impl DisplayLink {
     }
 }
 
+/// The radius of the screen's rounded corners in points, when it has them.
+/// UIKit keeps it private, so it is read only when the screen answers to it.
+pub fn display_corner_radius() -> Option<f32> {
+    let screen = IosDisplay::screen();
+    let answers: bool =
+        unsafe { msg_send![screen, respondsToSelector: sel!(_displayCornerRadius)] };
+    if !answers {
+        return None;
+    }
+    let radius: f64 = unsafe { msg_send![screen, _displayCornerRadius] };
+    (radius > 0.0).then_some(radius as f32)
+}
+
 pub fn phone() -> bool {
     let idiom: isize = unsafe {
         let device: *mut Object = msg_send![class!(UIDevice), currentDevice];

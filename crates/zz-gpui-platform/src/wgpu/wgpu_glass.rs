@@ -18,6 +18,8 @@ pub(crate) struct GlassResources {
     glass_layout: wgpu::BindGroupLayout,
     blur_layout: wgpu::BindGroupLayout,
     glass_pipeline: wgpu::RenderPipeline,
+    /// For glass that reads its backdrop, which writes its pixels itself.
+    reading_pipeline: wgpu::RenderPipeline,
     down_pipeline: wgpu::RenderPipeline,
     up_pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
@@ -37,7 +39,9 @@ pub(crate) struct GlassResources {
 /// Glass draws waiting for a pass over the target.
 pub(crate) struct PendingGlass {
     bind_group: wgpu::BindGroup,
-    draws: Vec<(u32, Bounds<i32>)>,
+    /// Each draw's uniform offset, scissor, and whether it reads its
+    /// backdrop.
+    draws: Vec<(u32, Bounds<i32>, bool)>,
 }
 
 struct Level {
@@ -144,6 +148,14 @@ impl GlassResources {
             wgpu::PrimitiveTopology::TriangleStrip,
             Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
         );
+        let reading_pipeline = pipeline(
+            "glass_reading",
+            &glass_layout,
+            "vs_glass",
+            "fs_glass",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            None,
+        );
         let down_pipeline = pipeline(
             "glass_down",
             &blur_layout,
@@ -188,6 +200,7 @@ impl GlassResources {
             glass_layout,
             blur_layout,
             glass_pipeline,
+            reading_pipeline,
             down_pipeline,
             up_pipeline,
             sampler,
@@ -472,7 +485,13 @@ impl GlassResources {
             let draws = run
                 .draws
                 .iter()
-                .map(|(uniform, scissor)| (self.push_uniform(uniform.as_bytes()), *scissor))
+                .map(|(uniform, scissor)| {
+                    (
+                        self.push_uniform(uniform.as_bytes()),
+                        *scissor,
+                        uniform.reads_backdrop(),
+                    )
+                })
                 .collect();
             pending = Some(PendingGlass { bind_group, draws });
         }
@@ -492,7 +511,13 @@ impl GlassResources {
         let draws = plan_glass(glasses, viewport, window_mask)
             .into_iter()
             .flat_map(|run| run.draws)
-            .map(|(uniform, scissor)| (self.push_uniform(uniform.as_bytes()), scissor))
+            .map(|(uniform, scissor)| {
+                (
+                    self.push_uniform(uniform.as_bytes()),
+                    scissor,
+                    uniform.reads_backdrop(),
+                )
+            })
             .collect();
         Some(PendingGlass { bind_group, draws })
     }
@@ -505,8 +530,16 @@ impl GlassResources {
         pending: PendingGlass,
         viewport: Size<i32>,
     ) {
-        pass.set_pipeline(&self.glass_pipeline);
-        for (offset, scissor) in pending.draws {
+        let mut reading = None;
+        for (offset, scissor, reads) in pending.draws {
+            if reading != Some(reads) {
+                reading = Some(reads);
+                pass.set_pipeline(if reads {
+                    &self.reading_pipeline
+                } else {
+                    &self.glass_pipeline
+                });
+            }
             pass.set_bind_group(0, &pending.bind_group, &[offset]);
             pass.set_scissor_rect(
                 scissor.origin.x as u32,

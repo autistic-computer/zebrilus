@@ -1,8 +1,12 @@
 use zz_gpui::{
-    AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, div, prelude::*,
+    AnyElement, App, Div, ElementId, ParentElement as _, SharedString, Styled as _, div, prelude::*,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, rems_from_px, roles};
+use crate::{
+    ActiveTheme as _, Colorize as _, Icon, IconName, PANE_HEADER_CONTROL_HEIGHT, StyledExt as _,
+    button::{Button, ButtonVariants as _},
+    rems_from_px, roles,
+};
 
 pub const COMPACT_PANE_HEADER_HEIGHT: f32 = 36.0;
 
@@ -69,4 +73,34 @@ pub fn compact_pane_header(
                     .children(actions),
             )
         })
+}
+
+/// A pane header button showing how many tabs a page holds, the count in a
+/// rounded square; it opens the page's tab drawer.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the box is a glyph in the button's text color, not a surface edge"
+)]
+pub fn compact_tabs_button(id: impl Into<ElementId>, count: usize, cx: &App) -> Button {
+    let color = cx.theme().foreground.faint();
+    Button::new(id)
+        .ghost()
+        .compact()
+        .surface_role(roles::PANE_HEADER_BUTTON)
+        .size(PANE_HEADER_CONTROL_HEIGHT)
+        .text_color(color)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(rems_from_px(15.0))
+                .rounded(rems_from_px(4.0))
+                .border(rems_from_px(1.5))
+                .border_color(color)
+                .text_size(rems_from_px(9.0))
+                .line_height(rems_from_px(10.0))
+                .font_semibold()
+                .child(SharedString::from(count.min(99).to_string())),
+        )
 }

@@ -8,20 +8,24 @@ use zz_gpui::{
 
 use super::{
     arrow_pad::ArrowPad,
+    bar::concentric,
     popover_key::{PopoverKey, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords},
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Icon, IconName, PaintState, StyledExt as _, Surface, kbd::Kbd, rems_from_px,
-    roles,
+    ActiveTheme as _, Icon, IconName, Layer, PaintState, Shape, StyledExt as _, Surface, Theme,
+    kbd::Kbd, rems_from_px, roles,
 };
 
-pub const KEY_ROW_HEIGHT: f32 = 44.0;
+pub const KEY_ROW_HEIGHT: f32 = KEY_PILL_HEIGHT + 2.0 * KEY_ROW_MARGIN_Y;
+pub(super) const KEY_PILL_HEIGHT: f32 = KEY_SIZE + 2.0 * PILL_PADDING;
+pub(super) const KEY_ROW_MARGIN_X: f32 = 8.0;
+pub(super) const KEY_ROW_MARGIN_Y: f32 = 4.0;
 pub(super) const KEY_SIZE: f32 = 40.0;
 pub(super) const KEY_ICON: f32 = 18.0;
 const KEY_MARK: f32 = 14.0;
-const ROW_PADDING_X: f32 = 6.0;
-const KEY_GAP: f32 = 3.0;
+const PILL_PADDING: f32 = 4.0;
+const KEY_GAP: f32 = 2.0;
 const KEY_GROUP: &str = "key-row-key";
 pub(super) const KEY_SLOP: (f32, f32) = (KEY_GAP / 2.0, (KEY_ROW_HEIGHT - KEY_SIZE) / 2.0);
 const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
@@ -90,11 +94,12 @@ pub(super) enum KeyLook {
     Inverted,
 }
 
-/// A key's surface and state, drawn as [`roles::PHONE_KEY`]: a resting key
-/// rests, a latched modifier is current, and a held or open key is the
-/// prominent one.
-pub(super) fn key_look(look: KeyLook) -> (Surface, PaintState) {
-    let key = Surface::new(roles::PHONE_KEY);
+/// A key's surface and state, drawn as [`roles::PHONE_KEY`] on the key
+/// row's pill: a resting key rests, a latched modifier is current, and a held
+/// or open key is the prominent one.
+pub(super) fn key_look(look: KeyLook, theme: &Theme) -> (Surface, PaintState) {
+    let ground = theme.layer(roles::PHONE_PILL, PaintState::Rest).ground;
+    let key = Surface::new(roles::PHONE_KEY).on(ground);
     match look {
         KeyLook::Rest => (key, PaintState::Rest),
         KeyLook::Latched => (key, PaintState::Current),
@@ -102,11 +107,26 @@ pub(super) fn key_look(look: KeyLook) -> (Surface, PaintState) {
     }
 }
 
+/// How a key paints in `state`. A round key takes the pill's radius less the
+/// padding around it, so it sits concentric in the pill.
+pub(super) fn key_layer(surface: Surface, state: PaintState, theme: &Theme) -> Layer {
+    let layer = theme.layer(surface, state);
+    if theme.style(roles::PHONE_KEY).shape != Shape::Round {
+        return layer;
+    }
+    let pill = theme.layer(roles::PHONE_PILL, PaintState::Rest).radius;
+    Layer {
+        radius: concentric(pill, zz_gpui::px(PILL_PADDING)),
+        ..layer
+    }
+}
+
 pub(super) fn key_surface<E: Styled>(element: E, look: KeyLook, cx: &App) -> E {
-    let (surface, state) = key_look(look);
+    let theme = cx.theme();
+    let (surface, state) = key_look(look, theme);
     let element = element
         .h(rems_from_px(KEY_SIZE))
-        .surface_at(surface, state, cx);
+        .layer(&key_layer(surface, state, theme));
     if look == KeyLook::Inverted {
         element.font_semibold()
     } else {
@@ -232,6 +252,7 @@ pub struct KeyRow {
     scroll: Option<ScrollHandle>,
     on_key: Option<KeyHandler>,
     on_hide: Option<Handler>,
+    bare: bool,
 }
 
 impl KeyRow {
@@ -241,7 +262,15 @@ impl KeyRow {
             scroll: None,
             on_key: None,
             on_hide: None,
+            bare: false,
         }
+    }
+
+    /// Leaves out the pill behind the keys, for a caller that draws it.
+    #[must_use]
+    pub fn bare(mut self) -> Self {
+        self.bare = true;
+        self
     }
 
     #[must_use]
@@ -266,15 +295,18 @@ impl KeyRow {
         div()
             .id(id)
             .flex()
-            .flex_none()
+            .flex_1()
+            .flex_shrink_0()
+            .min_w(rems_from_px(KEY_SIZE + KEY_GAP))
             .items_center()
+            .justify_center()
             .h_full()
-            .px(rems_from_px(KEY_SLOP.0))
     }
 
     fn cap(index: usize, look: KeyLook, content: impl IntoElement, cx: &App) -> Stateful<Div> {
         let selector = format!("key-row-key-{index}");
-        let pressed = cx.theme().layer(key_look(look).0, PaintState::Active);
+        let theme = cx.theme();
+        let pressed = key_layer(key_look(look, theme).0, PaintState::Active, theme);
         Self::slot(ElementId::named_usize("key-row-key", index))
             .group(KEY_GROUP)
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
@@ -372,25 +404,45 @@ impl RenderOnce for KeyRow {
             .enumerate()
             .map(|(index, key)| self.key(index, key, sticky, cx))
             .collect();
+        let pill = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
         div()
-            .id("key-row")
             .debug_selector(|| "key-row".to_owned())
-            .flex()
+            .relative()
             .flex_none()
-            .items_center()
             .w_full()
             .h(rems_from_px(KEY_ROW_HEIGHT))
-            .px(rems_from_px(ROW_PADDING_X - KEY_SLOP.0))
-            .overflow_x_scroll()
-            .restrict_scroll_to_axis()
-            .when_some(
-                self.scroll.as_ref(),
-                StatefulInteractiveElement::track_scroll,
-            )
             .font_family(cx.theme().font_family.clone())
             .text_size(rems_from_px(15.0))
             .line_height(rems_from_px(20.0))
-            .children(keys)
+            .when(!self.bare, |row| {
+                row.child(
+                    div()
+                        .absolute()
+                        .top(rems_from_px(KEY_ROW_MARGIN_Y))
+                        .bottom(rems_from_px(KEY_ROW_MARGIN_Y))
+                        .left(rems_from_px(KEY_ROW_MARGIN_X))
+                        .right(rems_from_px(KEY_ROW_MARGIN_X))
+                        .layer(&pill),
+                )
+            })
+            .child(
+                div()
+                    .id("key-row")
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left(rems_from_px(KEY_ROW_MARGIN_X + PILL_PADDING))
+                    .right(rems_from_px(KEY_ROW_MARGIN_X + PILL_PADDING))
+                    .flex()
+                    .items_center()
+                    .overflow_x_scroll()
+                    .restrict_scroll_to_axis()
+                    .when_some(
+                        self.scroll.as_ref(),
+                        StatefulInteractiveElement::track_scroll,
+                    )
+                    .children(keys),
+            )
     }
 }
 

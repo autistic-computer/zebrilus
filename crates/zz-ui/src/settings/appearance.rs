@@ -43,6 +43,9 @@ pub fn page_row(element: AnyElement, ends_run: bool) -> AnyElement {
         .into_any_element()
 }
 
+/// The id of the Interface page's Advanced heading.
+pub const ADVANCED_DISCLOSURE: &str = "settings-appearance-advanced";
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum AppearancePageItem {
     Description,
@@ -403,6 +406,22 @@ pub fn contrast_slider(
     )
 }
 
+/// A scale from 50% to 300%, like UI zoom, as a slider with its percentage.
+pub fn percent_slider(
+    id: &'static str,
+    label: &'static str,
+    value: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    value_slider(
+        Slider::new(id, label, value, 0.5..=3.0, on_change)
+            .step(0.05)
+            .display(|value| format!("{:.0}%", value * 100.0).into()),
+        cx,
+    )
+}
+
 fn value_slider(slider: Slider, cx: &App) -> zz_gpui::Div {
     if crate::touch::CoarsePointer::get(cx) {
         return div().w_full().child(slider);
@@ -436,6 +455,10 @@ pub fn appearance_page(
     mut render: impl FnMut(AppearancePageItem, StackPosition, &mut Window, &mut App) -> AnyElement
     + 'static,
 ) -> super::SettingsVirtualColumn {
+    let advanced = items.iter().enumerate().find_map(|(at, item)| match item {
+        AppearancePageItem::Advanced { expanded } => Some((at, *expanded)),
+        _ => None,
+    });
     super::settings_virtual_column(
         "settings-appearance",
         items.len(),
@@ -454,7 +477,18 @@ pub fn appearance_page(
                 }
                 _ => render(item, position, window, cx),
             };
-            page_row(row, !item.is_entry() || position.ends_run())
+            let row = page_row(row, !item.is_entry() || position.ends_run());
+            match advanced {
+                Some((at, expanded)) if index > at => super::settings_disclosure_reveal(
+                    ADVANCED_DISCLOSURE,
+                    expanded,
+                    index - at - 1,
+                    row,
+                    window,
+                    cx,
+                ),
+                _ => row,
+            }
         },
     )
 }

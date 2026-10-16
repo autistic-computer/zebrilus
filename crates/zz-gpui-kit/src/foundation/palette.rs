@@ -106,14 +106,25 @@ mod tests {
     }
 
     #[test]
-    fn a_tint_leans_only_the_background_toward_its_hue() {
+    fn a_tint_leans_the_text_less_than_the_background_toward_its_hue() {
         let lightness = super::super::color::oklab_lightness;
+        let chroma = |color: Hsla| {
+            let (_, a, b) = super::super::color::oklab::rgb_to_oklab(color.into());
+            a.hypot(b)
+        };
         for palette in [ThemeColor::light(), ThemeColor::dark()] {
             let tinted = palette.tinted(145.0, 1.0);
-            assert_eq!(tinted.foreground, palette.foreground);
-            assert!((lightness(tinted.background) - lightness(palette.background)).abs() < 0.01);
-            let rgb = zz_gpui::Rgba::from(tinted.background);
-            assert!(rgb.g > rgb.r && rgb.g > rgb.b, "{rgb:?}");
+            for (before, after) in [
+                (palette.background, tinted.background),
+                (palette.foreground, tinted.foreground),
+            ] {
+                assert!((lightness(after) - lightness(before)).abs() < 0.01);
+                let rgb = zz_gpui::Rgba::from(after);
+                assert!(rgb.g > rgb.r && rgb.g > rgb.b, "{rgb:?}");
+            }
+            let text = chroma(tinted.foreground) - chroma(palette.foreground);
+            let background = chroma(tinted.background) - chroma(palette.background);
+            assert!(0.0 < text && text < background, "{text} vs {background}");
         }
     }
 

@@ -330,7 +330,7 @@ fn tile_stack(
     ink: RowInk,
     handler: Option<&FlatHandler>,
     cx: &App,
-) -> Div {
+) -> PaneStack {
     let size = StackSize::Row;
     let tiles = tiles
         .iter()
@@ -348,16 +348,14 @@ fn tile_stack(
             }),
         })
         .collect();
-    div().flex_none().w(px(size.widest())).child(
-        PaneStack::new(
-            ElementId::NamedInteger(format!("flat-stack-{}", host.0).into(), window.0),
-            tiles,
-            size,
-            ink.ground,
-            stack_radius(px(size.tile()), row_height(), cx),
-        )
-        .dimmed(if ink.dimmed { DIMMED } else { 0.0 }),
+    PaneStack::new(
+        ElementId::NamedInteger(format!("flat-stack-{}", host.0).into(), window.0),
+        tiles,
+        size,
+        ink.ground,
+        stack_radius(px(size.tile()), row_height(), cx),
     )
+    .dimmed(if ink.dimmed { DIMMED } else { 0.0 })
 }
 
 pub fn flat_tile_stack(
@@ -367,7 +365,17 @@ pub fn flat_tile_stack(
     state: FlatRowState,
     cx: &App,
 ) -> Div {
-    tile_stack(host, window, tiles, RowInk::new(state, cx), None, cx)
+    div()
+        .flex_none()
+        .w(px(StackSize::Row.widest()))
+        .child(tile_stack(
+            host,
+            window,
+            tiles,
+            RowInk::new(state, cx),
+            None,
+            cx,
+        ))
 }
 
 fn spinner(size: f32, line_font: f32, color: Hsla, cx: &App) -> Div {
@@ -548,67 +556,70 @@ pub fn flat_window_row(
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::Open(host, id), window, cx))
         .children(fill)
-        .child(tile_stack(
-            host,
-            id,
-            &summary.tiles,
-            ink,
-            (!state.dimmed).then_some(handler),
-            cx,
-        ))
         .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(LINE_GAP))
-                .child(
-                    h_flex()
-                        .min_w_0()
-                        .h(px(TITLE_LINE))
-                        .gap(px(TITLE_TRAILING_GAP))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                                .text_size(px(TITLE_SIZE))
-                                .line_height(px(TITLE_LINE))
-                                .font_medium()
-                                .child(title),
-                        )
-                        .child(actions),
-                )
-                .child(
-                    h_flex()
-                        .min_w_0()
-                        .h(px(DETAIL_LINE))
-                        .gap(px(DETAIL_AGE_GAP))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                                .text_size(px(DETAIL_SIZE))
-                                .line_height(px(DETAIL_LINE))
-                                .text_color(ink.dim(ink.muted))
-                                .child(detail_text(summary, ink, cx)),
-                        )
-                        .children(window.age.clone().map(|age| {
-                            div()
-                                .flex_none()
-                                .relative()
-                                .top(baseline_drop(DETAIL_SIZE, AGE_SIZE, cx))
-                                .text_size(px(AGE_SIZE))
-                                .line_height(px(DETAIL_LINE))
-                                .font_features(TABULAR.clone())
-                                .text_color(ink.dim(ink.muted))
-                                .child(age)
-                        })),
-                ),
+            tile_stack(
+                host,
+                id,
+                &summary.tiles,
+                ink,
+                (!state.dimmed).then_some(handler),
+                cx,
+            )
+            .beside(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(LINE_GAP))
+                    .child(
+                        h_flex()
+                            .min_w_0()
+                            .h(px(TITLE_LINE))
+                            .gap(px(TITLE_TRAILING_GAP))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_fade(crate::LABEL_FADE)
+                                    .text_size(px(TITLE_SIZE))
+                                    .line_height(px(TITLE_LINE))
+                                    .font_medium()
+                                    .child(title),
+                            )
+                            .child(actions),
+                    )
+                    .child(
+                        h_flex()
+                            .min_w_0()
+                            .h(px(DETAIL_LINE))
+                            .gap(px(DETAIL_AGE_GAP))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_fade(crate::LABEL_FADE)
+                                    .text_size(px(DETAIL_SIZE))
+                                    .line_height(px(DETAIL_LINE))
+                                    .text_color(ink.dim(ink.muted))
+                                    .child(detail_text(summary, ink, cx)),
+                            )
+                            .children(window.age.clone().map(|age| {
+                                div()
+                                    .flex_none()
+                                    .relative()
+                                    .top(baseline_drop(DETAIL_SIZE, AGE_SIZE, cx))
+                                    .text_size(px(AGE_SIZE))
+                                    .line_height(px(DETAIL_LINE))
+                                    .font_features(TABULAR.clone())
+                                    .text_color(ink.dim(ink.muted))
+                                    .child(age)
+                            })),
+                    ),
+                px(TILE_GAP),
+            ),
         )
         .context_menu(move |popup, window_handle, cx| context(host, id, popup, window_handle, cx))
         .into_any_element()
@@ -807,7 +818,7 @@ pub fn flat_host_header(
                 .min_w_0()
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .text_ellipsis()
+                .text_fade(crate::LABEL_FADE)
                 .child(host.name.clone()),
         )
         .children(chevron(host.folded, hovered, HOST_NAME_SIZE, cx))
@@ -852,6 +863,7 @@ pub fn flat_session_header(
             cx,
         )
         .size(px(NEW_WINDOW_SIZE))
+        .debug_selector(|| "flat-new-window".into())
         .hit_slop(
             (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,
             (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,
@@ -898,7 +910,7 @@ pub fn flat_session_header(
                         .min_w_0()
                         .overflow_hidden()
                         .whitespace_nowrap()
-                        .text_ellipsis()
+                        .text_fade(crate::LABEL_FADE)
                         .child(session.label.clone()),
                 )
                 .children(session.index.clone().map(|index| {
@@ -923,7 +935,10 @@ pub fn flat_sidebar(
     ground: Ground,
     cx: &App,
 ) -> Div {
-    let mut list = v_flex().w_full().flex_none();
+    let mut list = v_flex()
+        .w_full()
+        .flex_none()
+        .pr(super::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER);
     for (index, host) in hosts.iter().enumerate() {
         list = list.child(
             flat_host_header(
@@ -983,6 +998,89 @@ pub fn flat_sidebar(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::navigation::{
+        WORKSPACE_CHROME_BUTTON_SIZE, WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
+        WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER, workspace_sidebar_footer, workspace_sidebar_titlebar,
+    };
+
+    struct Sidebar;
+
+    impl zz_gpui::Render for Sidebar {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let chrome = |id: &'static str| {
+                div()
+                    .debug_selector(move || id.to_owned())
+                    .size(WORKSPACE_CHROME_BUTTON_SIZE)
+            };
+            let host = PaletteHostId(0);
+            let session = SessionId(1);
+            let hosts = [FlatHost {
+                id: host,
+                name: "macbook".into(),
+                remote: false,
+                connection: HostConnection::Connected,
+                folded: false,
+                rollup: AttentionRollup::default(),
+                sessions: vec![FlatSession {
+                    id: session,
+                    label: "zz".into(),
+                    index: None,
+                    rollup: AttentionRollup::default(),
+                    folded: false,
+                    windows: Vec::new(),
+                }],
+            }];
+            let state = FlatState {
+                hovered: Some(FlatTarget::Session(host, session)),
+                ..FlatState::default()
+            };
+            let handler: FlatHandler = Rc::new(|_, _, _| {});
+            let menu: FlatMenu = Rc::new(|_, _, menu, _, _| menu);
+            v_flex()
+                .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
+                .child(workspace_sidebar_titlebar("titlebar", chrome("toggle"), cx))
+                .child(
+                    div()
+                        .debug_selector(|| "rows".to_owned())
+                        .child(flat_sidebar(
+                            &hosts,
+                            state,
+                            &handler,
+                            &menu,
+                            cx.theme().ground(),
+                            cx,
+                        )),
+                )
+                .child(workspace_sidebar_footer(
+                    "footer",
+                    div(),
+                    Some(chrome("eye").into_any_element()),
+                    cx,
+                ))
+        }
+    }
+
+    #[zz_gpui::test]
+    fn trailing_buttons_share_the_row_actions_column_beside_the_scrollbar(
+        cx: &mut zz_gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Sidebar);
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let new_window = cx.debug_bounds("flat-new-window").unwrap();
+        let toggle = cx.debug_bounds("toggle").unwrap();
+        let eye = cx.debug_bounds("eye").unwrap();
+        assert_eq!(toggle.center().x, new_window.center().x);
+        assert_eq!(eye.center().x, new_window.center().x);
+        let rows = cx.debug_bounds("rows").unwrap();
+        let inset = cx.update(|_, cx| header_inset(cx));
+        assert_eq!(
+            new_window.right(),
+            rows.right() - WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER - inset
+        );
+    }
 
     #[test]
     fn hover_survives_entering_the_next_row_before_leaving_the_last() {

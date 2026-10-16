@@ -656,6 +656,7 @@ impl TerminalView {
             Arc::new(RwLock::new(RetainedTerminalViewport {
                 viewport,
                 history: HistoryRing::default(),
+                below: HistoryRing::below(),
                 history_scrollbar,
                 history_mutations: 0,
                 history_invalidations: 0,

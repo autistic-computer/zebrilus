@@ -66,7 +66,8 @@ start at 240px wide regardless of the title and shrink together only when the wi
 out of room; titles truncate within the remaining space. Their pane deck is the shared
 `navigation::pane_stack` at its 20px size: the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color, 5px apart, so it is never
 wider than 30px and carries no count. The ring follows the pill's hover fill. Pointing at the deck
-opens every pane, focused first, in a row of tiles on a popover plate; tooltips there show the pane
+opens every pane, focused first, in a row of tiles drawn on the pill, the window name hidden
+under them and fading back in past them; tooltips there show the pane
 name, type, identity, focus state, and available URL, browser profile and tab count, or working
 path. Pane decks remain visible when attention badges are disabled. Clicking a tile selects both
 its window and pane directly, without a popup menu; a disconnected deck still opens but does not

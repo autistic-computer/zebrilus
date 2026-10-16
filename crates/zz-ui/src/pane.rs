@@ -1,7 +1,9 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Icon,
-    IconName, InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _, Surface,
-    SurfaceRole, Tone, button::Button, roles,
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Ground,
+    Icon, IconName, InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _,
+    Surface, Tone,
+    button::{Button, ButtonVariants as _},
+    roles,
 };
 use zz_gpui::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, FontWeight,
@@ -10,11 +12,9 @@ use zz_gpui::{
 };
 
 mod drag;
-pub use drag::{
-    DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, pane_drag_button, pane_drag_preview,
-};
+pub use drag::{DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, pane_drag_preview};
 
-pub const TERMINAL_HEADER_HEIGHT: f32 = 36.0;
+pub const TERMINAL_HEADER_HEIGHT: f32 = crate::PANE_HEADER_HEIGHT.as_f32();
 
 pub fn pane_header_icon_button(
     id: impl Into<ElementId>,
@@ -24,6 +24,7 @@ pub fn pane_header_icon_button(
 ) -> Button {
     Button::compact_icon(id, icon)
         .surface_role(roles::PANE_HEADER_BUTTON)
+        .size(crate::PANE_HEADER_CONTROL_HEIGHT)
         .disabled(!enabled)
         .text_color(cx.theme().foreground.faint())
 }
@@ -37,10 +38,13 @@ pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconNa
 
 const PANE_TITLE_GROUP: &str = "pane-title";
 const PANE_TITLE_ICON_SIZE: f32 = 14.0;
+const PANE_TITLE_WIDTH: f32 = 180.0;
 
 /// A pane header's title as a button: dragged, it moves the pane; pointed at,
 /// its icon turns into the move arrows and its X shows at the right end. A
-/// coarse pointer, which never hovers, always shows the X.
+/// coarse pointer, which never hovers, always shows the X. The title keeps
+/// one width whatever its label, and a label too long for it fades out
+/// under the X.
 #[derive(IntoElement)]
 pub struct PaneTitle {
     id: ElementId,
@@ -48,6 +52,7 @@ pub struct PaneTitle {
     label: AnyElement,
     drag: PaneDragSource,
     on_close: Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>>,
+    pinned: bool,
 }
 
 impl PaneTitle {
@@ -63,7 +68,15 @@ impl PaneTitle {
             label: label.into_any_element(),
             drag,
             on_close: None,
+            pinned: true,
         }
+    }
+
+    /// Sizes the title to its label, for a label that never changes.
+    #[must_use]
+    pub fn fit(mut self) -> Self {
+        self.pinned = false;
+        self
     }
 
     #[must_use]
@@ -77,6 +90,7 @@ impl RenderOnce for PaneTitle {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let coarse = crate::touch::CoarsePointer::get(cx);
         let movable = self.drag.enabled();
+        let pinned = self.pinned;
         let icon_size = px(PANE_TITLE_ICON_SIZE);
         let surface = Surface::new(roles::PANE_TITLE).on(cx.theme().ground_of(roles::PANE_HEADER));
         let icon = div()
@@ -103,6 +117,15 @@ impl RenderOnce for PaneTitle {
         let close = self.on_close.map(|on_close| {
             div()
                 .flex_none()
+                .when(pinned, |close| {
+                    close
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .right_0()
+                        .flex()
+                        .items_center()
+                })
                 .debug_selector(|| "pane-title-close".into())
                 .when(!coarse, |close| {
                     close
@@ -110,7 +133,10 @@ impl RenderOnce for PaneTitle {
                         .group_hover(PANE_TITLE_GROUP, zz_gpui::Styled::visible)
                 })
                 .child(
-                    pane_header_icon_button("pane-title-close", IconName::Xmark, true, cx)
+                    Button::compact_icon("pane-title-close", IconName::Xmark)
+                        .size(crate::PANE_HEADER_CONTROL_HEIGHT)
+                        .text()
+                        .text_color(cx.theme().foreground.faint())
                         .tooltip("Close pane")
                         .on_click(move |_, window, cx| {
                             cx.stop_propagation();
@@ -118,31 +144,44 @@ impl RenderOnce for PaneTitle {
                         }),
                 )
         });
-        let has_close = close.is_some();
+        let end = match (close.is_some(), pinned) {
+            (false, _) => px(8.0),
+            (true, false) => px(0.0),
+            (true, true) => crate::PANE_HEADER_CONTROL_HEIGHT,
+        };
         let title = div()
             .id(self.id)
             .group(PANE_TITLE_GROUP)
             .debug_selector(|| "pane-title".into())
+            .relative()
             .flex()
-            .flex_initial()
-            .min_w_0()
+            .map(|title| {
+                if pinned {
+                    title.flex_initial().min_w_0().w(px(PANE_TITLE_WIDTH))
+                } else {
+                    title.flex_none()
+                }
+            })
             .h(crate::PANE_HEADER_CONTROL_HEIGHT)
             .items_center()
             .gap(px(6.0))
             .pl(px(6.0))
-            .pr(px(if has_close { 0.0 } else { 8.0 }))
+            .pr(end)
             .surface_hover(surface, PaintState::Rest, cx)
             .text_color(cx.theme().foreground.muted())
             .child(icon)
             .child(
                 div()
-                    .flex()
-                    .flex_initial()
                     .min_w_0()
-                    .items_center()
                     .overflow_hidden()
                     .whitespace_nowrap()
-                    .text_ellipsis()
+                    .map(|label| {
+                        if pinned {
+                            label.flex_1().text_fade(crate::LABEL_FADE)
+                        } else {
+                            label.flex_initial()
+                        }
+                    })
                     .child(self.label),
             )
             .children(close);
@@ -305,7 +344,6 @@ pub fn pane_surface(
 ) -> Stateful<zz_gpui::Div> {
     let theme = cx.theme();
     let glass = theme.style(roles::PANE).fill == Fill::Glass && theme.glass_effect().is_some();
-    let lit = chrome.active && theme.lights_active_pane();
     let rest = theme.layer(roles::PANE, PaintState::Rest);
     let outlined = rest.border_width > Pixels::ZERO;
     let shadow = if chrome.shadow {
@@ -344,7 +382,7 @@ pub fn pane_surface(
                 surface.child(pane_frame_hairline(
                     chrome.radii,
                     frame.glint_width,
-                    pane_border_color(lit, cx),
+                    theme.pane_edge_color(chrome.active),
                     !glass,
                 ))
             },
@@ -572,9 +610,14 @@ pub enum PaneDragOverlayState {
     Armed,
     /// This pane is the one in flight. It renders in place and recedes.
     Source,
+    /// Another pane is in flight. This one only takes the pointer and shows
+    /// as it is, so the drop preview is all that draws over it.
+    Target,
 }
 
-/// The occluding pane layer used while the tmux prefix is armed.
+/// The occluding pane layer used while the tmux prefix is armed or a pane is
+/// being dragged. The armed veil is the drop zone's tint even where the
+/// theme makes drop zones glass, so the panes under it stay sharp.
 pub fn pane_drag_overlay(
     id: impl Into<ElementId>,
     state: PaneDragOverlayState,
@@ -583,7 +626,7 @@ pub fn pane_drag_overlay(
 ) -> Stateful<zz_gpui::Div> {
     let cursor = match state {
         PaneDragOverlayState::Armed => CursorStyle::OpenHand,
-        PaneDragOverlayState::Source => CursorStyle::ClosedHand,
+        PaneDragOverlayState::Source | PaneDragOverlayState::Target => CursorStyle::ClosedHand,
     };
     div()
         .id(id)
@@ -594,9 +637,16 @@ pub fn pane_drag_overlay(
         .map(|veil| match state {
             PaneDragOverlayState::Armed => veil.layer(&Layer {
                 border_width: Pixels::ZERO,
-                ..cx.theme().layer(roles::DROP_ZONE, PaintState::Hover)
+                ..cx.theme().layer(
+                    Surface::new(roles::DROP_ZONE).on(Ground {
+                        glass: true,
+                        ..cx.theme().ground()
+                    }),
+                    PaintState::Hover,
+                )
             }),
             PaneDragOverlayState::Source => veil.bg(pane_drag_source_veil(cx)),
+            PaneDragOverlayState::Target => veil,
         })
         .rounded_tl(radii.top_left)
         .rounded_tr(radii.top_right)
@@ -1172,34 +1222,41 @@ pub fn pane_picker_row(
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let state = crate::picker::row_state(selected, enabled);
-    let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
+    let ground = cx.theme().layer(roles::PANE_PICKER, state).ground;
     let ink = cx
         .theme()
         .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
         .muted_at(PaintState::Rest);
-    crate::picker::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, enabled, cx)
-        .w_full()
-        .gap(px(10.0))
-        .px(px(12.0))
-        .when(enabled, zz_gpui::Styled::cursor_pointer)
-        .child(crate::Icon::new(icon).with_size(px(16.0)).text_color(ink))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_size(crate::rems_from_px(12.0))
-                .child(title),
+    let height = crate::picker::LIST_ROW_HEIGHT;
+    crate::picker::row_surface(
+        crate::h_flex().id(id).flex_none().h(height),
+        roles::PANE_PICKER,
+        state,
+        height,
+        cx,
+    )
+    .w_full()
+    .gap(px(10.0))
+    .px(px(12.0))
+    .when(enabled, zz_gpui::Styled::cursor_pointer)
+    .child(crate::Icon::new(icon).with_size(px(16.0)).text_color(ink))
+    .child(
+        div()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .text_size(crate::rems_from_px(12.0))
+            .child(title),
+    )
+    .child(
+        crate::kbd::Kbd::new(
+            zz_gpui::Keystroke::parse(shortcut).expect("static pane picker shortcut"),
         )
-        .child(
-            crate::kbd::Kbd::new(
-                zz_gpui::Keystroke::parse(shortcut).expect("static pane picker shortcut"),
-            )
-            .lowercase()
-            .on(ground),
-        )
+        .lowercase()
+        .on(ground),
+    )
 }
 
 /// A freshly split pane asking what it should become: `rows` centered on
@@ -1288,9 +1345,11 @@ mod tests {
         };
         draw(cx);
         let title = cx.debug_bounds("pane-title").unwrap();
+        assert_eq!(title.size.width, px(PANE_TITLE_WIDTH));
         cx.simulate_mouse_move(title.center(), None, Modifiers::default());
         draw(cx);
         let close = cx.debug_bounds("pane-title-close").unwrap();
+        assert!(close.right() <= title.right() && title.right() - close.right() < px(1.0));
         cx.simulate_click(close.center(), Modifiers::default());
         draw(cx);
         assert_eq!(view.read_with(cx, |view, _| view.closed), 1);

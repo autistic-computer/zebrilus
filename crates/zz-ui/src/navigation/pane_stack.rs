@@ -1,14 +1,15 @@
 use std::{rc::Rc, sync::Arc, time::Duration};
 
 use zz_gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Div, ElementId, Entity, EntityId,
-    FULL_CORNER_RADIUS, Hsla, IntoElement, MouseButton, Pixels, RenderOnce, Role, SharedString,
-    Window, deferred, div, ease_out_quint, prelude::*, px,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, Div, Element, ElementId, Entity,
+    EntityId, FULL_CORNER_RADIUS, GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId,
+    MouseButton, Pixels, RenderOnce, Role, SharedString, Window, deferred, div, ease_out_quint,
+    prelude::*, px,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractiveSurfaceExt as _,
-    Layer, PaintState, StyledExt as _, Surface, SurfaceRole, Tone, roles, tooltip::Tooltip,
+    Layer, PaintState, StyledExt as _, Surface, Tone, roles, tooltip::Tooltip,
     touch::CoarsePointer,
 };
 
@@ -108,6 +109,7 @@ pub struct PaneStack {
     radius: Pixels,
     hover: Option<(SharedString, Hsla)>,
     dimmed: f32,
+    beside: Option<(AnyElement, Pixels)>,
 }
 
 impl PaneStack {
@@ -126,7 +128,17 @@ impl PaneStack {
             radius,
             hover: None,
             dimmed: 0.0,
+            beside: None,
         }
+    }
+
+    /// Lays `content` out `gap` after the stack. Open, the stack's tiles run
+    /// over the start of it, and its text is hidden under them and fades back
+    /// in past them.
+    #[must_use]
+    pub fn beside(mut self, content: impl IntoElement, gap: Pixels) -> Self {
+        self.beside = Some((content.into_any_element(), gap));
+        self
     }
 
     #[must_use]
@@ -231,8 +243,7 @@ impl PaneStack {
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
         let size = self.size;
         let theme = cx.theme();
-        let plate = theme.layer(SurfaceRole::POPOVER, PaintState::Rest);
-        let tile = Surface::new(roles::PANE_STACK).on(plate.ground);
+        let tile = Surface::new(roles::PANE_STACK).on(self.ground);
         let pad = size.gap();
         let travel = size.tile() + size.gap();
         let animate = !cx.reduce_motion();
@@ -308,9 +319,6 @@ impl PaneStack {
             .flex_row_reverse()
             .gap(px(size.gap()))
             .p(px(pad))
-            .occlude()
-            .layer(&plate)
-            .rounded(grow(self.radius, pad))
             .on_hover(move |hovered, _, cx| {
                 let hovered = *hovered;
                 update(&pointer, view, cx, |pointer| pointer.row = hovered);
@@ -335,8 +343,17 @@ impl PaneStack {
     }
 }
 
+impl PaneStack {
+    /// How far the open stack's tiles reach past its leading edge.
+    fn reach(&self) -> Pixels {
+        let size = self.size;
+        let count = self.tiles.len() as f32;
+        px(count * size.tile() + (count - 1.0) * size.gap() + size.gap())
+    }
+}
+
 impl RenderOnce for PaneStack {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let pointer = window.use_keyed_state(self.id.clone(), cx, |_, _| Pointer::default());
         let view = window.current_view();
         let openable = self.tiles.len() > 1;
@@ -350,9 +367,11 @@ impl RenderOnce for PaneStack {
         let width = size.tile() + (shown - 1) as f32 * size.step();
         let coarse = CoarsePointer::get(cx);
         let row = open.then(|| self.open_row(&pointer, view, cx));
+        let reach = self.reach();
+        let beside = self.beside.take();
         let hover = pointer.clone();
         let tap = pointer.clone();
-        div()
+        let stack = div()
             .id(self.id.clone())
             .relative()
             .flex_none()
@@ -374,11 +393,109 @@ impl RenderOnce for PaneStack {
                             })
                     })
             })
-            .children(
-                (0..shown)
-                    .rev()
-                    .map(|slot| self.resting(slot, shown, &resting)),
-            )
-            .children(row)
+            .when(!open, |stack| {
+                stack.children(
+                    (0..shown)
+                        .rev()
+                        .map(|slot| self.resting(slot, shown, &resting)),
+                )
+            })
+            .children(row);
+        let Some((content, gap)) = beside else {
+            return stack.into_any_element();
+        };
+        let stack = if size == StackSize::Row {
+            div()
+                .flex_none()
+                .w(px(size.widest()))
+                .child(stack)
+                .into_any_element()
+        } else {
+            stack.into_any_element()
+        };
+        let row = div()
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .items_center()
+            .gap(gap)
+            .child(stack)
+            .child(content);
+        if open {
+            UnderTiles {
+                child: row.into_any_element(),
+                reach,
+            }
+            .into_any_element()
+        } else {
+            row.into_any_element()
+        }
+    }
+}
+
+/// Paints `child` with the text in it hidden up to `reach` from its leading
+/// edge, where an open stack's tiles end, fading back in over the next
+/// [`crate::LABEL_FADE`].
+struct UnderTiles {
+    child: AnyElement,
+    reach: Pixels,
+}
+
+impl IntoElement for UnderTiles {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for UnderTiles {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        (self.child.request_layout(window, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        (): &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.child.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        (): &mut Self::RequestLayoutState,
+        (): &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let gone = bounds.left() + self.reach;
+        window.with_text_fade(Some((gone + crate::LABEL_FADE, gone)), |window| {
+            self.child.paint(window, cx);
+        });
     }
 }

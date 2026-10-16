@@ -96,8 +96,10 @@ a missing scale means a sharp vertex.
   `key-tab-iso` ↹), with `key-escape` ⎋ shared. The phone key row picks the set at build time, the way
   `Kbd` picks ⌃⌥ or Ctrl Alt. The prefix key has no glyph of its own: it shows the prefix it sends,
   the control mark and the letter (⌃B, ⎈B), so it follows a rebinding.
-- Meanings follow use, not names: `panel-right` and `panel-bottom` are the split right and split down
-  actions (two equal panes, no plus); `layout-columns` is the "Window layout" menu (one tall pane and two
+- Meanings follow use, not names: `panel-left` is Toggle sidebar, a frame taller than the window
+  glyphs (2..22 × 3..21) after the reference fabrico picked; `list` and `list-tree` are the sidebar's
+  flat window list and session tree, and the view button shows the one on screen; `panel-right` and
+  `panel-bottom` are the split right and split down actions (two equal panes, no plus); `layout-columns` is the "Window layout" menu (one tall pane and two
   stacked); `layers` is a session (a stack of window cards); `loader` is the Mac activity spinner.
 - Each icon may carry a `note` that explains a choice; the review page shows it on the card.
 

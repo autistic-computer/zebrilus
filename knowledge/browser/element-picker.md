@@ -81,6 +81,17 @@ The active pick is auto-cancelled on navigation (`on_before_browse`), before clo
 (`on_render_process_terminated`), each emitting `ElementPickCancelled`.
 `cancel_element_pick()` runs `globalThis.__zzElementPicker?.cancel()`.
 
+On iOS (`clients/app/src/ios_browser.rs`, `app/browser_pane.rs`) a touch on
+the picker button claims a gpui touch drag and starts the pick on touch-down.
+The finger stays with the gpui view while it moves over the native web view,
+so the pane forwards each position to `__zzElementPicker.point(x, y, width)`
+(points relative to the web view, scaled to CSS pixels by the visual
+viewport's width) and lifting the finger calls `release()`, which picks what
+is highlighted or cancels when nothing is. A tap that never reaches the page
+cancels and shows a hint. A pointer click on the button keeps the toggle
+mode. On the phone the result shows in the pane pill for two seconds instead
+of the status row, which would shift the page under the finger.
+
 The picker consumes primary pointer-down/up, mouse-down/up, and click events
 in the window capture phase. It resolves the element context from the click
 handler after preventing the default action and stopping propagation. Pointer
