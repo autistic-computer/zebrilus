@@ -2333,6 +2333,179 @@ mod tests {
         );
     }
 
+    struct SpriteTextSystem;
+
+    impl crate::PlatformTextSystem for SpriteTextSystem {
+        fn add_fonts(&self, fonts: Vec<std::borrow::Cow<'static, [u8]>>) -> Result<()> {
+            crate::NoopTextSystem.add_fonts(fonts)
+        }
+        fn all_font_names(&self) -> Vec<String> {
+            crate::NoopTextSystem.all_font_names()
+        }
+        fn font_id(&self, font: &crate::Font) -> Result<FontId> {
+            crate::NoopTextSystem.font_id(font)
+        }
+        fn font_metrics(&self, font: FontId) -> crate::FontMetrics {
+            crate::NoopTextSystem.font_metrics(font)
+        }
+        fn typographic_bounds(&self, font: FontId, glyph: GlyphId) -> Result<Bounds<f32>> {
+            crate::NoopTextSystem.typographic_bounds(font, glyph)
+        }
+        fn advance(&self, font: FontId, glyph: GlyphId) -> Result<crate::Size<f32>> {
+            crate::NoopTextSystem.advance(font, glyph)
+        }
+        fn glyph_for_char(&self, font: FontId, ch: char) -> Option<GlyphId> {
+            crate::NoopTextSystem.glyph_for_char(font, ch)
+        }
+        fn glyph_raster_bounds(
+            &self,
+            params: &RenderGlyphParams,
+        ) -> Result<Bounds<crate::DevicePixels>> {
+            Ok(Bounds::new(
+                point(crate::DevicePixels(0), crate::DevicePixels(-8)),
+                size(crate::DevicePixels(8), crate::DevicePixels(12)),
+            )
+            .map(|coordinate| {
+                crate::DevicePixels((coordinate.0 as f32 * params.scale_factor) as i32)
+            }))
+        }
+        fn rasterize_glyph(
+            &self,
+            params: &RenderGlyphParams,
+            bounds: Bounds<crate::DevicePixels>,
+        ) -> Result<(crate::Size<crate::DevicePixels>, Vec<u8>)> {
+            let channels = if params.is_emoji { 4 } else { 1 };
+            Ok((
+                bounds.size,
+                vec![255; (bounds.size.width.0 * bounds.size.height.0 * channels) as usize],
+            ))
+        }
+        fn layout_line(
+            &self,
+            text: &str,
+            font_size: Pixels,
+            runs: &[crate::FontRun],
+        ) -> LineLayout {
+            crate::NoopTextSystem.layout_line(text, font_size, runs)
+        }
+        fn recommended_rendering_mode(&self, _: FontId, _: Pixels) -> crate::TextRenderingMode {
+            crate::TextRenderingMode::Grayscale
+        }
+    }
+
+    #[test]
+    fn first_paint_raster_data_preserves_sprites_with_fewer_lookups() {
+        let mut cx = TestAppContext::build_with_text_system(
+            crate::TestDispatcher::new(0),
+            None,
+            Arc::new(SpriteTextSystem),
+        );
+        let totals = Rc::new(std::cell::Cell::new((0usize, 0usize, 0usize)));
+        let counts = totals.clone();
+        test_underline_handler_at_scales(&mut cx, move |window, cx| {
+            let line = window.text_system().shape_line(
+                "aé😀bc".into(),
+                px(16.),
+                &[
+                    TextRun {
+                        len: 3,
+                        color: hsla(0.1, 0.7, 0.4, 0.8),
+                        ..TextRun::default()
+                    },
+                    TextRun {
+                        len: 6,
+                        color: hsla(0.8, 0.4, 0.7, 0.6),
+                        ..TextRun::default()
+                    },
+                ],
+                None,
+            );
+            for origin in [point(px(8.), px(12.)), point(px(8.25), px(12.25))] {
+                for options in [
+                    GlyphRenderOptions::default(),
+                    GlyphRenderOptions {
+                        synthetic_bold: true,
+                        synthetic_italic: true,
+                        font_smoothing: crate::FontSmoothing::Enabled(128),
+                    },
+                ] {
+                    for mask in [
+                        Bounds::new(point(px(0.), px(0.)), size(px(200.), px(100.))),
+                        Bounds::new(point(px(12.), px(14.)), size(px(28.), px(10.))),
+                    ] {
+                        window.with_content_mask(
+                            Some(crate::ContentMask { bounds: mask }),
+                            |window| {
+                                let sprites = |window: &Window| {
+                                    format!(
+                                        "{:?}{:?}{:?}",
+                                        window.next_frame.scene.monochrome_sprites,
+                                        window.next_frame.scene.subpixel_sprites,
+                                        window.next_frame.scene.polychrome_sprites
+                                    )
+                                };
+                                window.next_frame.scene.clear();
+                                let before = window.glyph_lookup_count();
+                                line.paint_with_options(
+                                    origin,
+                                    px(20.),
+                                    TextAlign::Left,
+                                    None,
+                                    options,
+                                    window,
+                                    cx,
+                                )
+                                .unwrap();
+                                let expected = sprites(window);
+                                line.compute_glyph_raster_data(
+                                    origin,
+                                    px(20.),
+                                    options,
+                                    window,
+                                    cx,
+                                )
+                                .unwrap()
+                                .unwrap();
+                                let original_lookups = window.glyph_lookup_count() - before;
+                                window.next_frame.scene.clear();
+                                let before = window.glyph_lookup_count();
+                                let data = line
+                                    .compute_glyph_raster_data(origin, px(20.), options, window, cx)
+                                    .unwrap()
+                                    .unwrap();
+                                assert!(line.paint_with_raster_data(
+                                    &data,
+                                    origin,
+                                    px(20.),
+                                    window
+                                ));
+                                assert_eq!(sprites(window), expected);
+                                let direct_lookups = window.glyph_lookup_count() - before;
+                                assert!(direct_lookups < original_lookups);
+                                let (original, direct, cases) = counts.get();
+                                counts.set((
+                                    original + original_lookups,
+                                    direct + direct_lookups,
+                                    cases + 1,
+                                ));
+                                assert_eq!(
+                                    direct_lookups,
+                                    line.runs.iter().map(|run| run.glyphs.len()).sum::<usize>() * 2
+                                );
+                            },
+                        );
+                    }
+                }
+            }
+        });
+        eprintln!(
+            "first_paint_lookups original={} direct={} cases={}",
+            totals.get().0,
+            totals.get().1,
+            totals.get().2
+        );
+    }
+
     #[test]
     fn glyph_raster_data_validity_tracks_origin_phase_scale_and_window_state() {
         let origin = point(px(0.125), px(0.0));
