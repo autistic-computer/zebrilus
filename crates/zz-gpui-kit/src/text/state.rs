@@ -562,7 +562,7 @@ fn parse_content(
 
     let mut source = String::new();
     if options.append
-        && let Some(last_block) = content.document.blocks.pop()
+        && let Some(last_block) = Arc::make_mut(&mut content.document.blocks).pop()
         && let Some(span) = last_block.span()
     {
         node_cx.offset = span.start;
@@ -578,7 +578,8 @@ fn parse_content(
     if options.append {
         content.document.source =
             format!("{}{}", content.document.source, options.pending_text).into();
-        content.document.blocks.extend(new_document.blocks);
+        Arc::make_mut(&mut content.document.blocks)
+            .extend(Arc::unwrap_or_clone(new_document.blocks));
     } else {
         content.document = new_document;
     }
@@ -591,6 +592,67 @@ mod tests {
     use super::*;
     use crate::text::MarkdownNode;
     use zz_gpui::TestAppContext;
+
+    #[test]
+    fn appending_markdown_preserves_previous_document_snapshots() {
+        let options = UpdateOptions {
+            revision: 1,
+            pending_text: "# Heading\n\nFirst paragraph.\n\nLast".to_owned(),
+            append: false,
+            markdown_extensions: Arc::default(),
+        };
+        let before = parse_content(ParsedContent::default(), &options).unwrap();
+        let snapshot = before.clone();
+        let after = parse_content(
+            before,
+            &UpdateOptions {
+                revision: 2,
+                pending_text: " paragraph.\n\n- Next".to_owned(),
+                append: true,
+                markdown_extensions: Arc::default(),
+            },
+        )
+        .unwrap();
+        assert_eq!(snapshot.document.source.as_str(), options.pending_text);
+        assert_eq!(snapshot.document.blocks.len(), 3);
+        assert_eq!(snapshot.document.blocks[2].text(), "Last\n");
+        assert_eq!(after.document.blocks.len(), 4);
+        assert_eq!(after.document.blocks[2].text(), "Last paragraph.\n");
+        assert_eq!(after.document.blocks[3].text(), "Next\n");
+    }
+
+    #[test]
+    #[ignore = "manual document snapshot benchmark"]
+    fn benchmark_markdown_document_snapshots() {
+        use std::{hint::black_box, time::Instant};
+
+        for paragraphs in [8, 64, 512] {
+            let source = (0..paragraphs)
+                .map(|i| format!("Paragraph {i}: **bold** and [link](https://example.test).\n\n"))
+                .collect::<String>();
+            let document = markdown_parse::parse(&source, &mut NodeContext::default()).unwrap();
+            for round in 0..6 {
+                for shared in if round % 2 == 0 {
+                    [false, true]
+                } else {
+                    [true, false]
+                } {
+                    let start = Instant::now();
+                    for _ in 0..2_000 {
+                        if shared {
+                            black_box(black_box(&document.blocks).clone());
+                        } else {
+                            black_box(black_box(document.blocks.as_ref()).clone());
+                        }
+                    }
+                    eprintln!(
+                        "markdown_snapshot paragraphs={paragraphs} shared={shared} round={round} ns={}",
+                        start.elapsed().as_nanos()
+                    );
+                }
+            }
+        }
+    }
 
     #[zz_gpui::test]
     fn set_text_then_push_str_appends_to_replaced_content(cx: &mut TestAppContext) {
