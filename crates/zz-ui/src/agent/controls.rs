@@ -726,7 +726,7 @@ pub fn agent_thread_button(id: impl Into<ElementId>, title: &str, cx: &App) -> B
         .child(
             div()
                 .min_w_0()
-                .text_ellipsis()
+                .text_fade(crate::LABEL_FADE)
                 .child(agent_thread_title(title)),
         )
 }

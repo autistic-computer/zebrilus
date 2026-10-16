@@ -16,7 +16,7 @@ use serde::{
     ser::SerializeTuple,
 };
 
-use crate::{Color, ColourClass, CursorStyle};
+use crate::{Color, ColourClass, CursorStyle, PackedStyle, TerminalViewport};
 
 const MAX_CONFIG_DEPTH: usize = 16;
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
@@ -489,6 +489,84 @@ pub struct TerminalAppearance {
     pub palette_classes: Vec<(u8, ColourClass)>,
     #[serde(skip)]
     pub default_classes: [Option<ColourClass>; 2],
+    /// The colors this client draws the terminal's own colors in instead of
+    /// the host's, when it owns them.
+    #[serde(skip)]
+    pub local_colors: Option<LocalColors>,
+}
+
+/// Colors a client draws a terminal in over the host's: the default
+/// foreground and background, then the 16 base palette colors. Cells keep
+/// any other color an application picked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LocalColors {
+    host: [Color; 18],
+    local: [Color; 18],
+}
+
+impl LocalColors {
+    /// `local` in place of the host's `foreground`, `background` and the
+    /// first 16 colors of `palette`, in that order.
+    #[must_use]
+    pub fn new(
+        foreground: Color,
+        background: Color,
+        palette: &TerminalPalette,
+        local: [Color; 18],
+    ) -> Self {
+        let mut host = [foreground; 18];
+        host[1] = background;
+        host[2..].copy_from_slice(&palette.as_array()[..16]);
+        Self { host, local }
+    }
+
+    #[must_use]
+    pub const fn foreground(&self) -> Color {
+        self.local[0]
+    }
+
+    #[must_use]
+    pub const fn background(&self) -> Color {
+        self.local[1]
+    }
+
+    /// `viewport` with its default colors and its cursor in the local
+    /// foreground and background.
+    #[must_use]
+    pub fn viewport(&self, viewport: &TerminalViewport) -> TerminalViewport {
+        TerminalViewport {
+            foreground: self.foreground(),
+            background: self.background(),
+            cursor: viewport
+                .cursor
+                .map(|cursor| cursor.with_color(self.foreground())),
+            ..viewport.clone()
+        }
+    }
+
+    /// `style` with each color that came from the defaults or the base
+    /// palette in the local one. A color whose source the host did not
+    /// record, such as an inverted cell's, is matched by value.
+    #[must_use]
+    pub fn recolor(&self, style: PackedStyle) -> PackedStyle {
+        style.with_grounds(
+            self.ground(style.foreground(), style.foreground_class(), 0),
+            self.ground(style.background(), style.background_class(), 1),
+        )
+    }
+
+    fn ground(&self, color: Color, class: ColourClass, default: usize) -> Color {
+        match class {
+            ColourClass::Default => self.local[default],
+            ColourClass::Palette(index) if index < 16 => self.local[2 + usize::from(index)],
+            ColourClass::Palette(_) | ColourClass::Rgb => color,
+            ColourClass::Resolved => self
+                .host
+                .iter()
+                .position(|host| *host == color)
+                .map_or(color, |at| self.local[at]),
+        }
+    }
 }
 
 struct BoundedFontFamily(String);
@@ -663,6 +741,7 @@ impl fmt::Debug for TerminalAppearance {
             .field("background_opacity", &self.background_opacity)
             .field("palette_classes", &self.palette_classes)
             .field("default_classes", &self.default_classes)
+            .field("local_colors", &self.local_colors)
             .finish()
     }
 }
@@ -707,6 +786,7 @@ impl Default for TerminalAppearance {
             background_opacity: 1.0,
             palette_classes: Vec::new(),
             default_classes: [None, None],
+            local_colors: None,
         }
     }
 }
@@ -808,6 +888,7 @@ impl TerminalAppearance {
         self.background_opacity.to_bits().hash(&mut hasher);
         self.palette_classes.hash(&mut hasher);
         self.default_classes.hash(&mut hasher);
+        self.local_colors.hash(&mut hasher);
         hasher.finish()
     }
 }
@@ -2300,6 +2381,40 @@ fn hash_palette(palette: &[Color; 256]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_colors_replace_the_defaults_and_base_palette_only() {
+        let appearance = TerminalAppearance::default();
+        let palette = appearance.palette.as_array();
+        let mut local = [Color::rgb(1, 2, 3); 18];
+        local[0] = Color::rgb(200, 200, 200);
+        local[1] = Color::rgb(10, 10, 10);
+        local[3] = Color::rgb(250, 0, 0);
+        let colors = LocalColors::new(
+            appearance.foreground,
+            appearance.background,
+            &appearance.palette,
+            local,
+        );
+        let style = |foreground, background| {
+            PackedStyle::new(foreground, background, None, 0, crate::UnderlineStyle::None)
+        };
+
+        let red_on_default = style(palette[1], appearance.background)
+            .with_classes(ColourClass::Palette(1), ColourClass::Default);
+        let recolored = colors.recolor(red_on_default);
+        assert_eq!(recolored.foreground(), local[3]);
+        assert_eq!(recolored.background(), local[1]);
+        assert_eq!(recolored.foreground_class(), ColourClass::Palette(1));
+
+        let picked = style(Color::rgb(255, 0, 128), palette[208])
+            .with_classes(ColourClass::Rgb, ColourClass::Palette(208));
+        assert_eq!(colors.recolor(picked), picked);
+
+        let inverted = colors.recolor(style(appearance.background, appearance.foreground));
+        assert_eq!(inverted.foreground(), local[1]);
+        assert_eq!(inverted.background(), local[0]);
+    }
 
     #[test]
     fn defaults_are_wire_safe_and_hash_deterministically() {

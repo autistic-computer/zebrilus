@@ -144,8 +144,9 @@ impl Element for BrowserElement {
             #[cfg(target_os = "macos")]
             if let Some(underlay) = state.underlay.take()
                 && underlay::place(window, &underlay, bounds)
+                && let Some(surface) = state.surface.take()
             {
-                window.paint_underlay_hole(bounds, self.corner_radii);
+                window.paint_underlay(bounds, self.corner_radii, surface);
                 return;
             }
             #[cfg(target_os = "macos")]

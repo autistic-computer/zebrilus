@@ -512,8 +512,8 @@ impl Render for PopoverKey {
         } else {
             KeyLook::Rest
         };
-        let (surface, state) = key_look(look);
         let theme = cx.theme();
+        let (surface, state) = key_look(look, theme);
         let hint = theme
             .paint_on(
                 theme.layer(surface, state).ground,

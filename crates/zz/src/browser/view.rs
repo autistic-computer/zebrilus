@@ -46,7 +46,7 @@ use zz_ui::browser::{
     browser_site_menu, browser_start_surface, browser_toolbar_button,
 };
 use zz_ui::feedback::browser_clear_site_data_alert;
-use zz_ui::pane::{PaneDrag, pane_drag_button, pane_header_icon_button};
+use zz_ui::pane::{PaneDrag, PaneDragSource, pane_header_icon_button};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
@@ -1362,6 +1362,9 @@ impl BrowserView {
                     if self.underlay.is_some()
                         && presented == (self.frame_session, true)
                         && self.mac_surface.is_some()
+                        && !self
+                            .content_bounds
+                            .is_some_and(|bounds| window.underlay_covered(bounds))
                     {
                         return;
                     }
@@ -3573,24 +3576,35 @@ impl Render for BrowserChromeView {
                     browser.update(cx, |view, cx| view.open_tab(None, true, window, cx));
                 }
             });
-
-        let drag_browser = self.browser.clone();
-        let drag = self.browser.upgrade().map(|browser| {
-            let pane = browser.read(cx).pane;
-            pane_drag_button(
-                ("browser-pane-drag", pane.0),
-                pane,
-                self.state.drag_title.clone(),
-                self.state.can_drag,
-                move |drag, _, cx| {
-                    if let Some(browser) = drag_browser.upgrade() {
-                        browser.update(cx, |_, cx| cx.emit(*drag));
-                    }
-                },
-                cx,
-            )
-        });
-        let action = |icon, label: &'static str, axis: Option<Axis>| {
+        let tabs = match self.browser.upgrade() {
+            Some(browser) => {
+                let drag_browser = self.browser.clone();
+                let close_browser = self.browser.clone();
+                tabs.title(
+                    PaneDragSource::new(
+                        browser.read(cx).pane,
+                        self.state.drag_title.clone(),
+                        self.state.can_drag,
+                        move |drag, _, cx| {
+                            if let Some(browser) = drag_browser.upgrade() {
+                                browser.update(cx, |_, cx| cx.emit(*drag));
+                            }
+                        },
+                    ),
+                    move |_, cx| {
+                        if let Some(browser) = close_browser.upgrade() {
+                            browser.update(cx, |view, cx| {
+                                view.mux
+                                    .read(cx)
+                                    .execute(kill_target_command(TreeTarget::Pane(view.pane)));
+                            });
+                        }
+                    },
+                )
+            }
+            None => tabs,
+        };
+        let action = |icon, label: &'static str, axis: Axis| {
             let browser = self.browser.clone();
             pane_header_icon_button(label, icon, true, cx)
                 .tooltip(label)
@@ -3598,11 +3612,9 @@ impl Render for BrowserChromeView {
                     cx.stop_propagation();
                     if let Some(browser) = browser.upgrade() {
                         browser.update(cx, |view, cx| {
-                            let command = axis.map_or_else(
-                                || kill_target_command(TreeTarget::Pane(view.pane)),
-                                |axis| picker_split_command(view.pane, axis),
-                            );
-                            view.mux.read(cx).execute(command);
+                            view.mux
+                                .read(cx)
+                                .execute(picker_split_command(view.pane, axis));
                         });
                     }
                 })
@@ -3615,15 +3627,13 @@ impl Render for BrowserChromeView {
             .child(action(
                 IconName::PanelBottom,
                 "Split bottom",
-                Some(Axis::Vertical),
+                Axis::Vertical,
             ))
             .child(action(
                 IconName::PanelRight,
                 "Split right",
-                Some(Axis::Horizontal),
-            ))
-            .children(drag)
-            .child(action(IconName::Xmark, "Close pane", None));
+                Axis::Horizontal,
+            ));
         div()
             .h(BrowserHeader::HEIGHT)
             .w_full()

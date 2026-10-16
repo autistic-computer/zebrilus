@@ -52,11 +52,13 @@ Everything painted is a surface. A surface has a role. A role picks materials.
 |---|---|
 | `radius` | the base corner radius every `round` shape derives from |
 | `outline` | the width of every outline in pixels; 0 draws none |
+| `picked-outlines` | whether only the roles the theme turns `outline` on for draw it: every built-in outline is off (dividers keep their lines, and roles no theme can change keep theirs), and so are edges drawn without a role, like a field's focus border and color swatch edges; pane frames take the `pane` role's outline in either mode |
 | `row-inset` | how far list rows sit in from their list's edges; 0 makes them square bands that touch |
 | `primary` | what a prominent fill paints: `foreground` or `accent` |
 | `flat-highlights` | whether a `lift` highlight stays flat: it washes one step deeper (selected 0.16 where a tint is 0.12) and draws no outline or shadow; other highlights are unchanged |
 | `font` | the interface font family, or none for the platform's; a family the machine lacks draws in the platform's (Inter in the storybook) |
 | `glass` | `null`, a glass preset name, or a preset with the fields it changes |
+| `picked-shadows` | whether only the roles the theme gives a `shadow` cast one: every built-in shadow is off (roles no theme can change keep theirs, like the Linux window frame), and so is the knob shadow on switches, sliders and the color picker; a `lift` highlight still rises with the contact shadow |
 | `contact` | the tight shadow of things resting on the window: `y`, `blur`, `spread`, `strength` |
 | `float` | the deep shadow of things floating over it, with the same four fields |
 
@@ -301,7 +303,7 @@ error that suggests the role it was probably meant to be (`chromebutton` gets `c
     pad, which rests clear unlike the other keys).
 - **`window`** drives the Linux client-side frame: its shadow follows the role's shadow and its
   edge the role's outline. The window plane's own fill stays the ground everything sits on.
-- **`pane.selected`** decides whether the active pane lights its edge: `none` turns the glow off.
+- **`pane.selected`** decides whether the active pane stands apart from the others: `none` draws every pane alike.
 - **Not wired.** Reduce transparency and increase contrast do not change materials yet; renderers
   that cannot sample the backdrop (WebGL, DirectX) still get the glass's solid fallback.
 
@@ -333,7 +335,7 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 | `sidebar.row` | row | tree rows (host, session, window, pane), Settings section rows, Back | `ui/navigation.rs:337`, `ui/settings.rs:145` | Settings rows were a 28px Button path, tree rows 32px; fixed, Settings section rows and Back draw as `sidebar.row` |
 | `sidebar.entry` | row | flat sidebar two-line window rows | `ui/navigation/flat.rs:455` | always lit, tree lit only with focus |
 | `sidebar.row-action` | icon-button | + × … and layout on hovered rows, + on session labels | `ui/navigation.rs:454`, `ui/navigation/flat.rs:425`, `:817` | four versions with three inks; fixed, one function and one ink, muted until pointed at |
-| `pane-stack` | tile | pane tiles in flat rows and title bar pills, the hover plate | `ui/navigation/pane_stack.rs:171` | |
+| `pane-stack` | tile | pane tiles in flat rows and title bar pills, open or at rest | `ui/navigation/pane_stack.rs:171` | |
 
 ### Panes
 
@@ -342,13 +344,14 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 | `pane` | pane | tiled pane (gaps or flush), active glow, inactive dim, zoomed, waiting, phone page | `ui/pane.rs:187` | dim rules differ desktop vs thin client |
 | `pane.float` | floating | floating and popup panes, the confirm-before box | `ui/pane.rs:332` | confirm box uses the Panel fill |
 | `pane.header` | bar | terminal and agent title rows, the browser's two-row header | `ui/pane.rs:47`, `ui/agent.rs:3600`, `ui/browser.rs:57` | three divider treatments, wrapper copied per client; fixed, one `pane_header_frame` and the `rule.bar` divider |
-| `pane.header.button` | icon-button | split, the X in a pane title, the browser's drag grip and close | `ui/pane.rs:19` | |
-| `pane.header.title` | button.quiet | pane titles in terminal and agent headers: drag to move, X closes; tinted on hover and when selected | `ui/pane.rs:46` (`PaneTitle`) | the grip and Close were separate buttons; since 10-15 the title is both |
+| `pane.header.button` | icon-button | split and the other buttons in pane headers | `ui/pane.rs:19` | the X in a pane title used it until 10-16, so a theme's hover lift put a disc behind it; it is ink only now, like a browser tab's X |
+| `pane.header.title` | button.quiet | pane titles in terminal, agent and browser headers: drag to move, X closes; tinted on hover and when selected | `ui/pane.rs:46` (`PaneTitle`) | the grip and Close were separate buttons; since 10-15 the title is both, and since 10-16 in browsers too |
 | `pane.chip` | floating | Dead, Waiting, Sync, Copy mode, status line, Unzoom, vim mode, "Select an element" | `ui/pane.rs:729`, `zz/editor/view.rs:557` | four variants; fixed, one chip with a contact shadow |
 | `pane.display-panes` | floating | display-panes number chips | `ui/pane.rs:796` | hover invisible at outline 0; fixed (see Bugs) |
 | `pane.find-bar` | popover | terminal find bar (and the browser's once it exists) | `zz/terminal/view.rs:660` | copied per client; fixed, one `terminal_find_bar` in `zz_ui::terminal` |
-| `pane.drop-zone` | floating | drop preview, armed veil, dragged-pane veil | `ui/pane.rs:425`, `:465` | hand-drawn edge |
+| `pane.drop-zone` | floating | drop preview, armed veil | `ui/pane.rs:425`, `:465` | hand-drawn edge |
 | `pane.drag-chip` | floating | chip following the pointer while dragging | `ui/pane.rs:479` | |
+| `pane.picker` | menu-item | Terminal, Browser, Editor and Agent in a freshly split pane | `ui/pane.rs` (`pane_picker_row`) | drew as plain `menu-item` until 10-16, so styling it restyled every menu; its own role since |
 
 ### Agent pane
 
@@ -398,14 +401,14 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
-| `phone.bar` | bar | bottom bar strip, the overview's bottom bar, key strip, 44px nav bars (settings, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
-| `phone.pill` | button | the bar's pane pill, its icon tile and page dots | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
-| `phone.button` | icon-button | back, close, gear, keyboard | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
-| `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad | `ui/compact/key_row.rs:50` | |
+| `phone.bar` | bar | 44px nav bars (settings, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
+| `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the overview's session pill and its Settings and close group, the pill the keys sit in | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
+| `phone.button` | icon-button | back, close, gear | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
+| `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `ui/compact/key_row.rs:50` | |
 | `phone.card` | tile | overview pane cards | `ui/compact/overview.rs:28` | |
 | `phone.add` | tile | the New pane tile that ends each overview row, as big as a card | `ui/compact/overview.rs:101` | shared `phone.card` with the live cards and was narrower than them; split out |
 | `phone.row` | menu-item | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `ui/compact/which_key_list.rs:54`, `ui/settings.rs:222` | four corner rules; fixed, one role |
-| `grabber` | badge | phone bar and sheet grabbers | `ui/compact/bar.rs:46`, `kit/sheet.rs:376` | two sizes and colors |
+| `grabber` | badge | sheet grabbers | `ui/compact/bar.rs:46`, `kit/sheet.rs:376` | two sizes and colors |
 
 ### Overlays
 
@@ -423,7 +426,7 @@ What the inventory found on the kinds themselves:
 | Kind | Covers | Where | Drift found |
 |---|---|---|---|
 | `popover` | context and dropdown menus, tmux display-menu, select dropdowns, omnibox, model picker, pane-stack plate, key popovers, image preview | `kit/menu/popup_menu.rs:1184` | |
-| `menu-item` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, pane picker, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `ui/picker.rs:111` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
+| `menu-item` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `ui/picker.rs:111` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
 | `dialog` | alerts and prompts (ssh, add host, restart daemon, import) | `kit/overlay/dialog.rs:499` | |
 | `sheet` | which-key, phone bottom sheets | `ui/which_key.rs:405`, `kit/sheet.rs:355` | |
 | `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:188`, `app/app.rs:2036`, `ui/compact/hud.rs:5` | banner and HUD used the popover look; fixed, both draw as toasts |
@@ -457,8 +460,8 @@ The storybook's theme creator (`clients/storybook`) is four steps over the same 
 then an App tab for the pane settings and the preview around the showcase, which are not theme:
 
 1. **Colors**: the mode with contrast and the tint, light and dark palettes, accent, font.
-2. **Materials**: presets, shape (radius, outline, row inset, primary), glass, and both shadow
-   materials.
+2. **Materials**: presets, shape (radius, outline, built-in or picked outlines, row inset,
+   primary), glass, built-in or picked shadows, and both shadow materials.
 3. **Roles**: every kind, each with its groups and roles indented under it. Each role shows the
    props and values its knobs allow; an unset prop shows the value it inherits and from which
    kind or group, and whether that is the built-in or this theme's patch. Setting a prop writes
@@ -466,8 +469,9 @@ then an App tab for the pane settings and the preview around the showcase, which
    regions that draw it and flashes `Theme.inspect` over its surfaces for about a second.
 4. **Export**: JSON with only what differs, and Import.
 
-Every built-in starts the creator with its materials and roles. Clicking the preview to open a
-role is not built.
+Every built-in starts the creator with its materials and roles. The knobs panel resizes from its
+left edge (double-click resets it); the browser remembers the width. Clicking the preview to open
+a role is not built.
 
 ## Settings
 

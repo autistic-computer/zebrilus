@@ -17,10 +17,10 @@ use zz_gpui::{
 };
 use zz_protocol::{InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
-    AppearanceConfigKey, AppearanceSource, KeyAction, KeyCode, KeyInput, PointerCellEvent,
-    SearchCase, SearchDirection, SearchMode, SearchQuery, SearchStatus, SessionStatus,
-    TerminalAppearance, TerminalMode, TerminalMouseButton, TerminalMouseInput, TerminalMousePhase,
-    TerminalViewAction, TerminalViewport,
+    AppearanceConfigKey, AppearanceSource, KeyAction, KeyCode, KeyInput, LocalColors,
+    PointerCellEvent, SearchCase, SearchDirection, SearchMode, SearchQuery, SearchStatus,
+    SessionStatus, TerminalAppearance, TerminalMode, TerminalMouseButton, TerminalMouseInput,
+    TerminalMousePhase, TerminalPalette, TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
     ActiveTheme, IconName,
@@ -44,6 +44,23 @@ pub(crate) struct TerminalDisplayPreferences {
 }
 
 impl zz_gpui::Global for TerminalDisplayPreferences {}
+
+/// The colors the phone draws a terminal in over the host's `viewport`
+/// colors and base `palette`: its interface theme's.
+pub(crate) fn phone_colors(
+    viewport: &TerminalViewport,
+    palette: &TerminalPalette,
+    cx: &App,
+) -> Option<LocalColors> {
+    crate::app::phone().then(|| {
+        LocalColors::new(
+            viewport.foreground,
+            viewport.background,
+            palette,
+            zz_ui::terminal::theme_terminal_colors(cx),
+        )
+    })
+}
 
 pub(crate) fn localized_font_appearance(
     core: &ClientCore,
@@ -136,6 +153,7 @@ pub struct TerminalPane {
     pane_status: (Option<String>, bool, bool),
     corner_radii: Corners<Pixels>,
     rows_above: bool,
+    rows_below: bool,
     resize_suppressed: Rc<Cell<bool>>,
     extra_height: Pixels,
     content_offset: Pixels,
@@ -278,6 +296,7 @@ impl TerminalPane {
             pane_status: (None, false, false),
             corner_radii: Corners::default(),
             rows_above: false,
+            rows_below: false,
             resize_suppressed: Rc::default(),
             extra_height: Pixels::ZERO,
             content_offset: Pixels::ZERO,
@@ -396,6 +415,13 @@ impl TerminalPane {
         }
     }
 
+    pub fn set_rows_below(&mut self, rows_below: bool, cx: &mut Context<Self>) {
+        if self.rows_below != rows_below {
+            self.rows_below = rows_below;
+            cx.notify();
+        }
+    }
+
     pub(crate) fn rows_above_shown(&self, cx: &App) -> bool {
         self.rows_above
             && (self.overscroll.is_stretched()
@@ -403,13 +429,7 @@ impl TerminalPane {
                 || self.scroll.sub_row() > 0.0
                 || self
                     .viewport(&self.connection.read(cx).core)
-                    .is_some_and(|viewport| {
-                        viewport
-                            .scrollbar
-                            .offset
-                            .saturating_add(viewport.scrollbar.len)
-                            < viewport.scrollbar.total
-                    }))
+                    .is_some_and(|viewport| viewport.scrollbar.offset > 0))
     }
 
     pub fn set_extra_height(&mut self, height: Pixels, cx: &mut Context<Self>) {
@@ -421,15 +441,16 @@ impl TerminalPane {
 
     pub(crate) fn pane_background(&self, cx: &App) -> Hsla {
         let core = &self.connection.read(cx).core;
-        let background = self
-            .viewport(core)
-            .map_or(cx.theme().background, |viewport| {
+        let background = self.viewport(core).filter(|_| !crate::app::phone()).map_or(
+            cx.theme().background,
+            |viewport| {
                 zz_ui::terminal::terminal_background(
                     viewport.background,
                     core.appearance()
                         .map_or(1.0, |appearance| appearance.background_opacity),
                 )
-            });
+            },
+        );
         cx.theme().pane_background(background)
     }
 
@@ -1304,6 +1325,9 @@ impl TerminalPane {
         let rows_above = self
             .rows_above_shown(cx)
             .then(|| window.content_mask().bounds.origin.y);
+        let rows_below = self
+            .rows_below
+            .then(|| window.content_mask().bounds.bottom());
         let connection = self.connection.clone();
         let (paint, attached, layout_generation) = connection.update(cx, |connection, cx| {
             for image in connection.take_retired_terminal_images() {
@@ -1316,18 +1340,22 @@ impl TerminalPane {
                     .map(|(_, retained)| retained),
                 TerminalSurface::Pane => connection.core.retained_viewport(self.pane),
             }?;
-            let appearance = localized_font_appearance(
+            let mut appearance = localized_font_appearance(
                 &connection.core,
                 &self.available_fonts,
                 &cx.theme().mono_font_family,
                 cx,
             );
+            appearance.local_colors = phone_colors(&retained.viewport, &appearance.palette, cx);
+            let themed = appearance
+                .local_colors
+                .map(|local| local.viewport(&retained.viewport));
             let paint = self.cache.prepaint(
                 TerminalRenderInput {
-                    viewport: &retained.viewport,
+                    viewport: themed.as_ref().unwrap_or(&retained.viewport),
                     row_revisions: &retained.row_revisions,
                     revision_epoch: retained.row_revision_epoch,
-                    history: Some(&retained.history),
+                    history: Some(retained),
                     images: if self.surface == TerminalSurface::Pane {
                         connection
                             .terminal_images(self.pane)
@@ -1351,6 +1379,7 @@ impl TerminalPane {
                         .then_some(self.marked_text.as_deref())
                         .flatten(),
                     rows_above,
+                    rows_below,
                 },
                 bounds,
                 window,
@@ -1759,7 +1788,10 @@ impl Render for TerminalPane {
             .id(("terminal", self.pane.0))
             .relative()
             .size_full()
-            .when(!self.rows_above, Styled::overflow_hidden)
+            .when(
+                !self.rows_above && !self.rows_below,
+                Styled::overflow_hidden,
+            )
             .bg(self.pane_background(cx))
             .rounded_bl(self.corner_radii.bottom_left)
             .rounded_br(self.corner_radii.bottom_right)

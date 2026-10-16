@@ -49,6 +49,13 @@ type QueryFunction = (options: {
 interface PickerApi {
   start(token: string, appearance: ElementPickerAppearance): void;
   cancel(): void;
+  point(x: number, y: number, width: number): void;
+  release(): void;
+}
+
+interface HeldPicker {
+  point(x: number, y: number, width: number): void;
+  release(): void;
 }
 
 declare global {
@@ -59,6 +66,7 @@ declare global {
 }
 
 let cleanupActivePicker: (() => void) | null = null;
+let heldPicker: HeldPicker | null = null;
 
 function send(message: PickMessage): void {
   const query = window[QUERY_NAME as keyof Window] as QueryFunction | undefined;
@@ -292,6 +300,7 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
     cursorStyle.remove();
     host.remove();
     if (cleanupActivePicker === cleanup) cleanupActivePicker = null;
+    if (heldPicker === held) heldPicker = null;
   };
 
   const cancel = (notify: boolean): void => {
@@ -326,8 +335,11 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
     event.preventDefault();
     event.stopImmediatePropagation();
     if (!selected || pending) return;
+    commit(selected);
+  }
+
+  function commit(element: Element): void {
     pending = true;
-    const element = selected;
     // Measured now: resolving the source context is async and the page can
     // scroll or reflow before it settles.
     const geometry = geometryFor(element);
@@ -351,6 +363,28 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
     cancel(true);
   }
 
+  const held: HeldPicker = {
+    point(x, y, width) {
+      if (pending) return;
+      const viewport = window.visualViewport;
+      const scale = (viewport?.width ?? window.innerWidth) / width;
+      selected =
+        width > 0 && x >= 0 && y >= 0 && x <= width && Number.isFinite(scale)
+          ? elementAt(
+              (viewport?.offsetLeft ?? 0) + x * scale,
+              (viewport?.offsetTop ?? 0) + y * scale,
+              host,
+            )
+          : null;
+      paint();
+    },
+    release() {
+      if (pending) return;
+      if (selected) commit(selected);
+      else cancel(true);
+    },
+  };
+
   window.addEventListener("pointermove", onPointerMove, true);
   window.addEventListener("pointerdown", onPointerDown, true);
   window.addEventListener("pointerup", suppressPrimaryButton, true);
@@ -361,6 +395,7 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
   window.addEventListener("scroll", paint, true);
   window.addEventListener("resize", paint);
   cleanupActivePicker = cleanup;
+  heldPicker = held;
 }
 
 function cancel(): void {
@@ -368,11 +403,19 @@ function cancel(): void {
   cleanupActivePicker = null;
 }
 
+function point(x: number, y: number, width: number): void {
+  heldPicker?.point(x, y, width);
+}
+
+function release(): void {
+  heldPicker?.release();
+}
+
 if (!window[API_NAME as keyof Window]) {
   Object.defineProperty(window, API_NAME, {
     configurable: false,
     enumerable: false,
     writable: false,
-    value: Object.freeze({ start, cancel } satisfies PickerApi),
+    value: Object.freeze({ start, cancel, point, release } satisfies PickerApi),
   });
 }

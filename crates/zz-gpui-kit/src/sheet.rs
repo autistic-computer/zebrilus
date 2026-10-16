@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use web_time::{Duration, Instant};
 use zz_gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Context, DispatchPhase, Div, ElementId,
+    Animation, AnimationExt as _, AnyElement, App, Context, DispatchPhase, Div, ElementId, Global,
     HitboxBehavior, IntoElement, MouseButton, ParentElement as _, Pixels, Point, RenderOnce,
     ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled, TouchPhase, Window, anchored,
     canvas, deferred, div, ease_out_quint, prelude::*, px, relative,
@@ -29,8 +29,39 @@ const FLOAT_MARGIN: f32 = 8.0;
 const RISE: f32 = 0.3;
 const FLING_HEIGHTS: f32 = 2.0;
 const COMMIT_FRACTION: f32 = 0.48;
+const SHADOW_ROOM: f32 = 32.0;
 
 type Dismiss = Rc<dyn Fn(&mut Window, &mut App)>;
+
+#[derive(Default)]
+struct ClosingSheets(Vec<ElementId>);
+
+impl Global for ClosingSheets {}
+
+/// Slides the open sheet `id` away, then runs its `on_dismiss`. Close
+/// buttons and picks inside a sheet call this instead of closing it
+/// themselves, so the sheet leaves the way a drag-down does.
+pub fn close_sheet(id: impl Into<ElementId>, cx: &mut App) {
+    let id = id.into();
+    let closing = &mut cx.default_global::<ClosingSheets>().0;
+    if !closing.contains(&id) {
+        closing.push(id);
+    }
+    cx.refresh_windows();
+}
+
+fn take_close(id: &ElementId, cx: &mut App) -> bool {
+    let Some(closing) = cx.try_global::<ClosingSheets>() else {
+        return false;
+    };
+    if !closing.0.contains(id) {
+        return false;
+    }
+    cx.global_mut::<ClosingSheets>()
+        .0
+        .retain(|closing| closing != id);
+    true
+}
 
 #[derive(IntoElement)]
 pub struct BottomSheet {
@@ -135,7 +166,7 @@ pub fn sheet_option(
         id,
         SurfaceRole::MENU_ITEM,
         checked.then(|| Icon::new(IconName::Check)),
-        label,
+        label.into(),
         cx,
     )
 }
@@ -156,7 +187,7 @@ pub fn sheet_action(
         id,
         SurfaceRole::MENU_ITEM,
         Some(Icon::new(icon).text_color(muted)),
-        label,
+        label.into(),
         cx,
     )
 }
@@ -169,7 +200,7 @@ pub fn sheet_row(
     id: impl Into<ElementId>,
     role: SurfaceRole,
     slot: Option<Icon>,
-    label: impl Into<SharedString>,
+    label: impl IntoElement,
     cx: &App,
 ) -> Stateful<Div> {
     let id = id.into();
@@ -207,7 +238,7 @@ pub fn sheet_row(
             .whitespace_nowrap()
             .text_ellipsis()
             .text_size(px(15.0))
-            .child(label.into()),
+            .child(label),
     )
 }
 
@@ -223,6 +254,7 @@ struct SheetState {
     dismissal: Dismissal,
     scroll: ScrollHandle,
     content_scroll: Option<ScrollHandle>,
+    height: f32,
     extent: f32,
     gesture: Gesture,
 }
@@ -289,8 +321,11 @@ impl SheetState {
             (TouchPhase::Ended, Gesture::Sheet(origin)) if origin == start => {
                 self.gesture = Gesture::Idle;
                 self.dismissal.drag(delta, now);
-                self.dismissal
-                    .release(FLING_HEIGHTS * self.extent, COMMIT_FRACTION, now);
+                self.dismissal.release(
+                    FLING_HEIGHTS * self.height,
+                    COMMIT_FRACTION * self.height / self.extent.max(1.0),
+                    now,
+                );
                 coast(start, cx);
                 true
             }
@@ -314,18 +349,27 @@ impl SheetState {
 
 impl RenderOnce for BottomSheet {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state = window.use_keyed_state(self.id.clone(), cx, |_, _| SheetState {
-            dismissal: Dismissal::new(Overdrag::Band),
-            scroll: ScrollHandle::new(),
-            content_scroll: None,
-            extent: 0.0,
-            gesture: Gesture::Idle,
+        let id = self.id.clone();
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| {
+            take_close(&id, cx);
+            SheetState {
+                dismissal: Dismissal::new(Overdrag::Band),
+                scroll: ScrollHandle::new(),
+                content_scroll: None,
+                height: 0.0,
+                extent: 0.0,
+                gesture: Gesture::Idle,
+            }
         });
         let now = cx.background_executor().now();
         let content_scroll = self.content_scroll;
         let reduce_motion = cx.reduce_motion();
+        let closing = take_close(&self.id, cx);
         let tick = state.update(cx, |state, _| {
             state.content_scroll = content_scroll;
+            if closing {
+                state.dismissal.leave(state.extent, now);
+            }
             if reduce_motion {
                 state.dismissal.finish();
             }
@@ -364,7 +408,7 @@ impl RenderOnce for BottomSheet {
             )
         };
         let header = Surface::new(self.header_role.unwrap_or(Kind::Bar.role())).on(ground);
-        let on_dismiss = self.on_dismiss;
+        let close = state.clone();
         let scrim = div()
             .id("bottom-sheet-scrim")
             .debug_selector(|| "bottom-sheet-scrim".to_owned())
@@ -372,7 +416,13 @@ impl RenderOnce for BottomSheet {
             .inset_0()
             .bg(theme.scrim)
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-            .on_click(move |_, window, cx| on_dismiss(window, cx))
+            .on_click(move |_, _, cx| {
+                let now = cx.background_executor().now();
+                close.update(cx, |state, cx| {
+                    state.dismissal.leave(state.extent, now);
+                    cx.notify();
+                });
+            })
             .with_animation(
                 "bottom-sheet-scrim-enter",
                 Animation::new(enter).with_easing(ease_out_quint()),
@@ -382,7 +432,10 @@ impl RenderOnce for BottomSheet {
             {
                 let state = state.clone();
                 move |bounds, window, cx| {
-                    state.update(cx, |state, _| state.extent = f32::from(bounds.size.height));
+                    state.update(cx, |state, _| {
+                        state.height = f32::from(bounds.size.height);
+                        state.extent = state.height + f32::from(rest) + SHADOW_ROOM;
+                    });
                     window.insert_hitbox(bounds, HitboxBehavior::Normal)
                 }
             },
@@ -592,6 +645,22 @@ mod tests {
             point(scrim.center().x, scrim.top() + px(10.0)),
             Modifiers::none(),
         );
+        assert_eq!(dismissed.get(), 1);
+    }
+
+    #[zz_gpui::test]
+    fn a_closed_sheet_slides_away_before_it_dismisses(cx: &mut TestAppContext) {
+        let (dismissed, cx) = host(120.0, cx);
+        cx.update(|_, cx| cx.set_reduce_motion(false));
+        let rest = panel(cx);
+        cx.update(|_, cx| close_sheet("sheet", cx));
+        redraw(cx);
+        cx.executor().advance_clock(Duration::from_millis(48));
+        redraw(cx);
+        assert!(panel(cx).top() > rest.top());
+        assert_eq!(dismissed.get(), 0);
+
+        settle(cx);
         assert_eq!(dismissed.get(), 1);
     }
 

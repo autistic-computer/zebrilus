@@ -270,7 +270,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
         !is_host,
         group.into(),
         marker,
-        div().text_color(color).child(node.label),
+        div().min_w_0().text_color(color).child(node.label),
         actions,
         cx.theme().ground(),
         cx,
@@ -321,6 +321,7 @@ pub fn tree_list(
             .collect::<Vec<_>>()
     })
     .size_full()
+    .pr(zz_ui::navigation::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides(depths, active_row, cx));

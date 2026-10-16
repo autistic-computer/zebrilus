@@ -12,6 +12,7 @@ use zz_terminal::{
 };
 
 pub const MAX_HISTORY_ROWS: usize = 10_000;
+const MAX_BELOW_ROWS: usize = 512;
 const MIN_HISTORY_DICTIONARY_COMPACTION_BYTES: usize = 1024;
 pub const MAX_HISTORY_CHUNK_ROWS: u32 = 512;
 pub const HISTORY_BACKFILL_QUIET: Duration = Duration::from_millis(100);
@@ -42,6 +43,10 @@ impl HistoryRing {
             rows: VecDeque::new(),
             limit: limit.min(MAX_HISTORY_ROWS),
         }
+    }
+
+    pub fn below() -> Self {
+        Self::with_limit(MAX_BELOW_ROWS)
     }
 
     pub const fn limit(&self) -> usize {
@@ -238,6 +243,10 @@ fn compact_history_plane_start(
 pub struct RetainedTerminalViewport {
     pub viewport: TerminalViewport,
     pub history: HistoryRing,
+    /// Rows newer than the viewport's last row, nearest first: the rows a
+    /// scroll back moved out past its bottom, kept while the server shows a
+    /// view of history.
+    pub below: HistoryRing,
     pub history_scrollbar: ScrollbarState,
     /// Bumped on every live-patch ring mutation or drop. A `HistoryChunk` applies
     /// only when this still matches the value snapshotted at request time.
@@ -352,6 +361,7 @@ pub fn new_retained_viewport(
     RetainedTerminalViewport {
         viewport,
         history: HistoryRing::default(),
+        below: HistoryRing::below(),
         history_scrollbar,
         history_mutations: 0,
         history_invalidations: 0,
@@ -366,6 +376,38 @@ fn drop_retained_history(retained: &mut RetainedTerminalViewport) {
     retained.history.clear();
     retained.history_mutations = retained.history_mutations.wrapping_add(1);
     retained.history_invalidations = retained.history_invalidations.wrapping_add(1);
+}
+
+/// The rows that end up below the viewport when it moves `delta` rows back
+/// into history, nearest first: the bottom of the current viewport and,
+/// past a whole screen, the retained rows between the two views. None when
+/// the retained rows cannot fill that gap.
+fn rows_leaving_below(
+    retained: &RetainedTerminalViewport,
+    delta: u32,
+    next_row_revision: &mut u64,
+) -> Option<Vec<HistoryRow>> {
+    let rows = usize::from(retained.viewport.rows);
+    let delta = usize::try_from(delta).ok()?;
+    let gap = delta.saturating_sub(rows);
+    if gap > MAX_BELOW_ROWS {
+        return None;
+    }
+    let ring = &retained.history.rows;
+    let start = ring.len().checked_sub(gap)?;
+    let mut leaving: Vec<HistoryRow> = ring.range(start..).cloned().collect();
+    let dictionary = Arc::clone(&retained.viewport.dictionary);
+    for row in rows.saturating_sub(delta)..rows {
+        let cells = u16::try_from(row)
+            .ok()
+            .and_then(|row| retained.viewport.row(row))?;
+        leaving.push(HistoryRow {
+            cells: Box::from(cells),
+            dictionary: Arc::clone(&dictionary),
+            revision: allocate_row_revision(next_row_revision),
+        });
+    }
+    Some(leaving)
 }
 
 fn shift_rows(revisions: &mut [u64], scroll: i16) {
@@ -397,8 +439,8 @@ pub fn apply_retained_patch(
         && rows != 0
         && patch.changed_rows.len() == rows
         && patch.generation != patch.base_generation;
-    let mut invalidate_history =
-        patch.columns != retained.viewport.columns || total_delta.is_none() || full_row_replacement;
+    let resized = patch.columns != retained.viewport.columns;
+    let mut invalidate_history = resized || total_delta.is_none() || full_row_replacement;
     let mut departing_rows = Vec::new();
 
     if !invalidate_history {
@@ -438,6 +480,9 @@ pub fn apply_retained_patch(
             }
         }
     }
+    let leaving_below = offset_reverse
+        .filter(|delta| *delta > 0 && !resized && (total_delta == Some(0) || !invalidate_history))
+        .map(|delta| rows_leaving_below(retained, delta, next_row_revision));
     retained.revision_scratch.clear();
     retained
         .revision_scratch
@@ -447,6 +492,29 @@ pub fn apply_retained_patch(
     if let Err(error) = retained.viewport.apply_patch(patch) {
         retained.revision_scratch.clear();
         return Err(error);
+    }
+    match leaving_below {
+        Some(Some(rows)) => {
+            for row in rows.into_iter().rev() {
+                retained.below.rows.push_front(row);
+            }
+            retained.below.rows.truncate(retained.below.limit);
+        }
+        Some(None) => retained.below.clear(),
+        None if invalidate_history => retained.below.clear(),
+        None => {
+            let forward = offset_forward
+                .and_then(|delta| usize::try_from(delta).ok())
+                .unwrap_or(0);
+            if forward >= retained.below.len() {
+                retained.below.clear();
+            } else {
+                retained.below.rows.drain(..forward);
+            }
+        }
+    }
+    if next_scrollbar.offset.saturating_add(next_scrollbar.len) >= next_scrollbar.total {
+        retained.below.clear();
     }
     if invalidate_history {
         drop_retained_history(retained);
@@ -472,6 +540,11 @@ pub fn apply_retained_patch(
     if let Some(dictionary) = outgoing_dictionary {
         compact_history_dictionary(
             &mut retained.history.rows,
+            &dictionary,
+            &retained.viewport.dictionary,
+        );
+        compact_history_dictionary(
+            &mut retained.below.rows,
             &dictionary,
             &retained.viewport.dictionary,
         );
@@ -504,6 +577,7 @@ pub fn replace_retained_viewport(
     retained.row_revision_epoch = allocate_row_revision(next_row_revision);
     retained.revision_scratch.clear();
     drop_retained_history(retained);
+    retained.below.clear();
     retained.history_scrollbar = viewport.scrollbar;
     retained.viewport = viewport;
 }
@@ -1217,6 +1291,7 @@ mod tests {
         let mut retained = RetainedTerminalViewport {
             viewport: previous,
             history: HistoryRing::default(),
+            below: HistoryRing::below(),
             history_scrollbar,
             history_mutations: 0,
             history_invalidations: 0,
@@ -1469,5 +1544,57 @@ mod tests {
         apply_retained_patch(&mut retained, patch, &mut next_revision).unwrap();
         assert!(retained.history.is_empty());
         assert_eq!(retained.history_invalidations, 1);
+    }
+
+    fn retained_below_ids(retained: &RetainedTerminalViewport) -> Vec<u32> {
+        retained
+            .below
+            .rows
+            .iter()
+            .map(|row| row.cells[0].glyph() - 0xe000)
+            .collect()
+    }
+
+    #[test]
+    fn rows_a_scroll_back_moves_past_the_bottom_stay_below_until_the_view_returns() {
+        let mut next_revision = 1;
+        let mut retained = new_retained_viewport(
+            history_fixture_viewport(&[10, 11, 12, 13], 1, 14, 10),
+            &mut next_revision,
+        );
+        let dictionary = retained.viewport.dictionary.as_ref().clone();
+        assert!(apply_history_chunk(
+            &mut retained,
+            0,
+            14,
+            10,
+            1,
+            chunk_rows(&(0..10).collect::<Vec<_>>()),
+            dictionary,
+            &mut next_revision,
+        ));
+
+        let back = history_fixture_viewport(&[8, 9, 10, 11], 2, 14, 8);
+        let patch = TerminalViewport::diff(&retained.viewport, &back).unwrap();
+        apply_retained_patch(&mut retained, patch, &mut next_revision).unwrap();
+        assert_eq!(retained_below_ids(&retained), [12, 13]);
+
+        let far = history_fixture_viewport(&[1, 2, 3, 4], 3, 14, 1);
+        let patch = TerminalViewport::diff(&retained.viewport, &far).unwrap();
+        apply_retained_patch(&mut retained, patch, &mut next_revision).unwrap();
+        assert_eq!(
+            retained_below_ids(&retained),
+            [5, 6, 7, 8, 9, 10, 11, 12, 13]
+        );
+
+        let nearer = history_fixture_viewport(&[3, 4, 5, 6], 4, 14, 3);
+        let patch = TerminalViewport::diff(&retained.viewport, &nearer).unwrap();
+        apply_retained_patch(&mut retained, patch, &mut next_revision).unwrap();
+        assert_eq!(retained_below_ids(&retained), [7, 8, 9, 10, 11, 12, 13]);
+
+        let live = history_fixture_viewport(&[10, 11, 12, 13], 5, 14, 10);
+        let patch = TerminalViewport::diff(&retained.viewport, &live).unwrap();
+        apply_retained_patch(&mut retained, patch, &mut next_revision).unwrap();
+        assert!(retained.below.is_empty());
     }
 }

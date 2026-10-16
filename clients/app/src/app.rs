@@ -63,6 +63,7 @@ use crate::{
     terminal::TerminalPane,
 };
 use agent_pane::AgentPane;
+pub(crate) use settings::phone;
 
 const TREE_HINTS: &[ChooserHint] = &[
     ChooserHint {
@@ -714,16 +715,13 @@ impl AppShell {
             ChromeAction::UiZoomIn => {
                 self.preferences
                     .change_zoom(0.1, &self.connection, window, cx);
-                self.sync_zoom_input(window, cx);
             }
             ChromeAction::UiZoomOut => {
                 self.preferences
                     .change_zoom(-0.1, &self.connection, window, cx);
-                self.sync_zoom_input(window, cx);
             }
             ChromeAction::UiZoomReset => {
                 self.preferences.reset_zoom(&self.connection, window, cx);
-                self.sync_zoom_input(window, cx);
             }
             ChromeAction::ClosePane => {
                 if self.settings.take().is_none()
@@ -1218,8 +1216,36 @@ impl AppShell {
             .entry(pane)
             .or_insert_with(|| {
                 let connection = self.connection.clone();
+                let view = cx.weak_entity();
+                let touch_view = view.clone();
+                let scroll_view = view.clone();
                 cx.new(|cx| {
-                    browser_pane::BrowserPane::new(pane, descriptor, connection, window, cx)
+                    let mut browser =
+                        browser_pane::BrowserPane::new(pane, descriptor, connection, window, cx);
+                    browser.set_page_scroll_handler(move |travel, at_top, _, cx| {
+                        let _ = scroll_view.update(cx, |this, cx| {
+                            if at_top {
+                                this.expand_pill(cx);
+                            } else {
+                                this.compact_content_scrolled(travel, cx);
+                            }
+                        });
+                    });
+                    let notice_view = view.clone();
+                    browser.set_notice_handler(move |text, kind, _, cx| {
+                        let _ = notice_view.update(cx, |this, cx| {
+                            this.show_pill_notice(pane, text, kind, cx);
+                        });
+                    });
+                    browser.set_header_drag_handler(move |drag, _, cx| {
+                        let _ = view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
+                    });
+                    browser.set_header_touch_drag_handler(move |event, window, cx| {
+                        let _ = touch_view.update(cx, |this, cx| {
+                            this.touch_pane_drag(pane, event, window, cx);
+                        });
+                    });
+                    browser
                 })
             })
             .clone()
@@ -1677,6 +1703,7 @@ impl AppShell {
                             cx,
                         );
                         terminal.set_rows_above(false, cx);
+                        terminal.set_rows_below(false, cx);
                         terminal.set_floating(is_float, cx);
                     });
                     terminal.clone().into_any_element()
@@ -1704,6 +1731,7 @@ impl AppShell {
                             descriptor,
                             pane_id == active_window.active_pane,
                             radii,
+                            false,
                             window,
                             cx,
                         );
@@ -1884,14 +1912,10 @@ impl AppShell {
                 ]
             };
             if can_drag && (prefix_armed || self.pane_drag.is_some()) {
-                let state = if self
-                    .pane_drag
-                    .as_ref()
-                    .is_some_and(|state| state.drag.pane == pane_id)
-                {
-                    PaneDragOverlayState::Source
-                } else {
-                    PaneDragOverlayState::Armed
+                let state = match &self.pane_drag {
+                    Some(state) if state.drag.pane == pane_id => PaneDragOverlayState::Source,
+                    Some(_) => PaneDragOverlayState::Target,
+                    None => PaneDragOverlayState::Armed,
                 };
                 let view = cx.entity();
                 let title = zz_client::navigation::pane_label(pane);

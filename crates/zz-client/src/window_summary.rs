@@ -378,7 +378,8 @@ fn status_detail(pane: &PaneSnapshot) -> Option<Vec<DetailPart>> {
     }
 }
 
-fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) -> Vec<DetailPart> {
+#[must_use]
+pub fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) -> Vec<DetailPart> {
     if let Some(parts) = status_detail(pane) {
         return parts;
     }

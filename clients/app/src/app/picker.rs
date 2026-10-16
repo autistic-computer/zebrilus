@@ -1,12 +1,14 @@
 use crate::connection::Connection;
 use zz_gpui::{
-    App, Context, Corners, Entity, FocusHandle, Focusable, KeyDownEvent, MouseButton, Pixels,
-    Render, Window, prelude::*,
+    AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
+    MouseButton, Pixels, Render, Window, div, prelude::*, px,
 };
 use zz_protocol::PaneId;
 use zz_ui::{
-    IconName,
+    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _,
+    compact::{bottom_sheet, close_sheet, compact_bar_button, sheet_row},
     pane::{pane_picker_row, pane_picker_surface},
+    roles,
 };
 
 const CHOICES: &[(&str, &str, IconName, &str)] = &[
@@ -23,6 +25,8 @@ pub(super) struct PanePicker {
     selected: usize,
     agent_enabled: bool,
     corner_radii: Corners<Pixels>,
+    chosen: Option<usize>,
+    sheet_closed: bool,
 }
 
 impl PanePicker {
@@ -39,7 +43,81 @@ impl PanePicker {
             selected: 0,
             agent_enabled,
             corner_radii: Corners::default(),
+            chosen: None,
+            sheet_closed: false,
         }
+    }
+
+    fn sheet_id(&self) -> ElementId {
+        ("pane-picker-sheet", self.pane.0).into()
+    }
+
+    /// The choices as a drawer over the phone's page: a pick slides it away
+    /// and turns the pane into what was picked; sliding it away without a
+    /// pick closes the pane.
+    pub(super) fn sheet(&self, bottom_inset: Pixels, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.sheet_closed {
+            return None;
+        }
+        let muted = cx.theme().foreground.muted();
+        let id = self.sheet_id();
+        let rows = CHOICES
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| self.enabled(*index, cx))
+            .map(|(index, (title, _, icon, _))| {
+                let id = id.clone();
+                sheet_row(
+                    ("pane-picker-option", index),
+                    roles::PHONE_ROW,
+                    Some(Icon::new(icon.clone()).text_color(muted)),
+                    *title,
+                    cx,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.chosen = Some(index);
+                    close_sheet(id.clone(), cx);
+                }))
+                .into_any_element()
+            })
+            .collect::<Vec<_>>();
+        let close = compact_bar_button("pane-picker-close", IconName::Xmark).on_click({
+            let id = id.clone();
+            move |_, _, cx| close_sheet(id.clone(), cx)
+        });
+        let view = cx.weak_entity();
+        Some(
+            bottom_sheet(
+                id,
+                "New pane",
+                [close.into_any_element()],
+                div()
+                    .flex()
+                    .flex_col()
+                    .list_inset(cx)
+                    .pb(px(8.0))
+                    .children(rows),
+                bottom_inset,
+                move |_, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.sheet_closed = true;
+                        match this.chosen.take() {
+                            Some(index) => this.activate(index, cx),
+                            None => this.connection.update(cx, |connection, cx| {
+                                connection.command(
+                                    "kill-pane",
+                                    vec!["-t".into(), this.pane.to_string()],
+                                    cx,
+                                );
+                            }),
+                        }
+                        cx.notify();
+                    });
+                },
+            )
+            .header_role(roles::PHONE_BAR)
+            .into_any_element(),
+        )
     }
 
     pub(super) fn set_corner_radii(&mut self, radii: Corners<Pixels>, cx: &mut Context<Self>) {
@@ -129,10 +207,11 @@ impl Render for PanePicker {
         if !self.enabled(self.selected, cx) {
             self.selected = 0;
         }
+        let phone = super::settings::phone();
         let rows = CHOICES
             .iter()
             .enumerate()
-            .filter(|(index, _)| self.enabled(*index, cx))
+            .filter(|(index, _)| !phone && self.enabled(*index, cx))
             .map(|(index, (title, _, icon, shortcut))| {
                 pane_picker_row(
                     ("web-pane-choice", index),
@@ -170,6 +249,7 @@ impl Render for PanePicker {
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(|this, _, window, cx| {
+                this.sheet_closed = false;
                 this.connection.update(cx, |connection, cx| {
                     connection.command(
                         "select-pane",

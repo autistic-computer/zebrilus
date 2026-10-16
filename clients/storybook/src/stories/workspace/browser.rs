@@ -16,7 +16,7 @@ use zz_ui::{
     button::{Button, ButtonVariants as _},
     input::InputState,
     menu::{DropdownMenu as _, PopupMenu},
-    pane::{pane_drag_button, pane_header_icon_button, pane_surface},
+    pane::{PaneDragSource, pane_header_icon_button, pane_surface},
 };
 
 use super::fixtures::{chrome, pane_background, radii, stateful};
@@ -56,7 +56,7 @@ pub const STORY: Story = Story {
         Section {
             id: "tabs",
             name: "Tab strip",
-            summary: "BrowserTabStrip. Tabs share one width between 112 and 180px and scroll sideways once they run out of room, keeping the active tab in view. Close buttons appear on hover when there is more than one tab.",
+            summary: "BrowserTabStrip. Tabs share the row's width, up to 180px each and down to their favicon alone. A title too long for its tab fades out under the close button, which appears on hover when there is more than one tab.",
             build: |_, cx| stateless(tabs, cx),
         },
         Section {
@@ -228,7 +228,7 @@ pub fn toolbar(
     )
 }
 
-fn pane_actions(pane: u64, cx: &App) -> impl IntoElement {
+fn pane_actions(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_none()
@@ -242,17 +242,6 @@ fn pane_actions(pane: u64, cx: &App) -> impl IntoElement {
             pane_header_icon_button("Split right", IconName::PanelRight, true, cx)
                 .tooltip("Split right"),
         )
-        .child(pane_drag_button(
-            ("browser-drag", pane),
-            PaneId(pane),
-            "zed.dev".into(),
-            true,
-            |_, _, _| {},
-            cx,
-        ))
-        .child(
-            pane_header_icon_button("Close pane", IconName::Xmark, true, cx).tooltip("Close pane"),
-        )
 }
 
 fn tab_infos(count: usize) -> Vec<BrowserTabInfo> {
@@ -263,14 +252,14 @@ fn tab_infos(count: usize) -> Vec<BrowserTabInfo> {
         ("docs.rs", "Window in gpui - Rust"),
         ("news.ycombinator.com", "Hacker News"),
         ("crates.io", "crates.io: Rust Package Registry"),
-        ("New tab", "about:blank"),
+        ("about:blank", "New tab"),
         ("wgpu.rs", "wgpu: portable graphics"),
         ("ghostty.org", "Ghostty"),
     ]
     .into_iter()
     .take(count)
     .enumerate()
-    .map(|(index, (label, detail))| BrowserTabInfo::new(index as u64 + 1, label, detail))
+    .map(|(index, (host, title))| BrowserTabInfo::new(index as u64 + 1, title, host))
     .collect()
 }
 
@@ -285,8 +274,11 @@ pub fn header(
 ) -> BrowserHeader {
     BrowserHeader::new(
         active,
-        BrowserTabStrip::new(tab_infos(tabs), active_tab),
-        pane_actions(1, cx),
+        BrowserTabStrip::new(tab_infos(tabs), active_tab).title(
+            PaneDragSource::new(PaneId(1), "zed.dev", true, |_, _, _| {}),
+            |_, _| {},
+        ),
+        pane_actions(cx),
         toolbar(
             browser_address(address, site_controls(cx), window, cx).into_any_element(),
             true,
@@ -534,7 +526,7 @@ fn tabs(_: &mut Window, _: &mut App) -> AnyElement {
             strip("tabs-squeezed", 520.0, 5, 0),
         )
         .state(
-            "nine tabs, the eighth active, scrolled into view",
+            "nine tabs, the eighth active, down to their favicons",
             strip("tabs-scrolled", 640.0, 9, 7),
         )
         .into_any_element()

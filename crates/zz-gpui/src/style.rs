@@ -436,6 +436,10 @@ pub enum TextOverflow {
     /// of the string (e.g., "long fi…name.rs"). Useful for filenames where both the prefix
     /// and the extension are important context.
     TruncateMiddle(SharedString),
+    /// Fade the text out across this width at the end of the line when it
+    /// doesn't fit, so it trails off instead of being cut, like CSS's
+    /// `text-overflow: fade(<length>)`.
+    Fade(Pixels),
 }
 
 /// How to align text within the element

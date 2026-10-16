@@ -1,6 +1,6 @@
 use zz_gpui::{
-    AnyElement, App, Div, ElementId, Hsla, ParentElement as _, SharedString, Stateful, Styled as _,
-    div, prelude::*, px,
+    AnyElement, App, Div, ElementId, ParentElement as _, SharedString, Stateful, Styled as _, div,
+    prelude::*, px,
 };
 
 use crate::{
@@ -31,7 +31,6 @@ pub fn overview_card(
     icon: IconName,
     title: impl Into<SharedString>,
     preview: Option<AnyElement>,
-    background: Hsla,
     current: bool,
     attention: bool,
     cx: &App,
@@ -57,7 +56,6 @@ pub fn overview_card(
         .h(px(OVERVIEW_CARD_HEIGHT))
         .overflow_hidden()
         .layer(&Layer {
-            fill: background,
             glass: None,
             ..frame
         })
@@ -126,9 +124,8 @@ pub fn overview_add_tile(
         .child(press_highlight(press, pressed, radius))
 }
 
-/// The line over a window's cards: its index, its name and how many panes
-/// it holds.
-pub fn overview_section_heading(index: u32, name: &str, panes: usize, cx: &App) -> Div {
+/// The line over a window's cards: its title and how many panes it holds.
+pub fn overview_section_heading(title: &str, panes: usize, cx: &App) -> Div {
     let muted = cx.theme().foreground.muted();
     div()
         .flex()
@@ -138,10 +135,18 @@ pub fn overview_section_heading(index: u32, name: &str, panes: usize, cx: &App) 
         .pt(px(14.0))
         .pb(px(8.0))
         .text_size(px(13.0))
-        .child(div().text_color(muted).child(index.to_string()))
-        .child(div().font_medium().child(name.to_owned()))
         .child(
             div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .font_medium()
+                .child(title.to_owned()),
+        )
+        .child(
+            div()
+                .flex_none()
                 .text_size(px(12.0))
                 .text_color(muted)
                 .child(overview_count(panes, "pane")),

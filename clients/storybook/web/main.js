@@ -28,7 +28,7 @@ const SHADOW_KNOBS = [
     "float-spread",
     "float-strength",
 ];
-const MATERIAL_KNOBS = ["name", "radius", "outline", "row-inset", ...SHADOW_KNOBS, "primary", "highlights", "font"];
+const MATERIAL_KNOBS = ["name", "radius", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],
@@ -53,6 +53,8 @@ const PROPS = [
 ];
 const HASH_LIMIT = 2000;
 const STORED_ROLES = "zz-storybook-roles";
+const STORED_KNOBS_WIDTH = "zz-storybook-knobs-width";
+const KNOBS_MIN_WIDTH = 280;
 const KNOBS = [
     "theme",
     "contrast",
@@ -80,7 +82,7 @@ const DEFAULTS = {
     tint: "0",
     zoom: "1",
     "pane-gaps": "0",
-    "pane-margin": "8",
+    "pane-margin": "6",
     "pane-opacity": "0.5",
     "pane-inactive-opacity": "0.7",
     "pane-glow": "1",
@@ -386,6 +388,8 @@ function paintSliders() {
 function applyKnobs() {
     form.querySelector("#glass-knobs").hidden = glassMaterial() === null;
     form.querySelector("#outline-note").hidden = glassMaterial() === null;
+    form.querySelector("#outlines-note").hidden = knobValue("outlines") !== "picked";
+    form.querySelector("#shadows-note").hidden = knobValue("shadows") !== "picked";
     const mode = shownMode();
     for (const each of MODES) form.querySelector(`#colors-${each}`).hidden = each !== mode;
     for (const name of KNOBS) {
@@ -804,6 +808,62 @@ const actions = {
     copy: copyTheme,
 };
 
+function setKnobsWidth(width) {
+    const widest = Math.max(KNOBS_MIN_WIDTH, window.innerWidth - 360);
+    const clamped = Math.round(Math.min(widest, Math.max(KNOBS_MIN_WIDTH, width)));
+    document.body.style.setProperty("--knobs-width", `${clamped}px`);
+    return clamped;
+}
+
+function storeKnobsWidth(width) {
+    try {
+        if (width === null) localStorage.removeItem(STORED_KNOBS_WIDTH);
+        else localStorage.setItem(STORED_KNOBS_WIDTH, String(width));
+    } catch {}
+}
+
+function resizableKnobs() {
+    const handle = document.getElementById("knobs-resize");
+    const aside = document.getElementById("knobs");
+    let stored = null;
+    try {
+        stored = Number(localStorage.getItem(STORED_KNOBS_WIDTH));
+    } catch {}
+    if (stored > 0) setKnobsWidth(stored);
+    handle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        handle.classList.add("dragging");
+        document.body.classList.add("resizing");
+        const right = aside.getBoundingClientRect().right;
+        const done = new AbortController();
+        const end = () => {
+            done.abort();
+            handle.classList.remove("dragging");
+            document.body.classList.remove("resizing");
+            storeKnobsWidth(Math.round(aside.getBoundingClientRect().width));
+        };
+        handle.addEventListener("pointermove", (moved) => setKnobsWidth(right - moved.clientX), { signal: done.signal });
+        handle.addEventListener("pointerup", end, { signal: done.signal });
+        handle.addEventListener("pointercancel", end, { signal: done.signal });
+    });
+    handle.addEventListener("dblclick", () => {
+        document.body.style.removeProperty("--knobs-width");
+        storeKnobsWidth(null);
+    });
+    handle.addEventListener("keydown", (event) => {
+        const step = { ArrowLeft: 16, ArrowRight: -16 }[event.key];
+        if (!step) return;
+        event.preventDefault();
+        storeKnobsWidth(setKnobsWidth(aside.getBoundingClientRect().width + step));
+    });
+    window.addEventListener("resize", () => {
+        const width = parseFloat(document.body.style.getPropertyValue("--knobs-width"));
+        if (width > 0) setKnobsWidth(width);
+    });
+}
+
 function waitFor(predicate) {
     return new Promise((resolve) => {
         const tick = () => (predicate() ? resolve() : setTimeout(tick, 16));
@@ -811,6 +871,7 @@ function waitFor(predicate) {
     });
 }
 
+resizableKnobs();
 await init();
 zz.run();
 await waitFor(zz.is_ready);

@@ -30,21 +30,33 @@ const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 pub const WORKSPACE_SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
-const WORKSPACE_SIDEBAR_EDGE_INSET: f32 = 6.0;
+/// How far a window tab's close button sits in from the tab's trailing edge.
+const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
+/// Where a sidebar row's trailing actions (+, …, ×) center, in from the
+/// trailing edge of the row's fill. The sidebar toggle and the view switch
+/// center on the same line.
+pub const WORKSPACE_ROW_ACTION_CENTER: Pixels = px(19.0);
+/// How far the sidebar's rows stop short of its trailing edge past the row
+/// inset, so the scrollbar's thumb (8px at its widest, 2px in) runs beside
+/// them instead of over them.
+pub const WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER: Pixels = px(8.0);
 const WORKSPACE_SIDEBAR_FOOTER_TOP: f32 = 4.0;
 const WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
-pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(26.0);
-/// The sidebar toggle, settings and view switch: icon buttons a little
-/// larger than the status pills, with 15px glyphs.
-pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = px(32.0);
+/// The titlebar's window tabs and status chips: the largest controls in the
+/// chrome, a step up from the sidebar's buttons.
+pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
+/// The sidebar toggle, settings and view switch: icon buttons a step larger
+/// than a pane header's controls, with 17px glyphs.
+pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = px(28.0);
+const WORKSPACE_STATUS_WINDOW_TEXT_SIZE: f32 = 14.0;
 const WORKSPACE_CHROME_ICON_SIZE: Pixels = px(17.0);
-const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(16.0);
+const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
-const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(13.0);
-const WORKSPACE_STATUS_TEXT_SIZE: f32 = 12.0;
+const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(14.0);
+const WORKSPACE_STATUS_TEXT_SIZE: f32 = 13.0;
 const WORKSPACE_STATUS_CHIP_PADDING: Pixels = px(6.0);
 pub(crate) const STATUS_DOT_SIZE: f32 = 6.0;
 
@@ -88,7 +100,7 @@ pub fn workspace_controls_leading_inset(cx: &App) -> Pixels {
 
 #[must_use]
 pub fn workspace_layout_button(id: impl Into<ElementId>) -> Button {
-    workspace_chrome_button(id, IconName::PanelsTopLeft, "Toggle sidebar")
+    workspace_chrome_button(id, IconName::PanelLeft, "Toggle sidebar")
 }
 
 #[must_use]
@@ -102,13 +114,13 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
 }
 
 /// Switches the sidebar between the session tree and the flat window list;
-/// it reads as pressed while the flat list shows.
+/// its icon shows the one on screen.
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
     if flat {
-        workspace_chrome_button(id, IconName::EyeFilled, "Show the session tree")
+        workspace_chrome_button(id, IconName::List, "Show the session tree")
     } else {
-        workspace_chrome_button(id, IconName::Eye, "Show the flat window list")
+        workspace_chrome_button(id, IconName::ListTree, "Show the flat window list")
     }
 }
 
@@ -182,12 +194,19 @@ pub fn workspace_status_window(
     name: SharedString,
     tooltip: SharedString,
     state: WorkspaceStatusWindowState,
-    deck: Option<zz_gpui::AnyElement>,
+    deck: Option<pane_stack::PaneStack>,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let foreground = cx.theme().foreground;
     let tab = Surface::new(roles::WINDOW_TAB);
     let paint_state = state.paint_state();
+    let name = div()
+        .flex_1()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_fade(crate::LABEL_FADE)
+        .child(name);
     div()
         .id(id)
         .relative()
@@ -209,19 +228,13 @@ pub fn workspace_status_window(
             }
         })
         .when(!state.active, |item| item.text_color(foreground.muted()))
-        .text_size(rems_from_px(13.0))
+        .text_size(rems_from_px(WORKSPACE_STATUS_WINDOW_TEXT_SIZE))
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        .children(deck)
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(name),
-        )
+        .map(|item| match deck {
+            Some(deck) => item.child(deck.beside(name, px(5.0))),
+            None => item.child(name),
+        })
         .child(
             div()
                 .flex()
@@ -254,34 +267,45 @@ pub fn workspace_sidebar_titlebar(
         .items_center()
         .justify_end()
         .pl(workspace_controls_leading_inset(cx))
-        .pr(workspace_sidebar_edge_inset(cx))
+        .pr(workspace_sidebar_trailing_inset(cx))
         .child(controls)
 }
 
-fn workspace_sidebar_edge_inset(cx: &App) -> Pixels {
-    cx.theme().row_inset + px(WORKSPACE_SIDEBAR_EDGE_INSET)
+/// How far the sidebar's leading buttons sit in from its edges, so their
+/// centers fall on a pane header's center line: half a header in from the
+/// window's edges past the pane margin.
+fn workspace_chrome_inset() -> Pixels {
+    (crate::PANE_HEADER_HEIGHT - WORKSPACE_CHROME_BUTTON_SIZE) / 2.0
 }
 
-/// The trailing inset that centers a tree row's action buttons under the
-/// sidebar toggle in the titlebar above them.
+/// How far the sidebar's trailing buttons sit in from its trailing edge, so
+/// they center on the column its rows' actions do.
+fn workspace_sidebar_trailing_inset(cx: &App) -> Pixels {
+    WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER + cx.theme().row_inset + WORKSPACE_ROW_ACTION_CENTER
+        - WORKSPACE_CHROME_BUTTON_SIZE / 2.0
+}
+
+/// The trailing inset of a tree row's action buttons.
 fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
-    cx.theme().row_inset + workspace_row_action_gap()
+    cx.theme().row_inset + WORKSPACE_ROW_ACTION_CENTER - px(COMPACT_ICON_BUTTON_SIZE / 2.0)
 }
 
 fn workspace_row_action_gap() -> Pixels {
-    px(WORKSPACE_SIDEBAR_EDGE_INSET)
-        + (WORKSPACE_CHROME_BUTTON_SIZE - px(COMPACT_ICON_BUTTON_SIZE)) / 2.0
+    px(WORKSPACE_ROW_ACTION_GAP)
 }
 
 /// The strip under the sidebar's navigation: settings on the leading edge,
-/// the view switch on the trailing edge under the sidebar toggle.
+/// the view switch on the trailing edge under the sidebar toggle, both
+/// centered as far from the window's bottom as the traffic lights are from
+/// its top.
 pub fn workspace_sidebar_footer(
     id: impl Into<ElementId>,
     leading: impl IntoElement,
     trailing: Option<zz_gpui::AnyElement>,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let inset = workspace_sidebar_edge_inset(cx);
+    let inset = workspace_chrome_inset();
+    let window_inset = cx.theme().pane_margin + inset;
     div()
         .id(id)
         .flex()
@@ -290,9 +314,9 @@ pub fn workspace_sidebar_footer(
         .items_center()
         .justify_between()
         .pt(px(WORKSPACE_SIDEBAR_FOOTER_TOP))
-        .pl(inset)
-        .pr(inset)
-        .pb(inset)
+        .pl(window_inset)
+        .pr(workspace_sidebar_trailing_inset(cx))
+        .pb(window_inset)
         .child(leading)
         .children(trailing)
 }
@@ -641,7 +665,7 @@ fn workspace_tree_row_label(label: impl IntoElement) -> zz_gpui::Div {
         .gap_2()
         .overflow_hidden()
         .whitespace_nowrap()
-        .text_ellipsis()
+        .text_fade(crate::LABEL_FADE)
         .child(label)
 }
 

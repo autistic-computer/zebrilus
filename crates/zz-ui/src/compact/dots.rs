@@ -1,4 +1,4 @@
-use zz_gpui::{App, Div, ParentElement as _, Styled as _, div, prelude::*};
+use zz_gpui::{App, Div, Hsla, ParentElement as _, Styled as _, div, prelude::*};
 
 use crate::{ActiveTheme as _, Colorize as _, rems_from_px};
 
@@ -13,6 +13,10 @@ pub struct PageDot {
 }
 
 pub fn page_dots(groups: &[Vec<PageDot>], cx: &App) -> Div {
+    page_dots_in(groups, cx.theme().foreground, cx)
+}
+
+pub fn page_dots_in(groups: &[Vec<PageDot>], ink: Hsla, cx: &App) -> Div {
     let theme = cx.theme();
     div()
         .flex()
@@ -28,11 +32,11 @@ pub fn page_dots(groups: &[Vec<PageDot>], cx: &App) -> Div {
                 .children(dots.iter().enumerate().map(|(index, dot)| {
                     let selector = format!("page-dot-{group}-{index}");
                     let color = if dot.active {
-                        theme.foreground
+                        ink
                     } else if dot.attention {
                         theme.warning
                     } else {
-                        theme.foreground.faint()
+                        ink.faint()
                     };
                     crate::navigation::status_dot(color)
                         .debug_selector(move || selector)

@@ -7,6 +7,8 @@ use super::{
     color::{edge_weight, tint},
 };
 
+const TEXT_TINT: f32 = 0.35;
+
 /// The six palette roots, the scrim and the shadow ink the widget layer names. Read them off `cx.theme()`; derive
 /// everything else with [`Colorize`].
 ///
@@ -48,12 +50,15 @@ impl ThemeColor {
     }
 
     /// These colors with the background leaning toward the Oklch `hue`, in
-    /// degrees, by `intensity` from 0 to 1. Every surface, edge and glass
-    /// tint derives from the background, so they all lean with it.
+    /// degrees, by `intensity` from 0 to 1, and the text leaning a fraction
+    /// as far. Every surface, edge and glass tint derives from the
+    /// background, and every text color from the foreground, so they all
+    /// lean with them.
     #[must_use]
     pub fn tinted(&self, hue: f32, intensity: f32) -> Self {
         Self {
             background: tint(self.background, hue, intensity),
+            foreground: tint(self.foreground, hue, intensity * TEXT_TINT),
             ..*self
         }
     }

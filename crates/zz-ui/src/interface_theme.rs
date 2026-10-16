@@ -23,6 +23,10 @@ pub struct Materials {
     pub radius: f32,
     /// The width of every outline; 0 draws none.
     pub outline: f32,
+    /// Only the roles the theme turns the outline on for draw it; every
+    /// built-in outline is off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub picked_outlines: bool,
     /// How far list rows sit in from their list's edges; 0 makes them
     /// square bands that touch.
     pub row_inset: f32,
@@ -38,6 +42,10 @@ pub struct Materials {
     /// changes.
     #[serde(deserialize_with = "deserialize_glass")]
     pub glass: Option<GlassMaterial>,
+    /// Only the roles the theme gives a shadow cast one; every built-in
+    /// shadow is off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub picked_shadows: bool,
     /// The tight shadow of things resting on the window.
     #[serde(deserialize_with = "deserialize_contact")]
     pub contact: ShadowMaterial,
@@ -51,11 +59,13 @@ impl Default for Materials {
         Self {
             radius: 10.0,
             outline: 0.5,
+            picked_outlines: false,
             row_inset: 4.0,
             primary: PrimaryStyle::Foreground,
             flat_highlights: false,
             font: None,
             glass: None,
+            picked_shadows: false,
             contact: ShadowMaterial::CONTACT,
             float: ShadowMaterial::FLOAT,
         }
@@ -66,6 +76,7 @@ impl Materials {
     pub fn apply(&self, theme: &mut Theme) {
         theme.radius = px(self.radius);
         theme.outline = px(self.outline);
+        theme.picked_outlines = self.picked_outlines;
         theme.row_inset = px(self.row_inset);
         theme.primary = self.primary;
         theme.flat_highlights = self.flat_highlights;
@@ -73,6 +84,7 @@ impl Materials {
             theme.font_family = font.clone();
         }
         theme.glass = self.glass;
+        theme.picked_shadows = self.picked_shadows;
         theme.contact_shadow = self.contact;
         theme.float_shadow = self.float;
     }
@@ -112,7 +124,8 @@ pub struct ThemeOverrides {
     /// One of [`ACCENTS`] or a hex color.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
-    /// How far the background leans toward `tint-hue`, from 0 to 1.
+    /// How far the background, and a fraction as far the text, lean toward
+    /// `tint-hue`, from 0 to 1.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tint: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -140,7 +153,9 @@ impl ThemeOverrides {
                 colors.on_accent = None;
             }
             if tint > 0.0 {
-                colors.background = Some(colors.resolve(mode).tinted(hue, tint).background);
+                let tinted = colors.resolve(mode).tinted(hue, tint);
+                colors.background = Some(tinted.background);
+                colors.foreground = Some(tinted.foreground);
             }
         }
     }
@@ -575,6 +590,40 @@ mod tests {
     }
 
     #[test]
+    fn picked_outlines_go_only_where_the_theme_turns_them_on() {
+        use crate::Kind;
+        let theme = parse_theme(
+            r#"{"materials":{"outline":1,"picked-outlines":true},"roles":{"popover":{"outline":true}}}"#,
+        )
+        .unwrap();
+        let mut kit = Theme::default();
+        theme.apply(&mut kit);
+        assert!(kit.style(crate::SurfaceRole::POPOVER).outline);
+        assert!(!kit.style(Kind::Button.role()).outline);
+        assert!(!kit.style(crate::roles::PANE_CHIP).outline);
+        assert!(kit.style(crate::roles::BAR_RULE).outline);
+        assert!(theme.to_json().contains("\"picked-outlines\": true"));
+        assert!(!default_theme().to_json().contains("picked-outlines"));
+    }
+
+    #[test]
+    fn picked_shadows_go_only_where_the_theme_casts_them() {
+        use crate::{Kind, Shadow};
+        let theme = parse_theme(
+            r#"{"materials":{"picked-shadows":true},"roles":{"popover":{"shadow":"float"}}}"#,
+        )
+        .unwrap();
+        let mut kit = Theme::default();
+        theme.apply(&mut kit);
+        assert_eq!(kit.style(crate::SurfaceRole::POPOVER).shadow, Shadow::Float);
+        assert_eq!(kit.style(Kind::Button.role()).shadow, Shadow::None);
+        assert_eq!(kit.style(crate::roles::PANE_CHIP).shadow, Shadow::None);
+        assert_eq!(kit.style(crate::roles::WINDOW).shadow, Shadow::Float);
+        assert!(theme.to_json().contains("\"picked-shadows\": true"));
+        assert!(!default_theme().to_json().contains("picked-shadows"));
+    }
+
+    #[test]
     fn unknown_roles_are_errors_that_suggest_the_role() {
         let error = parse_theme(r#"{"roles":{"chromebutton":{}}}"#).unwrap_err();
         assert!(error.contains("did you mean `chrome.button`"), "{error}");
@@ -641,12 +690,12 @@ mod tests {
         assert_eq!(theme.materials.font.as_deref(), Some("Inter"));
         assert_eq!(theme.materials.outline, default_theme().materials.outline);
         assert_eq!(theme.materials.radius, 14.0);
-        assert_eq!(theme.dark.foreground, colors.foreground);
         assert_eq!(theme.light.accent, accent_color("green", ThemeMode::Light));
         assert_eq!(theme.dark.accent, accent_color("green", ThemeMode::Dark));
         assert_eq!(theme.dark.on_accent, None);
         let tinted = colors.resolve(ThemeMode::Dark).tinted(145.0, 1.0);
         assert_eq!(theme.dark.background, Some(tinted.background));
+        assert_eq!(theme.dark.foreground, Some(tinted.foreground));
 
         let mut plain = default_theme().clone();
         ThemeOverrides::default().apply_to(&mut plain);

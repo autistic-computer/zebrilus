@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
-    ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Style, StylePatch,
+    ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Shadow, Style, StylePatch,
     SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
     interface_theme::{self, InterfaceTheme, Materials, ThemeColors},
 };
@@ -25,7 +25,8 @@ pub struct Knobs {
     pub light: ThemeColors,
     pub dark: ThemeColors,
     pub contrast: f32,
-    /// The Oklch hue, in degrees, every surface leans toward.
+    /// The Oklch hue, in degrees, every surface, and faintly the text, leans
+    /// toward.
     pub tint_hue: f32,
     /// How far surfaces lean toward the tint hue, from 0 to 1.
     pub tint: f32,
@@ -48,7 +49,7 @@ impl Default for PaneKnobs {
     fn default() -> Self {
         Self {
             gaps: false,
-            margin: 8.0,
+            margin: 6.0,
             background: 0.5,
             inactive: 0.7,
             glow: 1.0,
@@ -272,6 +273,26 @@ impl Knobs {
                         }
                     }
                 }
+                "outlines" => {
+                    knobs.materials.picked_outlines = match value {
+                        "built-in" => false,
+                        "picked" => true,
+                        _ => {
+                            return Err(format!(
+                                "outlines must be built-in or picked, not {value}"
+                            ));
+                        }
+                    }
+                }
+                "shadows" => {
+                    knobs.materials.picked_shadows = match value {
+                        "built-in" => false,
+                        "picked" => true,
+                        _ => {
+                            return Err(format!("shadows must be built-in or picked, not {value}"));
+                        }
+                    }
+                }
                 "highlights" => {
                     knobs.materials.flat_highlights = match value {
                         "lift" => false,
@@ -391,14 +412,30 @@ impl Knobs {
 }
 
 /// The knob values that reproduce `materials`, by knob name, for the page to
-/// load: every length, both shadows, the primary style, how highlights
-/// rise, the font and the glass.
+/// load: every length, both shadows, the primary style, where outlines and
+/// shadows go, how highlights rise, the font and the glass.
 pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_json::Value> {
     let mut knobs = MATERIAL_KNOBS
         .iter()
         .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(materials))))
         .collect::<serde_json::Map<_, _>>();
     knobs.insert("primary".to_owned(), serde_json::json!(materials.primary));
+    knobs.insert(
+        "outlines".to_owned(),
+        serde_json::json!(if materials.picked_outlines {
+            "picked"
+        } else {
+            "built-in"
+        }),
+    );
+    knobs.insert(
+        "shadows".to_owned(),
+        serde_json::json!(if materials.picked_shadows {
+            "picked"
+        } else {
+            "built-in"
+        }),
+    );
     knobs.insert(
         "highlights".to_owned(),
         serde_json::json!(if materials.flat_highlights {
@@ -469,10 +506,12 @@ fn parse_roles(json: &str) -> Result<BTreeMap<String, StylePatch>, String> {
 
 /// Where a role's prop comes from before the theme names the role itself:
 /// the built-in style or patch of the role or one of its groups, or the
-/// theme's patch for one of its groups, which beats every built-in.
+/// theme's patch for one of its groups, which beats every built-in. A
+/// theme that picks its outlines or shadows drops the built-in one, with no
+/// role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Origin {
-    pub role: SurfaceRole,
+    pub role: Option<SurfaceRole>,
     pub themed: bool,
 }
 
@@ -481,11 +520,15 @@ pub const PROPS: [&str; 6] = ["fill", "outline", "shadow", "shape", "hover", "se
 
 /// The style `role` takes from everything but the theme's patch for it, and
 /// where each of its [`PROPS`] comes from.
-pub fn inherited(role: SurfaceRole, roles: &BTreeMap<String, StylePatch>) -> (Style, [Origin; 6]) {
+pub fn inherited(
+    role: SurfaceRole,
+    roles: &BTreeMap<String, StylePatch>,
+    materials: &Materials,
+) -> (Style, [Origin; 6]) {
     let knobs = role.knobs();
     let mut style = role.kind.base();
     let mut origins = [Origin {
-        role: role.kind.role(),
+        role: Some(role.kind.role()),
         themed: false,
     }; 6];
     let mut layer = |patch: StylePatch, origin: Origin| {
@@ -509,17 +552,27 @@ pub fn inherited(role: SurfaceRole, roles: &BTreeMap<String, StylePatch>) -> (St
         layer(
             node.patch,
             Origin {
-                role: *node,
+                role: Some(*node),
                 themed: false,
             },
         );
+    }
+    let picked = Origin {
+        role: None,
+        themed: true,
+    };
+    if materials.picked_outlines && role.picks_outline() {
+        layer(StylePatch::EMPTY.outline(false), picked);
+    }
+    if materials.picked_shadows && role.picks_shadow() {
+        layer(StylePatch::EMPTY.shadow(Shadow::None), picked);
     }
     for node in lineage.iter().rev().filter(|node| node.id != role.id) {
         if let Some(patch) = roles.get(node.id) {
             layer(
                 knobs.admit(*patch),
                 Origin {
-                    role: *node,
+                    role: Some(*node),
                     themed: true,
                 },
             );
@@ -665,6 +718,39 @@ mod tests {
     }
 
     #[test]
+    fn the_shadows_knob_picks_where_shadows_go() {
+        assert!(
+            Knobs::parse("shadows=picked")
+                .unwrap()
+                .materials
+                .picked_shadows
+        );
+        assert!(Knobs::parse("shadows=some").is_err());
+        let picked = Knobs::parse("shadows=picked").unwrap().materials;
+        assert_eq!(material_knobs(&picked)["shadows"], "picked");
+        assert_eq!(material_knobs(&Materials::default())["shadows"], "built-in");
+    }
+
+    #[test]
+    fn the_outlines_knob_picks_where_outlines_go() {
+        assert!(
+            Knobs::parse("outlines=picked")
+                .unwrap()
+                .materials
+                .picked_outlines
+        );
+        assert!(
+            !Knobs::parse("outlines=built-in")
+                .unwrap()
+                .materials
+                .picked_outlines
+        );
+        assert!(Knobs::parse("outlines=some").is_err());
+        let picked = Knobs::parse("outlines=picked").unwrap().materials;
+        assert_eq!(material_knobs(&picked)["outlines"], "picked");
+    }
+
+    #[test]
     fn the_interface_theme_sets_the_knobs_until_one_says_otherwise() {
         let default = interface_theme::default_theme();
         let knobs = Knobs::parse("interface-theme=default").unwrap();
@@ -730,38 +816,66 @@ mod tests {
             roles: group_patches.clone(),
             ..interface_theme::default_theme().clone()
         };
-        for (id, theme) in themes()
-            .into_iter()
-            .chain([("patched groups".to_owned(), patched)])
-        {
+        let materials = Materials {
+            picked_outlines: true,
+            picked_shadows: true,
+            ..patched.materials.clone()
+        };
+        let picked = InterfaceTheme {
+            materials: materials.clone(),
+            ..patched.clone()
+        };
+        for (id, theme) in themes().into_iter().chain([
+            ("patched groups".to_owned(), patched),
+            ("picked outlines and shadows".to_owned(), picked),
+        ]) {
             let mut kit = Theme::default();
             theme.apply_roles(&mut kit);
+            kit.picked_outlines = theme.materials.picked_outlines;
+            kit.picked_shadows = theme.materials.picked_shadows;
             for role in zz_ui::roles::all() {
-                let (mut style, _) = inherited(role, &theme.roles);
+                let (mut style, _) = inherited(role, &theme.roles, &theme.materials);
                 if let Some(patch) = theme.roles.get(role.id) {
                     patch.apply(&mut style);
                 }
                 assert_eq!(style, kit.style(role), "{id} {}", role.id);
             }
         }
-        let origin = |role, themed| Origin { role, themed };
-        let (style, origins) = inherited(zz_ui::roles::WINDOW_CONTROLS, &group_patches);
+        let built_in = Materials::default();
+        let origin = |role, themed| Origin {
+            role: Some(role),
+            themed,
+        };
+        let (style, origins) = inherited(zz_ui::roles::WINDOW_CONTROLS, &group_patches, &built_in);
         assert_eq!(style.fill, zz_ui::Fill::Tint);
         assert_eq!(origins[0], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
         assert_eq!(origins[2], origin(zz_ui::SurfaceRole::ICON_BUTTON, false));
         assert_eq!(origins[3], origin(zz_ui::roles::WINDOW_CONTROLS, false));
         assert_eq!(style.hover, zz_ui::Highlight::Ring);
         assert_eq!(origins[4], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
-        let (style, origins) = inherited(zz_ui::roles::DROP_ZONE, &group_patches);
+        let (style, origins) = inherited(zz_ui::roles::DROP_ZONE, &group_patches, &built_in);
         assert_eq!(style.fill, zz_ui::Fill::Glass);
         assert_eq!(origins[0], origin(zz_ui::Kind::Floating.role(), true));
-        let (style, origins) = inherited(zz_ui::SurfaceRole::DIALOG, &group_patches);
+        let (style, origins) = inherited(zz_ui::SurfaceRole::DIALOG, &group_patches, &built_in);
         assert_eq!(style.shape, zz_ui::Shape::Round);
         assert_eq!(origins[3], origin(zz_ui::Kind::Floating.role(), false));
         assert_eq!(
-            inherited(zz_ui::SurfaceRole::TOAST, &group_patches).0.shape,
+            inherited(zz_ui::SurfaceRole::TOAST, &group_patches, &built_in)
+                .0
+                .shape,
             zz_ui::Shape::Pill
         );
+        let (style, origins) = inherited(zz_ui::SurfaceRole::DIALOG, &group_patches, &materials);
+        assert!(!style.outline);
+        assert_eq!(style.shadow, Shadow::None);
+        let picked = Origin {
+            role: None,
+            themed: true,
+        };
+        assert_eq!((origins[1], origins[2]), (picked, picked));
+        let (style, origins) = inherited(zz_ui::roles::WINDOW_CONTROLS, &group_patches, &materials);
+        assert!(style.outline);
+        assert_eq!(origins[1], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
     }
 
     #[test]

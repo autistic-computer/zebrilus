@@ -161,13 +161,14 @@ materials decide what those look like, and the theme can change any role by id. 
    The local renderer makes blurred shadows follow the pane's corner smoothing, including
    its small 2px control shadow. Circular and fully rounded surfaces retain circular shadows.
 
-   The active gapped pane shows focus in its frame: `Theme::pane_frame` paints the rim's light,
-   the glint and the fresnel glow, in the accent (`light_color`, keeping the light's alpha) and
-   leaves the rest of the glass as the other panes draw it. Settings > Panes > Selected pane edge
-   scales the glint's specular and the fresnel from 0–200%; 0 lights the active pane like the
-   others. `pane-glow-strength` stores the factor from 0–2, defaulting to 1. Under a theme without
-   glass the active pane's hairline takes the accent (`pane_border_color`). Either way it is the
-   draw the pane already makes, with no glow layer of its own.
+   The active gapped pane shows focus by light, not color, the way Rex draws it:
+   `Theme::pane_frame` washes its fill toward white (5% in dark, 30% in light) and veils the other
+   panes' fills toward black (18% in dark, 5% in light), and the others' rims, the glass glint or
+   the hairline without glass (`Theme::pane_edge_color`), show at 70%. Their content dims by
+   `pane-inactive-opacity` as before. Settings > Panes > Selected pane contrast scales all of it
+   from 0–200%; 0 draws the active pane like the others. `pane-glow-strength` stores the factor
+   from 0–2, defaulting to 1. It is the draw the pane already makes, with no layer of its own.
+   Floating panes still edge the active one in the accent (`pane_border_color`).
    `PaneChrome::active` and `PaneChrome::frame` share this across desktop, thin client, and preview
    callers. Without gaps, pane content roots paint their own backgrounds using the configured pane
    opacity; under a frame they paint none.
@@ -185,34 +186,44 @@ Settings > Status bar scrolls its live preview with the controls. The titlebar h
 sidebar toggle, with no divider; settings lives in the sidebar footer. With the sidebar open the toggle
 sits at the top-right corner of the sidebar, and the navigation fades into the footer through the kit's
 `bottom_fade` (40px toward the sidebar's ground, solid for its last 12px) while rows remain below. The agent button shares the active window pill’s background,
-theme border, shadow, and 26px height, with widths sized to their contents. The titlebar, a pane header tall (36px) plus the pane margin above and below it, leaves at least 5px above and below each pill. Window pills always align left, and the right edge shows an
+theme border, shadow, and 32px height (a step up from the sidebar's 28px buttons), with widths sized to their contents. The titlebar, a pane header tall (34px) plus the pane margin above and below it, puts each pill on the pane headers' center line. Window pills always align left, and the right edge shows an
 agent status dot and summary with a pane-selection menu. Time/date and alignment controls are absent. Window pills share the
 production pane deck, the flat sidebar's stack drawn at 20px (`navigation::pane_stack`): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color,
-5px apart inside a vertically centered 26px pill. Pointing at it opens every pane in a row on a
-popover plate; tooltips show pane details and clicking a tile selects that pane directly. Browser
+5px apart inside a vertically centered 32px pill. Pointing at it opens every pane in a row drawn
+on the pill itself, with no plate of its own: the name under the tiles is hidden and fades back in
+past them over `LABEL_FADE` (`PaneStack::beside`); tooltips show pane details and clicking a tile
+selects that pane directly. Browser
 tiles use cached favicons with a globe fallback.
 The settings sample allows hover while selection actions remain inert.
 Automatically named window pills use the active browser or agent pane title. Browser labels fall
 back to the active URL and then “browser”; explicitly renamed windows keep their chosen names.
 
-Browser headers use 28px tabs, URL fields, and browser buttons, with 8px outer padding and an 8px gap
-between the tab and navigation rows. Pane split and close buttons keep their 24px size (`crates/zz-ui/src/browser.rs`, `BrowserHeader`).
-In Terminal and Agent headers the title is the drag handle: `pane::PaneTitle`, a 24px button
+Every pane header puts its controls 22px tall (`PANE_HEADER_CONTROL_HEIGHT`), 6px (`CHROME_GAP`)
+in from the pane's top and sides, so Terminal and Agent headers are 34px, Rex's size; the sidebar's
+28px buttons and the titlebar's 32px tabs stay larger. A Browser header's first row is 40px so
+its 28px tabs, as tall as the URL field, keep the 6px inset: the title, the tabs, New tab right
+after the last tab, then the split buttons at the row's end; under it the navigation row, then 6px
+(`crates/zz-ui/src/browser.rs`, `BrowserHeader`). The tabs share the row like a desktop browser's,
+never scrolling: each up to 180px, shrinking evenly, and below 84px a tab shows only its favicon,
+which turns into its X on hover.
+Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
 (`pane.header.title`) holding the kind icon and the title, the provider name and session title
-for an agent. Dragging it splits or swaps under the existing availability rules
+for an agent, and a globe with "Browser" for a browser (`BrowserTabStrip::title`). Dragging it splits or swaps under the existing availability rules
 (`pane::PaneDragSource`). Pointed at, it tints, its icon turns into the four-way move arrows, and
 an X at its right end closes the pane; a coarse pointer (touch, iPad) never hovers, so there the X
-always shows and the icon stays. Split bottom and Split right stay on the right. The Browser
-header has tabs instead of a title, so its toolbar keeps a separate 24px drag grip (a two-column,
-three-row grid of dots, `pane::pane_drag_button`) and Close.
+always shows and the icon stays. The title keeps one width, 180px (as wide as a browser tab;
+less only when the header is narrower), whatever its label, so the X sits in the same place; a label too long for it fades out
+over its last 28px under the X (`text_fade`) instead of ending in an ellipsis. Only "Browser",
+which never changes, sizes to its label (`PaneTitle::fit`). Split bottom and Split right stay on
+the right.
 The URL field contains a 24px site-controls button at its left edge. Its popup reads Chromium connection
 status and tab sound state when opened, and offers the existing site-data clearing confirmation.
 The URL field is a neutral ghost field: no resting background, the ghost hover fill, and a
 border in the focus color while focused. Active tabs take the neutral soft fill and the shared
 control highlight; inactive tabs are ghost with muted text. Both reserve the border width so state
 changes preserve layout.
-Browser tabs start at 180px wide and shrink evenly to 112px before overflowing into horizontal
-scrolling. Tab labels and URL text use 13px type with a 16px line height. Tab icons have 12px leading padding and a 6px gap before the label.
+A tab's label is the page title; one too long for its tab fades out the same way under the tab's
+X, which overlays the tab's right end. Tab labels and URL text use 13px type with a 16px line height. Tab icons have 12px leading padding and a 6px gap before the label.
 Omnibox suggestions use 32px single-line rows with title and muted URL text. Their rounded
 hover and selection fills sit inside the dropdown's 4px padding. Tabs and history rows use
 stored page favicons, with a globe fallback.
@@ -375,8 +386,9 @@ screen-sized needs to opt out explicitly with `UiZoom::unzoomed`.
 
 The thin clients compute their zoom in `interface_zoom` (`clients/app/src/app/settings.rs`).
 On iPad the system text size multiplies the stored UI zoom unless **Match system text size** is off.
-On iPhone there is no UI zoom: the system text size (Dynamic Type) is the scale, capped at 135%
-because zoom grows controls and icons as well as text, and Settings hides both rows.
+On iPhone the stored UI zoom multiplies the system text size (Dynamic Type), which counts up to
+135% because zoom grows controls and icons as well as text; Settings shows UI zoom and hides
+**Match system text size**.
 
 # Terminal color exception
 
@@ -436,11 +448,16 @@ Icon-only chrome controls use `Button::compact_icon`: a 24px hover surface aroun
 glyph with a 0.5px downward optical adjustment. The titlebar, sidebar row actions, browser pane,
 and Agent pane share this constructor, which fixes padding and icon scale in one place. Browser
 controls override the hover surface to 28px while retaining the shared icon scale. The sidebar
-toggle, Settings, the view switch (eye) and the iOS palette button are 32px buttons with 17px
-glyphs (from 28 and 15), larger than the 26px titlebar pills so their glyphs read at a glance
-(`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`). Tree-row actions center under the toggle
-from that size, inset the row inset plus 10px (`workspace_row_action_gap`), and a titlebar window
-pill's hover close sits the same 10px from the pill's edge.
+toggle, Settings, the view switch (eye) and the iOS palette button are 28px buttons with 17px
+glyphs, a step under the 32px titlebar pills (`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`).
+The sidebar's rows stop 8px short of its trailing edge past the row inset
+(`WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER`, on the flat list and the tree's `uniform_list`), so the
+scrollbar thumb runs in a lane of its own beside them, as in Rex. Every row action (the flat rows'
+… and +, the tree's 24px buttons) centers 19px in from the row fill's trailing edge
+(`WORKSPACE_ROW_ACTION_CENTER`), and the toggle and the view switch center on the same line. A
+titlebar window pill's hover close sits 10px from the pill's edge (`workspace_row_action_gap`).
+Sidebar titles, descriptions and session and host labels fade out over their last 28px
+(`LABEL_FADE`) instead of ending in an ellipsis.
 
 Text and icons take a hover color only from the `hover` of an element with an id. GPUI shapes text
 and resolves an icon's color at layout; an element with an id records its own hover and lays out

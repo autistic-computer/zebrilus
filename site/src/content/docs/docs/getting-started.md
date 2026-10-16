@@ -365,7 +365,7 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `theme-mode` | `system` | `system`, `light`, or `dark` |
 | `interface-theme` | `default` | The look of the interface and its colors in light and dark: `default`, `liquid-glass`, or the name of a theme saved as `themes/<name>.json` next to the config file |
 | `chrome-accent` | `theme` | The accent color: the theme's own, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or a `#rrggbb` color |
-| `chrome-tint` | `0` | How far the window's surfaces lean toward `chrome-tint-hue` (0–360, default `260`), 0–1 |
+| `chrome-tint` | `0` | How far the window's surfaces, and faintly its text, lean toward `chrome-tint-hue` (0–360, default `260`), 0–1 |
 | `widget-corner-radius` | from the theme | Corners of every rounded surface, 0–25px. Which pieces are pills is up to the theme |
 | `pane-gaps` | `false` | The card treatment: spaced panes framed in glass, their corners a little rounder than the theme's. Off makes them flush and square |
 | `pane-margin` | `8` | Gap between panes and at the window edge, 0–32 |

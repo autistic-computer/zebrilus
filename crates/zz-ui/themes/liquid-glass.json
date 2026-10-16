@@ -1,70 +1,158 @@
 {
   "name": "Liquid Glass",
   "materials": {
-    "radius": 25,
-    "outline": 0,
-    "row-inset": 5,
-    "primary": "foreground",
+    "radius": 25.0,
+    "outline": 0.75,
+    "picked-outlines": true,
+    "row-inset": 5.0,
+    "primary": "accent",
+    "flat-highlights": true,
+    "font": null,
     "glass": {
-      "blur": 40,
-      "bezel": 3,
-      "refraction": 38,
+      "blur": 40.0,
+      "bezel": 7.0,
+      "refraction": 0.0,
       "dispersion": 0.04,
       "tint": "#ffffff7a",
       "saturation": 1.8,
       "brightness": 0.04,
-      "contrast": 1,
+      "contrast": 1.0,
       "specular": 0.3,
       "glint_width": 0.6,
-      "light_angle": -2.3561945,
-      "light_color": "#ffffff",
+      "light_angle": -1.5707964,
+      "light_color": "#ffffffff",
       "fresnel": 0.08,
       "edge_shadow": 0.95,
       "edge_width": 0.9,
-      "edge_color": "#000000",
-      "noise": 0,
-      "glow": 0,
-      "glow_radius": 90,
-      "glow_center": { "x": 0.5, "y": 0.5 },
-      "merge": 20,
-      "opacity": 1
+      "edge_color": "#000000ff",
+      "noise": 0.0,
+      "glow": 0.0,
+      "glow_radius": 90.0,
+      "glow_center": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "merge": 20.0,
+      "opacity": 1.0,
+      "fallback": null
     },
-    "contact": { "y": 0, "blur": 0, "spread": 0, "strength": 0 },
-    "float": { "y": 0, "blur": 0, "spread": -48, "strength": 0 }
+    "picked-shadows": true,
+    "contact": {
+      "y": 0.0,
+      "blur": 3.5,
+      "spread": 0.0,
+      "strength": 0.35
+    },
+    "float": {
+      "y": 0.0,
+      "blur": 0.0,
+      "spread": -48.0,
+      "strength": 0.0
+    }
   },
   "roles": {
-    "agent.attachment": { "fill": "glass" },
-    "agent.composer": { "fill": "glass", "outline": false, "hover": "none" },
-    "agent.jump": { "fill": "glass" },
-    "agent.status": { "fill": "solid" },
-    "badge": { "fill": "none" },
-    "browser.address": { "fill": "glass" },
-    "browser.tab": { "selected": "glass" },
-    "pane.chip": { "fill": "solid" },
-    "pane.drop-zone": { "fill": "glass" },
-    "pane.header.button": { "hover": "lift", "selected": "lift" },
-    "phone.add": { "fill": "glass" },
-    "phone.key": { "fill": "glass" },
-    "phone.pill": { "fill": "glass" },
-    "sidebar.entry": { "selected": "glass" },
-    "titlebar.status-chip": { "hover": "lift", "selected": "lift" },
-    "titlebar.window-tab": { "selected": "glass" },
-    "tooltip": { "fill": "solid" }
+    "agent.attachment": {
+      "fill": "glass"
+    },
+    "agent.bubble": {
+      "outline": true,
+      "shadow": "float"
+    },
+    "agent.composer": {
+      "fill": "glass",
+      "outline": false,
+      "hover": "none"
+    },
+    "agent.jump": {
+      "fill": "glass"
+    },
+    "agent.status": {
+      "fill": "tint",
+      "outline": true
+    },
+    "badge": {
+      "fill": "none"
+    },
+    "browser.address": {
+      "selected": "glass"
+    },
+    "browser.tab": {
+      "selected": "glass"
+    },
+    "chrome.button": {
+      "selected": "none"
+    },
+    "code": {
+      "outline": true,
+      "shadow": "float"
+    },
+    "pane-stack": {
+      "outline": true
+    },
+    "pane.chip": {
+      "fill": "solid",
+      "outline": true,
+      "shadow": "float"
+    },
+    "pane.drag-chip": {
+      "fill": "tint",
+      "outline": true,
+      "shadow": "float"
+    },
+    "pane.drop-zone": {
+      "fill": "glass"
+    },
+    "pane.header.button": {
+      "hover": "lift",
+      "selected": "lift"
+    },
+    "pane.picker": {
+      "fill": "solid",
+      "selected": "tint"
+    },
+    "phone.add": {
+      "fill": "glass"
+    },
+    "phone.pill": {
+      "fill": "glass"
+    },
+    "settings.card": {
+      "outline": true
+    },
+    "sidebar.entry": {
+      "hover": "tint",
+      "selected": "glass"
+    },
+    "sidebar.row": {
+      "selected": "glass"
+    },
+    "titlebar.status-chip": {
+      "hover": "lift",
+      "selected": "lift"
+    },
+    "titlebar.window-tab": {
+      "selected": "glass"
+    },
+    "tooltip": {
+      "fill": "solid",
+      "outline": true,
+      "shadow": "float"
+    }
   },
   "light": {
-    "background": "#ffffff",
-    "foreground": "#262626",
-    "accent": "#007aff",
-    "success": "#029437",
-    "warning": "#c66702",
-    "danger": "#f62d34"
+    "background": "#ffffffff",
+    "foreground": "#262626ff",
+    "accent": "#007affff",
+    "success": "#029437ff",
+    "warning": "#c66702ff",
+    "danger": "#f62d34ff"
   },
   "dark": {
-    "background": "#1e1e1e",
-    "foreground": "#dddddd",
-    "accent": "#007aff",
-    "success": "#30d158",
-    "warning": "#ff9230",
-    "danger": "#ff4245"
+    "background": "#1e1e1eff",
+    "foreground": "#ddddddff",
+    "accent": "#007affff",
+    "success": "#30d158ff",
+    "warning": "#ff9230ff",
+    "danger": "#ff4245ff"
   }
 }

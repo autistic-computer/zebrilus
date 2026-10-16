@@ -299,9 +299,10 @@ mod tests {
                 refresh_current_theme(cx);
                 let theme = Theme::global(cx);
                 assert_eq!(theme.pane_frames, gaps, "{id} with gaps {gaps}");
+                let outlined = theme.style(zz_ui::roles::PANE).outline;
                 assert_eq!(
                     theme.pane_edge_width(),
-                    if gaps {
+                    if gaps && outlined {
                         theme.outline
                     } else {
                         zz_gpui::px(0.0)

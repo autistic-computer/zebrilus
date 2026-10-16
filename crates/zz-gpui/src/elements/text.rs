@@ -635,6 +635,7 @@ struct TextLayoutInner {
     line_height: Pixels,
     wrap_width: Option<Pixels>,
     truncate_width: Option<Pixels>,
+    fade: Option<Pixels>,
     size: Option<Size<Pixels>>,
     bounds: Option<Bounds<Pixels>>,
 }
@@ -687,10 +688,26 @@ impl TextLayout {
                             TextOverflow::Truncate(s) => (width, s, TruncateFrom::End),
                             TextOverflow::TruncateStart(s) => (width, s, TruncateFrom::Start),
                             TextOverflow::TruncateMiddle(s) => (width, s, TruncateFrom::Middle),
+                            TextOverflow::Fade(_) => (None, "".into(), TruncateFrom::End),
                         }
                     } else {
                         (None, "".into(), TruncateFrom::End)
                     };
+
+                let fade = match text_style.text_overflow {
+                    Some(TextOverflow::Fade(width)) => Some(width),
+                    _ => None,
+                };
+                let fit_width = fade.and(known_dimensions.width.or(match available_space.width {
+                    crate::AvailableSpace::Definite(x) => Some(x),
+                    _ => None,
+                }));
+                let fit = |mut size: Size<Pixels>| {
+                    if let Some(width) = fit_width {
+                        size.width = size.width.min(width);
+                    }
+                    size
+                };
 
                 // Only use cached layout if:
                 // 1. We have a cached size
@@ -708,7 +725,7 @@ impl TextLayout {
                     && truncate_width.is_none()
                     && text_layout.truncate_width.is_none()
                 {
-                    return size;
+                    return fit(size);
                 }
 
                 let mut line_wrapper = cx.text_system().line_wrapper(text_style.font(), font_size);
@@ -770,6 +787,7 @@ impl TextLayout {
                         line_height,
                         wrap_width,
                         truncate_width,
+                        fade,
                         size: Some(Size::default()),
                         bounds: None,
                     });
@@ -789,11 +807,12 @@ impl TextLayout {
                     line_height,
                     wrap_width,
                     truncate_width,
+                    fade,
                     size: Some(size),
                     bounds: None,
                 });
 
-                size
+                fit(size)
             }
         })
     }
@@ -821,27 +840,38 @@ impl TextLayout {
         let line_height = element_state.line_height;
         let mut line_origin = bounds.origin;
         let text_align = window.text_align();
-        for line in &element_state.lines {
-            line.paint_background(
-                line_origin,
-                line_height,
-                text_align,
-                Some(bounds),
-                window,
-                cx,
-            )
-            .log_err();
-            line.paint(
-                line_origin,
-                line_height,
-                text_align,
-                Some(bounds),
-                window,
-                cx,
-            )
-            .log_err();
-            line_origin.y += line.size(line_height).height;
-        }
+        let fade = element_state
+            .fade
+            .filter(|_| {
+                element_state
+                    .lines
+                    .iter()
+                    .any(|line| line.size(line_height).width > bounds.size.width + crate::px(0.5))
+            })
+            .map(|width| (bounds.right() - width, bounds.right()));
+        window.with_text_fade(fade, |window| {
+            for line in &element_state.lines {
+                line.paint_background(
+                    line_origin,
+                    line_height,
+                    text_align,
+                    Some(bounds),
+                    window,
+                    cx,
+                )
+                .log_err();
+                line.paint(
+                    line_origin,
+                    line_height,
+                    text_align,
+                    Some(bounds),
+                    window,
+                    cx,
+                )
+                .log_err();
+                line_origin.y += line.size(line_height).height;
+            }
+        });
     }
 
     /// Get the byte index into the input of the pixel position.

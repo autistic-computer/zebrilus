@@ -235,6 +235,16 @@ Each is upstream-able as a small Zed PR; if Zed merges an equivalent, drop it. I
     cached `CTFont` per font and size instead of `clone_with_font_size` for every run, which keeps
     CoreText's shaping caches alive between lines. `5a00ac89a4` adds `accessibility_active` to
     the frame recorder.
+37. Text that fades instead of being cut: `TextOverflow::Fade(width)` (`Styled::text_fade`), CSS's
+    `text-overflow: fade(<length>)`. A text element whose line runs past its bounds paints under
+    `Window::with_text_fade`, which fades it out across the last `width` of the box; it reports a
+    width no wider than its available space, as truncation does, so it fills its box instead of
+    overflowing it. The fade needs no shader: a glyph sprite crossing it is inserted once per
+    device pixel column, each clipped to its column by the content mask at its own opacity, which
+    is the same per-pixel result a mask would give (`Window::insert_glyph_sprite`, used by every
+    glyph and emoji paint). `Window::with_text_fade` takes the span from opaque to gone in either
+    direction, so text can also be hidden up to a point and fade in after it, as zz does under an
+    open pane stack.
 
 WGPU window-frame antialiasing (`c8135f5b6b`) applies outer coverage once when a quad and the
 window mask have identical bounds, radii, and corner smoothing. Other intersections retain their
@@ -246,7 +256,7 @@ The 2026-09-23/24 performance work added four commits, all on `zz-patches` since
 2026-09-24: `a64e53ec` retires Metal atlas tiles only after the frames that read them
 complete; `2d9f5676f5` sorts sprites by `(order, texture)` in `Scene::finish` instead of
 `(order, tile_id)`, which removed most of a per-frame sort during terminal output;
-`7f33860f41` adds `Window::paint_underlay_hole` and `Window::set_underlay_active`, which zz
+`7f33860f41` adds `Window::paint_underlay_hole` (now `paint_underlay`, which falls back to drawing the layer's frame where glass covers it) and `Window::set_underlay_active`, which zz
 uses to show macOS browser frames on a native layer under the window (see
 [OSR rendering](/browser/osr-rendering.md)); and `9b46226e6f` pauses a macOS window's
 display link after three vsyncs without frame demand, restarting it through `schedule_frame`
@@ -265,8 +275,13 @@ above).
 `crates/zz-gpui/src/glass.rs` holds the `Glass` primitive, `GlassMaterial` and `plan_glass`;
 `glass.wgsl` is the one shader Metal (through naga) and wgpu draw it with. Glass whose tint is
 translucent reads its backdrop: a pass break, a copy of its region and a blur chain the size of that
-region. Glass with an opaque tint reads nothing and draws in the scene's own pass, and a material
-with no light either (`is_opaque_fill`) is painted as a plain quad.
+region. It writes its pixels with blending off (`reading_pipeline` in both renderers): its face
+replaces what it covers with the blurred copy under its tint, and past the face it writes back the
+copy's own pixel under the contour. Blending can only keep at least `1 - alpha` of what is under,
+so over a translucent window bright content under a dark face showed through sharp
+(`check_glass_hides_the_frame_under_it`, 2026-10-16). Glass with an opaque tint reads nothing,
+blends, and draws in the scene's own pass, and a material with no light either (`is_opaque_fill`)
+is painted as a plain quad.
 
 Past the rim nothing lenses, glints or casts the contour, so `fs_glass` skips the signed distance
 field there (2026-10-12). `Glass::uniform` puts the depth where the face goes flat in `shape.w`:
@@ -276,8 +291,9 @@ one, where no corner curve reaches) and 1.5 px inside the window clip draws the 
 tint with the touch glow and grain and nothing else. Melting only deepens a body, since the smooth
 union never lies outside the closer shape, so testing each shape alone is safe. Two details measured
 on Metal: the first shape is tested at a constant index, because the loop's dynamic index kept the
-shape array out of fast uniform registers (0.04 ms on a full 5K window), and empty pixels return
-clear instead of discarding (0.01 ms).
+shape array out of fast uniform registers (0.04 ms on a full 5K window), and empty pixels write
+their value (clear, or the frame's pixel for glass that reads its backdrop) instead of discarding
+(0.01 ms).
 
 `GlassMaterial::light_color` (white by default) colors the glint and the fresnel glow; theme files
 without the key keep white. The glint adds light; the fresnel mixes the rim toward the light color

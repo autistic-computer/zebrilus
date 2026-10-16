@@ -810,11 +810,10 @@ impl SettingsView {
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
-                    "settings-appearance-advanced",
+                    zz_ui::settings::appearance::ADVANCED_DISCLOSURE,
                     "Advanced",
                     Some("Corner radius, contrast, fonts, zoom and the window."),
                     expanded,
-                    cx,
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.appearance_advanced = !this.appearance_advanced;
@@ -1739,9 +1738,10 @@ impl SettingsView {
             ),
 Self::numeric_setting(
                 ConfigKey::PaneGlowStrength,
-                "Selected pane edge",
-                "How brightly the selected pane's edge lights in the accent (0–200%). Set to 0 to \
-                 light it like the others. Applies only while pane gaps are enabled.",
+                "Selected pane contrast",
+                "How far the selected pane stands apart (0–200%): it lightens while the others \
+                 darken and their edges dim. Set to 0 to draw it like the others. Applies only \
+                 while pane gaps are enabled.",
                 resolved.pane_glow_strength,
                 &self.pane_glow_strength,
                 cx,

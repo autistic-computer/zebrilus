@@ -628,6 +628,12 @@ pub struct GlassUniform {
 }
 
 impl GlassUniform {
+    /// Whether the draw reads its backdrop, and so writes its pixels with
+    /// blending off: the pipeline it needs.
+    pub fn reads_backdrop(&self) -> bool {
+        self.tint[3] < 1.
+    }
+
     /// The block's bytes, as the shader lays them out.
     pub fn as_bytes(&self) -> &[u8] {
         // SAFETY: `GlassUniform` is `repr(C)` and only holds `f32`s, so it
@@ -1278,6 +1284,13 @@ pub(crate) fn glass_shape_slots(
 /// over (8, 8) to (56, 56) when one is given.
 #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
 pub fn glass_test_scene(material: Option<GlassMaterial>) -> crate::Scene {
+    glass_scene_over(1., material)
+}
+
+/// [`glass_test_scene`] with its stripes at `alpha`, the way a translucent
+/// window holds its backdrop.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+fn glass_scene_over(alpha: f32, material: Option<GlassMaterial>) -> crate::Scene {
     use crate::{ContentMask, Quad, Scene};
     let rect = |x: f32, y: f32, width: f32, height: f32| Bounds {
         origin: point(ScaledPixels(x), ScaledPixels(y)),
@@ -1291,8 +1304,8 @@ pub fn glass_test_scene(material: Option<GlassMaterial>) -> crate::Scene {
         ..Default::default()
     };
     let mut scene = Scene::default();
-    scene.insert_primitive(quad(rect(0., 0., 12., 64.), hsla(0., 1., 0.5, 1.)));
-    scene.insert_primitive(quad(rect(12., 0., 52., 64.), hsla(2. / 3., 1., 0.5, 1.)));
+    scene.insert_primitive(quad(rect(0., 0., 12., 64.), hsla(0., 1., 0.5, alpha)));
+    scene.insert_primitive(quad(rect(12., 0., 52., 64.), hsla(2. / 3., 1., 0.5, alpha)));
     if let Some(material) = material {
         let shape = rect(8., 8., 48., 48.);
         let mut shapes: [(Bounds<ScaledPixels>, Corners<ScaledPixels>); GLASS_MAX_SHAPES] =
@@ -1510,6 +1523,103 @@ pub fn bench_glass_rendering(
             full - base
         );
     }
+    Ok(())
+}
+
+/// What a renderer must draw over a translucent frame, the way a window
+/// with a see-through background holds what lies under its glass: clear
+/// glass leaves it as it was, since the blend already keeps it. `render`
+/// draws a scene at 64 by 64 device pixels into a transparent target.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+pub fn check_glass_over_a_translucent_frame(
+    mut render: impl FnMut(&crate::Scene) -> anyhow::Result<image::RgbaImage>,
+) -> anyhow::Result<()> {
+    let faint = render(&glass_scene_over(0.5, None))?;
+    let cleared = render(&glass_scene_over(
+        0.5,
+        Some(GlassMaterial::regular().vanished()),
+    ))?;
+    anyhow::ensure!(
+        faint.get_pixel(32, 32).0[3] < 200,
+        "the frame should stay translucent, got {:?}",
+        faint.get_pixel(32, 32).0
+    );
+    for (x, y, expected) in faint.enumerate_pixels() {
+        let actual = cleared.get_pixel(x, y).0;
+        anyhow::ensure!(
+            expected
+                .0
+                .iter()
+                .zip(actual)
+                .all(|(a, b)| a.abs_diff(b) <= 1),
+            "clear glass over a translucent frame changed ({x}, {y}): {:?} became {actual:?}",
+            expected.0
+        );
+    }
+    Ok(())
+}
+
+/// Glass over a translucent frame hides the frame under its face behind the
+/// blurred copy it draws: a bright line under a dark face must not show
+/// through sharp, as it did while the blend kept part of the frame and the
+/// glass could only add to it. `render` draws a scene at 64 by 64 device
+/// pixels on a target that keeps the frame's alpha.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+pub fn check_glass_hides_the_frame_under_it(
+    mut render: impl FnMut(&crate::Scene) -> anyhow::Result<image::RgbaImage>,
+) -> anyhow::Result<()> {
+    use crate::{ContentMask, Quad, Scene};
+    let rect = |x: f32, y: f32, width: f32, height: f32| Bounds {
+        origin: point(ScaledPixels(x), ScaledPixels(y)),
+        size: size(ScaledPixels(width), ScaledPixels(height)),
+    };
+    let quad = |bounds: Bounds<ScaledPixels>, color: Hsla| Quad {
+        bounds,
+        content_mask: ContentMask { bounds },
+        background: color.into(),
+        ..Default::default()
+    };
+    let material = GlassMaterial::regular()
+        .blur(px(6.))
+        .refraction(px(0.))
+        .tint(hsla(0., 0., 0.1, 0.6));
+    let scene = |line: bool| {
+        let mut scene = Scene::default();
+        scene.insert_primitive(quad(rect(0., 0., 64., 64.), hsla(0., 0., 0.2, 0.5)));
+        if line {
+            scene.insert_primitive(quad(rect(31., 0., 2., 64.), hsla(0., 0., 1., 1.)));
+        }
+        let shape = rect(8., 8., 48., 48.);
+        let mut shapes: [(Bounds<ScaledPixels>, Corners<ScaledPixels>); GLASS_MAX_SHAPES] =
+            Default::default();
+        shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
+        scene.insert_primitive(Glass {
+            order: 0,
+            bounds: shape.dilate(ScaledPixels(2.)),
+            backdrop_bounds: shape.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
+            content_mask: ContentMask {
+                bounds: rect(0., 0., 64., 64.),
+            },
+            shapes,
+            shape_count: 1,
+            corner_smoothing: 2.,
+            material,
+        });
+        scene.finish();
+        scene
+    };
+    let plain = render(&scene(false))?;
+    let lined = render(&scene(true))?;
+    let (under_plain, under_line) = (plain.get_pixel(32, 32).0, lined.get_pixel(32, 32).0);
+    let outside = lined.get_pixel(32, 2).0;
+    anyhow::ensure!(
+        outside[0] > 200,
+        "the line should show outside the glass, got {outside:?}"
+    );
+    anyhow::ensure!(
+        under_line[0].abs_diff(under_plain[0]) < 48,
+        "the line showed through the glass: {under_plain:?} became {under_line:?}"
+    );
     Ok(())
 }
 

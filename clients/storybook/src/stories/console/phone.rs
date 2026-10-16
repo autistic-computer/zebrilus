@@ -7,9 +7,9 @@ use zz_gpui::{
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     compact::{
-        ArrowPad, KeyRow, PageDot, PopoverKey, PopoverKeyItem, PopoverKeyTap, ToolKeys,
-        WhichKeyList, compact_bar, compact_bar_button, compact_bar_pill, compact_hud,
-        compact_pane_header, page_dots,
+        ArrowPad, KeyRow, PageDot, PillLabel, PillPlacement, PopoverKey, PopoverKeyItem,
+        PopoverKeyTap, ToolKeys, WhichKeyList, compact_floating_bar, compact_floating_pill,
+        compact_hud, compact_pane_header, page_dots,
     },
     pane::pane_header_icon_button,
     v_flex,
@@ -18,7 +18,6 @@ use zz_ui::{
 
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
-use zz_ui::StyledExt as _;
 
 pub const STORY: Story = Story {
     id: "phone",
@@ -29,7 +28,7 @@ pub const STORY: Story = Story {
         Section {
             id: "bar",
             name: "Bottom bar",
-            summary: "compact_bar with its pill and keyboard button. The grabber brightens while the bar is held, and the pill turns amber when the page needs attention.",
+            summary: "The pill floating at the bottom of a page, set in from a 55pt screen corner so it runs concentric with it. It turns amber when the page needs attention.",
             build: |_, cx| stateless(bars, cx),
         },
         Section {
@@ -101,34 +100,29 @@ pub(crate) fn groups() -> Vec<Vec<PageDot>> {
     ]
 }
 
-fn bar(
-    id: &'static str,
-    title: &str,
-    meta: &str,
-    warning: bool,
-    held: bool,
-    cx: &App,
-) -> impl IntoElement {
-    let pill = compact_bar_pill(
+pub(crate) fn placement() -> PillPlacement {
+    PillPlacement::new(Some(px(55.0)), px(34.0))
+}
+
+fn bar(id: &'static str, title: &str, meta: &str, warning: bool, cx: &App) -> impl IntoElement {
+    let placement = placement();
+    let pill = compact_floating_pill(
         id,
-        if warning {
-            IconName::TriangleAlert
-        } else {
-            IconName::SquareTerminal
+        PillLabel {
+            icon: if warning {
+                IconName::TriangleAlert
+            } else {
+                IconName::SquareTerminal
+            },
+            title: title.to_owned().into(),
+            meta: meta.to_owned().into(),
+            warning,
         },
-        title.to_owned(),
-        meta.to_owned(),
-        warning,
         page_dots(&groups(), cx),
+        &placement,
         cx,
     );
-    let keys = compact_bar_button((id, 1_usize), IconName::Keyboard);
-    phone(
-        div()
-            .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
-            .child(compact_bar(pill, keys, held, cx)),
-        cx,
-    )
+    phone(compact_floating_bar(pill, &placement, cx), cx)
 }
 
 fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -137,11 +131,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         .columns(2)
         .state(
             "rest",
-            bar("bar-rest", "cargo watch", "zz · editor", false, false, cx),
-        )
-        .state(
-            "held",
-            bar("bar-held", "cargo watch", "zz · editor", false, true, cx),
+            bar("bar-rest", "cargo watch", "zz · editor", false, cx),
         )
         .state(
             "attention",
@@ -150,7 +140,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "python train.py",
                 "exited with 1 · gpu-box",
                 true,
-                false,
                 cx,
             ),
         )
@@ -160,7 +149,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "bar-long",
                 "claude · reviewing crates/zz-ui/src/command/palette_view.rs",
                 "zz · agents · 2 of 4 panes",
-                false,
                 false,
                 cx,
             ),
@@ -451,16 +439,19 @@ const SCREEN_LINES: &[&str] = &[
 impl Render for Screen {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let pill = compact_bar_pill(
+        let placement = placement();
+        let pill = compact_floating_pill(
             "screen-pill",
-            IconName::SquareTerminal,
-            "cargo test",
-            "zz · editor",
-            false,
+            PillLabel {
+                icon: IconName::SquareTerminal,
+                title: "cargo test".into(),
+                meta: "zz · editor".into(),
+                warning: false,
+            },
             page_dots(&groups(), cx),
+            &placement,
             cx,
         );
-        let keyboard = compact_bar_button("screen-keyboard", IconName::Keyboard);
         phone(
             v_flex()
                 .h(px(640.0))
@@ -487,11 +478,7 @@ impl Render for Screen {
                         ),
                 )
                 .child(div().id("screen-key-row").child(key_row(&self.keys)))
-                .child(
-                    div()
-                        .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
-                        .child(compact_bar(pill, keyboard, false, cx)),
-                ),
+                .child(compact_floating_bar(pill, &placement, cx)),
             cx,
         )
     }

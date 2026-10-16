@@ -137,7 +137,9 @@ pub fn roles_json() -> String {
             walk(member, depth + 1, out);
         }
     }
-    let roles = knobs().roles;
+    let knobs = knobs();
+    let roles = knobs.roles;
+    let materials = knobs.materials;
     json!(
         zz_ui::Kind::ALL
             .iter()
@@ -147,7 +149,7 @@ pub fn roles_json() -> String {
                 json!({
                     "title": kind.role().label,
                     "roles": members.into_iter().map(|(depth, role)| {
-                        let (inherited, origins) = knobs::inherited(role, &roles);
+                        let (inherited, origins) = knobs::inherited(role, &roles, &materials);
                         let patch = roles.get(role.id).copied().unwrap_or_default();
                         let mut style = inherited;
                         patch.apply(&mut style);
@@ -167,7 +169,7 @@ pub fn roles_json() -> String {
                                 .zip(origins)
                                 .map(|(prop, origin)| ((*prop).to_owned(), json!({
                                     "value": values[prop],
-                                    "from": origin.role.label,
+                                    "from": origin.role.map_or_else(|| format!("picked {prop}s"), |role| role.label.to_owned()),
                                     "themed": origin.themed,
                                 })))
                                 .collect::<serde_json::Map<_, _>>(),

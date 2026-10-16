@@ -3661,7 +3661,7 @@ fn css_color(color: Hsla) -> String {
     )
 }
 
-pub const AGENT_HEADER_HEIGHT: f32 = 36.0;
+pub const AGENT_HEADER_HEIGHT: f32 = crate::PANE_HEADER_HEIGHT.as_f32();
 /// The agent pane's chrome bar: `leading` and `trailing` pinned to each end.
 /// The bar owns only the height, the inset, and the rule beneath it.
 pub fn agent_pane_header(

@@ -18,10 +18,10 @@ use zz_ui::{
         unified_command_palette_input,
     },
     compact::{
-        ArrowDirection, ToolKeys, WhichKeyList, arrow_pad_bubble, bottom_sheet, compact_bar,
-        compact_bar_button, compact_bar_pill, compact_bar_row, compact_hud, compact_pane_header,
-        overview_add_tile, overview_card, overview_count, overview_section_heading, page_dots,
-        sheet_row,
+        ArrowDirection, PillLabel, ToolKeys, WhichKeyList, arrow_pad_bubble, bottom_sheet,
+        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
+        compact_hud, compact_pane_header, overview_add_tile, overview_card, overview_count,
+        overview_section_heading, page_dots, sheet_row,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -61,7 +61,7 @@ use super::{
         pane::embedded_pane,
     },
     console::{
-        phone::{binding_rows, close, groups, key_row, tool_keys},
+        phone::{binding_rows, close, groups, key_row, placement, tool_keys},
         which_key::{prefix_header, prefix_rows},
     },
     kit::menus::{SplitRight, bind_keys, pane_menu, view_menu},
@@ -704,16 +704,19 @@ impl Phone {
 
     fn terminal(&self, cx: &App) -> AnyElement {
         let theme = cx.theme();
-        let pill = compact_bar_pill(
+        let placement = placement();
+        let pill = compact_floating_pill(
             "showcase-phone-pill",
-            IconName::SquareTerminal,
-            "cargo test",
-            "zz · editor",
-            false,
+            PillLabel {
+                icon: IconName::SquareTerminal,
+                title: "cargo test".into(),
+                meta: "zz · editor".into(),
+                warning: false,
+            },
             page_dots(&groups(), cx),
+            &placement,
             cx,
         );
-        let keyboard = compact_bar_button("showcase-phone-keyboard", IconName::Keyboard);
         phone_frame("showcase-phone-screen", cx)
             .child(compact_pane_header(
                 IconName::SquareTerminal,
@@ -734,11 +737,7 @@ impl Phone {
                     .child(compact_hud("Copied", cx)),
             )
             .child(div().id("showcase-phone-keys").child(key_row(&self.keys)))
-            .child(
-                div()
-                    .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
-                    .child(compact_bar(pill, keyboard, false, cx)),
-            )
+            .child(compact_floating_bar(pill, &placement, cx))
             .into_any_element()
     }
 
@@ -790,36 +789,36 @@ impl Phone {
                 .children(CARD_LINES.map(|line| div().whitespace_nowrap().child(line)))
                 .into_any_element()
         };
-        let bar = div()
-            .w_full()
-            .surface(zz_ui::roles::PHONE_BAR, cx)
-            .rule_on(zz_ui::roles::BAR_RULE, zz_ui::Edge::Top, cx)
-            .child(compact_bar_row(
-                compact_bar_pill(
-                    "showcase-overview-session",
-                    IconName::Layers,
-                    "work",
-                    "macbook · 2 windows",
-                    false,
-                    zz_ui::Icon::new(IconName::ChevronUp)
-                        .size(px(12.0))
-                        .text_color(muted),
-                    cx,
-                ),
-                h_flex()
-                    .child(compact_bar_button(
-                        "showcase-overview-settings",
-                        IconName::Settings,
-                    ))
-                    .child(compact_bar_button(
-                        "showcase-overview-close",
-                        IconName::Xmark,
-                    )),
+        let placement = placement();
+        let bar = compact_floating_bar(
+            compact_floating_pill(
+                "showcase-overview-session",
+                PillLabel {
+                    icon: IconName::Layers,
+                    title: "work".into(),
+                    meta: "macbook · 2 windows".into(),
+                    warning: false,
+                },
+                zz_ui::Icon::new(IconName::ChevronUp)
+                    .size(px(12.0))
+                    .text_color(muted),
+                &placement,
                 cx,
-            ));
+            ),
+            &placement,
+            cx,
+        )
+        .child(compact_floating_group(
+            [
+                compact_bar_button("showcase-overview-settings", IconName::Settings),
+                compact_bar_button("showcase-overview-close", IconName::Xmark),
+            ],
+            &placement,
+            cx,
+        ));
         let sections = OVERVIEW.iter().map(|(index, name, panes)| {
             v_flex()
-                .child(overview_section_heading(*index, name, panes.len(), cx))
+                .child(overview_section_heading(name, panes.len(), cx))
                 .child(
                     h_flex()
                         .gap(px(zz_ui::compact::OVERVIEW_CARD_GAP))
@@ -835,7 +834,6 @@ impl Phone {
                                     icon.clone(),
                                     *title,
                                     (*icon == IconName::SquareTerminal).then(preview),
-                                    theme.background,
                                     *current,
                                     *attention,
                                     cx,

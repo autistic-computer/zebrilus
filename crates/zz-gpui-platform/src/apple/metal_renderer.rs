@@ -2334,6 +2334,26 @@ mod tests {
         })
     }
 
+    #[test]
+    fn glass_hides_the_frame_under_it() -> Result<()> {
+        let mut renderer =
+            MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
+        renderer.update_transparency(true);
+        zz_gpui::check_glass_hides_the_frame_under_it(|scene| {
+            renderer.render_scene_to_image(scene, size(64.into(), 64.into()))
+        })
+    }
+
+    #[test]
+    fn glass_keeps_a_translucent_frame() -> Result<()> {
+        let mut renderer =
+            MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
+        renderer.update_transparency(true);
+        zz_gpui::check_glass_over_a_translucent_frame(|scene| {
+            renderer.render_scene_to_image(scene, size(64.into(), 64.into()))
+        })
+    }
+
     const SWAP_OR_TINT: &str = r#"
 @group(0) @binding(0) var content: texture_2d<f32>;
 @group(0) @binding(1) var<uniform> tint: vec4<f32>;

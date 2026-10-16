@@ -132,7 +132,7 @@ pub const PANE_HEADER_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "pane.header.button",
     "Pane header buttons",
-    "Split in pane headers, and the X in a pane title",
+    "Split and the other buttons in pane headers",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
 pub const PANE_TITLE: SurfaceRole = SurfaceRole::under(
@@ -248,6 +248,12 @@ pub const AGENT_ACTION: SurfaceRole = SurfaceRole::under(
     "Copy, rewind and open on messages, code blocks and diagrams, shown under the pointer",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
+pub const PANE_PICKER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::MENU_ITEM,
+    "pane.picker",
+    "New pane picker",
+    "Terminal, Browser, Editor and Agent in a freshly split pane",
+);
 pub const AGENT_OPTION: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "agent.option",
@@ -348,13 +354,13 @@ pub const PHONE_BAR: SurfaceRole = SurfaceRole::new(
     "phone.bar",
     Kind::Bar,
     "Phone bars",
-    "The phone's bottom bar, the key strip and the 44pt top bars",
+    "The phone's 44pt top bars: Settings and sheet headers",
 );
 pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
     "phone.pill",
     Kind::Button,
     "Phone pill",
-    "The pane pill in the phone's bottom bar",
+    "The pills floating at the bottom of the phone: the pane pill, the overview's session pill and its Settings and close group, and the pill the keys sit in over the keyboard",
 );
 pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
@@ -373,8 +379,9 @@ pub const PHONE_KEY: SurfaceRole = SurfaceRole::new(
     "phone.key",
     Kind::Button,
     "Keys",
-    "Keys in the phone's key row",
-);
+    "Keys in the pill over the phone's keyboard",
+)
+.with(P.fill(Fill::None).outline(false).shadow(Shadow::None));
 pub const ARROW_PAD: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "phone.arrow-pad",
@@ -479,6 +486,7 @@ const ZZ: &[SurfaceRole] = &[
     DRAG_CHIP,
     DROP_ZONE,
     HOST_ACTION,
+    PANE_PICKER,
     AGENT_OPTION,
     PHONE_PILL,
     PHONE_KEY,

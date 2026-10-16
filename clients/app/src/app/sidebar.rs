@@ -393,6 +393,7 @@ pub(super) fn session_tree(
             .collect::<Vec<_>>()
     })
     .size_full()
+    .pr(zz_ui::navigation::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides);
@@ -824,13 +825,7 @@ fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) ->
             .items_baseline()
             .gap_2()
             .text_color(color)
-            .child(
-                div()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(entry.label.clone()),
-            )
+            .child(div().min_w_0().overflow_hidden().child(entry.label.clone()))
             .children(entry.index.clone().map(|index| {
                 div()
                     .flex_none()

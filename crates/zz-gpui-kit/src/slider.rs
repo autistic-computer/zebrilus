@@ -12,7 +12,7 @@ use crate::{
     Tone, h_flex,
     input::{field_chrome, field_text},
     oklab_lightness,
-    sheet::{bottom_sheet, floating_sheet, sheet_close, sheet_inset},
+    sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     tooltip::Tooltip,
     touch::CoarsePointer,
     v_flex,
@@ -436,16 +436,13 @@ impl Slider {
         cx: &App,
     ) -> AnyElement {
         let id = drag.entity_id();
-        let close = drag.clone();
         let dismiss = drag.clone();
         floating_sheet(
             bottom_sheet(
                 ("zz-slider-sheet", id),
                 self.label.clone(),
                 [sheet_close(("zz-slider-sheet-close", id))
-                    .on_click(move |_, _, cx| {
-                        close.update(cx, |drag, cx| drag.set_sheet(false, cx));
-                    })
+                    .on_click(move |_, _, cx| close_sheet(("zz-slider-sheet", id), cx))
                     .into_any_element()],
                 v_flex()
                     .px(px(SHEET_PADDING_X))

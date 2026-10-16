@@ -19,7 +19,7 @@ const STORY: Story = Story {
         Section {
             id: "header",
             name: "Header",
-            summary: "The 36px bar: provider, session title, status pill, split, drag and close. Actions on an inactive pane appear on hover.",
+            summary: "The 34px bar: provider, session title, status pill, split, drag and close. Actions on an inactive pane appear on hover.",
             build: chrome::headers,
         },
         Section {

@@ -2848,7 +2848,7 @@ impl Pixels {
     pub const MIN: Pixels = Pixels(f32::MIN);
 
     /// Returns the raw `f32` value of this `Pixels`.
-    pub fn as_f32(self) -> f32 {
+    pub const fn as_f32(self) -> f32 {
         self.0
     }
 

@@ -28,11 +28,12 @@ pub use appearance::{
     AppearanceColor, AppearanceConfigDiagnostic, AppearanceConfigDisposition, AppearanceConfigKey,
     AppearanceLoad, AppearanceProvenance, AppearanceSource, AppearanceValidationError,
     CellHeightAdjustment, CursorBlinkPolicy, FontFeature, FontSyntheticStyle, GhosttyTheme,
-    TerminalAppearance, TerminalColorScheme, TerminalPalette, apply_appearance_overrides,
-    discover_ghostty_config, enumerate_ghostty_themes_for, load_ghostty_appearance,
-    load_ghostty_appearance_for, load_ghostty_appearance_for_with_overrides,
-    load_ghostty_appearance_from, load_ghostty_appearance_from_for,
-    load_ghostty_appearance_from_for_with_overrides, parse_x11_color,
+    LocalColors, TerminalAppearance, TerminalColorScheme, TerminalPalette,
+    apply_appearance_overrides, discover_ghostty_config, enumerate_ghostty_themes_for,
+    load_ghostty_appearance, load_ghostty_appearance_for,
+    load_ghostty_appearance_for_with_overrides, load_ghostty_appearance_from,
+    load_ghostty_appearance_from_for, load_ghostty_appearance_from_for_with_overrides,
+    parse_x11_color,
 };
 pub use input::{KeyAction, KeyCode, KeyInput, Modifiers};
 pub use interaction::{

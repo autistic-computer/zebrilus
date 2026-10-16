@@ -4108,6 +4108,22 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
+    fn glass_hides_the_frame_under_it() -> anyhow::Result<()> {
+        use zz_gpui::PlatformHeadlessRenderer;
+        let mut renderer = WgpuHeadlessRenderer::new()?;
+        zz_gpui::check_glass_hides_the_frame_under_it(|scene| {
+            renderer.render_scene_to_image(
+                scene,
+                Size {
+                    width: DevicePixels(64),
+                    height: DevicePixels(64),
+                },
+            )
+        })
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
     fn glass_lenses_its_backdrop() -> anyhow::Result<()> {
         use zz_gpui::PlatformHeadlessRenderer;
         let mut renderer = WgpuHeadlessRenderer::new()?;

@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::scroll::{MIN_THUMB_SIZE, THUMB_INSET, THUMB_WIDTH, thumb_color, thumb_radius};
+use crate::{ActiveTheme as _, Colorize as _, oklch, to_oklch};
 use smallvec::SmallVec;
 use zz_gpui::{
     App, BorderStyle, Bounds, ContentMask, Corners, Font, FontFallbacks, FontFeatures,
@@ -17,8 +18,8 @@ use zz_gpui::{
 };
 use zz_terminal::{
     AppearanceColor, CellWidth, Color, Cursor, CursorBlinkPolicy, CursorStyle, GRAPHEME_TABLE_BIT,
-    Glyph, KittyLayer, KittyPlacement, OVERLAY_RECTANGLE, OverlayKind, PackedCell, PackedStyle,
-    ScrollbarState, TerminalAppearance, TerminalDictionary, TerminalViewport,
+    Glyph, KittyLayer, KittyPlacement, LocalColors, OVERLAY_RECTANGLE, OverlayKind, PackedCell,
+    PackedStyle, ScrollbarState, TerminalAppearance, TerminalDictionary, TerminalViewport,
     UnderlineStyle as TerminalUnderlineStyle,
 };
 
@@ -41,6 +42,16 @@ pub struct TerminalHistoryRow<'a> {
 pub trait TerminalHistorySource {
     fn row_count(&self) -> usize;
     fn row(&self, index: usize) -> Option<TerminalHistoryRow<'_>>;
+
+    /// How many rows newer than the viewport's last row are kept.
+    fn below_count(&self) -> usize {
+        0
+    }
+
+    /// A row newer than the viewport's last row, `index` rows past it.
+    fn below(&self, _index: usize) -> Option<TerminalHistoryRow<'_>> {
+        None
+    }
 }
 
 impl TerminalHistorySource for zz_client::scrollback::HistoryRing {
@@ -54,6 +65,24 @@ impl TerminalHistorySource for zz_client::scrollback::HistoryRing {
             dictionary: &row.dictionary,
             revision: row.revision,
         })
+    }
+}
+
+impl TerminalHistorySource for zz_client::scrollback::RetainedTerminalViewport {
+    fn row_count(&self) -> usize {
+        self.history.row_count()
+    }
+
+    fn row(&self, index: usize) -> Option<TerminalHistoryRow<'_>> {
+        self.history.row(index)
+    }
+
+    fn below_count(&self) -> usize {
+        self.below.row_count()
+    }
+
+    fn below(&self, index: usize) -> Option<TerminalHistoryRow<'_>> {
+        self.below.row(index)
     }
 }
 
@@ -80,6 +109,7 @@ pub struct TerminalRenderInput<'a> {
     pub cursor_blink_visible: bool,
     pub marked_text: Option<&'a str>,
     pub rows_above: Option<Pixels>,
+    pub rows_below: Option<Pixels>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -433,6 +463,7 @@ pub struct PaintState {
     buffers: PaintBuffers,
     row_clip: Option<Bounds<Pixels>>,
     rows_above_top: Option<Pixels>,
+    rows_below_bottom: Option<Pixels>,
     scrollbar: Option<PaintQuad>,
     cursor_glyph: Option<PositionedLine>,
     composition: Option<PositionedLine>,
@@ -649,6 +680,7 @@ fn collect_kitty_images(
 enum LocalRowSource {
     History(usize),
     Live(u16),
+    Below(usize),
     Shimmer,
 }
 
@@ -657,13 +689,17 @@ fn local_row_source(
     server_offset: u32,
     live_rows: u16,
     history_rows: usize,
+    below_rows: usize,
 ) -> LocalRowSource {
     if absolute_row >= server_offset {
         let live_row = absolute_row - server_offset;
-        return u16::try_from(live_row)
+        if let Some(row) = u16::try_from(live_row).ok().filter(|row| *row < live_rows) {
+            return LocalRowSource::Live(row);
+        }
+        return usize::try_from(live_row - u32::from(live_rows))
             .ok()
-            .filter(|row| *row < live_rows)
-            .map_or(LocalRowSource::Shimmer, LocalRowSource::Live);
+            .filter(|row| *row < below_rows)
+            .map_or(LocalRowSource::Shimmer, LocalRowSource::Below);
     }
 
     let position = server_offset - absolute_row;
@@ -710,6 +746,7 @@ struct GridPlacement {
 
 fn grid_placement(
     viewport: &TerminalViewport,
+    local: Option<&LocalColors>,
     command_output: bool,
     scrolled_locally: bool,
 ) -> GridPlacement {
@@ -721,7 +758,7 @@ fn grid_placement(
         .saturating_add(viewport.scrollbar.len)
         >= viewport.scrollbar.total;
     let scrolled_back = scrolled_locally || !at_live_bottom;
-    let last_row_filled = last_visible_row_has_content(viewport, viewport.rows);
+    let last_row_filled = last_visible_row_has_content(viewport, local, viewport.rows);
     GridPlacement {
         bottom_anchored: anchorable && (scrolled_back || last_row_filled),
         project_from_bottom: anchorable && !scrolled_back && last_row_filled,
@@ -740,6 +777,7 @@ fn peek_row_source(
         server_offset,
         live_rows,
         history_rows,
+        0,
     );
     (source != LocalRowSource::Shimmer).then_some(source)
 }
@@ -815,10 +853,12 @@ impl RowRenderCache {
             project_from_bottom,
         } = grid_placement(
             viewport,
+            input.appearance.local_colors.as_ref(),
             command_output,
             local_scroll_target.is_some() || scroll_shift > px(0.0),
         );
         let history_rows = input.history.map_or(0, TerminalHistorySource::row_count);
+        let below_rows = input.history.map_or(0, TerminalHistorySource::below_count);
         let row_projection = RowProjection::new(viewport.rows, rows, project_from_bottom);
         let live_row_projection = local_scroll_target.map_or(row_projection, |target_offset| {
             local_live_projection(
@@ -859,6 +899,42 @@ impl RowRenderCache {
                     size(bounds.size.width, grid_bounds.size.height),
                 )
             }),
+        };
+        let last_row = row_projection
+            .count
+            .checked_sub(1)
+            .and_then(|offset| Some((offset, row_projection.source_row(offset)?)));
+        let grid_bottom = grid_bounds.origin.y + grid_bounds.size.height;
+        let rows_below_bottom = input.rows_below.filter(|bottom| {
+            (local_scroll_target.is_some() || below_rows > 0) && *bottom > grid_bottom
+        });
+        let row_clip = rows_below_bottom.map_or(row_clip, |bottom| {
+            let clip = row_clip.unwrap_or(bounds);
+            Some(Bounds::new(
+                clip.origin,
+                size(clip.size.width, bottom - clip.origin.y),
+            ))
+        });
+        let below_count = rows_below_bottom.map_or(0, |bottom| {
+            (f32::from(bottom - grid_bottom) / f32::from(line_height)).ceil() as u32 + 1
+        });
+        let below = || {
+            (1..=below_count).filter_map(move |distance| {
+                let target = local_scroll_target.unwrap_or(viewport.scrollbar.offset);
+                let (offset, source_row) = last_row?;
+                let source = local_row_source(
+                    target
+                        .saturating_add(u32::from(source_row))
+                        .saturating_add(distance),
+                    viewport.scrollbar.offset,
+                    viewport.rows,
+                    history_rows,
+                    below_rows,
+                );
+                let row =
+                    u32::from(row_projection.destination_start) + u32::from(offset) + distance;
+                (source != LocalRowSource::Shimmer).then_some((row, source))
+            })
         };
         let above_count = rows_above_top.map_or(u32::from(scroll_shift > px(0.0)), |top| {
             (f32::from(content_origin.y - top) / f32::from(line_height)).ceil() as u32
@@ -952,12 +1028,24 @@ impl RowRenderCache {
                     .filter(|_| local_scroll_target.is_some())
                     .filter_map(|index| input.history.and_then(|history| history.row(index)))
                     .map(|row| row.revision)
+                    .chain(
+                        (0..below_rows)
+                            .filter(|_| local_scroll_target.is_some())
+                            .filter_map(|index| {
+                                input.history.and_then(|history| history.below(index))
+                            })
+                            .map(|row| row.revision),
+                    )
                     .chain(row_revisions.iter().copied())
-                    .chain(above().filter_map(|(_, source)| {
+                    .chain(above().chain(below()).filter_map(|(_, source)| {
                         match source {
                             LocalRowSource::History(index) => input
                                 .history
                                 .and_then(|history| history.row(index))
+                                .map(|row| row.revision),
+                            LocalRowSource::Below(index) => input
+                                .history
+                                .and_then(|history| history.below(index))
                                 .map(|row| row.revision),
                             _ => None,
                         }
@@ -975,6 +1063,7 @@ impl RowRenderCache {
                             viewport.scrollbar.offset,
                             viewport.rows,
                             history_rows,
+                            below_rows,
                         )
                     });
                 (
@@ -995,6 +1084,16 @@ impl RowRenderCache {
                     )
                 })
                 .chain(projected_rows)
+                .chain(below().map(|(row, source)| {
+                    (
+                        None,
+                        point(
+                            content_origin.x,
+                            content_origin.y + line_height * row as f32,
+                        ),
+                        source,
+                    )
+                }))
             {
                 let resolved = match source {
                     LocalRowSource::Live(live_row) => Some((
@@ -1006,6 +1105,10 @@ impl RowRenderCache {
                     LocalRowSource::History(history_row) => input
                         .history
                         .and_then(|history| history.row(history_row))
+                        .map(|row| (row.cells, row.dictionary, Some(row.revision), false)),
+                    LocalRowSource::Below(below_row) => input
+                        .history
+                        .and_then(|history| history.below(below_row))
                         .map(|row| (row.cells, row.dictionary, Some(row.revision), false)),
                     LocalRowSource::Shimmer => None,
                 };
@@ -1273,6 +1376,7 @@ impl RowRenderCache {
             buffers,
             row_clip,
             rows_above_top,
+            rows_below_bottom,
             scrollbar,
             cursor_glyph,
             composition,
@@ -1300,16 +1404,15 @@ impl RowRenderCache {
         let text_count = paint.buffers.text.len();
         let decoration_count = paint.buffers.decorations.len();
         let had_composition = paint.composition.is_some();
+        let top = paint.rows_above_top.unwrap_or(bounds.origin.y);
+        let bottom = paint
+            .rows_below_bottom
+            .map_or(bounds.bottom(), |bottom| bottom.max(bounds.bottom()));
         let row_clip = paint.row_clip.map_or(bounds, |row_clip| {
-            row_clip.intersect(&paint.rows_above_top.map_or(bounds, |top| {
-                Bounds::new(
-                    point(bounds.origin.x, top),
-                    size(
-                        bounds.size.width,
-                        bounds.origin.y + bounds.size.height - top,
-                    ),
-                )
-            }))
+            row_clip.intersect(&Bounds::new(
+                point(bounds.origin.x, top),
+                size(bounds.size.width, bottom - top),
+            ))
         });
         window.with_content_mask(Some(ContentMask { bounds: row_clip }), |window| {
             paint_kitty_images(&mut paint.buffers.kitty_below_bg, window);
@@ -1447,6 +1550,78 @@ impl RowRenderCache {
             started.map_or(0, |started| started.elapsed().as_micros()),
         );
     }
+}
+
+const BLUE_HUE: f32 = 255.0;
+const YELLOW_HUE: f32 = 95.0;
+const MAGENTA_HUE: f32 = 330.0;
+const CYAN_HUE: f32 = 200.0;
+const ACCENT_BLUE_SPAN: f32 = 40.0;
+const YELLOW_LIFT: f32 = 0.08;
+const BRIGHT_STEP: f32 = 0.07;
+
+/// The colors a terminal draws in when it follows the interface theme, in
+/// the order [`LocalColors`] takes them: the theme's text on its background,
+/// black and white between the two, red and green from the theme's danger and
+/// success, and yellow, magenta and cyan at their lightness and chroma. Blue
+/// is the accent when the accent is blue. Bright colors stand further from
+/// the background, at the same chroma.
+pub fn theme_terminal_colors(cx: &App) -> [Color; 18] {
+    let theme = cx.theme();
+    let background = theme.background.opaque();
+    let foreground = theme.foreground.opaque();
+    let dark = theme.mode.is_dark();
+    let (deep, light) = if dark {
+        (background, foreground)
+    } else {
+        (foreground, background)
+    };
+    let red = to_oklch(theme.danger.opaque());
+    let green = to_oklch(theme.success.opaque());
+    let lightness = f32::midpoint(red.0, green.0);
+    let chroma = f32::midpoint(red.1, green.1);
+    let accent = to_oklch(theme.accent.opaque());
+    let blue = if hue_distance(accent.2, BLUE_HUE) <= ACCENT_BLUE_SPAN {
+        accent
+    } else {
+        (lightness, chroma, BLUE_HUE)
+    };
+    let yellow = (
+        lightness + if dark { YELLOW_LIFT } else { 0.0 },
+        chroma,
+        YELLOW_HUE,
+    );
+    let step = if dark { BRIGHT_STEP } else { -BRIGHT_STEP };
+    let mut colors = [terminal_color(foreground); 18];
+    colors[1] = terminal_color(background);
+    colors[2] = terminal_color(deep.mix_oklab(light, 0.88));
+    colors[9] = terminal_color(light.mix_oklab(deep, 0.82));
+    colors[10] = terminal_color(deep.mix_oklab(light, 0.5));
+    colors[17] = terminal_color(light);
+    let hues = [
+        red,
+        green,
+        yellow,
+        blue,
+        (lightness, chroma, MAGENTA_HUE),
+        (lightness, chroma, CYAN_HUE),
+    ];
+    for (at, (lightness, chroma, hue)) in hues.into_iter().enumerate() {
+        colors[3 + at] = terminal_color(oklch(lightness, chroma, hue));
+        colors[11 + at] = terminal_color(oklch((lightness + step).clamp(0.0, 1.0), chroma, hue));
+    }
+    colors
+}
+
+fn hue_distance(from: f32, to: f32) -> f32 {
+    let turn = (from - to).rem_euclid(360.0);
+    turn.min(360.0 - turn)
+}
+
+fn terminal_color(color: Hsla) -> Color {
+    let rgba = Rgba::from(color);
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+    Color::rgb(channel(rgba.r), channel(rgba.g), channel(rgba.b))
 }
 
 pub fn terminal_background(background: Color, opacity: f32) -> Hsla {
@@ -1901,7 +2076,13 @@ fn shape_text_row(
     let mut background_batch = None;
     let mut batch: Option<TextBatch> = None;
     for (column, cell) in cells.iter().copied().enumerate() {
-        let style = style_for_dictionary(dictionary, default_foreground, default_background, cell);
+        let style = style_for_dictionary(
+            dictionary,
+            default_foreground,
+            default_background,
+            appearance.local_colors.as_ref(),
+            cell,
+        );
         let glyph = glyph_for_dictionary(dictionary, cell);
         let decorative = decorative_glyph(glyph);
         let foreground =
@@ -2706,21 +2887,24 @@ fn style_for_dictionary(
     dictionary: &TerminalDictionary,
     default_foreground: Color,
     default_background: Color,
+    local: Option<&LocalColors>,
     cell: PackedCell,
 ) -> PackedStyle {
     dictionary
         .styles
         .get(usize::from(cell.style_id()))
-        .copied()
-        .unwrap_or_else(|| {
-            PackedStyle::new(
-                default_foreground,
-                default_background,
-                None,
-                0,
-                TerminalUnderlineStyle::None,
-            )
-        })
+        .map_or_else(
+            || {
+                PackedStyle::new(
+                    default_foreground,
+                    default_background,
+                    None,
+                    0,
+                    TerminalUnderlineStyle::None,
+                )
+            },
+            |style| local.map_or(*style, |local| local.recolor(*style)),
+        )
 }
 
 fn glyph_for_dictionary(dictionary: &TerminalDictionary, cell: PackedCell) -> Glyph<'_> {
@@ -2750,11 +2934,16 @@ fn glyph_for_dictionary(dictionary: &TerminalDictionary, cell: PackedCell) -> Gl
     std::str::from_utf8(bytes).map_or(Glyph::Empty, Glyph::Grapheme)
 }
 
-fn style_for(viewport: &TerminalViewport, cell: PackedCell) -> PackedStyle {
+fn style_for(
+    viewport: &TerminalViewport,
+    local: Option<&LocalColors>,
+    cell: PackedCell,
+) -> PackedStyle {
     style_for_dictionary(
         &viewport.dictionary,
         viewport.foreground,
         viewport.background,
+        local,
         cell,
     )
 }
@@ -2810,7 +2999,7 @@ fn cursor_glyph_line(
     appearance: &TerminalAppearance,
     window: &mut Window,
 ) -> Option<PositionedLine> {
-    let style = style_for(viewport, cursor.cell);
+    let style = style_for(viewport, appearance.local_colors.as_ref(), cursor.cell);
     if style.invisible() {
         return None;
     }
@@ -3225,12 +3414,16 @@ fn selection_covers(viewport: &TerminalViewport, row: u16, column: u16) -> bool 
     })
 }
 
-fn last_visible_row_has_content(viewport: &TerminalViewport, visible_rows: u16) -> bool {
+fn last_visible_row_has_content(
+    viewport: &TerminalViewport,
+    local: Option<&LocalColors>,
+    visible_rows: u16,
+) -> bool {
     let row = visible_rows.min(viewport.rows).saturating_sub(1);
     viewport.row(row).is_some_and(|cells| {
         cells.iter().copied().any(|cell| {
             !matches!(viewport.glyph(cell), Glyph::Empty)
-                || style_for(viewport, cell).background() != viewport.background
+                || style_for(viewport, local, cell).background() != viewport.background
         })
     })
 }
@@ -3779,13 +3972,31 @@ mod tests {
 
     #[test]
     fn local_scroll_projection_splits_history_live_and_shimmer_rows() {
-        assert_eq!(local_row_source(96, 100, 4, 3), LocalRowSource::Shimmer);
-        assert_eq!(local_row_source(97, 100, 4, 3), LocalRowSource::History(0));
-        assert_eq!(local_row_source(98, 100, 4, 3), LocalRowSource::History(1));
-        assert_eq!(local_row_source(99, 100, 4, 3), LocalRowSource::History(2));
-        assert_eq!(local_row_source(100, 100, 4, 3), LocalRowSource::Live(0));
-        assert_eq!(local_row_source(103, 100, 4, 3), LocalRowSource::Live(3));
-        assert_eq!(local_row_source(104, 100, 4, 3), LocalRowSource::Shimmer);
+        assert_eq!(local_row_source(96, 100, 4, 3, 0), LocalRowSource::Shimmer);
+        assert_eq!(
+            local_row_source(97, 100, 4, 3, 0),
+            LocalRowSource::History(0)
+        );
+        assert_eq!(
+            local_row_source(98, 100, 4, 3, 0),
+            LocalRowSource::History(1)
+        );
+        assert_eq!(
+            local_row_source(99, 100, 4, 3, 0),
+            LocalRowSource::History(2)
+        );
+        assert_eq!(local_row_source(100, 100, 4, 3, 0), LocalRowSource::Live(0));
+        assert_eq!(local_row_source(103, 100, 4, 3, 0), LocalRowSource::Live(3));
+        assert_eq!(local_row_source(104, 100, 4, 3, 0), LocalRowSource::Shimmer);
+        assert_eq!(
+            local_row_source(104, 100, 4, 3, 2),
+            LocalRowSource::Below(0)
+        );
+        assert_eq!(
+            local_row_source(105, 100, 4, 3, 2),
+            LocalRowSource::Below(1)
+        );
+        assert_eq!(local_row_source(106, 100, 4, 3, 2), LocalRowSource::Shimmer);
 
         let projection = local_live_projection(97, 100, 4, 4);
         assert_eq!(
@@ -4171,7 +4382,7 @@ mod tests {
             push_background(
                 &mut batch,
                 column,
-                style_for(&viewport, cell).background(),
+                style_for(&viewport, None, cell).background(),
                 viewport.background,
                 &mut backgrounds,
             );
@@ -4856,8 +5067,8 @@ mod tests {
             bottom_anchored: true,
             project_from_bottom: false,
         };
-        assert_eq!(grid_placement(&viewport, false, false), top);
-        assert_eq!(grid_placement(&viewport, false, true), scrolled);
+        assert_eq!(grid_placement(&viewport, None, false, false), top);
+        assert_eq!(grid_placement(&viewport, None, false, true), scrolled);
 
         let mut filled = filled_viewport(8, 4, 'x');
         filled.scrollbar = viewport.scrollbar;
@@ -4865,19 +5076,19 @@ mod tests {
             bottom_anchored: true,
             project_from_bottom: true,
         };
-        assert_eq!(grid_placement(&filled, false, false), live_bottom);
-        assert_eq!(grid_placement(&filled, false, true), scrolled);
+        assert_eq!(grid_placement(&filled, None, false, false), live_bottom);
+        assert_eq!(grid_placement(&filled, None, false, true), scrolled);
         filled.scrollbar.offset = 20;
-        assert_eq!(grid_placement(&filled, false, false), scrolled);
+        assert_eq!(grid_placement(&filled, None, false, false), scrolled);
         viewport.scrollbar.offset = 20;
-        assert_eq!(grid_placement(&viewport, false, false), scrolled);
+        assert_eq!(grid_placement(&viewport, None, false, false), scrolled);
 
-        assert_eq!(grid_placement(&filled, true, true), top);
+        assert_eq!(grid_placement(&filled, None, true, true), top);
         filled.mode = zz_terminal::TerminalMode::View {
             position: 1,
             total: 40,
         };
-        assert_eq!(grid_placement(&filled, false, true), top);
+        assert_eq!(grid_placement(&filled, None, false, true), top);
     }
 
     #[test]
@@ -4888,18 +5099,18 @@ mod tests {
             offset: 36,
             len: 4,
         };
-        let live = grid_placement(&filled, false, false);
+        let live = grid_placement(&filled, None, false, false);
         filled.mode = zz_terminal::TerminalMode::Copy {
             position: 40,
             total: 40,
             hide_position: false,
         };
-        assert_eq!(grid_placement(&filled, false, false), live);
+        assert_eq!(grid_placement(&filled, None, false, false), live);
         filled.search = Some(zz_terminal::SearchStatus::new(0, 0));
-        assert_eq!(grid_placement(&filled, false, false), live);
+        assert_eq!(grid_placement(&filled, None, false, false), live);
         filled.scrollbar.offset = 20;
         assert_eq!(
-            grid_placement(&filled, false, false),
+            grid_placement(&filled, None, false, false),
             GridPlacement {
                 bottom_anchored: true,
                 project_from_bottom: false,
@@ -4944,6 +5155,35 @@ mod tests {
     }
 
     #[zz_gpui::test]
+    fn the_theme_palette_draws_text_on_the_theme_and_keeps_dark_and_light_apart(
+        cx: &mut zz_gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        for mode in [crate::ThemeMode::Dark, crate::ThemeMode::Light] {
+            cx.update(|cx| crate::Theme::change(mode, None, cx));
+            let colors = cx.update(|cx| theme_terminal_colors(cx));
+            let theme = cx.update(|cx| cx.theme().colors);
+            assert_eq!(colors[0], terminal_color(theme.foreground.opaque()));
+            assert_eq!(colors[1], terminal_color(theme.background.opaque()));
+            assert_eq!(colors[3], terminal_color(theme.danger.opaque()));
+            assert_eq!(colors[4], terminal_color(theme.success.opaque()));
+            let lightness = |color: Color| crate::oklab_lightness(color_of(color));
+            assert!(
+                lightness(colors[2]) < lightness(colors[9]),
+                "{mode:?}: black under white"
+            );
+            assert!(
+                lightness(colors[10]) < lightness(colors[17]),
+                "{mode:?}: bright black under bright white"
+            );
+        }
+    }
+
+    fn color_of(value: Color) -> Hsla {
+        color(value, 1.0)
+    }
+
+    #[zz_gpui::test]
     fn extra_height_adds_rows_past_the_edge_the_grid_is_not_anchored_to(
         cx: &mut zz_gpui::TestAppContext,
     ) {
@@ -4979,6 +5219,7 @@ mod tests {
                             cursor_blink_visible: true,
                             marked_text: None,
                             rows_above: None,
+                            rows_below: None,
                         },
                         Bounds::new(point(px(0.0), px(10.0)), size(px(400.0), height)),
                         window,
@@ -5039,6 +5280,7 @@ mod tests {
                         cursor_blink_visible: true,
                         marked_text: None,
                         rows_above: None,
+                        rows_below: None,
                     },
                     Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), height)),
                     window,
@@ -5131,6 +5373,7 @@ mod tests {
                         cursor_blink_visible: true,
                         marked_text: None,
                         rows_above,
+                        rows_below: None,
                     },
                     bounds,
                     window,
@@ -5194,6 +5437,185 @@ mod tests {
             assert!(below.row_clip.is_none());
             let unanchored = prepaint(&view, px(0.0), Some(px(0.0)), bounds, window);
             assert_eq!(rows(&unanchored).len(), 4);
+        });
+    }
+
+    #[zz_gpui::test]
+    fn rows_below_the_grid_show_newer_rows_while_scrolled_back(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let mut live = filled_viewport(8, 4, 'x');
+        live.scrollbar = ScrollbarState {
+            total: 40,
+            offset: 36,
+            len: 4,
+        };
+        let ring = RingRows(
+            vec![vec![PackedCell::new(u32::from('h'), 0, CellWidth::Narrow); 8]; 6],
+            TerminalDictionary::default(),
+        );
+        let revisions = [1, 2, 3, 4];
+        let appearance = TerminalAppearance::default();
+        cx.update(|window, cx| {
+            let mut cache = RowRenderCache::default();
+            let mut prepaint = |target: Option<u32>,
+                                rows_below: Option<Pixels>,
+                                bounds: Bounds<Pixels>,
+                                window: &mut Window| {
+                cache.prepaint(
+                    TerminalRenderInput {
+                        viewport: &live,
+                        row_revisions: &revisions,
+                        revision_epoch: 1,
+                        history: Some(&ring),
+                        images: None,
+                        local_scroll_target: target,
+                        scroll_pixel_offset: px(0.0),
+                        overscroll: px(0.0),
+                        extra_height: px(0.0),
+                        command_output: false,
+                        appearance: &appearance,
+                        appearance_hash: 0,
+                        text_opacity: 1.0,
+                        focused: false,
+                        cursor_blink_visible: true,
+                        marked_text: None,
+                        rows_above: None,
+                        rows_below,
+                    },
+                    bounds,
+                    window,
+                    cx,
+                )
+            };
+            let line_height = prepaint(
+                None,
+                None,
+                Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), px(400.0))),
+                window,
+            )
+            .geometry
+            .line_height;
+            let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), line_height * 4.0));
+            let bottom = line_height * 10.0;
+            let rows = |paint: &PaintState| {
+                let mut rows = paint
+                    .buffers
+                    .text
+                    .iter()
+                    .map(|row| row.origin.y)
+                    .collect::<Vec<_>>();
+                rows.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                rows
+            };
+
+            let back = prepaint(Some(33), Some(bottom), bounds, window);
+            let grid = back.geometry.grid_bounds;
+            let grid_bottom = grid.origin.y + grid.size.height;
+            assert_eq!(
+                rows(&back)[4..],
+                [
+                    grid_bottom,
+                    grid_bottom + line_height,
+                    grid_bottom + line_height * 2.0,
+                ]
+            );
+            assert_eq!(back.row_clip.map(|clip| clip.bottom()), Some(bottom));
+
+            let live_bottom = prepaint(None, Some(bottom), bounds, window);
+            assert_eq!(rows(&live_bottom).len(), 4);
+            assert!(live_bottom.row_clip.is_none());
+        });
+    }
+
+    struct KeptRows(RingRows, RingRows);
+
+    impl TerminalHistorySource for KeptRows {
+        fn row_count(&self) -> usize {
+            self.0.row_count()
+        }
+
+        fn row(&self, index: usize) -> Option<TerminalHistoryRow<'_>> {
+            self.0.row(index)
+        }
+
+        fn below_count(&self) -> usize {
+            self.1.row_count()
+        }
+
+        fn below(&self, index: usize) -> Option<TerminalHistoryRow<'_>> {
+            self.1.row(index)
+        }
+    }
+
+    #[zz_gpui::test]
+    fn a_settled_view_draws_the_kept_rows_below_it(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let mut view = filled_viewport(8, 4, 'x');
+        view.scrollbar = ScrollbarState {
+            total: 40,
+            offset: 30,
+            len: 4,
+        };
+        view.mode = zz_terminal::TerminalMode::View {
+            position: 30,
+            total: 40,
+        };
+        let row = |glyph: char| vec![PackedCell::new(u32::from(glyph), 0, CellWidth::Narrow); 8];
+        let kept = KeptRows(
+            RingRows(vec![row('h'); 6], TerminalDictionary::default()),
+            RingRows(vec![row('b'); 2], TerminalDictionary::default()),
+        );
+        let revisions = [1, 2, 3, 4];
+        let appearance = TerminalAppearance::default();
+        cx.update(|window, cx| {
+            let mut cache = RowRenderCache::default();
+            let mut prepaint = |rows_below: Option<Pixels>, bounds: Bounds<Pixels>| {
+                cache.prepaint(
+                    TerminalRenderInput {
+                        viewport: &view,
+                        row_revisions: &revisions,
+                        revision_epoch: 1,
+                        history: Some(&kept),
+                        images: None,
+                        local_scroll_target: None,
+                        scroll_pixel_offset: px(0.0),
+                        overscroll: px(0.0),
+                        extra_height: px(0.0),
+                        command_output: false,
+                        appearance: &appearance,
+                        appearance_hash: 0,
+                        text_opacity: 1.0,
+                        focused: false,
+                        cursor_blink_visible: true,
+                        marked_text: None,
+                        rows_above: None,
+                        rows_below,
+                    },
+                    bounds,
+                    window,
+                    cx,
+                )
+            };
+            let line_height = prepaint(
+                None,
+                Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), px(400.0))),
+            )
+            .geometry
+            .line_height;
+            let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(400.0), line_height * 4.0));
+            let settled = prepaint(Some(line_height * 10.0), bounds);
+            let grid = settled.geometry.grid_bounds;
+            let grid_bottom = grid.origin.y + grid.size.height;
+            let mut rows = settled
+                .buffers
+                .text
+                .iter()
+                .map(|row| row.origin.y)
+                .collect::<Vec<_>>();
+            rows.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            assert_eq!(rows[4..], [grid_bottom, grid_bottom + line_height]);
         });
     }
 }

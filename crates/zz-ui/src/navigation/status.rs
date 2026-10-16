@@ -89,7 +89,6 @@ pub fn status_window(
         } else {
             deck
         }
-        .into_any_element()
     });
     let item = workspace_status_window(id.clone(), name, tooltip, state, deck, cx)
         .group(group.clone())

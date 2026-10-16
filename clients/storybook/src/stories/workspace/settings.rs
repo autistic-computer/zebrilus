@@ -438,7 +438,6 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         "Advanced",
                         Some("Corner radius, contrast, fonts, zoom and the window."),
                         expanded,
-                        cx,
                     )
                 })),
         )
@@ -522,8 +521,8 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 .title_actions(reset("inactive-reset"))
                 .control(controls.number(1, cx)),
                 pane_entry(
-                    "Selected pane edge",
-                    "How brightly the selected pane's edge lights in the accent, from 0% to 200%. Set to 0 to light it like the others.",
+                    "Selected pane contrast",
+                    "How far the selected pane stands apart, from 0% to 200%: it lightens while the others darken and their edges dim. Set to 0 to draw it like the others.",
                 )
                 .disabled(!gaps)
                 .title_actions(reset("glow-reset"))

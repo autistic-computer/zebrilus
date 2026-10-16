@@ -1,18 +1,19 @@
 use std::{ops::Range, rc::Rc};
 
-use zz_client::StatusBarModel;
+use zz_client::{StatusBarModel, navigation::session_label, window_summary::summarize_window};
 use zz_gpui::{
     AnyElement, Bounds, Context, Font, Hsla, ParentElement as _, Pixels, StyledText, TextRun,
-    Window, canvas, div, font, point, prelude::*, px, size,
+    Window, canvas, div, font, linear_color_stop, linear_gradient, point, prelude::*, px, size,
 };
 use zz_protocol::{PaneId, PaneKindSnapshot, WindowId};
-use zz_terminal::{Glyph, TerminalViewport};
+use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Edge, Icon, IconName, PaintState, StyledExt as _,
     compact::{
         COMPACT_NAV_BAR_HEIGHT, COMPACT_PANE_HEADER_HEIGHT, Instant, OVERVIEW_CARD_GAP,
-        OVERVIEW_CARD_HEIGHT, OVERVIEW_CARD_WIDTH, bottom_sheet, compact_bar_button,
-        compact_bar_pill, compact_bar_row, overview_add_tile, overview_card, overview_count,
+        OVERVIEW_CARD_HEIGHT, OVERVIEW_CARD_WIDTH, PillLabel, PillPlacement, bottom_sheet,
+        close_sheet, compact_bar_button, compact_floating_bar, compact_floating_group,
+        compact_floating_pill, overview_add_tile, overview_card, overview_count,
         overview_section_heading, sheet_row, yield_back_swipe,
     },
     rems_from_px, roles,
@@ -20,6 +21,7 @@ use zz_ui::{
 };
 
 use super::{AppShell, Page, kind_icon, pages};
+use crate::terminal::phone_colors;
 
 const PREVIEW_TEXT: f32 = 4.0;
 const PREVIEW_LINE: f32 = 4.8;
@@ -28,19 +30,32 @@ const PREVIEW_COLUMNS: usize = 56;
 const OVERVIEW_FADE: f32 = 1.5;
 const LIVE_FADE: f32 = 3.0;
 const CARD_FADE: f32 = 0.15;
+const SESSIONS_SHEET: &str = "overview-sessions-sheet";
+const EDGE_FADE: f32 = 24.0;
 const TEXT_STEP: f32 = 4.0;
 
 fn quantized(size: Pixels) -> Pixels {
     px((f32::from(size) * TEXT_STEP).round() / TEXT_STEP)
 }
 
+fn host_palette(core: &zz_client::ClientCore) -> TerminalPalette {
+    core.appearance().map_or_else(
+        || TerminalAppearance::default().palette,
+        |appearance| appearance.palette,
+    )
+}
+
 fn terminal_preview(
     viewport: &TerminalViewport,
+    local: Option<LocalColors>,
     base: &Font,
     rows: Range<u16>,
     columns: usize,
 ) -> StyledText {
-    let fallback = terminal_background(viewport.foreground, 1.0);
+    let fallback = terminal_background(
+        local.map_or(viewport.foreground, |local| local.foreground()),
+        1.0,
+    );
     let mut text = String::new();
     let mut runs: Vec<TextRun> = Vec::new();
     let mut push = |text: &mut String, start: usize, color: Hsla| {
@@ -83,6 +98,7 @@ fn terminal_preview(
                 text.push(' ');
             }
             let color = viewport.style(*cell).map_or(fallback, |style| {
+                let style = local.map_or(style, |local| local.recolor(style));
                 terminal_background(style.foreground(), 1.0)
             });
             push(&mut text, start, color);
@@ -125,7 +141,7 @@ impl AppShell {
         &mut self,
         model: &StatusBarModel,
         top_inset: Pixels,
-        bottom_inset: Pixels,
+        placement: &PillPlacement,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (pages, current) = pages(model, &self.unseen_agents);
@@ -138,6 +154,16 @@ impl AppShell {
             .cards
             .borrow_mut()
             .retain(|pane, _| pages.iter().any(|page| page.pane == *pane));
+        let titles: Vec<(WindowId, String)> = self
+            .connection
+            .read(cx)
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .map(|window| (window.id, summarize_window(window).title))
+            .collect();
         let sections: Vec<AnyElement> = model
             .windows
             .iter()
@@ -147,14 +173,11 @@ impl AppShell {
                     .filter(|page| page.window == window.id)
                     .map(|page| self.overview_card(page, current == Some(page.pane), cx))
                     .collect();
-                self.overview_section(
-                    window.id,
-                    window.index,
-                    &window.name,
-                    window.panes.len(),
-                    cards,
-                    cx,
-                )
+                let title = titles
+                    .iter()
+                    .find(|(id, _)| *id == window.id)
+                    .map_or(window.label.as_str(), |(_, title)| title.as_str());
+                self.overview_section(window.id, title, window.panes.len(), cards, cx)
             })
             .collect();
         if self.compact.overview_reveal {
@@ -178,24 +201,59 @@ impl AppShell {
             );
             this.close_overview(cx);
         }));
+        let zone = placement.zone();
+        let scrim = cx.theme().background.opaque();
+        let top = top_inset + px(EDGE_FADE);
         let page = div()
+            .relative()
             .size_full()
-            .flex()
-            .flex_col()
-            .pt(top_inset)
             .bg(cx.theme().background)
             .child(
                 div()
                     .id("overview-scroll")
-                    .flex_1()
-                    .min_h_0()
+                    .size_full()
                     .overflow_y_scroll()
+                    .restrict_scroll_to_axis()
                     .track_scroll(&self.compact.overview_scroll)
-                    .pb(px(16.0))
+                    .pt(top_inset)
+                    .pb(zone + px(16.0))
                     .children(sections)
                     .child(new_window),
             )
-            .child(self.overview_bar(model, bottom_inset, cx));
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(top)
+                    .bg(linear_gradient(
+                        180.0,
+                        linear_color_stop(scrim, top_inset / top),
+                        linear_color_stop(scrim.alpha(0.0), 1.0),
+                    )),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .bottom_0()
+                    .left_0()
+                    .right_0()
+                    .h(zone)
+                    .bg(linear_gradient(
+                        180.0,
+                        linear_color_stop(scrim.alpha(0.0), 0.0),
+                        linear_color_stop(scrim, 0.55),
+                    )),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .bottom_0()
+                    .left_0()
+                    .right_0()
+                    .child(self.overview_bar(model, placement, cx)),
+            );
         page.into_any_element()
     }
 
@@ -204,7 +262,7 @@ impl AppShell {
         model: &StatusBarModel,
         stage: Bounds<Pixels>,
         top_inset: Pixels,
-        bottom_inset: Pixels,
+        placement: &PillPlacement,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> zz_gpui::Div {
@@ -215,7 +273,7 @@ impl AppShell {
             .landing
             .map(|(pane, _)| pane)
             .or_else(|| pages.get(current).map(|page| page.pane));
-        let overview = self.compact_overview(model, top_inset, bottom_inset, cx);
+        let overview = self.compact_overview(model, top_inset, placement, cx);
         let card = pages
             .iter()
             .find(|page| Some(page.pane) == target)
@@ -267,10 +325,14 @@ impl AppShell {
         let tall = f32::from(stage.size.height);
         let height = (tall + (f32::from(card.size.height) / rest - tall) * settled) * scale;
         let toward = |from: Pixels, to: Pixels| from + (to - from) * progress;
-        let card_radius = cx.theme().layer(roles::PHONE_CARD, PaintState::Rest).radius;
         let theme = cx.theme();
+        let frame = theme.layer(roles::PHONE_CARD, PaintState::Rest);
+        let card_radius = frame.radius;
         let muted = theme.foreground.muted();
-        let mut background = theme.background;
+        let background = theme.background.opaque().blend(Hsla {
+            a: frame.fill.a * settled,
+            ..frame.fill
+        });
         let mut layers: Vec<AnyElement> = Vec::new();
         let text = self.compact.text.clone();
         let terminal = {
@@ -279,9 +341,9 @@ impl AppShell {
                 (PaneKindSnapshot::Terminal, Some(viewport), Some(text)) => {
                     let first = viewport.rows.saturating_sub(text.rows);
                     Some((
-                        terminal_background(viewport.background, 1.0),
                         terminal_preview(
                             viewport,
+                            phone_colors(viewport, &host_palette(core), cx),
                             &text.font,
                             first..viewport.rows,
                             usize::from(viewport.columns),
@@ -292,8 +354,7 @@ impl AppShell {
                 _ => None,
             }
         };
-        if let Some((fill, preview, text)) = terminal {
-            background = fill;
+        if let Some((preview, text)) = terminal {
             let rem = |value: f32| rems_from_px(value).to_pixels(window.rem_size()) * scale;
             layers.push(
                 div()
@@ -334,7 +395,8 @@ impl AppShell {
         } else {
             let live = (1.0 - settled * LIVE_FADE).max(0.0);
             if live > 0.0 {
-                let element = self.compact_page(page, false, 0.0, top_inset, window, cx);
+                let element =
+                    self.compact_page(page, false, 0.0, top_inset, px(0.0), None, window, cx);
                 layers.push(
                     div()
                         .absolute()
@@ -409,7 +471,7 @@ impl AppShell {
     fn overview_bar(
         &self,
         model: &StatusBarModel,
-        bottom_inset: Pixels,
+        placement: &PillPlacement,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         #[cfg(target_os = "ios")]
@@ -425,16 +487,28 @@ impl AppShell {
             Some(host) => format!("{host} · {windows}"),
             None => windows,
         };
-        let caret = Icon::new(IconName::ChevronUp)
-            .size(rems_from_px(12.0))
-            .text_color(cx.theme().foreground.muted());
-        let switcher = compact_bar_pill(
+        let core = &self.connection.read(cx).core;
+        let title = core
+            .attached_session()
+            .and_then(|attached| {
+                core.snapshot()
+                    .sessions
+                    .iter()
+                    .find(|session| session.id == attached)
+            })
+            .map(|session| session_label(session).text)
+            .or_else(|| model.session_name.clone())
+            .unwrap_or_default();
+        let switcher = compact_floating_pill(
             "overview-session",
-            IconName::Layers,
-            model.session_name.clone().unwrap_or_default(),
-            meta,
-            false,
-            caret,
+            PillLabel {
+                icon: IconName::Layers,
+                title: title.into(),
+                meta: meta.into(),
+                warning: false,
+            },
+            div(),
+            placement,
             cx,
         )
         .on_click(cx.listener(|this, _, _, cx| {
@@ -448,28 +522,15 @@ impl AppShell {
                 cx.notify();
             }),
         );
-        let current = self.active_window(cx).map(|window| window.active_pane);
-        let close = compact_bar_button("overview-close", IconName::Xmark)
-            .on_click(cx.listener(move |this, _, _, cx| this.land_overview(current, cx)));
-        div()
-            .flex_none()
-            .w_full()
-            .pb(bottom_inset)
-            .surface(roles::PHONE_BAR, cx)
-            .rule_on(roles::BAR_RULE, Edge::Top, cx)
-            .child(compact_bar_row(
-                switcher,
-                div().flex().child(settings).child(close),
-                cx,
-            ))
+        compact_floating_bar(switcher, placement, cx)
+            .child(compact_floating_group([settings], placement, cx))
             .into_any_element()
     }
 
     fn overview_section(
         &mut self,
         id: WindowId,
-        index: u32,
-        name: &str,
+        title: &str,
         panes: usize,
         cards: Vec<AnyElement>,
         cx: &mut Context<Self>,
@@ -481,6 +542,8 @@ impl AppShell {
                 this.command(
                     "split-window",
                     vec![
+                        "--kind".into(),
+                        "picker".into(),
                         "-h".into(),
                         "-t".into(),
                         id.to_string(),
@@ -494,7 +557,7 @@ impl AppShell {
         div()
             .flex()
             .flex_col()
-            .child(overview_section_heading(index, name, panes, cx))
+            .child(overview_section_heading(title, panes, cx))
             .child(
                 div()
                     .relative()
@@ -506,6 +569,7 @@ impl AppShell {
                             .px(px(16.0))
                             .py(px(2.0))
                             .overflow_x_scroll()
+                            .restrict_scroll_to_axis()
                             .track_scroll(&scroll)
                             .children(cards)
                             .child(add),
@@ -520,10 +584,9 @@ impl AppShell {
         let muted = theme.foreground.muted();
         let core = &self.connection.read(cx).core;
         let viewport = core.viewport(page.pane);
-        let mut background = theme.background;
+        let browser = self.browser_page(page, cx);
         let preview = match &page.kind {
             PaneKindSnapshot::Terminal => viewport.map(|viewport| {
-                background = terminal_background(viewport.background, 1.0);
                 div()
                     .px(px(4.0))
                     .font_family(theme.mono_font_family.clone())
@@ -532,6 +595,7 @@ impl AppShell {
                     .whitespace_nowrap()
                     .child(terminal_preview(
                         viewport,
+                        phone_colors(viewport, &host_palette(core), cx),
                         &font(theme.mono_font_family.clone()),
                         0..viewport.rows.min(PREVIEW_ROWS),
                         PREVIEW_COLUMNS,
@@ -550,14 +614,20 @@ impl AppShell {
                     .text_size(px(9.0))
                     .text_color(muted)
                     .child(Icon::new(IconName::Globe).size(px(20.0)))
-                    .children(descriptor.tabs.get(descriptor.active_tab).map(|url| {
-                        div()
-                            .max_w_full()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(url.clone())
-                    }))
+                    .children(
+                        browser
+                            .as_ref()
+                            .map(|(_, host)| host.clone())
+                            .or_else(|| descriptor.tabs.get(descriptor.active_tab).cloned())
+                            .map(|url| {
+                                div()
+                                    .max_w_full()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_ellipsis()
+                                    .child(url)
+                            }),
+                    )
                     .into_any_element(),
             ),
             kind => Some(
@@ -578,9 +648,8 @@ impl AppShell {
             ("overview-card", pane_id.0),
             ("overview-card-press", pane_id.0),
             kind_icon(&page.kind),
-            page.title.clone(),
+            browser.map_or_else(|| page.title.clone(), |(title, _)| title),
             preview,
-            background,
             current,
             page.attention,
             cx,
@@ -610,17 +679,33 @@ impl AppShell {
         let core = &self.connection.read(cx).core;
         let attached = core.attached_session();
         let muted = cx.theme().foreground.muted();
+        let faint = cx.theme().foreground.faint();
         let rows: Vec<AnyElement> = core
             .snapshot()
             .sessions
             .iter()
             .map(|session| {
                 let id = session.id;
+                let label = session_label(session);
                 sheet_row(
                     ("overview-session-option", id.0),
                     roles::PHONE_ROW,
                     (attached == Some(id)).then(|| Icon::new(IconName::Check)),
-                    session.name.clone(),
+                    div()
+                        .flex()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .child(label.text),
+                        )
+                        .children(
+                            label
+                                .index
+                                .map(|index| div().flex_none().text_color(faint).child(index)),
+                        ),
                     cx,
                 )
                 .child(
@@ -631,12 +716,11 @@ impl AppShell {
                         .child(overview_count(session.windows.len(), "window")),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.compact.sessions = false;
                     if this.connection.read(cx).core.attached_session() != Some(id) {
                         this.connection
                             .update(cx, |connection, cx| connection.attach(id, cx));
                     }
-                    cx.notify();
+                    close_sheet(SESSIONS_SHEET, cx);
                 }))
                 .into_any_element()
             })
@@ -649,19 +733,28 @@ impl AppShell {
             cx,
         )
         .on_click(cx.listener(|this, _, _, cx| {
-            this.compact.sessions = false;
             this.command("new-session", Vec::new(), cx);
+            close_sheet(SESSIONS_SHEET, cx);
+        }));
+        let other_host = sheet_row(
+            "overview-other-host",
+            roles::PHONE_ROW,
+            Some(Icon::new(IconName::Server).text_color(muted)),
+            "Connect to another host",
+            cx,
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.settings = Some(zz_ui::settings::SettingsSection::Hosts);
+            this.settings_picked = true;
+            this.focused_pane = None;
+            close_sheet(SESSIONS_SHEET, cx);
             cx.notify();
         }));
-        let close = compact_bar_button("overview-sessions-close", IconName::Xmark).on_click(
-            cx.listener(|this, _, _, cx| {
-                this.compact.sessions = false;
-                cx.notify();
-            }),
-        );
+        let close = compact_bar_button("overview-sessions-close", IconName::Xmark)
+            .on_click(|_, _, cx| close_sheet(SESSIONS_SHEET, cx));
         let dismiss = cx.weak_entity();
         bottom_sheet(
-            "overview-sessions-sheet",
+            SESSIONS_SHEET,
             "Sessions",
             [close.into_any_element()],
             div()
@@ -676,7 +769,8 @@ impl AppShell {
                         .my(px(4.0))
                         .rule_on(roles::LIST_RULE, Edge::Top, cx),
                 )
-                .child(new_session),
+                .child(new_session)
+                .child(other_host),
             bottom_inset,
             move |_, cx| {
                 let _ = dismiss.update(cx, |this, cx| {

@@ -261,6 +261,19 @@ impl Scene {
         self.surfaces.sort_by_key(|surface| surface.order);
         self.shader_layers.sort_by_key(|layer| layer.order);
         self.glasses.sort_by_key(|glass| glass.order);
+        #[cfg(target_os = "macos")]
+        for surface in &mut self.surfaces {
+            let shown = surface.bounds.intersect(&surface.content_mask.bounds);
+            if surface.underlay
+                && !self.glasses.iter().any(|glass| {
+                    glass.order > surface.order
+                        && glass.reads_backdrop()
+                        && glass.bounds.intersects(&shown)
+                })
+            {
+                surface.image_buffer = None;
+            }
+        }
     }
 
     #[cfg_attr(
@@ -968,6 +981,14 @@ pub struct PaintSurface {
     /// placed below the window's renderer shows through it.
     #[cfg(target_os = "macos")]
     pub image_buffer: Option<core_video::pixel_buffer::CVPixelBuffer>,
+    /// Set on a surface that stands in for a native layer below the window
+    /// ([`crate::Window::paint_underlay`]). Unless glass that blurs what is
+    /// under it is drawn over it later, [`Scene::finish`] drops the image and
+    /// punches the hole, so the layer shows through; under such glass the
+    /// image is drawn, so the glass has something to blur. Glass only beside
+    /// it does not count, though its blur reaches in.
+    #[cfg(target_os = "macos")]
+    pub underlay: bool,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub texture_view: wgpu::TextureView,
     #[cfg(target_os = "windows")]
@@ -1269,6 +1290,48 @@ mod tests {
             shader: CustomShader::new("@fragment fn main() {}"),
             uniforms: Arc::from([1u8, 2, 3]),
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_underlay_is_a_hole_unless_glass_painted_after_it_reads_it() {
+        use core_video::pixel_buffer::{CVPixelBuffer, kCVPixelFormatType_32BGRA};
+        let buffer = CVPixelBuffer::new(kCVPixelFormatType_32BGRA, 4, 4, None).unwrap();
+        let rect = |x: f32| Bounds::new(point(px(x), px(0.)), size(px(32.), px(32.))).scale(1.0);
+        let underlay = |x: f32| PaintSurface {
+            order: 0,
+            bounds: rect(x),
+            content_mask: ContentMask { bounds: rect(x) },
+            corner_radii: Corners::default(),
+            corner_smoothing: 2.,
+            image_buffer: Some(buffer.clone()),
+            underlay: true,
+        };
+        let glass = |x: f32| crate::Glass {
+            order: 0,
+            bounds: rect(x),
+            backdrop_bounds: rect(x).dilate(ScaledPixels(40.)),
+            content_mask: ContentMask { bounds: rect(x) },
+            shapes: Default::default(),
+            shape_count: 1,
+            corner_smoothing: 2.,
+            material: crate::GlassMaterial::default(),
+        };
+        let mut scene = Scene::default();
+        scene.insert_primitive(glass(64.));
+        scene.insert_primitive(underlay(0.));
+        scene.insert_primitive(underlay(64.));
+        scene.insert_primitive(underlay(128.));
+        scene.insert_primitive(glass(0.));
+        scene.insert_primitive(glass(192.));
+        scene.finish();
+        let mut drawn: Vec<_> = scene
+            .surfaces
+            .iter()
+            .map(|surface| (surface.bounds.origin.x.0, surface.image_buffer.is_some()))
+            .collect();
+        drawn.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert_eq!(drawn, [(0., true), (64., false), (128., false)]);
     }
 
     fn paint(scene: &mut Scene) {

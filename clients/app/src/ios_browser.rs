@@ -22,7 +22,7 @@ use objc::{
 };
 use raw_window_handle::RawWindowHandle;
 use zz_daemon_client::InteractiveClient;
-use zz_gpui::{Bounds, Pixels, Window};
+use zz_gpui::{Bounds, Pixels, Point, RenderImage, Window};
 
 pub use zz_client::element_picker::ElementPickerAppearance;
 use zz_client::element_picker::{
@@ -33,6 +33,39 @@ use zz_gpui_platform::ios::{
 };
 
 const OBSERVED: &[&str] = &["URL", "title", "loading", "canGoBack", "canGoForward"];
+const SCROLL_OFFSET: &str = "contentOffset";
+const HOLE: [&str; 4] = ["holeX", "holeY", "holeWidth", "holeHeight"];
+const PULL_TO_REFRESH: f64 = 80.0;
+const GESTURE_CHANGED: isize = 2;
+const GESTURE_ENDED: isize = 3;
+const BGRA_PREMULTIPLIED: u32 = 2 | 2 << 12;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct UIEdgeInsets {
+    top: f64,
+    left: f64,
+    bottom: f64,
+    right: f64,
+}
+
+unsafe impl objc::Encode for UIEdgeInsets {
+    fn encode() -> objc::Encoding {
+        unsafe { objc::Encoding::from_str("{UIEdgeInsets=dddd}") }
+    }
+}
+
+/// Where the web view sits and what floats over it: its frame, its lower
+/// corners, how much of its bottom edge app UI covers, and the cutout that
+/// UI shows through, all in window points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BrowserMount {
+    pub bounds: Bounds<Pixels>,
+    pub radius: Pixels,
+    pub covered_bottom: Pixels,
+    pub hole: Option<(Bounds<Pixels>, Pixels)>,
+    pub backdrop: Option<Bounds<Pixels>>,
+}
 use zz_client::element_picker::ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT;
 const PICKER_HANDLER: &str = "zzElementPicker";
 
@@ -55,6 +88,15 @@ pub enum BrowserEvent {
     },
     ElementPickCancelled,
     ElementPickFailed,
+    Scrolled {
+        travel: f32,
+        at_top: bool,
+    },
+    Refresh,
+    Backdrop {
+        bounds: Bounds<Pixels>,
+        image: Arc<RenderImage>,
+    },
 }
 
 pub struct BrowserProfile {
@@ -141,6 +183,9 @@ impl BrowserProfile {
         if !self.available() {
             return Err("Waiting for the host connection…".into());
         }
+        if url.is_null() {
+            return Err("Enter an HTTP or HTTPS address.".into());
+        }
         let scheme: id = msg_send![url, scheme];
         let scheme = nsstring_to_string(scheme)
             .unwrap_or_default()
@@ -199,11 +244,21 @@ struct DelegateState {
     picker: ElementPickState,
     generation: Cell<u64>,
     picking: Cell<bool>,
+    offset: Cell<f64>,
+    refreshing: Cell<bool>,
+    view: Cell<id>,
+    backdrop: Cell<Option<(Bounds<Pixels>, CGRect)>>,
+    snapshotting: Cell<bool>,
+    stale: Cell<bool>,
 }
 
 pub struct BrowserView {
     view: id,
+    host: id,
+    mask: id,
+    spinner: id,
     delegate: id,
+    mounted: Cell<Option<BrowserMount>>,
     _state: Rc<DelegateState>,
 }
 
@@ -216,6 +271,12 @@ impl BrowserView {
             picker: ElementPickState::default(),
             generation: Cell::new(0),
             picking: Cell::new(false),
+            offset: Cell::new(0.0),
+            refreshing: Cell::new(false),
+            view: Cell::new(nil),
+            backdrop: Cell::new(None),
+            snapshotting: Cell::new(false),
+            stale: Cell::new(false),
         });
         unsafe {
             let configuration: id = msg_send![class!(WKWebViewConfiguration), new];
@@ -227,7 +288,12 @@ impl BrowserView {
             let _: () = msg_send![configuration, release];
             let _: () = msg_send![view, setAllowsBackForwardNavigationGestures: YES];
             let _: () = msg_send![view, setInspectable: YES];
-            let _: () = msg_send![view, setHidden: YES];
+            state.view.set(view);
+            let host: id = msg_send![host_class(), new];
+            let _: () = msg_send![host, setHidden: YES];
+            let _: () = msg_send![host, addSubview: view];
+            let mask: id = msg_send![class!(CAShapeLayer), new];
+            let _: () = msg_send![mask, setFillRule: ns_string("even-odd")];
             let scroll: id = msg_send![view, scrollView];
             let _: () = msg_send![scroll, setContentInsetAdjustmentBehavior: 2isize];
             let delegate: id = msg_send![delegate_class(), new];
@@ -240,16 +306,30 @@ impl BrowserView {
             for key in OBSERVED {
                 let _: () = msg_send![view, addObserver: delegate forKeyPath: ns_string(key) options: 0usize context: std::ptr::null_mut::<std::ffi::c_void>()];
             }
+            let _: () = msg_send![scroll, addObserver: delegate forKeyPath: ns_string(SCROLL_OFFSET) options: 0usize context: std::ptr::null_mut::<std::ffi::c_void>()];
             let tap: id = msg_send![class!(UITapGestureRecognizer), alloc];
             let tap: id = msg_send![tap, initWithTarget: delegate action: sel!(pageTapped:)];
             let _: () = msg_send![tap, setCancelsTouchesInView: NO];
             let _: () = msg_send![tap, setDelegate: delegate];
             let _: () = msg_send![view, addGestureRecognizer: tap];
             let _: () = msg_send![tap, release];
+            let pan: id = msg_send![scroll, panGestureRecognizer];
+            let _: () = msg_send![pan, addTarget: delegate action: sel!(pagePanned:)];
+            let spinner: id = msg_send![class!(UIActivityIndicatorView), alloc];
+            let spinner: id = msg_send![spinner, initWithActivityIndicatorStyle: 100isize];
+            let gray: id = msg_send![class!(UIColor), systemGrayColor];
+            let _: () = msg_send![spinner, setColor: gray];
+            let _: () = msg_send![spinner, setHidesWhenStopped: YES];
+            let _: () = msg_send![host, addSubview: spinner];
+            (*delegate).set_ivar("spinner", spinner as usize);
             (
                 Rc::new(Self {
                     view,
+                    host,
+                    mask,
+                    spinner,
                     delegate,
+                    mounted: Cell::new(None),
                     _state: state,
                 }),
                 receiver,
@@ -301,13 +381,16 @@ impl BrowserView {
 
     pub fn set_visible(&self, visible: bool) {
         unsafe {
-            let hidden: BOOL = msg_send![self.view, isHidden];
+            let hidden: BOOL = msg_send![self.host, isHidden];
             if (hidden == YES) == visible {
                 if !visible {
                     self.cancel_element_pick();
                     let _: BOOL = msg_send![self.view, endEditing: YES];
                 }
-                let _: () = msg_send![self.view, setHidden: if visible { NO } else { YES }];
+                let _: () = msg_send![self.host, setHidden: if visible { NO } else { YES }];
+                if visible {
+                    request_backdrop(&self._state);
+                }
             }
         }
     }
@@ -358,7 +441,47 @@ impl BrowserView {
         }
     }
 
-    pub fn mount(&self, bounds: Bounds<Pixels>, radius: Pixels, window: &Window) {
+    pub fn point_element_pick(&self, at: Point<Pixels>) -> bool {
+        let Some(mount) = self.mounted.get().filter(|_| self._state.picking.get()) else {
+            return false;
+        };
+        let local = at - mount.bounds.origin;
+        let script = format!(
+            "globalThis.__zzElementPicker?.point({},{},{});",
+            f32::from(local.x),
+            f32::from(local.y),
+            f32::from(mount.bounds.size.width)
+        );
+        unsafe {
+            let _: () =
+                msg_send![self.view, evaluateJavaScript: ns_string(&script) completionHandler: nil];
+        }
+        mount.bounds.contains(&at)
+    }
+
+    pub fn release_element_pick(&self) {
+        if !self._state.picking.get() {
+            return;
+        }
+        unsafe {
+            let _: () = msg_send![self.view, evaluateJavaScript: ns_string("globalThis.__zzElementPicker?.release();") completionHandler: nil];
+        }
+    }
+
+    pub fn refresh_backdrop(&self) {
+        unsafe {
+            request_backdrop(&self._state);
+        }
+    }
+
+    pub fn end_refresh(&self) {
+        self._state.refreshing.set(false);
+        unsafe {
+            let _: () = msg_send![self.spinner, stopAnimating];
+        }
+    }
+
+    pub fn mount(&self, mount: BrowserMount, window: &Window) {
         let Ok(handle) = raw_window_handle::HasWindowHandle::window_handle(window) else {
             return;
         };
@@ -367,27 +490,100 @@ impl BrowserView {
         };
         unsafe {
             let parent = handle.ui_view.as_ptr() as id;
-            let previous: id = msg_send![self.view, superview];
+            let previous: id = msg_send![self.host, superview];
             if previous != parent {
-                let _: () = msg_send![parent, addSubview: self.view];
+                let _: () = msg_send![parent, addSubview: self.host];
+                self.mounted.set(None);
             }
+            if self.mounted.get() == Some(mount) {
+                return;
+            }
+            self.mounted.set(Some(mount));
             let native_scale: f64 = msg_send![parent, contentScaleFactor];
             let scale = f64::from(window.scale_factor()) / native_scale;
+            let points = |value: Pixels| f64::from(f32::from(value)) * scale;
+            let bounds = mount.bounds;
             let frame = CGRect {
                 origin: CGPoint {
-                    x: f64::from(f32::from(bounds.origin.x)) * scale,
-                    y: f64::from(f32::from(bounds.origin.y)) * scale,
+                    x: points(bounds.origin.x),
+                    y: points(bounds.origin.y),
                 },
                 size: CGSize {
-                    width: f64::from(f32::from(bounds.size.width)) * scale,
-                    height: f64::from(f32::from(bounds.size.height)) * scale,
+                    width: points(bounds.size.width),
+                    height: points(bounds.size.height),
                 },
             };
-            let _: () = msg_send![self.view, setFrame: frame];
-            let layer: id = msg_send![self.view, layer];
-            let _: () = msg_send![layer, setCornerRadius: f64::from(f32::from(radius)) * scale];
+            let local = CGRect {
+                origin: CGPoint::default(),
+                size: frame.size,
+            };
+            let _: () = msg_send![class!(CATransaction), begin];
+            let _: () = msg_send![class!(CATransaction), setDisableActions: YES];
+            let _: () = msg_send![self.host, setFrame: frame];
+            let _: () = msg_send![self.view, setFrame: local];
+            let _: () =
+                msg_send![self.spinner, setCenter: CGPoint { x: local.size.width / 2.0, y: 28.0 }];
+            let layer: id = msg_send![self.host, layer];
+            let _: () = msg_send![layer, setCornerRadius: points(mount.radius)];
             let _: () = msg_send![layer, setMaskedCorners: 12usize];
             let _: () = msg_send![layer, setMasksToBounds: YES];
+            let hole = mount.hole.map(|(hole, radius)| {
+                let rect = CGRect {
+                    origin: CGPoint {
+                        x: points(hole.origin.x - bounds.origin.x),
+                        y: points(hole.origin.y - bounds.origin.y),
+                    },
+                    size: CGSize {
+                        width: points(hole.size.width),
+                        height: points(hole.size.height),
+                    },
+                };
+                (rect, points(radius).min(rect.size.height / 2.0))
+            });
+            let (x, y, width, height) = hole.map_or((0.0, 0.0, 0.0, 0.0), |(rect, _)| {
+                (
+                    rect.origin.x,
+                    rect.origin.y,
+                    rect.size.width,
+                    rect.size.height,
+                )
+            });
+            for (name, value) in HOLE.iter().zip([x, y, width, height]) {
+                (*self.host).set_ivar::<f64>(name, value);
+            }
+            if let Some((rect, radius)) = hole {
+                let path: id = msg_send![class!(UIBezierPath), bezierPathWithRect: local];
+                let cutout: id = msg_send![class!(UIBezierPath), bezierPathWithRoundedRect: rect cornerRadius: radius];
+                let _: () = msg_send![path, appendPath: cutout];
+                let shape: id = msg_send![path, CGPath];
+                let _: () = msg_send![self.mask, setFrame: local];
+                let _: () = msg_send![self.mask, setPath: shape];
+                let _: () = msg_send![layer, setMask: self.mask];
+            } else {
+                let _: () = msg_send![layer, setMask: nil];
+            }
+            let _: () = msg_send![class!(CATransaction), commit];
+            let insets = UIEdgeInsets {
+                bottom: points(mount.covered_bottom),
+                ..UIEdgeInsets::default()
+            };
+            let scroll: id = msg_send![self.view, scrollView];
+            let _: () = msg_send![scroll, setContentInset: insets];
+            let _: () = msg_send![scroll, setVerticalScrollIndicatorInsets: insets];
+            self._state.backdrop.set(mount.backdrop.map(|strip| {
+                let rect = CGRect {
+                    origin: CGPoint {
+                        x: points(strip.origin.x - bounds.origin.x),
+                        y: points(strip.origin.y - bounds.origin.y),
+                    },
+                    size: CGSize {
+                        width: points(strip.size.width),
+                        height: points(strip.size.height),
+                    },
+                };
+                (strip, rect)
+            }));
+            request_backdrop(&self._state);
         }
     }
 }
@@ -395,7 +591,12 @@ impl BrowserView {
 impl Drop for BrowserView {
     fn drop(&mut self) {
         self.cancel_element_pick();
+        self._state.view.set(nil);
+        self._state.backdrop.set(None);
         unsafe {
+            let scroll: id = msg_send![self.view, scrollView];
+            let pan: id = msg_send![scroll, panGestureRecognizer];
+            let _: () = msg_send![pan, removeTarget: self.delegate action: sel!(pagePanned:)];
             self.stop();
             let _: () = msg_send![self.view, setNavigationDelegate: nil];
             let _: () = msg_send![self.view, setUIDelegate: nil];
@@ -407,8 +608,14 @@ impl Drop for BrowserView {
                 let _: () =
                     msg_send![self.view, removeObserver: self.delegate forKeyPath: ns_string(key)];
             }
+            let scroll: id = msg_send![self.view, scrollView];
+            let _: () = msg_send![scroll, removeObserver: self.delegate forKeyPath: ns_string(SCROLL_OFFSET)];
             let _: () = msg_send![self.view, removeFromSuperview];
+            let _: () = msg_send![self.host, removeFromSuperview];
             let _: () = msg_send![self.view, release];
+            let _: () = msg_send![self.host, release];
+            let _: () = msg_send![self.mask, release];
+            let _: () = msg_send![self.spinner, release];
             let _: () = msg_send![self.delegate, release];
         }
     }
@@ -548,11 +755,105 @@ unsafe fn snapshot(
     let _: () = msg_send![configuration, release];
 }
 
+unsafe fn request_backdrop(state: &Rc<DelegateState>) {
+    let view = state.view.get();
+    let Some((bounds, rect)) = state.backdrop.get().filter(|_| !view.is_null()) else {
+        return;
+    };
+    let host: id = msg_send![view, superview];
+    let hidden: BOOL = if host.is_null() {
+        YES
+    } else {
+        msg_send![host, isHidden]
+    };
+    if hidden == YES || rect.size.width < 1.0 || rect.size.height < 1.0 {
+        return;
+    }
+    if state.snapshotting.replace(true) {
+        state.stale.set(true);
+        return;
+    }
+    state.stale.set(false);
+    let width = rect.size.width.round() as usize;
+    let height = rect.size.height.round() as usize;
+    let configuration: id = msg_send![class!(WKSnapshotConfiguration), new];
+    let _: () = msg_send![configuration, setRect: rect];
+    let _: () = msg_send![configuration, setAfterScreenUpdates: NO];
+    let snapshot_width: id = msg_send![class!(NSNumber), numberWithDouble: rect.size.width];
+    let _: () = msg_send![configuration, setSnapshotWidth: snapshot_width];
+    let state = state.clone();
+    let completion = block2::RcBlock::new(
+        move |image: *mut std::ffi::c_void, _: *mut std::ffi::c_void| {
+            state.snapshotting.set(false);
+            if state.view.get().is_null() {
+                return;
+            }
+            if let Some(image) = bgra_image(image as id, width, height) {
+                let _ = state
+                    .events
+                    .unbounded_send(BrowserEvent::Backdrop { bounds, image });
+            }
+            if state.stale.get() {
+                request_backdrop(&state);
+            }
+        },
+    );
+    let _: () = msg_send![view, takeSnapshotWithConfiguration: configuration completionHandler: &*completion];
+    let _: () = msg_send![configuration, release];
+}
+
+unsafe fn bgra_image(image: id, width: usize, height: usize) -> Option<Arc<RenderImage>> {
+    if image.is_null() || width == 0 || height == 0 {
+        return None;
+    }
+    let source: *mut std::ffi::c_void = msg_send![image, CGImage];
+    if source.is_null() {
+        return None;
+    }
+    let mut bytes = vec![0u8; width * height * 4];
+    let space = CGColorSpaceCreateDeviceRGB();
+    let context = CGBitmapContextCreate(
+        bytes.as_mut_ptr().cast(),
+        width,
+        height,
+        8,
+        width * 4,
+        space,
+        BGRA_PREMULTIPLIED,
+    );
+    CGColorSpaceRelease(space);
+    if context.is_null() {
+        return None;
+    }
+    let target = CGRect {
+        origin: CGPoint::default(),
+        size: CGSize {
+            width: width as f64,
+            height: height as f64,
+        },
+    };
+    CGContextDrawImage(context, target, source);
+    CGContextRelease(context);
+    let buffer = image::RgbaImage::from_raw(width as u32, height as u32, bytes)?;
+    Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
+}
+
 unsafe fn changed(this: &Object, view: id, committed: bool) {
     let url: id = msg_send![view, URL];
-    let address: id = msg_send![url, absoluteString];
+    let address: id = if url.is_null() {
+        nil
+    } else {
+        msg_send![url, absoluteString]
+    };
     let title: id = msg_send![view, title];
     let loading: BOOL = msg_send![view, isLoading];
+    if loading != YES {
+        request_backdrop(&state(this));
+    }
+    if loading != YES && state(this).refreshing.replace(false) {
+        let spinner = *this.get_ivar::<usize>("spinner") as id;
+        let _: () = msg_send![spinner, stopAnimating];
+    }
     let back: BOOL = msg_send![view, canGoBack];
     let forward: BOOL = msg_send![view, canGoForward];
     let _ = state(this).events.unbounded_send(BrowserEvent::Changed {
@@ -570,6 +871,7 @@ fn delegate_class() -> &'static Class {
     CLASS.get_or_init(|| unsafe {
         let mut decl = ClassDecl::new("ZZBrowserDelegate", class!(NSObject)).unwrap();
         decl.add_ivar::<usize>("state");
+        decl.add_ivar::<usize>("spinner");
         for name in [
             "WKNavigationDelegate",
             "WKUIDelegate",
@@ -621,6 +923,7 @@ fn delegate_class() -> &'static Class {
             open as extern "C" fn(&Object, Sel, id, id, id, id) -> id,
         );
         decl.add_method(sel!(pageTapped:), tapped as extern "C" fn(&Object, Sel, id));
+        decl.add_method(sel!(pagePanned:), panned as extern "C" fn(&Object, Sel, id));
         decl.add_method(
             sel!(gestureRecognizer:shouldRecognizeSimultaneouslyWithGestureRecognizer:),
             simultaneous as extern "C" fn(&Object, Sel, id, id) -> BOOL,
@@ -629,9 +932,61 @@ fn delegate_class() -> &'static Class {
     })
 }
 
-extern "C" fn observe(this: &Object, _: Sel, _: id, view: id, _: id, _: *mut std::ffi::c_void) {
+extern "C" fn observe(this: &Object, _: Sel, key: id, object: id, _: id, _: *mut std::ffi::c_void) {
     unsafe {
-        changed(this, view, false);
+        let offset: BOOL = msg_send![key, isEqualToString: ns_string(SCROLL_OFFSET)];
+        if offset == YES {
+            scrolled(this, object);
+        } else {
+            changed(this, object, false);
+        }
+    }
+}
+
+unsafe fn scrolled(this: &Object, scroll: id) {
+    let state = state(this);
+    request_backdrop(&state);
+    let offset: CGPoint = msg_send![scroll, contentOffset];
+    let last = state.offset.replace(offset.y);
+    let tracking: BOOL = msg_send![scroll, isTracking];
+    let decelerating: BOOL = msg_send![scroll, isDecelerating];
+    if tracking != YES && decelerating != YES {
+        return;
+    }
+    let _ = state.events.unbounded_send(BrowserEvent::Scrolled {
+        travel: (offset.y - last) as f32,
+        at_top: offset.y <= 0.5,
+    });
+}
+
+fn host_class() -> &'static Class {
+    static CLASS: std::sync::OnceLock<&Class> = std::sync::OnceLock::new();
+    CLASS.get_or_init(|| unsafe {
+        let mut decl = ClassDecl::new("ZZBrowserHost", class!(UIView)).unwrap();
+        for name in HOLE {
+            decl.add_ivar::<f64>(name);
+        }
+        decl.add_method(
+            sel!(hitTest:withEvent:),
+            host_hit_test as extern "C" fn(&Object, Sel, CGPoint, id) -> id,
+        );
+        decl.register()
+    })
+}
+
+extern "C" fn host_hit_test(this: &Object, _: Sel, point: CGPoint, event: id) -> id {
+    unsafe {
+        let [x, y, width, height] = HOLE.map(|name| *this.get_ivar::<f64>(name));
+        if width > 0.0
+            && height > 0.0
+            && point.x >= x
+            && point.x <= x + width
+            && point.y >= y
+            && point.y <= y + height
+        {
+            return nil;
+        }
+        msg_send![super(this, class!(UIView)), hitTest: point withEvent: event]
     }
 }
 
@@ -691,6 +1046,9 @@ extern "C" fn open(this: &Object, _: Sel, _: id, _: id, action: id, _: id) -> id
     unsafe {
         let request: id = msg_send![action, request];
         let url: id = msg_send![request, URL];
+        if url.is_null() {
+            return nil;
+        }
         let address: id = msg_send![url, absoluteString];
         if let Some(url) = nsstring_to_string(address) {
             let _ = state(this).events.unbounded_send(BrowserEvent::Open(url));
@@ -705,12 +1063,60 @@ extern "C" fn tapped(this: &Object, _: Sel, _: id) {
     }
 }
 
+extern "C" fn panned(this: &Object, _: Sel, gesture: id) {
+    unsafe {
+        let state = state(this);
+        if state.refreshing.get() {
+            return;
+        }
+        let phase: isize = msg_send![gesture, state];
+        let scroll: id = msg_send![gesture, view];
+        let offset: CGPoint = msg_send![scroll, contentOffset];
+        let spinner = *this.get_ivar::<usize>("spinner") as id;
+        let pulled = offset.y <= -PULL_TO_REFRESH;
+        match phase {
+            GESTURE_ENDED if pulled => {
+                state.refreshing.set(true);
+                let _: () = msg_send![spinner, startAnimating];
+                let _ = state.events.unbounded_send(BrowserEvent::Refresh);
+            }
+            GESTURE_CHANGED if pulled => {
+                let _: () = msg_send![spinner, startAnimating];
+            }
+            _ => {
+                let _: () = msg_send![spinner, stopAnimating];
+            }
+        }
+    }
+}
+
 extern "C" fn simultaneous(_: &Object, _: Sel, _: id, _: id) -> BOOL {
     YES
 }
 
 #[link(name = "WebKit", kind = "framework")]
 unsafe extern "C" {}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGColorSpaceCreateDeviceRGB() -> *mut std::ffi::c_void;
+    fn CGColorSpaceRelease(space: *mut std::ffi::c_void);
+    fn CGBitmapContextCreate(
+        data: *mut std::ffi::c_void,
+        width: usize,
+        height: usize,
+        bits_per_component: usize,
+        bytes_per_row: usize,
+        space: *mut std::ffi::c_void,
+        info: u32,
+    ) -> *mut std::ffi::c_void;
+    fn CGContextDrawImage(
+        context: *mut std::ffi::c_void,
+        rect: CGRect,
+        image: *mut std::ffi::c_void,
+    );
+    fn CGContextRelease(context: *mut std::ffi::c_void);
+}
 
 #[link(name = "UIKit", kind = "framework")]
 unsafe extern "C" {

@@ -31,8 +31,9 @@ body {
 }
 
 body {
+    --knobs-default: 300px;
     display: grid;
-    grid-template-columns: 232px minmax(0, 1fr) 300px;
+    grid-template-columns: 232px minmax(0, 1fr) var(--knobs-width, var(--knobs-default));
     font: 14px/1.6 "Inter", system-ui, sans-serif;
     color: var(--zz-foreground);
     background: var(--zz-background);
@@ -186,12 +187,55 @@ main > section h2 {
 }
 
 body.creator {
-    grid-template-columns: minmax(0, 1fr) 340px;
+    --knobs-default: 340px;
+    grid-template-columns: minmax(0, 1fr) var(--knobs-width, var(--knobs-default));
     grid-template-rows: var(--bar) minmax(0, 1fr);
 }
 
 body.creator nav {
     display: none;
+}
+
+#knobs-resize {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: calc(var(--knobs-width, var(--knobs-default)) - 4px);
+    z-index: 10;
+    width: 8px;
+    cursor: col-resize;
+    touch-action: none;
+}
+
+body.creator #knobs-resize {
+    top: var(--bar);
+}
+
+#knobs-resize::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 3px;
+    width: 2px;
+    background: var(--zz-accent);
+    opacity: 0;
+    transition: opacity 120ms;
+}
+
+#knobs-resize:hover::after,
+#knobs-resize:focus-visible::after,
+#knobs-resize.dragging::after {
+    opacity: 1;
+}
+
+#knobs-resize:focus-visible {
+    outline: none;
+}
+
+body.resizing {
+    cursor: col-resize;
+    user-select: none;
 }
 
 body.creator #bar {
@@ -1008,6 +1052,10 @@ dialog button {
     body.creator {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: auto;
+    }
+
+    #knobs-resize {
+        display: none;
     }
 
     nav,
