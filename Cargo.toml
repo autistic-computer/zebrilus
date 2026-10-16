@@ -7,6 +7,7 @@ members = [
 exclude = [
     "clients/storybook",
     "clients/web",
+    "third_party/rust/cosmic-text",
     "third_party/rust/libghostty-vt",
     "third_party/rust/libghostty-vt-sys",
 ]
