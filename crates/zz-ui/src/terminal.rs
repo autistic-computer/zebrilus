@@ -1462,19 +1462,6 @@ impl RowRenderCache {
                     };
                     if should_compute_raster {
                         *line.raster.borrow_mut() = RasterState::Untried;
-                    }
-                    if let Err(error) = line.line.paint_with_options(
-                        origin,
-                        paint.line_height,
-                        TextAlign::Left,
-                        None,
-                        line.glyph_options,
-                        window,
-                        cx,
-                    ) {
-                        log::error!("failed to paint terminal text: {error}");
-                    }
-                    if should_compute_raster {
                         match line.line.compute_glyph_raster_data(
                             origin,
                             paint.line_height,
@@ -1483,7 +1470,16 @@ impl RowRenderCache {
                             cx,
                         ) {
                             Ok(Some(data)) => {
+                                let painted = line.line.paint_with_raster_data(
+                                    &data,
+                                    origin,
+                                    paint.line_height,
+                                    window,
+                                );
                                 *line.raster.borrow_mut() = RasterState::Cached(data);
+                                if painted {
+                                    continue;
+                                }
                             }
                             Ok(None) => {
                                 *line.raster.borrow_mut() = RasterState::SlowPathOnly;
@@ -1495,6 +1491,17 @@ impl RowRenderCache {
                                 );
                             }
                         }
+                    }
+                    if let Err(error) = line.line.paint_with_options(
+                        origin,
+                        paint.line_height,
+                        TextAlign::Left,
+                        None,
+                        line.glyph_options,
+                        window,
+                        cx,
+                    ) {
+                        log::error!("failed to paint terminal text: {error}");
                     }
                 }
             }

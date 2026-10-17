@@ -108,6 +108,11 @@ fn fs_glass_up(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32>
     return sum / 12.0;
 }
 
+@fragment
+fn fs_glass_copy(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+    return textureLoad(blur_source, vec2<i32>(position.xy) + vec2<i32>(blur.params.yz), 0);
+}
+
 // -- glass -----------------------------------------------------------------
 
 @vertex

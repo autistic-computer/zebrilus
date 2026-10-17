@@ -29,7 +29,15 @@ while (1) {
 }
 """
 
-SCENARIOS = ["idle", "stream", "grid", "scroll", "chrome"]
+ANIM_HTML = """<!doctype html><html><body style="margin:0;background:#202830">
+<canvas id=c style="width:100vw;height:100vh"></canvas><script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+function f(t){c.width=innerWidth;c.height=innerHeight;x.fillStyle='#e0a040';
+for(let i=0;i<40;i++){x.beginPath();x.arc((Math.sin(t/700+i)*0.45+0.5)*c.width,(i+0.5)*c.height/40,12,0,7);x.fill()}
+requestAnimationFrame(f)}requestAnimationFrame(f)</script></body></html>"""
+
+SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome", "browser"]
+DEFAULT_SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome"]
 FOREIGN = tuple(p for p in os.environ.get("ZZ_FRAMES_FOREIGN", "").split(":") if p)
 QUIET = ("bench/perf/run.py", "bench/perf/gate.py", "compat/run.sh", "bench/run.sh")
 HOLD = os.environ.get("ZZ_FRAMES_HOLD")
@@ -143,8 +151,10 @@ def footprint(pid):
 
 
 class Run:
-    def __init__(self, app, out_dir, label, warmup, duration, rate, extra_env=None):
+    def __init__(self, app, out_dir, label, warmup, duration, rate, extra_env=None, config=None, display=None):
         self.extra_env = extra_env or {}
+        self.config = config
+        self.display = display
         self.app = Path(app)
         self.binary = self.app / "Contents/MacOS/zz"
         self.out_dir = Path(out_dir)
@@ -191,13 +201,16 @@ class Run:
             json.dumps(
                 {
                     "version": 1,
-                    "display_uuid": None,
+                    "display_uuid": self.display,
                     "mode": "windowed",
                     "bounds": {"x": x, "y": y, "width": width, "height": height},
                 }
             )
         )
         (self.root / "stream.pl").write_text(STREAM_PL)
+        if self.config:
+            (self.home / ".config/zz").mkdir(parents=True)
+            shutil.copy(self.config, self.home / ".config/zz/config")
 
     def launch(self, frames_path):
         env = self.env()
@@ -258,6 +271,15 @@ class Run:
             self.zz("new-window", "-t", f"{self.session}:", "-n", "scroll", "seq -f 'scrollback line %06g' 1 20000; exec cat")
             time.sleep(1.5)
             self.zz("copy-mode", "-t", f"{self.session}:scroll")
+        elif scenario == "browser":
+            page = self.root / "anim.html"
+            page.write_text(ANIM_HTML)
+            self.zz("new-window", "-t", f"{self.session}:", "--kind", "browser", "-n", "browser", f"file://{page}")
+            time.sleep(8)
+        elif scenario == "sidebar":
+            for i in range(24):
+                self.zz("new-session", "-d", "-s", f"s{i:02d}-a-session-name-long-enough-to-fade", "-n", f"window-{i:02d}-with-a-long-descriptive-name")
+            self.zz("new-window", "-t", f"{self.session}:", "-n", "streaming-window-with-a-long-name-that-overflows", self.stream_cmd())
         elif scenario == "chrome":
             for i in range(24):
                 self.zz("new-session", "-d", "-s", f"s{i:02d}")
@@ -478,10 +500,12 @@ def main():
     parser.add_argument("--duration", type=float, default=20)
     parser.add_argument("--rate", type=int, default=240)
     parser.add_argument("--no-recorder", action="store_true")
-    parser.add_argument("--scenarios", default=",".join(SCENARIOS))
+    parser.add_argument("--scenarios", default=",".join(DEFAULT_SCENARIOS))
     parser.add_argument("--bounds", default="80,80,1280,900")
     parser.add_argument("--quiet-wait", type=float, default=900)
     parser.add_argument("--repeat-offset", type=int, default=0)
+    parser.add_argument("--config", help="zz config file every run starts with")
+    parser.add_argument("--display-uuid", help="display the window opens on (lowercase CGDisplay UUID)")
     args = parser.parse_args()
     apps = []
     envs = {}
@@ -498,7 +522,7 @@ def main():
     for repeat in range(args.repeat_offset, args.repeat_offset + args.repeats):
         order = apps if repeat % 2 == 0 else list(reversed(apps))
         for label, app in order:
-            run = Run(app, out, label, args.warmup, args.duration, args.rate, envs[label])
+            run = Run(app, out, label, args.warmup, args.duration, args.rate, envs[label], args.config, args.display_uuid)
             run.quiet_wait = args.quiet_wait
             frames = None if args.no_recorder else out / f"frames-{label}-{repeat}.jsonl"
             try:

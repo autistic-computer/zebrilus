@@ -75,10 +75,16 @@ see `bench/perf/README.md`.
 # GPUI frame cost (macOS)
 
 `bench/gpui/frames.py` compares zz app bundles frame by frame. Each launch gets its own `HOME`
-and socket, a 1280x900 window, and five scenarios driven through the CLI (idle, stream, a
-nine-pane grid with one pane streaming, copy-mode scrolling, and 25 sessions with the palette
-open). It records main-thread CPU, footprint, and per-phase frame costs from `GPUI_FRAME_STATS`,
-which needs a fork with the frame recorder (`cc9e4d1804` or later).
+and socket, a 1280x900 window, and six scenarios driven through the CLI (idle, stream, a
+nine-pane grid with one pane streaming, copy-mode scrolling, 24 sessions whose long names overflow
+the sidebar while one pane streams, and 25 sessions with the palette open). It records main-thread
+CPU, footprint, and per-phase frame costs from `GPUI_FRAME_STATS`, which needs a fork with the
+frame recorder (`cc9e4d1804` or later).
+
+`--scenarios ...,browser` adds a browser pane on an animated canvas. Run it alone or last: on an
+ad-hoc signed bundle Chromium asks the Keychain for its Safe Storage key, the prompt takes focus,
+and builds that throttle inactive windows then draw slower in every later scenario. After `chrome`
+the palette is still open over the page, so a glass theme measures the page blurred under it.
 
 ```sh
 bench/gpui/frames.py --app A=dist/a/zz.app --app B=dist/b/zz.app --out /tmp/frames --repeats 3
@@ -86,7 +92,10 @@ bench/gpui/frames.py summarize /tmp/frames/results.jsonl A
 ```
 
 Build each side with `cargo xtask bundle-cef --profile profiling --output dist/<name>`.
-`--app NAME=PATH,KEY=VALUE` adds environment for one side. It waits for a quiet machine before each
+`--app NAME=PATH,KEY=VALUE` adds environment for one side. `--config FILE` starts every launch
+with that zz config (an interface theme, `pane-gaps`, `window-background-blur`), and
+`--display-uuid` opens the window on another display, such as one no other window covers: a
+covered window stops drawing, and its windows read as idle. It waits for a quiet machine before each
 window and repeats windows that overlapped a compile, a perf gate or a compat run; set
 `ZZ_FRAMES_FOREIGN` to colon-separated target directories of other worktrees whose test binaries
 should also count, and `ZZ_FRAMES_HOLD` to a file it creates while measuring.

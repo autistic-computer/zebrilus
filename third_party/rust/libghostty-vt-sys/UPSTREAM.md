@@ -243,6 +243,39 @@ full ones. Rebase note: the native change touches only `src/terminal/render.zig`
 `src/terminal/c/render.zig`, `src/terminal/c/types.zig` and `include/ghostty/vt/render.h`, and
 the wrapper change only `render.rs` plus the sys bindings and pin.
 
+## Hyperlink row copies and page preallocation
+
+The 2026-10-16 Linux profile attributed 64.2% of daemon user cycles to
+`Page.clonePartialRowFrom` and its callees on the mixed Unicode, SGR and OSC8 fixture.
+Cross-page copies now remember the last source hyperlink ID and its destination ID
+within each row. Repeated IDs increment the destination reference count without
+hashing the URI again. The existing map-capacity check still precedes that path;
+the memo ends with the row and adds no persistent state. Tests cover ID remapping,
+repeated row overwrite, reference release, map exhaustion and string allocation failure.
+
+`PageList.init` preallocates one raw page instead of four. Larger screens and
+scrollback allocate further pages through the existing pool; spare-page reuse and
+compression retain their existing policies. This removes three unused mappings
+and their teardown unmaps from an ordinary short-lived terminal.
+
+Five rotated ReleaseFast, baseline-CPU C ABI trials on x86_64 Linux reduced median
+parser CPU by 21.9% on 64 MiB of mixed output and 51.4% on 64 MiB of repeated OSC8
+spans. ASCII throughput stayed flat, and the formatted VT state hashes matched.
+Ten thousand terminal creation/destruction cycles used 63.4% less CPU after
+reducing preallocation. A separate 512 MiB ASCII control stayed flat.
+
+`crates/zz-terminal/benches/native_profile.c` preserves the deterministic parser
+and churn harness. Link it separately against baseline and candidate archives,
+using the vendored `include` directory and `-lm -lpthread -ldl`. Its inputs are
+`<fixture-path> <bytes>`, `ascii <bytes>`, `links <bytes>`, or `churn <iterations>`;
+append `<columns> <rows>` to override the default 120x40 geometry.
+It reports process CPU, wall time, minor faults and a hash of formatted VT state.
+These numbers cover the native engine, not PTY transport or GUI rendering.
+
+Drop these local deltas when upstream supplies equivalent row-local reuse and
+initial pool allocation behavior. Recheck reference counts, partial failures,
+page growth and sustained throughput when updating either path.
+
 ## Earlier grid patches
 
 On 2026-09-18 fabrico removed the terminal grid patches; the corresponding

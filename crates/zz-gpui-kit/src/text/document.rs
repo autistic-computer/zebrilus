@@ -2,6 +2,8 @@
 //! through `zz_gpui::list`.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
+use std::sync::Arc;
+
 use zz_gpui::{
     App, InteractiveElement as _, IntoElement, ListState, ParentElement as _, SharedString,
     Styled as _, Window, div,
@@ -12,7 +14,7 @@ use super::node::{BlockNode, NodeContext};
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct ParsedDocument {
     pub(crate) source: SharedString,
-    pub(crate) blocks: Vec<BlockNode>,
+    pub(crate) blocks: Arc<Vec<BlockNode>>,
 }
 
 #[derive(Default, Clone, Copy)]
