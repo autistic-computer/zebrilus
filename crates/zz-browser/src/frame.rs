@@ -388,6 +388,8 @@ pub enum FrameError {
     TooLarge,
     #[error("browser frame has {actual} bytes, expected {expected}")]
     InvalidLength { expected: usize, actual: usize },
+    #[error("browser frame {width}x{height} exceeds the GPU texture dimension limit {limit}")]
+    TextureTooLarge { width: u32, height: u32, limit: u32 },
     #[error(
         "browser GPU texture is {actual_width}x{actual_height}, expected {expected_width}x{expected_height}"
     )]

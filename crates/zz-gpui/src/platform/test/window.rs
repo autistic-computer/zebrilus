@@ -47,6 +47,8 @@ pub(crate) struct TestWindowState {
     appearance_change_callback: Option<Box<dyn FnMut()>>,
     request_frame_callback: Option<Box<dyn FnMut(RequestFrameOptions)>>,
     frame_wake_count: Rc<Cell<usize>>,
+    #[cfg(test)]
+    draw_count: usize,
     frame_scheduled: bool,
     frame_callback_pending: bool,
     input_handler: Option<PlatformInputHandler>,
@@ -121,6 +123,8 @@ impl TestWindow {
             appearance_change_callback: None,
             request_frame_callback: None,
             frame_wake_count: Rc::new(Cell::new(0)),
+            #[cfg(test)]
+            draw_count: 0,
             frame_scheduled: false,
             frame_callback_pending: false,
             input_handler: None,
@@ -265,6 +269,11 @@ impl TestWindow {
         drop(lock);
         callback();
         self.0.lock().appearance_change_callback = Some(callback);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn draw_count(&self) -> usize {
+        self.0.lock().draw_count
     }
 
     /// Returns how many times this window's frame waker has been invoked.
@@ -548,6 +557,10 @@ impl PlatformWindow for TestWindow {
         let mut state = self.0.lock();
         state.frame_callback_pending = true;
         state.frame_scheduled = true;
+        #[cfg(test)]
+        {
+            state.draw_count += 1;
+        }
         let device_size: Size<DevicePixels> = state.bounds.size.to_device_pixels(scale_factor);
         if let Some(renderer) = &mut state.renderer {
             renderer.render_scene(scene, device_size).warn_on_err();

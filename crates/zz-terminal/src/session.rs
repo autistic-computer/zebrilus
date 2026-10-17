@@ -4911,7 +4911,7 @@ struct ViewportDictionary {
     generation: u32,
     last_style_id: u16,
     mode_revision: Option<u64>,
-    mode_viewport: Option<(u64, u32, u32)>,
+    mode_viewport: Option<(u64, u32, u32, (u16, u16))>,
     default_style: Option<PackedStyle>,
     palette: Option<Box<[RgbColor; 256]>>,
     class_hints: ClassHints,
@@ -5052,7 +5052,12 @@ impl ViewportDictionary {
 
     fn commit_cell_plane(&mut self, plane: Arc<[PackedCell]>) {
         let previous = std::mem::replace(&mut self.shared_cells, plane);
-        self.retain_cell_plane(previous);
+        if previous.len() == self.shared_cells.len() {
+            self.retain_cell_plane(previous);
+        } else {
+            self.cell_pool
+                .retain(|pooled| pooled.len() == self.shared_cells.len());
+        }
     }
 
     fn acquire_overlay_plane(&mut self, overlays: &[OverlaySpan]) -> Arc<[OverlaySpan]> {
@@ -5149,7 +5154,12 @@ impl ViewportDictionary {
         self.reset_live(style, palette);
     }
 
-    fn mode_cells(&mut self, revision: &ModeRevision, offset: u32) -> Arc<[PackedCell]> {
+    fn mode_cells(
+        &mut self,
+        revision: &ModeRevision,
+        offset: u32,
+        extent: (u16, u16),
+    ) -> Arc<[PackedCell]> {
         if self.mode_revision != Some(revision.id) {
             self.generation = self.generation.wrapping_add(1).max(1);
             self.mode_revision = Some(revision.id);
@@ -5169,9 +5179,21 @@ impl ViewportDictionary {
             self.style_overflowed = false;
             self.grapheme_overflowed = false;
         }
-        if self.mode_viewport != Some((revision.id, offset, revision.dictionary_generation())) {
-            self.shared_cells = revision.viewport_cells(offset);
-            self.mode_viewport = Some((revision.id, offset, revision.dictionary_generation()));
+        if self.mode_viewport
+            != Some((
+                revision.id,
+                offset,
+                revision.dictionary_generation(),
+                extent,
+            ))
+        {
+            self.shared_cells = revision.viewport_cells(offset, extent);
+            self.mode_viewport = Some((
+                revision.id,
+                offset,
+                revision.dictionary_generation(),
+                extent,
+            ));
         }
         Arc::clone(&self.shared_cells)
     }
@@ -15791,6 +15813,7 @@ impl<'alloc> Frames<'alloc> {
                 view,
                 copy_mode,
                 status,
+                bound,
             ));
         }
         self.resources(terminal)?;
@@ -16658,6 +16681,10 @@ fn reported_working_directory(value: &str) -> Option<String> {
 #[path = "session/row_copy_tests.rs"]
 mod row_copy_tests;
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "session/profile_tests.rs"]
+mod profile_tests;
+
 fn build_snapshot<'alloc: 'callbacks, 'callbacks>(
     terminal: &Terminal<'alloc, 'callbacks>,
     render_state: &mut RenderState<'alloc>,
@@ -16680,6 +16707,7 @@ fn build_snapshot<'alloc: 'callbacks, 'callbacks>(
             view,
             copy_mode,
             status,
+            bound,
         ));
     }
     let copy_mode = view.and_then(|view| view.copy_mode.as_ref());
@@ -17018,6 +17046,7 @@ fn copy_mode_snapshot(
     view: &TerminalViewState,
     mode: &CopyModeState,
     status: SessionStatus,
+    bound: Option<(u16, u16)>,
 ) -> TerminalViewport {
     if matches!(change, SnapshotChange::Content) {
         generations.content = generations.content.saturating_add(1);
@@ -17025,20 +17054,25 @@ fn copy_mode_snapshot(
     generations.view = generations.view.saturating_add(1);
     let revision = &mode.revision;
     let offset = mode.viewport_offset.min(revision.maximum_offset());
-    let cells = dictionary.mode_cells(revision, offset);
+    let extent = bounded_extent((revision.columns, revision.viewport_rows), bound);
+    let (columns, rows) = extent;
+    let cells = dictionary.mode_cells(revision, offset, extent);
     let mut overlays = std::mem::take(&mut dictionary.overlay_scratch);
     if let Some(selection) = mode.selection {
-        push_mode_selection_overlays(&mut overlays, revision, selection, offset);
+        push_mode_selection_overlays(&mut overlays, extent, selection, offset);
     }
     if let Some(search) = view.search.as_ref().filter(|_| mode.search_marks) {
-        let visible_end = offset.saturating_add(u32::from(revision.viewport_rows));
+        let visible_end = offset.saturating_add(u32::from(rows));
         for (index, found) in search.matches.iter().enumerate() {
             let start_row = found.row.max(offset);
             let end_row = found.end_row.saturating_add(1).min(visible_end);
             for row in start_row..end_row {
-                let Some((start, end)) = found.span(row, revision.columns) else {
+                let Some((start, end)) = found.span(row, columns) else {
                     continue;
                 };
+                if start >= end {
+                    continue;
+                }
                 overlays.push(OverlaySpan::new(
                     u16::try_from(row - offset).unwrap_or(u16::MAX),
                     start,
@@ -17053,12 +17087,13 @@ fn copy_mode_snapshot(
         }
     }
     if let Some(row) = mode.cursor.y.checked_sub(offset)
-        && row < u32::from(revision.viewport_rows)
+        && row < u32::from(rows)
+        && mode.cursor.x < columns
     {
         overlays.push(OverlaySpan::new(
             u16::try_from(row).unwrap_or(u16::MAX),
-            mode.cursor.x.min(revision.columns),
-            mode.cursor.x.saturating_add(1).min(revision.columns),
+            mode.cursor.x,
+            mode.cursor.x.saturating_add(1).min(columns),
             OverlayKind::CopyCursor,
         ));
     }
@@ -17075,8 +17110,8 @@ fn copy_mode_snapshot(
         dictionary_generation: dictionary
             .generation
             .wrapping_add(revision.dictionary_generation()),
-        columns: revision.columns,
-        rows: revision.viewport_rows,
+        columns,
+        rows,
         foreground: revision.foreground,
         background: revision.background,
         presentation,
@@ -17121,7 +17156,7 @@ fn copy_mode_snapshot(
 
 fn push_mode_selection_overlays(
     overlays: &mut Vec<OverlaySpan>,
-    revision: &ModeRevision,
+    (columns, rows): (u16, u16),
     selection: ModeSelection,
     offset: u32,
 ) {
@@ -17131,7 +17166,7 @@ fn push_mode_selection_overlays(
         } else {
             (selection.focus, selection.anchor)
         };
-    let visible_end = offset.saturating_add(u32::from(revision.viewport_rows));
+    let visible_end = offset.saturating_add(u32::from(rows));
     let first_row = start.y.max(offset);
     let last_row = end.y.min(visible_end.saturating_sub(1));
     if first_row > last_row {
@@ -17144,21 +17179,24 @@ fn push_mode_selection_overlays(
                 selection.anchor.x.max(selection.focus.x).saturating_add(1),
             )
         } else if selection.mode == SelectionMode::Line {
-            (0, revision.columns)
+            (0, columns)
         } else {
             (
                 if row == start.y { start.x } else { 0 },
                 if row == end.y {
                     end.x.saturating_add(1)
                 } else {
-                    revision.columns
+                    columns
                 },
             )
         };
+        if span_start >= columns || span_start >= span_end {
+            continue;
+        }
         overlays.push(OverlaySpan::with_flags(
             u16::try_from(row - offset).unwrap_or(u16::MAX),
-            span_start.min(revision.columns),
-            span_end.min(revision.columns),
+            span_start,
+            span_end.min(columns),
             OverlayKind::Selection,
             if selection.rectangle {
                 OVERLAY_RECTANGLE
@@ -19871,6 +19909,62 @@ mod tests {
 
         assert_eq!(retained.len(), 8);
         assert_eq!(dictionary.cell_pool.len(), RETAINED_CELL_PLANES);
+    }
+
+    #[test]
+    fn viewport_dictionary_geometry_changes_release_incompatible_planes() {
+        for (previous_len, next_len) in [(8, 2), (2, 8)] {
+            let original = PackedCell::new(u32::from('a'), 0, CellWidth::Narrow);
+            let mut dictionary = ViewportDictionary {
+                shared_cells: std::iter::repeat_n(original, previous_len).collect(),
+                ..ViewportDictionary::default()
+            };
+            let retained_snapshot = Arc::clone(&dictionary.shared_cells);
+            let incompatible: Arc<[PackedCell]> =
+                std::iter::repeat_n(original, previous_len).collect();
+            let released = Arc::downgrade(&incompatible);
+            let compatible: Arc<[PackedCell]> =
+                std::iter::repeat_n(PackedCell::EMPTY, next_len).collect();
+            let reusable = compatible.as_ptr();
+            dictionary.cell_pool.extend([incompatible, compatible]);
+
+            let next = std::iter::repeat_n(PackedCell::EMPTY, next_len).collect();
+            dictionary.commit_cell_plane(next);
+
+            assert!(released.upgrade().is_none());
+            assert_eq!(dictionary.cell_pool.len(), 1);
+            assert_eq!(dictionary.cell_pool[0].len(), next_len);
+            assert_eq!(Arc::strong_count(&retained_snapshot), 1);
+            assert!(retained_snapshot.iter().all(|cell| *cell == original));
+            let next = dictionary.acquire_cell_plane(next_len, false);
+            assert_eq!(next.as_ptr(), reusable);
+            dictionary.commit_cell_plane(next);
+            assert_eq!(dictionary.cell_pool.len(), 1);
+            assert_eq!(dictionary.cell_pool[0].len(), next_len);
+        }
+    }
+
+    #[test]
+    fn viewport_dictionary_recycles_an_uncommitted_resized_plane() {
+        let original = PackedCell::new(u32::from('a'), 0, CellWidth::Narrow);
+        let mut dictionary = ViewportDictionary {
+            shared_cells: Arc::from([original; 8]),
+            ..ViewportDictionary::default()
+        };
+        let retained_snapshot = Arc::clone(&dictionary.shared_cells);
+        let mut uncommitted = dictionary.acquire_cell_plane(2, false);
+        let allocation = uncommitted.as_ptr();
+        Arc::get_mut(&mut uncommitted).expect("unique plane")[0] = original;
+        dictionary.retain_cell_plane(uncommitted);
+
+        assert!(Arc::ptr_eq(&dictionary.shared_cells, &retained_snapshot));
+        assert_eq!(dictionary.cell_pool.len(), 1);
+        let retried = dictionary.acquire_cell_plane(2, false);
+        assert_eq!(retried.as_ptr(), allocation);
+        assert_eq!(retried.as_ref(), [PackedCell::EMPTY; 2]);
+        dictionary.commit_cell_plane(retried);
+        assert!(dictionary.cell_pool.is_empty());
+        assert_eq!(retained_snapshot.as_ref(), [original; 8]);
     }
 
     #[test]

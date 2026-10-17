@@ -6,6 +6,8 @@ pub(super) struct GlyphLookupCache {
     slots: Box<[Option<GlyphSlot>]>,
     frame: u64,
     font_generation: Option<usize>,
+    #[cfg(test)]
+    pub(super) lookups: std::cell::Cell<usize>,
 }
 
 #[derive(Clone)]
@@ -21,6 +23,8 @@ impl Default for GlyphLookupCache {
             slots: vec![None; 1 << GLYPH_SLOT_BITS].into_boxed_slice(),
             frame: 0,
             font_generation: None,
+            #[cfg(test)]
+            lookups: std::cell::Cell::new(0),
         }
     }
 }
@@ -60,6 +64,8 @@ impl GlyphLookupCache {
         &self,
         params: &RenderGlyphParams,
     ) -> Option<(Bounds<DevicePixels>, Option<AtlasTile>)> {
+        #[cfg(test)]
+        self.lookups.set(self.lookups.get() + 1);
         match &self.slots[Self::slot(params)] {
             Some(slot) if slot.params == *params => Some((
                 slot.bounds,

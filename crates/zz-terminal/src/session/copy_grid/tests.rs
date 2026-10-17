@@ -5,7 +5,7 @@ use crate::session::SelectionMode;
 use crate::session::mode_revision::{ModeRevision, ModeSelection};
 use crate::session::{
     CaptureBoundary, CaptureCarry, CaptureOptions, CopyModeSearch, HistorySearchSnapshot,
-    SearchCase, SearchDirection, SearchMatch, SearchMode, SearchQuery, SearchWorker,
+    SearchCase, SearchDirection, SearchMatch, SearchMode, SearchQuery, SearchState, SearchWorker,
     SnapshotChange, TerminalViewId, TerminalViewState, ViewportGenerations, append_history_row,
     capture_revision, capture_terminal, color, copy_mode_search_match, copy_mode_snapshot,
     enter_copy_mode, new_terminal, run_copy_mode_search, snapshot,
@@ -46,6 +46,179 @@ fn paged_copy_entry_keeps_cells_and_search_offsets_lazy() {
     let revision = ModeRevision::capture(&terminal).expect("revision");
     assert!(revision.total_rows() >= 1000);
     assert_eq!(revision.capture_rows(0, 0, false, false), "row-0000 target");
+}
+
+#[test]
+fn bounded_rows_extract_only_visible_columns_and_expand_for_copying() {
+    let mut terminal = new_terminal(2000, 4, 32).expect("terminal");
+    terminal.vt_write("\x1b]133;A\x1b\\\x1b[31me\u{301}界\x1b[0m hidden text".as_bytes());
+    let mut grid = grid(&terminal);
+    let clipped = grid.row_bounded(0, 2).expect("clipped row");
+    assert_eq!(clipped.cells.len(), 2);
+    assert_eq!(clipped.semantics.len(), 2);
+    assert_eq!(grid.cached.len(), 1);
+    assert_eq!(grid.order.len(), 1);
+    assert!(Arc::ptr_eq(
+        &clipped,
+        &grid.row_bounded(0, 1).expect("smaller row")
+    ));
+    let full = grid.row(0).expect("full row");
+    assert_eq!(full.cells.len(), 2000);
+    assert_eq!(&full.cells[..2], clipped.cells.as_ref());
+    assert_eq!(&full.semantics[..2], clipped.semantics.as_ref());
+    assert_eq!(full.cells[2].width(), CellWidth::SpacerTail);
+    assert_eq!(full.cells[4].glyph(), u32::from('h'));
+    assert_eq!(grid.cached.len(), 1);
+    assert_eq!(grid.order.len(), 1);
+    assert!(Arc::ptr_eq(
+        &full,
+        &grid.row_bounded(0, 2).expect("cached full row")
+    ));
+}
+
+#[test]
+fn copy_mode_frame_bounds_clip_overlays_and_invalidate_cached_extent() {
+    let mut terminal = new_terminal(20, 6, 32).expect("terminal");
+    for row in 0..8 {
+        terminal.vt_write(format!("row{row} hidden text\r\n").as_bytes());
+    }
+    let mut view = TerminalViewState::default();
+    let mut mode = None;
+    enter_copy_mode(
+        &mut terminal,
+        &mut view.selection,
+        &mut mode,
+        false,
+        false,
+        None,
+        true,
+    )
+    .expect("copy mode");
+    let mut mode = mode.expect("frozen mode");
+    mode.viewport_offset = 1;
+    mode.cursor = point(16, 4);
+    mode.selection = Some(ModeSelection {
+        anchor: point(3, 1),
+        focus: point(16, 4),
+        mode: SelectionMode::Cell,
+        rectangle: false,
+    });
+    mode.search_marks = true;
+    view.search = Some(Box::new(SearchState {
+        matches: vec![
+            SearchMatch {
+                row: 1,
+                end_row: 1,
+                start: 2,
+                end: 8,
+            },
+            SearchMatch {
+                row: 2,
+                end_row: 2,
+                start: 8,
+                end: 12,
+            },
+            SearchMatch {
+                row: 4,
+                end_row: 4,
+                start: 0,
+                end: 4,
+            },
+        ],
+        current: Some(0),
+        ..SearchState::default()
+    }));
+    let selection = mode
+        .revision
+        .format_selection(mode.selection.expect("selection"), true);
+    let mut generations = ViewportGenerations::default();
+    let mut dictionary = ViewportDictionary::default();
+    let mut frame = |mode: &super::super::CopyModeState, bound| {
+        copy_mode_snapshot(
+            &mut generations,
+            SnapshotChange::View,
+            &mut dictionary,
+            &view,
+            mode,
+            SessionStatus::Running,
+            bound,
+        )
+    };
+    let full = frame(&mode, None);
+    let clipped = frame(&mode, Some((4, 2)));
+    assert_eq!(
+        (clipped.columns, clipped.rows, clipped.cells.len()),
+        (4, 2, 8)
+    );
+    assert_eq!(clipped.scrollbar, full.scrollbar);
+    assert_eq!(clipped.search, full.search);
+    assert_eq!(clipped.mode, full.mode);
+    assert_eq!(
+        clipped.overlays.as_ref(),
+        &[
+            OverlaySpan::new(0, 3, 4, OverlayKind::Selection),
+            OverlaySpan::new(1, 0, 4, OverlayKind::Selection),
+            OverlaySpan::new(0, 2, 4, OverlayKind::SearchCurrent),
+        ]
+    );
+    for row in 0..2 {
+        assert_eq!(
+            &clipped.cells[row * 4..row * 4 + 4],
+            &full.cells[row * 20..row * 20 + 4]
+        );
+    }
+    mode.cursor = point(3, 2);
+    let moved = frame(&mode, Some((4, 2)));
+    assert!(Arc::ptr_eq(&clipped.cells, &moved.cells));
+    assert!(
+        moved
+            .overlays
+            .contains(&OverlaySpan::new(1, 3, 4, OverlayKind::CopyCursor))
+    );
+    let wider = frame(&mode, Some((10, 3)));
+    assert_eq!((wider.columns, wider.rows, wider.cells.len()), (10, 3, 30));
+    for row in 0..3 {
+        assert_eq!(
+            &wider.cells[row * 10..row * 10 + 10],
+            &full.cells[row * 20..row * 20 + 10]
+        );
+    }
+    assert_eq!(frame(&mode, None).cells, full.cells);
+    assert_eq!(
+        mode.revision
+            .format_selection(mode.selection.expect("selection"), true),
+        selection
+    );
+}
+
+#[test]
+#[ignore = "run alone with --profile profiling --ignored --nocapture"]
+fn profile_frozen_viewport_bounds() {
+    let mut terminal = new_terminal(2000, 2000, 32).expect("terminal");
+    terminal.vt_write("\x1b[31me\u{301}界 bounded viewport\x1b[0m".as_bytes());
+    for trial in 0..5 {
+        let extents = if trial % 2 == 0 {
+            [(2000, 2000), (120, 40)]
+        } else {
+            [(120, 40), (2000, 2000)]
+        };
+        for extent in extents {
+            let revision = ModeRevision::capture(&terminal).expect("frozen revision");
+            let started = std::time::Instant::now();
+            let cells = revision.viewport_cells(0, extent);
+            let elapsed = started.elapsed();
+            let count = usize::from(extent.0) * usize::from(extent.1);
+            assert_eq!(cells.len(), count);
+            println!(
+                "{{\"trial\":{trial},\"columns\":{},\"rows\":{},\"cells\":{count},\"cell_bytes\":{},\"elapsed_ns\":{}}}",
+                extent.0,
+                extent.1,
+                count * std::mem::size_of::<PackedCell>(),
+                elapsed.as_nanos(),
+            );
+            std::hint::black_box(cells);
+        }
+    }
 }
 
 #[test]
@@ -268,6 +441,7 @@ fn wrapped_copy_search_places_emacs_at_end_and_vi_at_start() {
             &view,
             &mode,
             SessionStatus::Running,
+            None,
         );
         let live = snapshot(
             &terminal,

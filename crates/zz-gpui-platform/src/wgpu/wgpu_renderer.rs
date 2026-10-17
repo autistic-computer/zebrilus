@@ -3662,6 +3662,18 @@ mod tests {
                 events.roundtrip(&mut state)?;
                 eprintln!("frame recovery attempt {attempt}: healthy frame presented");
             }
+            let started = std::time::Instant::now();
+            for index in 0..120 {
+                let size = device_size(128 + index % 2, 128 + index % 2);
+                shell_surface.set_window_geometry(0, 0, size.width.0, size.height.0);
+                renderer.update_drawable_size(size);
+                assert!(renderer.draw(&scene), "resized frame {index} failed");
+                events.roundtrip(&mut state)?;
+            }
+            eprintln!(
+                "renderer_resize_probe frames=120 elapsed_ns={}",
+                started.elapsed().as_nanos()
+            );
             let mut error_generation = 0;
             assert!(
                 context
@@ -4070,6 +4082,94 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
                     height: DevicePixels(32),
                 },
             )
+        }
+
+        #[test]
+        #[ignore]
+        fn renderer_resource_probe() -> anyhow::Result<()> {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let device = renderer.core.resources.device.clone();
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("external_resource_probe"),
+                size: wgpu::Extent3d {
+                    width: 64,
+                    height: 64,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Bgra8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let iterations = 10_000;
+            let started = std::time::Instant::now();
+            for _ in 0..iterations {
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                std::hint::black_box(
+                    renderer
+                        .core
+                        .create_texture_bind_group("external_resource_probe", &view),
+                );
+            }
+            let create_ns = started.elapsed().as_nanos();
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let binding = renderer
+                .core
+                .create_texture_bind_group("external_resource_probe", &view);
+            let started = std::time::Instant::now();
+            for _ in 0..iterations {
+                std::hint::black_box((view.clone(), binding.clone()));
+            }
+            let clone_ns = started.elapsed().as_nanos();
+            let mut layer = red_layer(SWAP_OR_TINT, None);
+            layer.bounds = bounds(0.0, 0.0, 1920.0, 1080.0);
+            layer.content_mask.bounds = layer.bounds;
+            let mut scene = Scene::default();
+            scene.insert_primitive(layer);
+            scene.finish();
+            let size = device_size(1920, 1080);
+            renderer.render_scene(&scene, size)?;
+            device.poll(wgpu::PollType::wait_indefinitely())?;
+            let first_target = renderer.core.resources.shader_layers.targets[0]
+                .texture
+                .clone();
+            let first_input = renderer.core.resources.shader_layers.inputs[0]
+                .texture
+                .clone();
+            let started = std::time::Instant::now();
+            for _ in 0..120 {
+                renderer.render_scene(&scene, size)?;
+            }
+            device.poll(wgpu::PollType::wait_indefinitely())?;
+            let shader_frames_ns = started.elapsed().as_nanos();
+            assert_eq!(
+                first_target,
+                renderer.core.resources.shader_layers.targets[0].texture
+            );
+            assert_eq!(
+                first_input,
+                renderer.core.resources.shader_layers.inputs[0].texture
+            );
+            renderer.render_scene(&Scene::default(), size)?;
+            assert!(renderer.core.resources.shader_layers.targets.is_empty());
+            assert!(renderer.core.resources.shader_layers.inputs.is_empty());
+            renderer.render_scene(&scene, size)?;
+            assert_ne!(
+                first_target,
+                renderer.core.resources.shader_layers.targets[0].texture
+            );
+            let started = std::time::Instant::now();
+            for _ in 0..120 {
+                renderer.render_scene(&Scene::default(), size)?;
+            }
+            device.poll(wgpu::PollType::wait_indefinitely())?;
+            let empty_frames_ns = started.elapsed().as_nanos();
+            eprintln!(
+                "renderer_resource_probe iterations={iterations} create_ns={create_ns} clone_ns={clone_ns} shader_frames=120 shader_frames_ns={shader_frames_ns} empty_frames_ns={empty_frames_ns}"
+            );
+            Ok(())
         }
 
         #[test]

@@ -671,6 +671,19 @@ impl GlassBlurUniform {
         }
     }
 
+    /// A copy of the frame's `region` to `destination` in level 0.
+    pub fn copy(region: Bounds<i32>, destination: Point<i32>) -> Self {
+        Self {
+            source: [0.; 4],
+            params: [
+                0.,
+                (region.origin.x - destination.x) as f32,
+                (region.origin.y - destination.y) as f32,
+                0.,
+            ],
+        }
+    }
+
     /// The block's bytes, as the shader lays them out.
     pub fn as_bytes(&self) -> &[u8] {
         // SAFETY: as for `GlassUniform`.
