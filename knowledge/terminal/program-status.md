@@ -4,13 +4,13 @@ title: Program status (OSC 7501)
 description: How zz reads the Program Status Protocol from pane output, keeps one record per id for each pane, and shows the most urgent record in formats, the tree (whose status record native Agent panes and @agent_state terminals now fill too), @agent_state, and the desktop sidebar.
 resource: crates/zz-terminal/src/program_status.rs
 tags: [osc, osc-7501, program-status, agent-state, sidebar, formats]
-timestamp: 2026-10-12T12:00:00-03:00
+timestamp: 2026-10-17T12:00:00-03:00
 ---
 
 # Overview
 
 The [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)
-(OSC 7501, revision 0.3) lets a program tell the terminal what it is doing: `idle`, `working`,
+(OSC 7501, revision 0.4) lets a program tell the terminal what it is doing: `idle`, `working`,
 `done`, `blocked` on the user, or `error`, with an optional `id`, `kind`, `progress`, `app`,
 `title` and `msg`. zz treats every pane as one terminal in the spec's sense and keeps that
 pane's records in the terminal engine.
@@ -32,7 +32,9 @@ for one that starts `7501;`. The pin drops C0 bytes inside an OSC, and so does t
 a `7501;` payload still counts them toward the 4096 bytes. `parse_program_status` in
 `program_status.rs` applies the spec's grammar and limits: malformed pairs and unknown keys
 are skipped, while a missing or unknown `state`, a bad `id`, a value over its limit, or text
-that does not decode discards the whole report. Decoded `title` and `msg` text must be UTF-8 without C0, DEL or C1 controls. Bidi
+that does not decode discards the whole report. An `id` with a byte no value may hold (`id=a%b`)
+is a bad `id` too, not a malformed pair: skipping it would land the report on the root record,
+and `state=clear` would wipe every record on the pane. Decoded `title` and `msg` text must be UTF-8 without C0, DEL or C1 controls. Bidi
 controls, zero-width spaces, word joiners and the BOM are removed before the text is stored,
 because every place zz shows it is outside the terminal grid.
 
@@ -51,7 +53,9 @@ because every place zz shows it is outside the terminal grid.
 `done` and `error` survive the prompt and the exit. They stay until the program replaces or
 clears them; the desktop's own badge for them clears when the user looks at the pane.
 
-The support query `OSC 7501 ; ? ST` is answered with the same bytes and terminator. The
+The support query `OSC 7501 ; ? ST` is answered with the same bytes and terminator. Revision 0.4
+lets the reply list `states=` and `kinds=`; zz lists neither, which the spec reads as all five
+states and all three kinds, the set zz takes. The
 reply goes into the pane's `PtyEffects` queue as the filter reads the query, so it stays in
 byte order with libghostty's own replies: a program that sends the query and then DA1 sees our
 answer first. Surfaces without a PTY (agent pane projections and output views) leave
@@ -98,14 +102,21 @@ answer first. Surfaces without a PTY (agent pane projections and output views) l
   so a report that lands while it waits still wins, and a sample taken before `respawn-pane`
   does not land on the new process.
 - Desktop sidebar: every terminal pane feeds the same `AgentAttentionTracker` as Agent panes,
-  idle until it reports. `blocked` shows the needs-input badge and rings, even on a pane's first
-  report; `error` shows failed; and `working` to `done` or `idle` rings and leaves the finished
-  badge until the pane is watched.
+  idle until it reports. `blocked` and `error` show the needs-input and failed badges and ring the
+  request chime, even on a pane's first report. `done` rings the completion chime and leaves the
+  finished badge until the pane is watched, whether or not the tracker saw `working` first (a
+  program can report both between two looks); `working` to `idle` does the same.
   Chimes closer than two seconds apart are dropped, since any program can flip its state as
-  fast as it writes.
+  fast as it writes. While zz is in the background the same edges post a desktop notification
+  named after `app` with `msg` as its body, at most one per pane every two seconds; clicking it
+  selects the pane ([Native Agent pane](/concepts/agent-pane.md)).
 
-Not yet covered: the shared web and iOS sidebar, the TUI sidebar, the tray, and the status bar
-still read Agent panes only. `zz_client::window_summary` already turns the tree record into a
-sidebar row for any pane kind ([flat sidebar data](/designs/flat-sidebar-data.md)), but no client
-draws it yet. zz ships no terminfo entry, so there is no `Pst` capability;
+- Flat window list: on desktop, web and iPad, `zz_client::window_summary::pane_attention` turns
+  the tree record into a row for any pane kind ([flat sidebar data](/designs/flat-sidebar-data.md)),
+  and a finish shows as Done while the daemon's `unseen` latch holds. That latch counts a pane as
+  seen only while a focused client shows its window, so a finish behind another app stays unseen
+  until that client focuses back in ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
+
+Not yet covered: the web and iPad session tree, the TUI sidebar, the tray, and the status bar read
+Agent panes only, and only the desktop app notifies. Revision 0.4 dropped the terminfo capability;
 programs use the query.

@@ -4,7 +4,7 @@ title: Mux snapshots (snapshot.rs)
 description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-10-12T21:30:00-03:00
+timestamp: 2026-10-17T12:00:00-03:00
 ---
 
 # Overview
@@ -166,11 +166,14 @@ kind, cwd, repo, branch, `@name`, browser navigation and pane creation never sta
 pane's first record when it is `Idle` (an Agent pane opening or restoring).
 
 `unseen` is raised on a status edge into `Done` from anything else, or from `Working` or `Blocked`
-into `Idle` on a terminal pane, unless the pane's window is the current window of a session some client is attached
-to (the same rule that keeps a watched pane's bell from latching). An edge into `Working` or
-`Blocked` drops it, so a stale finish does not resurface after the next turn. Agent panes report
-`Done` themselves, so their `Idle` after a cancelled turn raises nothing. It clears wherever the
-bell clears: pane selection, attach, pane input, window activation, `kill-session -C` and respawn.
+into `Idle` on a terminal pane, unless a focused client attached to the pane's session shows the
+pane's window (`pane_window_seen`; a client that never reported focus counts as focused). The bell
+keeps tmux's rule, the window being current in an attached session, since `#{window_bell_flag}`
+reads it. An edge into `Working` or `Blocked` drops it, so a stale finish does not resurface after
+the next turn. Agent panes report `Done` themselves, so their `Idle` after a cancelled turn raises
+nothing. It clears wherever the bell clears: pane selection, attach, pane input, window activation,
+`kill-session -C` and respawn; a client's focus-in also clears it on every pane of the window that
+client shows.
 Because it lives in the daemon, every client on every host sees the same latch. A daemon restart
 clears it and `changed_at`, as it does the bell.
 

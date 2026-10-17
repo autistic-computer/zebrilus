@@ -214,10 +214,13 @@ pub(crate) fn parse_program_status(body: &[u8]) -> Option<ProgramStatusReport> {
             return None;
         }
         let value = pair[equals + 1..].trim_ascii();
-        if key.is_empty()
-            || !key.iter().all(u8::is_ascii_lowercase)
-            || !value.iter().copied().all(is_value_byte)
-        {
+        if key.is_empty() || !key.iter().all(u8::is_ascii_lowercase) {
+            continue;
+        }
+        if !value.iter().copied().all(is_value_byte) {
+            if key == b"id" {
+                return None;
+            }
             continue;
         }
         match key {
@@ -458,6 +461,9 @@ mod tests {
         assert!(rejected("state=clear:id="));
         assert!(rejected("state=clear:id=/a"));
         assert!(rejected("state=clear:id=a,b"));
+        assert!(rejected("state=clear:id=a%b"));
+        assert!(rejected("state=working:id=abc%def"));
+        assert!(rejected("state=working:id=a b"));
         assert!(rejected(&format!("state=idle:id={}", "a/".repeat(8) + "a")));
         assert!(rejected(&format!("state=idle:id={}", "a".repeat(33))));
         assert_eq!(

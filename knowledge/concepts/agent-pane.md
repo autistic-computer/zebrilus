@@ -4,7 +4,7 @@ title: Native Agent pane
 description: The daemon-addressable Agent pane, its daemon-owned ACP v1 runtime, flat transcript, approvals, session controls, restore metadata, and the status record every client sees in the tree.
 resource: crates/zz/src/agent/controller.rs
 tags: [agent, gpui, markdown, mermaid, acp, pane, sessions, persistence, keyboard]
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-17T12:00:00-03:00
 ---
 
 # Overview
@@ -979,10 +979,13 @@ chrome. `AgentController::pane_status` (`controller.rs:2498`) buckets one pane i
 whole thread states, and `attention()` folds the same classification fleet-wide.
 
 `agent/sound.rs` turns those buckets into edges. `AgentAttentionTracker::observe` is the single pass
-that computes both the chime and the badge, so they cannot disagree: a chime fires on any transition
-*into* `NeedsInput` (Request) and on the exact `Working → Idle` edge (Done), at most one per batch
-with Request outranking Done, and never for the pane the user is currently watching. A pane's first
-observation only seeds the baseline. `AgentBadge` adds a fourth state the status enum has no room
+that computes the chime, the badge and the notifications, so they cannot disagree: an edge fires on
+any transition *into* `NeedsInput` or `Failed` (Request), on the `Working → Idle` edge, and on any
+transition into a terminal program's `Done` (Done), never for the pane the user is currently
+watching. `observe` returns every such edge with its pane and new state, and `sound::loudest` picks
+the batch's one chime, Request outranking Done. A pane's first observation only seeds the baseline.
+The sidebar runs it from its mux observer after refreshing its pane tree, not only from `render`,
+since gpui stops drawing a window other apps cover. `AgentBadge` adds a fourth state the status enum has no room
 for . `Finished`, an idle pane whose completion has not been looked at yet . cleared the moment that
 pane becomes the watched one.
 
@@ -991,6 +994,17 @@ pending-bell dot at top-right) and on the leading corner of the fixed-size strip
 like the bell does: a collapsed host, session, or window carries the most urgent badge hidden beneath
 it, merged by rank (`NeedsInput` < `Failed` < `Working` < `Finished`). Colors come from the theme:
 warning, danger, muted foreground, success.
+
+The same edges post desktop notifications (`agent/notify.rs`, from `WorkspaceSidebar::post_banners`),
+but only while no zz window is active and the `notifications` setting is on: one per pane, titled
+by the status record's `app` (or the pane's label) and what it wants ("needs you", "wants
+permission", "failed", "finished"), with the record's message and the session and window as the
+body. A pane posts again only two seconds after its last one, the tag names the host and pane so a
+newer notification replaces an older one, and a pane's notification is withdrawn when the pane is
+watched or closes. Clicking one runs `tray::focus_pane`, the tray's own Needs-attention path: it
+raises the window and selects the pane on its host. The response handler is registered on the first
+post, so a session that never notifies never touches the notification center; macOS asks for
+permission on that first post, and a binary run outside an app bundle posts nothing.
 
 The chimes are synthesized rather than shipped . a two-note WAV built in code, materialized once per
 process into the temp directory and handed to `afplay` on macOS or the first of `paplay`, `pw-play`,

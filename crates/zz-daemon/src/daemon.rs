@@ -22303,6 +22303,7 @@ impl Shared {
         if let Some(registered) = inner.client_mut(client) {
             registered.focused = Some(focused);
         }
+        let seen = focused && pane_summary::mark_focused_window_seen(&mut inner, client);
         let mut hook_events = Vec::new();
         let pane_focus = pane_focus_before
             .as_ref()
@@ -22326,11 +22327,16 @@ impl Shared {
         {
             hook_events.push(event);
         }
-        Some((
+        let report = (
             inner.client_flags.contains(client),
             inner.engine.focus_events(),
             hook_events,
-        ))
+        );
+        drop(inner);
+        if seen {
+            self.publish_snapshot_state();
+        }
+        Some(report)
     }
 
     fn input_client_focus(

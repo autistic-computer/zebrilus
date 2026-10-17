@@ -4,6 +4,8 @@ use parking_lot::Mutex;
 use zz_client::AgentAttentionStatus;
 use zz_protocol::{MuxSnapshot, PaneId, PaneKindSnapshot};
 
+use crate::mux::hosts::HostId;
+
 use super::TrayEvent;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -126,7 +128,7 @@ pub(super) fn menu(facts: Option<&TrayFacts>, active: bool) -> Vec<MenuEntry> {
                     } else {
                         "waiting"
                     },
-                    Some(TrayEvent::FocusPane(pane.pane)),
+                    Some(TrayEvent::FocusPane(HostId::LOCAL, pane.pane)),
                 ));
             }
             menu.push(MenuEntry::Separator);

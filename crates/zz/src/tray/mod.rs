@@ -8,7 +8,7 @@ mod windows;
 use async_channel::Sender;
 
 pub(crate) use desktop::{
-    DesktopTray, hide, hide_or_quit, init_desktop, quit_requested, set_active, show,
+    DesktopTray, focus_pane, hide, hide_or_quit, init_desktop, quit_requested, set_active, show,
 };
 
 /// What a tray interaction asks of the app.
@@ -19,7 +19,7 @@ pub(crate) enum TrayEvent {
     Available(bool),
     NewSession,
     SwitchSession(String),
-    FocusPane(zz_protocol::PaneId),
+    FocusPane(crate::mux::hosts::HostId, zz_protocol::PaneId),
     OpenSettings,
     OpenLogs,
     RestartDaemon,

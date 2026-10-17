@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-17T12:00:00-03:00
 ---
 
 # Overview
@@ -102,6 +102,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `window-background-blur` | `false` | `true` or `false` | Whether the desktop shows through the window chrome, blurred |
 | `animations` | `true` | `true` or `false` | Whether interface transitions, loading indicators, scrollbar fades, and animated UI images move |
 | `tray` | `true` | `true` or `false` | Shows a native tray icon while the GUI runs. Closing the window or quitting hides zz when the icon is available, `quit-daemon-on-exit` is false, and the local daemon has sessions; otherwise the usual close or quit behavior applies. Applies live from Settings → System or file edits. Quit and Stop Sessions in the tray menu stops the daemon |
+| `notifications` | `true` | `true` or `false` | Whether the desktop app posts a system notification when a pane needs input, fails or finishes while no zz window is active. Clicking it raises the window and selects the pane. macOS asks for permission on the first one. Chimes are separate (`ZZ_AGENT_SOUND=0`) |
 | `quit-daemon-on-exit` | `false` | `true` or `false` | Whether quitting the app stops the daemon even while sessions are live |
 | `auto-restart-stale-daemon` | `false` | `true` or `false` | Whether a protocol-mismatched local daemon is terminated and replaced on connect. Off by default because it ends every running session |
 | `check-for-updates` | `true` | `true` or `false` | Whether the GUI fetches the GitHub release list ten seconds after launch and daily after that, offering a newer release as a toast. The channel follows the running build (a `-beta.N` version takes prereleases). One anonymous request; nothing else is sent. Release builds only unless `ZZ_UPDATE_CHECK=1`; `ZZ_UPDATE_CHECK=0` silences every build. Surfaced in Settings under About |
@@ -714,7 +715,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
-| System | **Tray** (`tray`, only where the profile has one) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, `experimental-agent-pane`, each row present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
+| System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, `experimental-agent-pane`, each row present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
 | Terminal | **Appearance** (Font family, Font size, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
 | About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest-release row that reads the update state: Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
