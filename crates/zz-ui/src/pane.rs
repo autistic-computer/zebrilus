@@ -38,13 +38,12 @@ pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconNa
 
 const PANE_TITLE_GROUP: &str = "pane-title";
 const PANE_TITLE_ICON_SIZE: f32 = 14.0;
-const PANE_TITLE_WIDTH: f32 = 180.0;
+const PANE_TITLE_MAX_WIDTH: f32 = 168.0;
 
 /// A pane header's title as a button: dragged, it moves the pane; pointed at,
 /// its icon turns into the move arrows and its X shows at the right end. A
-/// coarse pointer, which never hovers, always shows the X. The title keeps
-/// one width whatever its label, and a label too long for it fades out
-/// under the X.
+/// coarse pointer, which never hovers, always shows the X. The title fits its
+/// label up to a cap, and a label too long for it fades out before the X.
 #[derive(IntoElement)]
 pub struct PaneTitle {
     id: ElementId,
@@ -52,7 +51,6 @@ pub struct PaneTitle {
     label: AnyElement,
     drag: PaneDragSource,
     on_close: Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>>,
-    pinned: bool,
 }
 
 impl PaneTitle {
@@ -68,15 +66,7 @@ impl PaneTitle {
             label: label.into_any_element(),
             drag,
             on_close: None,
-            pinned: true,
         }
-    }
-
-    /// Sizes the title to its label, for a label that never changes.
-    #[must_use]
-    pub fn fit(mut self) -> Self {
-        self.pinned = false;
-        self
     }
 
     #[must_use]
@@ -90,7 +80,6 @@ impl RenderOnce for PaneTitle {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let coarse = crate::touch::CoarsePointer::get(cx);
         let movable = self.drag.enabled();
-        let pinned = self.pinned;
         let icon_size = px(PANE_TITLE_ICON_SIZE);
         let surface = Surface::new(roles::PANE_TITLE).on(cx.theme().ground_of(roles::PANE_HEADER));
         let icon = div()
@@ -117,15 +106,6 @@ impl RenderOnce for PaneTitle {
         let close = self.on_close.map(|on_close| {
             div()
                 .flex_none()
-                .when(pinned, |close| {
-                    close
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .right_0()
-                        .flex()
-                        .items_center()
-                })
                 .debug_selector(|| "pane-title-close".into())
                 .when(!coarse, |close| {
                     close
@@ -144,24 +124,14 @@ impl RenderOnce for PaneTitle {
                         }),
                 )
         });
-        let end = match (close.is_some(), pinned) {
-            (false, _) => px(8.0),
-            (true, false) => px(0.0),
-            (true, true) => crate::PANE_HEADER_CONTROL_HEIGHT,
-        };
+        let end = if close.is_some() { px(0.0) } else { px(8.0) };
         let title = div()
             .id(self.id)
             .group(PANE_TITLE_GROUP)
             .debug_selector(|| "pane-title".into())
-            .relative()
             .flex()
-            .map(|title| {
-                if pinned {
-                    title.flex_initial().min_w_0().w(px(PANE_TITLE_WIDTH))
-                } else {
-                    title.flex_none()
-                }
-            })
+            .flex_initial()
+            .max_w(px(PANE_TITLE_MAX_WIDTH))
             .h(crate::PANE_HEADER_CONTROL_HEIGHT)
             .items_center()
             .gap(px(6.0))
@@ -172,16 +142,11 @@ impl RenderOnce for PaneTitle {
             .child(icon)
             .child(
                 div()
+                    .flex_initial()
                     .min_w_0()
                     .overflow_hidden()
                     .whitespace_nowrap()
-                    .map(|label| {
-                        if pinned {
-                            label.flex_1().text_fade(crate::LABEL_FADE)
-                        } else {
-                            label.flex_initial()
-                        }
-                    })
+                    .text_fade(crate::LABEL_FADE)
                     .child(self.label),
             )
             .children(close);
@@ -1302,6 +1267,7 @@ mod tests {
     use zz_gpui::point;
 
     struct TitleTest {
+        label: &'static str,
         started: Vec<PaneDrag>,
         closed: usize,
     }
@@ -1314,10 +1280,10 @@ mod tests {
                 PaneTitle::new(
                     "title",
                     IconName::SquareTerminal,
-                    "cargo test",
+                    self.label,
                     PaneDragSource::new(
                         zz_protocol::PaneId(3),
-                        "cargo test",
+                        self.label,
                         true,
                         move |drag, _, cx| {
                             view.update(cx, |view, _| view.started.push(*drag));
@@ -1329,11 +1295,35 @@ mod tests {
         }
     }
 
+    fn title_width(label: &'static str, cx: &mut zz_gpui::TestAppContext) -> Pixels {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| TitleTest {
+            label,
+            started: Vec::new(),
+            closed: 0,
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.debug_bounds("pane-title").unwrap().size.width
+    }
+
+    #[zz_gpui::test]
+    fn the_title_fits_its_label_up_to_a_cap(cx: &mut zz_gpui::TestAppContext) {
+        assert!(title_width("zsh", cx) < px(PANE_TITLE_MAX_WIDTH));
+        assert_eq!(
+            title_width("cargo test --workspace --all-features -- --nocapture", cx),
+            px(PANE_TITLE_MAX_WIDTH)
+        );
+    }
+
     #[zz_gpui::test]
     fn the_title_drags_the_pane_and_its_x_closes_it(cx: &mut zz_gpui::TestAppContext) {
         use zz_gpui::{Modifiers, MouseButton};
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|_, _| TitleTest {
+            label: "cargo test",
             started: Vec::new(),
             closed: 0,
         });
@@ -1345,7 +1335,6 @@ mod tests {
         };
         draw(cx);
         let title = cx.debug_bounds("pane-title").unwrap();
-        assert_eq!(title.size.width, px(PANE_TITLE_WIDTH));
         cx.simulate_mouse_move(title.center(), None, Modifiers::default());
         draw(cx);
         let close = cx.debug_bounds("pane-title-close").unwrap();
