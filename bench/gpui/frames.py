@@ -173,7 +173,8 @@ class Run:
         env = {
             k: v
             for k, v in os.environ.items()
-            if not k.startswith(("ZZ_", "TMUX", "GPUI_")) and k not in ("HOME", "ZDOTDIR")
+            if not k.startswith(("ZZ_", "TMUX", "GPUI_"))
+            and k not in ("HOME", "ZDOTDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME")
         }
         env["HOME"] = str(self.home)
         env["ZZ_LOG_DIR"] = str(self.root / "logs")
@@ -254,6 +255,10 @@ class Run:
 
     def setup(self, scenario):
         previous = self.current_window()
+        own = self.zz("display-message", "-t", f"{self.session}:", "-p", "#{session_id}")
+        for session in self.zz("list-sessions", "-F", "#{session_id}").splitlines():
+            if session != own:
+                self.zz("kill-session", "-t", session)
         if scenario == "idle":
             return None
         if scenario == "stream":
