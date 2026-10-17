@@ -2,8 +2,8 @@ use anyhow::{Context as _, Result};
 use metal::MTLPixelFormat;
 use std::ffi::c_void;
 use zz_gpui::{
-    Bounds, GLASS_SHADER, Glass, GlassBlurPass, GlassUniform, Size, WindowCornerMask,
-    glass_level_size, plan_glass,
+    Bounds, GLASS_SHADER, Glass, GlassBlurPass, GlassBlurUniform, GlassUniform, Size,
+    WindowCornerMask, glass_level_size, plan_glass,
 };
 
 /// Pipelines and scratch textures for [`Glass`], built from the same WGSL the
@@ -15,6 +15,7 @@ pub(crate) struct MetalGlass {
     reading_pipeline: metal::RenderPipelineState,
     down_pipeline: metal::RenderPipelineState,
     up_pipeline: metal::RenderPipelineState,
+    copy_pipeline: metal::RenderPipelineState,
     sampler: metal::SamplerState,
     levels: Vec<metal::Texture>,
     /// Bound in place of the chain for glass that reads no backdrop.
@@ -70,6 +71,7 @@ impl MetalGlass {
             ("vs_glass_blur", &blur_resources),
             ("fs_glass_down", &blur_resources),
             ("fs_glass_up", &blur_resources),
+            ("fs_glass_copy", &blur_resources),
         ] {
             per_entry_point_map.insert(
                 name.to_string(),
@@ -157,6 +159,7 @@ impl MetalGlass {
             reading_pipeline: pipeline("glass_reading", "vs_glass", "fs_glass", false)?,
             down_pipeline: pipeline("glass_down", "vs_glass_blur", "fs_glass_down", false)?,
             up_pipeline: pipeline("glass_up", "vs_glass_blur", "fs_glass_up", false)?,
+            copy_pipeline: pipeline("glass_copy", "vs_glass_blur", "fs_glass_copy", false)?,
             sampler: device.new_sampler(&sampler_descriptor),
             levels: Vec::new(),
             placeholder: device.new_texture(&placeholder),
@@ -253,33 +256,27 @@ impl MetalGlass {
             }
             self.ensure_chain(device, run.extent, run.depth);
 
-            let blit = command_buffer.new_blit_command_encoder();
+            let level = &self.levels[0];
+            let size = Size {
+                width: level.width() as i32,
+                height: level.height() as i32,
+            };
+            let encoder = render_encoder(command_buffer, level, metal::MTLLoadAction::DontCare);
+            encoder.set_render_pipeline_state(&self.copy_pipeline);
+            encoder.set_fragment_texture(0, Some(target));
             for (region, destination) in &run.copies {
-                blit.copy_from_texture(
-                    target,
-                    0,
-                    0,
-                    metal::MTLOrigin {
-                        x: region.origin.x as u64,
-                        y: region.origin.y as u64,
-                        z: 0,
-                    },
-                    metal::MTLSize {
-                        width: region.size.width as u64,
-                        height: region.size.height as u64,
-                        depth: 1,
-                    },
-                    &self.levels[0],
-                    0,
-                    0,
-                    metal::MTLOrigin {
-                        x: destination.x as u64,
-                        y: destination.y as u64,
-                        z: 0,
-                    },
-                );
+                let uniform = GlassBlurUniform::copy(*region, *destination);
+                let bytes = uniform.as_bytes();
+                encoder.set_fragment_bytes(0, bytes.len() as u64, bytes.as_ptr() as *const c_void);
+                let scissor = Bounds {
+                    origin: *destination,
+                    size: region.size,
+                };
+                if set_scissor(encoder, scissor, size) {
+                    encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 3);
+                }
             }
-            blit.end_encoding();
+            encoder.end_encoding();
 
             for pass in &run.passes {
                 self.blur_pass(command_buffer, pass);
