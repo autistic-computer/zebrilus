@@ -198,6 +198,10 @@ fn build_vendored(link_mode: LinkMode, target: &str) {
             "-Demit-xcframework=false"
         })
         .arg("-Dapp-runtime=none")
+        .arg(format!(
+            "-Dversion-string={}",
+            ghostty_version(&ghostty_dir)
+        ))
         .arg("--prefix")
         .arg(&install_prefix)
         .arg("--cache-dir")
@@ -419,6 +423,15 @@ fn zig_optimize_mode() -> &'static str {
         Ok("s") | Ok("z") => "ReleaseSmall",
         _ => "ReleaseFast",
     }
+}
+
+fn ghostty_version(ghostty_dir: &Path) -> String {
+    let zon = std::fs::read_to_string(ghostty_dir.join("build.zig.zon"))
+        .unwrap_or_else(|error| panic!("failed to read Ghostty's build.zig.zon: {error}"));
+    zon.lines()
+        .find_map(|line| line.trim().strip_prefix(".version = \"")?.split('"').next())
+        .expect("Ghostty's build.zig.zon has no .version")
+        .to_owned()
 }
 
 fn run(mut command: Command, context: &str) {
