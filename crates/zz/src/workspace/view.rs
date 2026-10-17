@@ -51,9 +51,9 @@ use zz_ui::{
 };
 use zz_ui::{
     pane::{
-        DropPreview, DropPreviewFrame, FloatingSurface, PaneChrome, PaneDrag, PaneDragOverlayState,
-        PaneDragSource, PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
-        TerminalPaneAction, pane_border_color, pane_drag_overlay, pane_drag_preview,
+        DropPreview, DropPreviewFrame, FloatingSurface, PaneArrivals, PaneChrome, PaneDrag,
+        PaneDragOverlayState, PaneDragSource, PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight,
+        PaneSplitSide, TerminalPaneAction, pane_border_color, pane_drag_overlay, pane_drag_preview,
         pane_drop_preview, pane_header_frame, pane_indicator, pane_indicator_overlay,
         pane_overlay_stack, pane_split_hit_target, pane_split_slot, pane_split_surface,
         pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
@@ -793,11 +793,13 @@ pub struct AppView {
     split_drag: Option<SplitDragState>,
     float_drag: Option<FloatDragState>,
     terminal_resize_suppressed: Rc<Cell<bool>>,
+    terminal_resizes_held: bool,
     snapshot_revision: u64,
     pane_drag: Option<PaneDragState>,
     pane_drop_preview: Rc<Cell<DropPreviewFrame>>,
     pane_layout_override: Option<PaneLayoutOverride>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
+    pane_arrivals: PaneArrivals,
     input_router: InputRouter,
     dialog_prefix_cancel_sent: bool,
     dialog_prefix_cancel_pending: Option<u64>,
@@ -1130,11 +1132,13 @@ impl AppView {
             split_drag: None,
             float_drag: None,
             terminal_resize_suppressed: Rc::new(Cell::new(false)),
+            terminal_resizes_held: false,
             snapshot_revision: 0,
             pane_drag: None,
             pane_drop_preview: Rc::new(Cell::new(DropPreviewFrame::default())),
             pane_layout_override: None,
             pane_canvas_bounds: Rc::new(Cell::new(Bounds::default())),
+            pane_arrivals: PaneArrivals::default(),
             input_router,
             dialog_prefix_cancel_sent: false,
             dialog_prefix_cancel_pending: None,
@@ -2811,7 +2815,21 @@ impl AppView {
     fn set_split_drag(&mut self, split_drag: Option<SplitDragState>) {
         self.split_drag = split_drag;
         self.terminal_resize_suppressed
-            .set(self.split_drag.is_some());
+            .set(self.split_drag.is_some() || self.terminal_resizes_held);
+    }
+
+    /// Keeps terminals at their grid size while the chrome around the panes
+    /// slides, so the daemon sees one resize when it settles instead of one a
+    /// frame. Releasing repaints every terminal so each reports its new size.
+    pub(crate) fn hold_terminal_resizes(&mut self, hold: bool, cx: &mut Context<Self>) {
+        self.terminal_resizes_held = hold;
+        self.terminal_resize_suppressed
+            .set(self.split_drag.is_some() || hold);
+        if !hold {
+            for terminal in self.terminals.values() {
+                terminal.update(cx, |_, cx| cx.notify());
+            }
+        }
     }
 
     fn reconcile_pane_layout_override(
@@ -3358,6 +3376,12 @@ impl AppView {
                 let gaps = config::pane_gaps(cx);
                 let follows_pointer = inactive && self.mux.read(cx).focus_follows_mouse();
                 let hovered_pane = *pane;
+                let shown = if cx.reduce_motion() {
+                    1.0
+                } else {
+                    self.pane_arrivals
+                        .shown(*pane, cx.background_executor().now())
+                };
                 pane_surface(
                     ("mux-pane", pane.0),
                     content,
@@ -3375,6 +3399,7 @@ impl AppView {
                     cx,
                 )
                 .key_context(pane_key_context(*pane))
+                .when(shown < 1.0, |surface| surface.opacity(shown))
                 .when(follows_pointer, |surface| {
                     surface.on_mouse_move(cx.listener(
                         move |view, event: &MouseMoveEvent, _, cx| {
@@ -3995,6 +4020,16 @@ impl Render for AppView {
                 self.floating_layer(active_window, cell, canvas, cx)
             });
 
+        if let Some(active_window) = active_window {
+            self.pane_arrivals.observe(
+                active_window.id,
+                active_window.panes.keys().copied(),
+                cx.background_executor().now(),
+            );
+            if self.pane_arrivals.fading() && !cx.reduce_motion() {
+                window.request_animation_frame();
+            }
+        }
         let content = if let Some(settings) = settings_view {
             settings.into_any_element()
         } else if let Some(active_window) = active_window {

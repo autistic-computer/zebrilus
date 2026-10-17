@@ -37,6 +37,7 @@ pub mod compact;
 pub mod feedback;
 pub mod interface_theme;
 pub mod mend;
+pub mod motion;
 pub mod navigation;
 pub mod pane;
 pub mod path_picker;

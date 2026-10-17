@@ -22,6 +22,7 @@ use crate::{
     h_flex,
     icon::cap_center_drop,
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu},
+    motion::{self, Disclosure},
     navigation::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile, stack_radius},
         workspace_row_action, workspace_row_fill,
@@ -696,21 +697,26 @@ fn header_button(
         })
 }
 
-fn chevron(folded: bool, hovered: bool, line_font: f32, cx: &App) -> Option<Div> {
-    let icon = if folded {
-        IconName::ChevronRight
-    } else if hovered {
-        IconName::ChevronDown
-    } else {
-        return None;
-    };
-    Some(glyph(
-        icon,
-        CHEVRON_SIZE,
-        line_font,
-        cx.theme().foreground.muted(),
-        cx,
-    ))
+fn chevron(
+    id: ElementId,
+    folded: bool,
+    hovered: bool,
+    line_font: f32,
+    cx: &App,
+) -> Option<impl IntoElement> {
+    (folded || hovered).then(|| {
+        motion::appear(
+            ElementId::from((id.clone(), "appear")),
+            div()
+                .flex_none()
+                .relative()
+                .top(cap_center_drop(px(line_font), px(CHEVRON_SIZE), cx))
+                .child(
+                    Disclosure::new(id, !folded, px(CHEVRON_SIZE))
+                        .color(cx.theme().foreground.muted()),
+                ),
+        )
+    })
 }
 
 struct HostNote {
@@ -821,7 +827,13 @@ pub fn flat_host_header(
                 .text_fade(crate::LABEL_FADE)
                 .child(host.name.clone()),
         )
-        .children(chevron(host.folded, hovered, HOST_NAME_SIZE, cx))
+        .children(chevron(
+            ElementId::from(("flat-host-fold", id.0)),
+            host.folded,
+            hovered,
+            HOST_NAME_SIZE,
+            cx,
+        ))
         .child(div().flex_1())
         .children(rollup)
         .children(ssh)
@@ -852,7 +864,7 @@ pub fn flat_session_header(
         .then(|| flat_rollup(&session.rollup, host.live(), cx));
     let new_window = (hovered || coarse).then(|| {
         let handler = handler.clone();
-        workspace_row_action(
+        let button = workspace_row_action(
             icon_button(
                 ("flat-new-window", session_id.0),
                 IconName::Plus,
@@ -872,7 +884,8 @@ pub fn flat_session_header(
         .on_click(move |_: &ClickEvent, window, cx| {
             cx.stop_propagation();
             handler(FlatEvent::NewWindow(host_id, session_id), window, cx);
-        })
+        });
+        motion::appear(("flat-new-window-appear", session_id.0), button)
     });
     let hover = handler.clone();
     let click = handler.clone();
@@ -920,7 +933,16 @@ pub fn flat_session_header(
                         .text_color(theme.foreground.faint())
                         .child(index)
                 }))
-                .children(chevron(session.folded, hovered, SESSION_SIZE, cx))
+                .children(chevron(
+                    ElementId::NamedInteger(
+                        format!("flat-session-fold-{}", host_id.0).into(),
+                        session_id.0,
+                    ),
+                    session.folded,
+                    hovered,
+                    SESSION_SIZE,
+                    cx,
+                ))
                 .child(div().flex_1())
                 .children(rollup)
                 .children(new_window),
@@ -940,7 +962,8 @@ pub fn flat_sidebar(
         .flex_none()
         .pr(super::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER);
     for (index, host) in hosts.iter().enumerate() {
-        list = list.child(
+        list = list.child(motion::enter(
+            ("flat-host-enter", host.id.0),
             flat_host_header(
                 host,
                 state.hovered == Some(FlatTarget::Host(host.id)),
@@ -948,7 +971,7 @@ pub fn flat_sidebar(
                 cx,
             )
             .when(index > 0, |header| header.mt(px(HOST_GAP))),
-        );
+        ));
         if host.folded {
             continue;
         }
@@ -961,20 +984,26 @@ pub fn flat_sidebar(
                         .iter()
                         .any(|candidate| candidate.summary.window == window)
             });
-            list = list.child(flat_session_header(
-                host,
-                session,
-                holds_current,
-                state.hovered == Some(FlatTarget::Session(host.id, session.id)),
-                handler,
-                cx,
+            list = list.child(motion::enter(
+                ElementId::NamedInteger(
+                    format!("flat-session-enter-{}", host.id.0).into(),
+                    session.id.0,
+                ),
+                flat_session_header(
+                    host,
+                    session,
+                    holds_current,
+                    state.hovered == Some(FlatTarget::Session(host.id, session.id)),
+                    handler,
+                    cx,
+                ),
             ));
             if session.folded {
                 continue;
             }
             list = list.children(session.windows.iter().map(|window| {
                 let key = Some((host.id, window.summary.window));
-                flat_window_row(
+                let row = flat_window_row(
                     host.id,
                     window,
                     FlatRowState {
@@ -988,6 +1017,13 @@ pub fn flat_sidebar(
                     handler,
                     menu,
                     cx,
+                );
+                motion::enter(
+                    ElementId::NamedInteger(
+                        format!("flat-window-enter-{}", host.id.0).into(),
+                        window.summary.window.0,
+                    ),
+                    row,
                 )
             }));
         }

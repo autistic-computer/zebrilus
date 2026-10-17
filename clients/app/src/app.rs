@@ -48,10 +48,10 @@ use zz_ui::{
         workspace_sidebar_view_button,
     },
     pane::{
-        DropPreview, DropPreviewFrame, PaneChrome, PaneDrag, PaneDragOverlayState, PaneDragSource,
-        PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, TerminalPaneAction, pane_drag_overlay,
-        pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
-        pane_split_surface, pane_surface, terminal_pane_header,
+        DropPreview, DropPreviewFrame, PaneArrivals, PaneChrome, PaneDrag, PaneDragOverlayState,
+        PaneDragSource, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, TerminalPaneAction,
+        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame,
+        pane_split_hit_target, pane_split_surface, pane_surface, terminal_pane_header,
     },
     settings::{SettingsSection, settings_navigation_button, settings_navigation_group_label},
     shell::{app_shell_surface, app_workspace_surface},
@@ -179,6 +179,7 @@ pub struct AppShell {
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     float_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     pane_bounds: Rc<RefCell<HashMap<PaneId, Bounds<Pixels>>>>,
+    pane_arrivals: PaneArrivals,
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
     compact: compact::CompactState,
     _subscriptions: Vec<Subscription>,
@@ -407,6 +408,7 @@ impl AppShell {
             pane_canvas_bounds: Rc::default(),
             float_canvas_bounds: Rc::default(),
             pane_bounds: Rc::default(),
+            pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
             compact: compact::CompactState::default(),
             _subscriptions: vec![
@@ -1644,6 +1646,13 @@ impl AppShell {
         self.pane_bounds
             .borrow_mut()
             .retain(|pane, _| active_window.panes.contains_key(pane));
+        let now = cx.background_executor().now();
+        self.pane_arrivals
+            .observe(active_window.id, active_window.panes.keys().copied(), now);
+        let motion = !cx.reduce_motion();
+        if motion && self.pane_arrivals.fading() {
+            window.request_animation_frame();
+        }
         let floats: Vec<zz_protocol::FloatingPaneSnapshot> = active_window
             .floating
             .iter()
@@ -1984,6 +1993,9 @@ impl AppShell {
                     chrome,
                     cx,
                 )
+                .when(motion && self.pane_arrivals.fading(), |surface| {
+                    surface.opacity(self.pane_arrivals.shown(pane_id, now))
+                })
                 .when(
                     follows_pointer && active_window.active_pane != pane_id,
                     |surface| {

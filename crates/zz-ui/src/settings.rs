@@ -3,9 +3,9 @@ pub mod appearance;
 pub mod panes_preview;
 pub mod status_bar_preview;
 
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
-use web_time::{Duration, Instant};
+use web_time::Duration;
 
 use crate::Colorize as _;
 use crate::{
@@ -14,6 +14,7 @@ use crate::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
     icon::{Icon, cap_center_drop},
+    motion::{Disclosure, eased, turned},
     roles,
     scroll::ScrollableElement as _,
     select::SelectItem,
@@ -961,52 +962,10 @@ fn settings_group_header(
         })
 }
 
-const DISCLOSURE_TURN: Duration = Duration::from_millis(220);
 const REVEAL: Duration = Duration::from_millis(280);
 const REVEAL_STAGGER: Duration = Duration::from_millis(30);
 const REVEAL_DROP: f32 = 10.0;
 const DISCLOSURE_PRESS_INSET: f32 = 6.0;
-
-#[derive(Default)]
-struct Disclosures(HashMap<&'static str, (bool, Option<Instant>)>);
-
-impl zz_gpui::Global for Disclosures {}
-
-/// When the disclosure `id` last turned to `expanded`, or `None` if it has
-/// not turned since it was first drawn.
-fn disclosure_turned(id: &'static str, expanded: bool, cx: &mut App) -> Option<Instant> {
-    let now = cx.background_executor().now();
-    let entry = cx
-        .default_global::<Disclosures>()
-        .0
-        .entry(id)
-        .or_insert((expanded, None));
-    if entry.0 != expanded {
-        *entry = (expanded, Some(now));
-    }
-    entry.1
-}
-
-fn eased(
-    since: Option<Instant>,
-    delay: Duration,
-    span: Duration,
-    window: &mut Window,
-    cx: &App,
-) -> f32 {
-    let Some(since) = since else {
-        return 1.0;
-    };
-    let now = cx.background_executor().now();
-    let t = (now.saturating_duration_since(since + delay).as_secs_f32() / span.as_secs_f32())
-        .clamp(0.0, 1.0);
-    if t < 1.0 && !cx.reduce_motion() {
-        window.request_animation_frame();
-        zz_gpui::ease_out_quint()(t)
-    } else {
-        1.0
-    }
-}
 
 /// A group heading that shows or hides the rows after it, as a standalone
 /// row in [`settings_virtual_column`]. Its chevron turns as it opens and
@@ -1047,10 +1006,7 @@ impl SettingsDisclosure {
 }
 
 impl RenderOnce for SettingsDisclosure {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let turned = disclosure_turned(self.id, self.expanded, cx);
-        let turn = eased(turned, Duration::ZERO, DISCLOSURE_TURN, window, cx);
-        let open = if self.expanded { turn } else { 1.0 - turn };
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let muted = cx.theme().foreground.muted();
         let coarse = crate::touch::CoarsePointer::get(cx);
         let radius = cx
@@ -1088,18 +1044,21 @@ impl RenderOnce for SettingsDisclosure {
                     .w(px(SETTINGS_DISCLOSURE_WIDTH))
                     .h(px(SETTINGS_GROUP_TITLE_LINE))
                     .child(
-                        Icon::new(crate::IconName::ChevronRight)
-                            .size(px(SETTINGS_GROUP_TITLE_SIZE))
-                            .text_color(muted)
-                            .transform(zz_gpui::Transformation::rotate(zz_gpui::radians(
-                                open * std::f32::consts::FRAC_PI_2,
-                            )))
+                        div()
                             .relative()
                             .top(cap_center_drop(
                                 px(SETTINGS_GROUP_TITLE_SIZE),
                                 px(SETTINGS_GROUP_TITLE_SIZE),
                                 cx,
-                            )),
+                            ))
+                            .child(
+                                Disclosure::new(
+                                    self.id,
+                                    self.expanded,
+                                    px(SETTINGS_GROUP_TITLE_SIZE),
+                                )
+                                .color(muted),
+                            ),
                     ),
             )
             .child(settings_group_header(
@@ -1123,7 +1082,7 @@ pub fn settings_disclosure_reveal(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let turned = disclosure_turned(id, expanded, cx);
+    let turned = turned(id, expanded, cx);
     if !expanded || turned.is_none() {
         return row;
     }
