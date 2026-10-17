@@ -31,10 +31,10 @@ use zz_ui::{
     notification::Notification,
     overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
     pane::{
-        FloatingSurface, PaneOverlayCorner, PaneSplitAxis, TERMINAL_HEADER_HEIGHT, pane_drag_chip,
-        pane_drop_preview, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
-        pane_picker_row, pane_picker_surface, pane_split_surface, pane_status_badge, pane_surface,
-        pane_sync_badge, pane_waiting_state, terminal_mode_indicator,
+        FloatingSurface, PaneOverlayCorner, PaneSplitAxis, pane_drag_chip, pane_drop_preview,
+        pane_indicator, pane_indicator_overlay, pane_overlay_stack, pane_picker_row,
+        pane_picker_surface, pane_split_surface, pane_status_badge, pane_surface, pane_sync_badge,
+        pane_waiting_state, terminal_mode_indicator,
     },
     select::{Select, SelectState},
     settings::{
@@ -1003,7 +1003,7 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
                         pane_sync_badge(cx).into_any_element(),
                     ],
                 )
-                .top(px(TERMINAL_HEADER_HEIGHT + 8.0))
+                .top(cx.theme().pane_header_height() + px(8.0))
                 .into_any_element(),
                 pane_overlay_stack(
                     PaneOverlayCorner::BottomRight,
@@ -1047,7 +1047,7 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
                     cx.theme().pane_edge_width().max(px(1.0)),
                     cx,
                 )
-                .top(px(TERMINAL_HEADER_HEIGHT + 6.0))
+                .top(cx.theme().pane_header_height() + px(6.0))
                 .bottom(px(6.0))
                 .right(px(6.0))
                 .w(relative(0.4))
@@ -1066,7 +1066,7 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
         vec![
             div()
                 .absolute()
-                .top(px(TERMINAL_HEADER_HEIGHT + 16.0))
+                .top(cx.theme().pane_header_height() + px(16.0))
                 .left(px(16.0))
                 .right(px(16.0))
                 .bottom(px(16.0))

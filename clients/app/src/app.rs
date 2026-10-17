@@ -1905,7 +1905,7 @@ impl AppShell {
                         status_tags,
                     )
                     .when(frame.header, |stack| {
-                        stack.top(px(zz_ui::pane::TERMINAL_HEADER_HEIGHT + 8.0))
+                        stack.top(cx.theme().pane_header_height() + px(8.0))
                     })
                     .occlude()
                     .into_any_element(),

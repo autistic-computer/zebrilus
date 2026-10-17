@@ -14,8 +14,6 @@ use zz_gpui::{
 mod drag;
 pub use drag::{DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, pane_drag_preview};
 
-pub const TERMINAL_HEADER_HEIGHT: f32 = crate::PANE_HEADER_HEIGHT.as_f32();
-
 pub fn pane_header_icon_button(
     id: impl Into<ElementId>,
     icon: IconName,
@@ -184,7 +182,7 @@ pub fn terminal_pane_header(
         .group("terminal-pane-header")
         .flex()
         .w_full()
-        .h(px(TERMINAL_HEADER_HEIGHT))
+        .h(cx.theme().pane_header_height())
         .flex_none()
         .items_center()
         .gap(px(8.0))

@@ -17,8 +17,8 @@ use crate::{
     h_flex,
 };
 
-/// Height of the title bar while panes sit flush: one pane header. With a
-/// pane margin it grows to [`Theme::title_bar_height`](crate::Theme::title_bar_height),
+/// The least height of the title bar: one gapped pane header. Its height on
+/// screen is [`Theme::title_bar_height`](crate::Theme::title_bar_height),
 /// which every strip that lines up with it (the sidebar headers in zz-ui's
 /// navigation and settings) reads.
 pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
