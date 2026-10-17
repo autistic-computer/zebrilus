@@ -274,8 +274,8 @@ pub fn workspace_sidebar_titlebar(
 /// How far the sidebar's leading buttons sit in from its edges, so their
 /// centers fall on a pane header's center line: half a header in from the
 /// window's edges past the pane margin.
-fn workspace_chrome_inset() -> Pixels {
-    (crate::PANE_HEADER_HEIGHT - WORKSPACE_CHROME_BUTTON_SIZE) / 2.0
+fn workspace_chrome_inset(cx: &App) -> Pixels {
+    (cx.theme().pane_header_height() - WORKSPACE_CHROME_BUTTON_SIZE) / 2.0
 }
 
 /// How far the sidebar's trailing buttons sit in from its trailing edge, so
@@ -304,7 +304,7 @@ pub fn workspace_sidebar_footer(
     trailing: Option<zz_gpui::AnyElement>,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
-    let inset = workspace_chrome_inset();
+    let inset = workspace_chrome_inset(cx);
     let window_inset = cx.theme().pane_margin + inset;
     div()
         .id(id)

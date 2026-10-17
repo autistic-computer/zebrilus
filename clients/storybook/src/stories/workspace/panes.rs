@@ -7,12 +7,11 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     pane::{
         FloatingSurface, PaneDragOverlayState, PaneOverlayCorner, PaneSplitAxis,
-        PaneSplitHighlight, PaneSplitSide, TERMINAL_HEADER_HEIGHT, pane_drag_chip,
-        pane_drag_overlay, pane_drop_preview, pane_indicator, pane_indicator_overlay,
-        pane_overlay_stack, pane_picker_choices, pane_picker_row, pane_picker_surface,
-        pane_split_surface, pane_status_badge, pane_sync_badge, pane_unzoom_control,
-        pane_waiting_state, terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
-        terminal_status_popup,
+        PaneSplitHighlight, PaneSplitSide, pane_drag_chip, pane_drag_overlay, pane_drop_preview,
+        pane_indicator, pane_indicator_overlay, pane_overlay_stack, pane_picker_choices,
+        pane_picker_row, pane_picker_surface, pane_split_surface, pane_status_badge,
+        pane_sync_badge, pane_unzoom_control, pane_waiting_state, terminal_link_popup,
+        terminal_mode_indicator, terminal_search_prompt, terminal_status_popup,
     },
     settings::panes_preview::PanesPreview,
 };
@@ -242,7 +241,7 @@ fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
             "pane",
             vec![
                 pane_overlay_stack(PaneOverlayCorner::TopRight, top)
-                    .top(px(TERMINAL_HEADER_HEIGHT + 8.0))
+                    .top(cx.theme().pane_header_height() + px(8.0))
                     .into_any_element(),
                 pane_overlay_stack(PaneOverlayCorner::BottomRight, bottom).into_any_element(),
             ],

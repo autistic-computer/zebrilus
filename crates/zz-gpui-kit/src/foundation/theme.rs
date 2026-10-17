@@ -160,6 +160,10 @@ pub const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
 /// [`PANE_HEADER_HEIGHT`] tall.
 pub const PANE_HEADER_CONTROL_HEIGHT: Pixels = px(22.0);
 pub const PANE_HEADER_HEIGHT: Pixels = px(22.0 + 2.0 * CHROME_GAP);
+/// A pane header while panes sit flush: taller than [`PANE_HEADER_HEIGHT`],
+/// so the window's buttons on its center line keep clear of the window's
+/// corner.
+const FLUSH_PANE_HEADER_HEIGHT: Pixels = px(40.0);
 /// How the selected pane stands apart at full strength, the way Rex draws
 /// it: the others under a veil of black, it washed toward white, each by
 /// mode, and the others' rims this much dimmer (7% against its 10%).
@@ -383,11 +387,21 @@ impl Theme {
             + px(CHROME_GAP)
     }
 
+    /// The height of a pane header: [`PANE_HEADER_HEIGHT`] with a pane
+    /// margin, [`FLUSH_PANE_HEADER_HEIGHT`] while panes sit flush.
+    pub fn pane_header_height(&self) -> Pixels {
+        if self.pane_margin > px(0.0) {
+            PANE_HEADER_HEIGHT
+        } else {
+            FLUSH_PANE_HEADER_HEIGHT
+        }
+    }
+
     /// The height of the strip along the window's top edge: a pane header
     /// with the pane margin above and below it, so the window's buttons sit
     /// on the pane headers' center line.
     pub fn title_bar_height(&self) -> Pixels {
-        PANE_HEADER_HEIGHT + self.pane_margin * 2.0
+        self.pane_header_height() + self.pane_margin * 2.0
     }
 
     /// The color of a divider rule: translucent foreground, so it lightens
@@ -691,7 +705,7 @@ mod tests {
     #[test]
     fn the_title_bar_shares_the_pane_headers_center_line() {
         let mut theme = Theme::default();
-        assert_eq!(theme.title_bar_height(), PANE_HEADER_HEIGHT);
+        assert_eq!(theme.title_bar_height(), FLUSH_PANE_HEADER_HEIGHT);
         theme.pane_margin = px(8.0);
         assert_eq!(
             theme.title_bar_height() / 2.0,

@@ -53,10 +53,10 @@ use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneChrome, PaneDrag, PaneDragOverlayState,
         PaneDragSource, PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
-        TERMINAL_HEADER_HEIGHT, TerminalPaneAction, pane_border_color, pane_drag_overlay,
-        pane_drag_preview, pane_drop_preview, pane_header_frame, pane_indicator,
-        pane_indicator_overlay, pane_overlay_stack, pane_split_hit_target, pane_split_slot,
-        pane_split_surface, pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
+        TerminalPaneAction, pane_border_color, pane_drag_overlay, pane_drag_preview,
+        pane_drop_preview, pane_header_frame, pane_indicator, pane_indicator_overlay,
+        pane_overlay_stack, pane_split_hit_target, pane_split_slot, pane_split_surface,
+        pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
         terminal_pane_header,
     },
     shell::{app_connection_state, app_workspace_surface},
@@ -3285,7 +3285,7 @@ impl AppView {
                         .child(
                             AnyView::from(header_view.clone()).cached(
                                 StyleRefinement::default()
-                                    .h(px(TERMINAL_HEADER_HEIGHT))
+                                    .h(cx.theme().pane_header_height())
                                     .w_full()
                                     .flex_none(),
                             ),
@@ -3321,7 +3321,7 @@ impl AppView {
                     overlays.push(
                         pane_overlay_stack(PaneOverlayCorner::TopRight, status_tags)
                             .when(terminal_header.is_some(), |stack| {
-                                stack.top(px(TERMINAL_HEADER_HEIGHT + 8.0))
+                                stack.top(cx.theme().pane_header_height() + px(8.0))
                             })
                             .into_any_element(),
                     );
