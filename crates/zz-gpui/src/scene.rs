@@ -144,7 +144,8 @@ impl Scene {
             uniforms: descriptor.uniforms,
             scene: Rc::new(scene),
         };
-        self.target().place_primitive(Primitive::ShaderLayer(layer));
+        self.target()
+            .place_primitive(&mut Primitive::ShaderLayer(layer));
     }
 
     fn target(&mut self) -> &mut Scene {
@@ -160,14 +161,14 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        let primitive = primitive.into();
-        if self.target().place_primitive(primitive.clone()) {
+        let mut primitive = primitive.into();
+        if self.target().place_primitive(&mut primitive) {
             self.paint_operations
                 .push(PaintOperation::Primitive(primitive));
         }
     }
 
-    fn place_primitive(&mut self, mut primitive: Primitive) -> bool {
+    fn place_primitive(&mut self, primitive: &mut Primitive) -> bool {
         let clipped_bounds = primitive
             .bounds()
             .intersect(&primitive.content_mask().bounds);
@@ -178,7 +179,7 @@ impl Scene {
 
         // Glass reads its whole backdrop, clipped or not, so it orders after
         // everything painted under any of it.
-        let ordered_bounds = match &primitive {
+        let ordered_bounds = match &*primitive {
             Primitive::Glass(glass) => glass.backdrop_bounds,
             _ => clipped_bounds,
         };
@@ -187,7 +188,7 @@ impl Scene {
             .last()
             .copied()
             .unwrap_or_else(|| self.primitive_bounds.insert(ordered_bounds));
-        match &mut primitive {
+        match primitive {
             Primitive::Shadow(shadow) => {
                 shadow.order = order;
                 self.shadows.push(*shadow);
@@ -227,7 +228,7 @@ impl Scene {
             }
             Primitive::Glass(glass) => {
                 glass.order = order;
-                self.glasses.push(glass.clone());
+                self.glasses.push((**glass).clone());
             }
         }
         true
@@ -351,8 +352,10 @@ pub enum Primitive {
     PolychromeSprite(PolychromeSprite),
     Surface(PaintSurface),
     ShaderLayer(ShaderLayer),
-    Glass(Glass),
+    Glass(Box<Glass>),
 }
+
+const _: () = assert!(std::mem::size_of::<Primitive>() <= std::mem::size_of::<Quad>() + 8);
 
 #[expect(missing_docs)]
 impl Primitive {
@@ -1258,7 +1261,7 @@ impl Debug for ShaderLayer {
 
 impl From<Glass> for Primitive {
     fn from(glass: Glass) -> Self {
-        Primitive::Glass(glass)
+        Primitive::Glass(Box::new(glass))
     }
 }
 
