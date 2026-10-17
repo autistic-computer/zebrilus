@@ -9031,7 +9031,7 @@ dependencies = [
 
 [[package]]
 name = "zz-app"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-channel",
  "base64 0.23.1",
@@ -9080,7 +9080,7 @@ dependencies = [
 
 [[package]]
 name = "zz-daemon-client"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "core-foundation",
  "getrandom 0.4.3",
@@ -9175,7 +9175,7 @@ dependencies = [
 
 [[package]]
 name = "zz-gpui-kit"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-channel",
