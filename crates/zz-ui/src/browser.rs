@@ -406,7 +406,6 @@ impl RenderOnce for BrowserTabStrip {
         } = self;
         let title = title.map(|(drag, close_pane)| {
             crate::pane::PaneTitle::new("browser-pane-title", IconName::Globe, "Browser", drag)
-                .fit()
                 .on_close(move |window, cx| close_pane(window, cx))
         });
         let width = window.use_keyed_state("browser-tab-strip-width", cx, |_, _| None::<Pixels>);
