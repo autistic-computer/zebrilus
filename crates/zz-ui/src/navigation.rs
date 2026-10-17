@@ -693,12 +693,12 @@ pub fn workspace_tree_disclosure(
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let foreground = cx.theme().foreground;
-    let chevron = Icon::new(if expanded {
-        IconName::ChevronDown
-    } else {
-        IconName::ChevronRight
-    })
-    .size(rems_from_px(WORKSPACE_TREE_NODE_ICON_SIZE));
+    let id = id.into();
+    let chevron = crate::motion::Disclosure::new(
+        ElementId::from((id.clone(), "turn")),
+        expanded,
+        rems_from_px(WORKSPACE_TREE_NODE_ICON_SIZE),
+    );
     div()
         .id(id)
         .relative()

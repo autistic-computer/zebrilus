@@ -47,6 +47,7 @@ pub struct AppShell {
     sidebar: Entity<WorkspaceSidebar>,
     mux: Entity<MuxClient>,
     browser_history_appearance: BrowserHistoryAppearance,
+    terminal_resizes_held: bool,
 }
 
 impl AppShell {
@@ -116,6 +117,7 @@ impl AppShell {
             sidebar,
             mux,
             browser_history_appearance: Vec::new(),
+            terminal_resizes_held: false,
         }
     }
 
@@ -274,6 +276,22 @@ impl AppShell {
         window_drag_handle("gui-status-titlebar-drag", bar, window, cx).into_any_element()
     }
 
+    /// The sidebar docked beside the panes, `shown` of its width on screen:
+    /// it keeps its full width and the panes cover its trailing edge, so its
+    /// rows never reflow while it slides.
+    fn docked_sidebar(&self, width: f32, shown: f32) -> AnyElement {
+        div()
+            .flex_none()
+            .h_full()
+            .w(px(width * shown))
+            .overflow_hidden()
+            .child(
+                AnyView::from(self.sidebar.clone())
+                    .cached(StyleRefinement::default().h_full().w(px(width)).flex_none()),
+            )
+            .into_any_element()
+    }
+
     fn render_slideover(&self, cx: &App) -> AnyElement {
         let dismiss = self.sidebar.clone();
         workspace_sidebar_slideover(
@@ -292,29 +310,52 @@ impl AppShell {
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::hotreload::render!({
-            let (route, mode, sidebar_width) = {
+            let (route, mode, sidebar_width, slide) = {
                 let sidebar = self.sidebar.read(cx);
-                (sidebar.route(), sidebar.mode(), sidebar.width())
+                (
+                    sidebar.route(),
+                    sidebar.mode(),
+                    sidebar.width(),
+                    sidebar.slide(cx),
+                )
             };
+            let sliding = route == WorkspaceRoute::App && slide < 1.0;
+            if sliding {
+                window.request_animation_frame();
+            }
+            if sliding != self.terminal_resizes_held {
+                self.terminal_resizes_held = sliding;
+                self.workspace.update(cx, |workspace, cx| {
+                    workspace.hold_terminal_resizes(sliding, cx);
+                });
+            }
+            let strip_grows = sliding && !draws_window_controls(window);
             let (sidebar, titlebar) = match (route, mode) {
                 (WorkspaceRoute::Settings, _) => (
                     self.sidebar.clone().into_any_element(),
                     self.render_control_strip(window, cx),
                 ),
                 (WorkspaceRoute::App, ChromeMode::Sidebar) => (
-                    AnyView::from(self.sidebar.clone())
-                        .cached(
-                            StyleRefinement::default()
-                                .h_full()
-                                .w(px(sidebar_width))
-                                .flex_none(),
-                        )
-                        .into_any_element(),
-                    self.render_control_strip(window, cx),
+                    self.docked_sidebar(sidebar_width, slide),
+                    if strip_grows {
+                        let bar = self.render_status_bar(window, cx);
+                        Some(growing_strip(bar, 1.0 - slide, cx))
+                    } else {
+                        self.render_control_strip(window, cx)
+                    },
                 ),
                 (WorkspaceRoute::App, ChromeMode::Titlebar) => (
-                    div().into_any_element(),
-                    Some(self.render_status_bar(window, cx)),
+                    if sliding {
+                        self.docked_sidebar(sidebar_width, 1.0 - slide)
+                    } else {
+                        div().into_any_element()
+                    },
+                    Some(if strip_grows {
+                        let bar = self.render_status_bar(window, cx);
+                        growing_strip(bar, slide, cx)
+                    } else {
+                        self.render_status_bar(window, cx)
+                    }),
                 ),
             };
             let dialog_layer = Root::render_dialog_layer(window, cx);
@@ -529,6 +570,28 @@ impl Render for AppShell {
             }
         })
     }
+}
+
+/// `strip` growing down from the window's top edge as `shown` goes from 0 to
+/// 1, so the panes under it move down with it instead of jumping.
+fn growing_strip(strip: AnyElement, shown: f32, cx: &App) -> AnyElement {
+    let height = cx.theme().title_bar_height();
+    div()
+        .relative()
+        .flex_none()
+        .w_full()
+        .h(height * shown)
+        .overflow_hidden()
+        .child(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .h(height)
+                .child(strip),
+        )
+        .into_any_element()
 }
 
 // gpui-component's macOS Root constructor requires a native NSView; GPUI test windows have none.

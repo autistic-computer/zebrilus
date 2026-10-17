@@ -244,6 +244,58 @@ pub fn pane_header_frame(
         .child(div().opacity(opacity).child(header))
 }
 
+const PANE_ARRIVAL: web_time::Duration = web_time::Duration::from_millis(180);
+
+/// The panes of the window on screen that appeared after it was first drawn,
+/// so a split's new pane fades in instead of popping. Keyed by pane, not by
+/// element, because a split moves its old pane under a new split node too.
+#[derive(Default)]
+pub struct PaneArrivals {
+    window: Option<zz_protocol::WindowId>,
+    known: std::collections::BTreeSet<zz_protocol::PaneId>,
+    arrived: std::collections::BTreeMap<zz_protocol::PaneId, web_time::Instant>,
+}
+
+impl PaneArrivals {
+    /// Notes the panes `window` holds at `now`: one it did not hold the last
+    /// time fades in, while switching to another window fades nothing.
+    pub fn observe(
+        &mut self,
+        window: zz_protocol::WindowId,
+        panes: impl IntoIterator<Item = zz_protocol::PaneId>,
+        now: web_time::Instant,
+    ) {
+        let panes = panes.into_iter().collect::<std::collections::BTreeSet<_>>();
+        if self.window == Some(window) {
+            for pane in panes.difference(&self.known) {
+                self.arrived.insert(*pane, now);
+            }
+        }
+        self.arrived.retain(|pane, since| {
+            panes.contains(pane) && now.saturating_duration_since(*since) < PANE_ARRIVAL
+        });
+        self.window = Some(window);
+        self.known = panes;
+    }
+
+    /// How far `pane` has faded in at `now`: 1 once it has settled.
+    #[must_use]
+    pub fn shown(&self, pane: zz_protocol::PaneId, now: web_time::Instant) -> f32 {
+        self.arrived.get(&pane).map_or(1.0, |since| {
+            zz_gpui::ease_out_quint()(
+                (now.saturating_duration_since(*since).as_secs_f32() / PANE_ARRIVAL.as_secs_f32())
+                    .min(1.0),
+            )
+        })
+    }
+
+    /// Whether a pane is still fading in, so the window wants another frame.
+    #[must_use]
+    pub fn fading(&self) -> bool {
+        !self.arrived.is_empty()
+    }
+}
+
 const PANE_DRAG_SOURCE_FADE: f32 = 0.3;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1305,6 +1357,24 @@ mod tests {
             let _ = window.draw(cx);
         });
         cx.debug_bounds("pane-title").unwrap().size.width
+    }
+
+    #[test]
+    fn only_a_pane_new_to_the_window_on_screen_fades_in() {
+        use zz_protocol::{PaneId, WindowId};
+        let start = web_time::Instant::now();
+        let mut arrivals = PaneArrivals::default();
+        arrivals.observe(WindowId(1), [PaneId(1)], start);
+        assert!(!arrivals.fading());
+        arrivals.observe(WindowId(1), [PaneId(1), PaneId(2)], start);
+        assert_eq!(arrivals.shown(PaneId(1), start), 1.0);
+        assert_eq!(arrivals.shown(PaneId(2), start), 0.0);
+        let settled = start + PANE_ARRIVAL;
+        assert_eq!(arrivals.shown(PaneId(2), settled), 1.0);
+        arrivals.observe(WindowId(1), [PaneId(1), PaneId(2)], settled);
+        assert!(!arrivals.fading());
+        arrivals.observe(WindowId(2), [PaneId(3), PaneId(4)], settled);
+        assert!(!arrivals.fading());
     }
 
     #[zz_gpui::test]

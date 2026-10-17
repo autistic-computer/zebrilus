@@ -4,6 +4,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use zz_client::{ChromeAction, SIDEBAR_TABLE};
@@ -71,6 +72,7 @@ use crate::mux::nav::{
 
 const SIDEBAR_MIN_WIDTH: f32 = 160.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
+const SIDEBAR_SLIDE: Duration = Duration::from_millis(240);
 const TREE_INDENT_GUIDE_OFFSET: f32 = TREE_MARKER_SLOT_WIDTH / 2.0;
 const TREE_INDENT_GUIDE_PADDING: f32 = 4.0;
 const TREE_KEY_CONTEXT: &str = "WorkspaceTree";
@@ -167,6 +169,7 @@ pub struct WorkspaceSidebar {
     scroll_handle: UniformListScrollHandle,
     focus_handle: FocusHandle,
     mode: ChromeMode,
+    mode_changed: Option<Instant>,
     route: WorkspaceRoute,
     settings: Option<Entity<SettingsView>>,
     slideover: bool,
@@ -213,6 +216,7 @@ impl WorkspaceSidebar {
             scroll_handle: UniformListScrollHandle::default(),
             focus_handle: cx.focus_handle(),
             mode: ChromeMode::default(),
+            mode_changed: None,
             route: WorkspaceRoute::default(),
             settings: None,
             slideover: false,
@@ -323,8 +327,30 @@ impl WorkspaceSidebar {
         self.slideover
     }
 
-    fn slides_over(&self) -> bool {
-        self.route == WorkspaceRoute::App && self.mode == ChromeMode::Titlebar
+    fn slides_over(&self, cx: &App) -> bool {
+        self.route == WorkspaceRoute::App && !self.docked(cx)
+    }
+
+    /// Whether the sidebar looks docked beside the panes: in sidebar mode,
+    /// and while it slides out after the window switched to the status bar.
+    fn docked(&self, cx: &App) -> bool {
+        self.mode == ChromeMode::Sidebar || self.slide(cx) < 1.0
+    }
+
+    /// How far the sidebar has slid since the mode last changed, eased from
+    /// 0 to 1: 1 once it has settled, or right away while motion is reduced.
+    pub(crate) fn slide(&self, cx: &App) -> f32 {
+        let Some(since) = self.mode_changed else {
+            return 1.0;
+        };
+        let elapsed = cx
+            .background_executor()
+            .now()
+            .saturating_duration_since(since);
+        if cx.reduce_motion() || elapsed >= SIDEBAR_SLIDE {
+            return 1.0;
+        }
+        zz_gpui::ease_out_quint()(elapsed.as_secs_f32() / SIDEBAR_SLIDE.as_secs_f32())
     }
 
     fn ground(&self, cx: &App) -> Ground {
@@ -333,7 +359,7 @@ impl WorkspaceSidebar {
                 fill: crate::theme::chrome_background(cx),
                 ..cx.theme().ground()
             },
-            self.slides_over(),
+            self.slides_over(cx),
             cx,
         )
     }
@@ -341,7 +367,7 @@ impl WorkspaceSidebar {
     /// What rows and buttons in the sidebar sit on: the window, or the
     /// slideover's surface.
     fn content_ground(&self, cx: &App) -> Ground {
-        workspace_sidebar_ground(cx.theme().ground(), self.slides_over(), cx)
+        workspace_sidebar_ground(cx.theme().ground(), self.slides_over(cx), cx)
     }
 
     pub(crate) fn toggle_mode(&mut self, cx: &mut Context<Self>) {
@@ -349,6 +375,7 @@ impl WorkspaceSidebar {
             ChromeMode::Sidebar => ChromeMode::Titlebar,
             ChromeMode::Titlebar => ChromeMode::Sidebar,
         };
+        self.mode_changed = Some(cx.background_executor().now());
         self.slideover = false;
         log::info!(
             target: "zz::diagnostics::sidebar",
@@ -859,13 +886,13 @@ impl Render for WorkspaceSidebar {
             } else {
                 window_drag_handle("workspace-sidebar-titlebar-drag", titlebar, window, cx)
             };
-            let corners = if !settings_route && self.mode() == ChromeMode::Sidebar {
+            let docked = self.docked(cx);
+            let corners = if !settings_route && docked {
                 WindowCorners::for_window(window).left().top()
             } else {
                 WindowCorners::for_window(window).left()
             };
-            let divider_hidden =
-                (settings_route || matches!(self.mode(), ChromeMode::Sidebar)) && pane_gaps(cx);
+            let divider_hidden = (settings_route || docked) && pane_gaps(cx);
             let shell = corners.round_div(
                 workspace_sidebar_panel(
                     "workspace-sidebar",
