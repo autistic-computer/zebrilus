@@ -425,6 +425,10 @@ pub(crate) fn tray_enabled(cx: &App) -> bool {
     resolved_config(cx).tray.value
 }
 
+pub(crate) fn notifications_enabled(cx: &App) -> bool {
+    resolved_config(cx).notifications.value
+}
+
 /// Whether a browser pane attached to a remote ssh host routes its traffic
 /// through that host. Client-local: it never crosses the wire.
 pub(crate) fn browser_egress_enabled(cx: &App) -> bool {
@@ -1279,6 +1283,7 @@ mod tests {
              use-system-titlebar = true\n\
              window-background-blur = true\n\
              animations = false\n\
+             notifications = false\n\
              quit-daemon-on-exit = true\n\
              auto-restart-stale-daemon = true\n\
              check-for-updates = false\n\
@@ -1354,6 +1359,8 @@ mod tests {
             parsed.config.animations.provenance,
             ConfigProvenance::Override
         );
+        assert!(!parsed.config.notifications.value);
+        assert!(AppConfig::default().notifications.value);
         assert!(parsed.config.quit_daemon_on_exit.value);
         assert_eq!(
             parsed.config.quit_daemon_on_exit.provenance,
@@ -3154,6 +3161,7 @@ mod tests {
             "window-background-blur",
             "animations",
             "tray",
+            "notifications",
             "quit-daemon-on-exit",
             "auto-restart-stale-daemon",
             "check-for-updates",

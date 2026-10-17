@@ -1411,6 +1411,16 @@ impl SettingsView {
                     cx,
                 )))
             })
+            .child(
+                SettingsStack::titled("Notifications").child(Self::boolean_setting(
+                    ConfigKey::Notifications,
+                    "Notify when a pane needs you",
+                    "While zz is in the background, post a notification when a pane asks for \
+                     input, fails or finishes. Clicking it opens the pane.",
+                    resolved.notifications,
+                    cx,
+                )),
+            )
             .when(crate::profile::profile(cx).has_daemon_lifecycle, |column| {
                 column.child(SettingsStack::titled("Daemon").child(Self::boolean_setting(
                     ConfigKey::QuitDaemonOnExit,
@@ -2503,6 +2513,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::WindowBackgroundBlur
         | ConfigKey::Animations
         | ConfigKey::Tray
+        | ConfigKey::Notifications
         | ConfigKey::QuitDaemonOnExit
         | ConfigKey::AutoRestartStaleDaemon
         | ConfigKey::CheckForUpdates

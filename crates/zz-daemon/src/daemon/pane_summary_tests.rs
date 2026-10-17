@@ -188,6 +188,41 @@ fn a_finish_in_a_watched_window_stays_seen() {
 }
 
 #[test]
+fn a_finish_behind_an_unfocused_client_stays_unseen_until_focus_in() {
+    let mut inner = ServerState::default();
+    let (session, _, pane) = inner.engine.state.create_session("away").expect("session");
+    inner
+        .attached
+        .entry(session)
+        .or_default()
+        .insert(ClientId(1));
+    inner.clients.insert(
+        ClientId(1),
+        Box::new(Client {
+            focused: Some(false),
+            ..Client::default()
+        }),
+    );
+    assert!(pane_window_watched(&inner, pane));
+    assert!(!pane_window_seen(&inner, pane));
+
+    apply_pane_status(
+        &mut inner,
+        pane,
+        Some(status(PaneStatusState::Working, "")),
+        1,
+    );
+    apply_pane_status(&mut inner, pane, Some(status(PaneStatusState::Done, "")), 2);
+    assert!(summary(&inner, pane).unseen);
+
+    inner.client_mut(ClientId(1)).expect("client").focused = Some(true);
+    assert!(pane_window_seen(&inner, pane));
+    assert!(mark_focused_window_seen(&mut inner, ClientId(1)));
+    assert!(!summary(&inner, pane).unseen);
+    assert!(!mark_focused_window_seen(&mut inner, ClientId(1)));
+}
+
+#[test]
 fn a_new_turn_drops_a_stale_unseen() {
     let mut inner = ServerState::default();
     let (session, _, pane) = inner.engine.state.create_session("turns").expect("session");

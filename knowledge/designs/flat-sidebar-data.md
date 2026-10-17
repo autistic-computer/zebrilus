@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-12T21:30:00-03:00
+timestamp: 2026-10-17T12:00:00-03:00
 ---
 
 # Overview
@@ -57,8 +57,9 @@ command start and finish, a bell raise and pane death. Output never stamps it, s
 pane printing logs keeps its age, and a busy shell costs at most one summary op per command mark,
 riding the publish its title change already causes (16 ms coalescing).
 
-**`unseen` lives in the daemon.** It is raised on a finish edge with the bell's suppression rule
-(the window is current in an attached session) and cleared on the same visits that clear the bell.
+**`unseen` lives in the daemon.** It is raised on a finish edge unless a focused client shows the
+pane's window, and cleared on the same visits that clear the bell, plus a client's focus-in for the
+window it shows.
 Every client on every host sees the same unseen state, and none keeps a seen store.
 
 **The clock rides the handshake, not every snapshot.** An empty tree diff sends nothing, so a

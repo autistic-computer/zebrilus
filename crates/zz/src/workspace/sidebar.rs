@@ -12,7 +12,7 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Hsla,
     InteractiveElement as _, IntoElement, KeyBinding, ListSizingBehavior, MouseButton,
     ParentElement as _, Render, ScrollStrategy, SharedString, StatefulInteractiveElement as _,
-    Styled as _, UniformListScrollHandle, Window, WindowControlArea, div,
+    Styled as _, SystemNotification, UniformListScrollHandle, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px, uniform_list,
 };
 use zz_protocol::{
@@ -47,9 +47,12 @@ use zz_ui::{
 use crate::{
     agent::{
         AgentController,
-        sound::{AgentAttentionTracker, AgentBadge, AgentPaneStatus},
+        notify::{self, AttentionBanners},
+        sound::{AgentAttentionTracker, AgentBadge, AgentPaneStatus, AttentionEdge, loudest},
     },
-    config::{frame_content_corner_radius, pane_gaps, settings::SettingsView},
+    config::{
+        frame_content_corner_radius, notifications_enabled, pane_gaps, settings::SettingsView,
+    },
     keymap::ChromeChord,
     mux::{
         client::MuxClient,
@@ -177,6 +180,7 @@ pub struct WorkspaceSidebar {
     local_hostname: SharedString,
     badges: Rc<BTreeMap<(HostId, PaneId), AgentBadge>>,
     tracker: AgentAttentionTracker<(HostId, PaneId)>,
+    banners: AttentionBanners<(HostId, PaneId)>,
     flat: bool,
     flat_view: flat::FlatView,
 }
@@ -193,6 +197,7 @@ impl WorkspaceSidebar {
             let revision = SidebarRevision::for_mux(mux.read(cx));
             if revision != observed_revision {
                 observed_revision = revision;
+                sidebar.synchronize_tree(cx);
                 sidebar.reconcile_attention(&observed_agents, cx);
                 cx.notify();
             }
@@ -224,6 +229,7 @@ impl WorkspaceSidebar {
             local_hostname: sidebar_hostname(sysinfo::System::host_name().as_deref()),
             badges: Rc::new(BTreeMap::new()),
             tracker: AgentAttentionTracker::default(),
+            banners: AttentionBanners::default(),
             flat: crate::config::resolved_config(cx).flat_sidebar.value,
             flat_view: flat::FlatView::default(),
         }
@@ -233,9 +239,11 @@ impl WorkspaceSidebar {
         let attached_host = self.mux.read(cx).attached_host();
         let statuses = self.agent_pane_statuses(agents, cx);
         let watched = self.watched_pane(cx).map(|pane| (attached_host, pane));
-        if let Some(chime) = self.tracker.observe(&statuses, watched) {
+        let edges = self.tracker.observe(&statuses, watched);
+        if let Some(chime) = loudest(&edges) {
             crate::agent::sound::play(chime);
         }
+        self.post_banners(&statuses, watched, &edges, cx);
         let badges = statuses
             .iter()
             .filter_map(|(&pane, &status)| Some((pane, self.tracker.badge(pane, status)?)))
@@ -243,6 +251,54 @@ impl WorkspaceSidebar {
         if badges != *self.badges {
             self.badges = Rc::new(badges);
             cx.notify();
+        }
+    }
+
+    fn post_banners(
+        &mut self,
+        statuses: &BTreeMap<(HostId, PaneId), AgentPaneStatus>,
+        watched: Option<(HostId, PaneId)>,
+        edges: &[AttentionEdge<(HostId, PaneId)>],
+        cx: &mut Context<Self>,
+    ) {
+        for pane in self.banners.retire(statuses, watched) {
+            cx.dismiss_system_notification(&notify::tag_for(pane));
+        }
+        if edges.is_empty() || cx.active_window().is_some() || !notifications_enabled(cx) {
+            return;
+        }
+        let snapshot = self.mux.read(cx).snapshot();
+        let now = Instant::now();
+        let banners = edges
+            .iter()
+            .filter_map(|edge| {
+                let (title, body) = notify::banner(&snapshot, edge.pane.1, edge.status)?;
+                self.banners
+                    .admit(edge.pane, now)
+                    .then(|| SystemNotification {
+                        tag: notify::tag_for(edge.pane).into(),
+                        title: title.into(),
+                        body: body.into(),
+                        actions: Vec::new(),
+                    })
+            })
+            .collect::<Vec<_>>();
+        if banners.is_empty() {
+            return;
+        }
+        if self.banners.listen() {
+            let sidebar = cx.entity().downgrade();
+            cx.on_system_notification_response(move |response, cx| {
+                if let Some((host, pane)) = sidebar
+                    .upgrade()
+                    .and_then(|sidebar| sidebar.read(cx).banners.pane(&response.tag))
+                {
+                    crate::tray::focus_pane(host, pane, cx);
+                }
+            });
+        }
+        for banner in banners {
+            cx.show_system_notification(banner);
         }
     }
 
@@ -267,9 +323,8 @@ impl WorkspaceSidebar {
                         Some(PaneStatusState::Working) => AgentPaneStatus::Working,
                         Some(PaneStatusState::Blocked) => AgentPaneStatus::NeedsInput,
                         Some(PaneStatusState::Error) => AgentPaneStatus::Failed,
-                        Some(PaneStatusState::Idle | PaneStatusState::Done) | None => {
-                            AgentPaneStatus::Idle
-                        }
+                        Some(PaneStatusState::Done) => AgentPaneStatus::Done,
+                        Some(PaneStatusState::Idle) | None => AgentPaneStatus::Idle,
                     },
                     _ => return None,
                 };
@@ -1712,8 +1767,8 @@ mod tests {
     use zz_daemon_client::DaemonError;
     use zz_gpui::TestAppContext;
     use zz_protocol::{
-        Axis, BrowserDescriptor, LayoutNode, PaneKindSnapshot, PaneSnapshot, PaneSummary,
-        SessionSnapshot, SplitId, WindowSnapshot,
+        Axis, BrowserDescriptor, LayoutNode, PaneKindSnapshot, PaneSnapshot, PaneStatus,
+        PaneSummary, SessionSnapshot, SplitId, WindowSnapshot,
     };
 
     use super::*;
@@ -1749,7 +1804,7 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(1), snapshot.clone(), cx);
         });
         sidebar.update(cx, |sidebar, cx| {
-            assert!(sidebar.synchronize_tree(cx));
+            assert!(!sidebar.synchronize_tree(cx));
             assert_eq!(
                 sidebar.active_target,
                 Some(TreeNode::Target(
@@ -1757,7 +1812,6 @@ mod tests {
                     TreeTarget::Pane(PaneId(202))
                 ))
             );
-            assert!(!sidebar.synchronize_tree(cx));
         });
 
         snapshot.focused_window = Some(WindowId(12));
@@ -1765,7 +1819,7 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(1), snapshot.clone(), cx);
         });
         sidebar.update(cx, |sidebar, cx| {
-            assert!(sidebar.synchronize_tree(cx));
+            assert!(!sidebar.synchronize_tree(cx));
             assert_eq!(
                 sidebar.active_target,
                 Some(TreeNode::Target(
@@ -1780,7 +1834,7 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(1), snapshot.clone(), cx);
         });
         sidebar.update(cx, |sidebar, cx| {
-            assert!(sidebar.synchronize_tree(cx));
+            assert!(!sidebar.synchronize_tree(cx));
             assert_eq!(sidebar.tree_model.hosts[0].sessions[0].name, "renamed");
         });
 
@@ -1788,9 +1842,47 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(999), snapshot, cx);
         });
         sidebar.update(cx, |sidebar, cx| {
-            assert!(sidebar.synchronize_tree(cx));
-            assert_eq!(sidebar.active_target, None);
             assert!(!sidebar.synchronize_tree(cx));
+            assert_eq!(sidebar.active_target, None);
+        });
+    }
+
+    #[zz_gpui::test]
+    fn attention_follows_the_mux_without_a_render(cx: &mut TestAppContext) {
+        let mux = cx.new(|cx| {
+            MuxClient::new(
+                Err(DaemonError::Thread("test client".to_owned())),
+                zz_daemon_client::default_socket_path(),
+                cx,
+            )
+        });
+        let agents = cx.new(|_| AgentController::new(AgentConfig::default()));
+        let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux.clone(), &agents, cx));
+        let mut snapshot = snapshot_with_two_panes();
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(SessionId(1), snapshot.clone(), cx);
+        });
+
+        snapshot.sessions[0].windows[0]
+            .panes
+            .get_mut(&PaneId(101))
+            .expect("terminal pane")
+            .status = Some(PaneStatus {
+            state: PaneStatusState::Blocked,
+            kind: None,
+            progress: None,
+            app: String::new(),
+            title: String::new(),
+            message: String::new(),
+        });
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(SessionId(1), snapshot, cx);
+        });
+        sidebar.read_with(cx, |sidebar, _| {
+            assert_eq!(
+                sidebar.badges.get(&(HostId::LOCAL, PaneId(101))),
+                Some(&AgentBadge::NeedsInput)
+            );
         });
     }
 

@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use zz_gpui::{AnyWindowHandle, App, Entity, Global, Task, WeakEntity};
-use zz_protocol::CommandInvocation;
+use zz_protocol::{CommandInvocation, PaneId};
 
 use crate::{
     config::{self, AppConfig},
@@ -206,6 +206,15 @@ fn quit_and_stop_sessions(mux: &Entity<MuxClient>, cx: &mut App) {
     cx.quit();
 }
 
+pub(crate) fn focus_pane(host: HostId, pane: PaneId, cx: &mut App) {
+    let tray = cx.global::<DesktopTray>();
+    let (Some(window), Some(mux)) = (tray.window, tray.mux.as_ref().and_then(WeakEntity::upgrade))
+    else {
+        return;
+    };
+    handle_intent(TrayEvent::FocusPane(host, pane), &mux, window, cx);
+}
+
 fn handle_intent(event: TrayEvent, mux: &Entity<MuxClient>, handle: AnyWindowHandle, cx: &mut App) {
     show(handle, cx);
     let _ = handle.update(cx, |_, window, cx| {
@@ -247,23 +256,25 @@ fn handle_intent(event: TrayEvent, mux: &Entity<MuxClient>, handle: AnyWindowHan
                     });
                 }
             }
-            TrayEvent::FocusPane(pane) => {
+            TrayEvent::FocusPane(host, pane) => {
                 let client = mux.read(cx);
-                let owner = client.fleet_hosts().find_map(|(host, _, _, snapshot)| {
-                    if host != HostId::LOCAL {
-                        return None;
-                    }
-                    snapshot?.sessions.iter().find_map(|session| {
-                        session
-                            .windows
-                            .iter()
-                            .find(|window| window.panes.contains_key(&pane))
-                            .map(|window| (session.id, window.id))
-                    })
-                });
+                let owner = client
+                    .fleet_hosts()
+                    .find_map(|(fleet_host, _, _, snapshot)| {
+                        if fleet_host != host {
+                            return None;
+                        }
+                        snapshot?.sessions.iter().find_map(|session| {
+                            session
+                                .windows
+                                .iter()
+                                .find(|window| window.panes.contains_key(&pane))
+                                .map(|window| (session.id, window.id))
+                        })
+                    });
                 let activation = owner.and_then(|(session, window)| {
                     activation_for_target(
-                        HostId::LOCAL,
+                        host,
                         TreeTarget::Pane(pane),
                         Some(session),
                         Some(window),

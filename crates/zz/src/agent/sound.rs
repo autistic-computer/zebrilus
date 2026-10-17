@@ -1,13 +1,13 @@
 //! Agent attention: one transition detector per pane, two outputs.
 //!
 //! [`AgentAttentionTracker`] is the single place that watches per-pane agent
-//! status change. From the same edges it emits (a) a chime and (b) the
-//! finished-but-unseen badge state the workspace chrome renders; a desktop
-//! banner would ride the same edges when it lands.
+//! status change. From the same edges it emits (a) a chime, (b) the
+//! finished-but-unseen badge state the workspace chrome renders, and (c) the
+//! per-pane edges a desktop notification is posted from.
 //!
-//! Chime rules: a `Request` on any transition into needs-input, a `Done` only
-//! on the exact working -> idle edge, both silent while the user is already
-//! watching that pane. A pane's first observation only seeds the baseline, so
+//! Chime rules: a `Request` on any transition into needs-input or failed, a
+//! `Done` on the working -> idle edge or on any transition into a program's
+//! `done`, all silent while the user is already watching that pane. A pane's first observation only seeds the baseline, so
 //! restoring a session never rings. Playback drops a chime that comes within two
 //! seconds of the last one, so a program flipping its status cannot ring on repeat.
 //!
@@ -44,6 +44,7 @@ pub(crate) enum AgentPaneStatus {
     Working,
     NeedsInput,
     Failed,
+    Done,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -83,11 +84,29 @@ pub(crate) enum Chime {
     Done,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct AttentionEdge<K> {
+    pub(crate) pane: K,
+    pub(crate) status: AgentPaneStatus,
+    pub(crate) chime: Chime,
+}
+
+pub(crate) fn loudest<K>(edges: &[AttentionEdge<K>]) -> Option<Chime> {
+    edges
+        .iter()
+        .map(|edge| edge.chime)
+        .max_by_key(|chime| *chime == Chime::Request)
+}
+
 const fn chime_for(previous: AgentPaneStatus, next: AgentPaneStatus) -> Option<Chime> {
     match (previous, next) {
-        (AgentPaneStatus::NeedsInput, AgentPaneStatus::NeedsInput) => None,
-        (_, AgentPaneStatus::NeedsInput) => Some(Chime::Request),
-        (AgentPaneStatus::Working, AgentPaneStatus::Idle) => Some(Chime::Done),
+        (AgentPaneStatus::NeedsInput, AgentPaneStatus::NeedsInput)
+        | (AgentPaneStatus::Failed, AgentPaneStatus::Failed)
+        | (AgentPaneStatus::Done, AgentPaneStatus::Done) => None,
+        (_, AgentPaneStatus::NeedsInput | AgentPaneStatus::Failed) => Some(Chime::Request),
+        (AgentPaneStatus::Working, AgentPaneStatus::Idle) | (_, AgentPaneStatus::Done) => {
+            Some(Chime::Done)
+        }
         _ => None,
     }
 }
@@ -110,41 +129,42 @@ impl<K> Default for AgentAttentionTracker<K> {
 impl<K: Copy + Ord> AgentAttentionTracker<K> {
     /// `watched` is the pane the user is demonstrably looking at (focused pane
     /// of an active window), the single gate for both suppressing chimes and
-    /// clearing the finished-but-unseen badge. At most one chime per batch:
-    /// several panes settling together must not stack, and a question outranks
-    /// a completion.
+    /// clearing the finished-but-unseen badge. Returns every unwatched edge;
+    /// [`loudest`] picks the batch's one chime, so several panes settling
+    /// together do not stack and a question outranks a completion.
     pub(crate) fn observe(
         &mut self,
         statuses: &BTreeMap<K, AgentPaneStatus>,
         watched: Option<K>,
-    ) -> Option<Chime> {
+    ) -> Vec<AttentionEdge<K>> {
         self.previous.retain(|pane, _| statuses.contains_key(pane));
         self.unseen.retain(|pane| statuses.contains_key(pane));
 
-        let mut chime = None;
+        let mut edges = Vec::new();
         for (&pane, &status) in statuses {
             let Some(previous) = self.previous.insert(pane, status) else {
                 continue;
             };
-            let Some(edge) = chime_for(previous, status) else {
+            let Some(chime) = chime_for(previous, status) else {
                 continue;
             };
             if watched == Some(pane) {
                 continue;
             }
-            if edge == Chime::Done {
+            if chime == Chime::Done {
                 self.unseen.insert(pane);
             }
-            chime = Some(match chime {
-                Some(Chime::Request) => Chime::Request,
-                _ => edge,
+            edges.push(AttentionEdge {
+                pane,
+                status,
+                chime,
             });
         }
 
         if let Some(pane) = watched {
             self.unseen.remove(&pane);
         }
-        chime
+        edges
     }
 
     pub(crate) fn badge(&self, pane: K, status: AgentPaneStatus) -> Option<AgentBadge> {
@@ -152,7 +172,9 @@ impl<K: Copy + Ord> AgentAttentionTracker<K> {
             AgentPaneStatus::NeedsInput => Some(AgentBadge::NeedsInput),
             AgentPaneStatus::Failed => Some(AgentBadge::Failed),
             AgentPaneStatus::Working => Some(AgentBadge::Working),
-            AgentPaneStatus::Idle => self.unseen.contains(&pane).then_some(AgentBadge::Finished),
+            AgentPaneStatus::Idle | AgentPaneStatus::Done => {
+                self.unseen.contains(&pane).then_some(AgentBadge::Finished)
+            }
         }
     }
 }
@@ -371,22 +393,45 @@ mod tests {
 
     #[test]
     fn chime_edges_follow_the_question_and_completion_rules() {
-        use AgentPaneStatus::{Failed, Idle, NeedsInput, Working};
+        use AgentPaneStatus::{Done, Failed, Idle, NeedsInput, Working};
         assert_eq!(chime_for(Working, NeedsInput), Some(Chime::Request));
         assert_eq!(chime_for(Idle, NeedsInput), Some(Chime::Request));
         assert_eq!(chime_for(Failed, NeedsInput), Some(Chime::Request));
+        assert_eq!(chime_for(Working, Failed), Some(Chime::Request));
+        assert_eq!(chime_for(Idle, Failed), Some(Chime::Request));
         assert_eq!(chime_for(Working, Idle), Some(Chime::Done));
+        assert_eq!(chime_for(Working, Done), Some(Chime::Done));
+        assert_eq!(chime_for(Idle, Done), Some(Chime::Done));
+        assert_eq!(chime_for(NeedsInput, Done), Some(Chime::Done));
         assert_eq!(chime_for(NeedsInput, Idle), None);
         assert_eq!(chime_for(Failed, Idle), None);
+        assert_eq!(chime_for(Done, Idle), None);
         assert_eq!(chime_for(NeedsInput, NeedsInput), None);
+        assert_eq!(chime_for(Failed, Failed), None);
+        assert_eq!(chime_for(Done, Done), None);
         assert_eq!(chime_for(Idle, Working), None);
-        assert_eq!(chime_for(Working, Failed), None);
+    }
+
+    #[test]
+    fn a_done_report_chimes_and_badges_without_a_working_edge() {
+        let mut tracker = AgentAttentionTracker::default();
+        tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None);
+
+        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Done)]), None));
+        assert_eq!(chime, Some(Chime::Done));
+        assert_eq!(
+            tracker.badge(PaneId(1), AgentPaneStatus::Done),
+            Some(AgentBadge::Finished)
+        );
+
+        tracker.observe(&statuses(&[(1, AgentPaneStatus::Done)]), Some(PaneId(1)));
+        assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Done), None);
     }
 
     #[test]
     fn a_panes_first_observation_only_seeds_the_baseline() {
         let mut tracker = AgentAttentionTracker::default();
-        let chime = tracker.observe(&statuses(&[(1, AgentPaneStatus::NeedsInput)]), None);
+        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::NeedsInput)]), None));
         assert_eq!(chime, None);
         assert_eq!(
             tracker.badge(PaneId(1), AgentPaneStatus::NeedsInput),
@@ -399,14 +444,15 @@ mod tests {
         let mut tracker = AgentAttentionTracker::default();
         tracker.observe(&statuses(&[(1, AgentPaneStatus::Working)]), None);
 
-        let chime = tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None);
+        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None));
         assert_eq!(chime, Some(Chime::Done));
         assert_eq!(
             tracker.badge(PaneId(1), AgentPaneStatus::Idle),
             Some(AgentBadge::Finished)
         );
 
-        let chime = tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), Some(PaneId(1)));
+        let chime =
+            loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), Some(PaneId(1))));
         assert_eq!(chime, None);
         assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Idle), None);
     }
@@ -415,16 +461,17 @@ mod tests {
     fn a_watched_pane_neither_chimes_nor_collects_a_badge() {
         let mut tracker = AgentAttentionTracker::default();
         tracker.observe(&statuses(&[(1, AgentPaneStatus::Working)]), Some(PaneId(1)));
-        let chime = tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), Some(PaneId(1)));
+        let chime =
+            loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), Some(PaneId(1))));
         assert_eq!(chime, None);
         assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Idle), None);
 
         let mut tracker = AgentAttentionTracker::default();
         tracker.observe(&statuses(&[(1, AgentPaneStatus::Working)]), Some(PaneId(1)));
-        let chime = tracker.observe(
+        let chime = loudest(&tracker.observe(
             &statuses(&[(1, AgentPaneStatus::NeedsInput)]),
             Some(PaneId(1)),
-        );
+        ));
         assert_eq!(chime, None);
     }
 
@@ -435,11 +482,40 @@ mod tests {
             &statuses(&[(1, AgentPaneStatus::Working), (2, AgentPaneStatus::Working)]),
             None,
         );
-        let chime = tracker.observe(
+        let chime = loudest(&tracker.observe(
             &statuses(&[(1, AgentPaneStatus::Idle), (2, AgentPaneStatus::NeedsInput)]),
             None,
-        );
+        ));
         assert_eq!(chime, Some(Chime::Request));
+    }
+
+    #[test]
+    fn each_unwatched_edge_names_its_pane_and_status() {
+        use AgentPaneStatus::{Done, Failed, Idle, Working};
+        let mut tracker = AgentAttentionTracker::default();
+        tracker.observe(&statuses(&[(1, Working), (2, Working), (3, Working)]), None);
+
+        let edges = tracker.observe(
+            &statuses(&[(1, Idle), (2, Failed), (3, Done)]),
+            Some(PaneId(3)),
+        );
+        assert_eq!(
+            edges,
+            [
+                AttentionEdge {
+                    pane: PaneId(1),
+                    status: Idle,
+                    chime: Chime::Done,
+                },
+                AttentionEdge {
+                    pane: PaneId(2),
+                    status: Failed,
+                    chime: Chime::Request,
+                },
+            ]
+        );
+        assert_eq!(loudest(&edges), Some(Chime::Request));
+        assert_eq!(loudest::<PaneId>(&[]), None);
     }
 
     #[test]
@@ -454,7 +530,7 @@ mod tests {
 
         tracker.observe(&statuses(&[]), None);
         assert_eq!(tracker.badge(PaneId(1), AgentPaneStatus::Idle), None);
-        let chime = tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None);
+        let chime = loudest(&tracker.observe(&statuses(&[(1, AgentPaneStatus::Idle)]), None));
         assert_eq!(chime, None);
     }
 
@@ -466,10 +542,10 @@ mod tests {
             None,
         );
 
-        let chime = tracker.observe(
+        let chime = loudest(&tracker.observe(
             &BTreeMap::from([((2, PaneId(7)), AgentPaneStatus::Idle)]),
             None,
-        );
+        ));
 
         assert_eq!(chime, None);
         assert_eq!(tracker.badge((2, PaneId(7)), AgentPaneStatus::Idle), None);

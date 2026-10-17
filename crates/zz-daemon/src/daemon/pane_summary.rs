@@ -28,6 +28,55 @@ pub(super) fn pane_window_watched(inner: &ServerState, pane: PaneId) -> bool {
             .is_some_and(|clients| !clients.is_empty())
 }
 
+pub(super) fn pane_window_seen(inner: &ServerState, pane: PaneId) -> bool {
+    let Some(window) = inner.engine.state.window_for_pane(pane) else {
+        return false;
+    };
+    let Some(session) = inner
+        .engine
+        .state
+        .windows
+        .get(&window)
+        .map(|window| window.session)
+    else {
+        return false;
+    };
+    let Some(session_state) = inner.engine.state.sessions.get(&session) else {
+        return false;
+    };
+    inner.attached.get(&session).is_some_and(|clients| {
+        clients.iter().any(|&client| {
+            inner.client(client).and_then(|client| client.focused) != Some(false)
+                && client_focused_window(inner, client, session_state) == window
+        })
+    })
+}
+
+pub(super) fn mark_focused_window_seen(inner: &mut ServerState, client: ClientId) -> bool {
+    let Some(session) = client_attached_session(inner, client) else {
+        return false;
+    };
+    let Some(session_state) = inner.engine.state.sessions.get(&session) else {
+        return false;
+    };
+    let window = client_focused_window(inner, client, session_state);
+    let panes = inner
+        .engine
+        .state
+        .windows
+        .get(&window)
+        .map(|window| window.pane_order().to_vec())
+        .unwrap_or_default();
+    let mut changed = false;
+    for pane in panes {
+        changed |= inner
+            .engine
+            .state
+            .update_pane_summary(pane, |summary| summary.unseen = false);
+    }
+    changed
+}
+
 pub(super) fn apply_pane_status(
     inner: &mut ServerState,
     pane: PaneId,
@@ -57,9 +106,9 @@ pub(super) fn apply_pane_status(
         (
             Some(PaneStatusState::Working | PaneStatusState::Blocked),
             Some(PaneStatusState::Idle),
-        ) if !reports_done => Some(!pane_window_watched(inner, pane)),
+        ) if !reports_done => Some(!pane_window_seen(inner, pane)),
         (previous, Some(PaneStatusState::Done)) if previous != Some(PaneStatusState::Done) => {
-            Some(!pane_window_watched(inner, pane))
+            Some(!pane_window_seen(inner, pane))
         }
         _ => None,
     };
