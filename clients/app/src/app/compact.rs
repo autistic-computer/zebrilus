@@ -698,7 +698,7 @@ impl AppShell {
                     terminal.set_rows_above(true, cx);
                     terminal.set_rows_below(true, cx);
                 });
-                background = terminal.read(cx).pane_background(cx).opaque();
+                background = terminal.read(cx).fill(cx);
                 rows_above = terminal.read(cx).rows_above_shown(cx);
                 if current
                     && !self.compact.pager.is_moving()
@@ -734,7 +734,7 @@ impl AppShell {
                     );
                     browser.set_pill(reserve, hole, cx);
                 });
-                background = cx.theme().pane_background(cx.theme().background).opaque();
+                background = cx.theme().pane_color(cx.theme().background);
                 if can_focus && self.focused_pane != Some(pane_id) {
                     browser.read(cx).focus_handle(cx).focus(window, cx);
                     self.focused_pane = Some(pane_id);

@@ -7,7 +7,7 @@ use zz_gpui::{
 };
 use zz_protocol::{AgentProvider, AgentTaskWire, PaneId};
 use zz_ui::{
-    ActiveTheme as _, CHROME_GAP, IconName,
+    CHROME_GAP,
     agent::{
         AgentPaneStatus, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind,
         AgentToolStatus as Status, TimelineRow, agent_pane_header, agent_status_pill,
@@ -142,30 +142,11 @@ impl Render for FullPane {
         let leading = agent_pane_title(
             AgentProvider::ClaudeCode,
             agent_thread_title_editor("full-pane-title", TITLE, true, |_, _| {}, window, cx),
-            PaneDragSource::new(PaneId(1), TITLE, true, |_, _, _| {}),
+            PaneDragSource::new(PaneId(1), TITLE, true, |_, _, _| {})
+                .floating(self.look == Look::Floating),
             |_, _| {},
         );
-        let trailing = h_flex()
-            .gap(px(CHROME_GAP))
-            .child(
-                pane_header_icon_button("full-pane-split-bottom", IconName::PanelBottom, true, cx)
-                    .tooltip("Split bottom"),
-            )
-            .child(
-                pane_header_icon_button("full-pane-split-right", IconName::PanelRight, true, cx)
-                    .tooltip("Split right"),
-            )
-            .when(self.look != Look::Floating, |actions| {
-                actions.child(
-                    pane_header_icon_button(
-                        "full-pane-float",
-                        IconName::PictureInPicture,
-                        true,
-                        cx,
-                    )
-                    .tooltip("Float"),
-                )
-            });
+        let trailing = header_actions("full-pane", self.look == Look::Floating, cx);
         let status = agent_status_pill(
             "full-pane-status",
             AgentPaneStatus::Running,
@@ -193,12 +174,12 @@ impl Render for FullPane {
             window,
             cx,
         );
-        let frame = if self.look == Look::Page {
-            pane_frame(cx).h(px(720.0))
-        } else {
-            div()
+        let frame = match self.look {
+            Look::Page => pane_frame(cx).h(px(720.0)),
+            Look::Tiled => div().size_full(),
+            Look::Floating => div()
                 .size_full()
-                .bg(cx.theme().pane_background(cx.theme().background))
+                .rounded(zz_ui::pip::pip_content_radius(cx)),
         };
         frame
             .flex()
@@ -245,6 +226,19 @@ const FEED_CHILDREN: [(&str, &str); 2] = [
     ("child-1", "Pauli · read mux a"),
     ("child-2", "Galileo · read mux b"),
 ];
+
+fn header_actions(id: &'static str, floats: bool, cx: &App) -> zz_gpui::Div {
+    h_flex()
+        .gap(px(CHROME_GAP))
+        .children(
+            zz_ui::pane::pane_header_actions(floats)
+                .iter()
+                .map(|(action, icon, label)| {
+                    pane_header_icon_button((id, *action as usize), icon.clone(), true, cx)
+                        .tooltip(*label)
+                }),
+        )
+}
 
 pub(crate) fn feed_pane(cx: &mut App) -> AnyView {
     cx.new(|cx| {
@@ -322,19 +316,10 @@ impl Render for FeedPane {
         let leading = agent_pane_title(
             AgentProvider::Codex,
             agent_thread_title_editor("feed-pane-title", "Subagents", false, |_, _| {}, window, cx),
-            PaneDragSource::new(PaneId(7), "Subagents", false, |_, _, _| {}),
+            PaneDragSource::new(PaneId(7), "Subagents", true, |_, _, _| {}).floating(true),
             |_, _| {},
         );
-        let trailing = h_flex()
-            .gap(px(CHROME_GAP))
-            .child(
-                pane_header_icon_button("feed-pane-split-bottom", IconName::PanelBottom, true, cx)
-                    .tooltip("Split bottom"),
-            )
-            .child(
-                pane_header_icon_button("feed-pane-split-right", IconName::PanelRight, true, cx)
-                    .tooltip("Split right"),
-            );
+        let trailing = header_actions("feed-pane", true, cx);
         let status = agent_status_pill(
             "feed-pane-status",
             AgentPaneStatus::Running,
@@ -347,7 +332,7 @@ impl Render for FeedPane {
             .size_full()
             .flex()
             .flex_col()
-            .bg(cx.theme().pane_background(cx.theme().background))
+            .rounded(zz_ui::pip::pip_content_radius(cx))
             .child(agent_pane_header(
                 true,
                 leading,

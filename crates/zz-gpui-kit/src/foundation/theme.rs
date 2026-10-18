@@ -128,7 +128,8 @@ pub struct Theme {
     /// show where it appears.
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
-    pub pane_background_opacity: f32,
+    /// How much of its own color a PiP lays over what is under it.
+    pub pip_opacity: f32,
     /// How far panes stand in from the window's edges: zero while they sit
     /// flush.
     pub pane_margin: Pixels,
@@ -249,34 +250,11 @@ impl Theme {
         !self.shadows_of(self.style(role).shadow).is_empty()
     }
 
-    /// The color a pane shows: `fill` over the window color, at the look's
-    /// pane opacity. Pass `background` for a pane with no fill of its own.
+    /// The solid color of `fill` over the window color. Panes never paint
+    /// it: the window shows through them. A PiP lays it over what is under
+    /// it at [`Self::pip_opacity`].
     pub fn pane_color(&self, fill: Hsla) -> Hsla {
-        self.background
-            .opaque()
-            .blend(fill)
-            .opacity(self.pane_background_opacity)
-    }
-
-    /// How much of its fill a pane's content paints. None under
-    /// [`Self::pane_frames`], where the pane frame owns the fill.
-    pub fn pane_fill_opacity(&self) -> f32 {
-        if self.pane_frames {
-            0.0
-        } else {
-            self.pane_background_opacity
-        }
-    }
-
-    /// What a pane's content paints as its fill: [`Self::pane_color`], or
-    /// nothing under [`Self::pane_frames`], where the pane frame owns the
-    /// fill. It keeps the color's channels, so `.opaque()` still gives the
-    /// solid color.
-    pub fn pane_background(&self, fill: Hsla) -> Hsla {
-        self.background
-            .opaque()
-            .blend(fill)
-            .opacity(self.pane_fill_opacity())
+        self.background.opaque().blend(fill)
     }
 
     /// Whether the active pane stands apart from the others: the look's
@@ -285,22 +263,21 @@ impl Theme {
         self.pane_glow_strength > 0.0 && self.style(Kind::Pane.role()).selected != Highlight::None
     }
 
-    /// The glass a gapped pane draws as its frame and fill: the look's glass
-    /// as the theme defines it, or a plain lit edge the outline's width when
-    /// the look has none, tinted with the pane's color, with no frost or
-    /// lensing. Over an opaque `plane`, the window color behind the pane, the
-    /// tint is the two blended, so the glass paints in place without reading
-    /// the backdrop. Over a translucent plane it stays translucent, since the
-    /// plane already shows through it. No color marks the active pane: it is
-    /// washed lighter and the others are veiled darker, their rims dimmer,
-    /// all scaled by [`Self::pane_glow_strength`].
-    pub fn pane_frame(&self, fill: Hsla, plane: Hsla, active: bool) -> GlassMaterial {
-        let pane = self.pane_color(fill);
+    /// The glass a gapped pane draws as its frame: the look's glass as the
+    /// theme defines it, or a plain lit edge the outline's width when the
+    /// look has none, with no frost or lensing. Over an opaque `plane`, the
+    /// window color behind the pane, it is tinted with the plane, so the
+    /// glass paints in place without reading the backdrop. Over a
+    /// translucent plane the tint is clear, since the plane already shows
+    /// through it. No color marks the active pane: it is washed lighter and
+    /// the others are veiled darker, their rims dimmer, all scaled by
+    /// [`Self::pane_glow_strength`].
+    pub fn pane_frame(&self, plane: Hsla, active: bool) -> GlassMaterial {
         let tint = self.pane_focus(
             if plane.a < 1.0 {
-                pane
+                plane.alpha(0.0)
             } else {
-                plane.blend(pane)
+                plane
             },
             active,
         );
@@ -519,7 +496,7 @@ impl From<&ThemeColor> for Theme {
             styles: HashMap::default(),
             inspect: None,
             inspect_strength: 1.0,
-            pane_background_opacity: 0.5,
+            pip_opacity: 0.8,
             pane_margin: px(0.0),
             pane_frames: false,
             pane_glow_strength: 1.0,
@@ -591,28 +568,13 @@ mod tests {
     }
 
     #[test]
-    fn pane_frames_own_the_pane_fill() {
-        let mut theme = Theme::default();
-        let fill = theme.accent;
-        let solid = theme.background.opaque().blend(fill);
-        assert_eq!(theme.pane_background(fill), theme.pane_color(fill));
-        assert_eq!(theme.pane_fill_opacity(), theme.pane_background_opacity);
-
-        theme.pane_frames = true;
-        assert_eq!(theme.pane_background(fill).a, 0.0);
-        assert_eq!(theme.pane_background(fill).opaque(), solid);
-        assert_eq!(theme.pane_fill_opacity(), 0.0);
-    }
-
-    #[test]
     fn a_pane_frame_lights_an_opaque_edge_with_or_without_the_looks_glass() {
         let mut theme = Theme {
             pane_glow_strength: 0.0,
             ..Theme::default()
         };
-        let fill = theme.accent;
         let plane = theme.background;
-        let tint = plane.blend(theme.pane_color(fill));
+        let tint = plane;
         let edge = GlassMaterial::edge(tint).glint_width(theme.outline);
         let frosted = GlassMaterial::frosted();
         for (glass, rim) in [
@@ -624,7 +586,7 @@ mod tests {
             (Some(frosted), frosted),
         ] {
             theme.glass = glass;
-            let frame = theme.pane_frame(fill, plane, false);
+            let frame = theme.pane_frame(plane, false);
             assert_eq!(frame.tint, tint);
             assert_eq!(frame.fallback, Some(tint));
             assert!(!frame.reads_backdrop());
@@ -649,12 +611,9 @@ mod tests {
         }
 
         theme.outline = px(0.0);
-        assert_eq!(
-            theme.pane_frame(fill, plane, false).specular,
-            frosted.specular
-        );
+        assert_eq!(theme.pane_frame(plane, false).specular, frosted.specular);
         theme.glass = None;
-        assert_eq!(theme.pane_frame(fill, plane, false).specular, 0.0);
+        assert_eq!(theme.pane_frame(plane, false).specular, 0.0);
         assert_eq!(theme.pane_edge_width(), px(0.0));
         theme.outline = px(2.0);
         assert_eq!(theme.pane_edge_width(), px(0.0));
@@ -663,18 +622,14 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_frame_over_a_translucent_plane_adds_only_the_pane() {
-        let mut theme = Theme {
+    fn a_pane_frame_over_a_translucent_plane_adds_nothing_to_it() {
+        let theme = Theme {
             pane_glow_strength: 0.0,
             ..Theme::default()
         };
-        let fill = theme.background;
         let plane = theme.background.alpha(0.93);
-        for opacity in [0.0, 0.4, 1.0] {
-            theme.pane_background_opacity = opacity;
-            assert_eq!(theme.pane_frame(fill, plane, false).tint.a, opacity);
-            assert_eq!(theme.pane_frame(fill, plane.opaque(), false).tint.a, 1.0);
-        }
+        assert_eq!(theme.pane_frame(plane, false).tint.a, 0.0);
+        assert_eq!(theme.pane_frame(plane.opaque(), false).tint.a, 1.0);
     }
 
     #[test]
@@ -716,11 +671,11 @@ mod tests {
     #[test]
     fn the_active_pane_stands_apart_by_light_not_color() {
         let mut theme = Theme::default();
-        let (fill, plane) = (theme.background, theme.background);
+        let plane = theme.background;
         for mode in [ThemeMode::Light, ThemeMode::Dark] {
             theme.mode = mode;
-            let active = theme.pane_frame(fill, plane, true);
-            let inactive = theme.pane_frame(fill, plane, false);
+            let active = theme.pane_frame(plane, true);
+            let inactive = theme.pane_frame(plane, false);
             assert!(
                 crate::oklab_lightness(inactive.tint) < crate::oklab_lightness(active.tint),
                 "{mode:?}"
@@ -731,8 +686,8 @@ mod tests {
         }
         theme.pane_glow_strength = 0.0;
         assert_eq!(
-            theme.pane_frame(fill, plane, true),
-            theme.pane_frame(fill, plane, false)
+            theme.pane_frame(plane, true),
+            theme.pane_frame(plane, false)
         );
         assert_eq!(theme.pane_edge_color(false), theme.divider_color());
     }

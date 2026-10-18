@@ -2371,12 +2371,11 @@ const TRACE_COUNT_BADGE_OVERHANG: f32 =
     TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
-/// What the transcript sits on: its pane's color over the window, as the
-/// pane's frame draws it.
+/// What the transcript sits on: the window, which shows through its pane.
 fn transcript_ground(cx: &App) -> Ground {
     let theme = cx.theme();
     Ground {
-        fill: theme.background.blend(theme.pane_color(theme.background)),
+        fill: theme.background,
         ..theme.ground()
     }
 }

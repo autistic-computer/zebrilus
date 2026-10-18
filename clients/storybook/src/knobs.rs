@@ -40,7 +40,7 @@ pub struct Knobs {
 pub struct PaneKnobs {
     pub gaps: bool,
     pub margin: f32,
-    pub background: f32,
+    pub pip: f32,
     pub inactive: f32,
     pub glow: f32,
 }
@@ -50,7 +50,7 @@ impl Default for PaneKnobs {
         Self {
             gaps: false,
             margin: 6.0,
-            background: 0.5,
+            pip: 0.8,
             inactive: 0.7,
             glow: 1.0,
         }
@@ -312,7 +312,7 @@ impl Knobs {
                 "zoom" => knobs.zoom = number(key, value)?,
                 "pane-gaps" => knobs.pane.gaps = flag(value),
                 "pane-margin" => knobs.pane.margin = number(key, value)?,
-                "pane-opacity" => knobs.pane.background = number(key, value)?,
+                "pip-opacity" => knobs.pane.pip = number(key, value)?,
                 "pane-inactive-opacity" => knobs.pane.inactive = number(key, value)?,
                 "pane-glow" => knobs.pane.glow = number(key, value)?,
                 "motion" => knobs.motion = flag(value),
@@ -387,7 +387,7 @@ impl Knobs {
         if !font_loads {
             theme.font_family = UI_FONT.into();
         }
-        theme.pane_background_opacity = self.pane.background;
+        theme.pip_opacity = self.pane.pip;
         theme.pane_glow_strength = self.pane.glow;
         theme.pane_frames = self.pane.gaps;
         theme.pane_margin = px(if self.pane.gaps {

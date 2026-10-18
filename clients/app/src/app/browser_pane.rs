@@ -797,12 +797,20 @@ impl BrowserPane {
                     .map_or_else(|| "Browser".to_owned(), zz_client::navigation::pane_label),
             )
         };
+        let floats =
+            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), pane);
         let drag_handler = self.header_drag_handler.clone();
-        let mut drag = PaneDragSource::new(pane, drag_title, can_drag, move |drag, window, cx| {
-            if let Some(handler) = &drag_handler {
-                handler(drag, window, cx);
-            }
-        });
+        let mut drag = PaneDragSource::new(
+            pane,
+            drag_title,
+            can_drag || (writable && floats),
+            move |drag, window, cx| {
+                if let Some(handler) = &drag_handler {
+                    handler(drag, window, cx);
+                }
+            },
+        )
+        .floating(floats);
         if let Some(handler) = self.header_touch_drag_handler.clone() {
             drag = drag.touch(super::touch_drag_handle(move |event, window, cx| {
                 handler(event, window, cx);
@@ -832,46 +840,30 @@ impl BrowserPane {
                     connection.command("kill-pane", vec!["-t".to_owned(), pane.to_string()], cx);
                 });
             });
-        let floats =
-            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), pane);
-        let actions = div().flex().gap_1().children(
-            [
-                (
-                    "ios-browser-split-right",
-                    IconName::PanelRight,
-                    "Split right",
-                    "split-window",
-                    vec!["--kind".into(), "picker".into(), "-h".into(), "-t".into()],
-                ),
-                (
-                    "ios-browser-split-bottom",
-                    IconName::PanelBottom,
-                    "Split bottom",
-                    "split-window",
-                    vec!["--kind".into(), "picker".into(), "-v".into(), "-t".into()],
-                ),
-                (
-                    "ios-browser-float",
-                    IconName::PictureInPicture,
-                    "Float",
-                    "break-pane",
-                    vec!["-W".into(), "-s".into()],
-                ),
-            ]
-            .into_iter()
-            .filter(|(_, _, _, command, _)| *command != "break-pane" || !floats)
-            .map(|(id, icon, label, command, mut args)| {
-                args.push(pane.to_string());
-                let connection = self.connection.clone();
-                pane_header_icon_button(id, icon, writable, cx)
-                    .tooltip(label)
-                    .on_click(move |_, _, cx| {
-                        connection.update(cx, |connection, cx| {
-                            connection.command(command, args.clone(), cx);
-                        });
-                    })
-            }),
-        );
+        let actions =
+            div()
+                .flex()
+                .gap_1()
+                .children(zz_ui::pane::pane_header_actions(floats).iter().map(
+                    |(action, icon, label)| {
+                        let connection = self.connection.clone();
+                        let commands = action.commands(pane);
+                        pane_header_icon_button(
+                            ("ios-browser-action", *action as usize),
+                            icon.clone(),
+                            writable,
+                            cx,
+                        )
+                        .tooltip(*label)
+                        .on_click(move |_, _, cx| {
+                            connection.update(cx, |connection, cx| {
+                                for command in commands.clone() {
+                                    connection.invoke(command, cx);
+                                }
+                            });
+                        })
+                    },
+                ));
         (strip, actions)
     }
 
@@ -1159,7 +1151,6 @@ impl Render for BrowserPane {
             .overflow_hidden()
             .rounded_tl(self.radii.top_left)
             .rounded_tr(self.radii.top_right)
-            .bg(cx.theme().pane_background(cx.theme().background))
             .text_color(cx.theme().foreground)
             .child(header)
             .when_some(pick_status, |pane, status| {

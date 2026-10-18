@@ -691,12 +691,16 @@ impl Connection {
     }
 
     pub fn command(&mut self, command: &str, args: Vec<String>, cx: &mut Context<Self>) {
+        self.invoke(CommandInvocation::new(command, args), cx);
+    }
+
+    pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) {
         let request_id = self.next_request_id();
-        self.commands.insert(request_id, command.to_owned());
+        self.commands.insert(request_id, command.name.clone());
         self.send(
             ProtocolMessage::CommandRequest(CommandRequest {
                 request_id,
-                command: CommandInvocation::new(command, args),
+                command,
                 prepared: false,
             }),
             cx,

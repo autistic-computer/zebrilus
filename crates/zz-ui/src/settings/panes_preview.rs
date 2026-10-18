@@ -41,10 +41,7 @@ impl RenderOnce for PanesPreview {
                 PaneChrome::new(Corners::all(radius), self.gaps)
                     .active(active)
                     .dimmed(!active, self.inactive_opacity)
-                    .frame(self.gaps.then(|| {
-                        cx.theme()
-                            .pane_frame(cx.theme().background, backdrop, active)
-                    })),
+                    .frame(self.gaps.then(|| cx.theme().pane_frame(backdrop, active))),
                 cx,
             )
             .min_w_0()
@@ -128,7 +125,7 @@ impl RenderOnce for PanesPreview {
     }
 }
 
-fn sample_surface(cx: &App) -> zz_gpui::Div {
+fn sample_surface() -> zz_gpui::Div {
     div()
         .flex()
         .flex_col()
@@ -136,7 +133,6 @@ fn sample_surface(cx: &App) -> zz_gpui::Div {
         .min_w_0()
         .min_h_0()
         .overflow_hidden()
-        .bg(cx.theme().pane_background(cx.theme().background))
 }
 
 fn sample_header(icon: IconName, title: &'static str, cx: &App) -> zz_gpui::Div {
@@ -165,7 +161,7 @@ fn sample_header(icon: IconName, title: &'static str, cx: &App) -> zz_gpui::Div 
 }
 
 fn terminal_sample(cx: &App) -> zz_gpui::Div {
-    sample_surface(cx)
+    sample_surface()
         .child(sample_header(IconName::SquareTerminal, "Terminal", cx))
         .child(
             div()
@@ -211,7 +207,7 @@ fn agent_sample(cx: &App) -> zz_gpui::Div {
         .px(px(6.0))
         .flex()
         .items_center();
-    sample_surface(cx)
+    sample_surface()
         .child(sample_header(IconName::Bot, "Agent", cx))
         .child(
             div()
@@ -243,7 +239,7 @@ fn agent_sample(cx: &App) -> zz_gpui::Div {
 }
 
 fn browser_sample(content_radius: Pixels, cx: &App) -> zz_gpui::Div {
-    sample_surface(cx)
+    sample_surface()
         .child(sample_header(IconName::Globe, "Browser", cx))
         .child(
             div()

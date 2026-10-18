@@ -40,7 +40,7 @@ pub const DEFAULT_WINDOW_CORNER_RADIUS: f32 = 13.5;
 
 pub const DEFAULT_PANE_GAPS: bool = false;
 pub const DEFAULT_PANE_GLOW_STRENGTH: f32 = 1.0;
-pub const DEFAULT_PANE_BACKGROUND_OPACITY: f32 = 0.5;
+pub const DEFAULT_PIP_BACKGROUND_OPACITY: f32 = 0.8;
 pub const DEFAULT_PANE_INACTIVE_OPACITY: f32 = 0.7;
 pub const MIN_PANE_INACTIVE_OPACITY: f32 = 0.0;
 pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
@@ -127,7 +127,7 @@ pub enum ConfigKey {
     ExperimentalAgentPane,
     ExperimentalEditorPane,
     PaneGaps,
-    PaneBackgroundOpacity,
+    PipBackgroundOpacity,
     PaneGlowStrength,
     PaneInactiveOpacity,
     PaneMargin,
@@ -176,7 +176,7 @@ impl ConfigKey {
             Self::ExperimentalAgentPane => "experimental-agent-pane",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
-            Self::PaneBackgroundOpacity => "pane-background-opacity",
+            Self::PipBackgroundOpacity => "pip-background-opacity",
             Self::PaneGlowStrength => "pane-glow-strength",
             Self::PaneInactiveOpacity => "pane-inactive-opacity",
             Self::PaneMargin => "pane-margin",
@@ -225,7 +225,7 @@ impl ConfigKey {
             "experimental-agent-pane" => Some(Self::ExperimentalAgentPane),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
-            "pane-background-opacity" => Some(Self::PaneBackgroundOpacity),
+            "pip-background-opacity" => Some(Self::PipBackgroundOpacity),
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
             "pane-inactive-opacity" => Some(Self::PaneInactiveOpacity),
             "pane-margin" => Some(Self::PaneMargin),
@@ -255,7 +255,7 @@ impl ConfigKey {
     /// is not numeric.
     pub const fn numeric_range(self) -> Option<(f32, f32)> {
         match self {
-            Self::PaneBackgroundOpacity | Self::ChromeTint => Some((0.0, 1.0)),
+            Self::PipBackgroundOpacity | Self::ChromeTint => Some((0.0, 1.0)),
             Self::PaneGlowStrength => Some((0.0, 2.0)),
             Self::PaneInactiveOpacity => {
                 Some((MIN_PANE_INACTIVE_OPACITY, MAX_PANE_INACTIVE_OPACITY))
@@ -441,7 +441,7 @@ pub struct AppConfig {
     pub experimental_agent_pane: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
-    pub pane_background_opacity: ConfigValue<f32>,
+    pub pip_background_opacity: ConfigValue<f32>,
     pub pane_glow_strength: ConfigValue<f32>,
     pub pane_inactive_opacity: ConfigValue<f32>,
     pub pane_margin: ConfigValue<f32>,
@@ -489,7 +489,7 @@ impl Default for AppConfig {
             experimental_agent_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_AGENT_PANE),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
-            pane_background_opacity: ConfigValue::from_default(DEFAULT_PANE_BACKGROUND_OPACITY),
+            pip_background_opacity: ConfigValue::from_default(DEFAULT_PIP_BACKGROUND_OPACITY),
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
             pane_inactive_opacity: ConfigValue::from_default(DEFAULT_PANE_INACTIVE_OPACITY),
             pane_margin: ConfigValue::from_default(DEFAULT_PANE_MARGIN),
@@ -551,7 +551,7 @@ impl AppConfig {
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteHostPrefix
-            | ConfigKey::PaneBackgroundOpacity
+            | ConfigKey::PipBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
@@ -948,6 +948,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 "pane-border-width" => {
                     "the pane edge follows the theme's glass, or its outline width without glass"
                 }
+                "pane-background-opacity" => {
+                    "panes always show the window behind them; `pip-background-opacity` sets how much of its color a PiP lays over what is under it"
+                }
                 _ => "gapped panes always draw a glass frame",
             };
             parsed.diagnostics.push(ConfigDiagnostic {
@@ -1140,7 +1143,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         let target = match key {
             ConfigKey::WindowCornerRadius => &mut parsed.config.window_corner_radius,
-            ConfigKey::PaneBackgroundOpacity => &mut parsed.config.pane_background_opacity,
+            ConfigKey::PipBackgroundOpacity => &mut parsed.config.pip_background_opacity,
             ConfigKey::PaneGlowStrength => &mut parsed.config.pane_glow_strength,
             ConfigKey::PaneInactiveOpacity => &mut parsed.config.pane_inactive_opacity,
             ConfigKey::PaneMargin => &mut parsed.config.pane_margin,
@@ -1349,7 +1352,7 @@ pub fn parse_numeric_value(
     let unit = if matches!(
         key,
         ConfigKey::PaneInactiveOpacity
-            | ConfigKey::PaneBackgroundOpacity
+            | ConfigKey::PipBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::ChromeContrast
             | ConfigKey::ChromeTint
@@ -1504,7 +1507,12 @@ pub const RETIRED_LOOK_KEYS: [&str; 4] = [
 ];
 
 /// Pane keys an older zz read. Parsing reports them and otherwise ignores them.
-pub const RETIRED_PANE_KEYS: [&str; 3] = ["pane-glass", "pane-corner-radius", "pane-border-width"];
+pub const RETIRED_PANE_KEYS: [&str; 4] = [
+    "pane-glass",
+    "pane-corner-radius",
+    "pane-border-width",
+    "pane-background-opacity",
+];
 
 /// Status bar keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_STATUS_KEYS: [&str; 1] = ["status-show-session"];

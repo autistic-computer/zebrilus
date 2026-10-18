@@ -34,7 +34,7 @@ use zz_gpui::{ObjectFit, external_texture};
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use zz_gpui::{ObjectFit, external_texture, wgpu};
 use zz_protocol::{
-    Axis, BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
+    BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
     InputMessage, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
 };
 use zz_terminal::{KeyAction as TerminalKeyAction, KeyInput as TerminalKeyInput};
@@ -74,7 +74,7 @@ use crate::{
     keymap::ChromeChord,
     mux::{
         client::MuxClient,
-        nav::{TreeTarget, kill_target_command, picker_split_command},
+        nav::{TreeTarget, kill_target_command},
         prefix::terminal_key_input,
     },
     window::corners::{WindowCorners, round_div_radii},
@@ -3589,13 +3589,14 @@ impl Render for BrowserChromeView {
                     PaneDragSource::new(
                         browser.read(cx).pane,
                         self.state.drag_title.clone(),
-                        self.state.can_drag,
+                        self.state.can_drag || self.state.floats,
                         move |drag, _, cx| {
                             if let Some(browser) = drag_browser.upgrade() {
                                 browser.update(cx, |_, cx| cx.emit(*drag));
                             }
                         },
-                    ),
+                    )
+                    .floating(self.state.floats),
                     move |_, cx| {
                         if let Some(browser) = close_browser.upgrade() {
                             browser.update(cx, |view, cx| {
@@ -3609,40 +3610,26 @@ impl Render for BrowserChromeView {
             }
             None => tabs,
         };
-        let action = |icon, label: &'static str, axis: Option<Axis>| {
-            let browser = self.browser.clone();
-            pane_header_icon_button(label, icon, true, cx)
-                .tooltip(label)
-                .on_click(move |_, _, cx| {
-                    cx.stop_propagation();
-                    if let Some(browser) = browser.upgrade() {
-                        browser.update(cx, |view, cx| {
-                            view.mux.read(cx).execute(axis.map_or_else(
-                                || zz_client::floating::float_pane_command(view.pane),
-                                |axis| picker_split_command(view.pane, axis),
-                            ));
-                        });
-                    }
-                })
-        };
-        let actions = div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap_1()
-            .child(action(
-                IconName::PanelBottom,
-                "Split bottom",
-                Some(Axis::Vertical),
-            ))
-            .child(action(
-                IconName::PanelRight,
-                "Split right",
-                Some(Axis::Horizontal),
-            ))
-            .when(!self.state.floats, |actions| {
-                actions.child(action(IconName::PictureInPicture, "Float", None))
-            });
+        let actions = div().flex().flex_none().items_center().gap_1().children(
+            zz_ui::pane::pane_header_actions(self.state.floats)
+                .iter()
+                .map(|(action, icon, label)| {
+                    let browser = self.browser.clone();
+                    let action = *action;
+                    pane_header_icon_button(*label, icon.clone(), true, cx)
+                        .tooltip(*label)
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            if let Some(browser) = browser.upgrade() {
+                                browser.update(cx, |view, cx| {
+                                    for command in action.commands(view.pane) {
+                                        view.mux.read(cx).execute(command);
+                                    }
+                                });
+                            }
+                        })
+                }),
+        );
         div()
             .h(BrowserHeader::HEIGHT)
             .w_full()
@@ -3710,7 +3697,11 @@ impl Render for BrowserView {
                 cx.notify();
             });
         }
-        let content_radii = pane_content_radii(cx, self.window_corners);
+        let content_radii = if floats {
+            Corners::all(zz_ui::pip::pip_content_radius(cx))
+        } else {
+            pane_content_radii(cx, self.window_corners)
+        };
         let surface_radii = Corners {
             top_left: px(0.0),
             top_right: px(0.0),
@@ -3787,10 +3778,8 @@ impl Render for BrowserView {
 
         let browser_surface = div()
             .id("browser-content")
-            .bg(if shows_empty_state {
-                crate::theme::app_pane_background(cx)
-            } else {
-                crate::theme::app_pane_background(cx).opaque()
+            .when(!shows_empty_state, |surface| {
+                surface.bg(cx.theme().pane_color(cx.theme().background))
             })
             .relative()
             .flex()
@@ -3952,7 +3941,6 @@ impl Render for BrowserView {
                 .child(
                     div()
                         .relative()
-                        .bg(crate::theme::app_pane_background(cx))
                         .rounded_tl(content_radii.top_left)
                         .rounded_tr(content_radii.top_right)
                         .h(BrowserHeader::HEIGHT)

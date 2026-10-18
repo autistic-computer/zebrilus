@@ -30,8 +30,8 @@ use zz_gpui::{
 };
 use zz_protocol::{
     ChooseBufferAction, ChooseBufferItem, ChooseTreeAction, ChooseTreeKind, ChooseTreePaneKind,
-    ConfirmAction, DisplayPanesAction, InputMessage, PaneId, PaneKindSnapshot, ProtocolMessage,
-    WindowSnapshot,
+    CommandInvocation, ConfirmAction, DisplayPanesAction, InputMessage, PaneId, PaneKindSnapshot,
+    ProtocolMessage, WindowSnapshot,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Root, StyledExt as _,
@@ -49,9 +49,9 @@ use zz_ui::{
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneArrivals, PaneChrome, PaneDrag, PaneDragOverlayState,
-        PaneDragSource, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, TerminalPaneAction,
-        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame,
-        pane_split_hit_target, pane_split_surface, pane_surface, terminal_pane_header,
+        PaneDragSource, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_drag_overlay,
+        pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
+        pane_split_surface, pane_surface,
     },
     settings::{SettingsSection, settings_navigation_button, settings_navigation_group_label},
     shell::{app_shell_surface, app_workspace_surface},
@@ -179,6 +179,7 @@ pub struct AppShell {
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     float_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     pip: floating::PipState,
+    pane_motion: zz_ui::pane::PaneMotion,
     pane_bounds: Rc<RefCell<HashMap<PaneId, Bounds<Pixels>>>>,
     pane_arrivals: PaneArrivals,
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
@@ -409,6 +410,7 @@ impl AppShell {
             pane_canvas_bounds: Rc::default(),
             float_canvas_bounds: Rc::default(),
             pip: floating::PipState::default(),
+            pane_motion: zz_ui::pane::PaneMotion::default(),
             pane_bounds: Rc::default(),
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
@@ -451,6 +453,11 @@ impl AppShell {
     fn command(&self, command: &str, args: Vec<String>, cx: &mut App) {
         self.connection
             .update(cx, |connection, cx| connection.command(command, args, cx));
+    }
+
+    fn invoke(&self, command: CommandInvocation, cx: &mut App) {
+        self.connection
+            .update(cx, |connection, cx| connection.invoke(command, cx));
     }
 
     fn toggle_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1296,6 +1303,53 @@ impl AppShell {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "a header needs its pane, icon, title, focus, drag and float state"
+    )]
+    pub(super) fn pane_header(
+        &self,
+        pane_id: PaneId,
+        icon: IconName,
+        title: String,
+        active: bool,
+        can_drag: bool,
+        floats: bool,
+        cx: &mut Context<Self>,
+    ) -> zz_gpui::Stateful<zz_gpui::Div> {
+        let view = cx.entity();
+        let touch_view = cx.weak_entity();
+        let connection = self.connection.clone();
+        zz_ui::pane::pane_header(
+            icon,
+            active,
+            title.clone(),
+            PaneDragSource::new(pane_id, title, can_drag, move |drag, _, cx| {
+                view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
+            })
+            .touch(touch_drag_handle(move |event, window, cx| {
+                let _ = touch_view.update(cx, |this, cx| {
+                    this.touch_pane_drag(pane_id, event, window, cx);
+                });
+            })),
+            floats,
+            move |action, _, cx| {
+                connection.update(cx, |connection, cx| {
+                    if !connection.connected || connection.core.attached_read_only() {
+                        return;
+                    }
+                    for command in action.commands(pane_id) {
+                        connection.invoke(command, cx);
+                    }
+                });
+            },
+            cx,
+        )
+        .on_click(cx.listener(move |this, _, window, cx| {
+            this.focus_pane(pane_id, window, cx);
+        }))
+    }
+
     fn on_pane_drag_start(&mut self, drag: PaneDrag, cx: &mut Context<Self>) {
         let Some(active) = self.active_window(cx) else {
             return;
@@ -1374,6 +1428,20 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(float) = self.active_window(cx).and_then(|active| {
+            active
+                .floating
+                .iter()
+                .find(|float| {
+                    float.pane == pane
+                        && float.visible
+                        && active.modal.is_none_or(|modal| modal.pane != pane)
+                })
+                .copied()
+        }) {
+            self.touch_pip(float, event, window, cx);
+            return;
+        }
         match event.phase {
             zz_gpui::TouchPhase::Started => {
                 self.on_pane_drag_start(
@@ -1606,6 +1674,11 @@ impl AppShell {
         };
         self.reconcile_pane_drag(&active_window, window, cx);
         self.reconcile_split_drag(&active_window, cx);
+        self.pane_motion.begin(
+            active_window.id,
+            window.viewport_size(),
+            self.split_drag.is_some(),
+        );
         let mut layout = active_window.zoomed_pane.map_or_else(
             || {
                 self.pane_layout_override.as_ref().map_or_else(
@@ -1640,9 +1713,6 @@ impl AppShell {
             && core.menu().is_none()
             && core.confirm().is_none()
             && core.command_output().is_none();
-        let output = core
-            .command_output_id()
-            .zip(core.command_output().map(|(pane, _)| pane));
         self.prune_pane_entities(cx);
         let mut panes = HashMap::new();
         self.pane_bounds
@@ -1678,7 +1748,11 @@ impl AppShell {
                 &self.preferences,
                 f32::from(cx.theme().pane_radius()),
             );
-            let radii = Corners::all(px(frame.radius));
+            let radii = if is_float && floating::draws_own_header(&pane.kind) {
+                Corners::all(zz_ui::pip::pip_content_radius(cx))
+            } else {
+                Corners::all(px(frame.radius))
+            };
             let dead_label = pane.dead.then(|| {
                 pane.dead_status
                     .map_or_else(|| "Dead".to_owned(), |status| format!("Dead · {status}"))
@@ -1789,68 +1863,23 @@ impl AppShell {
                     picker.into_any_element()
                 }
             };
-            let background = output
-                .filter(|(_, pane)| *pane == pane_id)
-                .and(self.output_terminal.as_ref())
-                .map(|(_, terminal)| terminal)
-                .or_else(|| self.terminals.get(&pane_id))
-                .map_or_else(
-                    || cx.theme().pane_background(cx.theme().background),
-                    |terminal| terminal.read(cx).pane_background(cx),
-                );
             let content = if frame.header {
                 let title = zz_client::navigation::pane_label(pane);
-                let view = cx.entity();
-                let touch_view = cx.weak_entity();
-                let connection = self.connection.clone();
-                let header = terminal_pane_header(
+                let header = self.pane_header(
+                    pane_id,
+                    IconName::SquareTerminal,
+                    title,
                     active_window.active_pane == pane_id,
-                    title.clone(),
-                    PaneDragSource::new(pane_id, title, can_drag, move |drag, _, cx| {
-                        view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
-                    })
-                    .touch(touch_drag_handle(move |event, window, cx| {
-                        let _ = touch_view.update(cx, |this, cx| {
-                            this.touch_pane_drag(pane_id, event, window, cx);
-                        });
-                    })),
-                    move |action, _, cx| {
-                        connection.update(cx, |connection, cx| {
-                            if !connection.connected || connection.core.attached_read_only() {
-                                return;
-                            }
-                            let (name, mut args, target) = match action {
-                                TerminalPaneAction::SplitBottom => (
-                                    "split-window",
-                                    vec!["--kind".into(), "picker".into(), "-v".into()],
-                                    "-t",
-                                ),
-                                TerminalPaneAction::SplitRight => (
-                                    "split-window",
-                                    vec!["--kind".into(), "picker".into(), "-h".into()],
-                                    "-t",
-                                ),
-                                TerminalPaneAction::Float => {
-                                    ("break-pane", vec!["-W".into()], "-s")
-                                }
-                                TerminalPaneAction::Close => ("kill-pane", Vec::new(), "-t"),
-                            };
-                            args.extend([target.into(), pane_id.to_string()]);
-                            connection.command(name, args, cx);
-                        });
-                    },
+                    can_drag,
+                    false,
                     cx,
-                )
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.focus_pane(pane_id, window, cx);
-                }));
+                );
                 div()
                     .flex()
                     .flex_col()
                     .size_full()
                     .child(pane_header_frame(
                         header,
-                        background,
                         radii,
                         if active_window.active_pane == pane_id {
                             1.0
@@ -1870,10 +1899,11 @@ impl AppShell {
                     !active && !matches!(pane.kind, PaneKindSnapshot::Terminal),
                     self.preferences.pane_inactive_opacity,
                 )
-                .frame(frame.framed.then(|| {
-                    cx.theme()
-                        .pane_frame(background.opaque(), cx.theme().background, active)
-                }));
+                .frame(
+                    frame
+                        .framed
+                        .then(|| cx.theme().pane_frame(cx.theme().background, active)),
+                );
             let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal);
             let mut status_tags = Vec::new();
             if !terminal_pane && let Some(label) = dead_label {
@@ -2035,6 +2065,7 @@ impl AppShell {
         }
         let content = self.render_layout(&layout, &active_window, &mut panes, cx);
         self.tick_pip(&active_window, window, cx);
+        self.pip.stage.observe(&active_window);
         let float_layer = self.float_layer(&active_window, &floats, &mut panes, cx);
         let float_canvas = Rc::clone(&self.float_canvas_bounds);
         let content = div()
@@ -2139,9 +2170,16 @@ impl AppShell {
             let zz_protocol::LayoutNode::Pane(pane) = node else {
                 return div().size_full().into_any_element();
             };
-            return panes
-                .remove(pane)
-                .unwrap_or_else(|| div().into_any_element());
+            let Some(element) = panes.remove(pane) else {
+                return div().into_any_element();
+            };
+            return zz_ui::pane::moving_pane(*pane, &self.pane_motion, element)
+                .hold(
+                    self.terminals
+                        .get(pane)
+                        .map(|terminal| terminal.read(cx).moving()),
+                )
+                .into_any_element();
         };
         let first = self.render_layout(first, active, panes, cx);
         let second = self.render_layout(second, active, panes, cx);
@@ -3054,13 +3092,7 @@ fn update_split_ratio(node: &mut zz_protocol::LayoutNode, split: zz_protocol::Sp
 }
 
 fn pane_icon(kind: &PaneKindSnapshot) -> IconName {
-    match kind {
-        PaneKindSnapshot::Terminal => IconName::SquareTerminal,
-        PaneKindSnapshot::Browser(_) => IconName::Globe,
-        PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
-        PaneKindSnapshot::Editor(_) => IconName::File,
-        PaneKindSnapshot::Picker => IconName::Plus,
-    }
+    zz_ui::pane::pane_kind_icon(kind)
 }
 
 fn unsupported_pane(
@@ -3113,10 +3145,8 @@ fn unsupported_pane(
                 .rounded_tl(radii.top_left)
                 .rounded_tr(radii.top_right)
         })
-        .bg(if title == "Browser" {
-            cx.theme().background.opaque()
-        } else {
-            cx.theme().pane_background(cx.theme().background)
+        .when(title == "Browser", |message| {
+            message.bg(cx.theme().background.opaque())
         })
         .child(Icon::new(icon).size(px(26.0)))
         .child(title.to_owned())
@@ -3142,7 +3172,6 @@ fn unsupported_pane(
                 .flex_none()
                 .rounded_tl(radii.top_left)
                 .rounded_tr(radii.top_right)
-                .bg(cx.theme().pane_background(cx.theme().background))
                 .child(toolbar)
         }))
         .child(message)

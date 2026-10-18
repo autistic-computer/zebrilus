@@ -73,7 +73,6 @@ use super::{
             terminal_body,
         },
         flat_sidebar::Live,
-        panes::thrown_pip,
         shell::{Shell, with_sidebar},
         status_bar::{Bar, titlebar},
     },
@@ -111,7 +110,7 @@ pub const STORY: Story = Story {
         Section {
             id: "pip",
             name: "PiP",
-            summary: "Floats drawn as PiPs over the tiled panes: a terminal focused with its bar showing, a subagent feed at rest, and the nine places while one is thrown.",
+            summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and a subagent feed.",
             build: Pip::view,
         },
         Section {
@@ -379,57 +378,43 @@ impl Render for Pip {
             "showcase-pip-terminal",
             terminal_body(BUILD, false, cx).bg(zz_gpui::transparent_black()),
         )
-        .title("cargo watch -x test")
-        .content_inset(px(8.0), px(16.0))
-        .active(true)
-        .bar_handle(zz_gpui::Styled::visible)
-        .on_tile(|_, _, _| {})
-        .on_zoom(|_, _, _| {})
-        .on_close(|_, _, _| {});
-        let feed = PipSurface::new("showcase-pip-feed", self.feed.clone())
-            .title("Subagents")
-            .on_tile(|_, _, _| {})
-            .on_zoom(|_, _, _| {})
-            .on_close(|_, _, _| {});
-        v_flex()
-            .w_full()
-            .gap(px(GAP))
-            .child(
-                div()
-                    .id("showcase-pip")
-                    .relative()
-                    .w_full()
-                    .h(px(PIP_HEIGHT))
-                    .overflow_hidden()
-                    .rounded(cx.theme().radius)
-                    .framed(cx)
-                    .bg(cx.theme().background)
-                    .p(gap(gaps))
-                    .child(tiled)
-                    .child(
-                        div()
-                            .absolute()
-                            .left(px(32.0))
-                            .bottom(px(32.0))
-                            .w(px(360.0))
-                            .h(px(180.0))
-                            .child(terminal),
-                    )
-                    .child(
-                        div()
-                            .absolute()
-                            .right(px(32.0))
-                            .top(px(32.0))
-                            .w(px(380.0))
-                            .h(px(320.0))
-                            .child(feed),
-                    ),
-            )
-            .child(plate(
-                "showcase-pip-throw",
-                thrown_pip("showcase-pip-places", cx),
-                cx,
-            ))
+        .header(super::workspace::panes::pip_header(
+            "cargo watch -x test",
+            cx,
+        ))
+        .content_inset(px(8.0), px(16.0));
+        let feed = PipSurface::new("showcase-pip-feed", self.feed.clone());
+        v_flex().w_full().gap(px(GAP)).child(
+            div()
+                .id("showcase-pip")
+                .relative()
+                .w_full()
+                .h(px(PIP_HEIGHT))
+                .overflow_hidden()
+                .rounded(cx.theme().radius)
+                .framed(cx)
+                .bg(cx.theme().background)
+                .p(gap(gaps))
+                .child(tiled)
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(32.0))
+                        .bottom(px(32.0))
+                        .w(px(360.0))
+                        .h(px(180.0))
+                        .child(terminal),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .right(px(32.0))
+                        .top(px(32.0))
+                        .w(px(380.0))
+                        .h(px(320.0))
+                        .child(feed),
+                ),
+        )
     }
 }
 
