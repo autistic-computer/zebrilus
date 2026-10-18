@@ -156,6 +156,7 @@ impl RenderOnce for PaneTitle {
 pub enum TerminalPaneAction {
     SplitBottom,
     SplitRight,
+    Float,
     Close,
 }
 
@@ -223,6 +224,11 @@ pub fn terminal_pane_header(
                     TerminalPaneAction::SplitRight,
                     IconName::PanelRight,
                     "Split right",
+                ))
+                .child(action(
+                    TerminalPaneAction::Float,
+                    IconName::PictureInPicture,
+                    "Float",
                 )),
         )
 }

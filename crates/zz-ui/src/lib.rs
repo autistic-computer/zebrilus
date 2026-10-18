@@ -42,6 +42,7 @@ pub mod navigation;
 pub mod pane;
 pub mod path_picker;
 pub mod picker;
+pub mod pip;
 pub mod roles;
 pub mod settings;
 pub mod shell;

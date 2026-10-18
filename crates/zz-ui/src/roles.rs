@@ -121,6 +121,19 @@ pub const FLOATING_PANE: SurfaceRole = SurfaceRole::new(
 )
 .with(P.selected(Highlight::Ring))
 .with_knobs(SurfaceRole::DIALOG.knobs());
+pub const PIP: SurfaceRole = SurfaceRole::under(
+    &FLOATING_PANE,
+    "pane.pip",
+    "PiPs",
+    "Floating panes in the GUI: any pane over the window, thrown to one of nine places",
+);
+pub const PIP_SNAP: SurfaceRole = SurfaceRole::under(
+    &DROP_ZONE,
+    "pane.pip.snap",
+    "PiP places",
+    "The nine places a dragged PiP can land, the one it is headed for lit",
+)
+.with(P.selected(Highlight::Ring));
 pub const PANE_HEADER: SurfaceRole = SurfaceRole::new(
     "pane.header",
     Kind::Bar,
@@ -135,6 +148,20 @@ pub const PANE_HEADER_BUTTON: SurfaceRole = SurfaceRole::under(
     "Split and the other buttons in pane headers",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
+pub const PIP_BAR: SurfaceRole = SurfaceRole::under(
+    &PANE_HEADER,
+    "pane.pip.bar",
+    "PiP bars",
+    "The bar a PiP shows on hover: its title, tile back, zoom and close",
+)
+.with(P.fill(Fill::Glass));
+pub const PIP_BUTTON: SurfaceRole = SurfaceRole::under(
+    &PANE_HEADER_BUTTON,
+    "pane.pip.button",
+    "PiP buttons",
+    "Tile back, zoom and close in a PiP's bar",
+)
+.with(P.hover(Highlight::Tint));
 pub const PANE_TITLE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::QUIET_BUTTON,
     "pane.header.title",
@@ -469,6 +496,7 @@ const ZZ: &[SurfaceRole] = &[
     SIDEBAR,
     TITLEBAR,
     PANE_HEADER,
+    PIP_BAR,
     PHONE_BAR,
     AGENT_BUBBLE,
     CODE,
@@ -481,10 +509,12 @@ const ZZ: &[SurfaceRole] = &[
     PICKER,
     INLINE_PANEL,
     FLOATING_PANE,
+    PIP,
     PANE_CHIP,
     DISPLAY_PANES,
     DRAG_CHIP,
     DROP_ZONE,
+    PIP_SNAP,
     HOST_ACTION,
     PANE_PICKER,
     AGENT_OPTION,
@@ -494,6 +524,7 @@ const ZZ: &[SurfaceRole] = &[
     WINDOW_CONTROLS,
     ROW_ACTION,
     PANE_HEADER_BUTTON,
+    PIP_BUTTON,
     PANE_TITLE,
     AGENT_SEND,
     AGENT_JUMP,

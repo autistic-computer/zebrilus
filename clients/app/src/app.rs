@@ -178,6 +178,7 @@ pub struct AppShell {
     pane_layout_override: Option<PaneLayoutOverride>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     float_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
+    pip: floating::PipState,
     pane_bounds: Rc<RefCell<HashMap<PaneId, Bounds<Pixels>>>>,
     pane_arrivals: PaneArrivals,
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
@@ -407,6 +408,7 @@ impl AppShell {
             pane_layout_override: None,
             pane_canvas_bounds: Rc::default(),
             float_canvas_bounds: Rc::default(),
+            pip: floating::PipState::default(),
             pane_bounds: Rc::default(),
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
@@ -1817,18 +1819,23 @@ impl AppShell {
                             if !connection.connected || connection.core.attached_read_only() {
                                 return;
                             }
-                            let (name, mut args) = match action {
+                            let (name, mut args, target) = match action {
                                 TerminalPaneAction::SplitBottom => (
                                     "split-window",
                                     vec!["--kind".into(), "picker".into(), "-v".into()],
+                                    "-t",
                                 ),
                                 TerminalPaneAction::SplitRight => (
                                     "split-window",
                                     vec!["--kind".into(), "picker".into(), "-h".into()],
+                                    "-t",
                                 ),
-                                TerminalPaneAction::Close => ("kill-pane", Vec::new()),
+                                TerminalPaneAction::Float => {
+                                    ("break-pane", vec!["-W".into()], "-s")
+                                }
+                                TerminalPaneAction::Close => ("kill-pane", Vec::new(), "-t"),
                             };
-                            args.extend(["-t".into(), pane_id.to_string()]);
+                            args.extend([target.into(), pane_id.to_string()]);
                             connection.command(name, args, cx);
                         });
                     },
@@ -2027,6 +2034,7 @@ impl AppShell {
             );
         }
         let content = self.render_layout(&layout, &active_window, &mut panes, cx);
+        self.tick_pip(&active_window, window, cx);
         let float_layer = self.float_layer(&active_window, &floats, &mut panes, cx);
         let float_canvas = Rc::clone(&self.float_canvas_bounds);
         let content = div()

@@ -2593,7 +2593,19 @@ impl Render for AgentPane {
         .on_click(cx.listener(|this, _, window, cx| this.open_directory(window, cx)))
         .into_any_element();
         let pane = self.pane;
-        let composer =
+        let watch_only = self.connection.read(cx).agent_watch_only(self.pane);
+        let composer = if watch_only {
+            div()
+                .flex()
+                .flex_col()
+                .w_full()
+                .flex_none()
+                .gap_2()
+                .px_3()
+                .pb_3()
+                .children(prefix)
+                .into_any_element()
+        } else {
             AgentComposer {
                 input: self.input.clone(),
                 action: action.into_any_element(),
@@ -2642,7 +2654,9 @@ impl Render for AgentPane {
                         ))
                         .into_any_element()
                 }),
-            };
+            }
+            .into_any_element()
+        };
         let provider = self.descriptor.provider;
         let title = self
             .connection
@@ -2765,6 +2779,8 @@ impl Render for AgentPane {
         } else {
             timeline
         };
+        let floats =
+            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), self.pane);
         div()
             .relative()
             .flex()
@@ -2793,32 +2809,38 @@ impl Render for AgentPane {
                             "web-agent-split-bottom",
                             IconName::PanelBottom,
                             "Split bottom",
-                            "-v",
+                            Some("-v"),
                         ),
                         (
                             "web-agent-split-right",
                             IconName::PanelRight,
                             "Split right",
-                            "-h",
+                            Some("-h"),
                         ),
+                        ("web-agent-float", IconName::PictureInPicture, "Float", None),
                     ]
                     .into_iter()
+                    .filter(|(_, _, _, flag)| flag.is_some() || !floats)
                     .map(|(id, icon, label, flag)| {
                         pane_header_icon_button(id, icon, writable, cx)
                             .tooltip(label)
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.connection.update(cx, |connection, cx| {
-                                    connection.command(
+                                let pane = this.pane.to_string();
+                                let (name, args) = match flag {
+                                    Some(flag) => (
                                         "split-window",
                                         vec![
                                             "--kind".into(),
                                             "picker".into(),
                                             flag.to_owned(),
                                             "-t".to_owned(),
-                                            this.pane.to_string(),
+                                            pane,
                                         ],
-                                        cx,
-                                    );
+                                    ),
+                                    None => ("break-pane", vec!["-W".into(), "-s".into(), pane]),
+                                };
+                                this.connection.update(cx, |connection, cx| {
+                                    connection.command(name, args, cx);
                                 });
                                 cx.stop_propagation();
                             }))

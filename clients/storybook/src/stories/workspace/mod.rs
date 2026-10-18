@@ -4,7 +4,7 @@ pub(super) mod browser;
 pub(super) mod fixtures;
 pub(super) mod flat_sidebar;
 mod navigation;
-mod panes;
+pub(super) mod panes;
 mod settings;
 pub(super) mod shell;
 pub(super) mod status_bar;

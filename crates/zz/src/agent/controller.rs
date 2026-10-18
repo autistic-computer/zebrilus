@@ -112,7 +112,7 @@ pub(crate) use zz_client::agent_config::{AgentConfigCategory, AgentConfigOption,
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "ACP exposes these seven independent capabilities"
+    reason = "ACP exposes these independent capabilities"
 )]
 pub(crate) struct AgentSessionCapabilities {
     pub(crate) load: bool,
@@ -124,6 +124,7 @@ pub(crate) struct AgentSessionCapabilities {
     /// same handshake and gates the composer the same way.
     pub(crate) images: bool,
     pub(crate) verbs: bool,
+    pub(crate) watch: bool,
 }
 
 pub(crate) use zz_protocol::agent_stream::AgentSessionSummary;
@@ -1771,6 +1772,7 @@ impl AgentController {
                     additional_directories: capabilities.additional_directories,
                     images: capabilities.images,
                     verbs: capabilities.verbs,
+                    watch: capabilities.watch,
                 },
             },
             AgentStreamPayload::SessionReset { restoring } => {

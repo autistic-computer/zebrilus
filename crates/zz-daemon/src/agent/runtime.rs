@@ -107,6 +107,10 @@ pub(crate) enum RuntimeCommand {
     StopTask {
         task_id: String,
     },
+    InterruptThread {
+        thread_id: String,
+        turn_id: String,
+    },
     Authenticate {
         method_id: String,
     },
@@ -821,6 +825,7 @@ pub(crate) async fn run_agent_connection(
                     .is_some(),
                 images: response.agent_capabilities.prompt_capabilities.image,
                 verbs: false,
+                watch: false,
             };
             let (agent_name, agent_key) = response.agent_info.map_or_else(
                 || ("ACP agent".to_owned(), "acp-agent".to_owned()),
@@ -1568,7 +1573,9 @@ pub(crate) async fn run_agent_connection(
                             .await?,
                         }
                     }
-                    RuntimeCommand::Verb { .. } | RuntimeCommand::StopTask { .. } => {
+                    RuntimeCommand::Verb { .. }
+                    | RuntimeCommand::StopTask { .. }
+                    | RuntimeCommand::InterruptThread { .. } => {
                         log::debug!(target: "zz::agent", "an ACP agent has no zz commands");
                     }
                     RuntimeCommand::Shutdown => {

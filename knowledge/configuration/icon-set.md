@@ -100,7 +100,8 @@ a missing scale means a sharp vertex.
   glyphs (2..22 × 3..21) after the reference fabrico picked; `list` and `list-tree` are the sidebar's
   flat window list and session tree, and the view button shows the one on screen; `panel-right` and
   `panel-bottom` are the split right and split down actions (two equal panes, no plus); `layout-columns` is the "Window layout" menu (one tall pane and two
-  stacked); `layers` is a session (a stack of window cards); `loader` is the Mac activity spinner.
+  stacked); `layers` is a session (a stack of window cards); `picture-in-picture` is Float (a window with a
+  filled card in its corner); `loader` is the Mac activity spinner.
 - Each icon may carry a `note` that explains a choice; the review page shows it on the card.
 
 # Adding or changing an icon

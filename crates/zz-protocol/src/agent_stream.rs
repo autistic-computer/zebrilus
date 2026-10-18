@@ -229,6 +229,8 @@ pub struct AgentSessionCapabilities {
     pub images: bool,
     #[serde(default)]
     pub verbs: bool,
+    #[serde(default)]
+    pub watch: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

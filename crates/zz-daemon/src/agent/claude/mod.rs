@@ -1,4 +1,5 @@
 pub(crate) mod sessions;
+pub(crate) mod subagents;
 pub(crate) mod translate;
 
 use std::{
@@ -666,7 +667,7 @@ impl Runtime {
                 );
                 Ok(())
             }
-            RuntimeCommand::Shutdown => Ok(()),
+            RuntimeCommand::InterruptThread { .. } | RuntimeCommand::Shutdown => Ok(()),
         }
     }
 
@@ -898,6 +899,7 @@ impl Runtime {
                     additional_directories: false,
                     images: true,
                     verbs: true,
+                    watch: false,
                 },
             })
             .await?;

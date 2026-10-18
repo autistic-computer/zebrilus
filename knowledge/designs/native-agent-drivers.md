@@ -267,7 +267,9 @@ Codex. The drivers have not been run against older versions.
 # Next
 
 1. The Changes pane: a pane type for a session's diffs that the trace's edit steps open.
-2. Orchestration: PiP panes and a decision on in-session tools. The groundwork is in:
+2. Orchestration: PiP panes and a decision on in-session tools. Claude subagents and Codex children
+   already float as watch-only PiP feeds ([PiP panes](/designs/pip-panes.md#subagent-feeds)). The
+   groundwork is in:
    `agent-send --notify` submits to another agent pane and, when that turn ends, posts the reply
    back into the calling agent pane as a prompt queued behind its own turn (t3code's async
    completion, over the CLI agents already use). Both vendors can also host tools without a

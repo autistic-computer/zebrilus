@@ -4,7 +4,8 @@
 //! ordinary commands.
 
 use zz_protocol::{
-    CommandInvocation, FloatingPaneSnapshot, PaneBorderLines, PaneBorderStatus, PaneId, TmuxAlign,
+    CommandInvocation, FloatingPaneSnapshot, MuxSnapshot, PaneBorderLines, PaneBorderStatus,
+    PaneId, TmuxAlign,
 };
 
 /// A float's content box in window cells, borders outside it.
@@ -228,6 +229,144 @@ pub fn float_drag_command(
         "resize-pane",
         resize_pane.split(' ').skip(1).map(str::to_owned),
     )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FloatPlace {
+    TopLeft,
+    TopCentre,
+    TopRight,
+    CentreLeft,
+    Centre,
+    CentreRight,
+    BottomLeft,
+    BottomCentre,
+    BottomRight,
+}
+
+impl FloatPlace {
+    pub const ALL: [Self; 9] = [
+        Self::TopLeft,
+        Self::TopCentre,
+        Self::TopRight,
+        Self::CentreLeft,
+        Self::Centre,
+        Self::CentreRight,
+        Self::BottomLeft,
+        Self::BottomCentre,
+        Self::BottomRight,
+    ];
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::TopLeft => "top-left",
+            Self::TopCentre => "top-centre",
+            Self::TopRight => "top-right",
+            Self::CentreLeft => "centre-left",
+            Self::Centre => "centre",
+            Self::CentreRight => "centre-right",
+            Self::BottomLeft => "bottom-left",
+            Self::BottomCentre => "bottom-centre",
+            Self::BottomRight => "bottom-right",
+        }
+    }
+
+    #[must_use]
+    pub fn cells(
+        self,
+        float: FloatCells,
+        window: (u16, u16),
+        lines: PaneBorderLines,
+    ) -> FloatCells {
+        let border = i32::from(lines != PaneBorderLines::None);
+        let (wx, wy) = (i32::from(window.0), i32::from(window.1));
+        let (px, py) = (i32::from(float.sx), i32::from(float.sy));
+        let left = border;
+        let centre_x = (wx - px) / 2;
+        let right = wx - px - border;
+        let top = border;
+        let centre_y = (wy - py) / 2;
+        let bottom = wy - py - border;
+        let (xoff, yoff) = match self {
+            Self::TopLeft => (left, top),
+            Self::TopCentre => (centre_x, top),
+            Self::TopRight => (right, top),
+            Self::CentreLeft => (left, centre_y),
+            Self::Centre => (centre_x, centre_y),
+            Self::CentreRight => (right, centre_y),
+            Self::BottomLeft => (left, bottom),
+            Self::BottomCentre => (centre_x, bottom),
+            Self::BottomRight => (right, bottom),
+        };
+        FloatCells {
+            xoff,
+            yoff,
+            ..float
+        }
+    }
+
+    #[must_use]
+    pub fn nearest(
+        point: (f32, f32),
+        float: FloatCells,
+        window: (u16, u16),
+        lines: PaneBorderLines,
+    ) -> Self {
+        let distance = |place: Self| {
+            let cells = place.cells(float, window, lines);
+            let (x, y) = cells.centre();
+            (x - point.0).powi(2) + (y - point.1).powi(2)
+        };
+        Self::ALL
+            .into_iter()
+            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
+            .unwrap_or(Self::BottomRight)
+    }
+
+    #[must_use]
+    pub fn command(self, pane: PaneId) -> CommandInvocation {
+        CommandInvocation::new(
+            "move-pane",
+            [
+                "-t".to_owned(),
+                pane.to_string(),
+                "-P".to_owned(),
+                self.name().to_owned(),
+            ],
+        )
+    }
+}
+
+impl FloatCells {
+    #[must_use]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "window cell offsets are far below f32's exact integer range"
+    )]
+    pub fn centre(self) -> (f32, f32) {
+        (
+            self.xoff as f32 + f32::from(self.sx) / 2.0,
+            self.yoff as f32 + f32::from(self.sy) / 2.0,
+        )
+    }
+}
+
+#[must_use]
+pub fn float_pane_command(pane: PaneId) -> CommandInvocation {
+    CommandInvocation::new(
+        "break-pane",
+        ["-W".to_owned(), "-s".to_owned(), pane.to_string()],
+    )
+}
+
+#[must_use]
+pub fn pane_floats(snapshot: &MuxSnapshot, pane: PaneId) -> bool {
+    snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .any(|window| window.floating.iter().any(|float| float.pane == pane))
 }
 
 #[cfg(test)]
@@ -510,6 +649,49 @@ mod tests {
         );
         assert_eq!(words(&command), "resize-pane -t %2 -x 26 -y 7");
         assert_eq!(apply(over_status, bottom, &command), target);
+    }
+
+    #[test]
+    fn places_match_move_pane_p_on_an_80_by_24_window() {
+        let window = (80, 24);
+        let at = |place: FloatPlace, lines| {
+            let cells = place.cells(FLOAT, window, lines);
+            (cells.xoff, cells.yoff)
+        };
+        let single = PaneBorderLines::Single;
+        assert_eq!(at(FloatPlace::TopLeft, single), (1, 1));
+        assert_eq!(at(FloatPlace::TopCentre, single), (30, 1));
+        assert_eq!(at(FloatPlace::TopRight, single), (59, 1));
+        assert_eq!(at(FloatPlace::CentreLeft, single), (1, 9));
+        assert_eq!(at(FloatPlace::Centre, single), (30, 9));
+        assert_eq!(at(FloatPlace::CentreRight, single), (59, 9));
+        assert_eq!(at(FloatPlace::BottomLeft, single), (1, 17));
+        assert_eq!(at(FloatPlace::BottomCentre, single), (30, 17));
+        assert_eq!(at(FloatPlace::BottomRight, single), (59, 17));
+        assert_eq!(at(FloatPlace::BottomRight, PaneBorderLines::None), (60, 18));
+        assert_eq!(FloatPlace::Centre.cells(FLOAT, window, single).sx, FLOAT.sx);
+    }
+
+    #[test]
+    fn the_nearest_place_wins_and_lands_with_one_move_pane() {
+        let window = (80, 24);
+        let lines = PaneBorderLines::Single;
+        assert_eq!(
+            FloatPlace::nearest((78.0, 23.0), FLOAT, window, lines),
+            FloatPlace::BottomRight
+        );
+        assert_eq!(
+            FloatPlace::nearest((41.0, 12.0), FLOAT, window, lines),
+            FloatPlace::Centre
+        );
+        assert_eq!(
+            FloatPlace::nearest((-200.0, 3.0), FLOAT, window, lines),
+            FloatPlace::TopLeft
+        );
+        assert_eq!(
+            words(&FloatPlace::TopCentre.command(PaneId(4))),
+            "move-pane -t %4 -P top-centre"
+        );
     }
 
     #[test]
