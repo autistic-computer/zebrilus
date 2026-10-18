@@ -2521,6 +2521,7 @@ pub(crate) struct DaemonFormatHooks<'a> {
     facts_withheld: bool,
     buffer_override: Option<BufferFormatFacts>,
     pane_in_mode_override: Option<(PaneId, usize)>,
+    live_process_facts: bool,
     cycle: bool,
 }
 
@@ -2556,11 +2557,17 @@ impl<'a> DaemonFormatHooks<'a> {
             facts_withheld: false,
             pane_in_mode_override: None,
             cycle: false,
+            live_process_facts: false,
         }
     }
 
     pub(crate) const fn with_cycle(mut self) -> Self {
         self.cycle = true;
+        self
+    }
+
+    pub(crate) const fn with_live_process_facts(mut self) -> Self {
+        self.live_process_facts = true;
         self
     }
 
@@ -2641,6 +2648,7 @@ impl<'a> DaemonFormatHooks<'a> {
             facts_withheld: false,
             pane_in_mode_override: None,
             cycle: false,
+            live_process_facts: false,
         }
     }
 
@@ -3029,6 +3037,17 @@ impl StatusHooks for DaemonFormatHooks<'_> {
                     .map(|terminal| terminal.pane_search_string())
                     .unwrap_or_default(),
             ),
+            "pane_current_command"
+                if self.live_process_facts && context.pane_dead != Some(true) =>
+            {
+                context
+                    .pane_id
+                    .parse::<PaneId>()
+                    .ok()
+                    .and_then(|pane| self.facts.terminals().get(&pane))
+                    .map(|terminal| crate::daemon::terminal_current_command(terminal))
+                    .filter(|command| !command.is_empty())
+            }
             "pane_mode" => Some(if let Some(name) = self.pane_mode_name(context) {
                 name.to_owned()
             } else if self.copy_mode_view(context)?.view_mode {

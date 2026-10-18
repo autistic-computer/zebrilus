@@ -4,7 +4,7 @@ title: Daemon-owned PTY worker model
 description: How the daemon spawns and owns one PTY-backed terminal session per pane, the thread/ownership boundary between zz-daemon and the zz-terminal worker, and the paths that carry terminal frames out and send-keys in.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [pty, daemon, terminal, threading, send-keys]
-timestamp: 2026-10-03T14:25:00Z
+timestamp: 2026-10-18T12:00:00Z
 ---
 
 # Overview
@@ -168,10 +168,14 @@ sink.track(view, seen, epoch.map(|epoch| (epoch, viewport)));
 ```
 
 Output frames call `note_pane_output` (activity, silence and a 500 ms name check that reads the
-foreground command and path). The physical cwd comes from `proc_pidinfo(PROC_PIDVNODEPATHINFO)` on
-macOS and the `/proc/<pid>/cwd` link on Linux, separate from the path reported through OSC 7. The
-wrappers live in `crates/zz-daemon/src/daemon.rs`, the lookups in
-`crates/zz-daemon-client/src/process_info.rs`.
+foreground command and path). That check feeds automatic-rename and the cached runtime facts; a
+command's format (`display-message`, `list-panes`, `if-shell -F`) reads `#{pane_current_command}`
+live from the pane's terminal instead (`DaemonFormatHooks::variable` in
+`crates/zz-daemon/src/status.rs`), as tmux's `format_cb_current_command` does, so a quiet child
+started right after the shell's echo is seen at once. The physical cwd comes from
+`proc_pidinfo(PROC_PIDVNODEPATHINFO)` on macOS and the `/proc/<pid>/cwd` link on Linux, separate
+from the path reported through OSC 7. The wrappers live in `crates/zz-daemon/src/daemon.rs`, the
+lookups in `crates/zz-daemon-client/src/process_info.rs`.
 
 Title sync and exit detection ride whichever frames exist. Each frame's title goes through
 `synchronize_pane_title`, and an `Exited` status on any of them closes the pane through

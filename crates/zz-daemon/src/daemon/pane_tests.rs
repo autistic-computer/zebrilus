@@ -565,7 +565,7 @@ fn an_interactive_zsh_pane_runs_jobs_in_the_foreground_of_its_tty() {
 
 #[cfg(unix)]
 #[test]
-fn a_lookup_that_loses_the_foreground_process_answers_the_start_command() {
+fn a_command_reads_the_foreground_command_over_stale_runtime_facts() {
     let shared = Arc::new(Shared::new(1));
     let mut context = ExecutionContext::default();
     run(
@@ -596,12 +596,10 @@ fn a_lookup_that_loses_the_foreground_process_answers_the_start_command() {
             .is_some_and(|facts| !facts.current_command.is_empty())
     });
     thread::sleep(Duration::from_millis(500));
-    shared.synchronize_pane_runtime(pane, &terminal, "sleep", None, false, Instant::now());
-    assert_eq!(command(&mut context), "sleep");
-    shared.synchronize_pane_runtime(pane, &terminal, "", None, false, Instant::now());
-    assert_eq!(command(&mut context), "cat");
-    shared.synchronize_pane_runtime(pane, &terminal, "bash", None, false, Instant::now());
-    assert_eq!(command(&mut context), "bash");
+    for stale in ["sleep", "", "bash"] {
+        shared.synchronize_pane_runtime(pane, &terminal, stale, None, false, Instant::now());
+        assert_eq!(command(&mut context), "cat");
+    }
     shared.request_shutdown();
 }
 
@@ -641,7 +639,7 @@ fn a_lost_lookup_at_a_due_rename_names_the_window_from_the_start_command() {
     assert_eq!(names(&mut context), "cat|cat");
     thread::sleep(Duration::from_millis(600));
     shared.synchronize_pane_runtime(pane, &terminal, "", None, false, Instant::now());
-    assert_eq!(names(&mut context), "sh|sh");
+    assert_eq!(names(&mut context), "sh|cat");
     shared.request_shutdown();
 }
 
