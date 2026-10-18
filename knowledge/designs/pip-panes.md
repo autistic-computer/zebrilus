@@ -238,7 +238,7 @@ it found to the loop.
   - The subagents still running are the pane's task tray (`TasksChanged`), and `Activity` drives the
     Running status. A terminal parent has no channel to stop through, so its feed sends no tray.
 - **Watch-only:** the feed's Ready carries `AgentSessionCapabilities { watch: true }`. It is JSON on
-  the agent stream, so no protocol bump. Desktop and web/iOS draw the task tray and errors in place
+  the agent stream, appended in wire v109 ([wire protocol](/protocol/wire-protocol.md)). Desktop and web/iOS draw the task tray and errors in place
   of the composer. A prompt that reaches the feed anyway is refused.
 - **Feeds stay off the peer bus.** They can't take a prompt.
 
