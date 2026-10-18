@@ -1496,7 +1496,8 @@ terminal panes with no OSC 7501 record, so the record reaches every session on e
   discoverable tty through `client-tty-v1:` regardless of nesting, while remote endpoints omit the
   caller-host tty. Since 2026-08-25 the
   additive `client-nested-v1` capability records a nonempty inherited `$TMUX` independently. The daemon requires both that
-  marker and an exact pane-tty match for the pinned nested-attach refusal, so `env -u TMUX` forces
+  marker and an exact pane-tty match for the pinned nested-attach refusal (since 2026-10-18 the
+  panes `display-popup` spawns are left out, as the pin's popup job pty matches no pane), so `env -u TMUX` forces
   attach without discarding the tty used by client targeting. The additive capability changes no
   field, tag, or protocol version. A local Control connection uses a narrower identity-only scope:
   it publishes `client-tty-v1:` only when stdin has a discoverable tty and publishes
