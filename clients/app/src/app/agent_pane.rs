@@ -2705,12 +2705,20 @@ impl Render for AgentPane {
                         && window.zoomed_pane.is_none()
                         && window.panes.len() > 1
                 });
+        let floats =
+            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), self.pane);
         let drag_handler = self.header_drag_handler.clone();
-        let mut drag = PaneDragSource::new(pane, title, can_drag, move |drag, window, cx| {
-            if let Some(handler) = &drag_handler {
-                handler(drag, window, cx);
-            }
-        });
+        let mut drag = PaneDragSource::new(
+            pane,
+            title,
+            can_drag || (writable && floats),
+            move |drag, window, cx| {
+                if let Some(handler) = &drag_handler {
+                    handler(drag, window, cx);
+                }
+            },
+        )
+        .floating(floats);
         if let Some(handler) = self.header_touch_drag_handler.clone() {
             drag = drag.touch(super::touch_drag_handle(move |event, window, cx| {
                 handler(event, window, cx);
@@ -2779,8 +2787,6 @@ impl Render for AgentPane {
         } else {
             timeline
         };
-        let floats =
-            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), self.pane);
         div()
             .relative()
             .flex()
@@ -2791,64 +2797,47 @@ impl Render for AgentPane {
             .rounded_tr(self.corner_radii.top_right)
             .rounded_bl(self.corner_radii.bottom_left)
             .rounded_br(self.corner_radii.bottom_right)
-            .bg(cx.theme().pane_background(cx.theme().background))
-            .child(agent_pane_header(
-                self.connection
-                    .read(cx)
-                    .core
-                    .snapshot()
-                    .sessions
-                    .iter()
-                    .flat_map(|session| &session.windows)
-                    .any(|window| window.active_pane == self.pane),
-                header_controls,
-                self.render_status(&state, connected, writable, cx),
-                zz_ui::h_flex().gap(px(zz_ui::CHROME_GAP)).children(
-                    [
-                        (
-                            "web-agent-split-bottom",
-                            IconName::PanelBottom,
-                            "Split bottom",
-                            Some("-v"),
+            .map(|pane| {
+                pane.child(agent_pane_header(
+                    self.connection
+                        .read(cx)
+                        .core
+                        .snapshot()
+                        .sessions
+                        .iter()
+                        .flat_map(|session| &session.windows)
+                        .any(|window| window.active_pane == self.pane),
+                    header_controls,
+                    self.render_status(&state, connected, writable, cx),
+                    zz_ui::h_flex().gap(px(zz_ui::CHROME_GAP)).children(
+                        zz_ui::pane::pane_header_actions(floats).iter().map(
+                            |(action, icon, label)| {
+                                let action = *action;
+                                pane_header_icon_button(
+                                    ("web-agent-action", action as usize),
+                                    icon.clone(),
+                                    writable,
+                                    cx,
+                                )
+                                .tooltip(*label)
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        let commands = action.commands(this.pane);
+                                        this.connection.update(cx, |connection, cx| {
+                                            for command in commands {
+                                                connection.invoke(command, cx);
+                                            }
+                                        });
+                                        cx.stop_propagation();
+                                    },
+                                ))
+                            },
                         ),
-                        (
-                            "web-agent-split-right",
-                            IconName::PanelRight,
-                            "Split right",
-                            Some("-h"),
-                        ),
-                        ("web-agent-float", IconName::PictureInPicture, "Float", None),
-                    ]
-                    .into_iter()
-                    .filter(|(_, _, _, flag)| flag.is_some() || !floats)
-                    .map(|(id, icon, label, flag)| {
-                        pane_header_icon_button(id, icon, writable, cx)
-                            .tooltip(label)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                let pane = this.pane.to_string();
-                                let (name, args) = match flag {
-                                    Some(flag) => (
-                                        "split-window",
-                                        vec![
-                                            "--kind".into(),
-                                            "picker".into(),
-                                            flag.to_owned(),
-                                            "-t".to_owned(),
-                                            pane,
-                                        ],
-                                    ),
-                                    None => ("break-pane", vec!["-W".into(), "-s".into(), pane]),
-                                };
-                                this.connection.update(cx, |connection, cx| {
-                                    connection.command(name, args, cx);
-                                });
-                                cx.stop_propagation();
-                            }))
-                    }),
-                ),
-                !self.rows.is_empty(),
-                cx,
-            ))
+                    ),
+                    !self.rows.is_empty(),
+                    cx,
+                ))
+            })
             .child(
                 div()
                     .id("web-agent-timeline")

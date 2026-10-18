@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use zz_client::StatusBarPane;
 use zz_gpui::{
-    AnyElement, AnyView, App, AppContext as _, Context, Corners, ElementId, Hsla, IntoElement,
+    AnyElement, AnyView, App, AppContext as _, Context, Corners, ElementId, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, Stateful, Styled as _, Window, div, px,
 };
 use zz_protocol::{
@@ -78,14 +78,7 @@ pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
     PaneChrome::new(radii(gaps, cx), gaps)
         .active(active)
         .dimmed(!active && scrim, crate::pane().inactive)
-        .frame(gaps.then(|| {
-            cx.theme()
-                .pane_frame(cx.theme().background, cx.theme().background, active)
-        }))
-}
-
-pub fn pane_background(cx: &App) -> Hsla {
-    cx.theme().pane_background(cx.theme().background)
+        .frame(gaps.then(|| cx.theme().pane_frame(cx.theme().background, active)))
 }
 
 pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> zz_gpui::Div {
@@ -100,7 +93,6 @@ pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> 
         .px(px(12.0))
         .pt(px(4.0))
         .pb(px(10.0))
-        .bg(pane_background(cx))
         .font_family(theme.mono_font_family.clone())
         .text_size(px(12.0))
         .line_height(px(18.0))
@@ -137,7 +129,6 @@ pub fn placeholder_body(
         .justify_center()
         .gap(px(6.0))
         .p(px(12.0))
-        .bg(pane_background(cx))
         .text_size(px(12.0))
         .line_height(px(16.0))
         .text_color(cx.theme().foreground)
@@ -194,6 +185,7 @@ impl TerminalPane {
             self.active,
             self.title,
             PaneDragSource::new(PaneId(self.id), self.title, true, |_, _, _| {}),
+            false,
             |_, _, _| {},
             cx,
         );
@@ -206,7 +198,6 @@ impl TerminalPane {
                     .flex_none()
                     .rounded_tl(radii.top_left)
                     .rounded_tr(radii.top_right)
-                    .bg(pane_background(cx))
                     .child(
                         div()
                             .opacity(if self.active {

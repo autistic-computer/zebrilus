@@ -12,7 +12,11 @@ use zz_gpui::{
 };
 
 mod drag;
-pub use drag::{DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, pane_drag_preview};
+mod motion;
+pub use drag::{
+    DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, PipGrab, pane_drag_preview,
+};
+pub use motion::{MovingPane, PaneMotion, moving_pane};
 
 pub fn pane_header_icon_button(
     id: impl Into<ElementId>,
@@ -31,6 +35,16 @@ pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconNa
     match provider {
         zz_protocol::AgentProvider::Codex => IconName::Openai,
         zz_protocol::AgentProvider::ClaudeCode => IconName::Claude,
+    }
+}
+
+pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
+    match kind {
+        zz_protocol::PaneKindSnapshot::Terminal => IconName::SquareTerminal,
+        zz_protocol::PaneKindSnapshot::Browser(_) => IconName::Globe,
+        zz_protocol::PaneKindSnapshot::Agent(agent) => agent_provider_icon(agent.provider),
+        zz_protocol::PaneKindSnapshot::Editor(_) => IconName::File,
+        zz_protocol::PaneKindSnapshot::Picker => IconName::Plus,
     }
 }
 
@@ -157,13 +171,97 @@ pub enum TerminalPaneAction {
     SplitBottom,
     SplitRight,
     Float,
+    Tile,
+    Zoom,
     Close,
+}
+
+impl TerminalPaneAction {
+    pub fn commands(self, pane: zz_protocol::PaneId) -> Vec<zz_protocol::CommandInvocation> {
+        let split = |axis: &str| {
+            zz_protocol::CommandInvocation::new(
+                "split-window",
+                [
+                    "--kind".to_owned(),
+                    "picker".to_owned(),
+                    axis.to_owned(),
+                    "-t".to_owned(),
+                    pane.to_string(),
+                ],
+            )
+        };
+        match self {
+            Self::SplitBottom => vec![split("-v")],
+            Self::SplitRight => vec![split("-h")],
+            Self::Float => zz_client::floating::float_pane_commands(pane).to_vec(),
+            Self::Tile => vec![zz_client::floating::tile_pane_command(pane)],
+            Self::Zoom => vec![zz_client::floating::zoom_pane_command(pane)],
+            Self::Close => vec![zz_protocol::CommandInvocation::new(
+                "kill-pane",
+                ["-t".to_owned(), pane.to_string()],
+            )],
+        }
+    }
+}
+
+pub const fn pane_header_actions(
+    floats: bool,
+) -> &'static [(TerminalPaneAction, IconName, &'static str)] {
+    if floats {
+        &[
+            (
+                TerminalPaneAction::Tile,
+                IconName::LayoutColumns,
+                "Tile back",
+            ),
+            (TerminalPaneAction::Zoom, IconName::WindowMaximize, "Zoom"),
+        ]
+    } else {
+        &[
+            (
+                TerminalPaneAction::SplitBottom,
+                IconName::PanelBottom,
+                "Split bottom",
+            ),
+            (
+                TerminalPaneAction::SplitRight,
+                IconName::PanelRight,
+                "Split right",
+            ),
+            (
+                TerminalPaneAction::Float,
+                IconName::PictureInPicture,
+                "Float",
+            ),
+        ]
+    }
 }
 
 pub fn terminal_pane_header(
     active: bool,
     title: impl Into<SharedString>,
     drag: PaneDragSource,
+    floats: bool,
+    on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    pane_header(
+        IconName::SquareTerminal,
+        active,
+        title,
+        drag,
+        floats,
+        on_action,
+        cx,
+    )
+}
+
+pub fn pane_header(
+    icon: IconName,
+    active: bool,
+    title: impl Into<SharedString>,
+    drag: PaneDragSource,
+    floats: bool,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
@@ -197,9 +295,9 @@ pub fn terminal_pane_header(
             div().flex().flex_1().min_w_0().items_center().child(
                 PaneTitle::new(
                     "terminal-pane-title",
-                    IconName::SquareTerminal,
+                    icon,
                     title.into(),
-                    drag,
+                    drag.floating(floats),
                 )
                 .on_close(move |window, cx| close(TerminalPaneAction::Close, window, cx)),
             ),
@@ -215,21 +313,11 @@ pub fn terminal_pane_header(
                         .invisible()
                         .group_hover("terminal-pane-header", zz_gpui::Styled::visible)
                 })
-                .child(action(
-                    TerminalPaneAction::SplitBottom,
-                    IconName::PanelBottom,
-                    "Split bottom",
-                ))
-                .child(action(
-                    TerminalPaneAction::SplitRight,
-                    IconName::PanelRight,
-                    "Split right",
-                ))
-                .child(action(
-                    TerminalPaneAction::Float,
-                    IconName::PictureInPicture,
-                    "Float",
-                )),
+                .children(
+                    pane_header_actions(floats)
+                        .iter()
+                        .map(|(kind, icon, label)| action(*kind, icon.clone(), label)),
+                ),
         )
 }
 
@@ -237,7 +325,6 @@ pub fn terminal_pane_header(
 /// top corners and faded to `opacity` while the pane is inactive.
 pub fn pane_header_frame(
     header: impl IntoElement,
-    background: Hsla,
     radii: Corners<Pixels>,
     opacity: f32,
 ) -> zz_gpui::Div {
@@ -246,7 +333,6 @@ pub fn pane_header_frame(
         .flex_none()
         .rounded_tl(radii.top_left)
         .rounded_tr(radii.top_right)
-        .bg(background)
         .child(div().opacity(opacity).child(header))
 }
 
@@ -1280,9 +1366,9 @@ pub fn pane_picker_row(
     )
 }
 
-/// A freshly split pane asking what it should become: `rows` centered on
-/// the pane's fill, rounded into the pane's corners. The caller wires focus,
-/// keys and clicks.
+/// A freshly split pane asking what it should become: `rows` centered in
+/// the pane, rounded into the pane's corners. The caller wires focus, keys
+/// and clicks.
 pub fn pane_picker_surface(
     id: impl Into<ElementId>,
     radii: Corners<Pixels>,
@@ -1301,7 +1387,6 @@ pub fn pane_picker_surface(
         .rounded_tr(radii.top_right)
         .rounded_bl(radii.bottom_left)
         .rounded_br(radii.bottom_right)
-        .bg(theme.pane_background(theme.background))
         .text_color(theme.foreground)
         .px(px(12.0))
         .child(pane_picker_choices(rows))

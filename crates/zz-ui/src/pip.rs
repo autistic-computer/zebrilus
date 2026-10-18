@@ -1,27 +1,23 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use web_time::{Duration, Instant};
 use zz_client::floating::{FloatCells, FloatPlace};
 use zz_gpui::{
-    AnyElement, App, Bounds, ClickEvent, CursorStyle, Div, ElementId, FontWeight, IntoElement,
-    ParentElement as _, Pixels, Point, SharedString, Size, SpringConfig, SpringState, Stateful,
-    Styled as _, Window, div, point, prelude::*, px,
+    AnyElement, App, Bounds, ClickEvent, ElementId, GlassMaterial, Hsla, IntoElement,
+    ParentElement as _, Pixels, Point, Size, Styled as _, Window, div, point, prelude::*, px,
 };
-use zz_protocol::PaneBorderLines;
+use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
 
-use crate::{
-    ActiveTheme as _, Colorize as _, IconName, PaintState, StyledExt as _, Surface, button::Button,
-    roles,
-};
+use crate::{ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, roles};
 
 const GROUP: &str = "pip";
-const BAR_HEIGHT: f32 = 30.0;
+const MARGIN: f32 = 12.0;
+const FROST: f32 = 24.0;
+const STACK_DEPTH: usize = 3;
+const PEEK: f32 = 60.0;
 const VELOCITY_WINDOW: Duration = Duration::from_millis(100);
 const FRAME: Duration = Duration::from_millis(16);
 const DECELERATION: f32 = 0.998;
-const GLIDE: SpringConfig = SpringConfig::new(324.0, 36.0, 1.0);
-const SETTLED: f32 = 0.5;
-const OUTWARD: f32 = 128.0;
 
 #[derive(Clone, Debug, Default)]
 pub struct PipThrow {
@@ -69,60 +65,157 @@ pub fn projected(position: Point<Pixels>, velocity: Point<f32>) -> Point<Pixels>
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PipGlide {
-    x: SpringState,
-    y: SpringState,
-    at: Instant,
+pub struct PipLayout {
+    pub window: (u16, u16),
+    pub cell: Size<Pixels>,
+    pub canvas: Size<Pixels>,
+    pub lines: PaneBorderLines,
+    pub header: Pixels,
 }
 
-impl PipGlide {
+impl PipLayout {
+    fn bordered(&self) -> bool {
+        self.lines != PaneBorderLines::None
+    }
+
     #[must_use]
-    pub fn new(offset: Point<Pixels>, velocity: Point<f32>, now: Instant) -> Self {
-        let (frequency, _) = GLIDE.canonical();
-        let axis = |offset: f32, velocity: f32| {
-            let limit = if offset * velocity < 0.0 {
-                frequency * offset.abs()
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "window cell offsets are far below f32's exact integer range"
+    )]
+    pub fn size(&self, cells: FloatCells) -> Size<Pixels> {
+        let (width, height) = (
+            self.cell.width * f32::from(cells.sx),
+            self.cell.height * f32::from(cells.sy),
+        );
+        if self.bordered() {
+            zz_gpui::size(
+                width + self.cell.width * 2.0,
+                height + self.header.max(self.cell.height) + self.cell.height,
+            )
+        } else {
+            zz_gpui::size(width, height)
+        }
+    }
+
+    #[must_use]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "window cell offsets are far below f32's exact integer range"
+    )]
+    pub fn frame(&self, cells: FloatCells) -> Bounds<Pixels> {
+        let size = self.size(cells);
+        let area = self.area();
+        let pad = i32::from(self.bordered());
+        let axis = |offset: i32, extent: u16, window: u16, frame: Pixels, canvas: Pixels, cell| {
+            if window == 0 {
+                return cell * (offset - pad) as f32;
+            }
+            let free = canvas - frame;
+            if free <= Pixels::ZERO {
+                return Pixels::ZERO;
+            }
+            let room = f32::from(window) - f32::from(extent) - 2.0 * pad as f32;
+            let along = if room > 0.0 {
+                ((offset - pad) as f32 / room).clamp(0.0, 1.0)
             } else {
-                frequency * OUTWARD
+                0.5
             };
-            SpringState {
-                position: offset,
-                velocity: velocity.clamp(-limit, limit),
+            let margin = px(MARGIN).min(free / 2.0);
+            margin + (free - margin * 2.0) * along
+        };
+        Bounds::new(
+            point(
+                axis(
+                    cells.xoff,
+                    cells.sx,
+                    self.window.0,
+                    size.width,
+                    area.width,
+                    self.cell.width,
+                ),
+                axis(
+                    cells.yoff,
+                    cells.sy,
+                    self.window.1,
+                    size.height,
+                    area.height,
+                    self.cell.height,
+                ),
+            ),
+            size,
+        )
+    }
+
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the cell count is floored and clamped to u16 before the cast"
+    )]
+    pub fn max_cells(&self) -> (u16, u16) {
+        let area = self.area();
+        let chrome = self.size(FloatCells {
+            xoff: 0,
+            yoff: 0,
+            sx: 0,
+            sy: 0,
+        });
+        let pad = if self.bordered() { 2 } else { 0 };
+        let fit = |room: Pixels, chrome: Pixels, cell: Pixels, window: u16| {
+            let fits = if cell > Pixels::ZERO {
+                ((room - px(MARGIN) * 2.0 - chrome) / cell)
+                    .floor()
+                    .clamp(1.0, f32::from(u16::MAX)) as u16
+            } else {
+                u16::MAX
+            };
+            if window == 0 {
+                fits
+            } else {
+                fits.min(window.saturating_sub(pad).max(1))
             }
         };
-        Self {
-            x: axis(f32::from(offset.x), velocity.x),
-            y: axis(f32::from(offset.y), velocity.y),
-            at: now,
+        (
+            fit(area.width, chrome.width, self.cell.width, self.window.0),
+            fit(area.height, chrome.height, self.cell.height, self.window.1),
+        )
+    }
+
+    fn area(&self) -> Size<Pixels> {
+        if self.canvas.width > Pixels::ZERO && self.canvas.height > Pixels::ZERO {
+            self.canvas
+        } else {
+            zz_gpui::size(
+                self.cell.width * f32::from(self.window.0),
+                self.cell.height * f32::from(self.window.1),
+            )
         }
     }
 
-    #[must_use]
-    pub fn offset(&self) -> Point<Pixels> {
-        point(px(self.x.position), px(self.y.position))
-    }
-
-    pub fn tick(&mut self, now: Instant) -> bool {
-        let elapsed = now.saturating_duration_since(self.at).as_secs_f32();
-        self.at = now;
-        self.x = GLIDE.step(self.x, 0.0, elapsed);
-        self.y = GLIDE.step(self.y, 0.0, elapsed);
-        let moving =
-            !(GLIDE.is_settled(self.x, 0.0, SETTLED) && GLIDE.is_settled(self.y, 0.0, SETTLED));
-        if !moving {
-            self.x = SpringState::default();
-            self.y = SpringState::default();
-        }
-        moving
+    fn place_at(&self, centre: Point<Pixels>) -> FloatPlace {
+        let area = self.area();
+        let fraction = |at: Pixels, extent: Pixels, cells: u16| {
+            if extent > Pixels::ZERO {
+                at / extent * f32::from(cells)
+            } else {
+                0.0
+            }
+        };
+        FloatPlace::zone(
+            (
+                fraction(centre.x, area.width, self.window.0),
+                fraction(centre.y, area.height, self.window.1),
+            ),
+            self.window,
+        )
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PipDrag {
     pub start: FloatCells,
-    lines: PaneBorderLines,
-    window: (u16, u16),
-    cell: Size<Pixels>,
+    layout: PipLayout,
     press: Point<Pixels>,
     pointer: Point<Pixels>,
     origin: Point<Pixels>,
@@ -132,30 +225,24 @@ pub struct PipDrag {
 pub struct PipLanding {
     pub place: FloatPlace,
     pub target: FloatCells,
-    pub glide: PipGlide,
+    pub stash: Option<PipSide>,
 }
 
 impl PipDrag {
     #[must_use]
     pub fn new(
         start: FloatCells,
-        lines: PaneBorderLines,
-        window: (u16, u16),
-        cell: Size<Pixels>,
+        layout: PipLayout,
         press: Point<Pixels>,
         offset: Point<Pixels>,
     ) -> Self {
-        let mut drag = Self {
+        Self {
             start,
-            lines,
-            window,
-            cell,
+            layout,
             press,
             pointer: press,
-            origin: Point::default(),
-        };
-        drag.origin = drag.frame(start).origin + offset;
-        drag
+            origin: layout.frame(start).origin + offset,
+        }
     }
 
     pub fn moved(&mut self, pointer: Point<Pixels>) {
@@ -167,108 +254,262 @@ impl PipDrag {
         self.origin + (self.pointer - self.press)
     }
 
-    fn pad(&self) -> i32 {
-        i32::from(self.lines != PaneBorderLines::None)
-    }
-
     #[must_use]
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "window cell offsets are far below f32's exact integer range"
-    )]
     pub fn frame(&self, cells: FloatCells) -> Bounds<Pixels> {
-        let pad = self.pad();
-        Bounds::new(
-            point(
-                self.cell.width * (cells.xoff - pad) as f32,
-                self.cell.height * (cells.yoff - pad) as f32,
-            ),
-            zz_gpui::size(
-                self.cell.width * (i32::from(cells.sx) + 2 * pad) as f32,
-                self.cell.height * (i32::from(cells.sy) + 2 * pad) as f32,
-            ),
-        )
+        self.layout.frame(cells)
     }
 
     #[must_use]
     pub fn landing(&self, velocity: Point<f32>) -> FloatPlace {
-        let frame = self.frame(self.start);
+        let size = self.layout.size(self.start);
         let landing = projected(self.drawn_origin(), velocity);
-        let centre = (
-            (landing.x + frame.size.width / 2.0) / self.cell.width,
-            (landing.y + frame.size.height / 2.0) / self.cell.height,
-        );
-        FloatPlace::nearest(centre, self.start, self.window, self.lines)
-    }
-
-    pub fn slots(&self, velocity: Point<f32>) -> impl Iterator<Item = (Bounds<Pixels>, bool)> {
-        let lit = self.landing(velocity);
-        let drag = *self;
-        FloatPlace::ALL.into_iter().map(move |place| {
-            let cells = place.cells(drag.start, drag.window, drag.lines);
-            (drag.frame(cells), place == lit)
-        })
+        self.layout.place_at(point(
+            landing.x + size.width / 2.0,
+            landing.y + size.height / 2.0,
+        ))
     }
 
     #[must_use]
-    pub fn release(&self, velocity: Point<f32>, now: Instant, reduce_motion: bool) -> PipLanding {
+    pub fn release(&self, velocity: Point<f32>) -> PipLanding {
         let place = self.landing(velocity);
-        let target = place.cells(self.start, self.window, self.lines);
-        let glide = if reduce_motion {
-            PipGlide::new(Point::default(), Point::default(), now)
+        let target = place.cells(self.start, self.layout.window, self.layout.lines);
+        let centre = self.drawn_origin().x + self.layout.size(self.start).width / 2.0;
+        let stash = if centre < Pixels::ZERO {
+            Some(PipSide::Left)
+        } else if centre > self.layout.area().width {
+            Some(PipSide::Right)
         } else {
-            PipGlide::new(
-                self.drawn_origin() - self.frame(target).origin,
-                velocity,
-                now,
-            )
+            None
         };
         PipLanding {
             place,
             target,
-            glide,
+            stash,
         }
     }
 }
 
 type Handler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
-type BarHandle = Box<dyn FnOnce(Stateful<Div>) -> Stateful<Div>>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PipSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PipCard {
+    pub pane: PaneId,
+    pub frame: Bounds<Pixels>,
+    pub held: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PipPlaced {
+    pub pane: PaneId,
+    pub frame: Bounds<Pixels>,
+    pub stashed: Option<PipSide>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PipStage {
+    window: Option<WindowId>,
+    active: Option<PaneId>,
+    floats: BTreeSet<PaneId>,
+    stashed: BTreeSet<PaneId>,
+}
+
+impl PipStage {
+    pub fn observe(&mut self, window: &WindowSnapshot) {
+        let floats = window
+            .floating
+            .iter()
+            .filter(|float| {
+                float.visible && window.modal.is_none_or(|modal| modal.pane != float.pane)
+            })
+            .map(|float| float.pane)
+            .collect::<BTreeSet<_>>();
+        self.focus(
+            window.id,
+            window.active_pane,
+            floats,
+            |pane| window.floating.iter().any(|float| float.pane == pane),
+            |pane| window.panes.contains_key(&pane),
+        );
+    }
+
+    fn focus(
+        &mut self,
+        window: WindowId,
+        active: PaneId,
+        floats: BTreeSet<PaneId>,
+        floating: impl Fn(PaneId) -> bool,
+        alive: impl Fn(PaneId) -> bool,
+    ) {
+        if self.window == Some(window) {
+            self.stashed
+                .retain(|pane| floats.contains(pane) || !self.floats.contains(pane));
+            if self.active != Some(active) {
+                let tiled = !floating(active);
+                let left = self.active.is_some_and(&alive);
+                if floats.contains(&active) {
+                    self.stashed.remove(&active);
+                } else if tiled && left {
+                    self.stashed
+                        .extend(floats.intersection(&self.floats).copied());
+                }
+            }
+        }
+        self.window = Some(window);
+        self.active = Some(active);
+        self.floats = floats;
+    }
+
+    pub fn stash(&mut self, pane: PaneId) {
+        self.stashed.insert(pane);
+    }
+
+    pub fn restore(&mut self, pane: PaneId) {
+        self.stashed.remove(&pane);
+    }
+
+    #[must_use]
+    pub fn arrange(&self, cards: &[PipCard], canvas: Size<Pixels>, peek: Pixels) -> Vec<PipPlaced> {
+        let sides = cards
+            .iter()
+            .map(|card| {
+                (!card.held && self.stashed.contains(&card.pane)).then(|| {
+                    if card.frame.center().x < canvas.width / 2.0 {
+                        PipSide::Left
+                    } else {
+                        PipSide::Right
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        let shifts = pile_shifts(cards, &sides, canvas, peek);
+        cards
+            .iter()
+            .zip(sides)
+            .zip(shifts)
+            .map(|((card, stashed), shift)| {
+                let mut frame = Bounds::new(card.frame.origin + shift, card.frame.size);
+                let peek = px(PEEK).min(frame.size.width);
+                match stashed {
+                    Some(PipSide::Left) => frame.origin.x = peek - frame.size.width,
+                    Some(PipSide::Right) => frame.origin.x = canvas.width - peek,
+                    None => {}
+                }
+                PipPlaced {
+                    pane: card.pane,
+                    frame,
+                    stashed,
+                }
+            })
+            .collect()
+    }
+}
+
+fn covers(front: Bounds<Pixels>, back: Bounds<Pixels>) -> bool {
+    let area =
+        |bounds: Bounds<Pixels>| f32::from(bounds.size.width) * f32::from(bounds.size.height);
+    let shared = front.intersect(&back);
+    area(shared) * 2.0 >= area(front).min(area(back)) && area(shared) > 0.0
+}
+
+fn pile_shifts(
+    cards: &[PipCard],
+    sides: &[Option<PipSide>],
+    canvas: Size<Pixels>,
+    peek: Pixels,
+) -> Vec<Point<Pixels>> {
+    let mut pile = (0..cards.len()).collect::<Vec<_>>();
+    for back in 0..cards.len() {
+        if cards[back].held {
+            continue;
+        }
+        if let Some(front) = (0..back).find(|&front| {
+            !cards[front].held
+                && sides[front] == sides[back]
+                && covers(cards[front].frame, cards[back].frame)
+        }) {
+            pile[back] = pile[front];
+        }
+    }
+    let mut tops = cards
+        .iter()
+        .map(|card| card.frame.origin.y)
+        .collect::<Vec<_>>();
+    let mut counts = BTreeMap::new();
+    let mut above = BTreeMap::new();
+    for (index, root) in pile.iter().enumerate() {
+        let count = counts.entry(*root).or_insert(0);
+        if let Some(&front) = above.get(root) {
+            let reach = if *count <= STACK_DEPTH {
+                peek
+            } else {
+                Pixels::ZERO
+            };
+            tops[index] = tops[index].min(front - reach);
+        }
+        above.insert(*root, tops[index]);
+        *count += 1;
+    }
+    let mut lift = BTreeMap::new();
+    for (index, root) in pile.iter().enumerate() {
+        let top = lift.entry(*root).or_insert(canvas.height);
+        *top = (*top).min(tops[index]);
+    }
+    let margin = px(MARGIN);
+    (0..cards.len())
+        .map(|index| {
+            if counts[&pile[index]] < 2 {
+                return Point::default();
+            }
+            let drop = (margin - lift[&pile[index]]).max(Pixels::ZERO);
+            point(
+                Pixels::ZERO,
+                tops[index] + drop - cards[index].frame.origin.y,
+            )
+        })
+        .collect()
+}
+
+#[must_use]
+pub fn pip_content_radius(cx: &App) -> Pixels {
+    let border = cx.theme().layer(roles::PIP, PaintState::Rest).border_width;
+    (cx.theme().pane_radius() - border).max(Pixels::ZERO)
+}
 
 #[derive(IntoElement)]
 pub struct PipSurface {
     id: ElementId,
-    title: SharedString,
+    header: Option<AnyElement>,
     content: AnyElement,
     inset_x: Pixels,
     inset_y: Pixels,
-    active: bool,
     bordered: bool,
-    bar: Option<BarHandle>,
-    on_tile: Option<Handler>,
-    on_zoom: Option<Handler>,
-    on_close: Option<Handler>,
+    fill: Option<Hsla>,
+    stashed: Option<Handler>,
 }
 
 impl PipSurface {
     pub fn new(id: impl Into<ElementId>, content: impl IntoElement) -> Self {
         Self {
             id: id.into(),
-            title: SharedString::default(),
+            header: None,
             content: content.into_any_element(),
             inset_x: Pixels::ZERO,
             inset_y: Pixels::ZERO,
-            active: false,
             bordered: true,
-            bar: None,
-            on_tile: None,
-            on_zoom: None,
-            on_close: None,
+            fill: None,
+            stashed: None,
         }
     }
 
     #[must_use]
-    pub fn title(mut self, title: impl Into<SharedString>) -> Self {
-        self.title = title.into();
+    pub fn header(mut self, header: impl IntoElement) -> Self {
+        self.header = Some(header.into_any_element());
         self
     }
 
@@ -280,52 +521,46 @@ impl PipSurface {
     }
 
     #[must_use]
-    pub const fn active(mut self, active: bool) -> Self {
-        self.active = active;
-        self
-    }
-
-    #[must_use]
     pub const fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
         self
     }
 
     #[must_use]
-    pub fn bar_handle(
-        mut self,
-        handle: impl FnOnce(Stateful<Div>) -> Stateful<Div> + 'static,
-    ) -> Self {
-        self.bar = Some(Box::new(handle));
+    pub const fn fill(mut self, fill: Hsla) -> Self {
+        self.fill = Some(fill);
         self
     }
 
     #[must_use]
-    pub fn on_tile(
+    pub fn stashed(
         mut self,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        stashed: bool,
+        on_restore: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
-        self.on_tile = Some(Box::new(handler));
+        self.stashed = stashed.then(|| Box::new(on_restore) as Handler);
         self
     }
+}
 
-    #[must_use]
-    pub fn on_zoom(
-        mut self,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
-        self.on_zoom = Some(Box::new(handler));
-        self
-    }
-
-    #[must_use]
-    pub fn on_close(
-        mut self,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
-        self.on_close = Some(Box::new(handler));
-        self
-    }
+#[must_use]
+pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
+    let theme = cx.theme();
+    let fill = fill.opaque();
+    let opacity = theme.pip_opacity;
+    theme
+        .layer(roles::PIP, PaintState::Rest)
+        .glass
+        .unwrap_or_else(|| {
+            GlassMaterial::edge(fill)
+                .blur(px(FROST))
+                .specular(0.0)
+                .fresnel(0.0)
+                .edge_shadow(0.0)
+                .glint_width(Pixels::ZERO)
+        })
+        .tint(fill.alpha(opacity))
+        .fallback(fill)
 }
 
 impl RenderOnce for PipSurface {
@@ -333,71 +568,51 @@ impl RenderOnce for PipSurface {
         let mut layer = cx.theme().layer(roles::PIP, PaintState::Rest);
         if !self.bordered {
             layer.border_width = Pixels::ZERO;
-        } else if self.active {
-            layer.border_width = cx.theme().outline.max(px(1.0));
-            layer.border = crate::pane::pane_border_color(true, cx);
         }
         let border = layer.border_width;
         let inset_x = (self.inset_x - border).max(Pixels::ZERO);
         let inset_y = (self.inset_y - border).max(Pixels::ZERO);
         let coarse = crate::touch::CoarsePointer::get(cx);
-        let ink = cx.theme().foreground.faint();
-        let button = |id: &'static str, icon: IconName, label: &'static str, handler: Handler| {
-            Button::compact_icon(id, icon)
-                .surface_role(roles::PIP_BUTTON)
-                .size(crate::PANE_HEADER_CONTROL_HEIGHT)
-                .text_color(ink)
-                .tooltip(label)
+        let docked = self.header.is_some() && self.inset_y > Pixels::ZERO;
+        let header_height = cx.theme().pane_header_height().max(self.inset_y);
+        let inset_top = if docked {
+            (header_height - border).max(Pixels::ZERO)
+        } else {
+            inset_y
+        };
+        let stashed = self.stashed.is_some();
+        let fill = self
+            .fill
+            .unwrap_or_else(|| cx.theme().pane_color(cx.theme().background));
+        let material = pip_material(fill, cx);
+        let header = self.header.map(|header| {
+            div()
+                .debug_selector(|| "pip-header".into())
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .h(header_height)
+                .when(!coarse && !docked && !stashed, |header| {
+                    header
+                        .invisible()
+                        .group_hover(GROUP, zz_gpui::Styled::visible)
+                })
+                .child(header)
+        });
+        let stash = self.stashed.map(|restore| {
+            div()
+                .id("pip-stash")
+                .debug_selector(|| "pip-stash".into())
+                .absolute()
+                .inset_0()
+                .occlude()
+                .cursor_pointer()
                 .on_click(move |event, window, cx| {
                     cx.stop_propagation();
-                    handler(event, window, cx);
+                    restore(event, window, cx);
                 })
-        };
-        let buttons = [
-            self.on_tile
-                .map(|handler| button("pip-tile", IconName::LayoutColumns, "Tile back", handler)),
-            self.on_zoom
-                .map(|handler| button("pip-zoom", IconName::WindowMaximize, "Zoom", handler)),
-            self.on_close
-                .map(|handler| button("pip-close", IconName::Xmark, "Close", handler)),
-        ];
-        let bar = div()
-            .id("pip-bar")
-            .debug_selector(|| "pip-bar".into())
-            .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .h(px(BAR_HEIGHT))
-            .flex()
-            .items_center()
-            .gap(px(2.0))
-            .pl(px(10.0))
-            .pr(px(4.0))
-            .surface(Surface::new(roles::PIP_BAR), cx)
-            .cursor(CursorStyle::OpenHand)
-            .when(!coarse, |bar| {
-                bar.invisible().group_hover(GROUP, zz_gpui::Styled::visible)
-            })
-            .font_family(cx.theme().font_family.clone())
-            .text_size(crate::rems_from_px(12.0))
-            .line_height(px(16.0))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(cx.theme().foreground)
-                    .child(self.title),
-            )
-            .children(buttons.into_iter().flatten());
-        let bar = match self.bar {
-            Some(handle) => handle(bar),
-            None => bar,
-        };
+        });
         div()
             .id(self.id)
             .group(GROUP)
@@ -406,44 +621,23 @@ impl RenderOnce for PipSurface {
             .overflow_hidden()
             .occlude()
             .layer(&layer)
+            .rounded(cx.theme().pane_radius())
+            .bg(cx.theme().transparent)
+            .glass(material)
             .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .absolute()
                     .left(inset_x)
                     .right(inset_x)
-                    .top(inset_y)
+                    .top(inset_top)
                     .bottom(inset_y)
                     .overflow_hidden()
                     .child(self.content),
             )
-            .child(bar)
+            .children(header)
+            .children(stash)
     }
-}
-
-pub fn pip_snap_slots(
-    slots: impl IntoIterator<Item = (Bounds<Pixels>, bool)>,
-    cx: &App,
-) -> AnyElement {
-    let theme = cx.theme();
-    div()
-        .absolute()
-        .inset_0()
-        .children(slots.into_iter().map(|(bounds, lit)| {
-            let state = if lit {
-                PaintState::Selected
-            } else {
-                PaintState::Rest
-            };
-            div()
-                .absolute()
-                .left(bounds.origin.x)
-                .top(bounds.origin.y)
-                .w(bounds.size.width)
-                .h(bounds.size.height)
-                .layer(&theme.layer(roles::PIP_SNAP, state))
-        }))
-        .into_any_element()
 }
 
 #[cfg(test)]
@@ -470,10 +664,215 @@ mod tests {
     }
 
     #[test]
+    fn a_pip_casts_the_float_shadow() {
+        let theme = crate::Theme::from(&*crate::ThemeColor::dark());
+        let pip = theme.layer(roles::PIP, PaintState::Rest);
+        assert_eq!(pip.shadow, theme.float_shadows());
+        assert!(!pip.shadow.is_empty());
+    }
+
+    #[test]
     fn a_throw_coasts_half_a_second_of_its_speed() {
         let landing = projected(point(px(100.0), px(100.0)), point(1000.0, -200.0));
         assert!((f32::from(landing.x) - 599.0).abs() < 1.0, "{landing:?}");
         assert!((f32::from(landing.y) - 0.2).abs() < 1.0, "{landing:?}");
+    }
+
+    const LAYOUT: PipLayout = PipLayout {
+        window: (80, 24),
+        cell: Size {
+            width: px(8.0),
+            height: px(16.0),
+        },
+        canvas: Size {
+            width: px(640.0),
+            height: px(384.0),
+        },
+        lines: PaneBorderLines::Single,
+        header: crate::PANE_HEADER_HEIGHT,
+    };
+
+    #[test]
+    fn every_place_sits_the_same_margin_in_from_the_canvas_edges() {
+        let float = FloatCells {
+            xoff: 30,
+            yoff: 9,
+            sx: 20,
+            sy: 6,
+        };
+        let frame =
+            |place: FloatPlace| LAYOUT.frame(place.cells(float, LAYOUT.window, LAYOUT.lines));
+        let size = LAYOUT.size(float);
+        assert_eq!(
+            size,
+            zz_gpui::size(px(176.0), px(96.0 + 16.0) + crate::PANE_HEADER_HEIGHT)
+        );
+        assert_eq!(
+            frame(FloatPlace::TopLeft).origin,
+            point(px(MARGIN), px(MARGIN))
+        );
+        let bottom_right = frame(FloatPlace::BottomRight);
+        assert_eq!(
+            bottom_right.bottom_right(),
+            point(px(640.0 - MARGIN), px(384.0 - MARGIN))
+        );
+        let centre = frame(FloatPlace::Centre).center();
+        assert_eq!(centre.x, px(320.0));
+        assert!((f32::from(centre.y) - 192.0).abs() <= 16.0, "{centre:?}");
+    }
+
+    #[test]
+    fn a_pip_taller_than_the_room_left_stays_inside_the_canvas() {
+        for sy in [18, 22, 24, 40] {
+            let float = FloatCells {
+                xoff: 30,
+                yoff: 1,
+                sx: 20,
+                sy,
+            };
+            for place in FloatPlace::ALL {
+                let frame = LAYOUT.frame(place.cells(float, LAYOUT.window, LAYOUT.lines));
+                assert!(frame.origin.y >= Pixels::ZERO, "{sy} {place:?} {frame:?}");
+                if frame.size.height <= LAYOUT.canvas.height {
+                    assert!(
+                        frame.bottom() <= LAYOUT.canvas.height,
+                        "{sy} {place:?} {frame:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_largest_pip_a_resize_allows_fits_a_margin_inside_the_canvas() {
+        let (sx, sy) = LAYOUT.max_cells();
+        let size = |sx, sy| {
+            LAYOUT.size(FloatCells {
+                xoff: 0,
+                yoff: 0,
+                sx,
+                sy,
+            })
+        };
+        let largest = size(sx, sy);
+        assert!(largest.width <= LAYOUT.canvas.width - px(MARGIN * 2.0));
+        assert!(largest.height <= LAYOUT.canvas.height - px(MARGIN * 2.0));
+        assert!(size(sx + 1, sy).width > LAYOUT.canvas.width - px(MARGIN * 2.0));
+        assert!(size(sx, sy + 1).height > LAYOUT.canvas.height - px(MARGIN * 2.0));
+    }
+
+    #[test]
+    fn a_pip_let_go_past_the_side_edge_is_stashed_there() {
+        let start = FloatCells {
+            xoff: 30,
+            yoff: 9,
+            sx: 20,
+            sy: 6,
+        };
+        let mut drag = PipDrag::new(start, LAYOUT, Point::default(), Point::default());
+        assert_eq!(drag.release(Point::default()).stash, None);
+        drag.moved(point(px(-400.0), px(0.0)));
+        let landing = drag.release(Point::default());
+        assert_eq!(landing.stash, Some(PipSide::Left));
+        assert_eq!(landing.place, FloatPlace::CentreLeft);
+        drag.moved(point(px(450.0), px(0.0)));
+        assert_eq!(drag.release(Point::default()).stash, Some(PipSide::Right));
+    }
+
+    fn card(pane: u64, x: f32, y: f32) -> PipCard {
+        PipCard {
+            pane: PaneId(pane),
+            frame: Bounds::new(point(px(x), px(y)), zz_gpui::size(px(200.0), px(120.0))),
+            held: false,
+        }
+    }
+
+    const CANVAS: Size<Pixels> = Size {
+        width: px(800.0),
+        height: px(600.0),
+    };
+
+    #[test]
+    fn pips_on_one_place_fan_out_so_each_one_behind_shows_its_header() {
+        let stage = PipStage::default();
+        let bottom = [
+            card(1, 588.0, 468.0),
+            card(2, 588.0, 468.0),
+            card(3, 20.0, 20.0),
+        ];
+        let placed = stage.arrange(&bottom, CANVAS, px(34.0));
+        assert_eq!(placed[0].frame.origin, point(px(588.0), px(468.0)));
+        assert_eq!(placed[1].frame.origin, point(px(588.0), px(434.0)));
+        assert_eq!(placed[2].frame.origin, point(px(20.0), px(20.0)));
+        let top = [
+            card(1, 588.0, 12.0),
+            card(2, 588.0, 12.0),
+            card(3, 588.0, 12.0),
+        ];
+        let placed = stage.arrange(&top, CANVAS, px(34.0));
+        assert_eq!(placed[2].frame.origin.y, px(12.0));
+        assert_eq!(placed[1].frame.origin.y, px(46.0));
+        assert_eq!(placed[0].frame.origin.y, px(80.0));
+        let mut taller = card(2, 560.0, 300.0);
+        taller.frame.size = zz_gpui::size(px(228.0), px(288.0));
+        let placed = stage.arrange(&[card(1, 588.0, 468.0), taller], CANVAS, px(34.0));
+        assert_eq!(
+            placed[1].frame.origin.y,
+            px(300.0),
+            "a taller PiP behind already shows its header"
+        );
+    }
+
+    #[test]
+    fn focusing_a_tiled_pane_stashes_the_pips_and_focusing_one_brings_it_back() {
+        let mut stage = PipStage::default();
+        let window = WindowId(1);
+        let floats = BTreeSet::from([PaneId(5), PaneId(6)]);
+        let floating = |pane: PaneId| pane.0 >= 5;
+        let alive = |pane: PaneId| pane.0 != 9;
+        stage.focus(window, PaneId(5), floats.clone(), floating, alive);
+        stage.focus(window, PaneId(1), floats.clone(), floating, alive);
+        let cards = [card(5, 588.0, 468.0), card(6, 20.0, 20.0)];
+        let placed = stage.arrange(&cards, CANVAS, px(34.0));
+        assert_eq!(placed[0].stashed, Some(PipSide::Right));
+        assert_eq!(placed[0].frame.left(), CANVAS.width - px(PEEK));
+        assert_eq!(placed[1].stashed, Some(PipSide::Left));
+        assert_eq!(placed[1].frame.right(), px(PEEK));
+        stage.focus(window, PaneId(6), floats.clone(), floating, alive);
+        let placed = stage.arrange(&cards, CANVAS, px(34.0));
+        assert_eq!(placed[0].stashed, Some(PipSide::Right));
+        assert_eq!(placed[1].stashed, None);
+        let more = BTreeSet::from([PaneId(5), PaneId(6), PaneId(7)]);
+        stage.focus(window, PaneId(6), more.clone(), floating, alive);
+        assert!(!stage.stashed.contains(&PaneId(7)));
+    }
+
+    #[test]
+    fn a_stashed_pile_keeps_each_pip_in_sight() {
+        let mut stage = PipStage::default();
+        stage.stash(PaneId(1));
+        stage.stash(PaneId(2));
+        let pile = [card(1, 588.0, 468.0), card(2, 588.0, 468.0)];
+        let placed = stage.arrange(&pile, CANVAS, px(34.0));
+        assert!(
+            placed
+                .iter()
+                .all(|placed| placed.stashed == Some(PipSide::Right))
+        );
+        assert_eq!(placed[0].frame.origin.y, px(468.0));
+        assert_eq!(placed[1].frame.origin.y, px(434.0));
+    }
+
+    #[test]
+    fn closing_the_focused_pane_or_switching_windows_stashes_nothing() {
+        let mut stage = PipStage::default();
+        let floats = BTreeSet::from([PaneId(5)]);
+        let floating = |pane: PaneId| pane.0 >= 5;
+        let alive = |pane: PaneId| pane.0 != 9;
+        stage.focus(WindowId(1), PaneId(9), floats.clone(), floating, alive);
+        stage.focus(WindowId(1), PaneId(1), floats.clone(), floating, alive);
+        stage.focus(WindowId(2), PaneId(2), floats.clone(), floating, alive);
+        assert!(stage.stashed.is_empty());
     }
 
     #[test]
@@ -484,59 +883,16 @@ mod tests {
             sx: 20,
             sy: 6,
         };
-        let cell = zz_gpui::size(px(8.0), px(16.0));
-        let mut drag = PipDrag::new(
-            start,
-            PaneBorderLines::Single,
-            (80, 24),
-            cell,
-            Point::default(),
-            Point::default(),
-        );
+        let mut drag = PipDrag::new(start, LAYOUT, Point::default(), Point::default());
         assert_eq!(drag.landing(Point::default()), FloatPlace::Centre);
         assert_eq!(drag.landing(point(1500.0, 900.0)), FloatPlace::BottomRight);
         assert_eq!(drag.landing(point(-1500.0, 0.0)), FloatPlace::CentreLeft);
         drag.moved(point(px(-200.0), px(-120.0)));
         assert_eq!(drag.landing(Point::default()), FloatPlace::TopLeft);
-        let landing = drag.release(Point::default(), Instant::now(), false);
+        let landing = drag.release(Point::default());
         assert_eq!(
             landing.target,
             FloatPlace::TopLeft.cells(start, (80, 24), PaneBorderLines::Single)
         );
-        assert_eq!(
-            drag.drawn_origin() - landing.glide.offset(),
-            drag.frame(landing.target).origin
-        );
-    }
-
-    #[test]
-    fn a_glide_settles_on_its_place_without_overshoot() {
-        let start = Instant::now();
-        let mut glide = PipGlide::new(point(px(-400.0), px(120.0)), point(9000.0, -50.0), start);
-        let mut now = start;
-        let mut frames = 0;
-        while glide.tick(now) {
-            let offset = glide.offset();
-            assert!(f32::from(offset.x) <= 0.5, "{offset:?}");
-            assert!(f32::from(offset.y) >= -0.5, "{offset:?}");
-            now += FRAME;
-            frames += 1;
-            assert!(frames < 120, "never settled");
-        }
-        assert_eq!(glide.offset(), Point::default());
-    }
-
-    #[test]
-    fn a_throw_past_its_place_swings_out_a_little_and_comes_back() {
-        let start = Instant::now();
-        let mut glide = PipGlide::new(point(px(100.0), px(0.0)), point(48000.0, 0.0), start);
-        let mut now = start;
-        let mut furthest: f32 = 0.0;
-        while glide.tick(now) {
-            furthest = furthest.max(f32::from(glide.offset().x));
-            now += FRAME;
-        }
-        assert!(furthest < 160.0, "swung out to {furthest}");
-        assert!(now.saturating_duration_since(start) < Duration::from_millis(900));
     }
 }

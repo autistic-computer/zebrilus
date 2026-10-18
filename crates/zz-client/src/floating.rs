@@ -159,6 +159,25 @@ pub fn float_drag_preview(start: FloatCells, grip: FloatGrip, delta: (i32, i32))
     FloatCells { xoff, yoff, sx, sy }
 }
 
+#[must_use]
+pub fn float_drag_within(target: FloatCells, grip: FloatGrip, max: (u16, u16)) -> FloatCells {
+    if grip.is_move() {
+        return target;
+    }
+    let axis = |offset: i32, size: u16, near: bool, max: u16| {
+        let fitted = size.min(max.max(1));
+        let offset = if near {
+            offset + i32::from(size - fitted)
+        } else {
+            offset
+        };
+        (offset, fitted)
+    };
+    let (xoff, sx) = axis(target.xoff, target.sx, grip.left, max.0);
+    let (yoff, sy) = axis(target.yoff, target.sy, grip.top, max.1);
+    FloatCells { xoff, yoff, sx, sy }
+}
+
 fn drag_axis(offset: i32, size: u16, near: bool, far: bool, delta: i32) -> (i32, u16) {
     let size = i32::from(size);
     let (offset, size) = if near {
@@ -307,21 +326,16 @@ impl FloatPlace {
     }
 
     #[must_use]
-    pub fn nearest(
-        point: (f32, f32),
-        float: FloatCells,
-        window: (u16, u16),
-        lines: PaneBorderLines,
-    ) -> Self {
-        let distance = |place: Self| {
-            let cells = place.cells(float, window, lines);
-            let (x, y) = cells.centre();
-            (x - point.0).powi(2) + (y - point.1).powi(2)
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the third is clamped to 0..=2 before it indexes"
+    )]
+    pub fn zone(point: (f32, f32), window: (u16, u16)) -> Self {
+        let third = |at: f32, size: u16| {
+            (at / f32::from(size.max(1)) * 3.0).floor().clamp(0.0, 2.0) as usize
         };
-        Self::ALL
-            .into_iter()
-            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
-            .unwrap_or(Self::BottomRight)
+        Self::ALL[third(point.1, window.1) * 3 + third(point.0, window.0)]
     }
 
     #[must_use]
@@ -353,11 +367,43 @@ impl FloatCells {
 }
 
 #[must_use]
-pub fn float_pane_command(pane: PaneId) -> CommandInvocation {
+pub fn tile_pane_command(pane: PaneId) -> CommandInvocation {
     CommandInvocation::new(
-        "break-pane",
-        ["-W".to_owned(), "-s".to_owned(), pane.to_string()],
+        "join-pane",
+        [
+            "-s".to_owned(),
+            pane.to_string(),
+            "-t".to_owned(),
+            pane.to_string(),
+        ],
     )
+}
+
+#[must_use]
+pub fn zoom_pane_command(pane: PaneId) -> CommandInvocation {
+    CommandInvocation::new(
+        "resize-pane",
+        ["-Z".to_owned(), "-t".to_owned(), pane.to_string()],
+    )
+}
+
+#[must_use]
+pub fn float_pane_commands(pane: PaneId) -> [CommandInvocation; 2] {
+    [
+        CommandInvocation::new(
+            "break-pane",
+            [
+                "-W".to_owned(),
+                "-x".to_owned(),
+                "33%".to_owned(),
+                "-y".to_owned(),
+                "33%".to_owned(),
+                "-s".to_owned(),
+                pane.to_string(),
+            ],
+        ),
+        FloatPlace::BottomRight.command(pane),
+    ]
 }
 
 #[must_use]
@@ -673,20 +719,22 @@ mod tests {
     }
 
     #[test]
-    fn the_nearest_place_wins_and_lands_with_one_move_pane() {
-        let window = (80, 24);
-        let lines = PaneBorderLines::Single;
+    fn the_window_splits_into_nine_zones_and_a_place_lands_with_one_move_pane() {
+        let window = (90, 30);
         assert_eq!(
-            FloatPlace::nearest((78.0, 23.0), FLOAT, window, lines),
+            FloatPlace::zone((89.0, 29.0), window),
             FloatPlace::BottomRight
         );
+        assert_eq!(FloatPlace::zone((45.0, 15.0), window), FloatPlace::Centre);
         assert_eq!(
-            FloatPlace::nearest((41.0, 12.0), FLOAT, window, lines),
-            FloatPlace::Centre
+            FloatPlace::zone((29.9, 10.0), window),
+            FloatPlace::CentreLeft
         );
+        assert_eq!(FloatPlace::zone((30.0, 9.9), window), FloatPlace::TopCentre);
+        assert_eq!(FloatPlace::zone((-200.0, 3.0), window), FloatPlace::TopLeft);
         assert_eq!(
-            FloatPlace::nearest((-200.0, 3.0), FLOAT, window, lines),
-            FloatPlace::TopLeft
+            FloatPlace::zone((500.0, 500.0), window),
+            FloatPlace::BottomRight
         );
         assert_eq!(
             words(&FloatPlace::TopCentre.command(PaneId(4))),
@@ -695,10 +743,31 @@ mod tests {
     }
 
     #[test]
+    fn float_asks_for_a_third_of_the_window_in_the_bottom_right_corner() {
+        let [float, place] = float_pane_commands(PaneId(7));
+        assert_eq!(words(&float), "break-pane -W -x 33% -y 33% -s %7");
+        assert_eq!(words(&place), "move-pane -t %7 -P bottom-right");
+    }
+
+    #[test]
     fn a_resize_never_collapses_the_content() {
         let target = float_drag_preview(FLOAT, grip("l"), (50, 0));
         assert_eq!(target.sx, 1);
         assert_eq!(target.xoff, FLOAT.xoff + i32::from(FLOAT.sx) - 1);
+    }
+
+    #[test]
+    fn a_resize_stops_at_the_largest_float_that_fits_and_keeps_the_far_edge() {
+        let grown = float_drag_preview(FLOAT, grip("lb"), (-30, 40));
+        let fitted = float_drag_within(grown, grip("lb"), (40, 16));
+        assert_eq!((fitted.sx, fitted.sy), (40, 16));
+        assert_eq!(
+            fitted.xoff + i32::from(fitted.sx),
+            FLOAT.xoff + i32::from(FLOAT.sx)
+        );
+        assert_eq!(fitted.yoff, FLOAT.yoff);
+        let small = float_drag_preview(FLOAT, grip("r"), (2, 0));
+        assert_eq!(float_drag_within(small, grip("r"), (40, 16)), small);
     }
 
     #[test]
