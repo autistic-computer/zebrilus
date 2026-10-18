@@ -164,14 +164,6 @@ PROMPT_REASON='zz paints the command prompt from its own palette and ignores mes
 # The split geometry itself is asserted through each pane's width and height in
 # the facts line, which is where a key's effect actually lives.
 BORDER_REASON='the border cell has no background on the wire and layout.rs floors the split ratio'
-# The moment a pane's foreground child starts, the two servers disagree about
-# #{pane_current_command} for a beat: with default-command pinned to
-# `exec /bin/sh`, the pin already answers `cat` while zz still answers the
-# shell or an empty string, and zz has caught up by the next chord (every
-# later application case asserts the field and agrees). Measured 2026-09-10 at
-# the gate tip; the field is asserted everywhere else, where the pane is a
-# settled shell and the two agree exactly.
-COMMAND_SETTLE_REASON='zz reports #{pane_current_command} a beat later than the pin when a pane'"'"'s child starts'
 mkdir -p "$ZZ_HOME" "$TMUX_HOME" "$OUTER_HOME" "$ZZ_LOG_DIR"
 [ -z "$CAPTURE_DIR" ] || mkdir -p "$CAPTURE_DIR"
 
@@ -731,7 +723,7 @@ run_key_ownership() {
     die 'zz refused send-keys'
   side_command tmux send-keys -t "=$SESSION_NAME:0.0" 'stty -isig; cat -v' Enter ||
     die 'tmux refused send-keys'
-  key_case application-reader screen 'cat -v' rows,cursor "$COMMAND_SETTLE_REASON"
+  key_case application-reader screen 'cat -v'
   type_both 'C-\'
   key_case application-backslash screen '^\'
   type_both M-s

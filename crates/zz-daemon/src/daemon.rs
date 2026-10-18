@@ -482,7 +482,7 @@ fn home_directory_for(engine: &MuxEngine, user: &str) -> Option<String> {
     }
 }
 
-fn terminal_current_command(terminal: &TerminalSession) -> String {
+pub(crate) fn terminal_current_command(terminal: &TerminalSession) -> String {
     terminal_foreground_process(terminal)
         .and_then(zz_daemon_client::process_info::command_name)
         .unwrap_or_default()
@@ -9487,7 +9487,8 @@ impl Shared {
                 facts,
                 (!format_variables.is_empty()).then_some(&format_variables),
             )
-            .withhold_facts(facts_unread);
+            .withhold_facts(facts_unread)
+            .with_live_process_facts();
             inner.engine.set_format_now(unix_timestamp());
             let mut prospective_context = context.clone();
             set_context_client_terminal(&mut prospective_context, invoking_client_terminal);
@@ -9539,7 +9540,8 @@ impl Shared {
                 let mut hooks = DaemonFormatHooks::command_with_optional_variables(
                     &facts,
                     (!format_variables.is_empty()).then_some(&format_variables),
-                );
+                )
+                .with_live_process_facts();
                 if command_name == "list-keys" {
                     hooks = hooks.with_command_item("list-keys");
                     cmdq::start_key_listing(
