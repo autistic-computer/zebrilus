@@ -9887,6 +9887,9 @@ impl Shared {
                             retire_terminal(&previous);
                         }
                         inner.terminal_spawns.insert(*pane, spawn);
+                        if context.spawns_popup() {
+                            inner.popup_panes.insert(*pane);
+                        }
                         inner.engine.set_pane_runtime_facts_with_hooks(
                             *pane,
                             PaneRuntimeFacts {
@@ -10063,6 +10066,9 @@ impl Shared {
                             retire_terminal(&previous);
                         }
                         inner.terminal_spawns.insert(*pane, spawn);
+                        if context.spawns_popup() {
+                            inner.popup_panes.insert(*pane);
+                        }
                         for streamed in inner
                             .clients
                             .values_mut()
@@ -10243,6 +10249,7 @@ impl Shared {
                             inner.pane_read_observations.remove(pane);
                             inner.control_activity_pending.remove(pane);
                             inner.program_status_panes.remove(pane);
+                            inner.popup_panes.remove(pane);
                             #[cfg(all(feature = "agent", unix))]
                             inner.claude_peer_states.remove(pane);
                             inner.terminal_spawns.remove(pane);
@@ -18946,6 +18953,7 @@ impl Shared {
             ]);
         }
         let mut new_context = target.clone();
+        new_context.set_spawns_popup(true);
         new_context.set_spawn_pane_options(
             spawn_options
                 .into_iter()
@@ -35498,6 +35506,7 @@ struct ServerState {
     pane_read_observations: BTreeMap<PaneId, Weak<terminal_reads::Observation>>,
     control_activity_pending: BTreeSet<PaneId>,
     program_status_panes: BTreeSet<PaneId>,
+    popup_panes: BTreeSet<PaneId>,
     locations: pane_summary::Locations,
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
@@ -40476,8 +40485,9 @@ fn nested_attach_refusal(inner: &ServerState, client: ClientId) -> Option<Server
     }
     inner
         .terminals
-        .values()
-        .any(|terminal| {
+        .iter()
+        .filter(|(pane, _)| !inner.popup_panes.contains(pane))
+        .any(|(_, terminal)| {
             terminal
                 .tty()
                 .is_some_and(|pane_tty| pane_tty.as_os_str() == tty.as_str())
@@ -121050,6 +121060,77 @@ bind - split-window -v -c "#{pane_current_path}"
         }
         assert_eq!(window_pane_count(&shared, &context), 1);
         assert!(!shared.inner.lock().terminals.contains_key(&modal));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn nested_attach_passes_from_a_popup_and_is_refused_from_a_modal_pane() {
+        let (shared, first, _mailbox, mut context) = popup_test_workspace("popup-nested");
+        let session = context.session.expect("popup test session");
+        let attach_from = |pane: PaneId, name: &str| {
+            let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+            wait_for_terminal_identity(&terminal);
+            let tty = terminal
+                .tty()
+                .expect("pane tty")
+                .to_string_lossy()
+                .into_owned();
+            let (nested, _) = shared.register_subscribed(
+                ClientKind::Control,
+                Some(name.to_owned()),
+                None,
+                OutboundMailbox::new(),
+            );
+            {
+                let mut inner = shared.inner.lock();
+                inner.client_entry(nested).tty.replace(tty);
+                inner.client_entry(nested).nested = true;
+            }
+            shared.execute(
+                nested,
+                ClientKind::Control,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("attach-session", ["-t", &session.to_string()]),
+            )
+        };
+
+        shared
+            .execute(
+                first,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("display-popup", ["-E", "sleep 30"]),
+            )
+            .expect("open popup");
+        let popup = modal_pane(&shared, &context).expect("display-popup made a modal pane");
+        attach_from(popup, "from-popup").expect("attach from a popup's tty");
+
+        shared
+            .execute(
+                first,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("display-popup", ["-C"]),
+            )
+            .expect("close popup");
+        shared
+            .execute(
+                first,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("new-pane", ["-O", "sleep 30"]),
+            )
+            .expect("open a modal pane");
+        let modal = modal_pane(&shared, &context).expect("new-pane -O made a modal pane");
+        assert!(!shared.inner.lock().popup_panes.contains(&modal));
+        match attach_from(modal, "from-modal") {
+            Err(DaemonError::Server(ServerError::InvalidCommand(message))) => assert_eq!(
+                message,
+                "sessions should be nested with care, unset $TMUX to force"
+            ),
+            other => panic!("attach from a modal pane's tty was not refused: {other:?}"),
+        }
+        shared.request_shutdown();
     }
 
     #[cfg(unix)]

@@ -890,6 +890,7 @@ pub struct ExecutionContext {
     control_command_target: Option<(ClientId, u8)>,
     legacy_layouts: bool,
     refuse_new_session_attach: bool,
+    spawns_popup: bool,
     pub no_hooks: bool,
     pub format_variables: BTreeMap<String, String>,
     spawn_pane_options: Vec<(String, String)>,
@@ -1046,6 +1047,7 @@ impl fmt::Debug for ExecutionContext {
             .field("control_command_target", &self.control_command_target)
             .field("legacy_layouts", &self.legacy_layouts)
             .field("refuse_new_session_attach", &self.refuse_new_session_attach)
+            .field("spawns_popup", &self.spawns_popup)
             .field("no_hooks", &self.no_hooks)
             .field("format_variables", &self.format_variables)
             .field("spawn_pane_options", &self.spawn_pane_options)
@@ -1081,6 +1083,7 @@ impl Default for ExecutionContext {
             control_command_target: None,
             legacy_layouts: false,
             refuse_new_session_attach: false,
+            spawns_popup: false,
             no_hooks: false,
             format_variables: BTreeMap::new(),
             spawn_pane_options: Vec::new(),
@@ -1291,6 +1294,15 @@ impl ExecutionContext {
 
     pub fn set_refuse_new_session_attach(&mut self, refuse: bool) {
         self.refuse_new_session_attach = refuse;
+    }
+
+    #[must_use]
+    pub const fn spawns_popup(&self) -> bool {
+        self.spawns_popup
+    }
+
+    pub fn set_spawns_popup(&mut self, popup: bool) {
+        self.spawns_popup = popup;
     }
 
     /// Pane options `new-pane` sets on the pane it creates before the daemon

@@ -1381,9 +1381,12 @@ nobody intends to drain. `accepted` plus `native` means zz's own surface serves 
 - `options.theme-palette` (native): zz already resolves the pin's ten `theme*` style colour
   names into zz theme tokens in the GUI and through the pin's own fallback indices in the daemon and
   raw TUI, while the twenty-one options that would override those slots stay store-only.
-- `pane.floating-model` (reopened as adopt 2026-10-09): a tmux floating pane is a mux object placed
-  by `new-pane` and `move-pane`; fabrico ruled to build it as
-  [the floating panes design](/designs/floating-panes.md) describes, closed by float.core.
+- `pane.floating-model` (reopened as adopt 2026-10-09, closed 2026-10-18): a tmux floating pane is a
+  mux object placed by `new-pane` and `move-pane`; fabrico ruled to build it as
+  [the floating panes design](/designs/floating-panes.md) describes, closed by float.core. Its last
+  item, nested attach inside `display-popup`, closed 2026-10-18: popup panes are left out of the
+  nested-attach check, so `display-popup -E "tmux attach -t scratch"` attaches as on the pin
+  (`compat/tui-popup-attach.sh`).
 - `protocol.binary-streams` (closed 2026-10-09): the bounded caller stream channel carries all five
   tmux `-` forms, `show-buffer` hands a buffer's bytes to every client shape the way the pin does,
   and `source-file -` parses a stream that is not UTF-8 with the same byte parser a file gets.

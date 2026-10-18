@@ -2,7 +2,7 @@
 type: Design Plan
 title: Floating panes . the popup becomes window-owned
 description: Floating panes as flagged leaves of the window's layout tree, exactly where tmux 3.8 keeps them, with display-popup rebuilt as a modal floating pane the way tmux master 34cd5da4 does it; covers the 3.8 command surface including windows with no tiled pane, the appended v108 wire, sizing, zoom, hit-testing, mouse drags, what each client draws, and the float.core, float.clients and float.keys lanes with their acceptance clauses.
-status: proposed
+status: Shipped (float.core, float.clients and float.keys merged 2026-10-10; nested attach inside display-popup 2026-10-18)
 resource: crates/zz-mux/src/model.rs
 tags:
 - tmux
@@ -412,7 +412,8 @@ goes dead until float.clients.
     encodings; one `move-pane -X` emits exactly one `TreeOp::WindowLayout`.
 11. `choose-tree -O z` lists panes in `pane_z` order. `pane.floating-model` turns from native to adopted
     and each item closes with the behaviour that proves it (`option:editor` in float.keys;
-    `semantic:nested-attach-in-popup` keeps its fixture requirement); `just compat check` passes.
+    `semantic:nested-attach-in-popup` keeps its fixture requirement, met 2026-10-18 by
+    `compat/tui-popup-attach.sh`); `just compat check` passes.
 
 **float.clients.** Zones: `crates/zz/src/{workspace,mux/client.rs,terminal/view.rs}`,
 `crates/zz-ui/src/pane.rs`, `clients/app/src`, `crates/zz-client/src`, `crates/zz-tui/src`,
