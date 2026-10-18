@@ -242,6 +242,9 @@ fn pane_actions(cx: &App) -> impl IntoElement {
             pane_header_icon_button("Split right", IconName::PanelRight, true, cx)
                 .tooltip("Split right"),
         )
+        .child(
+            pane_header_icon_button("Float", IconName::PictureInPicture, true, cx).tooltip("Float"),
+        )
 }
 
 fn tab_infos(count: usize) -> Vec<BrowserTabInfo> {

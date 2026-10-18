@@ -360,6 +360,7 @@ enum ChromeProfileDiscovery {
 struct ChromeState {
     active: bool,
     can_drag: bool,
+    floats: bool,
     drag_title: String,
     opacity: f32,
     shows_empty_state: bool,
@@ -615,6 +616,7 @@ impl BrowserView {
             let state = ChromeState {
                 active: false,
                 can_drag: false,
+                floats: false,
                 drag_title: initial_url.clone(),
                 opacity: 1.0,
                 shows_empty_state: is_blank_url(&initial_url),
@@ -3607,7 +3609,7 @@ impl Render for BrowserChromeView {
             }
             None => tabs,
         };
-        let action = |icon, label: &'static str, axis: Axis| {
+        let action = |icon, label: &'static str, axis: Option<Axis>| {
             let browser = self.browser.clone();
             pane_header_icon_button(label, icon, true, cx)
                 .tooltip(label)
@@ -3615,9 +3617,10 @@ impl Render for BrowserChromeView {
                     cx.stop_propagation();
                     if let Some(browser) = browser.upgrade() {
                         browser.update(cx, |view, cx| {
-                            view.mux
-                                .read(cx)
-                                .execute(picker_split_command(view.pane, axis));
+                            view.mux.read(cx).execute(axis.map_or_else(
+                                || zz_client::floating::float_pane_command(view.pane),
+                                |axis| picker_split_command(view.pane, axis),
+                            ));
                         });
                     }
                 })
@@ -3630,13 +3633,16 @@ impl Render for BrowserChromeView {
             .child(action(
                 IconName::PanelBottom,
                 "Split bottom",
-                Axis::Vertical,
+                Some(Axis::Vertical),
             ))
             .child(action(
                 IconName::PanelRight,
                 "Split right",
-                Axis::Horizontal,
-            ));
+                Some(Axis::Horizontal),
+            ))
+            .when(!self.state.floats, |actions| {
+                actions.child(action(IconName::PictureInPicture, "Float", None))
+            });
         div()
             .h(BrowserHeader::HEIGHT)
             .w_full()
@@ -3660,7 +3666,7 @@ impl Render for BrowserView {
             self.refresh_chrome_profiles(false, window, cx);
         }
         let (tabs, active_tab_index) = self.tab_strip_state(cx);
-        let (active, can_drag, drag_title) = {
+        let (active, can_drag, floats, drag_title) = {
             let mux = self.mux.read(cx);
             let snapshot = mux.snapshot();
             let pane_window = snapshot
@@ -3674,6 +3680,7 @@ impl Render for BrowserView {
                     && pane_window.is_some_and(|window| {
                         window.zoomed_pane.is_none() && window.panes.len() > 1
                     }),
+                zz_client::floating::pane_floats(&snapshot, self.pane),
                 pane_window
                     .and_then(|window| window.panes.get(&self.pane))
                     .map_or_else(|| "Browser".to_owned(), zz_client::navigation::pane_label),
@@ -3682,6 +3689,7 @@ impl Render for BrowserView {
         let snapshot = ChromeState {
             active,
             can_drag,
+            floats,
             drag_title,
             opacity: self.chrome_opacity,
             shows_empty_state,

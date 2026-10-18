@@ -832,6 +832,8 @@ impl BrowserPane {
                     connection.command("kill-pane", vec!["-t".to_owned(), pane.to_string()], cx);
                 });
             });
+        let floats =
+            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), pane);
         let actions = div().flex().gap_1().children(
             [
                 (
@@ -839,19 +841,27 @@ impl BrowserPane {
                     IconName::PanelRight,
                     "Split right",
                     "split-window",
-                    vec!["--kind".into(), "picker".into(), "-h".into()],
+                    vec!["--kind".into(), "picker".into(), "-h".into(), "-t".into()],
                 ),
                 (
                     "ios-browser-split-bottom",
                     IconName::PanelBottom,
                     "Split bottom",
                     "split-window",
-                    vec!["--kind".into(), "picker".into(), "-v".into()],
+                    vec!["--kind".into(), "picker".into(), "-v".into(), "-t".into()],
+                ),
+                (
+                    "ios-browser-float",
+                    IconName::PictureInPicture,
+                    "Float",
+                    "break-pane",
+                    vec!["-W".into(), "-s".into()],
                 ),
             ]
             .into_iter()
+            .filter(|(_, _, _, command, _)| *command != "break-pane" || !floats)
             .map(|(id, icon, label, command, mut args)| {
-                args.extend(["-t".into(), pane.to_string()]);
+                args.push(pane.to_string());
                 let connection = self.connection.clone();
                 pane_header_icon_button(id, icon, writable, cx)
                     .tooltip(label)

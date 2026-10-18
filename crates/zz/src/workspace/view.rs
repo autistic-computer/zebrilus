@@ -45,6 +45,7 @@ use zz_ui::dialog::DialogButtonProps;
 use zz_ui::path_picker::{
     PATH_PICKER_VISIBLE_ROWS, PathPickerBackend, PathPickerEvent, PathPickerView,
 };
+use zz_ui::pip::{PipDrag, PipGlide, PipSurface, PipThrow, pip_snap_slots};
 use zz_ui::{
     ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _, button::ButtonVariant,
     draws_window_controls, notification::Notification,
@@ -320,6 +321,16 @@ struct FloatDragState {
     started: bool,
     committed_snapshot_revision: Option<u64>,
     request: Option<u64>,
+    pip: Option<PipDrag>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PipGlideState {
+    window: WindowId,
+    pane: PaneId,
+    target: FloatCells,
+    glide: PipGlide,
+    request: Option<u64>,
 }
 
 impl FloatDragState {
@@ -329,6 +340,14 @@ impl FloatDragState {
 
     fn preview(&self) -> Option<FloatCells> {
         self.started.then(|| self.target())
+    }
+
+    const fn throwing(&self) -> bool {
+        self.pip.is_some()
+    }
+
+    fn thrown(&self) -> Option<PipDrag> {
+        self.pip.filter(|_| self.started)
     }
 
     fn halfway(&self) -> Option<FloatCells> {
@@ -584,6 +603,7 @@ impl Render for TerminalHeaderView {
                 let command = match action {
                     TerminalPaneAction::SplitBottom => picker_split_command(pane, Axis::Vertical),
                     TerminalPaneAction::SplitRight => picker_split_command(pane, Axis::Horizontal),
+                    TerminalPaneAction::Float => zz_client::floating::float_pane_command(pane),
                     TerminalPaneAction::Close => kill_target_command(TreeTarget::Pane(pane)),
                 };
                 mux.read(cx).execute(command);
@@ -792,6 +812,8 @@ pub struct AppView {
     window_handle: AnyWindowHandle,
     split_drag: Option<SplitDragState>,
     float_drag: Option<FloatDragState>,
+    pip_throw: PipThrow,
+    pip_glide: Option<PipGlideState>,
     terminal_resize_suppressed: Rc<Cell<bool>>,
     terminal_resizes_held: bool,
     snapshot_revision: u64,
@@ -1131,6 +1153,8 @@ impl AppView {
             window_handle,
             split_drag: None,
             float_drag: None,
+            pip_throw: PipThrow::default(),
+            pip_glide: None,
             terminal_resize_suppressed: Rc::new(Cell::new(false)),
             terminal_resizes_held: false,
             snapshot_revision: 0,
@@ -2699,13 +2723,34 @@ impl AppView {
         {
             return;
         }
-        let rows = mux
-            .snapshot()
+        let snapshot = mux.snapshot();
+        let window_snapshot = snapshot
             .sessions
             .iter()
             .flat_map(|session| &session.windows)
-            .find(|snapshot| snapshot.id == window)
-            .map_or(0, |snapshot| snapshot.sy);
+            .find(|snapshot| snapshot.id == window);
+        let (columns, rows) = window_snapshot.map_or((0, 0), |snapshot| (snapshot.sx, snapshot.sy));
+        let modal = window_snapshot
+            .and_then(|snapshot| snapshot.modal)
+            .is_some_and(|modal| modal.pane == float.pane);
+        let gliding = self
+            .pip_glide
+            .take_if(|glide| glide.window == window && glide.pane == float.pane);
+        let start = gliding.map_or_else(|| FloatCells::from(&float), |glide| glide.target);
+        let pip = (!modal && grip.is_move()).then(|| {
+            PipDrag::new(
+                start,
+                float.border_lines,
+                (columns, rows),
+                cell,
+                press,
+                gliding.map_or_else(Point::default, |glide| glide.glide.offset()),
+            )
+        });
+        if pip.is_some() {
+            self.pip_throw = PipThrow::default();
+            self.pip_throw.track(cx.background_executor().now(), press);
+        }
         self.float_drag = Some(FloatDragState {
             window,
             pane: float.pane,
@@ -2715,13 +2760,14 @@ impl AppView {
                 border_status,
                 rows,
             },
-            start: FloatCells::from(&float),
+            start,
             press,
             cell,
             delta: (0, 0),
             started: false,
             committed_snapshot_revision: None,
             request: None,
+            pip,
         });
     }
 
@@ -2739,6 +2785,15 @@ impl AppView {
         else {
             return;
         };
+        if let Some(pip) = drag.pip.as_mut() {
+            drag.started = true;
+            pip.moved(event.event.position);
+            self.pip_throw
+                .track(cx.background_executor().now(), event.event.position);
+            cx.notify();
+            cx.stop_propagation();
+            return;
+        }
         let offset = event.event.position - drag.press;
         let delta = (
             (offset.x / drag.cell.width).round() as i32,
@@ -2768,6 +2823,13 @@ impl AppView {
         let Some(mut drag) = self.float_drag else {
             return;
         };
+        if drag.throwing() {
+            self.float_drag = None;
+            if let Some(pip) = drag.thrown() {
+                self.throw_pip(drag.window, drag.pane, pip, cx);
+            }
+            return;
+        }
         let target = drag.target();
         if !drag.started || target == drag.start {
             self.float_drag = None;
@@ -2778,6 +2840,36 @@ impl AppView {
             drag.pane, drag.grip, drag.start, target, drag.lines, drag.area,
         ));
         self.float_drag = drag.request.is_some().then_some(drag);
+    }
+
+    fn throw_pip(&mut self, window: WindowId, pane: PaneId, pip: PipDrag, cx: &App) {
+        let now = cx.background_executor().now();
+        let landing = pip.release(self.pip_throw.velocity(now), now, cx.reduce_motion());
+        let request = self
+            .mux
+            .read(cx)
+            .execute_tracked(landing.place.command(pane));
+        self.pip_glide = Some(PipGlideState {
+            window,
+            pane,
+            target: landing.target,
+            glide: landing.glide,
+            request,
+        });
+    }
+
+    fn tick_pip_glide(&mut self, window: &mut Window, cx: &App) {
+        let Some(state) = self.pip_glide.as_mut() else {
+            return;
+        };
+        if state.glide.tick(cx.background_executor().now()) {
+            window.request_animation_frame();
+        } else if state
+            .request
+            .is_none_or(|request| self.mux.read(cx).command_settled(request))
+        {
+            self.pip_glide = None;
+        }
     }
 
     fn reconcile_float_drag(&mut self, active_window: Option<&WindowSnapshot>, cx: &App) {
@@ -3590,6 +3682,14 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let mut layer = Vec::new();
+        if let Some(pip) = self
+            .float_drag
+            .filter(|drag| drag.window == window_snapshot.id)
+            .and_then(|drag| drag.thrown())
+        {
+            let velocity = self.pip_throw.velocity(cx.background_executor().now());
+            layer.push(pip_snap_slots(pip.slots(velocity), cx));
+        }
         for float in window_snapshot
             .floating
             .iter()
@@ -3644,11 +3744,24 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let pane = float.pane;
-        let cells = self
+        let modal = window_snapshot
+            .modal
+            .is_some_and(|modal| modal.pane == pane);
+        let drag = self
             .float_drag
-            .filter(|drag| drag.window == window_snapshot.id && drag.pane == pane)
-            .and_then(|drag| drag.preview())
-            .unwrap_or_else(|| FloatCells::from(float));
+            .filter(|drag| drag.window == window_snapshot.id && drag.pane == pane);
+        let throw = drag.and_then(|drag| drag.thrown());
+        let glide = self
+            .pip_glide
+            .filter(|glide| glide.window == window_snapshot.id && glide.pane == pane);
+        let cells = match (throw, glide) {
+            (Some(pip), _) => pip.start,
+            (None, Some(glide)) => glide.target,
+            (None, None) => drag
+                .filter(|drag| !drag.throwing())
+                .and_then(|drag| drag.preview())
+                .unwrap_or_else(|| FloatCells::from(float)),
+        };
         let bordered = float.border_lines != PaneBorderLines::None;
         if canvas.width > Pixels::ZERO
             && canvas.height > Pixels::ZERO
@@ -3663,7 +3776,7 @@ impl AppView {
             return None;
         }
         let pad = i32::from(bordered);
-        let frame = Bounds::new(
+        let mut frame = Bounds::new(
             point(
                 cell.width * (cells.xoff - pad) as f32,
                 cell.height * (cells.yoff - pad) as f32,
@@ -3673,6 +3786,11 @@ impl AppView {
                 cell.height * (i32::from(cells.sy) + 2 * pad) as f32,
             ),
         );
+        if let Some(pip) = throw {
+            frame.origin = pip.drawn_origin();
+        } else if let Some(glide) = glide {
+            frame.origin += glide.glide.offset();
+        }
         let active = pane == window_snapshot.active_pane;
         let snapshot = window_snapshot.panes.get(&pane);
         if let Some(terminal) = self.terminals.get(&pane) {
@@ -3706,10 +3824,32 @@ impl AppView {
                 *float,
                 cell,
                 frame.size,
+                !modal,
                 cx,
             )
         } else {
             Vec::new()
+        };
+        let surface = if modal {
+            FloatingSurface::new(("floating-pane", pane.0), content, cx)
+                .title(title.left)
+                .title_right(title.right)
+                .content_inset(inset.width, inset.height)
+                .edge_color(pane_border_color(active, cx))
+                .bordered(bordered)
+                .into_any_element()
+        } else {
+            let label = if title.left.is_empty() {
+                snapshot.map(|pane| pane.title.clone()).unwrap_or_default()
+            } else {
+                title.left
+            };
+            self.pip_surface(window_snapshot, float, cell, content, cx)
+                .title(label)
+                .content_inset(inset.width, inset.height)
+                .active(active)
+                .bordered(bordered)
+                .into_any_element()
         };
         Some(
             div()
@@ -3720,14 +3860,7 @@ impl AppView {
                 .h(frame.size.height)
                 .debug_selector(move || format!("floating-pane-{}", pane.0))
                 .key_context(pane_key_context(pane))
-                .child(
-                    FloatingSurface::new(("floating-pane", pane.0), content, cx)
-                        .title(title.left)
-                        .title_right(title.right)
-                        .content_inset(inset.width, inset.height)
-                        .edge_color(pane_border_color(active, cx))
-                        .bordered(bordered),
-                )
+                .child(surface)
                 .children(grips)
                 .children(
                     self.pane_indicators
@@ -3738,6 +3871,59 @@ impl AppView {
         )
     }
 
+    fn pip_surface(
+        &self,
+        window_snapshot: &WindowSnapshot,
+        float: &FloatingPaneSnapshot,
+        cell: Size<Pixels>,
+        content: AnyElement,
+        cx: &mut Context<Self>,
+    ) -> PipSurface {
+        let window = window_snapshot.id;
+        let border_status = window_snapshot.pane_border_status;
+        let float = *float;
+        let pane = float.pane;
+        let begin = cx.listener(move |view, event: &MouseDownEvent, _, cx| {
+            view.begin_float_drag(
+                window,
+                border_status,
+                float,
+                FloatGrip::MOVE,
+                cell,
+                event.position,
+                cx,
+            );
+        });
+        let command = |name: &'static str, args: Vec<String>| {
+            let mux = self.mux.clone();
+            move |_: &zz_gpui::ClickEvent, _: &mut Window, cx: &mut App| {
+                mux.read(cx)
+                    .execute(CommandInvocation::new(name, args.clone()));
+            }
+        };
+        let target = pane.to_string();
+        PipSurface::new(("floating-pane", pane.0), content)
+            .bar_handle(move |bar| {
+                bar.on_mouse_down(MouseButton::Left, begin)
+                    .on_drag(FloatDrag { pane }, |_, _, _, cx| {
+                        cx.new(|_| SplitDragPreview)
+                    })
+            })
+            .on_tile(command(
+                "join-pane",
+                vec!["-s".into(), target.clone(), "-t".into(), target.clone()],
+            ))
+            .on_zoom(command(
+                "resize-pane",
+                vec!["-Z".into(), "-t".into(), target.clone()],
+            ))
+            .on_close(command("kill-pane", vec!["-t".into(), target]))
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "a grip needs the window, its status row, the float and its frame"
+    )]
     fn float_grips(
         &self,
         window: WindowId,
@@ -3745,6 +3931,7 @@ impl AppView {
         float: FloatingPaneSnapshot,
         cell: Size<Pixels>,
         frame: Size<Pixels>,
+        pip: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let far_x = (frame.width - cell.width).max(Pixels::ZERO);
@@ -3820,6 +4007,7 @@ impl AppView {
             ),
         ]
         .into_iter()
+        .filter(|(name, ..)| !pip || !matches!(*name, "move" | "top-left" | "top-right"))
         .map(|(name, grip, bounds, cursor)| {
             div()
                 .id(zz_gpui::SharedString::from(format!(
@@ -4009,6 +4197,7 @@ impl Render for AppView {
             .as_ref()
             .filter(|_| cx.has_active_drag())
             .and_then(|drag| self.pane_drop_preview_element(drag, cx));
+        self.tick_pip_glide(window, cx);
         let floating_layer = active_window
             .filter(|active_window| {
                 route != WorkspaceRoute::Settings
@@ -6895,6 +7084,7 @@ mod tests {
                 started: true,
                 committed_snapshot_revision: Some(workspace.snapshot_revision),
                 request: Some(7),
+                pip: None,
             });
             cx.notify();
         });
@@ -7042,6 +7232,68 @@ mod tests {
                 workspace.float_drag.map(|drag| drag.area.rows),
                 Some(37),
                 "a window with no tiled pane judges the bottom status row on the daemon's height"
+            );
+        });
+    }
+
+    #[zz_gpui::test]
+    fn a_dragged_pip_follows_the_pointer_and_lands_on_the_nearest_place(cx: &mut TestAppContext) {
+        let (workspace, mux, cx) = float_workspace_for_test(cx);
+        let mut snapshot = tile_and_float_snapshot(1, false);
+        let window = &mut snapshot.sessions[0].windows[0];
+        window.sx = 80;
+        window.sy = 24;
+        let float = window.floating[0];
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
+        });
+        cx.run_until_parked();
+        let drawn = |cx: &mut zz_gpui::VisualTestContext| {
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+            cx.debug_bounds("floating-pane-1")
+                .expect("a visible float is drawn")
+                .origin
+        };
+        let resting = drawn(cx);
+        let cell = cx.update(|window, cx| workspace.read(cx).float_cell_size(window, cx));
+        let press = point(px(100.0), px(40.0));
+        workspace.update(cx, |workspace, cx| {
+            workspace.begin_float_drag(
+                WindowId(0),
+                PaneBorderStatus::Off,
+                float,
+                FloatGrip::MOVE,
+                cell,
+                press,
+                cx,
+            );
+            let drag = workspace
+                .float_drag
+                .as_mut()
+                .expect("the bar starts a drag");
+            drag.started = true;
+            drag.pip
+                .as_mut()
+                .expect("a float that is not modal is a PiP")
+                .moved(point(px(700.0), px(400.0)));
+            cx.notify();
+        });
+        assert_eq!(drawn(cx), resting + point(px(600.0), px(360.0)));
+        workspace.update(cx, |workspace, cx| {
+            workspace.commit_float_drag(cx);
+            assert!(workspace.float_drag.is_none());
+            let glide = workspace
+                .pip_glide
+                .expect("a thrown PiP glides to its place");
+            assert_eq!(
+                glide.target,
+                zz_client::floating::FloatPlace::BottomRight.cells(
+                    FloatCells::from(&float),
+                    (80, 24),
+                    PaneBorderLines::Single
+                )
             );
         });
     }

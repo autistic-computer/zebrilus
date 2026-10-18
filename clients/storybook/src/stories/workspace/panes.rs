@@ -1,8 +1,11 @@
+use zz_client::floating::FloatCells;
 use zz_gpui::{
-    AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div, prelude::*, px,
-    relative,
+    AnyElement, AnyView, App, IntoElement, ParentElement as _, Styled as _, Window, div, point,
+    prelude::*, px, relative,
 };
-use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
+use zz_protocol::{
+    DisplayPanesState, PaneBorderLines, PaneId, PaneIndicator, TmuxColour, WindowId,
+};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     pane::{
@@ -13,13 +16,15 @@ use zz_ui::{
         pane_sync_badge, pane_unzoom_control, pane_waiting_state, terminal_link_popup,
         terminal_mode_indicator, terminal_search_prompt, terminal_status_popup,
     },
+    pip::{PipDrag, PipSurface, pip_snap_slots},
     settings::panes_preview::PanesPreview,
 };
 
 use super::fixtures::{
     BUILD, LOGS, PANE_CHOICES, SERVER, TerminalPane, gap, pane_background, placeholder_pane, radii,
-    terminal_body,
+    stateful, terminal_body,
 };
+use crate::stories::agent::pane::{feed_pane, floating_pane};
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -38,7 +43,7 @@ pub const STORY: Story = Story {
         Section {
             id: "terminal-header",
             name: "Terminal header",
-            summary: "terminal_pane_header with its split, drag and close actions. An inactive header hides its actions until the pointer is over it.",
+            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it.",
             build: |_, cx| stateless(terminal_header, cx),
         },
         Section {
@@ -70,6 +75,12 @@ pub const STORY: Story = Story {
             name: "Floating surface",
             summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style. It takes the theme's glass like every popover; set backdrop=code to see it frost the panes behind.",
             build: |_, cx| stateless(floating, cx),
+        },
+        Section {
+            id: "pip",
+            name: "PiP",
+            summary: "PipSurface draws every float that is not modal: only its content at rest, the bar over its top on hover (always on touch) with tile back, zoom and close, and an accent edge when focused. Any pane can be one: an agent pane drops Float from its own header, and a subagent feed is a watch-only agent pane whose tray stops a child. While one is dragged, pip_snap_slots shows the nine places move-pane -P names, the one the throw is headed for lit.",
+            build: |window, cx| stateful(window, cx, pip_views, pip),
         },
         Section {
             id: "picker",
@@ -758,6 +769,146 @@ fn floating(_: &mut Window, cx: &mut App) -> AnyElement {
                     .content_inset(px(8.0), px(14.0)),
             ),
         )
+        .into_any_element()
+}
+
+struct PipViews {
+    agent: AnyView,
+    feed: AnyView,
+}
+
+fn pip_views(window: &mut Window, cx: &mut App) -> PipViews {
+    PipViews {
+        agent: floating_pane(window, cx),
+        feed: feed_pane(cx),
+    }
+}
+
+fn pip_box(id: &'static str, height: f32, surface: impl IntoElement) -> impl IntoElement {
+    div()
+        .id(id)
+        .w_full()
+        .max_w(px(420.0))
+        .h(px(height))
+        .child(surface)
+}
+
+pub(crate) fn pip_surface(id: &'static str, active: bool, cx: &App) -> PipSurface {
+    PipSurface::new(
+        id,
+        terminal_body(BUILD, false, cx).bg(zz_gpui::transparent_black()),
+    )
+    .title("cargo watch -x test")
+    .content_inset(px(8.0), px(16.0))
+    .active(active)
+    .on_tile(|_, _, _| {})
+    .on_zoom(|_, _, _| {})
+    .on_close(|_, _, _| {})
+}
+
+pub(crate) fn thrown_pip(id: &'static str, cx: &App) -> impl IntoElement {
+    let start = FloatCells {
+        xoff: 31,
+        yoff: 10,
+        sx: 18,
+        sy: 4,
+    };
+    let mut drag = PipDrag::new(
+        start,
+        PaneBorderLines::Single,
+        (80, 24),
+        zz_gpui::size(px(6.0), px(12.0)),
+        point(px(0.0), px(0.0)),
+        point(px(0.0), px(0.0)),
+    );
+    drag.moved(point(px(90.0), px(45.0)));
+    let frame = drag.frame(start);
+    let origin = drag.drawn_origin();
+    div()
+        .id(id)
+        .relative()
+        .w(px(480.0))
+        .h(px(288.0))
+        .child(pip_snap_slots(drag.slots(point(1200.0, 600.0)), cx))
+        .child(
+            div()
+                .absolute()
+                .left(origin.x)
+                .top(origin.y)
+                .w(frame.size.width)
+                .h(frame.size.height)
+                .child(pip_surface(id, true, cx)),
+        )
+}
+
+fn pip(views: &PipViews, _: &mut Window, cx: &mut App) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(24.0))
+        .child(
+            states()
+                .columns(2)
+                .state(
+                    "at rest",
+                    pip_box("pip-rest", 190.0, pip_surface("pip-rest", false, cx)),
+                )
+                .state(
+                    "focused, point at it for the bar",
+                    pip_box("pip-focused", 190.0, pip_surface("pip-focused", true, cx)),
+                )
+                .state(
+                    "bar shown: the pointer is over it, or always on touch",
+                    pip_box(
+                        "pip-bar",
+                        190.0,
+                        pip_surface("pip-bar", true, cx).bar_handle(zz_gpui::Styled::visible),
+                    ),
+                )
+                .state(
+                    "borderless (pane-border-lines none)",
+                    pip_box(
+                        "pip-borderless",
+                        190.0,
+                        pip_surface("pip-borderless", false, cx)
+                            .bordered(false)
+                            .content_inset(px(0.0), px(0.0)),
+                    ),
+                ),
+        )
+        .child(
+            states()
+                .columns(2)
+                .state(
+                    "an agent pane as a PiP: its header keeps the splits, not Float",
+                    pip_box(
+                        "pip-agent",
+                        340.0,
+                        PipSurface::new("pip-agent", views.agent.clone())
+                            .title("agent")
+                            .active(true)
+                            .on_tile(|_, _, _| {})
+                            .on_zoom(|_, _, _| {})
+                            .on_close(|_, _, _| {}),
+                    ),
+                )
+                .state(
+                    "subagent feed: watch-only, one turn per child, Stop in the tray",
+                    pip_box(
+                        "pip-feed",
+                        340.0,
+                        PipSurface::new("pip-feed", views.feed.clone())
+                            .title("Subagents")
+                            .on_tile(|_, _, _| {})
+                            .on_zoom(|_, _, _| {})
+                            .on_close(|_, _, _| {}),
+                    ),
+                ),
+        )
+        .child(states().columns(1).state(
+            "thrown toward bottom-right: the nine places, the one it lands on lit",
+            thrown_pip("pip-places", cx),
+        ))
         .into_any_element()
 }
 

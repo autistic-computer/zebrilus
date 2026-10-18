@@ -61,6 +61,8 @@ mod pipe_jobs;
 pub(crate) mod solo_tests;
 mod source_queue;
 pub(crate) mod status_jobs;
+#[cfg(feature = "agent")]
+mod subagent_feeds;
 mod terminal_reads;
 mod terminal_requests;
 mod watchers;
@@ -28542,6 +28544,10 @@ impl Shared {
         if (output || changed.is_some()) && pid.is_some() {
             self.request_peer_probe();
         }
+        #[cfg(feature = "agent")]
+        if matches!(current_command, "codex" | "node") {
+            self.watch_subagents();
+        }
         if let Some(reason) = changed {
             self.request_publish(reason);
         }
@@ -33093,8 +33099,12 @@ impl Shared {
         };
         runtime.reconfigure(self.agent_spawn_config());
         self.refresh_agent_visibility();
+        let watch = spec.feed.is_none();
         if !runtime.open(pane, spec) {
             log::warn!(target: "zz::agent", "{pane} already has an agent runtime");
+        }
+        if watch {
+            self.watch_subagents();
         }
     }
 
@@ -33161,7 +33171,8 @@ impl Shared {
         }
     }
 
-    fn agent_pane_spec(&self, pane: PaneId) -> Option<AgentPaneSpec> {
+    fn agent_pane_spec(self: &Arc<Self>, pane: PaneId) -> Option<AgentPaneSpec> {
+        let feed = self.subagent_feed_spec(pane);
         let auto_approve = self.agent_auto_approve(pane).or_else(|| {
             self.open_agent_runtime()
                 .and_then(|runtime| runtime.auto_approve(pane))
@@ -33176,6 +33187,7 @@ impl Shared {
             .window_for_pane(pane)
             .map(|window| inner.engine.state.windows[&window].session);
         Some(AgentPaneSpec {
+            feed,
             auto_approve,
             provider: descriptor.provider,
             cwd: descriptor
@@ -33313,6 +33325,9 @@ impl Shared {
             } else {
                 self.write_pane_agent_state(pane, &value);
             }
+        }
+        if !self.inner.lock().claude_peer_states.is_empty() {
+            self.watch_subagents();
         }
     }
 
@@ -33473,6 +33488,18 @@ impl Shared {
             };
             let session = inner.engine.state.windows[&window].session;
             let facts = inner.engine.format_facts();
+            if facts
+                .user_option(
+                    &pane.to_string(),
+                    &window.to_string(),
+                    &session.to_string(),
+                    subagent_feeds::FEED_OPTION,
+                )
+                .is_some()
+            {
+                peers.remove(&pane);
+                return;
+            }
             PeerMetadata {
                 pid: None,
                 kind: PeerKind::Agent,
@@ -35510,6 +35537,8 @@ struct ServerState {
     locations: pane_summary::Locations,
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
+    #[cfg(feature = "agent")]
+    subagent_feeds: subagent_feeds::SubagentFeeds,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
     next_command_output_id: u64,
     control_command_event_captures:
@@ -84421,6 +84450,7 @@ set-option -g @alias-mixed-next yes
         assert!(runtime.open(
             pane,
             AgentPaneSpec {
+                feed: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,

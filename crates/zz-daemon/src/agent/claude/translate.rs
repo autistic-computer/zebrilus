@@ -64,7 +64,14 @@ impl Translator {
     }
 
     pub(crate) fn history_entry(&mut self, entry: &Value) -> Vec<Value> {
-        if entry["isSidechain"] == true || entry["isMeta"] == true {
+        if entry["isSidechain"] == true {
+            return Vec::new();
+        }
+        self.sidechain_entry(entry)
+    }
+
+    pub(crate) fn sidechain_entry(&mut self, entry: &Value) -> Vec<Value> {
+        if entry["isMeta"] == true {
             return Vec::new();
         }
         match entry["type"].as_str() {
@@ -488,7 +495,7 @@ fn parent_key(frame: &Value) -> String {
         .to_owned()
 }
 
-fn chunk(kind: &str, message_id: &str, text: &str) -> Value {
+pub(crate) fn chunk(kind: &str, message_id: &str, text: &str) -> Value {
     json!({
         "sessionUpdate": kind,
         "messageId": message_id,

@@ -343,6 +343,10 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 |---|---|---|---|---|
 | `pane` | pane | tiled pane (gaps or flush), active glow, inactive dim, zoomed, waiting, phone page | `ui/pane.rs:187` | dim rules differ desktop vs thin client |
 | `pane.float` | floating | floating and popup panes, the confirm-before box | `ui/pane.rs:332` | confirm box uses the Panel fill |
+| `pane.pip` | pane.float | every float that is not modal, as a PiP card; its edge takes the accent when active, as a float did | `ui/pip.rs` (`PipSurface`) | new 10-18 |
+| `pane.pip.bar` | pane.header | the bar a PiP shows on hover, glass over its content | `ui/pip.rs` | new 10-18 |
+| `pane.pip.button` | pane.header.button | tile back, zoom and close in a PiP's bar | `ui/pip.rs` | new 10-18 |
+| `pane.pip.snap` | pane.drop-zone | the nine places while a PiP is dragged, the lit one ringed | `ui/pip.rs` (`pip_snap_slots`) | new 10-18 |
 | `pane.header` | bar | terminal and agent title rows, the browser's two-row header | `ui/pane.rs:47`, `ui/agent.rs:3600`, `ui/browser.rs:57` | three divider treatments, wrapper copied per client; fixed, one `pane_header_frame` and the `rule.bar` divider |
 | `pane.header.button` | icon-button | split and the other buttons in pane headers | `ui/pane.rs:19` | the X in a pane title used it until 10-16, so a theme's hover lift put a disc behind it; it is ink only now, like a browser tab's X |
 | `pane.header.title` | button.quiet | pane titles in terminal, agent and browser headers: drag to move, X closes; tinted on hover and when selected | `ui/pane.rs:46` (`PaneTitle`) | the grip and Close were separate buttons; since 10-15 the title is both, and since 10-16 in browsers too |
@@ -466,7 +470,9 @@ then an App tab for the pane settings and the preview around the showcase, which
    props and values its knobs allow; an unset prop shows the value it inherits and from which
    kind or group, and whether that is the built-in or this theme's patch. Setting a prop writes
    only what differs into the theme's `roles` patch. Picking a role, group or kind shows only the
-   regions that draw it and flashes `Theme.inspect` over its surfaces for about a second.
+   regions that draw it and flashes `Theme.inspect` over its surfaces for about a second. The
+   flash is an inset ring, which glass surfaces do not draw, so under Liquid Glass a glass role
+   (the PiP bar, for one) shows no ring.
 4. **Export**: JSON with only what differs, and Import.
 
 Every built-in starts the creator with its materials and roles. The knobs panel resizes from its

@@ -172,6 +172,15 @@ fn header(
                 cx,
             )
             .tooltip("Split right"),
+        )
+        .child(
+            pane_header_icon_button(
+                ("header-float", index),
+                IconName::PictureInPicture,
+                case.enabled,
+                cx,
+            )
+            .tooltip("Float"),
         );
     let status = case.status.map(|status| {
         let restart = case.restart.then(|| {

@@ -2623,6 +2623,24 @@ impl AgentView {
     }
 
     #[allow(clippy::redundant_closure_for_method_calls)]
+    fn render_watch_footer(
+        &self,
+        state: &AgentPaneState,
+        view: &Entity<Self>,
+        cx: &mut zz_gpui::App,
+    ) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .flex_none()
+            .gap_2()
+            .px(px(COMPOSER_OUTER_PADDING))
+            .pb(px(COMPOSER_OUTER_PADDING))
+            .children(self.render_task_tray(state, view, cx))
+            .children(self.render_error(state, cx))
+    }
+
     fn render_composer(
         &self,
         state: &AgentPaneState,
@@ -2871,28 +2889,34 @@ impl Render for AgentView {
                 ));
             },
         );
+        let floats = zz_client::floating::pane_floats(&self.mux.read(cx).snapshot(), pane);
         let header_actions = h_flex().flex_none().gap(px(CHROME_GAP)).children(
             [
                 (
                     "agent-split-bottom",
                     IconName::PanelBottom,
                     "Split bottom",
-                    Axis::Vertical,
+                    Some(Axis::Vertical),
                 ),
                 (
                     "agent-split-right",
                     IconName::PanelRight,
                     "Split right",
-                    Axis::Horizontal,
+                    Some(Axis::Horizontal),
                 ),
+                ("agent-float", IconName::PictureInPicture, "Float", None),
             ]
             .into_iter()
+            .filter(|(_, _, _, axis)| axis.is_some() || !floats)
             .map(|(id, icon, label, axis)| {
                 let mux = self.mux.clone();
                 pane_header_icon_button((id, pane.0), icon, mux.read(cx).is_connected(), cx)
                     .tooltip(label)
                     .on_click(move |_, _, cx| {
-                        mux.read(cx).execute(picker_split_command(pane, axis));
+                        mux.read(cx).execute(axis.map_or_else(
+                            || zz_client::floating::float_pane_command(pane),
+                            |axis| picker_split_command(pane, axis),
+                        ));
                         cx.stop_propagation();
                     })
             }),
@@ -2983,7 +3007,13 @@ impl Render for AgentView {
                         this.child(self.render_jump_to_end(&view, cx))
                     }),
             )
-            .child(self.render_composer(&state, &view, window, cx))
+            .child(if state.session_capabilities.watch {
+                self.render_watch_footer(&state, &view, cx)
+                    .into_any_element()
+            } else {
+                self.render_composer(&state, &view, window, cx)
+                    .into_any_element()
+            })
             .when(self.history_open, |this| {
                 this.child(self.render_history_overlay(&state, &view, cx))
             });
