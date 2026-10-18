@@ -177,7 +177,7 @@ impl Shared {
                 .map(|float| float.pane)
                 .collect::<BTreeSet<_>>();
             let mut agents = Vec::new();
-            let mut claude_terminals = Vec::new();
+            let mut claude_terminals: Vec<(PaneId, Option<u32>)> = Vec::new();
             let mut codex_terminals = Vec::new();
             for window in inner.engine.state.windows.values() {
                 for (pane, state) in &window.panes {
