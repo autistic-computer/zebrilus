@@ -190,6 +190,7 @@ fn main() -> ExitCode {
         }
         FixtureMode::ProbeEgressPref => probe_egress_pref(),
         FixtureMode::PopupRegression => run_popup_regression(),
+        FixtureMode::ImeRegression => run_ime_regression(),
     }
 }
 
@@ -200,6 +201,7 @@ enum FixtureMode {
     RunSharedTextureSpike { seconds: u64, port: u16 },
     ProbeEgressPref,
     PopupRegression,
+    ImeRegression,
 }
 
 fn parse_mode(mut args: impl Iterator<Item = String>) -> Result<FixtureMode, String> {
@@ -214,6 +216,12 @@ fn parse_mode(mut args: impl Iterator<Item = String>) -> Result<FixtureMode, Str
             return Err("unexpected argument after --popup-regression".to_owned());
         }
         return Ok(FixtureMode::PopupRegression);
+    }
+    if first == "--ime-regression" {
+        if args.next().is_some() {
+            return Err("unexpected argument after --ime-regression".to_owned());
+        }
+        return Ok(FixtureMode::ImeRegression);
     }
     if first == "--probe-egress-pref" {
         if args.next().is_some() {
@@ -266,7 +274,7 @@ fn parse_mode(mut args: impl Iterator<Item = String>) -> Result<FixtureMode, Str
 
 fn usage() -> String {
     format!(
-        "usage: zz_browser_fixture [PORT]\n       zz_browser_fixture --popup-regression\n       zz_browser_fixture {SHARED_TEXTURE_SPIKE_FLAG} [--seconds N] [--port PORT]\ndefault port: {DEFAULT_PORT}; default spike duration: {DEFAULT_SPIKE_SECONDS} seconds"
+        "usage: zz_browser_fixture [PORT]\n       zz_browser_fixture --popup-regression\n       zz_browser_fixture --ime-regression\n       zz_browser_fixture {SHARED_TEXTURE_SPIKE_FLAG} [--seconds N] [--port PORT]\ndefault port: {DEFAULT_PORT}; default spike duration: {DEFAULT_SPIKE_SECONDS} seconds"
     )
 }
 
@@ -538,6 +546,120 @@ fn run_popup_regression_inner() -> Result<(), String> {
             Err("timeout closing the opener and its unadopted popup".to_owned())
         }
     });
+    let shutdown = runtime.shutdown().map_err(|error| error.to_string());
+    result.and(shutdown)
+}
+
+fn run_ime_regression() -> ExitCode {
+    let _ = Builder::from_env(Env::default().default_filter_or("zz_browser=info,cef=warn"))
+        .write_style(WriteStyle::Never)
+        .try_init();
+    match run_ime_regression_inner() {
+        Ok(()) => {
+            println!("ime regression passed: a dead key composed and committed, then a multi-step composition");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("ime regression failed: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_ime_regression_inner() -> Result<(), String> {
+    const EXPECTED: &str = "zz ime value: \u{e9}\u{4f60}";
+    let (address, _server) = start_background_server(0).map_err(|error| error.to_string())?;
+    let profile = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let profile_root = profile
+        .path()
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let paths = BrowserProfilePaths {
+        profile: profile_root.join("zz-default"),
+        root: profile_root,
+    };
+    let mut runtime =
+        match zz_browser::bootstrap_with_profile_paths(paths).map_err(|error| error.to_string())? {
+            BrowserBootstrap::SubprocessExit(code) => {
+                return Err(format!("unexpected CEF subprocess exit {code}"));
+            }
+            BrowserBootstrap::Runtime(runtime) => runtime,
+        };
+    initialize_runtime(&mut runtime)?;
+    let viewport = Viewport {
+        width: 600,
+        height: 200,
+        scale_factor: 1.0,
+        window_zoom: 1.0,
+        screen_x: 0,
+        screen_y: 0,
+        visible: true,
+    };
+    let mut session = runtime
+        .create_session(
+            "default",
+            &format!("http://{address}/ime-fixture"),
+            viewport,
+            1.0,
+            None,
+            None,
+            false,
+        )
+        .map_err(|error| error.to_string())?;
+    let signals = runtime.signals();
+    let events = session.events();
+    let mut ready = false;
+    let mut composed = false;
+    let mut title = String::new();
+    let deadline = Instant::now() + STARTUP_TIMEOUT;
+    let result = loop {
+        if let Err(error) = pump_runtime(&mut runtime, &signals) {
+            break Err(error);
+        }
+        session.send_external_begin_frame();
+        while let Ok(event) = events.try_recv() {
+            match event {
+                BrowserEvent::Created { .. } => session.mark_ready(),
+                BrowserEvent::TitleChanged { title: changed, .. } => {
+                    ready |= changed.as_ref() == "zz ime ready";
+                    title = changed.to_string();
+                }
+                BrowserEvent::FrameReady { .. } => {
+                    let _ = session.take_frame();
+                }
+                _ => {}
+            }
+        }
+        if ready && !composed {
+            composed = true;
+            click_fixture(&session, 100, 60);
+            session.set_composition("'", 1..1);
+            session.commit_composition("\u{e9}");
+            session.set_composition("n", 1..1);
+            session.set_composition("ni", 2..2);
+            session.commit_composition("\u{4f60}");
+        }
+        if title == EXPECTED {
+            break Ok(());
+        }
+        if Instant::now() >= deadline {
+            break Err(format!(
+                "timeout: ready={ready} composed={composed} last title {title:?}, wanted {EXPECTED:?}"
+            ));
+        }
+        thread::sleep(PUMP_INTERVAL);
+    };
+    session.close(true);
+    let close_deadline = Instant::now() + CLOSE_TIMEOUT;
+    while Instant::now() < close_deadline && session.phase() != SessionPhase::Closed {
+        pump_runtime(&mut runtime, &signals)?;
+        while let Ok(event) = events.try_recv() {
+            if matches!(event, BrowserEvent::Closed { .. }) {
+                session.mark_closed();
+            }
+        }
+        thread::sleep(PUMP_INTERVAL);
+    }
     let shutdown = runtime.shutdown().map_err(|error| error.to_string());
     result.and(shutdown)
 }
@@ -1732,6 +1854,11 @@ fn response_for(path: &str) -> Response {
             status: "200 OK",
             content_type: "text/html; charset=utf-8",
             body: include_str!("fixtures/popup.html"),
+        },
+        "/ime-fixture" => Response {
+            status: "200 OK",
+            content_type: "text/html; charset=utf-8",
+            body: include_str!("fixtures/ime.html"),
         },
         "/popup-child" => Response {
             status: "200 OK",
