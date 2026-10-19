@@ -3,14 +3,19 @@ use std::time::SystemTime;
 use std::{
     collections::{HashMap, HashSet},
     io,
+    sync::{OnceLock, mpsc},
 };
 
-use zz_protocol::{MAX_ARTIFACT_BYTES, MAX_ARTIFACT_CHUNK_BYTES};
+use zz_protocol::{MAX_ARTIFACT_BYTES, MAX_ARTIFACT_CHUNK_BYTES, MAX_ARTIFACT_PATH_BYTES};
 
 pub(super) const ARTIFACT_PROFILE: &str = "artifacts";
 const INDEX: &str = "index.html";
 const SCAN: Duration = Duration::from_millis(250);
 const REPLY_GAP: Duration = Duration::from_secs(1);
+const SEND_QUEUE_BYTES: usize = 4 * 1024 * 1024;
+const SEND_QUEUE_MESSAGES: usize = 64;
+const SEND_WAIT: Duration = Duration::from_secs(30);
+const SEND_POLL: Duration = Duration::from_millis(5);
 
 #[derive(Default)]
 pub(super) struct Artifacts {
@@ -199,7 +204,11 @@ pub(super) fn resolve(root: &ArtifactRoot, path: &str) -> Result<Target, String>
             }
         }
         ArtifactRoot::Dir(dir) => {
-            let path = if path.is_empty() { INDEX } else { path };
+            let path = if path.is_empty() || path.ends_with('/') {
+                format!("{path}{INDEX}")
+            } else {
+                path.to_owned()
+            };
             let mut joined = dir.clone();
             for part in path.split('/') {
                 if part.is_empty() || part.starts_with('.') || part.contains('\\') {
@@ -209,7 +218,12 @@ pub(super) fn resolve(root: &ArtifactRoot, path: &str) -> Result<Target, String>
             }
             let real = fs::canonicalize(&joined).map_err(|_| format!("{path} was not found"))?;
             let base = fs::canonicalize(dir).map_err(|_| format!("{} is gone", dir.display()))?;
-            if !real.starts_with(&base) || !real.is_file() {
+            let hidden = real.strip_prefix(&base).map_or(true, |inside| {
+                inside
+                    .components()
+                    .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
+            });
+            if hidden || !real.is_file() {
                 return Err(format!("{path} is not served"));
             }
             Ok(Target::File(real))
@@ -221,21 +235,57 @@ pub(super) fn read_target(target: &Target) -> Result<(Arc<[u8]>, Option<Stamp>),
     match target {
         Target::Bytes(bytes) => Ok((Arc::clone(bytes), None)),
         Target::File(path) => {
-            let stamp = Stamp::of(path).ok_or_else(|| format!("{} is gone", path.display()))?;
-            if stamp.len > u64::from(MAX_ARTIFACT_BYTES) {
-                return Err(format!(
-                    "{} is {} bytes; a page file may be at most {MAX_ARTIFACT_BYTES}",
-                    path.display(),
-                    stamp.len
-                ));
-            }
-            let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
-            if bytes.len() > MAX_ARTIFACT_BYTES as usize {
-                return Err(format!("{} grew past the page file limit", path.display()));
-            }
+            let (bytes, stamp) = read_regular_file(path, u64::from(MAX_ARTIFACT_BYTES))?;
             Ok((bytes.into(), Some(stamp)))
         }
     }
+}
+
+fn read_regular_file(path: &Path, limit: u64) -> Result<(Vec<u8>, Stamp), String> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+    let file = options
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", path.display()));
+    }
+    if metadata.len() > limit {
+        return Err(format!(
+            "{} is {} bytes; a page file may be at most {limit}",
+            path.display(),
+            metadata.len()
+        ));
+    }
+    let mut bytes = Vec::with_capacity(usize::try_from(metadata.len()).unwrap_or(0));
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{} grew past the page file limit", path.display()));
+    }
+    let stamp = Stamp {
+        len: metadata.len(),
+        modified: metadata.modified().ok(),
+    };
+    Ok((bytes, stamp))
+}
+
+fn wire_reason(mut reason: String) -> String {
+    if reason.len() > MAX_ARTIFACT_PATH_BYTES {
+        let mut end = MAX_ARTIFACT_PATH_BYTES - 3;
+        while !reason.is_char_boundary(end) {
+            end -= 1;
+        }
+        reason.truncate(end);
+        reason.push_str("...");
+    }
+    reason
 }
 
 pub(super) fn mime_for(path: &str) -> &'static str {
@@ -357,8 +407,14 @@ fn html_root(parsed: &ParsedHtml, path: &Path) -> Result<ArtifactRoot, ServerErr
         .map_err(|_| ServerError::InvalidCommand(format!("{} was not found", parsed.path)))?;
     if path.is_dir() {
         Ok(ArtifactRoot::Dir(path))
-    } else {
+    } else if path.is_file() {
         Ok(ArtifactRoot::File(path))
+    } else {
+        Err(ServerError::InvalidCommand(format!(
+            "{} is not a regular file or directory; write the page to a file, or pipe it to \
+             zz html -",
+            parsed.path
+        )))
     }
 }
 
@@ -419,7 +475,7 @@ impl Shared {
             let reuse = target.filter(|pane| {
                 matches!(
                     inner.engine.state.pane(*pane).map(|pane| &pane.kind),
-                    Some(PaneKind::Browser(_))
+                    Some(PaneKind::Browser(descriptor)) if descriptor.profile == ARTIFACT_PROFILE
                 )
             });
             let token = inner
@@ -488,6 +544,19 @@ impl Shared {
         token: &str,
         path: &str,
     ) {
+        let job = FetchJob {
+            owner: Arc::downgrade(self),
+            client,
+            request_id,
+            token: token.to_owned(),
+            path: path.to_owned(),
+        };
+        if let Err(mpsc::SendError(job)) = fetch_worker().send(job) {
+            job.serve();
+        }
+    }
+
+    fn serve_artifact(self: &Arc<Self>, client: ClientId, request_id: u64, token: &str, path: &str) {
         let (subscriber, found) = {
             let inner = self.inner.lock();
             let Some(subscriber) = inner
@@ -500,20 +569,21 @@ impl Shared {
             let found = inner
                 .artifacts
                 .get(token)
-                .ok_or_else(|| "this page is gone; run zz html again".to_owned())
-                .and_then(|artifact| {
-                    resolve(&artifact.root, path).map(|target| (target, artifact.reply))
-                });
+                .map(|artifact| (artifact.root.clone(), artifact.reply))
+                .ok_or_else(|| "this page is gone; run zz html again".to_owned());
             (subscriber, found)
         };
-        let read = found.and_then(|(target, reply)| {
+        let read = found.and_then(|(root, reply)| {
+            let target = resolve(&root, path)?;
             read_target(&target).map(|(bytes, stamp)| (target, reply, bytes, stamp))
         });
         let (target, reply, bytes, stamp) = match read {
             Ok(read) => read,
             Err(reason) => {
-                let _ = subscriber
-                    .enqueue_reliable(&ProtocolMessage::ArtifactUnavailable { request_id, reason });
+                let _ = subscriber.enqueue_reliable(&ProtocolMessage::ArtifactUnavailable {
+                    request_id,
+                    reason: wire_reason(reason),
+                });
                 return;
             }
         };
@@ -535,6 +605,13 @@ impl Shared {
             reply,
         });
         for chunk in bytes.chunks(MAX_ARTIFACT_CHUNK_BYTES) {
+            if !wait_for_room(&subscriber) {
+                let _ = subscriber.enqueue_reliable(&ProtocolMessage::ArtifactUnavailable {
+                    request_id,
+                    reason: "zz fell too far behind sending this file".to_owned(),
+                });
+                return;
+            }
             let _ = subscriber.enqueue_reliable(&ProtocolMessage::ArtifactChunk {
                 request_id,
                 bytes: chunk.to_vec(),
@@ -614,6 +691,56 @@ impl Shared {
                     command: BrowserCommand::Reload,
                 },
             );
+        }
+    }
+}
+
+struct FetchJob {
+    owner: Weak<Shared>,
+    client: ClientId,
+    request_id: u64,
+    token: String,
+    path: String,
+}
+
+impl FetchJob {
+    fn serve(self) {
+        if let Some(shared) = self.owner.upgrade() {
+            shared.serve_artifact(self.client, self.request_id, &self.token, &self.path);
+        }
+    }
+}
+
+fn fetch_worker() -> &'static mpsc::Sender<FetchJob> {
+    static WORKER: OnceLock<mpsc::Sender<FetchJob>> = OnceLock::new();
+    WORKER.get_or_init(|| {
+        let (sender, jobs) = mpsc::channel::<FetchJob>();
+        if let Err(error) = thread::Builder::new()
+            .name("zz-artifact-fetch".to_owned())
+            .spawn(move || {
+                for job in jobs {
+                    job.serve();
+                }
+            })
+        {
+            log::debug!("could not start the artifact fetch thread: {error}");
+        }
+        sender
+    })
+}
+
+fn wait_for_room(subscriber: &OutboundMailbox) -> bool {
+    let started = Instant::now();
+    loop {
+        match subscriber.queued_reliable() {
+            None => return false,
+            Some((bytes, messages))
+                if bytes <= SEND_QUEUE_BYTES && messages <= SEND_QUEUE_MESSAGES =>
+            {
+                return true;
+            }
+            Some(_) if started.elapsed() >= SEND_WAIT => return false,
+            Some(_) => thread::sleep(SEND_POLL),
         }
     }
 }
@@ -1031,6 +1158,62 @@ mod tests {
         assert_eq!(mime_for("a/b.JS"), "text/javascript");
         assert_eq!(mime_for("x.svg"), "image/svg+xml");
         assert_eq!(mime_for("x.bin"), "application/octet-stream");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn special_files_are_refused_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("pipe.html");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        let started = Instant::now();
+        assert!(read_target(&Target::File(fifo.clone())).is_err());
+        assert!(read_target(&Target::File(PathBuf::from("/dev/zero"))).is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+
+        let parsed = parse_html_args(&args(&["pipe.html"])).unwrap();
+        assert!(html_root(&parsed, &fifo).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_inside_the_root_to_a_hidden_file_is_refused() {
+        let dir = page_dir();
+        std::os::unix::fs::symlink(dir.path().join(".env"), dir.path().join("env")).unwrap();
+        std::os::unix::fs::symlink(dir.path().join(".ssh"), dir.path().join("keys")).unwrap();
+        let root = ArtifactRoot::Dir(dir.path().to_path_buf());
+
+        assert!(resolve(&root, "env").is_err());
+        assert!(resolve(&root, "keys/id").is_err());
+    }
+
+    #[test]
+    fn a_directory_path_serves_its_index() {
+        let dir = page_dir();
+        fs::write(dir.path().join("lib/index.html"), "<p>lib</p>").unwrap();
+        let root = ArtifactRoot::Dir(dir.path().to_path_buf());
+        let real = fs::canonicalize(dir.path()).unwrap();
+
+        assert_eq!(
+            resolve(&root, "lib/"),
+            Ok(Target::File(real.join("lib/index.html")))
+        );
+    }
+
+    #[test]
+    fn unavailable_reasons_fit_the_wire() {
+        let long = "é".repeat(MAX_ARTIFACT_PATH_BYTES);
+        let reason = wire_reason(format!("{long} is not served"));
+        assert!(reason.len() <= MAX_ARTIFACT_PATH_BYTES);
+        assert!(reason.ends_with("..."));
+        assert_eq!(wire_reason("short".to_owned()), "short");
     }
 
     #[test]

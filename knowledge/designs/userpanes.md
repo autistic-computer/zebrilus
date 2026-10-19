@@ -95,8 +95,8 @@ zz html [--float] [--reply] [-t %N] [--] <path | ->
   from stdin, as `agent-send` does; that page lives in memory and never reloads.
 * By default it splits the calling pane (`split-window -d -h --kind browser`), like the Agent
   pane's output viewer, and leaves the focus where it was. `-t %N` shows the page in that pane when
-  it is a browser (`set-browser-url`, keeping its profile) and otherwise opens it beside that pane,
-  as `split-window -t` would. `--float` opens it with `new-pane --kind browser`, which draws as a
+  it is a browser on the `artifacts` profile (`set-browser-url`) and otherwise opens it beside that
+  pane, as `split-window -t` would, so a page never loads into a profile with the user's logins. `--float` opens it with `new-pane --kind browser`, which draws as a
   PiP; with `-t` it floats over that pane.
 * The opener is the calling pane: the client record's `origin`, which the CLI fills from
   `ZZ_PANE` (`ExecRequest.origin`, `crates/zz-daemon-client/src/client.rs:362`). A relative path
@@ -153,14 +153,22 @@ ArtifactUnavailable { request_id: u64, reason: String }
 They are appended to the message enums, never reordered, and `PROTOCOL_VERSION` goes 109 → 110
 (`crates/zz-protocol/src/message.rs:28`) with an entry in the [wire protocol](/protocol/wire-protocol.md)
 history. Only interactive clients may fetch; the token is the capability. Files over 16 MiB
-(`MAX_ARTIFACT_BYTES`) are refused. `reply` tells the GUI whether the page may use `zz.reply`, so it
+(`MAX_ARTIFACT_BYTES`) are refused, and so is anything that is not a regular file: `zz html`
+refuses a FIFO or device, and the daemon opens each file non-blocking and checks the open handle,
+so a file swapped for a pipe later can't stall it. Reads and sends run on a `zz-artifact-fetch`
+thread, never the event loop, and each 1 MiB chunk waits until that client's queue is under 4 MiB.
+The client only sends what the daemon decodes: `parse_artifact_url` takes a 32-hex token and a path
+of at most `MAX_ARTIFACT_PATH_BYTES`, `zz.reply` refuses text over `MAX_ARTIFACT_REPLY_BYTES`, and
+the daemon trims `ArtifactUnavailable` reasons to the path cap. An oversized field would otherwise
+fail to decode and drop the whole client connection. `reply` tells the GUI whether the page may use `zz.reply`, so it
 can reject one without a round trip.
 
 **Chromium.** Before this, no custom scheme was registered; `zz://browser/element-picker.js` only
 names the picker script in DevTools. `RuntimeApp` (`crates/zz-browser/src/cef_runtime.rs`) has
 `on_register_custom_schemes`, registering `zz` as standard, secure and fetch-enabled but not
 CORS-enabled; the single-binary re-exec runs it in every process. `start_profile_context_at`
-puts an `ArtifactSchemeFactory` on each profile's `RequestContext`. Its `ArtifactResourceHandler`
+puts an `ArtifactSchemeFactory` on the `artifacts` profile's `RequestContext` only
+(`zz_browser::ARTIFACT_PROFILE`), so a site in an ordinary pane can't load or embed `zz://` at all. Its `ArtifactResourceHandler`
 defers `open`, hands the token and decoded path to `zz_browser::artifact_requests()`
 (`crates/zz-browser/src/artifact.rs`), and when the answer comes resumes CEF with a task posted to
 the IO thread, as the cef crate's own `ResourceManager` does. The workspace view drains that channel
@@ -190,7 +198,8 @@ misses.
 
 A page starts with:
 
-* its own files under its root, dotfiles excluded;
+* its own files under its root, dotfiles excluded, checked on the resolved path so a link to one is
+  refused too; `dir/` serves `dir/index.html`;
 * the network, through the pane's profile and, on an ssh host, that host's egress like any browser
   pane. Artifacts pull chart libraries from CDNs, so v1 does not block it;
 * no zz verbs.
@@ -376,6 +385,7 @@ as code.
 | Failure | Behavior |
 |---|---|
 | path missing at `zz html` | the verb fails naming the path |
+| path is a FIFO, device or `<(cmd)` | the verb fails and suggests `zz html -` |
 | file gone later, outside the root, or a dotfile | not-found page |
 | unknown token (daemon restarted) | not-found page that says to run `zz html` again |
 | file over 16 MiB | error page with the size |

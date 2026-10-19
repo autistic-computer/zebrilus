@@ -30,7 +30,7 @@ use crate::{
 };
 
 const INLINE_PANE: PaneId = PaneId(u64::MAX - 1);
-const INLINE_PROFILE: &str = "artifacts";
+const INLINE_PROFILE: &str = zz_browser::ARTIFACT_PROFILE;
 const INLINE_BACKGROUND: u32 = 0xffff_ffff;
 const REPLY_GAP: Duration = Duration::from_secs(1);
 
@@ -633,15 +633,15 @@ mod tests {
     fn a_live_page_replies_to_its_agent_pane_at_most_once_a_second() {
         let now = Instant::now();
         let mut gate = ReplyGate {
-            url: "zz://abc123/".to_owned(),
+            url: "zz://0123456789abcdef0123456789abcdef/".to_owned(),
             pane: Some(PaneId(4)),
             replied: None,
         };
         assert_eq!(gate.take("other", now), None);
-        assert_eq!(gate.take("abc123", now), Some(PaneId(4)));
-        assert_eq!(gate.take("abc123", now + Duration::from_millis(500)), None);
-        assert_eq!(gate.take("abc123", now + REPLY_GAP), Some(PaneId(4)));
+        assert_eq!(gate.take("0123456789abcdef0123456789abcdef", now), Some(PaneId(4)));
+        assert_eq!(gate.take("0123456789abcdef0123456789abcdef", now + Duration::from_millis(500)), None);
+        assert_eq!(gate.take("0123456789abcdef0123456789abcdef", now + REPLY_GAP), Some(PaneId(4)));
         gate.pane = None;
-        assert_eq!(gate.take("abc123", now + REPLY_GAP * 3), None);
+        assert_eq!(gate.take("0123456789abcdef0123456789abcdef", now + REPLY_GAP * 3), None);
     }
 }

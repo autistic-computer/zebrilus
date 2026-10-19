@@ -5,8 +5,11 @@ use std::{
 };
 
 use async_channel::{Receiver, Sender};
+use zz_protocol::{MAX_ARTIFACT_PATH_BYTES, MAX_ARTIFACT_REPLY_BYTES};
 
 pub const ARTIFACT_SCHEME: &str = "zz";
+pub const ARTIFACT_PROFILE: &str = "artifacts";
+const TOKEN_LEN: usize = 32;
 
 pub struct ArtifactFile {
     pub mime: String,
@@ -136,6 +139,11 @@ pub(crate) fn send_reply(token: &str, text: String) -> Result<(), String> {
     if !reply_allowed(token) {
         return Err("this page was opened without --reply".to_owned());
     }
+    if text.len() > MAX_ARTIFACT_REPLY_BYTES {
+        return Err(format!(
+            "a reply may be at most {MAX_ARTIFACT_REPLY_BYTES} bytes"
+        ));
+    }
     REPLIES
         .0
         .try_send(ArtifactReply {
@@ -168,10 +176,14 @@ pub fn parse_artifact_url(url: &str) -> Option<(String, String)> {
     let rest = url.strip_prefix("zz://")?;
     let rest = rest.split(['?', '#']).next().unwrap_or_default();
     let (token, path) = rest.split_once('/').unwrap_or((rest, ""));
-    if token.is_empty() || !token.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+    if token.len() != TOKEN_LEN || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
-    Some((token.to_ascii_lowercase(), percent_decode(path)?))
+    let path = percent_decode(path)?;
+    if path.len() > MAX_ARTIFACT_PATH_BYTES {
+        return None;
+    }
+    Some((token.to_ascii_lowercase(), path))
 }
 
 fn percent_decode(text: &str) -> Option<String> {
@@ -208,24 +220,49 @@ pub(crate) fn error_page(reason: &str) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
     #[test]
     fn artifact_urls_give_their_token_and_decoded_path() {
         assert_eq!(
-            parse_artifact_url("zz://AB12/my%20report.html?x=1#top"),
-            Some(("ab12".to_owned(), "my report.html".to_owned()))
+            parse_artifact_url(&format!(
+                "zz://{}/my%20report.html?x=1#top",
+                TOKEN.to_ascii_uppercase()
+            )),
+            Some((TOKEN.to_owned(), "my report.html".to_owned()))
         );
         assert_eq!(
-            parse_artifact_url("zz://ab12"),
-            Some(("ab12".to_owned(), String::new()))
+            parse_artifact_url(&format!("zz://{TOKEN}")),
+            Some((TOKEN.to_owned(), String::new()))
         );
         assert_eq!(
-            parse_artifact_url("zz://ab12/lib/a.js"),
-            Some(("ab12".to_owned(), "lib/a.js".to_owned()))
+            parse_artifact_url(&format!("zz://{TOKEN}/lib/a.js")),
+            Some((TOKEN.to_owned(), "lib/a.js".to_owned()))
         );
-        assert_eq!(parse_artifact_url("https://ab12/"), None);
+        assert_eq!(parse_artifact_url(&format!("https://{TOKEN}/")), None);
         assert_eq!(parse_artifact_url("zz:///x"), None);
         assert_eq!(parse_artifact_url("zz://a.b/x"), None);
-        assert_eq!(parse_artifact_url("zz://ab/%zz"), None);
+        assert_eq!(parse_artifact_url(&format!("zz://{TOKEN}/%zz")), None);
+    }
+
+    #[test]
+    fn urls_the_wire_would_refuse_never_parse() {
+        assert_eq!(parse_artifact_url("zz://ab12/x"), None);
+        assert_eq!(parse_artifact_url(&format!("zz://{TOKEN}0/x")), None);
+        assert_eq!(parse_artifact_url(&format!("zz://{}/x", "g".repeat(32))), None);
+        let longest = "x".repeat(MAX_ARTIFACT_PATH_BYTES);
+        assert!(parse_artifact_url(&format!("zz://{TOKEN}/{longest}")).is_some());
+        assert_eq!(parse_artifact_url(&format!("zz://{TOKEN}/{longest}x")), None);
+    }
+
+    #[test]
+    fn replies_over_the_wire_limit_are_refused() {
+        let url = host_local_page("<p>live</p>", true).unwrap();
+        let (token, _) = parse_artifact_url(&url).unwrap();
+        request_artifact(token.clone(), String::new(), |_| {});
+        assert!(send_reply(&token, "x".repeat(MAX_ARTIFACT_REPLY_BYTES)).is_ok());
+        assert!(send_reply(&token, "x".repeat(MAX_ARTIFACT_REPLY_BYTES + 1)).is_err());
+        drop_local_page(&url);
     }
 
     #[test]

@@ -32,7 +32,7 @@ mod cef_runtime;
 mod linux_dmabuf;
 
 pub use artifact::{
-    ARTIFACT_SCHEME, ArtifactFile, ArtifactReply, ArtifactRequest, artifact_replies,
+    ARTIFACT_PROFILE, ARTIFACT_SCHEME, ArtifactFile, ArtifactReply, ArtifactRequest, artifact_replies,
     artifact_requests, drop_local_page, host_local_page, is_local_page, parse_artifact_url,
 };
 #[cfg(any(feature = "cef-runtime", test))]
