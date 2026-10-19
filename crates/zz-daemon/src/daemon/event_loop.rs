@@ -2020,6 +2020,9 @@ impl Connection {
     }
 
     fn write_ready(&mut self) -> io::Result<()> {
+        if self.read_closed {
+            self.outbound.state.lock().flow = None;
+        }
         if self.stdio.is_some() {
             return self.write_stdio_ready();
         }
