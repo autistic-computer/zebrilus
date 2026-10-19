@@ -8,10 +8,7 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, h_flex,
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WorkspaceStatusWindowState,
-        sidebar::{
-            tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker,
-            tree_window_layout_button,
-        },
+        sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
         workspace_layout_button, workspace_palette_button, workspace_settings_button,
         workspace_sidebar_footer, workspace_sidebar_titlebar, workspace_sidebar_view_button,
         workspace_status_item, workspace_status_window, workspace_tree_action_button,
@@ -487,7 +484,6 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                     tree_action_strip(
                         "strip-window",
                         vec![
-                            tree_window_layout_button("layout", false, |_, _, _| {}, cx),
                             workspace_tree_action_button(
                                 "close",
                                 IconName::Xmark,
@@ -506,7 +502,6 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                     tree_action_strip(
                         "strip-disabled",
                         vec![
-                            tree_window_layout_button("layout", true, |_, _, _| {}, cx),
                             workspace_tree_action_button(
                                 "close",
                                 IconName::Xmark,

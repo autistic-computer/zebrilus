@@ -8,23 +8,23 @@ use zz_client::window_summary::{
     WindowSummary,
 };
 use zz_gpui::{
-    Anchor, AnyElement, App, ClickEvent, Context, Div, ElementId, FontFeatures, FontWeight,
-    HighlightStyle, Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString, Stateful,
-    StyledText, Window, div, font, prelude::*, px,
+    AnyElement, App, ClickEvent, Context, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures,
+    FontWeight, HighlightStyle, Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString,
+    Stateful, StyledText, Window, div, font, prelude::*, px,
 };
 use zz_protocol::{AgentProvider, PaneId, SessionId, WindowId};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, PaintState, Sizable as _,
-    StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, PaintState, Shape,
+    Sizable as _, StyledExt as _, Surface, Tone,
     button::Button,
     command::PaletteHostId,
     h_flex,
     icon::cap_center_drop,
-    menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu},
+    menu::{ContextMenuExt as _, PopupMenu},
     motion::{self, Disclosure},
     navigation::{
-        pane_stack::{PaneStack, StackAction, StackSize, StackTile, stack_radius},
+        pane_stack::{PaneStack, StackAction, StackSize, StackTile},
         workspace_row_action, workspace_row_fill,
     },
     roles,
@@ -35,6 +35,7 @@ use crate::{
 };
 
 const ROW_HEIGHT: f32 = 48.0;
+const ROW_RADIUS: f32 = 24.0;
 const ROW_PADDING: f32 = 10.0;
 const TILE_GAP: f32 = 10.0;
 const TITLE_SIZE: f32 = 13.0;
@@ -46,9 +47,6 @@ const LINE_GAP: f32 = 1.0;
 const TITLE_TRAILING_GAP: f32 = 6.0;
 const DETAIL_AGE_GAP: f32 = 8.0;
 const SPINNER_SIZE: f32 = 12.0;
-const ACTIONS_WIDTH: f32 = 18.0;
-const ACTIONS_HEIGHT: f32 = 16.0;
-const ACTIONS_ICON: f32 = 14.0;
 const DIMMED: f32 = 0.45;
 const HOST_HEIGHT: f32 = 30.0;
 const HOST_GAP: f32 = 18.0;
@@ -181,8 +179,7 @@ pub enum FlatEvent {
 
 pub type FlatHandler = Rc<dyn Fn(FlatEvent, &mut Window, &mut App)>;
 
-/// Fills a window row's menu, opened from its actions button or a right
-/// click.
+/// Fills a window row's menu, opened by a right click or a long press.
 pub type FlatMenu = Rc<
     dyn Fn(PaletteHostId, WindowId, PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu,
 >;
@@ -215,6 +212,9 @@ pub struct FlatRowState {
     pub dimmed: bool,
     /// What the row sits on; the window when unset.
     pub ground: Option<Ground>,
+    /// The most tiles any row in its list shows, so their labels line up;
+    /// 0 holds room for the row's own.
+    pub stack_tiles: usize,
 }
 
 impl FlatRowState {
@@ -324,6 +324,22 @@ fn row_height() -> Pixels {
     px(ROW_HEIGHT)
 }
 
+/// Where a row's trailing text ends: the spinner centers on the column the
+/// headers' + button and the sidebar's chrome buttons do.
+fn row_trailing_inset(cx: &App) -> Pixels {
+    cx.theme().row_inset + super::WORKSPACE_ROW_ACTION_CENTER - px(SPINNER_SIZE / 2.0)
+}
+
+/// A tile's corners: concentric with the row's when its role is round, a
+/// circle when it is a pill.
+fn tile_radius(size: StackSize, cx: &App) -> Pixels {
+    match cx.theme().style(roles::PANE_STACK).shape {
+        Shape::Square => Pixels::ZERO,
+        Shape::Pill => FULL_CORNER_RADIUS,
+        Shape::Round => px(ROW_RADIUS) - (row_height() - px(size.tile())) / 2.0,
+    }
+}
+
 fn tile_stack(
     host: PaletteHostId,
     window: WindowId,
@@ -354,7 +370,7 @@ fn tile_stack(
         tiles,
         size,
         ink.ground,
-        stack_radius(px(size.tile()), row_height(), cx),
+        tile_radius(size, cx),
     )
     .dimmed(if ink.dimmed { DIMMED } else { 0.0 })
 }
@@ -444,39 +460,6 @@ fn icon_button(id: impl Into<ElementId>, icon: IconName, icon_size: f32) -> Butt
         .px_0()
 }
 
-fn actions_menu(
-    host: PaletteHostId,
-    window: WindowId,
-    title: &SharedString,
-    ground: Ground,
-    visible: bool,
-    menu: &FlatMenu,
-    cx: &App,
-) -> impl IntoElement {
-    let menu = menu.clone();
-    workspace_row_action(
-        icon_button(
-            ("flat-window-actions", window.0),
-            IconName::Ellipsis,
-            ACTIONS_ICON,
-        ),
-        ground,
-        false,
-        cx,
-    )
-    .w(px(ACTIONS_WIDTH))
-    .h(px(ACTIONS_HEIGHT))
-    .hit_slop(
-        (TOUCH_TARGET - ACTIONS_WIDTH) / 2.0,
-        (TOUCH_TARGET - ACTIONS_HEIGHT) / 2.0,
-    )
-    .tooltip(format!("Actions for {title}"))
-    .when(!visible, Styled::invisible)
-    .dropdown_menu_with_anchor(Anchor::TopRight, move |popup, window_handle, cx| {
-        menu(host, window, popup, window_handle, cx)
-    })
-}
-
 pub fn flat_window_row(
     host: PaletteHostId,
     window: &FlatWindow,
@@ -486,7 +469,6 @@ pub fn flat_window_row(
     cx: &App,
 ) -> AnyElement {
     let theme = cx.theme();
-    let coarse = CoarsePointer::get(cx);
     let state = state.for_pointer(cx);
     let ink = RowInk::new(state, cx);
     let summary = &window.summary;
@@ -494,34 +476,7 @@ pub fn flat_window_row(
     let title = SharedString::from(summary.title.clone());
     let target = FlatTarget::Window(host, id);
     let working = summary.attention == Attention::Working && !state.dimmed;
-    let busy =
-        (working && !state.hovered).then(|| spinner(SPINNER_SIZE, TITLE_SIZE, ink.muted, cx));
-    let actions = div()
-        .relative()
-        .flex_none()
-        .w(px(ACTIONS_WIDTH))
-        .h(px(TITLE_LINE))
-        .flex()
-        .items_center()
-        .justify_center()
-        .children(busy)
-        .child(
-            div()
-                .absolute()
-                .inset_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(actions_menu(
-                    host,
-                    id,
-                    &title,
-                    ink.ground,
-                    state.hovered || coarse,
-                    menu,
-                    cx,
-                )),
-        );
+    let busy = working.then(|| spinner(SPINNER_SIZE, TITLE_SIZE, ink.muted, cx));
     let context = menu.clone();
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
     let (surface, paint_state) = state.surface();
@@ -531,6 +486,7 @@ pub fn flat_window_row(
         paint_state,
         None,
         surface.ground.unwrap_or_else(|| theme.ground()),
+        Some(px(ROW_RADIUS)),
         cx,
     );
     let hover = handler.clone();
@@ -551,7 +507,8 @@ pub fn flat_window_row(
         .items_center()
         .gap(px(TILE_GAP))
         .h(row_height())
-        .px(theme.row_inset + px(ROW_PADDING))
+        .pl(theme.row_inset + px(ROW_PADDING))
+        .pr(row_trailing_inset(cx))
         .text_color(ink.dim(ink.text))
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
@@ -566,6 +523,7 @@ pub fn flat_window_row(
                 (!state.dimmed).then_some(handler),
                 cx,
             )
+            .room(state.stack_tiles)
             .beside(
                 v_flex()
                     .flex_1()
@@ -588,7 +546,7 @@ pub fn flat_window_row(
                                     .font_medium()
                                     .child(title),
                             )
-                            .child(actions),
+                            .children(busy),
                     )
                     .child(
                         h_flex()
@@ -957,6 +915,15 @@ pub fn flat_sidebar(
     ground: Ground,
     cx: &App,
 ) -> Div {
+    let stack_tiles = hosts
+        .iter()
+        .filter(|host| !host.folded)
+        .flat_map(|host| &host.sessions)
+        .filter(|session| !session.folded)
+        .flat_map(|session| &session.windows)
+        .map(|window| window.summary.tiles.len())
+        .max()
+        .unwrap_or_default();
     let mut list = v_flex()
         .w_full()
         .flex_none()
@@ -1013,6 +980,7 @@ pub fn flat_sidebar(
                             == Some(FlatTarget::Window(host.id, window.summary.window)),
                         dimmed,
                         ground: Some(ground),
+                        stack_tiles,
                     },
                     handler,
                     menu,

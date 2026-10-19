@@ -14,8 +14,8 @@ use zz_gpui::{
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
 
 use super::{
-    Colorize as _, Highlight, Kind, PrimaryStyle, ShadowMaterial, StylePatch, SurfaceRole,
-    ThemeColor, color,
+    Colorize as _, Highlight, Kind, PrimaryStyle, ShadowMaterial, Smoothing, StylePatch,
+    SurfaceRole, ThemeColor, color,
 };
 
 /// The one gap in chrome: how far a control sits from the edge of the bar it
@@ -104,6 +104,13 @@ pub struct Theme {
     /// Whether only the roles the theme gives a shadow cast one: every
     /// built-in shadow is off, and so is every shadow drawn without a role.
     pub picked_shadows: bool,
+    /// How the corners of every surface drawn by a role curve, unless the
+    /// theme sets another for the role.
+    pub smoothing: Smoothing,
+    /// Whether only the roles the theme sets a smoothing for curve their
+    /// corners that way: every other role a theme could smooth draws plain
+    /// circular corners.
+    pub picked_smoothing: bool,
     /// The tight shadow of things resting on the window.
     pub contact_shadow: ShadowMaterial,
     /// The deep shadow of things floating over it.
@@ -117,6 +124,9 @@ pub struct Theme {
     /// Whether highlights stay flat: a lift draws its wash a step deeper
     /// instead of the outline and shadow that raise it.
     pub flat_highlights: bool,
+    /// How far a tint or lift highlight washes from the resting fill: 1 is
+    /// the built-in step, 0 none, 2 twice as far.
+    pub highlight_strength: f32,
     /// What a surface whose role takes glass becomes, and the edge pane
     /// frames take. Each surface tints it with its own color; the material's
     /// tint alpha says how much of that color covers the glass.
@@ -487,11 +497,14 @@ impl From<&ThemeColor> for Theme {
             outline: px(0.5),
             picked_outlines: false,
             picked_shadows: false,
+            smoothing: Smoothing::THEME,
+            picked_smoothing: false,
             contact_shadow: ShadowMaterial::CONTACT,
             float_shadow: ShadowMaterial::FLOAT,
             row_inset: px(4.0),
             primary: PrimaryStyle::Foreground,
             flat_highlights: false,
+            highlight_strength: 1.0,
             glass: None,
             styles: HashMap::default(),
             inspect: None,

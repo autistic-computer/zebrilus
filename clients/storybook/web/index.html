@@ -119,6 +119,17 @@
                             <input type="range" name="radius" min="0" max="25" step="1" value="10" />
                         </label>
                         <label class="row slider">
+                            <span>Smoothing</span><output name="smoothing-value"></output>
+                            <input type="range" name="smoothing" min="2" max="5" step="0.5" value="4" />
+                        </label>
+                        <div class="segmented" role="radiogroup" aria-label="Smoothing">
+                            <label><input type="radio" name="smoothed" value="global" checked /><span>Global smoothing</span></label>
+                            <label><input type="radio" name="smoothed" value="picked" /><span>Picked smoothing</span></label>
+                        </div>
+                        <p class="knob-note" id="smoothed-note" hidden>
+                            Only the roles you set a smoothing on in Roles curve that way; the rest draw plain round corners.
+                        </p>
+                        <label class="row slider">
                             <span>Outline width</span><output name="outline-value"></output>
                             <input type="range" name="outline" min="0" max="2" step="0.25" value="0.5" />
                         </label>
@@ -144,6 +155,10 @@
                             <label><input type="radio" name="highlights" value="lift" checked /><span>Lifted highlights</span></label>
                             <label><input type="radio" name="highlights" value="flat" /><span>Flat highlights</span></label>
                         </div>
+                        <label class="row slider">
+                            <span>Highlight strength</span><output name="highlight-strength-value"></output>
+                            <input type="range" name="highlight-strength" min="0" max="3" step="0.1" value="1" />
+                        </label>
                     </section>
 
                     <section>
