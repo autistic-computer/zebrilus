@@ -9,8 +9,8 @@ use zz_gpui::{
     Action, App, AppContext as _, Bounds, ClipboardItem, Context, Corners, Edges, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, IntoElement, KeyBinding,
     KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
-    ScrollWheelEvent, SharedString, Styled as _, Subscription, TextRun, TextStyle, UTF16Selection,
-    Window, actions, div, point,
+    ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, TextRun, TextStyle,
+    UTF16Selection, Window, actions, div, point,
 };
 
 use crate::{ActiveTheme as _, highlighter::SyntaxHighlighter, text::suppress_text_selection};
@@ -1139,12 +1139,16 @@ impl CodeEditorState {
     pub(super) fn on_scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(layout) = self.editor_layout.as_ref() else {
             return;
         };
+        let key = ScrollKey::of_entity(cx.entity_id());
+        if !window.should_take_scroll(key, true) {
+            return;
+        }
         let delta = event.delta.pixel_delta(layout.line_height);
         let overflow_y =
             (layout.content_size.height - layout.text_bounds.size.height).max(Pixels::ZERO);
@@ -1157,7 +1161,7 @@ impl CodeEditorState {
         if next != self.scroll {
             self.scroll = next;
             self.follow_cursor = false;
-            cx.stop_propagation();
+            window.claim_scroll(key);
             cx.notify();
         }
     }

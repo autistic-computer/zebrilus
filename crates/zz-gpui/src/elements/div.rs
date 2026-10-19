@@ -26,8 +26,8 @@ use crate::{
     KeyboardClickEvent, LayoutId, LongPressEvent, ModifiersChangedEvent, MouseButton,
     MouseClickEvent, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MousePressureEvent,
     MouseUpEvent, OngoingScroll, Overflow, Overscroll, ParentElement, PinchEvent, Pixels, Point,
-    Render, ScrollWheelEvent, SharedString, Size, Style, StyleRefinement, Styled, Task, TooltipId,
-    TouchPhase, Visibility, Window, WindowControlArea, point, px, size,
+    Render, ScrollKey, ScrollWheelEvent, SharedString, Size, Style, StyleRefinement, Styled, Task,
+    TooltipId, TouchPhase, Visibility, Window, WindowControlArea, point, px, size,
 };
 use smallvec::SmallVec;
 use std::{
@@ -3455,8 +3455,11 @@ impl Interactivity {
             let bounce = window.gesture_tuning().overscroll == Overscroll::Bounce;
             let hitbox = hitbox.clone();
             let current_view = window.current_view();
+            let key = ScrollKey::of(&scroll_offset);
             window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
+                if phase == DispatchPhase::Bubble
+                    && window.should_take_scroll(key, hitbox.should_handle_scroll(window))
+                {
                     let mut scroll_offset = scroll_offset.borrow_mut();
                     let old_scroll_offset = *scroll_offset;
                     let mut delta = event.delta.pixel_delta(line_height);
@@ -3517,9 +3520,14 @@ impl Interactivity {
                     } else {
                         scroll_offset.y += delta_y;
                         scroll_offset.x += delta_x;
+                        if let Some(ongoing_scroll) = &ongoing_scroll {
+                            let range = ongoing_scroll.borrow().range();
+                            scroll_offset.x = scroll_offset.x.clamp(-range.x, Pixels::ZERO);
+                            scroll_offset.y = scroll_offset.y.clamp(-range.y, Pixels::ZERO);
+                        }
                     }
                     if *scroll_offset != old_scroll_offset {
-                        window.prevent_default();
+                        window.claim_scroll(key);
                         cx.notify(current_view);
                     }
                 }

@@ -13,7 +13,7 @@ default = ["desktop", "agent-pane"]
 desktop = []
 agent-pane = ["dep:agent-client-protocol", "dep:fff-search", "dep:ignore", "zz-ui/agent"]
 editor-pane = ["dep:fff-search", "dep:ignore", "zz-ui/editor"]
-hotreload = ["dep:dioxus-devtools"]
+hotreload = ["dep:dioxus-devtools", "zz-gpui/hot-reload"]
 
 [[bin]]
 name = "zz"
