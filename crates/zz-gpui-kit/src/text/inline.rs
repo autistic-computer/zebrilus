@@ -164,7 +164,7 @@ pub(super) fn code_runs(runs: &mut [TextRun], code_ranges: &[Range<usize>], fami
 
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct InlineState {
-    hovered_index: Option<usize>,
+    hovered_link: Option<Range<usize>>,
     pub(super) text: SharedString,
     pub(super) selection: Option<Selection>,
 }
@@ -174,9 +174,9 @@ impl InlineState {
         self.text = text;
     }
 
-    fn set_hovered_index(&mut self, hovered_index: Option<usize>) -> bool {
-        let changed = self.hovered_index != hovered_index;
-        self.hovered_index = hovered_index;
+    fn set_hovered_link(&mut self, hovered_link: Option<Range<usize>>) -> bool {
+        let changed = self.hovered_link != hovered_link;
+        self.hovered_link = hovered_link;
         changed
     }
 }
@@ -272,6 +272,18 @@ impl Inline {
                 ));
             }
         }
+    }
+
+    fn link_range_for_position(
+        layout: &TextLayout,
+        links: &[(Range<usize>, LinkMark)],
+        position: Point<Pixels>,
+    ) -> Option<Range<usize>> {
+        let offset = layout.index_for_position(position).ok()?;
+        links
+            .iter()
+            .find(|(range, _)| range.contains(&offset))
+            .map(|(range, _)| range.clone())
     }
 
     fn link_for_position(
@@ -617,32 +629,37 @@ impl Element for Inline {
             });
         }
 
-        window.on_mouse_event({
-            let hitbox = hitbox.clone();
-            let text_layout = text_layout.clone();
-            let inline_state = self.state.clone();
-            let mut hovered_index = state.hovered_index;
-            move |event: &MouseMoveEvent, phase, window, cx| {
-                if !phase.bubble() {
-                    return;
-                }
+        if !self.links.is_empty() {
+            window.on_mouse_event({
+                let hitbox = hitbox.clone();
+                let text_layout = text_layout.clone();
+                let links = self.links.clone();
+                let inline_state = self.state.clone();
+                let mut hovered_link = state.hovered_link.clone();
+                move |event: &MouseMoveEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
 
-                let updated = hitbox
-                    .is_hovered(window)
-                    .then(|| text_layout.index_for_position(event.position).ok())
-                    .flatten();
-                if hovered_index == updated {
-                    return;
-                }
+                    let updated = hitbox
+                        .is_hovered(window)
+                        .then(|| {
+                            Self::link_range_for_position(&text_layout, &links, event.position)
+                        })
+                        .flatten();
+                    if hovered_link == updated {
+                        return;
+                    }
 
-                hovered_index = updated;
-                if let Ok(mut state) = inline_state.lock()
-                    && state.set_hovered_index(updated)
-                {
-                    cx.notify(current_view);
+                    hovered_link = updated.clone();
+                    if let Ok(mut state) = inline_state.lock()
+                        && state.set_hovered_link(updated)
+                    {
+                        cx.notify(current_view);
+                    }
                 }
-            }
-        });
+            });
+        }
 
         if !is_selection {
             window.on_mouse_event({
@@ -924,14 +941,14 @@ mod tests {
     }
 
     #[test]
-    fn hovered_index_only_changes_on_glyph_transition() {
+    fn hovered_link_only_changes_on_link_transition() {
         let mut state = InlineState::default();
 
-        assert!(state.set_hovered_index(Some(4)));
-        assert!(!state.set_hovered_index(Some(4)));
-        assert!(state.set_hovered_index(Some(5)));
-        assert!(state.set_hovered_index(None));
-        assert!(!state.set_hovered_index(None));
+        assert!(state.set_hovered_link(Some(4..9)));
+        assert!(!state.set_hovered_link(Some(4..9)));
+        assert!(state.set_hovered_link(Some(12..15)));
+        assert!(state.set_hovered_link(None));
+        assert!(!state.set_hovered_link(None));
     }
 
     #[test]
