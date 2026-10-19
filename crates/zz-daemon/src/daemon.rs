@@ -43,6 +43,10 @@ mod exec;
 #[cfg(test)]
 mod exec_tests;
 mod file_commands;
+#[cfg(unix)]
+mod flow;
+#[cfg(all(test, unix))]
+mod flow_tests;
 mod helpers;
 mod history_io;
 #[cfg(unix)]
@@ -2381,6 +2385,8 @@ struct OutboundState {
     attach_settling: Option<AttachSettling>,
     buffered: bool,
     ctrl_collecting: ControlCollection,
+    #[cfg(unix)]
+    flow: Option<flow::FlowWindow>,
 }
 
 #[cfg(unix)]
@@ -3770,18 +3776,46 @@ impl OutboundMailbox {
 
     #[cfg(unix)]
     fn try_recv_batch(&self, frames: &mut Vec<OutboundFrame>, max_bytes: usize) {
-        let mut state = self.state.lock();
+        let mut guard = self.state.lock();
+        let state = &mut *guard;
+        let written = state.written_bytes;
+        let now = state.flow.is_some().then(Instant::now);
+        let empty = state
+            .flow
+            .as_mut()
+            .zip(now)
+            .is_some_and(|(flow, now)| flow.sending(written, now));
         let mut bytes = 0;
         let mut messages = 0;
+        let base = frames.len();
         while bytes < max_bytes {
+            if let Some(flow) = state.flow.as_mut()
+                && !flow.room(written + bytes as u64)
+            {
+                flow.block();
+                break;
+            }
             let reliable = !state.reliable.is_empty();
-            let Some(frame) = pop_ready_frame(&mut state) else {
+            let Some(frame) = pop_ready_frame(state) else {
                 break;
             };
-            messages += usize::from(reliable);
             let frame = frame.materialize();
             bytes += frame.len();
             frames.push(frame);
+            if reliable {
+                messages = frames.len() - base;
+            }
+            if let Some((flow, now)) = state.flow.as_mut().zip(now)
+                && flow.ping_due(written + bytes as u64, false)
+            {
+                bytes += push_flow_ping(flow, frames, written + bytes as u64, now);
+            }
+        }
+        if bytes != 0
+            && let Some((flow, now)) = state.flow.as_mut().zip(now)
+            && flow.ping_due(written + bytes as u64, empty)
+        {
+            bytes += push_flow_ping(flow, frames, written + bytes as u64, now);
         }
         state.writer_inflight_bytes = bytes;
         state.writer_inflight_messages = messages;
@@ -3846,6 +3880,18 @@ impl OutboundMailbox {
         }
         state.writer_inflight_bytes = 0;
         state.writer_inflight_messages = 0;
+    }
+
+    #[cfg(unix)]
+    fn enable_flow(&self) {
+        self.state.lock().flow = Some(flow::FlowWindow::new(Instant::now()));
+    }
+
+    #[cfg(unix)]
+    fn acknowledge(&self, token: u64) {
+        if let Some(flow) = self.state.lock().flow.as_mut() {
+            flow.acknowledge(token, Instant::now());
+        }
     }
 
     fn close(&self) {
@@ -4082,6 +4128,32 @@ fn pop_ready_frame(state: &mut OutboundState) -> Option<OutboundFrame> {
         }
     }
     None
+}
+
+#[cfg(unix)]
+fn push_flow_ping(
+    flow: &mut flow::FlowWindow,
+    frames: &mut Vec<OutboundFrame>,
+    sent: u64,
+    now: Instant,
+) -> usize {
+    let rtt_us = flow.rtt_us();
+    let mut encoded = Vec::new();
+    let mut token = sent;
+    loop {
+        encoded.clear();
+        encode_protocol_message_into(&ProtocolMessage::Ping { token, rtt_us }, &mut encoded)
+            .expect("a ping always encodes");
+        let next = sent + encoded.len() as u64;
+        if next == token {
+            break;
+        }
+        token = next;
+    }
+    flow.pinged(token, now);
+    let len = encoded.len();
+    frames.push(OutboundFrame::Owned(encoded));
+    len
 }
 
 fn take_recycled_frame(state: &mut OutboundState) -> Vec<u8> {

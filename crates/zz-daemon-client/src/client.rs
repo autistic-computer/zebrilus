@@ -1191,7 +1191,22 @@ impl InteractiveClient {
     }
 
     pub fn take_pending_message(&self) -> Option<ProtocolMessage> {
-        self.reader.lock().pending.pop_front()
+        loop {
+            let message = self.reader.lock().pending.pop_front()?;
+            if self.answer_ping(&message).is_err() {
+                return None;
+            }
+            if !matches!(message, ProtocolMessage::Ping { .. }) {
+                return Some(message);
+            }
+        }
+    }
+
+    fn answer_ping(&self, message: &ProtocolMessage) -> Result<(), DaemonError> {
+        if let ProtocolMessage::Ping { token, .. } = message {
+            self.send(&ProtocolMessage::Pong { token: *token })?;
+        }
+        Ok(())
     }
 
     pub fn is_initially_attached(&self) -> bool {
@@ -2054,18 +2069,34 @@ impl InteractiveClient {
         &self,
         read_socket: bool,
     ) -> Result<Option<Box<ProtocolMessage>>, DaemonError> {
-        let result = self.reader.lock().try_recv_decodable(read_socket)?;
-        if let Some((message, skipped)) = result {
+        loop {
+            let result = self.reader.lock().try_recv_decodable(read_socket)?;
+            let Some((message, skipped)) = result else {
+                return Ok(None);
+            };
             if skipped {
                 self.request_resync()?;
             }
-            Ok(Some(message))
-        } else {
-            Ok(None)
+            if let ProtocolMessage::Ping { .. } = *message {
+                self.answer_ping(&message)?;
+                continue;
+            }
+            return Ok(Some(message));
         }
     }
 
     pub fn recv(&self) -> Result<ProtocolMessage, DaemonError> {
+        loop {
+            let message = self.recv_any()?;
+            if let ProtocolMessage::Ping { .. } = message {
+                self.answer_ping(&message)?;
+                continue;
+            }
+            return Ok(message);
+        }
+    }
+
+    fn recv_any(&self) -> Result<ProtocolMessage, DaemonError> {
         let started = diagnostic_timer();
         let lock_started = diagnostic_timer();
         let mut reader = self.reader.lock();
@@ -2383,7 +2414,19 @@ enum EndpointFactsScope {
     LocalHostWorkingDirectoryAndTerminal,
 }
 
+fn flow_window_wanted(remote: bool) -> bool {
+    match std::env::var(crate::FLOW_WINDOW_ENVIRONMENT_VARIABLE).as_deref() {
+        Ok("on") => true,
+        Ok("off") => false,
+        _ => remote,
+    }
+}
+
 impl EndpointFactsScope {
+    fn is_remote(self) -> bool {
+        matches!(self, Self::None | Self::PortableTerminalSize)
+    }
+
     fn includes_working_directory(self) -> bool {
         matches!(
             self,
@@ -2806,10 +2849,15 @@ fn materialize_welcome<S: TransportStream>(
         key_tables: Vec::new(),
         clock: welcome.clock,
     };
+    let mut pings = Vec::new();
     let batch = loop {
         let message = reader.recv()?;
         if let ProtocolMessage::Batch(batch) = message {
             break batch;
+        }
+        if let ProtocolMessage::Ping { .. } = message {
+            pings.push(message);
+            continue;
         }
         if let ProtocolMessage::CommandResponse(CommandResponse::Error { error, .. }) = message {
             return Err(DaemonError::Server(error));
@@ -2842,6 +2890,7 @@ fn materialize_welcome<S: TransportStream>(
         }
     }
     reader.pending.push_back(ProtocolMessage::Batch(batch));
+    reader.pending.extend(pings);
     Ok(hello)
 }
 
@@ -2934,6 +2983,9 @@ fn connect_stream_hello<S: TransportStream>(
     client_utf8_capability(&mut capabilities);
     client_features_capabilities(&client_terminal_flags().features, &mut capabilities);
     client_learned_features_capability(&mut capabilities);
+    if kind == ClientKind::Interactive && flow_window_wanted(client_facts.is_remote()) {
+        capabilities.push(zz_protocol::FLOW_WINDOW_CAPABILITY.to_owned());
+    }
     if kind == ClientKind::Interactive && client_has_terminal {
         capabilities.push(ClientHello::CLIENT_TERMINAL_CAPABILITY.to_owned());
         if matches!(
@@ -3612,6 +3664,15 @@ mod tests {
         assert!(EndpointFactsScope::LocalControlTerminalIdentity.includes_tty());
         assert!(EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal.includes_terminal_size());
         assert!(EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal.includes_tty());
+    }
+
+    #[test]
+    fn only_ssh_endpoint_scopes_count_as_remote_for_the_flow_window() {
+        assert!(EndpointFactsScope::None.is_remote());
+        assert!(EndpointFactsScope::PortableTerminalSize.is_remote());
+        assert!(!EndpointFactsScope::LocalHostWorkingDirectory.is_remote());
+        assert!(!EndpointFactsScope::LocalControlTerminalIdentity.is_remote());
+        assert!(!EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal.is_remote());
     }
 
     #[cfg(unix)]

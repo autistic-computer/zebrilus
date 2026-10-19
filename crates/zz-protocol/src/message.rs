@@ -4181,6 +4181,13 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_agent_option_text")]
         task_id: String,
     },
+    Ping {
+        token: u64,
+        rtt_us: u32,
+    },
+    Pong {
+        token: u64,
+    },
     FetchArtifact {
         request_id: u64,
         #[serde(deserialize_with = "deserialize_artifact_token")]

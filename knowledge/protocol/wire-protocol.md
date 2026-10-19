@@ -586,7 +586,9 @@ record/fetch round-trip for numbered placeholders.
 
 # Remote transport
 
-Remote carriers preserve the identical envelope but are platform-specific. macOS and Linux desktop
+Remote carriers preserve the identical envelope but are platform-specific. Since v110 a remote
+interactive client also opts into the flow window, which paces the daemon's writes to the link
+(see the v110 entry below). macOS and Linux desktop
 clients use OpenSSH `ssh -N -L` to forward the daemon's Unix socket (`crates/zz-daemon-client/src/endpoint.rs`
 `ssh_forward_command`). iOS selects `RusshForward` in `crates/zz-daemon-client/src/client.rs`
 `connect_endpoint_with_prompts_and_terminal`; it opens an in-process `russh` session, runs
@@ -951,8 +953,8 @@ as its contents, so its bytes are unchanged. `pane_summary_wire_tests` pins the 
 The daemon now fills `PaneSnapshot.status` for native Agent panes and, from `@agent_state`, for
 terminal panes with no OSC 7501 record, so the record reaches every session on every host.
 
-v110 carries pages agents write ([Artifacts](/designs/userpanes.md)). It appends five
-`ProtocolMessage` variants: an interactive client asks for one file of a page with
+v110 also carries pages agents write ([Artifacts](/designs/userpanes.md)). After the flow window's
+`Ping` and `Pong` (below) it appends five more `ProtocolMessage` variants: an interactive client asks for one file of a page with
 `FetchArtifact { request_id, token, path }` and gets `ArtifactBegin { request_id, mime,
 total_bytes, reply }` and ordered `ArtifactChunk`s of at most `MAX_ARTIFACT_CHUNK_BYTES` (1 MiB), or
 `ArtifactUnavailable { request_id, reason }`; files are capped at `MAX_ARTIFACT_BYTES` (16 MiB).
@@ -965,13 +967,24 @@ place of the composer. It travels as JSON on the agent stream, so postcard frame
 layout, but v108 shipped in zz 0.17.0 and `compat/wire-version.py` reads the source diff, so the
 number moves.
 
+v109 shipped in zz 0.18.0. v110 adds the remote flow window
+([design](/designs/remote-flow-window.md)). `ProtocolMessage` appends `Ping { token: u64, rtt_us:
+u32 }` and `Pong { token: u64 }`. An interactive client whose hello carries `flow-window-v1`
+(`FLOW_WINDOW_CAPABILITY`, sent for `ssh://` endpoints or when `ZZ_FLOW_WINDOW=on`) gets pings in
+the daemon's output and answers each with a pong carrying the same token, the stream offset just
+past the ping. The daemon keeps the bytes past the last answered ping under a window sized from
+measured delivery rate and lowest RTT, so frames wait in the outbound mailbox instead of in sshd and
+TCP. `InteractiveClient` answers pings itself and never hands one to its caller. Clients without the
+capability see no pings and keep the old writer path, direct terminal writes included.
+
 # Versioning & compatibility
 
 - **`PROTOCOL_VERSION: u16 = 110`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
 - v110 requires updated clients and daemon together, including the daemon on every ssh host.
-  v109 shipped in zz 0.18.0; v110 appends the artifact fetch and reply messages.
+  v109 shipped in zz 0.18.0; v110 appends the flow window's `Ping`/`Pong`, then the artifact fetch
+  and reply messages.
 - v109 requires updated clients and daemon together, including the daemon on every ssh host.
   v108 shipped in zz 0.17.0; v109 appends `AgentSessionCapabilities.watch`.
 - v108 requires updated clients and daemon together, including the daemon on every ssh host.

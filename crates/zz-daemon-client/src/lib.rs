@@ -19,6 +19,7 @@ use zz_protocol::{ProtocolError, RawText, ServerError};
 pub const STARTUP_REENTRY_CAPABILITY_PREFIX: &str = "zz-startup-reentry=";
 pub const CLIENT_EXITS_ON_DETACH_CAPABILITY: &str = "client-exits-on-detach-v1";
 pub const STARTUP_REENTRY_ENVIRONMENT_VARIABLE: &str = "ZZ_STARTUP_REENTRY";
+pub const FLOW_WINDOW_ENVIRONMENT_VARIABLE: &str = "ZZ_FLOW_WINDOW";
 pub const COLD_START_PREPARE_ABORT_COMMAND: &str = "__zz-cold-start-prepare-abort";
 
 // iOS uses the in-process russh tunnel, leaving the spawned-ssh and askpass halves unreachable.
