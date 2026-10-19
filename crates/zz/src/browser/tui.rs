@@ -301,6 +301,7 @@ impl TuiBrowserProvider {
                     | BrowserEvent::LoadingChanged { .. }
                     | BrowserEvent::FrameReady { .. }
                     | BrowserEvent::CursorChanged { .. }
+                    | BrowserEvent::ImeCompositionChanged { .. }
                     | BrowserEvent::ElementPicked { .. }
                     | BrowserEvent::ElementPickCancelled { .. }
                     | BrowserEvent::ElementPickFailed { .. }
@@ -369,6 +370,7 @@ impl TuiBrowserProvider {
                     | BrowserEvent::SharedTextureFailed { .. }
                     | BrowserEvent::LoadFailed { .. }
                     | BrowserEvent::CursorChanged { .. }
+                    | BrowserEvent::ImeCompositionChanged { .. }
                     | BrowserEvent::ElementPicked { .. }
                     | BrowserEvent::ElementPickCancelled { .. }
                     | BrowserEvent::ElementPickFailed { .. }

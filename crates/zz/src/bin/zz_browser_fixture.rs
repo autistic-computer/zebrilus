@@ -954,6 +954,7 @@ impl SharedTextureSpikeView {
                 | BrowserEvent::TitleChanged { .. }
                 | BrowserEvent::LoadingChanged { .. }
                 | BrowserEvent::CursorChanged { .. }
+                | BrowserEvent::ImeCompositionChanged { .. }
                 | BrowserEvent::ElementPicked { .. }
                 | BrowserEvent::ElementPickCancelled { .. }
                 | BrowserEvent::ElementPickFailed { .. }
@@ -1399,6 +1400,7 @@ fn handle_session_events(
             | BrowserEvent::TitleChanged { .. }
             | BrowserEvent::LoadingChanged { .. }
             | BrowserEvent::CursorChanged { .. }
+            | BrowserEvent::ImeCompositionChanged { .. }
             | BrowserEvent::ElementPicked { .. }
             | BrowserEvent::ElementPickCancelled { .. }
             | BrowserEvent::ElementPickFailed { .. }
