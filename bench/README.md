@@ -104,3 +104,19 @@ On Linux `--app` takes a bundle directory from `cargo xtask bundle-cef --release
 dist/<name>` (named profiles are macOS-only there). Each launch runs inside its own headless
 `gamescope` at the `--bounds` size and 120 Hz, so nothing appears on screen and the window is
 never covered. CPU comes from `/proc`, footprint is PSS, and another `gamescope` counts as noise.
+
+## Browser underlay (Linux)
+
+`bench/gpui/browser_underlay.py` measures main-thread CPU per browser frame for a browser pane on
+the animated canvas page, counting page frames over CDP (`cdp-eval.mjs`, port 9341). Headless
+gamescope has no `wl_subcompositor`, so the Wayland underlay only engages under a nested
+`kwin_wayland --virtual` with its own D-Bus and config directory: set `MEASURE_COMPOSITOR=kwin`.
+The fair A/B is one bundle against itself with `ZZ_BROWSER_UNDERLAY=0`:
+
+```sh
+MEASURE_COMPOSITOR=kwin bench/gpui/browser_underlay.py --app off=dist/p2,ZZ_BROWSER_UNDERLAY=0 \
+  --app on=dist/p2 --out /tmp/underlay --repeats 3 --shapes page,palette,glass
+bench/gpui/browser_underlay.py summarize /tmp/underlay/results.jsonl
+```
+
+Run one at a time: it uses fixed CDP and socket names.
