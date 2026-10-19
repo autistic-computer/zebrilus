@@ -7,7 +7,7 @@ const INITIAL_WINDOW: u64 = 64 * 1024;
 const MIN_WINDOW: u64 = 16 * 1024;
 const MAX_WINDOW: u64 = 8 * 1024 * 1024;
 const MIN_PING_GAP: u64 = 4 * 1024;
-const RATE_SAMPLES: usize = 8;
+const RATE_SAMPLES: usize = 40;
 const MAX_PINGS: usize = 256;
 const LOG_EVERY: Duration = Duration::from_secs(1);
 
