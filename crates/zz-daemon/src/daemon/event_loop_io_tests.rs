@@ -219,6 +219,48 @@ fn blocked_output_retains_offsets_while_another_client_responds() {
 }
 
 #[test]
+fn closed_input_releases_a_full_flow_window_before_draining_output() {
+    for shutdown in [std::net::Shutdown::Write, std::net::Shutdown::Both] {
+        let shared = Arc::new(Shared::new(17));
+        let mut event_loop = EventLoop::empty(&shared).unwrap();
+        let (token, mut peer) = pair(&mut event_loop);
+        let outbound = Arc::clone(&event_loop.connections[&token].outbound);
+        outbound.enable_flow();
+        let output = ProtocolMessage::CommandResponse(CommandResponse::Success {
+            request_id: 9,
+            output: RawText::from("x".repeat(20_000)),
+            exit_code: 0,
+            stderr: String::new(),
+            stdout_claim: StdoutClaim::default(),
+        });
+        for _ in 0..5 {
+            assert!(outbound.enqueue_reliable(&output));
+        }
+        event_loop.turn(&shared).unwrap();
+        let mut input = Inbound::default();
+        let sent = messages(&mut peer, &mut input);
+        assert!(
+            sent.iter()
+                .any(|message| matches!(message, ProtocolMessage::Ping { .. }))
+        );
+        assert!(event_loop.connections[&token].frames.is_empty());
+        {
+            let state = outbound.state.lock();
+            assert!(state.queued_bytes > 0);
+            assert!(!state.flow.as_ref().unwrap().room(state.written_bytes));
+        }
+        peer.shutdown(shutdown).unwrap();
+        event_loop.read_ready(token, &shared);
+        event_loop.turn(&shared).unwrap();
+        assert!(!event_loop.connections.contains_key(&token));
+        assert!(outbound.state.lock().writer_finished);
+        if shutdown == std::net::Shutdown::Write {
+            assert_eq!(messages(&mut peer, &mut input), vec![output]);
+        }
+    }
+}
+
+#[test]
 fn truncated_eof_rejects_partial_frames_and_oversized_prefixes() {
     for truncated in [
         vec![1],
