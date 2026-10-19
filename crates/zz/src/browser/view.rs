@@ -1378,10 +1378,10 @@ impl BrowserView {
                             self.underlay = PaneUnderlay::new(window);
                         }
                         if let Some(underlay) = &self.underlay
+                            && underlay.present(texture)
                             && !self
                                 .content_bounds
                                 .is_some_and(|bounds| window.underlay_covered(bounds))
-                            && underlay.present(texture)
                         {
                             return;
                         }

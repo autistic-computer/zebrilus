@@ -2235,10 +2235,14 @@ impl PlatformWindow for WaylandWindow {
             log::info!("no browser underlay: the compositor has no wl_subcompositor");
             return None;
         };
+        let Some(viewporter) = state.globals.viewporter.as_ref() else {
+            log::info!("no browser underlay: the compositor has no wp_viewporter");
+            return None;
+        };
         let underlay = crate::linux::wayland::underlay::WaylandUnderlay::new(
             &state.globals.compositor,
             subcompositor,
-            state.globals.viewporter.as_ref(),
+            viewporter,
             &state.globals.qh,
             state.surface.clone(),
             |surface| {
