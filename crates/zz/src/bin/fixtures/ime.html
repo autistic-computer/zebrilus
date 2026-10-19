@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>zz ime loading</title>
+  <style>
+    body { margin: 0; background: #eef3fa; }
+    input { box-sizing: border-box; width: 100%; height: 120px; font: 32px system-ui; }
+  </style>
+</head>
+<body>
+  <input id="field" autofocus>
+  <script>
+    const field = document.getElementById("field");
+    field.addEventListener("input", () => {
+      document.title = `zz ime value: ${field.value}`;
+    });
+    field.focus();
+    document.title = "zz ime ready";
+  </script>
+</body>
+</html>
