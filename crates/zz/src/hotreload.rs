@@ -1,20 +1,4 @@
 #[cfg(all(feature = "hotreload", debug_assertions, not(target_family = "wasm")))]
-macro_rules! render {
-    ($body:block) => {
-        dioxus_devtools::subsecond::call(|| zz_gpui::IntoElement::into_any_element($body))
-    };
-}
-
-#[cfg(not(all(feature = "hotreload", debug_assertions, not(target_family = "wasm"))))]
-macro_rules! render {
-    ($body:block) => {
-        $body
-    };
-}
-
-pub(crate) use render;
-
-#[cfg(all(feature = "hotreload", debug_assertions, not(target_family = "wasm")))]
 pub(crate) fn init(cx: &mut zz_gpui::App) {
     if !zz_protocol::app_identity::DEVELOPMENT {
         return;

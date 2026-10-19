@@ -72,7 +72,7 @@ config replay, chatty panes, idle cost, memory, attach, echo latency,
 throughput, control mode and status jobs. `just perf gate [stage]` runs it;
 see `bench/perf/README.md`.
 
-# GPUI frame cost (macOS)
+# GPUI frame cost (macOS and Linux)
 
 `bench/gpui/frames.py` compares zz app bundles frame by frame. Each launch gets its own `HOME`
 and socket, a 1280x900 window, and six scenarios driven through the CLI (idle, stream, a
@@ -99,3 +99,8 @@ covered window stops drawing, and its windows read as idle. It waits for a quiet
 window and repeats windows that overlapped a compile, a perf gate or a compat run; set
 `ZZ_FRAMES_FOREIGN` to colon-separated target directories of other worktrees whose test binaries
 should also count, and `ZZ_FRAMES_HOLD` to a file it creates while measuring.
+
+On Linux `--app` takes a bundle directory from `cargo xtask bundle-cef --release --output
+dist/<name>` (named profiles are macOS-only there). Each launch runs inside its own headless
+`gamescope` at the `--bounds` size and 120 Hz, so nothing appears on screen and the window is
+never covered. CPU comes from `/proc`, footprint is PSS, and another `gamescope` counts as noise.

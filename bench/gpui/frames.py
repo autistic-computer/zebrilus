@@ -41,6 +41,7 @@ DEFAULT_SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome"]
 FOREIGN = tuple(p for p in os.environ.get("ZZ_FRAMES_FOREIGN", "").split(":") if p)
 QUIET = ("bench/perf/run.py", "bench/perf/gate.py", "compat/run.sh", "bench/run.sh")
 HOLD = os.environ.get("ZZ_FRAMES_HOLD")
+LINUX = sys.platform.startswith("linux")
 
 
 class HeldBuilds:
@@ -58,16 +59,18 @@ class HeldBuilds:
                 pass
 
 
-def noise():
-    out = subprocess.run(["ps", "-Ao", "stat=,command="], capture_output=True, text=True).stdout
+def noise(own=()):
+    out = subprocess.run(["ps", "-Ao", "pid=,stat=,command="], capture_output=True, text=True).stdout
     found = []
     for line in out.splitlines():
-        stat, _, command = line.strip().partition(" ")
+        pid, stat, command = (line.split(None, 2) + ["", ""])[:3]
         argv = command.split()
         if not argv or stat.startswith("T"):
             continue
         name = os.path.basename(argv[0])
         if name in ("rustc", "cargo", "clippy-driver", "ld", "ld64", "zig"):
+            found.append(name)
+        elif name == "gamescope" and int(pid) not in own:
             found.append(name)
         elif any(root in argv[0] for root in FOREIGN):
             found.append(os.path.basename(argv[0]))
@@ -105,16 +108,24 @@ def tree(roots):
     return found
 
 
-def wait_quiet(limit):
+def wait_quiet(limit, own=()):
     deadline = time.time() + limit
     while time.time() < deadline:
-        if not noise():
+        if not noise(own):
             return True
         time.sleep(5)
     return False
 
 
+def proc_cpu(path):
+    fields = Path(path).read_text().rsplit(")", 1)[1].split()
+    return (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
+
+
 def thread_times(pid):
+    if LINUX:
+        threads = len(os.listdir(f"/proc/{pid}/task"))
+        return proc_cpu(f"/proc/{pid}/task/{pid}/stat"), proc_cpu(f"/proc/{pid}/stat"), threads
     out = subprocess.run(["ps", "-M", "-p", str(pid)], capture_output=True, text=True).stdout
     rows = out.splitlines()[1:]
     total = 0.0
@@ -141,6 +152,11 @@ def clock(value):
 
 
 def footprint(pid):
+    if LINUX:
+        for line in Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines():
+            if line.startswith("Pss:"):
+                return int(line.split()[1]) * 1024
+        return None
     out = subprocess.run(
         ["footprint", "-p", str(pid), "--format", "bytes"], capture_output=True, text=True
     ).stdout
@@ -156,7 +172,7 @@ class Run:
         self.config = config
         self.display = display
         self.app = Path(app)
-        self.binary = self.app / "Contents/MacOS/zz"
+        self.binary = self.app / ("zz" if LINUX else "Contents/MacOS/zz")
         self.out_dir = Path(out_dir)
         self.label = label
         self.warmup = warmup
@@ -167,6 +183,8 @@ class Run:
         self.home = self.root / "h"
         self.socket = self.root / "s"
         self.gui = None
+        self.gui_pid = None
+        self.size = None
         self.daemon_pid = None
 
     def env(self):
@@ -193,8 +211,10 @@ class Run:
         return result.stdout.strip()
 
     def prepare(self, x, y, width, height):
-        data = self.home / "Library/Application Support/zz"
+        data = self.home / (".local/share/zz" if LINUX else "Library/Application Support/zz")
         data.mkdir(parents=True)
+        (data / "import-prompted-v2").write_text("")
+        self.size = (int(width), int(height))
         (self.root / "logs").mkdir()
         (self.home / ".zshrc").write_text("PROMPT='%~ %# '\n")
         (self.home / ".bashrc").write_text("PS1='\\w $ '\n")
@@ -218,8 +238,12 @@ class Run:
         env.update(self.extra_env)
         if frames_path:
             env["GPUI_FRAME_STATS"] = str(frames_path)
+        command = [str(self.binary), "--socket", str(self.socket), "app"]
+        if LINUX:
+            w, h = (str(v) for v in self.size)
+            command = ["gamescope", "--backend", "headless", "-W", w, "-H", h, "-w", w, "-h", h, "-r", "120", "--expose-wayland", "--", *command]
         self.gui = subprocess.Popen(
-            [str(self.binary), "--socket", str(self.socket), "app"],
+            command,
             env=env,
             stdout=open(self.root / "app.stdout", "w"),
             stderr=open(self.root / "app.stderr", "w"),
@@ -238,6 +262,20 @@ class Run:
             time.sleep(0.05)
         else:
             raise RuntimeError("daemon not ready")
+        self.gui_pid = self.gui.pid
+        if LINUX:
+            binary = self.binary.resolve()
+            for pid in tree([self.gui.pid]):
+                try:
+                    argv = Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")
+                    exe = Path(f"/proc/{pid}/exe").resolve()
+                except OSError:
+                    continue
+                if exe == binary and "app" in argv and not any(a.startswith("--type=") for a in argv):
+                    self.gui_pid = pid
+                    break
+            else:
+                raise RuntimeError("GUI process not found under gamescope")
         deadline = time.time() + 20
         while time.time() < deadline:
             if self.zz("list-panes", "-a", "-F", "#{pane_id}", check=False):
@@ -336,7 +374,7 @@ class Run:
 
     def measure_held(self, scenario):
         self.freeze_for_gate()
-        quiet_before = wait_quiet(self.quiet_wait)
+        quiet_before = wait_quiet(self.quiet_wait, (self.gui.pid,))
         self.setup(scenario)
         noisy_attempts = 0
         for attempt in range(200):
@@ -346,7 +384,7 @@ class Run:
             if result["noise"] and noisy_attempts < 3:
                 noisy_attempts += 1
                 print(f"  noisy window ({','.join(result['noise'])}), retrying", flush=True)
-                quiet_before = wait_quiet(self.quiet_wait)
+                quiet_before = wait_quiet(self.quiet_wait, (self.gui.pid,))
                 continue
             result["quiet_before"] = quiet_before
             result["attempts"] = attempt + 1
@@ -357,18 +395,18 @@ class Run:
         warm_until = time.time() + self.warmup
         commands = 0
         self.drive(scenario, warm_until)
-        main0, total0, threads0 = thread_times(self.gui.pid)
+        main0, total0, threads0 = thread_times(self.gui_pid)
         daemon0 = thread_times(self.daemon_pid)[1]
         t0 = time.time_ns()
         noisy = []
         end = time.time() + self.duration
         while time.time() < end:
             commands += self.drive(scenario, min(end, time.time() + 2))
-            noisy += noise()
+            noisy += noise((self.gui.pid,))
             if self.freeze_for_gate():
                 return None
         t1 = time.time_ns()
-        main1, total1, threads1 = thread_times(self.gui.pid)
+        main1, total1, threads1 = thread_times(self.gui_pid)
         daemon1 = thread_times(self.daemon_pid)[1]
         elapsed = (t1 - t0) / 1e9
         return {
@@ -380,7 +418,7 @@ class Run:
             "gui_total_cpu_pct": 100 * (total1 - total0) / elapsed,
             "daemon_cpu_pct": 100 * (daemon1 - daemon0) / elapsed,
             "gui_threads": threads1,
-            "gui_footprint": footprint(self.gui.pid),
+            "gui_footprint": footprint(self.gui_pid),
             "scroll_commands": commands,
             "noise": sorted(set(noisy)),
             "load1": os.getloadavg()[0],
@@ -393,6 +431,11 @@ class Run:
                 self.gui.wait(10)
             except subprocess.TimeoutExpired:
                 self.gui.kill()
+        if LINUX and self.gui_pid:
+            try:
+                os.kill(self.gui_pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         try:
             self.zz("kill-server", check=False)
         except Exception:
