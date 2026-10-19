@@ -330,7 +330,6 @@ impl Inline {
             return (is_selectable, false, None);
         };
         let line_height = window.line_height();
-        let mask_bounds = window.content_mask().bounds;
 
         let mut selection: Option<Selection> = None;
         let mut offset = 0;
@@ -349,15 +348,7 @@ impl Inline {
                 }
             }
 
-            let char_center = point(pos.x + char_width.half(), pos.y + line_height.half());
-            if mask_bounds.contains(&char_center)
-                && point_in_text_selection(
-                    pos,
-                    char_width,
-                    selection_start,
-                    selection_end,
-                    line_height,
-                )
+            if point_in_text_selection(pos, char_width, selection_start, selection_end, line_height)
             {
                 if selection.is_none() {
                     selection = Some((offset..offset).into());
