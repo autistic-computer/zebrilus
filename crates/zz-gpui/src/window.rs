@@ -6648,6 +6648,7 @@ impl Window {
         match gesture {
             RecognizedTouchGesture::Scroll(scroll_wheel) => {
                 self.mouse_position = scroll_wheel.position;
+                self.refresh_scroll_latch(scroll_wheel.touch_phase);
                 cx.propagate_event = true;
                 self.dispatch_mouse_event(&scroll_wheel, cx);
             }

@@ -3282,4 +3282,75 @@ mod test {
         assert_eq!(inner.offset().y, px(-60.));
         assert_eq!(state.logical_scroll_top().offset_in_item, px(10.));
     }
+    #[zz_gpui::test]
+    fn raw_touch_can_switch_between_scroll_areas(cx: &mut TestAppContext) {
+        let first = ScrollHandle::new();
+        let second = ScrollHandle::new();
+        struct Areas {
+            first: ScrollHandle,
+            second: ScrollHandle,
+        }
+        impl Render for Areas {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .flex()
+                    .w(px(200.))
+                    .h(px(100.))
+                    .child(
+                        div()
+                            .id("first")
+                            .w(px(100.))
+                            .h(px(100.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.first)
+                            .child(div().h(px(500.)).w_full()),
+                    )
+                    .child(
+                        div()
+                            .id("second")
+                            .w(px(100.))
+                            .h(px(100.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.second)
+                            .child(div().h(px(500.)).w_full()),
+                    )
+            }
+        }
+        let (_, cx) = cx.add_window_view(|_, _| Areas {
+            first: first.clone(),
+            second: second.clone(),
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let touch = |cx: &mut VisualTestContext, id, phase, x, y| {
+            cx.simulate_event(crate::TouchEvent {
+                id: crate::TouchId(id),
+                phase,
+                position: point(px(x), px(y)),
+                predicted_position: None,
+                force: None,
+            });
+        };
+        touch(cx, 1, TouchPhase::Started, 50., 80.);
+        touch(cx, 1, TouchPhase::Moved, 50., 40.);
+        touch(cx, 1, TouchPhase::Moved, 50., 20.);
+        touch(cx, 1, TouchPhase::Ended, 50., 20.);
+        let first_after = first.offset().y;
+        assert!(first_after < px(0.), "first swipe must scroll its own area");
+        assert_eq!(second.offset().y, px(0.));
+        touch(cx, 2, TouchPhase::Started, 150., 80.);
+        touch(cx, 2, TouchPhase::Moved, 150., 40.);
+        touch(cx, 2, TouchPhase::Moved, 150., 20.);
+        touch(cx, 2, TouchPhase::Ended, 150., 20.);
+        assert!(
+            second.offset().y < px(0.),
+            "second swipe must scroll the newly touched area; first={:?}, second={:?}",
+            first.offset(),
+            second.offset()
+        );
+        assert_eq!(
+            first.offset().y,
+            first_after,
+            "the first area's gesture has ended"
+        );
+    }
 }
