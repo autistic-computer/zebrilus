@@ -46,11 +46,18 @@ README records for Chromium input records.
 | `send_wheel(WheelEvent)` | `send_mouse_wheel_event`; `precise` sets `EVENTFLAG_PRECISION_SCROLLING_DELTA` and scales deltas into physical OSR space. |
 | `send_key(KeyInput)` | `KeyEvent` (`RAWKEYDOWN`/`KEYUP`), `windows_key_code`, UTF-16 `character`, native key identity where required, `is_system_key` = Alt held. |
 | `send_text(&str)` | One `KeyEventType::CHAR` event per UTF-16 code unit (`text_key_event`) . the committed-text path. |
-| `commit_composition(&str)` | `ime_commit_text`. |
-| `set_composition(text, selection_utf16)` | `ime_set_composition` with a `CompositionUnderline` over the whole text and a selection `Range`. |
+| `commit_composition(&str)` | `ime_commit_text` with `NO_REPLACEMENT` as the replacement range. |
+| `set_composition(text, selection_utf16)` | `ime_set_composition` with a `CompositionUnderline` over the whole text, `NO_REPLACEMENT`, and a selection `Range`. |
 | `finish_composition()` | `ime_finish_composing_text`. |
 | `cancel_composition()` | `ime_cancel_composition`. |
 | `set_focus(bool)` | `host.set_focus`. |
+
+Both IME calls need a replacement range: CEF's C wrapper returns early, silently, when the
+pointer is null, which dropped every composition (dead keys, the accent picker, CJK input) until
+2026-10-19. `NO_REPLACEMENT` is CEF's invalid range, `u32::MAX..u32::MAX`, as cefclient passes;
+`0..0` would be a real empty range at the start of the field. `zz_browser_fixture --ime-regression`
+composes a dead key and a two-step composition into a page field through these calls and fails
+if the field doesn't end up `é你`.
 
 `Modifiers` map to CEF via `event_flags` (shift/control/alt/platform → command,
 per-button flags, repeat). Pointer and precise-wheel coordinates are scaled with
