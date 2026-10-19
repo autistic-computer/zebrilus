@@ -2391,12 +2391,17 @@ fn send_browser_text(browser: &Browser, text: &str) {
     }
 }
 
+const NO_REPLACEMENT: Range = Range {
+    from: u32::MAX,
+    to: u32::MAX,
+};
+
 fn commit_browser_composition(browser: &Browser, text: &str) {
     if text.is_empty() {
         return;
     }
     if let Some(host) = browser.host() {
-        host.ime_commit_text(Some(&CefString::from(text)), None, 0);
+        host.ime_commit_text(Some(&CefString::from(text)), Some(&NO_REPLACEMENT), 0);
     }
 }
 
@@ -2425,7 +2430,7 @@ fn set_browser_composition(browser: &Browser, text: &str, selection_utf16: std::
     host.ime_set_composition(
         Some(&CefString::from(text)),
         Some(&[underline]),
-        None,
+        Some(&NO_REPLACEMENT),
         Some(&selected),
     );
 }
