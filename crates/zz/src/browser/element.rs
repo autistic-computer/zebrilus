@@ -3,8 +3,9 @@ use std::sync::Arc;
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
 use zz_gpui::{
-    App, Bounds, ContentMask, Corners, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, RenderImage, Window,
+    App, Bounds, ContentMask, Context, Corners, Element, ElementId, ElementInputHandler, Entity,
+    EntityInputHandler, FocusHandle, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    Pixels, RenderImage, Window,
 };
 
 #[cfg(target_os = "macos")]
@@ -13,8 +14,23 @@ use crate::{browser::view::BrowserView, diagnostics, pane};
 
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::browser_render";
 
-pub(crate) struct BrowserElement {
-    view: Entity<BrowserView>,
+pub(crate) trait BrowserSurfaceHost: EntityInputHandler + 'static {
+    fn surface_bounds(&mut self, bounds: Bounds<Pixels>, window: &Window, cx: &mut Context<Self>);
+    fn surface_focus(&self) -> FocusHandle;
+}
+
+impl BrowserSurfaceHost for BrowserView {
+    fn surface_bounds(&mut self, bounds: Bounds<Pixels>, window: &Window, cx: &mut Context<Self>) {
+        self.update_content_bounds(bounds, window, cx);
+    }
+
+    fn surface_focus(&self) -> FocusHandle {
+        self.focus_handle()
+    }
+}
+
+pub(crate) struct BrowserElement<V: BrowserSurfaceHost> {
+    view: Entity<V>,
     image: Option<Arc<RenderImage>>,
     #[cfg(target_os = "macos")]
     surface: Option<CVPixelBuffer>,
@@ -23,9 +39,9 @@ pub(crate) struct BrowserElement {
     corner_radii: Corners<Pixels>,
 }
 
-impl BrowserElement {
+impl<V: BrowserSurfaceHost> BrowserElement<V> {
     pub(crate) fn new(
-        view: Entity<BrowserView>,
+        view: Entity<V>,
         image: Option<Arc<RenderImage>>,
         corner_radii: Corners<Pixels>,
     ) -> Self {
@@ -53,7 +69,7 @@ impl BrowserElement {
     }
 }
 
-impl IntoElement for BrowserElement {
+impl<V: BrowserSurfaceHost> IntoElement for BrowserElement<V> {
     type Element = Self;
 
     fn into_element(self) -> Self::Element {
@@ -69,7 +85,7 @@ pub(crate) struct BrowserPaintState {
     underlay: Option<UnderlayHandle>,
 }
 
-impl Element for BrowserElement {
+impl<V: BrowserSurfaceHost> Element for BrowserElement<V> {
     type RequestLayoutState = ();
     type PrepaintState = BrowserPaintState;
 
@@ -102,7 +118,7 @@ impl Element for BrowserElement {
     ) -> Self::PrepaintState {
         let started = diagnostics::timer(DIAGNOSTIC_TARGET);
         self.view.update(cx, |view, cx| {
-            view.update_content_bounds(bounds, window, cx);
+            view.surface_bounds(bounds, window, cx);
         });
         log::trace!(
             target: "zz::diagnostics::browser_render",
@@ -134,7 +150,7 @@ impl Element for BrowserElement {
         let started = diagnostics::timer(DIAGNOSTIC_TARGET);
         let had_image = state.image.is_some();
         let image_strong_count = state.image.as_ref().map(Arc::strong_count);
-        let focus = self.view.read(cx).focus_handle();
+        let focus = self.view.read(cx).surface_focus();
         window.handle_input(
             &focus,
             ElementInputHandler::new(bounds, self.view.clone()),

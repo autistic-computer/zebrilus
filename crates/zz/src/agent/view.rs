@@ -543,7 +543,7 @@ impl AgentView {
         });
         let history_input = cx
             .new(|cx| InputState::new(window, cx).placeholder("Search directories and sessions…"));
-        let timeline_store = cx.new(|_| AgentTimelineStore::default());
+        let timeline_store = cx.new(|_| AgentTimelineStore::owned_by(pane.0));
         let timeline_store_observer = cx.observe(&timeline_store, |_, _, cx| cx.notify());
         let input_observer = cx.observe(&input, |view, input, cx| {
             view.synchronize_input(&input, cx);

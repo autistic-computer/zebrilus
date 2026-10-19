@@ -124,7 +124,7 @@ pub fn normalize_url(input: &str) -> Result<String, UrlInputError> {
         format!("https://{input}")
     };
     let mut parsed = Url::parse(&candidate).map_err(|_| UrlInputError::Invalid)?;
-    if !matches!(parsed.scheme(), "http" | "https" | "file") {
+    if !matches!(parsed.scheme(), "http" | "https" | "file" | "zz") {
         return Err(UrlInputError::UnsupportedScheme);
     }
     if parsed.scheme() != "file" && parsed.host_str().is_none() {

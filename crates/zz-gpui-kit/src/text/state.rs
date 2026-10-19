@@ -26,7 +26,7 @@ use super::{
     markdown_parse,
     node::{self, NodeContext},
     style::TextViewStyle,
-    text_view::CodeBlockActionsFn,
+    text_view::{CodeBlockActionsFn, CodeBlockBodyFn},
     veil::{RowVeil, StreamingVeil},
 };
 
@@ -43,6 +43,7 @@ pub struct TextViewState {
     pub(super) scrollable: bool,
     pub(super) text_view_style: TextViewStyle,
     pub(super) code_block_actions: Option<std::sync::Arc<CodeBlockActionsFn>>,
+    pub(super) code_block_body: Option<std::sync::Arc<CodeBlockBodyFn>>,
     pub(super) markdown_extensions: Arc<MarkdownExtensions>,
     pub(super) streaming: bool,
 
@@ -121,6 +122,7 @@ impl TextViewState {
             list_state: ListState::new(0, zz_gpui::ListAlignment::Top, px(1000.)).measure_all(),
             text_view_style: TextViewStyle::default(),
             code_block_actions: None,
+            code_block_body: None,
             markdown_extensions: Arc::default(),
             streaming: false,
             is_selecting: false,
@@ -410,6 +412,7 @@ impl Render for TextViewState {
         let mut node_cx = self.parsed_content.node_cx.clone();
 
         node_cx.code_block_actions = self.code_block_actions.clone();
+        node_cx.code_block_body = self.code_block_body.clone();
         node_cx.markdown_extensions = self.markdown_extensions.clone();
         node_cx.style = self.text_view_style.clone();
         if self.streaming {

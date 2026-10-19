@@ -609,6 +609,10 @@ including after `respawn-pane`. The daemon also supplies `ZZ_TMUX_EXECUTABLE`, `
 `TMUX_PANE`, and the enclosing zz socket and pane identity. Shell jobs use the same wrapper.
 A pane command such as `tmux display -p '#{pane_id}'` therefore reaches its enclosing zz
 server. Bare `tmux` with `TMUX` set returns the pinned nested-session refusal and exit 1.
+The directory also holds a `zz` that runs the same binary, so `zz` in a pane always speaks the
+daemon's wire version even when an older zz is first on the user's PATH. Agent processes (ACP
+adapters and the native Claude and Codex drivers) get the directory first on their PATH and
+`ZZ_TMUX_EXECUTABLE` through `AgentWorkspaceEnvironment`.
 `smoke/pane-tmux-path` proves both spawn paths and runs vim-tmux-navigator’s shell script
 and Neovim navigation command from a pane under the installed launcher layout.
 

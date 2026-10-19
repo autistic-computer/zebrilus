@@ -22,6 +22,8 @@ use zz_protocol::PaneId;
 
 use crate::diagnostics;
 
+mod preview;
+
 const GRACEFUL_CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
 const FORCED_CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
 const ACTIVE_PUMP_INTERVAL: Duration = Duration::from_millis(16);
@@ -435,6 +437,7 @@ struct PendingBrowser {
     page_zoom_factor: f64,
     gpu_context: Option<BrowserGpuContext>,
     allow_shared_texture: bool,
+    background: Option<u32>,
 }
 
 /// One pending browser resolved into the arguments of a `create_session`
@@ -447,6 +450,7 @@ struct BrowserCreateSpec {
     page_zoom_factor: f64,
     gpu_context: Option<BrowserGpuContext>,
     allow_shared_texture: bool,
+    background: Option<u32>,
     frame_rate_ceiling: i32,
     watch_first_frame: bool,
 }
@@ -466,6 +470,8 @@ pub(crate) struct BrowserSessionRequest {
     viewport: Viewport,
     page_zoom_factor: f64,
     gpu_context: Option<BrowserGpuContext>,
+    readback_only: bool,
+    background: Option<u32>,
 }
 
 impl BrowserSessionRequest {
@@ -483,11 +489,23 @@ impl BrowserSessionRequest {
             viewport,
             page_zoom_factor,
             gpu_context,
+            readback_only: false,
+            background: None,
         }
     }
 
     pub(crate) fn with_egress(mut self, egress: Option<EgressSpec>) -> Self {
         self.egress = egress;
+        self
+    }
+
+    pub(crate) fn readback_only(mut self) -> Self {
+        self.readback_only = true;
+        self
+    }
+
+    pub(crate) fn with_background(mut self, color: u32) -> Self {
+        self.background = Some(color);
         self
     }
 }
@@ -639,6 +657,7 @@ pub struct BrowserController {
     detached_runtime_phase: Option<RuntimePhase>,
     deferred_runtime_signals: Vec<RuntimeSignal>,
     shutting_down: bool,
+    previews: preview::Previews,
 }
 
 impl BrowserController {
@@ -694,6 +713,7 @@ impl BrowserController {
                     detached_runtime_phase: None,
                     deferred_runtime_signals: Vec::new(),
                     shutting_down: false,
+                    previews: preview::Previews::default(),
                 };
                 if controller.runtime_phase() != Some(RuntimePhase::Uninitialized) {
                     controller.schedule_pump(0, cx);
@@ -730,6 +750,7 @@ impl BrowserController {
                 detached_runtime_phase: None,
                 deferred_runtime_signals: Vec::new(),
                 shutting_down: false,
+                previews: preview::Previews::default(),
             },
         }
     }
@@ -950,6 +971,7 @@ impl BrowserController {
                 page_zoom_factor,
                 gpu_context,
                 allow_shared_texture: false,
+                background: None,
             },
         );
         self.recreate_after_close.insert(key);
@@ -1021,6 +1043,9 @@ impl BrowserController {
     fn send_due_external_begin_frames(&mut self) {
         if !self.external_begin_frame_enabled() {
             return;
+        }
+        if let Some(session) = self.previews.active_session() {
+            session.send_external_begin_frame();
         }
         let now = Instant::now();
         let adaptive_enabled = self.begin_frame_adaptive_enabled();
@@ -1113,6 +1138,8 @@ impl BrowserController {
             mut viewport,
             page_zoom_factor,
             gpu_context,
+            readback_only,
+            background,
         } = request;
         let key = (pane, tab);
         let pane_viewport = *self.pane_viewports.entry(pane).or_insert(viewport);
@@ -1131,7 +1158,7 @@ impl BrowserController {
         if let Some(gpu_context) = gpu_context.clone() {
             self.gpu_contexts.insert(key, gpu_context);
         }
-        let allow_shared_texture = !self.forced_readback.contains(&key);
+        let allow_shared_texture = !self.forced_readback.contains(&key) && !readback_only;
         self.pending_browsers.insert(
             key,
             PendingBrowser {
@@ -1142,6 +1169,7 @@ impl BrowserController {
                 page_zoom_factor,
                 gpu_context,
                 allow_shared_texture,
+                background,
             },
         );
         if !self.ensure_runtime_started(cx) {
@@ -1209,6 +1237,8 @@ impl BrowserController {
             mut viewport,
             page_zoom_factor,
             gpu_context,
+            readback_only,
+            background,
         } = request;
         let key = (pane, tab);
         let pane_viewport = *self.pane_viewports.entry(pane).or_insert(viewport);
@@ -1217,7 +1247,7 @@ impl BrowserController {
         if let Some(gpu_context) = gpu_context.clone() {
             self.gpu_contexts.insert(key, gpu_context);
         }
-        let allow_shared_texture = !self.forced_readback.contains(&key);
+        let allow_shared_texture = !self.forced_readback.contains(&key) && !readback_only;
         self.pending_browsers.insert(
             key,
             PendingBrowser {
@@ -1228,6 +1258,7 @@ impl BrowserController {
                 page_zoom_factor,
                 gpu_context,
                 allow_shared_texture,
+                background,
             },
         );
         if !self.ensure_runtime_started(cx) {
@@ -1997,6 +2028,7 @@ impl BrowserController {
         for session in self.sessions.values_mut() {
             session.close(false);
         }
+        self.previews.close(false);
 
         cx.spawn(async move |this, cx| {
             let graceful_deadline = Instant::now() + GRACEFUL_CLOSE_TIMEOUT;
@@ -2024,7 +2056,8 @@ impl BrowserController {
                     let sessions_closed = controller
                         .sessions
                         .values()
-                        .all(|session| session.phase() == SessionPhase::Closed);
+                        .all(|session| session.phase() == SessionPhase::Closed)
+                        && controller.previews.closed();
                     let runtime_work_finished = controller.runtime.as_ref().is_none_or(|runtime| {
                         runtime.active_data_operation_count() == 0
                             && runtime.active_session_count() == 0
@@ -2042,6 +2075,7 @@ impl BrowserController {
                         for session in controller.sessions.values_mut() {
                             session.close(true);
                         }
+                        controller.previews.close(true);
                         forced = true;
                     }
                     if now >= fatal_deadline {
@@ -2100,6 +2134,7 @@ impl BrowserController {
                             cx.emit(ControllerEvent::RuntimeReady);
                         }
                         self.try_create_browsers(cx);
+                        self.drive_previews(cx);
                     }
                     Err(error) => self.fail(error.to_string(), cx),
                 }
@@ -2277,6 +2312,7 @@ impl BrowserController {
 
     fn pump_fallback_interval(&self) -> Option<Duration> {
         let has_active_transition = !self.pending_browsers.is_empty()
+            || self.previews.busy()
             || self.sessions.values().any(|session| {
                 matches!(
                     session.phase(),
@@ -2342,6 +2378,7 @@ impl BrowserController {
             let page_zoom_factor = pending.page_zoom_factor;
             let gpu_context = pending.gpu_context.clone();
             let allow_shared_texture = pending.allow_shared_texture;
+            let background = pending.background;
             let has_egress = pending.egress.is_some();
             let proxy_port = pending.egress.as_ref().map(|egress| {
                 debug_assert_eq!(pending.profile, egress.composite_profile);
@@ -2392,6 +2429,7 @@ impl BrowserController {
                 page_zoom_factor,
                 gpu_context,
                 allow_shared_texture,
+                background,
                 frame_rate_ceiling,
                 watch_first_frame,
             });
@@ -2407,6 +2445,10 @@ impl BrowserController {
             let created: Vec<_> = specs
                 .into_iter()
                 .map(|spec| {
+                    let backdrop = runtime.background_color();
+                    if let Some(background) = spec.background {
+                        runtime.set_background_color(background);
+                    }
                     let result = runtime.create_session(
                         &spec.profile,
                         &spec.url,
@@ -2416,6 +2458,7 @@ impl BrowserController {
                         spec.gpu_context.clone(),
                         spec.allow_shared_texture,
                     );
+                    runtime.set_background_color(backdrop);
                     (spec, result)
                 })
                 .collect();
@@ -2430,6 +2473,7 @@ impl BrowserController {
                 }
                 controller.replay_deferred_runtime_signals(cx);
                 controller.try_create_browsers(cx);
+                controller.drive_previews(cx);
                 controller.schedule_pump(0, cx);
             });
             if updated.is_err()
@@ -2960,6 +3004,7 @@ mod tests {
             page_zoom_factor: 1.0,
             gpu_context: None,
             allow_shared_texture: true,
+            background: None,
         }
     }
 

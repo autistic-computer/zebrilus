@@ -33,7 +33,7 @@ use super::{
     inline_flow::{InlineFlow, InlineFlowItem},
     markdown_ext::{MarkdownExtensions, MarkdownNode},
     scroll_area::horizontal_scroll_area,
-    text_view::CodeBlockActionsFn,
+    text_view::{CodeBlockActionsFn, CodeBlockBodyFn},
     utils::list_item_prefix,
     veil::{StreamingVeil, VeilKey},
 };
@@ -596,6 +596,7 @@ pub const CODE_BLOCK_GROUP: &str = "zz-code-block";
 #[derive(Debug, Clone)]
 pub struct CodeBlock {
     lang: Option<SharedString>,
+    meta: Option<SharedString>,
     styles: Arc<Mutex<Option<CachedCodeBlockStyles>>>,
     state: Arc<Mutex<InlineState>>,
     pub span: Option<Span>,
@@ -603,13 +604,25 @@ pub struct CodeBlock {
 
 impl PartialEq for CodeBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.lang == other.lang && self.code() == other.code() && self.span == other.span
+        self.lang == other.lang
+            && self.meta == other.meta
+            && self.code() == other.code()
+            && self.span == other.span
     }
 }
 
 impl CodeBlock {
     pub fn lang(&self) -> Option<SharedString> {
         self.lang.clone()
+    }
+
+    pub fn meta(&self) -> Option<SharedString> {
+        self.meta.clone()
+    }
+
+    pub(crate) fn with_meta(mut self, meta: Option<SharedString>) -> Self {
+        self.meta = meta;
+        self
     }
 
     pub fn code(&self) -> SharedString {
@@ -631,6 +644,7 @@ impl CodeBlock {
 
         Self {
             lang,
+            meta: None,
             styles: Arc::new(Mutex::new(None)),
             state,
             span: span.map(|s| s.into()),
@@ -721,6 +735,10 @@ impl CodeBlock {
     ) -> AnyElement {
         let style = &node_cx.style;
         let actions = node_cx.code_block_actions.clone();
+        let body = node_cx
+            .code_block_body
+            .as_ref()
+            .and_then(|body| body(self, window, cx));
         let code = style
             .code_role
             .map(|role| cx.theme().layer(role, PaintState::Rest));
@@ -752,18 +770,21 @@ impl CodeBlock {
                     .text_size(cx.theme().mono_font_size)
                     .relative()
                     .refine_style(&style.code_block)
-                    .child(
-                        Inline::new(
-                            "code",
-                            self.state.clone(),
-                            vec![],
-                            self.styles(&cx.theme().highlight_theme),
-                        )
-                        .streaming_veil(
-                            node_cx.streaming_veil.clone(),
-                            VeilKey::new(self.span.map_or(options.ix, |span| span.start), 0),
+                    .map(|this| match body {
+                        Some(body) => this.child(body),
+                        None => this.child(
+                            Inline::new(
+                                "code",
+                                self.state.clone(),
+                                vec![],
+                                self.styles(&cx.theme().highlight_theme),
+                            )
+                            .streaming_veil(
+                                node_cx.streaming_veil.clone(),
+                                VeilKey::new(self.span.map_or(options.ix, |span| span.start), 0),
+                            ),
                         ),
-                    )
+                    })
                     .when_some(actions, |this, actions| {
                         this.child(
                             div()
@@ -790,6 +811,7 @@ pub(crate) struct NodeContext {
     pub(crate) link_refs: HashMap<SharedString, LinkMark>,
     pub(crate) style: TextViewStyle,
     pub(crate) code_block_actions: Option<Arc<CodeBlockActionsFn>>,
+    pub(crate) code_block_body: Option<Arc<CodeBlockBodyFn>>,
     pub(crate) markdown_extensions: Arc<MarkdownExtensions>,
     pub(crate) streaming_veil: Option<StreamingVeil>,
 }

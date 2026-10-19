@@ -11,7 +11,7 @@ use std::{
 
 use image::{Frame as ImageFrame, ImageBuffer, Rgba};
 use parking_lot::RwLock;
-use zz_browser::{diagnostic_url, normalize_url};
+use zz_browser::{ArtifactFile, ArtifactReply, ArtifactRequest, diagnostic_url, normalize_url};
 pub(crate) use zz_client::scrollback::{HistoryRing, RetainedTerminalViewport};
 use zz_client::{
     ClientCore, CoreEvent, Outbound,
@@ -642,6 +642,19 @@ struct KittyImageAssembly {
     bytes: Vec<u8>,
 }
 
+struct ArtifactFetch {
+    request: ArtifactRequest,
+    begun: Option<ArtifactBegun>,
+    bytes: Vec<u8>,
+}
+
+#[derive(Default)]
+struct ArtifactBegun {
+    mime: String,
+    total: usize,
+    reply: bool,
+}
+
 struct PastedImageAssembly {
     format: PastedImageFormat,
     total_bytes: usize,
@@ -994,6 +1007,7 @@ pub struct MuxClient {
     pasted_image_assemblies: BTreeMap<(PaneId, u32), PastedImageAssembly>,
     pending_pasted_image_previews: BTreeSet<(PaneId, u32)>,
     path_list_requests: BTreeSet<u64>,
+    artifact_fetches: BTreeMap<u64, ArtifactFetch>,
     #[cfg(test)]
     path_list_sink: Option<std::rc::Rc<std::cell::RefCell<Vec<ProtocolMessage>>>>,
     pending_commands_revision: u64,
@@ -1142,6 +1156,7 @@ impl MuxClient {
             pasted_image_assemblies: BTreeMap::new(),
             pending_pasted_image_previews: BTreeSet::new(),
             path_list_requests: BTreeSet::new(),
+            artifact_fetches: BTreeMap::new(),
             #[cfg(test)]
             path_list_sink: None,
             pending_commands_revision: 0,
@@ -3284,6 +3299,11 @@ impl MuxClient {
         self.confirm_revision = self.confirm_revision.wrapping_add(1).max(1);
         self.clear_all_kitty_images();
         self.clear_all_pasted_images();
+        for fetch in std::mem::take(&mut self.artifact_fetches).into_values() {
+            fetch.request.respond(Err(
+                "zz lost this page's daemon connection; reload to try again".to_owned(),
+            ));
+        }
         if key_table_changed {
             cx.emit(KeyTableChanged);
         }
@@ -3447,6 +3467,50 @@ impl MuxClient {
         self.pane_images
             .get(&pane)
             .map_or(0, |images| images.revision)
+    }
+
+    pub(crate) fn fetch_artifact(&mut self, request: ArtifactRequest) {
+        let Some(client) = &self.attached_connection().client else {
+            request.respond(Err("zz is not connected to its daemon".to_owned()));
+            return;
+        };
+        match client.fetch_artifact(&request.token, &request.path) {
+            Ok(request_id) => {
+                self.artifact_fetches.insert(
+                    request_id,
+                    ArtifactFetch {
+                        request,
+                        begun: None,
+                        bytes: Vec::new(),
+                    },
+                );
+            }
+            Err(error) => request.respond(Err(error.to_string())),
+        }
+    }
+
+    pub(crate) fn send_artifact_reply(&self, reply: &ArtifactReply) {
+        if let Some(client) = &self.attached_connection().client
+            && let Err(error) = client.send_artifact_reply(&reply.token, &reply.text)
+        {
+            log::warn!("failed to send a page reply: {error}");
+        }
+    }
+
+    fn artifact_progress(&mut self, request_id: u64) {
+        let complete = self
+            .artifact_fetches
+            .get(&request_id)
+            .and_then(|fetch| fetch.begun.as_ref().map(|begun| (begun, fetch.bytes.len())))
+            .is_some_and(|(begun, received)| received >= begun.total);
+        if complete && let Some(fetch) = self.artifact_fetches.remove(&request_id) {
+            let begun = fetch.begun.unwrap_or_default();
+            fetch.request.respond(Ok(ArtifactFile {
+                mime: begun.mime,
+                bytes: fetch.bytes,
+                reply: begun.reply,
+            }));
+        }
     }
 
     pub(crate) fn prefetch_pasted_image(&self, pane: PaneId, number: u32) -> bool {
@@ -4594,6 +4658,30 @@ impl MuxClient {
             }
             ProtocolMessage::PathListGit { request_id, marks } => {
                 cx.emit(PathPickerUpdate::Git { request_id, marks });
+            }
+            ProtocolMessage::ArtifactBegin {
+                request_id,
+                mime,
+                total_bytes,
+                reply,
+            } => {
+                if let Some(fetch) = self.artifact_fetches.get_mut(&request_id) {
+                    let total = usize::try_from(total_bytes).unwrap_or(usize::MAX);
+                    fetch.bytes.reserve(total);
+                    fetch.begun = Some(ArtifactBegun { mime, total, reply });
+                }
+                self.artifact_progress(request_id);
+            }
+            ProtocolMessage::ArtifactChunk { request_id, bytes } => {
+                if let Some(fetch) = self.artifact_fetches.get_mut(&request_id) {
+                    fetch.bytes.extend_from_slice(&bytes);
+                }
+                self.artifact_progress(request_id);
+            }
+            ProtocolMessage::ArtifactUnavailable { request_id, reason } => {
+                if let Some(fetch) = self.artifact_fetches.remove(&request_id) {
+                    fetch.request.respond(Err(reason));
+                }
             }
             _ => {}
         }
