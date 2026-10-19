@@ -12,6 +12,8 @@ mod indent;
 mod input;
 mod mode;
 mod movement;
+#[cfg(test)]
+mod perf;
 mod rope_ext;
 mod selection;
 mod state;
