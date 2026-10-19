@@ -41,6 +41,9 @@ mod d3d11_osr;
 #[cfg(target_os = "windows")]
 use d3d11_osr::{D3d11FrameError, D3d11FrameOutcome, D3d11FrameProducer};
 
+use crate::artifact::{
+    ARTIFACT_SCHEME, ArtifactFile, error_page, parse_artifact_url, request_artifact, send_reply,
+};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::frame::GpuFrameSubmission;
 #[cfg(target_os = "macos")]
@@ -73,6 +76,19 @@ const MAX_BROWSER_FRAME_RATE: i32 = 240;
 const ELEMENT_PICKER_QUERY_FUNCTION: &str = "__zzElementPickerQuery";
 const ELEMENT_PICKER_CANCEL_FUNCTION: &str = "__zzElementPickerQueryCancel";
 const ELEMENT_PICKER_SCRIPT_URL: &str = "zz://browser/element-picker.js";
+const ARTIFACT_REPLY_PREFIX: &str = "zz.reply:";
+const ARTIFACT_REPLY_SCRIPT_URL: &str = "zz://browser/reply.js";
+const ARTIFACT_REPLY_SCRIPT: &str = r#"(() => {
+  const query = globalThis.__zzElementPickerQuery;
+  if (typeof query !== "function" || "zz" in globalThis) return;
+  const reply = (text) => new Promise((resolve, reject) => query({
+    request: "zz.reply:" + String(text),
+    persistent: false,
+    onSuccess: () => resolve(),
+    onFailure: (_code, message) => reject(new Error(message)),
+  }));
+  Object.defineProperty(globalThis, "zz", { value: Object.freeze({ reply }) });
+})();"#;
 use zz_client::element_picker::ELEMENT_PICKER_SCRIPT;
 const WINDOWS_EPOCH_UNIX_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
 
@@ -567,6 +583,10 @@ impl BrowserRuntime {
         }
     }
 
+    pub fn background_color(&self) -> u32 {
+        self.background_color
+    }
+
     pub fn set_background_color(&mut self, color: u32) {
         self.background_color = color;
     }
@@ -801,6 +821,15 @@ impl BrowserRuntime {
         else {
             return Err(BrowserError::RequestContext);
         };
+        let mut artifacts = ArtifactSchemeFactory::new(());
+        if context.register_scheme_handler_factory(
+            Some(&CefString::from(ARTIFACT_SCHEME)),
+            None,
+            Some(&mut artifacts),
+        ) == 0
+        {
+            log::warn!("could not serve zz:// pages in browser profile {profile}");
+        }
         self.profile_contexts.insert(
             profile,
             ProfileContext {
@@ -1376,6 +1405,12 @@ impl SessionConfig {
 impl PreparedSession {
     fn client(&self, popup: Option<PopupCompletion>) -> Client {
         let message_router = BrowserSideRouter::new(element_picker_router_config());
+        if message_router
+            .add_handler(Arc::new(ArtifactReplyHandler), false)
+            .is_none()
+        {
+            log::error!("could not register the zz.reply query handler");
+        }
         let picker_available = message_router
             .add_handler(
                 Arc::new(ElementPickerQueryHandler {
@@ -1639,6 +1674,42 @@ impl BrowserSession {
 
     pub fn finish_site_data_clear(&mut self, message_id: i32) {
         self.pending_site_data_clears.remove(&message_id);
+    }
+
+    pub fn evaluate_number(
+        &mut self,
+        expression: &str,
+    ) -> Result<(i32, Receiver<Option<f64>>), BrowserError> {
+        if self.phase != SessionPhase::Ready {
+            return Err(BrowserError::NotReady);
+        }
+        let host = self.browser.host().ok_or(BrowserError::BrowserData)?;
+        let mut params = dictionary_value_create().ok_or(BrowserError::BrowserData)?;
+        if params.set_string(
+            Some(&CefString::from("expression")),
+            Some(&CefString::from(expression)),
+        ) == 0
+            || params.set_bool(Some(&CefString::from("returnByValue")), 1) == 0
+        {
+            return Err(BrowserError::BrowserData);
+        }
+        let (results, result_rx) = async_channel::bounded(1);
+        let expected_id = Arc::new(AtomicI32::new(0));
+        let operation = ActiveCountGuard::new(Arc::clone(&self.active_data_operations));
+        let mut observer =
+            EvaluateNumberObserver::new(Arc::clone(&expected_id), results, operation);
+        let registration = host
+            .add_dev_tools_message_observer(Some(&mut observer))
+            .ok_or(BrowserError::BrowserData)?;
+        let method = CefString::from("Runtime.evaluate");
+        let message_id = host.execute_dev_tools_method(0, Some(&method), Some(&mut params));
+        if message_id == 0 {
+            return Err(BrowserError::BrowserData);
+        }
+        expected_id.store(message_id, Ordering::Release);
+        self.pending_site_data_clears
+            .insert(message_id, registration);
+        Ok((message_id, result_rx))
     }
 
     /// Release the screenshot observer once its pick has been delivered, so the
@@ -3661,6 +3732,38 @@ impl SessionBridge {
     }
 }
 
+struct ArtifactReplyHandler;
+
+impl BrowserSideHandler for ArtifactReplyHandler {
+    fn on_query_str(
+        &self,
+        _browser: Option<Browser>,
+        frame: Option<Frame>,
+        _query_id: i64,
+        request: &str,
+        persistent: bool,
+        callback: Arc<StdMutex<dyn BrowserSideCallback>>,
+    ) -> bool {
+        let Some(text) = request.strip_prefix(ARTIFACT_REPLY_PREFIX) else {
+            return false;
+        };
+        let token = frame
+            .filter(|frame| frame.is_main() != 0 && !persistent)
+            .and_then(|frame| parse_artifact_url(&CefString::from(&frame.url()).to_string()))
+            .map(|(token, _)| token);
+        let result = token
+            .ok_or_else(|| "zz.reply works only from a page zz html opened".to_owned())
+            .and_then(|token| send_reply(&token, text.to_owned()));
+        if let Ok(callback) = callback.lock() {
+            match result {
+                Ok(()) => callback.success_str(""),
+                Err(message) => callback.failure(403, &message),
+            }
+        }
+        true
+    }
+}
+
 struct ElementPickerQueryHandler {
     bridge: SessionBridge,
 }
@@ -3734,6 +3837,163 @@ impl BrowserSideHandler for ElementPickerQueryHandler {
     }
 }
 
+#[derive(Default)]
+struct ArtifactLoad {
+    status: i32,
+    mime: String,
+    bytes: Vec<u8>,
+    offset: usize,
+    ready: bool,
+    canceled: bool,
+}
+
+impl ArtifactLoad {
+    fn settle(&mut self, result: Result<ArtifactFile, String>) {
+        match result {
+            Ok(file) => {
+                self.status = 200;
+                self.mime = file.mime;
+                self.bytes = file.bytes;
+            }
+            Err(reason) => {
+                self.status = 404;
+                "text/html".clone_into(&mut self.mime);
+                self.bytes = error_page(&reason);
+            }
+        }
+        self.offset = 0;
+        self.ready = true;
+    }
+}
+
+cef::wrap_task! {
+    struct ContinueArtifact {
+        callback: Callback,
+    }
+
+    impl Task {
+        fn execute(&self) {
+            self.callback.cont();
+        }
+    }
+}
+
+cef::wrap_scheme_handler_factory! {
+    struct ArtifactSchemeFactory {
+        _unit: (),
+    }
+
+    impl SchemeHandlerFactory {
+        fn create(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            _scheme_name: Option<&CefString>,
+            _request: Option<&mut Request>,
+        ) -> Option<ResourceHandler> {
+            Some(ArtifactResourceHandler::new(Arc::new(Mutex::new(
+                ArtifactLoad::default(),
+            ))))
+        }
+    }
+}
+
+cef::wrap_resource_handler! {
+    struct ArtifactResourceHandler {
+        load: Arc<Mutex<ArtifactLoad>>,
+    }
+
+    impl ResourceHandler {
+        fn open(
+            &self,
+            request: Option<&mut Request>,
+            handle_request: Option<&mut i32>,
+            callback: Option<&mut Callback>,
+        ) -> i32 {
+            let Some(handle_request) = handle_request else {
+                return 0;
+            };
+            let url = request
+                .map(|request| CefString::from(&request.url()).to_string())
+                .unwrap_or_default();
+            let (Some((token, path)), Some(callback)) =
+                (parse_artifact_url(&url), callback.as_deref().cloned())
+            else {
+                *handle_request = 1;
+                return 0;
+            };
+            let load = Arc::clone(&self.load);
+            request_artifact(token, path, move |result| {
+                {
+                    let mut load = load.lock();
+                    if load.canceled {
+                        return;
+                    }
+                    load.settle(result);
+                }
+                post_task(ThreadId::IO, Some(&mut ContinueArtifact::new(callback)));
+            });
+            *handle_request = 0;
+            1
+        }
+
+        fn response_headers(
+            &self,
+            response: Option<&mut Response>,
+            response_length: Option<&mut i64>,
+            _redirect_url: Option<&mut CefString>,
+        ) {
+            let load = self.load.lock();
+            if let Some(response) = response {
+                if load.ready {
+                    response.set_status(load.status);
+                    response.set_mime_type(Some(&CefString::from(load.mime.as_str())));
+                    response.set_header_by_name(
+                        Some(&CefString::from("Cache-Control")),
+                        Some(&CefString::from("no-store")),
+                        1,
+                    );
+                } else {
+                    response.set_error(Errorcode::FAILED);
+                }
+            }
+            if let Some(response_length) = response_length {
+                *response_length = i64::try_from(load.bytes.len()).unwrap_or(i64::MAX);
+            }
+        }
+
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        fn read(
+            &self,
+            data_out: *mut u8,
+            bytes_to_read: i32,
+            bytes_read: Option<&mut i32>,
+            _callback: Option<&mut ResourceReadCallback>,
+        ) -> i32 {
+            let Some(bytes_read) = bytes_read else {
+                return 0;
+            };
+            let mut load = self.load.lock();
+            let remaining = load.bytes.len().saturating_sub(load.offset);
+            let count = remaining.min(usize::try_from(bytes_to_read).unwrap_or(0));
+            if count == 0 || data_out.is_null() {
+                *bytes_read = 0;
+                return 0;
+            }
+            unsafe {
+                ptr::copy_nonoverlapping(load.bytes[load.offset..].as_ptr(), data_out, count);
+            }
+            load.offset += count;
+            *bytes_read = i32::try_from(count).unwrap_or(0);
+            1
+        }
+
+        fn cancel(&self) {
+            self.load.lock().canceled = true;
+        }
+    }
+}
+
 cef::wrap_app! {
     struct RuntimeApp {
         signals: Sender<RuntimeSignal>,
@@ -3742,6 +4002,23 @@ cef::wrap_app! {
     }
 
     impl App {
+        fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
+            let Some(registrar) = registrar else {
+                return;
+            };
+            let options = [
+                SchemeOptions::STANDARD,
+                SchemeOptions::SECURE,
+                SchemeOptions::FETCH_ENABLED,
+            ]
+            .iter()
+            .fold(0, |bits, option| bits | cef_enum_bits(option.get_raw()));
+            registrar.add_custom_scheme(
+                Some(&CefString::from(ARTIFACT_SCHEME)),
+                options.cast_signed(),
+            );
+        }
+
         fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
             Some(RuntimeBrowserProcessHandler::new(self.signals.clone()))
         }
@@ -3846,6 +4123,13 @@ cef::wrap_render_process_handler! {
                 Some(&CefString::from(ELEMENT_PICKER_SCRIPT_URL)),
                 1,
             );
+            if parse_artifact_url(&CefString::from(&frame.url()).to_string()).is_some() {
+                frame.execute_java_script(
+                    Some(&CefString::from(ARTIFACT_REPLY_SCRIPT)),
+                    Some(&CefString::from(ARTIFACT_REPLY_SCRIPT_URL)),
+                    1,
+                );
+            }
         }
 
         fn on_context_released(
@@ -4018,6 +4302,57 @@ struct SiteDataClearObserver {
                     message_id: self.expected_id.load(Ordering::Acquire),
                     success: false,
                 });
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct EvaluateResult {
+    result: EvaluateValue,
+}
+
+#[derive(Deserialize)]
+struct EvaluateValue {
+    value: Option<f64>,
+}
+
+fn decode_evaluated_number(result: &[u8]) -> Option<f64> {
+    serde_json::from_slice::<EvaluateResult>(result)
+        .ok()?
+        .result
+        .value
+        .filter(|value| value.is_finite())
+}
+
+cef::wrap_dev_tools_message_observer! {
+    struct EvaluateNumberObserver {
+        expected_id: Arc<AtomicI32>,
+        results: Sender<Option<f64>>,
+        operation: ActiveCountGuard,
+    }
+
+    impl DevToolsMessageObserver {
+        fn on_dev_tools_method_result(
+            &self,
+            _browser: Option<&mut Browser>,
+            message_id: i32,
+            success: i32,
+            result: Option<&[u8]>,
+        ) {
+            if self.expected_id.load(Ordering::Acquire) == message_id
+                && self.operation.finish()
+            {
+                let value = (success != 0)
+                    .then(|| result.and_then(decode_evaluated_number))
+                    .flatten();
+                let _ = self.results.try_send(value);
+            }
+        }
+
+        fn on_dev_tools_agent_detached(&self, _browser: Option<&mut Browser>) {
+            if self.operation.finish() {
+                let _ = self.results.try_send(None);
             }
         }
     }
@@ -4942,6 +5277,19 @@ fn ensure_no_active_data_operations(active_operations: &AtomicU64) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn evaluated_numbers_come_from_the_result_value() {
+        assert_eq!(
+            decode_evaluated_number(br#"{"result":{"type":"number","value":241}}"#),
+            Some(241.0)
+        );
+        assert_eq!(
+            decode_evaluated_number(br#"{"result":{"type":"undefined"}}"#),
+            None
+        );
+        assert_eq!(decode_evaluated_number(b"not json"), None);
+    }
 
     #[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
     #[test]

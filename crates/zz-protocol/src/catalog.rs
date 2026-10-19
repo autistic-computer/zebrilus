@@ -681,6 +681,7 @@ pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "wait-pane",
     "run-pane",
     "capture-browser",
+    "html",
     "debug-marker",
     "tools",
     "set-buffer",
@@ -813,6 +814,7 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "copy-mode-search-prompt",
     "debug-marker",
     "events",
+    "html",
     "focus-sidebar",
     "import-tmux-config",
     "inspect",
@@ -1069,6 +1071,26 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             CommandOptionSpec::value("-o", FreeForm, "absolute output path"),
         ],
         positionals: &[],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "html",
+        aliases: &[],
+        description: "Show an HTML file or directory an agent wrote in a browser pane that reloads when it changes",
+        usage: "[--float] [--reply] [-t target-pane] path|-",
+        options: &[
+            CommandOptionSpec::value(
+                "-t",
+                Pane,
+                "browser pane to show the page in, or pane to open it beside",
+            ),
+            CommandOptionSpec::flag("--float", "open the page in a floating pane"),
+            CommandOptionSpec::flag(
+                "--reply",
+                "let the page send text back to this pane with zz.reply",
+            ),
+        ],
+        positionals: &[FreeForm],
         variadic: None,
     },
     CommandSpec {

@@ -2,6 +2,7 @@
 
 pub(crate) mod controller;
 pub(crate) mod element;
+pub(crate) mod inline;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos_surface;
 pub(crate) mod recent_pages;

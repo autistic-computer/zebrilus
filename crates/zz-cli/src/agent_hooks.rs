@@ -70,6 +70,7 @@ fn context(var: impl Fn(&str) -> Option<OsString>) -> Option<String> {
     Some(workspace_context(
         &pane.to_string_lossy(),
         &session.to_string_lossy(),
+        false,
     ))
 }
 

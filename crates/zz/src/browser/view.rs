@@ -4035,7 +4035,10 @@ fn read_cookie_import(path: &Path) -> Result<CookieImportBatch, String> {
     parse_cookie_import(&input).map_err(|error| format!("Could not import cookies: {error}"))
 }
 
-const fn pointer_needs_clamping(phase: PointerPhase, pressed: Option<MouseButton>) -> bool {
+pub(crate) const fn pointer_needs_clamping(
+    phase: PointerPhase,
+    pressed: Option<MouseButton>,
+) -> bool {
     match phase {
         PointerPhase::Up => true,
         PointerPhase::Move => pressed.is_some(),
@@ -4043,7 +4046,7 @@ const fn pointer_needs_clamping(phase: PointerPhase, pressed: Option<MouseButton
     }
 }
 
-const fn pointer_button_bit(button: MouseButton) -> u8 {
+pub(crate) const fn pointer_button_bit(button: MouseButton) -> u8 {
     match button {
         MouseButton::Left | MouseButton::Navigate(_) => 1,
         MouseButton::Right => 1 << 1,
@@ -4051,14 +4054,14 @@ const fn pointer_button_bit(button: MouseButton) -> u8 {
     }
 }
 
-const fn owns_pressed_button(buttons: u8, pressed: Option<MouseButton>) -> bool {
+pub(crate) const fn owns_pressed_button(buttons: u8, pressed: Option<MouseButton>) -> bool {
     match pressed {
         Some(button) => buttons & pointer_button_bit(button) != 0,
         None => true,
     }
 }
 
-fn pointer_button(button: MouseButton) -> Option<PointerButton> {
+pub(crate) fn pointer_button(button: MouseButton) -> Option<PointerButton> {
     match button {
         MouseButton::Left => Some(PointerButton::Left),
         MouseButton::Middle => Some(PointerButton::Middle),
@@ -4073,7 +4076,7 @@ fn pointer_button(button: MouseButton) -> Option<PointerButton> {
     clippy::cast_sign_loss,
     reason = "CEF view dimensions are bounded integers derived from finite GPUI pixels"
 )]
-fn rounded_dimension(value: Pixels) -> u32 {
+pub(crate) fn rounded_dimension(value: Pixels) -> u32 {
     f32::from(value).round().clamp(1.0, u32::MAX as f32) as u32
 }
 
@@ -4082,7 +4085,7 @@ fn rounded_dimension(value: Pixels) -> u32 {
     clippy::cast_precision_loss,
     reason = "CEF input coordinates are saturating integer device-independent pixels"
 )]
-fn rounded_coordinate(value: Pixels) -> i32 {
+pub(crate) fn rounded_coordinate(value: Pixels) -> i32 {
     f32::from(value)
         .round()
         .clamp(i32::MIN as f32, i32::MAX as f32) as i32
@@ -4092,7 +4095,7 @@ fn browser_input_from_terminal(input: &TerminalKeyInput) -> KeyInput {
     zz_browser::terminal_key_input(input)
 }
 
-fn browser_modifiers(
+pub(crate) fn browser_modifiers(
     value: zz_gpui::Modifiers,
     pressed: Option<MouseButton>,
     is_repeat: bool,
@@ -4107,7 +4110,7 @@ fn browser_modifiers(
         .with_repeat(is_repeat)
 }
 
-fn browser_key(key: &str) -> BrowserKey {
+pub(crate) fn browser_key(key: &str) -> BrowserKey {
     match key {
         "space" => BrowserKey::Space,
         "backspace" => BrowserKey::Backspace,
@@ -4141,7 +4144,7 @@ fn browser_named_key(name: &str) -> Option<KeyInput> {
     zz_browser::named_key_input(name)
 }
 
-fn allows_text_input(key: BrowserKey, modifiers: zz_gpui::Modifiers) -> bool {
+pub(crate) fn allows_text_input(key: BrowserKey, modifiers: zz_gpui::Modifiers) -> bool {
     !modifiers.control
         && !modifiers.alt
         && !modifiers.platform
@@ -4174,7 +4177,7 @@ fn browser_surface_text_input(pane: PaneId, text: &str) -> InputMessage {
     }
 }
 
-fn cursor_style(cursor: BrowserCursor) -> CursorStyle {
+pub(crate) fn cursor_style(cursor: BrowserCursor) -> CursorStyle {
     match cursor {
         BrowserCursor::Arrow | BrowserCursor::Wait | BrowserCursor::Help | BrowserCursor::None => {
             CursorStyle::Arrow

@@ -18,7 +18,7 @@ use crate::{
     AgentSessionOpKind, BrowserCommand, Event, EventPayload, MAX_AGENT_IMAGE_FORMAT_BYTES,
     MAX_AGENT_OPTION_BYTES, MAX_AGENT_PROMPT_BYTES, MAX_AGENT_PROMPT_IMAGES,
     MAX_AGENT_RESULT_BYTES, MAX_AGENT_SEND_BYTES, MAX_AGENT_SESSION_DIRECTORIES,
-    MAX_AGENT_SESSION_ID_BYTES, MAX_AGENT_UPDATES_BYTES, MAX_GUI_TEXT_BYTES,
+    MAX_AGENT_SESSION_ID_BYTES, MAX_AGENT_UPDATES_BYTES, MAX_ARTIFACT_BYTES, MAX_GUI_TEXT_BYTES,
     MAX_PASTE_UPLOAD_BYTES, MAX_PASTE_UPLOAD_CHUNK_BYTES, MAX_PASTE_UPLOAD_EXTENSION_BYTES,
     PROTOCOL_VERSION, PaneId, PasteUploadPurpose, PastedImageFormat, ProtocolMessage,
     agent_update_batch_bytes,
@@ -654,6 +654,13 @@ fn validate_control_message(message: &ProtocolMessage) -> Result<(), ProtocolErr
     {
         return Err(ProtocolError::InvalidPasteUpload(format!(
             "pasted image preview chunk must be at most {MAX_PASTE_UPLOAD_CHUNK_BYTES} bytes"
+        )));
+    }
+    if let ProtocolMessage::ArtifactBegin { total_bytes, .. } = message
+        && *total_bytes > MAX_ARTIFACT_BYTES
+    {
+        return Err(ProtocolError::InvalidArtifact(format!(
+            "an artifact file must carry at most {MAX_ARTIFACT_BYTES} bytes"
         )));
     }
     if let ProtocolMessage::Event(Event {
