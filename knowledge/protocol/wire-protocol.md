@@ -1,6 +1,6 @@
 ---
 type: Protocol
-title: zz wire protocol (v109)
+title: zz wire protocol (v110)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 109`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 110`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (109) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (110) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -586,7 +586,9 @@ record/fetch round-trip for numbered placeholders.
 
 # Remote transport
 
-Remote carriers preserve the identical envelope but are platform-specific. macOS and Linux desktop
+Remote carriers preserve the identical envelope but are platform-specific. Since v110 a remote
+interactive client also opts into the flow window, which paces the daemon's writes to the link
+(see the v110 entry below). macOS and Linux desktop
 clients use OpenSSH `ssh -N -L` to forward the daemon's Unix socket (`crates/zz-daemon-client/src/endpoint.rs`
 `ssh_forward_command`). iOS selects `RusshForward` in `crates/zz-daemon-client/src/client.rs`
 `connect_endpoint_with_prompts_and_terminal`; it opens an in-process `russh` session, runs
@@ -958,9 +960,19 @@ place of the composer. It travels as JSON on the agent stream, so postcard frame
 layout, but v108 shipped in zz 0.17.0 and `compat/wire-version.py` reads the source diff, so the
 number moves.
 
+v109 shipped in zz 0.18.0. v110 adds the remote flow window
+([design](/designs/remote-flow-window.md)). `ProtocolMessage` appends `Ping { token: u64, rtt_us:
+u32 }` and `Pong { token: u64 }`. An interactive client whose hello carries `flow-window-v1`
+(`FLOW_WINDOW_CAPABILITY`, sent for `ssh://` endpoints or when `ZZ_FLOW_WINDOW=on`) gets pings in
+the daemon's output and answers each with a pong carrying the same token, the stream offset just
+past the ping. The daemon keeps the bytes past the last answered ping under a window sized from
+measured delivery rate and lowest RTT, so frames wait in the outbound mailbox instead of in sshd and
+TCP. `InteractiveClient` answers pings itself and never hands one to its caller. Clients without the
+capability see no pings and keep the old writer path, direct terminal writes included.
+
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 109`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 110`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
 - v109 requires updated clients and daemon together, including the daemon on every ssh host.

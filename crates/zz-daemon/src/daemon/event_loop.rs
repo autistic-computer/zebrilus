@@ -844,6 +844,10 @@ impl EventLoop {
                 self.release_tty(token, handoff);
                 return true;
             }
+            ProtocolMessage::Pong { token: offset } => {
+                connection.outbound.acknowledge(offset);
+                return true;
+            }
             _ => {}
         }
         if connection.exec_mode {
@@ -1997,7 +2001,18 @@ impl Connection {
         {
             self.ancillary = true;
         }
-        let socket = interactive.then(|| self.stream.receive_fd().ok()).flatten();
+        let flow = interactive
+            && matches!(message, ProtocolMessage::Hello(hello) if hello
+                .client
+                .capabilities
+                .iter()
+                .any(|capability| capability == zz_protocol::FLOW_WINDOW_CAPABILITY));
+        if flow {
+            self.outbound.enable_flow();
+        }
+        let socket = (interactive && !flow)
+            .then(|| self.stream.receive_fd().ok())
+            .flatten();
         #[cfg(target_vendor = "apple")]
         let socket = socket
             .filter(|socket| rustix::net::sockopt::set_socket_nosigpipe(socket, true).is_ok());
