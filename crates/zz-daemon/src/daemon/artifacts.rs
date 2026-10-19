@@ -30,7 +30,7 @@ pub(super) struct Artifact {
     pub(super) root: ArtifactRoot,
     pub(super) opener: Option<PaneId>,
     pub(super) reply: bool,
-    pub(super) served: HashMap<PathBuf, Stamp>,
+    pub(super) served: HashMap<PathBuf, Option<Stamp>>,
     replied: Option<Instant>,
 }
 
@@ -120,7 +120,7 @@ impl Artifacts {
         Some((opener, name))
     }
 
-    pub(super) fn watched(&self) -> Vec<(String, Vec<(PathBuf, Stamp)>)> {
+    pub(super) fn watched(&self) -> Vec<(String, Vec<(PathBuf, Option<Stamp>)>)> {
         self.by_token
             .iter()
             .filter(|(_, artifact)| !artifact.served.is_empty())
@@ -523,7 +523,7 @@ impl Shared {
         };
         if let (Target::File(file), Some(stamp)) = (target, stamp) {
             if let Some(artifact) = self.inner.lock().artifacts.get_mut(token) {
-                artifact.served.insert(file, stamp);
+                artifact.served.insert(file, Some(stamp));
             }
             self.watch_artifacts();
         }
@@ -542,9 +542,12 @@ impl Shared {
         }
     }
 
-    pub(super) fn reply_from_artifact(self: &Arc<Self>, token: &str, text: &str) {
+    pub(super) fn reply_from_artifact(self: &Arc<Self>, client: ClientId, token: &str, text: &str) {
         let delivery = {
             let mut inner = self.inner.lock();
+            if inner.client_flags.contains(client) {
+                return;
+            }
             let Some((opener, name)) = inner.artifacts.take_reply(token, Instant::now()) else {
                 return;
             };
@@ -568,12 +571,7 @@ impl Shared {
             return;
         };
         context.no_hooks = true;
-        if let Err(error) = self.execute(
-            ClientId(u64::MAX),
-            ClientKind::Command,
-            &mut context,
-            &command,
-        ) {
+        if let Err(error) = self.execute(client, ClientKind::Interactive, &mut context, &command) {
             log::debug!("could not deliver an artifact reply: {error}");
         }
     }
@@ -601,10 +599,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             if let Some(artifact) = inner.artifacts.get_mut(token) {
                 for (path, stamp) in files {
-                    match stamp {
-                        Some(stamp) => artifact.served.insert(path, stamp),
-                        None => artifact.served.remove(&path),
-                    };
+                    artifact.served.insert(path, stamp);
                 }
             }
             shown_tokens(&inner.engine.state)
@@ -651,7 +646,7 @@ fn scan_artifacts(owner: &Weak<Shared>) {
             for (path, served) in files {
                 live.insert(path.clone());
                 let now = Stamp::of(&path);
-                if now == Some(served) {
+                if now == served {
                     pending.remove(&path);
                 } else if pending.get(&path) == Some(&now) {
                     pending.remove(&path);
@@ -823,6 +818,200 @@ mod tests {
         assert_eq!(opener, PaneId(7));
         assert_eq!(artifacts.take_reply(&open, start + REPLY_GAP / 2), None);
         assert!(artifacts.take_reply(&open, start + REPLY_GAP).is_some());
+    }
+
+    #[cfg(feature = "agent")]
+    #[test]
+    fn read_only_artifact_replies_do_not_submit_or_consume_the_reply_gap() {
+        use crate::agent::fixture::{Behavior, fixture_runner};
+
+        let shared = Arc::new(Shared::new(1));
+        let (pane, token) = {
+            let mut inner = shared.inner.lock();
+            let (_, _, pane) = inner.engine.state.create_session("artifact-reply").unwrap();
+            inner.engine.state.pane_mut(pane).unwrap().kind =
+                PaneKind::Agent(zz_protocol::AgentDescriptor::default());
+            let token = inner
+                .artifacts
+                .register(
+                    ArtifactRoot::Inline(Arc::from(&b"hi"[..])),
+                    Some(pane),
+                    true,
+                )
+                .unwrap();
+            (pane, token)
+        };
+        let mailbox = OutboundMailbox::new();
+        let (client, _) = shared.register_subscribed(ClientKind::Interactive, None, None, mailbox);
+        let mut context = ExecutionContext::default();
+        shared
+            .execute(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("attach-session", ["-r", "-t", "artifact-reply"]),
+            )
+            .unwrap();
+        let runtime = shared.build_agent_runtime(None).unwrap();
+        runtime.set_runner_factory(Box::new(|spec| {
+            fixture_runner(
+                spec.provider,
+                Behavior::Hang,
+                zz_protocol::AgentAutoApprove::Off,
+                true,
+            )
+        }));
+        assert!(runtime.open(pane, shared.agent_pane_spec(pane).unwrap()));
+        let ready = Instant::now() + Duration::from_secs(5);
+        while !runtime
+            .wire_state(pane)
+            .is_some_and(|state| state.phase == zz_protocol::AgentConnectionPhase::Ready)
+        {
+            assert!(Instant::now() < ready, "agent did not become ready");
+            thread::sleep(Duration::from_millis(2));
+        }
+
+        shared.reply_from_artifact(client, &token, "blocked");
+        assert!(
+            shared
+                .inner
+                .lock()
+                .artifacts
+                .get(&token)
+                .unwrap()
+                .replied
+                .is_none()
+        );
+        assert_eq!(
+            runtime.wire_state(pane).unwrap().phase,
+            zz_protocol::AgentConnectionPhase::Ready
+        );
+        shared
+            .execute(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("switch-client", ["-r"]),
+            )
+            .unwrap();
+        shared.reply_from_artifact(client, &token, "allowed");
+        let running = Instant::now() + Duration::from_secs(5);
+        while !runtime
+            .wire_state(pane)
+            .is_some_and(|state| state.phase == zz_protocol::AgentConnectionPhase::Running)
+        {
+            assert!(Instant::now() < running, "writable reply was not submitted");
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            shared
+                .inner
+                .lock()
+                .artifacts
+                .get(&token)
+                .unwrap()
+                .replied
+                .is_some()
+        );
+        runtime.shutdown();
+    }
+
+    #[test]
+    fn artifact_reload_watches_a_deleted_file_until_it_returns() {
+        let dir = page_dir();
+        let path = fs::canonicalize(dir.path().join(INDEX)).unwrap();
+        let shared = Arc::new(Shared::new(1));
+        let (session, pane, token) = {
+            let mut inner = shared.inner.lock();
+            let root = ArtifactRoot::File(path.clone());
+            let token = inner.artifacts.register(root.clone(), None, false).unwrap();
+            inner
+                .artifacts
+                .get_mut(&token)
+                .unwrap()
+                .served
+                .insert(path.clone(), Stamp::of(&path));
+            let (session, _, pane) = inner.engine.state.create_session("artifact-watch").unwrap();
+            inner.engine.state.pane_mut(pane).unwrap().kind =
+                PaneKind::Browser(zz_protocol::BrowserDescriptor::single(
+                    artifact_url(&token, &root),
+                    ARTIFACT_PROFILE.to_owned(),
+                ));
+            inner.artifacts_watching = true;
+            (session, pane, token)
+        };
+        let mailbox = OutboundMailbox::new();
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
+        shared.attach(client, session).unwrap();
+        let inputs = shared.timer_rx.lock().take().unwrap();
+        let owner = Arc::downgrade(&shared);
+        let watcher = thread::spawn(move || scan_artifacts(&owner));
+        let run_callback = |timeout| {
+            let deadline = Instant::now() + timeout;
+            while let Ok(input) = inputs.recv_deadline(deadline) {
+                if let timers::TimerInput::Callback { callback, .. } = input {
+                    callback();
+                    return true;
+                }
+            }
+            false
+        };
+        let reloads = || {
+            super::super::tests::take_reliable_messages(&mailbox)
+                .into_iter()
+                .filter(|message| {
+                    matches!(message, ProtocolMessage::Event(Event {
+                        payload: EventPayload::BrowserCommand {
+                            pane: target,
+                            command: BrowserCommand::Reload,
+                        },
+                        ..
+                    }) if *target == pane)
+                })
+                .count()
+        };
+
+        fs::remove_file(&path).unwrap();
+        assert!(
+            run_callback(Duration::from_secs(5)),
+            "deletion was not detected"
+        );
+        assert_eq!(reloads(), 1);
+        assert_eq!(
+            shared.inner.lock().artifacts.get(&token).unwrap().served[&path],
+            None
+        );
+        assert!(
+            !run_callback(SCAN * 3),
+            "missing file caused repeated reloads"
+        );
+        assert_eq!(shared.inner.lock().artifacts.watched().len(), 1);
+
+        fs::write(&path, "<p>rebuilt</p>").unwrap();
+        assert!(
+            run_callback(Duration::from_secs(5)),
+            "recreation was not detected"
+        );
+        assert_eq!(reloads(), 1);
+        assert_eq!(
+            shared.inner.lock().artifacts.get(&token).unwrap().served[&path],
+            Stamp::of(&path)
+        );
+        assert!(
+            !run_callback(SCAN * 3),
+            "unchanged file caused repeated reloads"
+        );
+        shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane_mut(pane)
+            .unwrap()
+            .kind = PaneKind::Terminal;
+        watcher.join().unwrap();
+        assert!(!shared.inner.lock().artifacts_watching);
     }
 
     #[test]
