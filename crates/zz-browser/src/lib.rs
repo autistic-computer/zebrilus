@@ -1,5 +1,6 @@
 #[cfg(any(feature = "cef-runtime", test))]
 use zz_client::element_picker;
+mod artifact;
 mod event;
 // Without the CEF runtime nothing reaches the GPU-import and egress-profile halves.
 #[cfg_attr(not(feature = "cef-runtime"), allow(dead_code))]
@@ -30,6 +31,10 @@ mod cef_runtime;
 #[allow(unsafe_code)]
 mod linux_dmabuf;
 
+pub use artifact::{
+    ARTIFACT_SCHEME, ArtifactFile, ArtifactReply, ArtifactRequest, artifact_replies,
+    artifact_requests, drop_local_page, host_local_page, is_local_page, parse_artifact_url,
+};
 #[cfg(any(feature = "cef-runtime", test))]
 pub use element_picker::ElementPickerAppearance;
 pub use event::{BrowserCursor, BrowserEvent, ContextMenuRequest, EditFlags, SessionId};

@@ -25,7 +25,7 @@ use crate::{
 
 /// Client and daemon must match this exactly. The handshake rejects any
 /// mismatch instead of negotiating down.
-pub const PROTOCOL_VERSION: u16 = 109;
+pub const PROTOCOL_VERSION: u16 = 110;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
@@ -133,6 +133,12 @@ pub const MAX_AGENT_RESULT_BYTES: usize = 1024 * 1024;
 pub const MAX_PASTE_UPLOAD_BYTES: u32 = 6 * 1024 * 1024;
 /// Largest single chunk of a paste upload.
 pub const MAX_PASTE_UPLOAD_CHUNK_BYTES: usize = 1024 * 1024;
+pub const MAX_ARTIFACT_BYTES: u32 = 16 * 1024 * 1024;
+pub const MAX_ARTIFACT_CHUNK_BYTES: usize = 1024 * 1024;
+pub const MAX_ARTIFACT_TOKEN_BYTES: usize = 64;
+pub const MAX_ARTIFACT_PATH_BYTES: usize = 4096;
+pub const MAX_ARTIFACT_MIME_BYTES: usize = 128;
+pub const MAX_ARTIFACT_REPLY_BYTES: usize = 64 * 1024;
 /// Largest decoded premultiplied BGRA Kitty image carried by the control lane.
 pub const MAX_KITTY_IMAGE_BYTES: u32 = 16 * 1024 * 1024;
 /// Largest ordered slice of one decoded Kitty image.
@@ -1129,6 +1135,48 @@ where
         ));
     }
     Ok(bytes)
+}
+
+fn deserialize_artifact_chunk<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
+    if bytes.len() > MAX_ARTIFACT_CHUNK_BYTES {
+        return Err(D::Error::invalid_length(
+            bytes.len(),
+            &"an artifact chunk within the wire byte limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn deserialize_artifact_token<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_ARTIFACT_TOKEN_BYTES)
+}
+
+fn deserialize_artifact_path<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_ARTIFACT_PATH_BYTES)
+}
+
+fn deserialize_artifact_mime<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_ARTIFACT_MIME_BYTES)
+}
+
+fn deserialize_artifact_reply<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_ARTIFACT_REPLY_BYTES)
 }
 
 fn deserialize_paste_upload_chunk<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -4133,6 +4181,39 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_agent_option_text")]
         task_id: String,
     },
+    FetchArtifact {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_artifact_token")]
+        token: String,
+        #[serde(deserialize_with = "deserialize_artifact_path")]
+        path: String,
+    },
+    ArtifactBegin {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_artifact_mime")]
+        mime: String,
+        total_bytes: u32,
+        reply: bool,
+    },
+    ArtifactChunk {
+        request_id: u64,
+        #[serde(
+            serialize_with = "serde_bytes::serialize",
+            deserialize_with = "deserialize_artifact_chunk"
+        )]
+        bytes: Vec<u8>,
+    },
+    ArtifactUnavailable {
+        request_id: u64,
+        #[serde(deserialize_with = "deserialize_artifact_path")]
+        reason: String,
+    },
+    ArtifactReply {
+        #[serde(deserialize_with = "deserialize_artifact_token")]
+        token: String,
+        #[serde(deserialize_with = "deserialize_artifact_reply")]
+        text: String,
+    },
 }
 
 fn deserialize_client_terminal_type<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -5719,7 +5800,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 109);
+        assert_eq!(super::PROTOCOL_VERSION, 110);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),

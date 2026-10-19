@@ -333,11 +333,14 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
             html: false,
             span: new_span(val.position, cx),
         },
-        Node::Code(raw) => BlockNode::CodeBlock(CodeBlock::new(
-            raw.value.into(),
-            raw.lang.map(|s| s.into()),
-            new_span(raw.position, cx),
-        )),
+        Node::Code(raw) => BlockNode::CodeBlock(
+            CodeBlock::new(
+                raw.value.into(),
+                raw.lang.map(|s| s.into()),
+                new_span(raw.position, cx),
+            )
+            .with_meta(raw.meta.map(Into::into)),
+        ),
         Node::Heading(val) => {
             let mut paragraph = Paragraph::default();
             val.children.iter().for_each(|c| {

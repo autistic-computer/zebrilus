@@ -787,6 +787,7 @@ pub struct AppView {
     terminals: BTreeMap<PaneId, Entity<TerminalView>>,
     terminal_headers: BTreeMap<PaneId, Entity<TerminalHeaderView>>,
     browsers: BTreeMap<PaneId, Entity<BrowserView>>,
+    inline_browser: Entity<crate::browser::inline::InlineBrowser>,
     agents: BTreeMap<PaneId, Entity<AgentView>>,
     editors: BTreeMap<PaneId, Entity<EditorView>>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
@@ -1053,6 +1054,7 @@ impl AppView {
             &controller,
             |view, controller, event: &ControllerEvent, cx| {
                 if let ControllerEvent::Browser { pane, tab, event } = event
+                    && view.browsers.contains_key(pane)
                     && controller.read(cx).active_tab(*pane) == Some(*tab)
                     && let Some(command) = browser_metadata_command(*pane, event)
                 {
@@ -1060,6 +1062,88 @@ impl AppView {
                 }
             },
         )
+        .detach();
+        let pages = mux.clone();
+        cx.spawn(async move |_, cx| {
+            let requests = zz_browser::artifact_requests();
+            while let Ok(request) = requests.recv().await {
+                pages.update(cx, |mux, _| mux.fetch_artifact(request));
+            }
+        })
+        .detach();
+        let inline_browser =
+            cx.new(|cx| crate::browser::inline::InlineBrowser::new(controller.clone(), window, cx));
+        cx.set_global(zz_ui::agent::AgentHtmlLive {
+            live: Rc::new({
+                let inline = inline_browser.clone();
+                move |block, cx| {
+                    inline
+                        .read(cx)
+                        .is_live(block)
+                        .then(|| inline.clone().into_any_element())
+                }
+            }),
+            activate: Rc::new({
+                let inline = inline_browser.clone();
+                move |live, window, cx| {
+                    inline.update(cx, |inline, cx| {
+                        inline.activate(
+                            live.block,
+                            &live.html,
+                            live.size,
+                            live.owner.map(PaneId),
+                            window,
+                            cx,
+                        );
+                    });
+                }
+            }),
+        });
+        let previews = controller.clone();
+        cx.set_global(zz_ui::agent::AgentHtmlPreviewer(Rc::new(
+            move |html, size, cx| {
+                let width = f32::from(size.width).max(1.0).round() as u32;
+                previews.update(cx, |controller, cx| {
+                    controller.render_html_preview(&html, width, size.scale, cx)
+                })
+            },
+        )));
+        let html_mux = mux.clone();
+        cx.set_global(zz_ui::agent::AgentHtmlOpener(Rc::new(
+            move |html, _, cx| {
+                html_mux.read(cx).execute(CommandInvocation::new(
+                    "html",
+                    ["-".to_owned(), "--".to_owned(), html],
+                ));
+            },
+        )));
+        let replies = mux.clone();
+        let inline = inline_browser.clone();
+        cx.spawn(async move |_, cx| {
+            let sent = zz_browser::artifact_replies();
+            while let Ok(reply) = sent.recv().await {
+                if !zz_browser::is_local_page(&reply.token) {
+                    replies.update(cx, |mux, _| mux.send_artifact_reply(&reply));
+                    continue;
+                }
+                let Some(pane) = inline.update(cx, |inline, _| {
+                    inline.take_reply(&reply.token, std::time::Instant::now())
+                }) else {
+                    continue;
+                };
+                replies.update(cx, |mux, _| {
+                    mux.execute(CommandInvocation::new(
+                        "agent-send",
+                        [
+                            "-t".to_owned(),
+                            pane.to_string(),
+                            "--".to_owned(),
+                            reply.text,
+                        ],
+                    ));
+                });
+            }
+        })
         .detach();
         cx.subscribe(
             &agent_controller,
@@ -1130,6 +1214,7 @@ impl AppView {
             terminals: BTreeMap::new(),
             terminal_headers: BTreeMap::new(),
             browsers: BTreeMap::new(),
+            inline_browser,
             agents: BTreeMap::new(),
             editors: BTreeMap::new(),
             command_output: None,
@@ -1797,6 +1882,16 @@ impl AppView {
         }
     }
 
+    fn inline_browser_holds(&self, pane: PaneId, window: &Window, cx: &App) -> bool {
+        self.inline_browser.read(cx).holds_focus(window)
+            && window.context_stack().iter().any(|context| {
+                context
+                    .get(PANE_KEY_CONTEXT_ID)
+                    .map(zz_gpui::SharedString::as_ref)
+                    == Some(pane.0.to_string().as_str())
+            })
+    }
+
     fn audit_pane_focus(&self, phase: &str, window: &Window, cx: &App) {
         let Some((pane, entity)) = self.focused_pane else {
             return;
@@ -1804,15 +1899,14 @@ impl AppView {
         let target = self.pane_focus_target(pane, cx);
         let observed = window.focused(cx);
         let contexts = window.context_stack();
-        let holds_keyboard = target
-            .as_ref()
-            .is_some_and(|(current, focus)| *current == entity && observed.as_ref() == Some(focus))
-            && contexts.iter().any(|context| {
-                context
-                    .get(PANE_KEY_CONTEXT_ID)
-                    .map(zz_gpui::SharedString::as_ref)
-                    == Some(pane.0.to_string().as_str())
-            });
+        let holds_keyboard = (target.as_ref().is_some_and(|(current, focus)| {
+            *current == entity && observed.as_ref() == Some(focus)
+        }) && contexts.iter().any(|context| {
+            context
+                .get(PANE_KEY_CONTEXT_ID)
+                .map(zz_gpui::SharedString::as_ref)
+                == Some(pane.0.to_string().as_str())
+        })) || self.inline_browser_holds(pane, window, cx);
         if holds_keyboard {
             log::debug!(
                 target: "zz::diagnostics::input",
@@ -2516,7 +2610,9 @@ impl AppView {
                 .map(|(entity, focus)| (pane, entity, focus))
         }) {
             let stranded = window.focused(cx).is_none();
-            if self.focused_pane != Some((pane, entity)) || stranded {
+            if (self.focused_pane != Some((pane, entity)) || stranded)
+                && !self.inline_browser_holds(pane, window, cx)
+            {
                 log::info!(
                     target: "zz::diagnostics::input",
                     "pane_focus_applied pane={pane} previous={:?} stranded={stranded}",

@@ -1100,6 +1100,18 @@ impl Session {
             {
                 shared.fetch_pasted_image(client, pane, number);
             }
+            ProtocolMessage::FetchArtifact {
+                request_id,
+                token,
+                path,
+            } if hello.kind == ClientKind::Interactive => {
+                shared.fetch_artifact(client, request_id, &token, &path);
+            }
+            ProtocolMessage::ArtifactReply { token, text }
+                if hello.kind == ClientKind::Interactive =>
+            {
+                shared.reply_from_artifact(&token, &text);
+            }
             message @ (ProtocolMessage::AgentPrompt { .. }
             | ProtocolMessage::AgentCancel { .. }
             | ProtocolMessage::AgentUnqueue { .. }

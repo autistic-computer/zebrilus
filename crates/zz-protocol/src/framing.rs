@@ -67,6 +67,8 @@ pub enum ProtocolError {
     InvalidPasteUpload(String),
     #[error("invalid agent payload: {0}")]
     InvalidAgentPayload(String),
+    #[error("invalid artifact payload: {0}")]
+    InvalidArtifact(String),
     #[error("protocol I/O failed: {0}")]
     Io(#[from] std::io::Error),
 }
