@@ -47,7 +47,7 @@ pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
 pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
 /// The default theme's radius, until the client reads the active theme and
 /// calls [`AppConfig::follow_theme_radius`].
-pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 10.0;
+pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 24.0;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
 pub const DEFAULT_CHROME_TINT: f32 = 0.0;
 pub const DEFAULT_USE_SYSTEM_TITLEBAR: bool = false;

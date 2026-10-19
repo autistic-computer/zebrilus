@@ -55,7 +55,11 @@ impl StackSize {
     }
 
     pub fn widest(self) -> f32 {
-        self.tile() + (RESTING - 1) as f32 * self.step()
+        self.width(RESTING)
+    }
+
+    fn width(self, tiles: usize) -> f32 {
+        self.tile() + (tiles.clamp(1, RESTING) - 1) as f32 * self.step()
     }
 }
 
@@ -110,6 +114,7 @@ pub struct PaneStack {
     hover: Option<(SharedString, Hsla)>,
     dimmed: f32,
     beside: Option<(AnyElement, Pixels)>,
+    room: usize,
 }
 
 impl PaneStack {
@@ -129,7 +134,16 @@ impl PaneStack {
             hover: None,
             dimmed: 0.0,
             beside: None,
+            room: RESTING,
         }
+    }
+
+    /// Holds room beside a row stack for `tiles` tiles, or for its own when
+    /// it shows more, so the labels of a list of stacks line up.
+    #[must_use]
+    pub fn room(mut self, tiles: usize) -> Self {
+        self.room = tiles;
+        self
     }
 
     /// Lays `content` out `gap` after the stack. Open, the stack's tiles run
@@ -233,6 +247,7 @@ impl PaneStack {
             .top(px(-RING))
             .p(px(RING))
             .rounded(grow(self.radius, RING))
+            .corner_smoothing(layer.smoothing)
             .bg(self.ground.fill)
             .when_some(self.hover.clone(), |ring, (group, fill)| {
                 ring.group_hover(group, move |style| style.bg(fill))
@@ -364,7 +379,7 @@ impl RenderOnce for PaneStack {
             PaintState::Hover,
         );
         let size = self.size;
-        let width = size.tile() + (shown - 1) as f32 * size.step();
+        let width = size.width(shown);
         let coarse = CoarsePointer::get(cx);
         let row = open.then(|| self.open_row(&pointer, view, cx));
         let reach = self.reach();
@@ -407,7 +422,7 @@ impl RenderOnce for PaneStack {
         let stack = if size == StackSize::Row {
             div()
                 .flex_none()
-                .w(px(size.widest()))
+                .w(px(size.width(self.room.max(shown))))
                 .child(stack)
                 .into_any_element()
         } else {

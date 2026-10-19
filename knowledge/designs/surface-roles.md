@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
-description: "A theme defines its materials once (radius, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with six props (fill, outline, shadow, shape, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 60 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
+description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 60 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
 status: Built (2026-10-13)
 resource: crates/zz-gpui-kit/src/foundation/surface.rs
 tags:
@@ -51,11 +51,14 @@ Everything painted is a surface. A surface has a role. A role picks materials.
 | Material | What the theme sets |
 |---|---|
 | `radius` | the base corner radius every `round` shape derives from |
+| `smoothing` | the superellipse exponent every role's rounded corners follow unless the theme sets `smoothing` for the role, from 2 to 10; 4 when left out, the continuous corner every window draws with |
+| `picked-smoothing` | whether only the roles the theme sets `smoothing` for curve that way: every other role a theme could smooth draws plain circular corners (2); roles no theme can smooth, like panes, keep `smoothing` |
 | `outline` | the width of every outline in pixels; 0 draws none |
 | `picked-outlines` | whether only the roles the theme turns `outline` on for draw it: every built-in outline is off (dividers keep their lines, and roles no theme can change keep theirs), and so are edges drawn without a role, like a field's focus border and color swatch edges; pane frames take the `pane` role's outline in either mode |
 | `row-inset` | how far list rows sit in from their list's edges; 0 makes them square bands that touch |
 | `primary` | what a prominent fill paints: `foreground` or `accent` |
 | `flat-highlights` | whether a `lift` highlight stays flat: it washes one step deeper (selected 0.16 where a tint is 0.12) and draws no outline or shadow; other highlights are unchanged |
+| `highlight-strength` | how far a `tint` or `lift` highlight washes from the resting fill, alpha-premultiplied: 1 is the built-in step, 0 none (a lift still draws its outline and shadow), 2 twice as far; 1 when left out |
 | `font` | the interface font family, or none for the platform's; a family the machine lacks draws in the platform's (Inter in the storybook) |
 | `glass` | `null`, a glass preset name, or a preset with the fields it changes |
 | `picked-shadows` | whether only the roles the theme gives a `shadow` cast one: every built-in shadow is off (roles no theme can change keep theirs, like the Linux window frame), and so is the knob shadow on switches, sliders and the color picker; a `lift` highlight still rises with the contact shadow |
@@ -66,7 +69,7 @@ Colors stay in the light and dark sets. Focus is not a material: one ring for ev
 role, so keyboard focus always looks the same. A `strength` of 1 is the theme's shadow color as
 the mode sets it, 0 casts nothing; the float shadow draws the contact shadow under a deep one.
 
-### A role's style: six props
+### A role's style: seven props
 
 `Style` in the kit, written in theme files as a `StylePatch` that names only what differs:
 
@@ -76,8 +79,9 @@ the mode sets it, 0 casts nothing; the float shadow draws the contact shadow und
 | `outline` | `true`, `false` | draws the outline material |
 | `shadow` | `none`, `contact`, `float` | which shadow material |
 | `shape` | `square`, `round`, `pill` | `round` follows the radius material; rows take it less 4px so they sit concentric in their list, and go square when the row inset is 0 |
+| `smoothing` | `2`, `2.5`, `3`, `3.5`, `4`, `5` | the superellipse exponent its rounded corners follow: `2` is a circular arc, `4` the continuous corner every window draws with, higher turns the corner tighter. Open wherever `shape` is; a pill always ends in half circles whatever its smoothing. Unset, a role takes the `smoothing` material, or `2` under `picked-smoothing` |
 | `hover` | `none`, `tint`, `lift`, `accent`, `ring`, `bar`, `glass` | what pointing at it adds; press is the same highlight one wash deeper |
-| `selected` | the same seven | how "this is the current, chosen or on one" shows |
+| `selected` | the same seven, and `edge` on fields | how "this is the current, chosen or on one" shows |
 
 The highlights: `tint` is a wash a step deeper than the fill; `lift` is that wash plus the outline
 and a contact shadow, as if the surface rose; `accent` fills with the accent and its text; `ring`
@@ -185,6 +189,8 @@ no shape, and a pane's radius is the app's pane corner setting, which ignores th
 selected highlight but none lights the active pane the same way, so a pane offers only none and
 ring. A field's selected is how it looks while focused (`PaintState::Focused`), or while a
 select's menu is open; accent would hide the caret and the selection, so fields leave it out.
+Fields alone also take `edge`, their built-in: the outline turns the focus color, where the field
+draws one and is not glass. `none` leaves a focused field as it rests.
 
 ### What the engine enforces
 
@@ -461,8 +467,9 @@ The storybook's theme creator (`clients/storybook`) is four steps over the same 
 then an App tab for the pane settings and the preview around the showcase, which are not theme:
 
 1. **Colors**: the mode with contrast and the tint, light and dark palettes, accent, font.
-2. **Materials**: presets, shape (radius, outline, built-in or picked outlines, row inset,
-   primary), glass, built-in or picked shadows, and both shadow materials.
+2. **Materials**: presets, shape (radius, smoothing, global or picked smoothing, outline,
+   built-in or picked outlines, row inset, primary), glass, built-in or picked shadows, and both
+   shadow materials.
 3. **Roles**: every kind, each with its groups and roles indented under it. Each role shows the
    props and values its knobs allow; an unset prop shows the value it inherits and from which
    kind or group, and whether that is the built-in or this theme's patch. Setting a prop writes

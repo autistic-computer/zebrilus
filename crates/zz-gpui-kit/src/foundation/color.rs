@@ -102,6 +102,32 @@ pub(super) fn faint_weight() -> f32 {
     (FAINT / contrast()).clamp(0.0, 1.0)
 }
 
+/// `amount` of the way from `from` to `to`, alpha-premultiplied, so a wash
+/// over nothing deepens by its alpha alone: 0 is `from`, 1 is `to`, and
+/// past 1 goes further the same way.
+pub(super) fn toward(from: Hsla, to: Hsla, amount: f32) -> Hsla {
+    if amount == 0.0 {
+        return from;
+    }
+    if amount == 1.0 {
+        return to;
+    }
+    let (from, to) = (Rgba::from(from), Rgba::from(to));
+    let a = (from.a + (to.a - from.a) * amount).clamp(0.0, 1.0);
+    if a <= 0.0 {
+        return Hsla::from(Rgba { a: 0.0, ..from });
+    }
+    let channel = |from_c: f32, to_c: f32| {
+        ((from_c * from.a + (to_c * to.a - from_c * from.a) * amount) / a).clamp(0.0, 1.0)
+    };
+    Hsla::from(Rgba {
+        r: channel(from.r, to.r),
+        g: channel(from.g, to.g),
+        b: channel(from.b, to.b),
+        a,
+    })
+}
+
 /// The ink that reads on a solid `fill`, judged by perceptual lightness, so a
 /// yellow or green fill gets dark text where [`Colorize::on`], which goes by
 /// HSL lightness, would pick white.

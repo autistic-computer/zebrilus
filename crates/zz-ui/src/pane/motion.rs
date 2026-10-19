@@ -12,7 +12,7 @@ use zz_gpui::{
 };
 use zz_protocol::{PaneId, WindowId};
 
-const SPRING: SpringConfig = SpringConfig::new(324.0, 36.0, 1.0);
+const SPRING: SpringConfig = SpringConfig::new(784.0, 56.0, 1.0);
 const SETTLED: f32 = 0.5;
 const OUTWARD: f32 = 128.0;
 
