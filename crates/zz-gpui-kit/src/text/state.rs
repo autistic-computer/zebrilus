@@ -97,7 +97,10 @@ impl TextViewState {
         let (tx_result, rx_result) = unbounded::<ParsedUpdate>();
         let _receive_task = cx.spawn({
             async move |weak_self, cx| {
-                while let Ok(parsed_update) = rx_result.recv().await {
+                while let Ok(mut parsed_update) = rx_result.recv().await {
+                    while let Ok(newer) = rx_result.try_recv() {
+                        parsed_update = parsed_update.superseded_by(newer);
+                    }
                     _ = weak_self.update(cx, |state, cx| {
                         state.commit_parsed_update(parsed_update, cx);
                     });
@@ -575,6 +578,15 @@ struct ParsedUpdate {
     result: Result<ParsedContent, SharedString>,
 }
 
+impl ParsedUpdate {
+    fn superseded_by(self, newer: ParsedUpdate) -> ParsedUpdate {
+        ParsedUpdate {
+            append: self.append && newer.append,
+            ..newer
+        }
+    }
+}
+
 fn merge_pending_options(options: &mut UpdateOptions, rx: &Receiver<UpdateOptions>) -> bool {
     let mut update_count = 1;
 
@@ -889,6 +901,44 @@ mod tests {
         state.read_with(cx, |state, _| {
             assert_eq!(state.source().as_str(), "new");
         });
+    }
+
+    #[zz_gpui::test]
+    fn parses_that_arrive_together_commit_once(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("# Answer\n\n", cx)));
+        cx.run_until_parked();
+        let commits = std::rc::Rc::new(std::cell::Cell::new(0));
+        let _subscription = cx.update(|cx| {
+            let commits = commits.clone();
+            cx.observe(&state, move |_, _| commits.set(commits.get() + 1))
+        });
+
+        let dispatcher = cx.executor().dispatcher().clone();
+        let dispatcher = dispatcher.as_test().unwrap();
+        for chunk in ["one", " two", " three"] {
+            state.update(cx, |state, cx| state.push_str(chunk, cx));
+            while dispatcher.tick(true) {}
+        }
+        cx.run_until_parked();
+
+        assert_eq!(commits.get(), 1);
+        state.read_with(cx, |state, _| {
+            assert_eq!(state.source().as_str(), "# Answer\n\none two three");
+        });
+    }
+
+    #[test]
+    fn a_superseded_replacement_still_counts_as_one() {
+        let update = |revision, append| ParsedUpdate {
+            revision,
+            append,
+            result: Ok(ParsedContent::default()),
+        };
+        let merged = update(1, false).superseded_by(update(2, true));
+        assert_eq!(merged.revision, 2);
+        assert!(!merged.append);
+        assert!(update(1, true).superseded_by(update(2, true)).append);
     }
 
     #[zz_gpui::test]
