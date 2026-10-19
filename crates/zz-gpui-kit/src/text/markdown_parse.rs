@@ -210,6 +210,10 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
             paragraph
                 .push(InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default())]));
         }
+        Node::Html(val) if is_line_break_tag(&val.value) => {
+            text.push('\n');
+            paragraph.push(InlineNode::new("\n"));
+        }
         Node::Html(val) => {
             text = val.value.clone();
             paragraph.push(InlineNode::new(&text));
@@ -249,6 +253,13 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
     }
 
     text
+}
+
+fn is_line_break_tag(html: &str) -> bool {
+    matches!(
+        html.trim().to_ascii_lowercase().as_str(),
+        "<br>" | "<br/>" | "<br />"
+    )
 }
 
 fn ast_to_document(source: &str, root: mdast::Node, cx: &mut NodeContext) -> ParsedDocument {
@@ -487,6 +498,29 @@ mod tests {
                 "source: {source:?}"
             );
         }
+    }
+
+    #[test]
+    fn inline_br_tags_render_as_line_breaks() {
+        let document = parse(
+            "one<br>two<br/>three<BR />four <b>bold</b>",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let texts = paragraph
+            .children
+            .iter()
+            .map(|child| child.text.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            texts,
+            [
+                "one", "\n", "two", "\n", "three", "\n", "four ", "<b>", "bold", "</b>"
+            ]
+        );
     }
 
     #[test]
