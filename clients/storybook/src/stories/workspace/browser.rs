@@ -19,7 +19,7 @@ use zz_ui::{
     pane::{PaneDragSource, pane_header_icon_button, pane_surface},
 };
 
-use super::fixtures::{chrome, pane_background, radii, stateful};
+use super::fixtures::{chrome, radii, stateful};
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -242,6 +242,9 @@ fn pane_actions(cx: &App) -> impl IntoElement {
             pane_header_icon_button("Split right", IconName::PanelRight, true, cx)
                 .tooltip("Split right"),
         )
+        .child(
+            pane_header_icon_button("Float", IconName::PictureInPicture, true, cx).tooltip("Float"),
+        )
 }
 
 fn tab_infos(count: usize) -> Vec<BrowserTabInfo> {
@@ -306,7 +309,6 @@ pub fn browser_pane(
             .flex_col()
             .size_full()
             .rounded(radius)
-            .bg(pane_background(cx))
             .text_color(cx.theme().foreground)
             .child(header(active, 2, 0, address, false, window, cx))
             .child(

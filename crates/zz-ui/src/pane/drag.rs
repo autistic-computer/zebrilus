@@ -52,6 +52,19 @@ pub struct PaneDrag {
     pub requires_prefix: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PipGrab {
+    pub pane: PaneId,
+}
+
+struct PipGrabPreview;
+
+impl Render for PipGrabPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
 pub struct PaneDragPreview {
     pane: PaneId,
     title: String,
@@ -86,6 +99,7 @@ pub struct PaneDragSource {
     pane: PaneId,
     title: String,
     enabled: bool,
+    floating: bool,
     on_start: Rc<dyn Fn(&PaneDrag, &mut Window, &mut App)>,
     touch: Option<AnyElement>,
 }
@@ -101,9 +115,16 @@ impl PaneDragSource {
             pane,
             title: title.into(),
             enabled,
+            floating: false,
             on_start: Rc::new(on_start),
             touch: None,
         }
+    }
+
+    #[must_use]
+    pub const fn floating(mut self, floating: bool) -> Self {
+        self.floating = floating;
+        self
     }
 
     /// Lays `overlay` over the dragged element while enabled, for a client
@@ -126,27 +147,31 @@ impl PaneDragSource {
         let Self {
             pane,
             title,
+            floating,
             on_start,
             touch,
             ..
         } = self;
-        element
+        let element = element
             .relative()
             .children(touch)
-            .cursor(CursorStyle::OpenHand)
-            .on_drag(
-                PaneDrag {
-                    pane,
-                    requires_prefix: false,
-                },
-                move |drag, grab, window, cx| {
-                    on_start(drag, window, cx);
-                    window.defer(cx, |window, cx| {
-                        cx.set_active_drag_cursor_style(CursorStyle::ClosedHand, window);
-                    });
-                    pane_drag_preview(drag.pane, title.clone(), grab, cx)
-                },
-            )
+            .cursor(CursorStyle::OpenHand);
+        if floating {
+            return element.on_drag(PipGrab { pane }, |_, _, _, cx| cx.new(|_| PipGrabPreview));
+        }
+        element.on_drag(
+            PaneDrag {
+                pane,
+                requires_prefix: false,
+            },
+            move |drag, grab, window, cx| {
+                on_start(drag, window, cx);
+                window.defer(cx, |window, cx| {
+                    cx.set_active_drag_cursor_style(CursorStyle::ClosedHand, window);
+                });
+                pane_drag_preview(drag.pane, title.clone(), grab, cx)
+            },
+        )
     }
 }
 

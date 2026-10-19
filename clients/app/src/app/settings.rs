@@ -151,7 +151,7 @@ impl Preferences {
         shown.apply_roles(theme);
         window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
         Theme::global_mut(cx).set_contrast(contrast);
-        Theme::global_mut(cx).pane_background_opacity = self.pane_background_opacity;
+        Theme::global_mut(cx).pip_opacity = self.pip_background_opacity;
         Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
         Theme::global_mut(cx).pane_frames = self.gaps;
         Theme::global_mut(cx).pane_margin = self.margin();
@@ -237,14 +237,14 @@ impl Controls {
             },
         ));
         let pane_values = [
-            preferences.pane_background_opacity,
+            preferences.pip_background_opacity,
             preferences.pane_inactive_opacity,
             preferences.pane_glow_strength,
             preferences.pane_margin,
         ];
         let panes = PaneControl::ALL.map(|control| {
             let (min, max, step) = control.limits();
-            let scale = if matches!(control, PaneControl::BackgroundOpacity | PaneControl::Glow) {
+            let scale = if matches!(control, PaneControl::PipOpacity | PaneControl::Glow) {
                 100.0
             } else {
                 1.0
@@ -288,8 +288,7 @@ impl Controls {
                         });
                     }
                     this.preferences.save();
-                    Theme::global_mut(cx).pane_background_opacity =
-                        this.preferences.pane_background_opacity;
+                    Theme::global_mut(cx).pip_opacity = this.preferences.pip_background_opacity;
                     Theme::global_mut(cx).pane_glow_strength = this.preferences.pane_glow_strength;
                     Theme::global_mut(cx).pane_margin = this.preferences.margin();
                     cx.refresh_windows();
@@ -1238,10 +1237,8 @@ impl AppShell {
         let default = *control.value(&mut Preferences::default());
         let entry = SettingEntry::new(control.title(), control.description())
             .disabled(
-                !matches!(
-                    control,
-                    PaneControl::BackgroundOpacity | PaneControl::Opacity
-                ) && !self.preferences.gaps,
+                !matches!(control, PaneControl::PipOpacity | PaneControl::Opacity)
+                    && !self.preferences.gaps,
             )
             .title_actions(
                 settings_reset_button(
@@ -1252,12 +1249,11 @@ impl AppShell {
                 .on(settings_card_ground(cx))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     *control.value(&mut this.preferences) = default;
-                    let scale =
-                        if matches!(control, PaneControl::BackgroundOpacity | PaneControl::Glow) {
-                            100.0
-                        } else {
-                            1.0
-                        };
+                    let scale = if matches!(control, PaneControl::PipOpacity | PaneControl::Glow) {
+                        100.0
+                    } else {
+                        1.0
+                    };
                     this.settings_controls.panes[control as usize].update(cx, |input, cx| {
                         input.set_value(number_text(default * scale), window, cx);
                     });
@@ -1793,23 +1789,18 @@ fn sample_terminal_viewport(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PaneControl {
-    BackgroundOpacity,
+    PipOpacity,
     Opacity,
     Glow,
     Margin,
 }
 
 impl PaneControl {
-    const ALL: [Self; 4] = [
-        Self::BackgroundOpacity,
-        Self::Opacity,
-        Self::Glow,
-        Self::Margin,
-    ];
+    const ALL: [Self; 4] = [Self::PipOpacity, Self::Opacity, Self::Glow, Self::Margin];
 
     fn value(self, preferences: &mut Preferences) -> &mut f32 {
         match self {
-            Self::BackgroundOpacity => &mut preferences.pane_background_opacity,
+            Self::PipOpacity => &mut preferences.pip_background_opacity,
             Self::Opacity => &mut preferences.pane_inactive_opacity,
             Self::Glow => &mut preferences.pane_glow_strength,
             Self::Margin => &mut preferences.pane_margin,
@@ -1818,7 +1809,7 @@ impl PaneControl {
 
     fn limits(self) -> (f32, f32, f64) {
         match self {
-            Self::BackgroundOpacity | Self::Opacity => (0.0, 1.0, 0.05),
+            Self::PipOpacity | Self::Opacity => (0.0, 1.0, 0.05),
             Self::Glow => (0.0, 2.0, 0.05),
             Self::Margin => (0.0, 32.0, 0.5),
         }
@@ -1826,7 +1817,7 @@ impl PaneControl {
 
     fn title(self) -> &'static str {
         match self {
-            Self::BackgroundOpacity => "Pane background opacity",
+            Self::PipOpacity => "PiP background opacity",
             Self::Opacity => "Inactive pane opacity",
             Self::Glow => "Selected pane contrast",
             Self::Margin => "Pane margin",
@@ -1835,8 +1826,8 @@ impl PaneControl {
 
     fn description(self) -> &'static str {
         match self {
-            Self::BackgroundOpacity => {
-                "Background strength from 0% to 100%. Browser panes apply this to the toolbar only."
+            Self::PipOpacity => {
+                "How much of its own color a PiP lays over the panes under it, from 0% to 100%."
             }
             Self::Opacity => {
                 "Visible strength of inactive pane content and chrome (0–1). Set to 1 to disable dimming."

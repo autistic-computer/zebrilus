@@ -16,6 +16,7 @@ pub(crate) mod codex;
 pub(crate) mod codex_queue;
 pub(crate) mod environment;
 pub(crate) mod fanout;
+pub(crate) mod feed;
 #[cfg(test)]
 pub(crate) mod fixture;
 pub(crate) mod git_summary;

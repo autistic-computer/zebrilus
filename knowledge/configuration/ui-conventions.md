@@ -178,7 +178,7 @@ Settings > Panes scrolls its three-pane preview with the controls, like the Term
 `pane_surface` and `pane_split_surface`, with full-size logical-pixel margins and corners, and the
 theme's pane frames. A neutral backdrop makes pane transparency visible. Clicking a sample changes
 only the preview selection and moves the accent edge.
-The Browser sample keeps its page opaque; its toolbar follows pane background opacity, and the
+The Browser sample keeps its page opaque, and the
 Agent sample draws its composer as a field, like the real one. Desktop pane edits and resets refresh the saved configuration
 immediately, including valid numeric input while typing; the file watcher still handles external edits.
 
@@ -540,8 +540,8 @@ client-side decorations, `RoundedWindowFrame` paints that background through the
 `AppShell` leaves its inset surface transparent. This keeps the background beneath the antialiased
 border instead of exposing the shadow at the join, without stacking translucent fills. Fixed sidebar,
 titlebar, Settings, margins, split gaps, and rounded pane corners inherit that fill. The slideover
-sidebar paints its own overlay surface. App-owned pane roots use `theme::app_pane_background`
-with `Theme::pane_background_opacity`, controlled by Panes settings and defaulting to 50%.
+sidebar paints its own overlay surface. App-owned pane roots paint no fill, so the window shows
+through them; only PiPs paint one, at `Theme::pip_opacity` (`pip-background-opacity`, 80%).
 The Agent composer is a field shell (`field_chrome` as the `agent.composer` role) and overlaps the
 transcript by 12 px at its top edge.
 Prefix cards disable this overlap. The transcript clips before the footer, which inherits the pane background, and

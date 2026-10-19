@@ -45,7 +45,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the actions button and the brighter session label follow the pointer.",
+            summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the row fill and the brighter session label follow the pointer; a right click opens the row's menu.",
             build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
         },
         Section {

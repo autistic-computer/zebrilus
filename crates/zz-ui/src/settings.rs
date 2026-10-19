@@ -1653,7 +1653,7 @@ impl SelectItem for SettingsSelectItem {
 pub fn panes_page(
     preview: panes_preview::PanesPreview,
     layout: impl IntoIterator<Item = SettingEntry>,
-    appearance: [SettingEntry; 1],
+    pip: [SettingEntry; 1],
     focus: [SettingEntry; 2],
     frame: [SettingEntry; 1],
     cx: &App,
@@ -1681,7 +1681,7 @@ pub fn panes_page(
                         .child(preview),
                 )
                 .child(SettingsStack::titled("Layout").children(layout))
-                .child(SettingsStack::titled("Appearance").children(appearance))
+                .child(SettingsStack::titled("PiP").children(pip))
                 .child(SettingsStack::titled("Focus").children(focus))
                 .child(
                     SettingsStack::titled("Frame")

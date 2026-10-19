@@ -114,12 +114,12 @@ The client-local schema includes these scalar settings and chrome colors.
 | `experimental-agent-pane` | `true` | `true` or `false` | Whether new Agent panes can be created at all . picker row, palette completion, and the daemon's `split-window --kind agent` and `select-pane-kind agent` |
 | `experimental-editor-pane` | `false` | `true` or `false` | Whether new Editor panes can be created at all . picker row, palette completion, and the daemon's `select-pane-kind editor` |
 | `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped treatment: margin, radius, a glass frame, and no split dividers |
-| `pane-background-opacity` | `0.5` | `0..=1` | Pane and Agent composer background strength; Panes settings display 0–100%. Browser panes apply it only to the toolbar |
+| `pip-background-opacity` | `0.8` | `0..=1` | How much of its own color a PiP lays over the panes under it; below 1 they show through, blurred. Panes settings display 0–100% |
 | `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
 | `interface-theme` | `default` | `default`, `liquid-glass`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
-| `widget-corner-radius` | from the theme (`10` in Default, `25` in Liquid Glass) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
+| `widget-corner-radius` | from the theme (`24` in Default, `25` in Liquid Glass) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
 | `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active floating pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
 | `chrome-tint` | `0` | `0..=1` | How far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
 | `chrome-tint-hue` | `260` | `0..=360` | The hue the tint leans toward, in Oklch degrees; `260` is a cool blue. Settings shows it as Tint |
@@ -149,10 +149,11 @@ above, so an old `chrome-accent = #rrggbb` sets the accent again.
 `widget-primary` and `widget-glass` are retired too (`zz_config::RETIRED_MATERIAL_KEYS`): a line
 with one is reported with `` `<key>` was removed: pick a theme with `interface-theme`, or make one
 in the theme creator ``, ignored, hidden from the Terminal page's editor and removed when a theme is picked.
-`pane-glass`, `pane-corner-radius` and `pane-border-width` are retired pane keys
-(`zz_config::RETIRED_PANE_KEYS`), each reported with what replaced it: gapped panes always draw a
-glass frame, pane corners follow `widget-corner-radius`, and the pane edge follows the theme's
-glass, or its outline width without glass. They are otherwise ignored.
+`pane-glass`, `pane-corner-radius`, `pane-border-width` and `pane-background-opacity` are retired
+pane keys (`zz_config::RETIRED_PANE_KEYS`), each reported with what replaced it: gapped panes always
+draw a glass frame, pane corners follow `widget-corner-radius`, the pane edge follows the theme's
+glass, or its outline width without glass, and panes always show the window behind them while
+`pip-background-opacity` sets a PiP's. They are otherwise ignored.
 `shadow-strength`, `widget-shadows`, `widget-selection` and `widget-field` are retired too
 (`zz_config::RETIRED_LOOK_KEYS`). A `shadow-strength` line is reported with
 `` `shadow-strength` was removed: pick a theme with `interface-theme` ``, and the
@@ -167,7 +168,7 @@ the next minute boundary, then requests one redraw per minute while the bar and 
 `time-date` renders `%H:%M · %b %d`.
 
 `interface-theme`, `widget-corner-radius`, `chrome-accent`, `chrome-tint`,
-`chrome-tint-hue`, `chrome-contrast`, `pane-background-opacity`, and `theme-mode`
+`chrome-tint-hue`, `chrome-contrast`, `pip-background-opacity`, and `theme-mode`
 land on the **zz-ui theme** rather than being read per-frame by a renderer:
 `zz::theme::apply_zz_overrides` draws `config::shown_theme`, the active theme with the keys the
 file sets composed over it (`config::theme_overrides` returns them as a
@@ -394,12 +395,10 @@ chrome, `Opaque`/`Transparent` native request . logged at startup. picom ignores
 property entirely (open upstream feature request), so picom setups stay in the opaque fallback by
 design.
 
-Panes → Appearance → Background opacity controls `pane-background-opacity`, stored as 0–1
-and displayed as 0–100%. Valid edits apply live, and Reset restores 50%. The control works
-with or without pane gaps. The value reaches paints through `Theme::pane_background_opacity`.
-Without gaps each pane content root owns its fill. Terminal, Agent, Editor, picker, and waiting
-surfaces use this factor. Browser panes apply it only to the toolbar; page, blank, loading, and
-error backgrounds stay opaque.
+Panes → PiP → Background opacity controls `pip-background-opacity`, stored as 0–1 and displayed
+as 0–100%. Valid edits apply live, and Reset restores 80%. The value reaches paints through
+`Theme::pip_opacity`. Panes themselves paint no fill: the window shows through them, and a
+browser page, blank, loading and error backgrounds stay opaque.
 
 With gaps the pane frame owns the single fill (`Theme::pane_frames`, set from `pane-gaps`).
 `Theme::pane_background` returns zero alpha, so content roots paint nothing under the frame, and
@@ -713,7 +712,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-agents`, `status-host`, `status-update`; `status-show-session` was removed with the session menu and is reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
-| Panes | **Layout** (`pane-gaps`) · **Appearance** (`pane-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
+| Panes | **Layout** (`pane-gaps`) · **PiP** (`pip-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, `experimental-agent-pane`, each row present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |

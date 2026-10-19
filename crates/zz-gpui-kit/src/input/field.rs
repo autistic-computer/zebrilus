@@ -7,8 +7,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Disableable, Emphasis, Ground, Kind, Layer, Paint, PaintState, Sizable, Size,
-    StyledExt as _, Surface, SurfaceRole, Theme, Tone,
+    ActiveTheme as _, Disableable, Emphasis, Ground, Highlight, Kind, Layer, Paint, PaintState,
+    Sizable, Size, StyledExt as _, Surface, SurfaceRole, Theme, Tone,
     button::Button,
     foundation::restyle,
     h_flex,
@@ -82,9 +82,9 @@ pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
 /// draws, with the hover highlight while it rests. A role with no fill and
 /// no outline draws no box. The border is always at least a pixel wide,
 /// clear when the role has none, so focusing a field never moves its text;
-/// focus turns it to the field's focus color, unless the theme draws no
-/// outlines, picks them and leaves this role out, or the field is glass,
-/// whose rim is its edge. A field that holds
+/// focus turns it to the field's focus color while the role's selected
+/// highlight is the edge, unless the theme draws no outlines, picks them and
+/// leaves this role out, or the field is glass, whose rim is its edge. A field that holds
 /// more than its text, like the agent composer, draws its shell with this.
 pub fn field_chrome<E: Styled + InteractiveElement>(
     element: E,
@@ -114,8 +114,14 @@ pub fn field_chrome<E: Styled + InteractiveElement>(
 fn field_layer(theme: &Theme, surface: Surface, state: PaintState, focus_bordered: bool) -> Layer {
     let mut layer = theme.layer(surface, state);
     layer.border_width = layer.border_width.max(px(1.0));
-    let outlined = theme.outlines_edges() || theme.outlined() && theme.style(surface.role).outline;
-    if state == PaintState::Focused && focus_bordered && outlined && layer.glass.is_none() {
+    let style = theme.style(surface.role);
+    let outlined = theme.outlines_edges() || theme.outlined() && style.outline;
+    if state == PaintState::Focused
+        && style.selected == Highlight::Edge
+        && focus_bordered
+        && outlined
+        && layer.glass.is_none()
+    {
         layer.border = theme
             .paint_on(
                 surface.ground.unwrap_or_else(|| theme.ground()),
@@ -479,6 +485,18 @@ mod tests {
         let focused = field_layer(&theme, bare, PaintState::Focused, true);
         assert_eq!(focused.border_width, rest.border_width);
         assert!(focused.border.a > 0.0);
+    }
+
+    #[test]
+    fn a_field_that_highlights_nothing_on_focus_keeps_its_edge() {
+        let mut theme = Theme::from(&*ThemeColor::dark());
+        let field = Surface::new(Kind::Field.role());
+        let rest = field_layer(&theme, field, PaintState::Rest, true);
+        theme
+            .styles
+            .insert("field".into(), StylePatch::EMPTY.selected(Highlight::None));
+        let focused = field_layer(&theme, field, PaintState::Focused, true);
+        assert_eq!(focused.border, rest.border);
     }
 
     #[test]
