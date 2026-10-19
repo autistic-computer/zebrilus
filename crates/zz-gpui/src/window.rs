@@ -5767,6 +5767,53 @@ impl Window {
         });
     }
 
+    /// Clear the given rounded rectangle to transparent so a surface placed
+    /// below the window ([`Window::create_underlay`]) shows through it, as on
+    /// macOS. `view` is what that surface shows; where glass painted later in
+    /// the frame would read the hole, it is drawn instead.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub fn paint_underlay(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        view: wgpu::TextureView,
+    ) {
+        use crate::PaintSurface;
+
+        self.invalidator.debug_assert_paint();
+
+        let bounds = self.snap_bounds(bounds);
+        let content_mask = self.snapped_content_mask();
+        self.next_frame.scene.insert_primitive(PaintSurface {
+            order: 0,
+            bounds,
+            content_mask,
+            corner_radii: corner_radii.scale(self.scale_factor()),
+            corner_smoothing: self.default_corner_smoothing,
+            texture_view: Some(view),
+            underlay: true,
+        });
+    }
+
+    /// A surface stacked below this window that a producer presents to
+    /// without redrawing the window. `None` where the platform has none.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub fn create_underlay(&self) -> Option<Box<dyn crate::PlatformUnderlay>> {
+        self.platform_window.create_underlay()
+    }
+
+    /// Moves `underlay` to `bounds`, in this window's coordinates.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub fn place_underlay(&self, underlay: &dyn crate::PlatformUnderlay, bounds: Bounds<Pixels>) {
+        let zoom = self.zoom;
+        underlay.set_bounds(Bounds::new(
+            point(bounds.origin.x * zoom, bounds.origin.y * zoom),
+            size(bounds.size.width * zoom, bounds.size.height * zoom),
+        ));
+    }
+
     /// Whether the last frame drew a [`Window::paint_underlay`] within
     /// `bounds` itself because glass covered it, so the drawn image goes stale
     /// unless the window redraws when the layer's content changes.
@@ -5775,6 +5822,16 @@ impl Window {
         let bounds = bounds.scale(self.scale_factor());
         self.rendered_frame.scene.surfaces.iter().any(|surface| {
             surface.underlay && surface.image_buffer.is_some() && surface.bounds.intersects(&bounds)
+        })
+    }
+
+    /// Whether the last frame drew a [`Window::paint_underlay`] within
+    /// `bounds` itself because glass covered it.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub fn underlay_covered(&self, bounds: Bounds<Pixels>) -> bool {
+        let bounds = bounds.scale(self.scale_factor());
+        self.rendered_frame.scene.surfaces.iter().any(|surface| {
+            surface.underlay && surface.texture_view.is_some() && surface.bounds.intersects(&bounds)
         })
     }
 
@@ -5809,7 +5866,8 @@ impl Window {
             content_mask,
             corner_radii: corner_radii.scale(self.scale_factor()),
             corner_smoothing: self.default_corner_smoothing,
-            texture_view: view,
+            texture_view: Some(view),
+            underlay: false,
         });
     }
 

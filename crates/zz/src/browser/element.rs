@@ -7,9 +7,11 @@ use zz_gpui::{
     GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, RenderImage, Window,
 };
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
 use crate::browser::underlay::{self, UnderlayHandle};
 use crate::{browser::view::BrowserView, diagnostics, pane};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use zz_gpui::wgpu;
 
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::browser_render";
 
@@ -20,6 +22,8 @@ pub(crate) struct BrowserElement {
     surface: Option<CVPixelBuffer>,
     #[cfg(target_os = "macos")]
     underlay: Option<UnderlayHandle>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    underlay: Option<(UnderlayHandle, wgpu::Texture)>,
     corner_radii: Corners<Pixels>,
 }
 
@@ -34,10 +38,16 @@ impl BrowserElement {
             image,
             #[cfg(target_os = "macos")]
             surface: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
             underlay: None,
             corner_radii,
         }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub(crate) fn underlay(mut self, underlay: Option<(UnderlayHandle, wgpu::Texture)>) -> Self {
+        self.underlay = underlay;
+        self
     }
 
     #[cfg(target_os = "macos")]
@@ -67,6 +77,8 @@ pub(crate) struct BrowserPaintState {
     surface: Option<CVPixelBuffer>,
     #[cfg(target_os = "macos")]
     underlay: Option<UnderlayHandle>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    underlay: Option<(UnderlayHandle, wgpu::Texture)>,
 }
 
 impl Element for BrowserElement {
@@ -116,7 +128,7 @@ impl Element for BrowserElement {
             image: self.image.clone(),
             #[cfg(target_os = "macos")]
             surface: self.surface.clone(),
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
             underlay: self.underlay.clone(),
         }
     }
@@ -152,6 +164,16 @@ impl Element for BrowserElement {
             #[cfg(target_os = "macos")]
             if let Some(surface) = state.surface.take() {
                 window.paint_surface(bounds, self.corner_radii, surface);
+                return;
+            }
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            if let Some((underlay, texture)) = state.underlay.take() {
+                underlay::place(window, &underlay, bounds, &texture);
+                window.paint_underlay(
+                    bounds,
+                    self.corner_radii,
+                    texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                );
                 return;
             }
             if let Some(image) = state.image.take()

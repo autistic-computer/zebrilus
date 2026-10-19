@@ -262,7 +262,7 @@ impl Scene {
         self.surfaces.sort_by_key(|surface| surface.order);
         self.shader_layers.sort_by_key(|layer| layer.order);
         self.glasses.sort_by_key(|glass| glass.order);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
         for surface in &mut self.surfaces {
             let shown = surface.bounds.intersect(&surface.content_mask.bounds);
             if surface.underlay
@@ -272,7 +272,14 @@ impl Scene {
                         && glass.bounds.intersects(&shown)
                 })
             {
-                surface.image_buffer = None;
+                #[cfg(target_os = "macos")]
+                {
+                    surface.image_buffer = None;
+                }
+                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+                {
+                    surface.texture_view = None;
+                }
             }
         }
     }
@@ -990,10 +997,10 @@ pub struct PaintSurface {
     /// punches the hole, so the layer shows through; under such glass the
     /// image is drawn, so the glass has something to blur. Glass only beside
     /// it does not count, though its blur reaches in.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
     pub underlay: bool,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    pub texture_view: wgpu::TextureView,
+    pub texture_view: Option<wgpu::TextureView>,
     #[cfg(target_os = "windows")]
     pub texture: windows::Win32::Graphics::Direct3D11::ID3D11Texture2D,
 }

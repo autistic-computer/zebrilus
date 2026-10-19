@@ -121,6 +121,7 @@ pub struct WaylandWindowState {
     input_handler: Option<PlatformInputHandler>,
     decorations: WindowDecorations,
     background_appearance: WindowBackgroundAppearance,
+    underlay_active: bool,
     fullscreen: bool,
     maximized: bool,
     /// `Hidden` while the `xdg_toplevel` `suspended` state (xdg-shell v6) is set.
@@ -622,6 +623,7 @@ impl WaylandWindowState {
             input_handler: None,
             decorations: WindowDecorations::Client,
             background_appearance: WindowBackgroundAppearance::Opaque,
+            underlay_active: false,
             fullscreen: false,
             maximized: false,
             visibility: WindowVisibility::Visible,
@@ -647,6 +649,7 @@ impl WaylandWindowState {
     pub fn is_transparent(&self) -> bool {
         self.decorations == WindowDecorations::Client
             || self.background_appearance != WindowBackgroundAppearance::Opaque
+            || self.underlay_active
     }
 
     fn update_subpixel_layout(&mut self) {
@@ -2226,6 +2229,42 @@ impl PlatformWindow for WaylandWindow {
         self.borrow().renderer.device_context()
     }
 
+    fn create_underlay(&self) -> Option<Box<dyn zz_gpui::PlatformUnderlay>> {
+        let state = self.borrow();
+        let Some(subcompositor) = state.globals.subcompositor.clone() else {
+            log::info!("no browser underlay: the compositor has no wl_subcompositor");
+            return None;
+        };
+        let underlay = crate::linux::wayland::underlay::WaylandUnderlay::new(
+            &state.globals.compositor,
+            subcompositor,
+            state.globals.viewporter.as_ref(),
+            &state.globals.qh,
+            state.surface.clone(),
+            |surface| {
+                state
+                    .renderer
+                    .create_presenter(crate::linux::wayland::underlay::raw_window_handle(surface)?)
+            },
+        );
+        match underlay {
+            Ok(underlay) => Some(Box::new(underlay)),
+            Err(error) => {
+                log::warn!("no browser underlay: {error:#}");
+                None
+            }
+        }
+    }
+
+    fn set_underlay_active(&self, active: bool) {
+        let mut state = self.borrow_mut();
+        if state.underlay_active == active {
+            return;
+        }
+        state.underlay_active = active;
+        update_window(state);
+    }
+
     fn play_system_bell(&self) {
         let state = self.borrow();
         let surface = if state.surface_state.toplevel().is_some() {
@@ -2579,6 +2618,7 @@ fn update_window(mut state: RefMut<WaylandWindowState>) {
     // As this is common when using CSD, let's just disable this API.
     if state.background_appearance == WindowBackgroundAppearance::Opaque
         && state.decorations == WindowDecorations::Server
+        && !state.underlay_active
     {
         // Promise the compositor that this region of the window surface
         // contains no transparent pixels. This allows the compositor to skip

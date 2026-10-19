@@ -809,6 +809,21 @@ pub struct WgpuDeviceContext {
     pub queue: Arc<wgpu::Queue>,
 }
 
+/// A surface stacked below a window, which a producer presents finished
+/// frames to on the renderer's device without redrawing the window. The
+/// window clears a hole over it with [`crate::Window::paint_underlay`].
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+pub trait PlatformUnderlay {
+    /// Places the surface at `bounds`, in the window surface's logical
+    /// coordinates. Takes effect with the window's next frame.
+    fn set_bounds(&self, bounds: Bounds<Pixels>);
+    /// Puts the surface on screen below the window, or takes it off.
+    fn set_visible(&self, visible: bool);
+    /// Copies `texture` to the surface and shows it. `Ok(false)` means the
+    /// surface had no image free and the frame was dropped.
+    fn present(&self, texture: &wgpu::Texture) -> anyhow::Result<bool>;
+}
+
 /// The device and immediate context used by GPUI's DirectX renderer.
 ///
 /// Both are COM pointers, so cloning this only bumps their refcounts. Callers
@@ -1085,6 +1100,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn wgpu_device_context(&self) -> Option<WgpuDeviceContext> {
+        None
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn create_underlay(&self) -> Option<Box<dyn PlatformUnderlay>> {
         None
     }
 
