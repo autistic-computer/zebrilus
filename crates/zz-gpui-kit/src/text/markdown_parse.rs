@@ -33,6 +33,8 @@ fn parse_table_row(table: &mut Table, node: &mdast::TableRow, cx: &mut NodeConte
             _ => {}
         };
     });
+    row.children
+        .resize_with(table.column_aligns.len(), Default::default);
     table.children.push(row);
 }
 
@@ -540,6 +542,36 @@ mod tests {
                 .any(|(_, mark)| mark.bold && mark.italic),
             "nested emphasis should produce a bold and italic mark"
         );
+    }
+
+    #[test]
+    fn table_rows_use_header_column_count() {
+        let document = parse(
+            "| A | B | C |\n| --- | --- | --- |\n| one |\n| two | three | four | ignored |\n",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Table(table) = &document.blocks[0] else {
+            panic!("expected table");
+        };
+        assert_eq!(table.column_aligns.len(), 3);
+        assert!(table.children.iter().all(|row| row.children.len() == 3));
+        assert_eq!(table.children[1].children[0].children.text(), "one");
+        assert!(table.children[1].children[1].children.text().is_empty());
+        assert_eq!(table.children[2].children[2].children.text(), "four");
+    }
+
+    #[test]
+    fn a_pipe_inside_inline_code_does_not_add_a_column() {
+        let document = parse(
+            "| Command | Effect |\n| --- | --- |\n| `a | b` | pipes |\n",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Table(table) = &document.blocks[0] else {
+            panic!("expected table");
+        };
+        assert!(table.children.iter().all(|row| row.children.len() == 2));
     }
 
     #[test]
