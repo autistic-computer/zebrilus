@@ -33,6 +33,8 @@ fn parse_table_row(table: &mut Table, node: &mdast::TableRow, cx: &mut NodeConte
             _ => {}
         };
     });
+    row.children
+        .resize_with(table.column_aligns.len(), Default::default);
     table.children.push(row);
 }
 
@@ -208,6 +210,10 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
             paragraph
                 .push(InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default())]));
         }
+        Node::Html(val) if is_line_break_tag(&val.value) => {
+            text.push('\n');
+            paragraph.push(InlineNode::new("\n"));
+        }
         Node::Html(val) => {
             text = val.value.clone();
             paragraph.push(InlineNode::new(&text));
@@ -249,6 +255,13 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
     text
 }
 
+fn is_line_break_tag(html: &str) -> bool {
+    matches!(
+        html.trim().to_ascii_lowercase().as_str(),
+        "<br>" | "<br/>" | "<br />"
+    )
+}
+
 fn ast_to_document(source: &str, root: mdast::Node, cx: &mut NodeContext) -> ParsedDocument {
     let root = match root {
         Node::Root(r) => r,
@@ -280,7 +293,10 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
     let parse_cx = MarkdownParseContext::new(source, cx.offset);
     if let Some(mut node) = cx.markdown_extensions.parse_block(&value, &parse_cx) {
         node.set_span(span);
-        return BlockNode::Custom(node);
+        return BlockNode::Custom {
+            node,
+            state: node::BlockState::default(),
+        };
     }
 
     match value {
@@ -485,6 +501,29 @@ mod tests {
     }
 
     #[test]
+    fn inline_br_tags_render_as_line_breaks() {
+        let document = parse(
+            "one<br>two<br/>three<BR />four <b>bold</b>",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let texts = paragraph
+            .children
+            .iter()
+            .map(|child| child.text.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            texts,
+            [
+                "one", "\n", "two", "\n", "three", "\n", "four ", "<b>", "bold", "</b>"
+            ]
+        );
+    }
+
+    #[test]
     fn soft_break_reflows_to_space() {
         for ending in ["\n", "\r\n", "\r"] {
             let source = format!("this sentence{ending}continues as a soft wrap");
@@ -543,6 +582,36 @@ mod tests {
     }
 
     #[test]
+    fn table_rows_use_header_column_count() {
+        let document = parse(
+            "| A | B | C |\n| --- | --- | --- |\n| one |\n| two | three | four | ignored |\n",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Table(table) = &document.blocks[0] else {
+            panic!("expected table");
+        };
+        assert_eq!(table.column_aligns.len(), 3);
+        assert!(table.children.iter().all(|row| row.children.len() == 3));
+        assert_eq!(table.children[1].children[0].children.text(), "one");
+        assert!(table.children[1].children[1].children.text().is_empty());
+        assert_eq!(table.children[2].children[2].children.text(), "four");
+    }
+
+    #[test]
+    fn a_pipe_inside_inline_code_does_not_add_a_column() {
+        let document = parse(
+            "| Command | Effect |\n| --- | --- |\n| `a | b` | pipes |\n",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Table(table) = &document.blocks[0] else {
+            panic!("expected table");
+        };
+        assert!(table.children.iter().all(|row| row.children.len() == 2));
+    }
+
+    #[test]
     fn raw_html_blocks_keep_distinct_source_spans() {
         let mut cx = NodeContext::default();
         let document = parse("<div>one</div>\n\n<div>two</div>", &mut cx).unwrap();
@@ -587,7 +656,7 @@ mod tests {
         };
         let document = parse("$TSLA.US", &mut cx).unwrap();
 
-        let BlockNode::Custom(node) = &document.blocks[0] else {
+        let BlockNode::Custom { node, .. } = &document.blocks[0] else {
             panic!("expected custom markdown node");
         };
         assert_eq!(node.name(), "ticker");
@@ -646,7 +715,7 @@ mod tests {
         };
         let document = parse("$TSLA.US", &mut cx).unwrap();
 
-        let BlockNode::Custom(node) = &document.blocks[0] else {
+        let BlockNode::Custom { node, .. } = &document.blocks[0] else {
             panic!("expected custom markdown node");
         };
         assert_eq!(node.name(), "ticker");

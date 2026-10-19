@@ -20,6 +20,7 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("up", SelectPrev, Some(CONTEXT)),
         KeyBinding::new("down", SelectNext, Some(CONTEXT)),
         KeyBinding::new("enter", Confirm, Some(CONTEXT)),
+        KeyBinding::new("space", Confirm, Some("ZzSelect && !ZzInput")),
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
     ]);
 }

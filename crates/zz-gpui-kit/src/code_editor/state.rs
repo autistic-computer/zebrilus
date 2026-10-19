@@ -677,6 +677,7 @@ impl CodeEditorState {
         } else {
             (anchor..offset).into()
         };
+        self.preferred_column = None;
         self.break_typing_group();
         self.follow_cursor = true;
         self.pause_blink_cursor(cx);
@@ -1001,12 +1002,15 @@ impl CodeEditorState {
     fn select_vertical(&mut self, delta: isize, cx: &mut Context<Self>) {
         let point = self.text.offset_to_point(self.cursor());
         let column = self.preferred_column.unwrap_or(point.column);
-        self.preferred_column = Some(column);
         let row = point
             .row
             .saturating_add_signed(delta)
             .min(self.text.lines_len().saturating_sub(1));
-        let target = self.text.line_start_offset(row) + column.min(self.text.slice_line(row).len());
+        let target = if row == point.row {
+            if delta < 0 { 0 } else { self.text.len() }
+        } else {
+            self.text.line_start_offset(row) + column.min(self.text.slice_line(row).len())
+        };
         self.select_to(target, cx);
         self.preferred_column = Some(column);
     }
@@ -1402,6 +1406,40 @@ mod tests {
 
         assert_eq!(editor.read_with(cx, |editor, _| editor.value()), "a");
         assert_eq!(editor.read_with(cx, |editor, _| editor.cursor()), 1);
+    }
+
+    #[zz_gpui::test]
+    fn vertical_selection_reaches_the_document_edges(cx: &mut zz_gpui::TestAppContext) {
+        let (editor, cx) = with_editor(cx);
+        type_text(&editor, "abcdef\nab\nabcdef", cx);
+        cx.update(|window, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.set_selected_range(2..2, cx);
+                editor.select_up(&SelectUp, window, cx);
+                assert_eq!(editor.selected_range(), 0..2);
+
+                editor.set_selected_range(13..13, cx);
+                editor.select_down(&SelectDown, window, cx);
+                assert_eq!(editor.selected_range(), 13..16);
+            });
+        });
+    }
+
+    #[zz_gpui::test]
+    fn horizontal_selection_forgets_the_remembered_column(cx: &mut zz_gpui::TestAppContext) {
+        let (editor, cx) = with_editor(cx);
+        type_text(&editor, "abcdef\nab\nabcdef", cx);
+        cx.update(|window, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.set_selected_range(5..5, cx);
+                editor.select_down(&SelectDown, window, cx);
+                assert_eq!(editor.cursor(), 9);
+                editor.select_left(&SelectLeft, window, cx);
+                assert_eq!(editor.cursor(), 8);
+                editor.select_down(&SelectDown, window, cx);
+                assert_eq!(editor.selected_range(), 5..11);
+            });
+        });
     }
 
     #[zz_gpui::test]
