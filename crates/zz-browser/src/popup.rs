@@ -27,11 +27,6 @@ impl PopupPlacement {
     }
 }
 
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "the scaled origin is clamped into the frame before narrowing"
-)]
 fn scaled_origin(view: i32, view_extent: i32, pixel_extent: u32) -> i64 {
     let scale = if view_extent > 0 {
         f64::from(pixel_extent) / f64::from(view_extent)
