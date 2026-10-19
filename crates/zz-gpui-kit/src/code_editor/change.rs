@@ -35,4 +35,16 @@ impl HistoryItem for Change {
     fn set_version(&mut self, version: usize) {
         self.version = version;
     }
+
+    fn merge(&mut self, next: &Self) -> bool {
+        if !next.old_range.is_empty()
+            || !next.old_text.is_empty()
+            || next.old_range.start != self.new_range.end
+        {
+            return false;
+        }
+        self.new_text.push_str(&next.new_text);
+        self.new_range.end = next.new_range.end;
+        true
+    }
 }
