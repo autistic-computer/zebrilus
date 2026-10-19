@@ -108,7 +108,7 @@ slotmap.workspace = true
 smallvec = { workspace = true, features = ["union", "const_new"] }
 stacksafe = { workspace = true, optional = true }
 strum.workspace = true
-taffy = "=0.13.0"
+taffy = "=0.14.0"
 thiserror.workspace = true
 hdrhistogram = { workspace = true, optional = true }
 waker-fn = "1.2.0"
