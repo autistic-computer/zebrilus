@@ -110,6 +110,10 @@ impl OngoingScroll {
         }
     }
 
+    pub(crate) fn range(&self) -> Point<Pixels> {
+        self.range
+    }
+
     pub(crate) fn set_bounds(&mut self, range: Point<Pixels>, extent: Size<Pixels>) {
         self.range = range;
         self.extent = extent;

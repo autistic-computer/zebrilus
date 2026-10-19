@@ -13,8 +13,8 @@ use crate::sum_tree::{Bias, Dimensions, SumTree};
 use crate::{
     AnyElement, App, AvailableSpace, Bounds, ContentMask, DispatchPhase, Edges, Element, EntityId,
     FocusHandle, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement,
-    Overflow, Overscroll, Pixels, Point, RubberBand, ScrollDelta, ScrollWheelEvent, Size, Style,
-    StyleRefinement, Styled, TouchPhase, Window, point, px, size,
+    Overflow, Overscroll, Pixels, Point, RubberBand, ScrollDelta, ScrollKey, ScrollWheelEvent,
+    Size, Style, StyleRefinement, Styled, TouchPhase, Window, point, px, size,
 };
 use std::{cell::RefCell, ops::Range, rc::Rc};
 
@@ -905,6 +905,7 @@ impl StateInner {
         height: Pixels,
         delta: Point<Pixels>,
         bounce: Option<TouchPhase>,
+        key: ScrollKey,
         current_view: EntityId,
         window: &mut Window,
         cx: &mut App,
@@ -932,7 +933,7 @@ impl StateInner {
             None => (old_scroll_top - delta.y).max(px(0.)).min(scroll_max),
         };
         if new_scroll_top != old_scroll_top {
-            window.prevent_default();
+            window.claim_scroll(key);
         }
 
         if self.alignment == ListAlignment::Bottom && new_scroll_top == scroll_max {
@@ -1623,8 +1624,11 @@ impl Element for List {
         let hitbox_id = prepaint.hitbox.id;
         let bounce = window.gesture_tuning().overscroll == Overscroll::Bounce;
         let mut accumulated_scroll_delta = ScrollDelta::default();
+        let key = ScrollKey::of(&list_state.0);
         window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
-            if phase == DispatchPhase::Bubble && hitbox_id.should_handle_scroll(window) {
+            if phase == DispatchPhase::Bubble
+                && window.should_take_scroll(key, hitbox_id.should_handle_scroll(window))
+            {
                 let pixel_delta = if bounce {
                     event.delta.pixel_delta(px(20.))
                 } else {
@@ -1636,6 +1640,7 @@ impl Element for List {
                     height,
                     pixel_delta,
                     bounce.then_some(event.touch_phase),
+                    key,
                     current_view,
                     window,
                     cx,
@@ -1755,8 +1760,9 @@ mod test {
 
     use crate::{
         self as zz_gpui, AppContext, Bounds, Context, Element, FollowMode, InteractiveElement,
-        IntoElement, ListState, ParentElement, Render, StatefulInteractiveElement, Styled,
-        TestAppContext, Window, canvas, div, list, point, px, size,
+        IntoElement, ListState, ParentElement, Render, ScrollHandle, StatefulInteractiveElement,
+        Styled, TestAppContext, TouchPhase, VisualTestContext, Window, canvas, div, list, point,
+        px, size,
     };
 
     #[zz_gpui::test]
@@ -3124,5 +3130,156 @@ mod test {
             assert_eq!(parents, row_count);
         })
         .unwrap();
+    }
+
+    fn scroll_at(cx: &mut VisualTestContext, y: f32, dy: f32, touch_phase: TouchPhase) {
+        cx.simulate_event(ScrollWheelEvent {
+            position: point(px(50.), px(y)),
+            delta: ScrollDelta::Pixels(point(px(0.), px(dy))),
+            touch_phase,
+            ..Default::default()
+        });
+    }
+
+    #[zz_gpui::test]
+    fn test_nested_scroll_areas_do_not_scroll_together(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        let outer = ScrollHandle::new();
+        let inner = ScrollHandle::new();
+
+        struct Nested {
+            outer: ScrollHandle,
+            inner: ScrollHandle,
+        }
+        impl Render for Nested {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .id("outer")
+                    .w(px(100.))
+                    .h(px(100.))
+                    .overflow_y_scroll()
+                    .track_scroll(&self.outer)
+                    .child(
+                        div()
+                            .id("inner")
+                            .w_full()
+                            .h(px(50.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.inner)
+                            .child(div().w_full().h(px(80.))),
+                    )
+                    .child(div().w_full().h(px(300.)))
+            }
+        }
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, cx| {
+            cx.new(|_| Nested {
+                outer: outer.clone(),
+                inner: inner.clone(),
+            })
+            .into_any_element()
+        });
+
+        scroll_at(cx, 10., -20., TouchPhase::Started);
+        assert_eq!(inner.offset().y, px(-20.));
+        assert_eq!(outer.offset().y, px(0.));
+
+        scroll_at(cx, 10., -40., TouchPhase::Moved);
+        assert_eq!(inner.offset().y, px(-30.));
+        assert_eq!(outer.offset().y, px(0.));
+
+        scroll_at(cx, 10., -40., TouchPhase::Moved);
+        assert_eq!(
+            outer.offset().y,
+            px(0.),
+            "the rest of a gesture stays with the area it started in"
+        );
+
+        scroll_at(cx, 10., -20., TouchPhase::Started);
+        assert_eq!(inner.offset().y, px(-30.));
+        assert_eq!(
+            outer.offset().y,
+            px(-20.),
+            "a new gesture passes an area at its end to the one around it"
+        );
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, cx| {
+            cx.new(|_| Nested {
+                outer: outer.clone(),
+                inner: inner.clone(),
+            })
+            .into_any_element()
+        });
+        scroll_at(cx, 40., 20., TouchPhase::Started);
+        assert_eq!(outer.offset().y, px(0.));
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, cx| {
+            cx.new(|_| Nested {
+                outer: outer.clone(),
+                inner: inner.clone(),
+            })
+            .into_any_element()
+        });
+        scroll_at(cx, 40., 20., TouchPhase::Moved);
+        assert_eq!(
+            inner.offset().y,
+            px(-30.),
+            "an area that slides under the pointer mid-gesture leaves the gesture alone"
+        );
+    }
+
+    #[zz_gpui::test]
+    fn test_scroll_area_in_list_row_keeps_the_list_still(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        let state = ListState::new(5, crate::ListAlignment::Top, px(10.));
+        let inner = ScrollHandle::new();
+
+        struct Rows {
+            state: ListState,
+            inner: ScrollHandle,
+        }
+        impl Render for Rows {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let inner = self.inner.clone();
+                list(self.state.clone(), move |ix, _, _| {
+                    if ix == 0 {
+                        div()
+                            .id("inner")
+                            .w_full()
+                            .h(px(40.))
+                            .overflow_y_scroll()
+                            .track_scroll(&inner)
+                            .child(div().w_full().h(px(100.)))
+                            .into_any()
+                    } else {
+                        div().w_full().h(px(40.)).into_any()
+                    }
+                })
+                .w_full()
+                .h_full()
+            }
+        }
+
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, cx| {
+            cx.new(|_| Rows {
+                state: state.clone(),
+                inner: inner.clone(),
+            })
+            .into_any_element()
+        });
+
+        scroll_at(cx, 10., -30., TouchPhase::Started);
+        assert_eq!(inner.offset().y, px(-30.));
+        assert_eq!(state.logical_scroll_top().offset_in_item, px(0.));
+        assert_eq!(state.logical_scroll_top().item_ix, 0);
+
+        scroll_at(cx, 10., -30., TouchPhase::Moved);
+        scroll_at(cx, 10., -30., TouchPhase::Moved);
+        assert_eq!(inner.offset().y, px(-60.));
+        assert_eq!(state.logical_scroll_top().item_ix, 0);
+        assert_eq!(state.logical_scroll_top().offset_in_item, px(0.));
+
+        scroll_at(cx, 10., -10., TouchPhase::Started);
+        assert_eq!(inner.offset().y, px(-60.));
+        assert_eq!(state.logical_scroll_top().offset_in_item, px(10.));
     }
 }
