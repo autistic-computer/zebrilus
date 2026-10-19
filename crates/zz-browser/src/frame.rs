@@ -89,7 +89,7 @@ pub struct FrameDamage {
 }
 
 impl FrameDamage {
-    fn union(self, other: Self) -> Self {
+    pub(crate) fn union(self, other: Self) -> Self {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
         let right = self

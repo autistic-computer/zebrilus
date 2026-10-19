@@ -1,6 +1,7 @@
 #[cfg(any(feature = "cef-runtime", test))]
 use zz_client::element_picker;
 mod event;
+mod ime;
 // Without the CEF runtime nothing reaches the GPU-import and egress-profile halves.
 #[cfg_attr(not(feature = "cef-runtime"), allow(dead_code))]
 mod frame;
@@ -8,6 +9,8 @@ mod input;
 mod lifecycle;
 #[cfg(any(feature = "cef-runtime", test))]
 mod page_zoom;
+#[cfg(any(feature = "cef-runtime", test))]
+mod popup;
 #[cfg_attr(not(feature = "cef-runtime"), allow(dead_code, unused_imports))]
 mod profile;
 mod url_input;
@@ -41,6 +44,7 @@ pub use frame::{
 pub use frame::{MacFramePresenter, MacGpuFrame, MacIoSurface};
 #[cfg(target_os = "windows")]
 pub use frame::{WinGpuFrame, WinGpuTexture};
+pub use ime::{ImeCharacterBounds, ime_range_bounds};
 pub use input::{
     BrowserKey, EditCommand, KeyAction, KeyInput, Modifiers, PointerButton, PointerEvent,
     PointerPhase, Viewport, WheelEvent, named_key_input, terminal_key_input,
