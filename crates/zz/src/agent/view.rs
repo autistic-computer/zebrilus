@@ -39,7 +39,7 @@ use zz_gpui::{
     KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render, ScrollStrategy,
     SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
-use zz_protocol::{AgentDescriptor, AgentProvider, Axis, CommandInvocation, PaneId};
+use zz_protocol::{AgentDescriptor, AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
 use zz_ui::agent::{
     AGENT_CONTENT_MAX_WIDTH, AgentAside, AgentEntry, AgentMarkdown, AgentPaneStatus, AgentTimeline,
@@ -68,7 +68,7 @@ use crate::{
     },
     config::pane_content_radii,
     file_picker::{DirectoryCatalog, directory_picker_root},
-    mux::{client::MuxClient, hosts::HostId, nav::picker_split_command},
+    mux::{client::MuxClient, hosts::HostId},
     window::corners::{WindowCorners, round_div_radii},
 };
 
@@ -2623,6 +2623,24 @@ impl AgentView {
     }
 
     #[allow(clippy::redundant_closure_for_method_calls)]
+    fn render_watch_footer(
+        &self,
+        state: &AgentPaneState,
+        view: &Entity<Self>,
+        cx: &mut zz_gpui::App,
+    ) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .flex_none()
+            .gap_2()
+            .px(px(COMPOSER_OUTER_PADDING))
+            .pb(px(COMPOSER_OUTER_PADDING))
+            .children(self.render_task_tray(state, view, cx))
+            .children(self.render_error(state, cx))
+    }
+
     fn render_composer(
         &self,
         state: &AgentPaneState,
@@ -2857,13 +2875,15 @@ impl Render for AgentView {
             window,
             cx,
         );
+        let floats = zz_client::floating::pane_floats(&self.mux.read(cx).snapshot(), pane);
         let close_mux = self.mux.clone();
         let header_controls = agent_pane_title(
             state.provider,
             title_editor,
-            PaneDragSource::new(pane, title, can_drag, move |drag, _, cx| {
+            PaneDragSource::new(pane, title, can_drag || floats, move |drag, _, cx| {
                 view.update(cx, |_, cx| cx.emit(*drag));
-            }),
+            })
+            .floating(floats),
             move |_, cx| {
                 close_mux.read(cx).execute(CommandInvocation::new(
                     "kill-pane",
@@ -2872,30 +2892,25 @@ impl Render for AgentView {
             },
         );
         let header_actions = h_flex().flex_none().gap(px(CHROME_GAP)).children(
-            [
-                (
-                    "agent-split-bottom",
-                    IconName::PanelBottom,
-                    "Split bottom",
-                    Axis::Vertical,
-                ),
-                (
-                    "agent-split-right",
-                    IconName::PanelRight,
-                    "Split right",
-                    Axis::Horizontal,
-                ),
-            ]
-            .into_iter()
-            .map(|(id, icon, label, axis)| {
-                let mux = self.mux.clone();
-                pane_header_icon_button((id, pane.0), icon, mux.read(cx).is_connected(), cx)
-                    .tooltip(label)
+            zz_ui::pane::pane_header_actions(floats)
+                .iter()
+                .map(|(action, icon, label)| {
+                    let mux = self.mux.clone();
+                    let action = *action;
+                    pane_header_icon_button(
+                        (*label, pane.0),
+                        icon.clone(),
+                        mux.read(cx).is_connected(),
+                        cx,
+                    )
+                    .tooltip(*label)
                     .on_click(move |_, _, cx| {
-                        mux.read(cx).execute(picker_split_command(pane, axis));
+                        for command in action.commands(pane) {
+                            mux.read(cx).execute(command);
+                        }
                         cx.stop_propagation();
                     })
-            }),
+                }),
         );
         let view = cx.entity();
         let input_focus = self.focus(cx);
@@ -2930,26 +2945,27 @@ impl Render for AgentView {
             .flex_col()
             .size_full()
             .overflow_hidden()
-            .bg(crate::theme::app_pane_background(cx))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .capture_action(cx.listener(Self::move_completion_up))
             .capture_action(cx.listener(Self::move_completion_down))
             .capture_action(cx.listener(Self::complete))
             .on_key_down(cx.listener(Self::on_key_down))
-            .child(agent_pane_header(
-                self.mux
-                    .read(cx)
-                    .snapshot()
-                    .sessions
-                    .iter()
-                    .flat_map(|session| &session.windows)
-                    .any(|window| window.active_pane == self.pane),
-                header_controls,
-                self.render_status(&state, &view, cx),
-                header_actions,
-                has_timeline,
-                cx,
-            ))
+            .map(|pane| {
+                pane.child(agent_pane_header(
+                    self.mux
+                        .read(cx)
+                        .snapshot()
+                        .sessions
+                        .iter()
+                        .flat_map(|session| &session.windows)
+                        .any(|window| window.active_pane == self.pane),
+                    header_controls,
+                    self.render_status(&state, &view, cx),
+                    header_actions,
+                    has_timeline,
+                    cx,
+                ))
+            })
             .child(
                 div()
                     .id(("agent-thread-scroll", self.pane.0))
@@ -2983,11 +2999,22 @@ impl Render for AgentView {
                         this.child(self.render_jump_to_end(&view, cx))
                     }),
             )
-            .child(self.render_composer(&state, &view, window, cx))
+            .child(if state.session_capabilities.watch {
+                self.render_watch_footer(&state, &view, cx)
+                    .into_any_element()
+            } else {
+                self.render_composer(&state, &view, window, cx)
+                    .into_any_element()
+            })
             .when(self.history_open, |this| {
                 this.child(self.render_history_overlay(&state, &view, cx))
             });
-        round_div_radii(root, pane_content_radii(cx, self.window_corners))
+        let radii = if floats {
+            zz_gpui::Corners::all(zz_ui::pip::pip_content_radius(cx))
+        } else {
+            pane_content_radii(cx, self.window_corners)
+        };
+        round_div_radii(root, radii)
     }
 }
 

@@ -13,17 +13,54 @@ use zz_gpui::{
 use zz_protocol::{
     FloatingPaneSnapshot, InputMessage, MenuState, PaneBorderLines, PopupBorderLines,
 };
+use zz_protocol::{PaneId, WindowSnapshot};
 use zz_ui::{
     ActiveTheme as _,
     command::floating::{
         MenuHits, RELEASE_BUTTONS, WHEEL_BUTTONS, confirm_prompt, display_menu, floating_frame,
         menu_enter, menu_hit_cell, menu_press_buttons,
     },
-    pane::FloatingSurface,
+    pane::{FloatingSurface, PipGrab, moving_pane},
+    pip::{PipCard, PipDrag, PipLayout, PipStage, PipSurface, PipThrow},
 };
 
 use super::AppShell;
 use crate::preferences::Preferences;
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct AppPipDrag {
+    pane: PaneId,
+    drag: PipDrag,
+    started: bool,
+    touch: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct AppPipLanding {
+    pane: PaneId,
+    target: FloatCells,
+    at: zz_gpui::scheduler::Instant,
+}
+
+#[derive(Default)]
+pub(super) struct PipState {
+    drag: Option<AppPipDrag>,
+    throw: PipThrow,
+    landing: Option<AppPipLanding>,
+    pub(super) stage: PipStage,
+}
+
+impl PipState {
+    fn thrown(&self, pane: PaneId) -> Option<PipDrag> {
+        self.drag
+            .filter(|drag| drag.pane == pane && drag.started)
+            .map(|drag| drag.drag)
+    }
+
+    fn landing(&self, pane: PaneId) -> Option<AppPipLanding> {
+        self.landing.filter(|landing| landing.pane == pane)
+    }
+}
 
 impl AppShell {
     pub(super) fn floating_canvas_size(&self, window: &Window, cx: &App) -> zz_gpui::Size<Pixels> {
@@ -222,6 +259,216 @@ impl AppShell {
             })
     }
 
+    fn begin_pip(
+        &mut self,
+        float: FloatingPaneSnapshot,
+        press: Point<Pixels>,
+        touch: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(active) = self.active_window(cx) else {
+            return;
+        };
+        let cell = self.cell_size(&active, cx);
+        let now = cx.background_executor().now();
+        let start = self
+            .pip
+            .landing
+            .take_if(|landing| landing.pane == float.pane)
+            .map_or_else(|| FloatCells::from(&float), |landing| landing.target);
+        let layout = PipLayout {
+            window: (active.sx, active.sy),
+            cell: size(px(cell.0), px(cell.1)),
+            canvas: self.float_canvas_bounds.get().size,
+            lines: float.border_lines,
+            header: cx.theme().pane_header_height(),
+        };
+        let shown = self
+            .pane_motion
+            .drawn(float.pane)
+            .map_or_else(Point::default, |drawn| {
+                drawn.origin - self.float_canvas_bounds.get().origin - layout.frame(start).origin
+            });
+        let drag = PipDrag::new(start, layout, press, shown);
+        self.pip.throw = PipThrow::default();
+        self.pip.throw.track(now, press);
+        self.pip.drag = Some(AppPipDrag {
+            pane: float.pane,
+            drag,
+            started: false,
+            touch,
+        });
+        self.command("select-pane", vec!["-t".into(), float.pane.to_string()], cx);
+    }
+
+    fn move_pip(&mut self, pointer: Point<Pixels>, cx: &mut Context<Self>) {
+        let now = cx.background_executor().now();
+        let Some(drag) = self.pip.drag.as_mut() else {
+            return;
+        };
+        drag.started = true;
+        drag.drag.moved(pointer);
+        self.pip.throw.track(now, pointer);
+        cx.notify();
+    }
+
+    fn release_pip(&mut self, cx: &mut Context<Self>) {
+        let Some(drag) = self.pip.drag.take() else {
+            return;
+        };
+        cx.notify();
+        if !drag.started {
+            return;
+        }
+        let now = cx.background_executor().now();
+        let velocity = self.pip.throw.velocity(now);
+        let landing = drag.drag.release(velocity);
+        if landing.stash.is_some() {
+            self.pip.stage.stash(drag.pane);
+        }
+        self.pane_motion
+            .fling(drag.pane, velocity, landing.stash.is_none());
+        let command = landing.place.command(drag.pane);
+        self.invoke(command, cx);
+        self.pip.landing = Some(AppPipLanding {
+            pane: drag.pane,
+            target: landing.target,
+            at: now,
+        });
+    }
+
+    pub(super) fn tick_pip(
+        &mut self,
+        active: &WindowSnapshot,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .pip
+            .drag
+            .is_some_and(|drag| drag.started && !drag.touch)
+            && !cx.has_active_drag()
+        {
+            self.release_pip(cx);
+        }
+        let Some(landing) = self.pip.landing else {
+            return;
+        };
+        let now = cx.background_executor().now();
+        let landed = active
+            .floating
+            .iter()
+            .any(|float| float.pane == landing.pane && FloatCells::from(float) == landing.target);
+        if landed || now.saturating_duration_since(landing.at) > std::time::Duration::from_secs(1) {
+            self.pip.landing = None;
+        } else {
+            window.request_animation_frame();
+        }
+    }
+
+    pub(super) fn touch_pip(
+        &mut self,
+        float: FloatingPaneSnapshot,
+        event: &zz_gpui::TouchDragEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event.phase {
+            zz_gpui::TouchPhase::Started => {
+                self.begin_pip(float, event.start_position, true, cx);
+                self.move_pip(event.position, cx);
+                window.prevent_default();
+            }
+            zz_gpui::TouchPhase::Moved => self.move_pip(event.position, cx),
+            zz_gpui::TouchPhase::Ended => self.release_pip(cx),
+            zz_gpui::TouchPhase::Cancelled => {
+                self.pip.drag = None;
+                cx.notify();
+            }
+        }
+        cx.stop_propagation();
+    }
+
+    pub(super) fn grab_pip(
+        &mut self,
+        pane: PaneId,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pip.drag.is_none_or(|drag| drag.pane != pane) {
+            let Some(float) = self.active_window(cx).and_then(|active| {
+                active
+                    .floating
+                    .iter()
+                    .find(|float| float.pane == pane)
+                    .copied()
+            }) else {
+                return;
+            };
+            self.begin_pip(float, position, false, cx);
+        }
+        if self.pip.drag.is_some_and(|drag| !drag.touch) {
+            self.move_pip(position, cx);
+        }
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "a PiP needs its window, float, content, stash, title and inset"
+    )]
+    fn pip_surface(
+        &self,
+        active: &WindowSnapshot,
+        float: FloatingPaneSnapshot,
+        content: AnyElement,
+        stashed: bool,
+        title: String,
+        inset: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) -> PipSurface {
+        let pane = float.pane;
+        let snapshot = active.panes.get(&pane);
+        let fill = self.terminals.get(&pane).map_or_else(
+            || cx.theme().pane_color(cx.theme().background),
+            |terminal| terminal.read(cx).fill(cx),
+        );
+        let surface = PipSurface::new(("web-float", pane.0), content)
+            .bordered(float.border_lines != PaneBorderLines::None)
+            .fill(fill)
+            .stashed(
+                stashed,
+                cx.listener(move |this, _: &zz_gpui::ClickEvent, _, cx| {
+                    this.pip.stage.restore(pane);
+                    this.command("select-pane", vec!["-t".into(), pane.to_string()], cx);
+                }),
+            );
+        if snapshot.is_some_and(|pane| draws_own_header(&pane.kind)) {
+            return surface;
+        }
+        let label = if title.is_empty() {
+            snapshot
+                .map(zz_client::navigation::pane_label)
+                .unwrap_or_default()
+        } else {
+            title
+        };
+        let icon = snapshot.map_or(zz_ui::IconName::SquareTerminal, |pane| {
+            zz_ui::pane::pane_kind_icon(&pane.kind)
+        });
+        let focused = active.active_pane == pane;
+        let writable = !self.connection.read(cx).core.attached_read_only();
+        let header = self.pane_header(pane, icon, label, focused, writable, true, cx);
+        surface.content_inset(inset.x, inset.y).header(
+            div()
+                .opacity(if focused {
+                    1.0
+                } else {
+                    self.preferences.pane_inactive_opacity
+                })
+                .child(header),
+        )
+    }
+
     pub(super) fn float_layer(
         &self,
         active: &zz_protocol::WindowSnapshot,
@@ -231,8 +478,59 @@ impl AppShell {
     ) -> Option<AnyElement> {
         let cell = self.cell_size(active, cx);
         let canvas = self.float_canvas_bounds.get().size;
+        let header = cx.theme().pane_header_height();
+        let laid = floats
+            .iter()
+            .filter_map(|float| {
+                let modal = active.modal.is_some_and(|modal| modal.pane == float.pane);
+                let thrown = self.pip.thrown(float.pane);
+                let landing = self.pip.landing(float.pane);
+                let placed_cells = thrown
+                    .map(|drag| drag.start)
+                    .or(landing.map(|landing| landing.target));
+                let placed_float = placed_cells.map_or(*float, |cells| FloatingPaneSnapshot {
+                    xoff: cells.xoff,
+                    yoff: cells.yoff,
+                    ..*float
+                });
+                let placed = float_placement(&placed_float, cell, canvas)?;
+                let mut frame = if modal {
+                    placed.frame
+                } else {
+                    PipLayout {
+                        window: (active.sx, active.sy),
+                        cell: size(px(cell.0), px(cell.1)),
+                        canvas,
+                        lines: float.border_lines,
+                        header,
+                    }
+                    .frame(FloatCells::from(&placed_float))
+                };
+                if let Some(drag) = thrown {
+                    frame.origin = drag.drawn_origin();
+                }
+                Some((*float, modal, placed, frame, thrown.is_some()))
+            })
+            .collect::<Vec<_>>();
+        let cards = laid
+            .iter()
+            .rev()
+            .filter(|(_, modal, ..)| !modal)
+            .map(|(float, _, _, frame, held)| PipCard {
+                pane: float.pane,
+                frame: *frame,
+                held: *held,
+            })
+            .collect::<Vec<_>>();
+        let arranged = self
+            .pip
+            .stage
+            .arrange(&cards, canvas, header)
+            .into_iter()
+            .map(|placed| (placed.pane, placed))
+            .collect::<std::collections::BTreeMap<_, _>>();
         let mut layer = Vec::new();
-        for float in floats {
+        for (float, modal, placed, mut frame, held) in laid {
             let Some(content) = panes.remove(&float.pane) else {
                 continue;
             };
@@ -261,18 +559,34 @@ impl AppShell {
                         .into_any_element(),
                 );
             }
-            let Some(placed) = float_placement(float, cell, canvas) else {
-                continue;
-            };
             let title = active
                 .panes
                 .get(&float.pane)
                 .filter(|_| float.border_status.is_on())
                 .map(|pane| float_title(&pane.border_status_text).left)
                 .unwrap_or_default();
-            let border_color = zz_ui::pane::pane_border_color(active.active_pane == float.pane, cx);
-            let frame = placed.frame;
-            let inset = placed.content.origin - frame.origin;
+            let inset = placed.content.origin - placed.frame.origin;
+            let bordered = float.border_lines != PaneBorderLines::None;
+            let surface = if modal {
+                let border_color =
+                    zz_ui::pane::pane_border_color(active.active_pane == float.pane, cx);
+                FloatingSurface::new(("web-float", float.pane.0), content, cx)
+                    .title(title)
+                    .content_inset(inset.x, inset.y)
+                    .edge_color(border_color)
+                    .bordered(bordered)
+                    .into_any_element()
+            } else {
+                let arranged = arranged.get(&float.pane).copied();
+                if let Some(arranged) = arranged {
+                    frame = arranged.frame;
+                }
+                let stashed = arranged.is_some_and(|arranged| arranged.stashed.is_some());
+                let surface = self.pip_surface(active, float, content, stashed, title, inset, cx);
+                moving_pane(float.pane, &self.pane_motion, surface)
+                    .held(held)
+                    .into_any_element()
+            };
             layer.push(
                 div()
                     .absolute()
@@ -280,13 +594,7 @@ impl AppShell {
                     .top(frame.origin.y)
                     .w(frame.size.width)
                     .h(frame.size.height)
-                    .child(
-                        FloatingSurface::new(("web-float", float.pane.0), content, cx)
-                            .title(title)
-                            .content_inset(inset.x, inset.y)
-                            .edge_color(border_color)
-                            .bordered(float.border_lines != PaneBorderLines::None),
-                    )
+                    .child(surface)
                     .into_any_element(),
             );
         }
@@ -295,9 +603,23 @@ impl AppShell {
                 .absolute()
                 .inset_0()
                 .overflow_hidden()
+                .on_drag_move::<PipGrab>(cx.listener(
+                    |this, event: &zz_gpui::DragMoveEvent<PipGrab>, _, cx| {
+                        let pane = event.drag(cx).pane;
+                        this.grab_pip(pane, event.event.position, cx);
+                    },
+                ))
                 .children(layer)
                 .into_any_element()
         })
+    }
+}
+
+pub(super) fn draws_own_header(kind: &zz_protocol::PaneKindSnapshot) -> bool {
+    match kind {
+        zz_protocol::PaneKindSnapshot::Agent(_) => true,
+        zz_protocol::PaneKindSnapshot::Browser(_) => cfg!(target_os = "ios"),
+        _ => false,
     }
 }
 

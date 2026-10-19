@@ -169,7 +169,7 @@ pub fn roles_json() -> String {
                                 .zip(origins)
                                 .map(|(prop, origin)| ((*prop).to_owned(), json!({
                                     "value": values[prop],
-                                    "from": origin.role.map_or_else(|| format!("picked {prop}s"), |role| role.label.to_owned()),
+                                    "from": origin.role.map_or_else(|| knobs::material_origin(prop, role, &materials), |role| role.label.to_owned()),
                                     "themed": origin.themed,
                                 })))
                                 .collect::<serde_json::Map<_, _>>(),

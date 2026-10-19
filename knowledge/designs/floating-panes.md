@@ -256,6 +256,8 @@ with `close_on_click`), and with `capture_keys` the chrome keymap forwards every
 Delete `popup_overlay` (`:3433`), `PopupPane` (`:575`), `TerminalView::new_popup` and the popup
 handling in `crates/zz/src/mux/client.rs:3992`.
 
+Since 2026-10-18 every non-modal float draws as a PiP instead, moved by a hover bar that can be thrown to a `move-pane -P` place ([PiP panes](/designs/pip-panes.md)); modal floats keep this surface and its grips.
+
 **Web and iOS** (`clients/app/src/app.rs`). The same, inside `workspace` (`:1514`), replacing
 `terminal_overlay` (`:2687`). Compact iPhone pages floats like any pane (a page zooms its pane; a
 window whose only pane is a float shows it at its cell); the modal and visible over-zoom floats draw

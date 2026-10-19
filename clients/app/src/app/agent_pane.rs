@@ -2593,7 +2593,19 @@ impl Render for AgentPane {
         .on_click(cx.listener(|this, _, window, cx| this.open_directory(window, cx)))
         .into_any_element();
         let pane = self.pane;
-        let composer =
+        let watch_only = self.connection.read(cx).agent_watch_only(self.pane);
+        let composer = if watch_only {
+            div()
+                .flex()
+                .flex_col()
+                .w_full()
+                .flex_none()
+                .gap_2()
+                .px_3()
+                .pb_3()
+                .children(prefix)
+                .into_any_element()
+        } else {
             AgentComposer {
                 input: self.input.clone(),
                 action: action.into_any_element(),
@@ -2642,7 +2654,9 @@ impl Render for AgentPane {
                         ))
                         .into_any_element()
                 }),
-            };
+            }
+            .into_any_element()
+        };
         let provider = self.descriptor.provider;
         let title = self
             .connection
@@ -2691,12 +2705,20 @@ impl Render for AgentPane {
                         && window.zoomed_pane.is_none()
                         && window.panes.len() > 1
                 });
+        let floats =
+            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), self.pane);
         let drag_handler = self.header_drag_handler.clone();
-        let mut drag = PaneDragSource::new(pane, title, can_drag, move |drag, window, cx| {
-            if let Some(handler) = &drag_handler {
-                handler(drag, window, cx);
-            }
-        });
+        let mut drag = PaneDragSource::new(
+            pane,
+            title,
+            can_drag || (writable && floats),
+            move |drag, window, cx| {
+                if let Some(handler) = &drag_handler {
+                    handler(drag, window, cx);
+                }
+            },
+        )
+        .floating(floats);
         if let Some(handler) = self.header_touch_drag_handler.clone() {
             drag = drag.touch(super::touch_drag_handle(move |event, window, cx| {
                 handler(event, window, cx);
@@ -2775,58 +2797,47 @@ impl Render for AgentPane {
             .rounded_tr(self.corner_radii.top_right)
             .rounded_bl(self.corner_radii.bottom_left)
             .rounded_br(self.corner_radii.bottom_right)
-            .bg(cx.theme().pane_background(cx.theme().background))
-            .child(agent_pane_header(
-                self.connection
-                    .read(cx)
-                    .core
-                    .snapshot()
-                    .sessions
-                    .iter()
-                    .flat_map(|session| &session.windows)
-                    .any(|window| window.active_pane == self.pane),
-                header_controls,
-                self.render_status(&state, connected, writable, cx),
-                zz_ui::h_flex().gap(px(zz_ui::CHROME_GAP)).children(
-                    [
-                        (
-                            "web-agent-split-bottom",
-                            IconName::PanelBottom,
-                            "Split bottom",
-                            "-v",
+            .map(|pane| {
+                pane.child(agent_pane_header(
+                    self.connection
+                        .read(cx)
+                        .core
+                        .snapshot()
+                        .sessions
+                        .iter()
+                        .flat_map(|session| &session.windows)
+                        .any(|window| window.active_pane == self.pane),
+                    header_controls,
+                    self.render_status(&state, connected, writable, cx),
+                    zz_ui::h_flex().gap(px(zz_ui::CHROME_GAP)).children(
+                        zz_ui::pane::pane_header_actions(floats).iter().map(
+                            |(action, icon, label)| {
+                                let action = *action;
+                                pane_header_icon_button(
+                                    ("web-agent-action", action as usize),
+                                    icon.clone(),
+                                    writable,
+                                    cx,
+                                )
+                                .tooltip(*label)
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        let commands = action.commands(this.pane);
+                                        this.connection.update(cx, |connection, cx| {
+                                            for command in commands {
+                                                connection.invoke(command, cx);
+                                            }
+                                        });
+                                        cx.stop_propagation();
+                                    },
+                                ))
+                            },
                         ),
-                        (
-                            "web-agent-split-right",
-                            IconName::PanelRight,
-                            "Split right",
-                            "-h",
-                        ),
-                    ]
-                    .into_iter()
-                    .map(|(id, icon, label, flag)| {
-                        pane_header_icon_button(id, icon, writable, cx)
-                            .tooltip(label)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.connection.update(cx, |connection, cx| {
-                                    connection.command(
-                                        "split-window",
-                                        vec![
-                                            "--kind".into(),
-                                            "picker".into(),
-                                            flag.to_owned(),
-                                            "-t".to_owned(),
-                                            this.pane.to_string(),
-                                        ],
-                                        cx,
-                                    );
-                                });
-                                cx.stop_propagation();
-                            }))
-                    }),
-                ),
-                !self.rows.is_empty(),
-                cx,
-            ))
+                    ),
+                    !self.rows.is_empty(),
+                    cx,
+                ))
+            })
             .child(
                 div()
                     .id("web-agent-timeline")

@@ -28,7 +28,7 @@ const SHADOW_KNOBS = [
     "float-spread",
     "float-strength",
 ];
-const MATERIAL_KNOBS = ["name", "radius", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "font"];
+const MATERIAL_KNOBS = ["name", "radius", "smoothing", "smoothed", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "highlight-strength", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],
@@ -48,6 +48,7 @@ const PROPS = [
     ["outline", "Outline"],
     ["shadow", "Shadow"],
     ["shape", "Shape"],
+    ["smoothing", "Smoothing"],
     ["hover", "Hover"],
     ["selected", "Selected"],
 ];
@@ -63,7 +64,7 @@ const KNOBS = [
     "zoom",
     "pane-gaps",
     "pane-margin",
-    "pane-opacity",
+    "pip-opacity",
     "pane-inactive-opacity",
     "pane-glow",
     "motion",
@@ -83,7 +84,7 @@ const DEFAULTS = {
     zoom: "1",
     "pane-gaps": "0",
     "pane-margin": "6",
-    "pane-opacity": "0.5",
+    "pip-opacity": "0.8",
     "pane-inactive-opacity": "0.7",
     "pane-glow": "1",
     motion: "1",
@@ -388,6 +389,7 @@ function paintSliders() {
 function applyKnobs() {
     form.querySelector("#glass-knobs").hidden = glassMaterial() === null;
     form.querySelector("#outline-note").hidden = glassMaterial() === null;
+    form.querySelector("#smoothed-note").hidden = knobValue("smoothed") !== "picked";
     form.querySelector("#outlines-note").hidden = knobValue("outlines") !== "picked";
     form.querySelector("#shadows-note").hidden = knobValue("shadows") !== "picked";
     const mode = shownMode();

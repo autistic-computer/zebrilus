@@ -4,7 +4,8 @@
 //! ordinary commands.
 
 use zz_protocol::{
-    CommandInvocation, FloatingPaneSnapshot, PaneBorderLines, PaneBorderStatus, PaneId, TmuxAlign,
+    CommandInvocation, FloatingPaneSnapshot, MuxSnapshot, PaneBorderLines, PaneBorderStatus,
+    PaneId, TmuxAlign,
 };
 
 /// A float's content box in window cells, borders outside it.
@@ -158,6 +159,25 @@ pub fn float_drag_preview(start: FloatCells, grip: FloatGrip, delta: (i32, i32))
     FloatCells { xoff, yoff, sx, sy }
 }
 
+#[must_use]
+pub fn float_drag_within(target: FloatCells, grip: FloatGrip, max: (u16, u16)) -> FloatCells {
+    if grip.is_move() {
+        return target;
+    }
+    let axis = |offset: i32, size: u16, near: bool, max: u16| {
+        let fitted = size.min(max.max(1));
+        let offset = if near {
+            offset + i32::from(size - fitted)
+        } else {
+            offset
+        };
+        (offset, fitted)
+    };
+    let (xoff, sx) = axis(target.xoff, target.sx, grip.left, max.0);
+    let (yoff, sy) = axis(target.yoff, target.sy, grip.top, max.1);
+    FloatCells { xoff, yoff, sx, sy }
+}
+
 fn drag_axis(offset: i32, size: u16, near: bool, far: bool, delta: i32) -> (i32, u16) {
     let size = i32::from(size);
     let (offset, size) = if near {
@@ -228,6 +248,171 @@ pub fn float_drag_command(
         "resize-pane",
         resize_pane.split(' ').skip(1).map(str::to_owned),
     )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FloatPlace {
+    TopLeft,
+    TopCentre,
+    TopRight,
+    CentreLeft,
+    Centre,
+    CentreRight,
+    BottomLeft,
+    BottomCentre,
+    BottomRight,
+}
+
+impl FloatPlace {
+    pub const ALL: [Self; 9] = [
+        Self::TopLeft,
+        Self::TopCentre,
+        Self::TopRight,
+        Self::CentreLeft,
+        Self::Centre,
+        Self::CentreRight,
+        Self::BottomLeft,
+        Self::BottomCentre,
+        Self::BottomRight,
+    ];
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::TopLeft => "top-left",
+            Self::TopCentre => "top-centre",
+            Self::TopRight => "top-right",
+            Self::CentreLeft => "centre-left",
+            Self::Centre => "centre",
+            Self::CentreRight => "centre-right",
+            Self::BottomLeft => "bottom-left",
+            Self::BottomCentre => "bottom-centre",
+            Self::BottomRight => "bottom-right",
+        }
+    }
+
+    #[must_use]
+    pub fn cells(
+        self,
+        float: FloatCells,
+        window: (u16, u16),
+        lines: PaneBorderLines,
+    ) -> FloatCells {
+        let border = i32::from(lines != PaneBorderLines::None);
+        let (wx, wy) = (i32::from(window.0), i32::from(window.1));
+        let (px, py) = (i32::from(float.sx), i32::from(float.sy));
+        let left = border;
+        let centre_x = (wx - px) / 2;
+        let right = wx - px - border;
+        let top = border;
+        let centre_y = (wy - py) / 2;
+        let bottom = wy - py - border;
+        let (xoff, yoff) = match self {
+            Self::TopLeft => (left, top),
+            Self::TopCentre => (centre_x, top),
+            Self::TopRight => (right, top),
+            Self::CentreLeft => (left, centre_y),
+            Self::Centre => (centre_x, centre_y),
+            Self::CentreRight => (right, centre_y),
+            Self::BottomLeft => (left, bottom),
+            Self::BottomCentre => (centre_x, bottom),
+            Self::BottomRight => (right, bottom),
+        };
+        FloatCells {
+            xoff,
+            yoff,
+            ..float
+        }
+    }
+
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the third is clamped to 0..=2 before it indexes"
+    )]
+    pub fn zone(point: (f32, f32), window: (u16, u16)) -> Self {
+        let third = |at: f32, size: u16| {
+            (at / f32::from(size.max(1)) * 3.0).floor().clamp(0.0, 2.0) as usize
+        };
+        Self::ALL[third(point.1, window.1) * 3 + third(point.0, window.0)]
+    }
+
+    #[must_use]
+    pub fn command(self, pane: PaneId) -> CommandInvocation {
+        CommandInvocation::new(
+            "move-pane",
+            [
+                "-t".to_owned(),
+                pane.to_string(),
+                "-P".to_owned(),
+                self.name().to_owned(),
+            ],
+        )
+    }
+}
+
+impl FloatCells {
+    #[must_use]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "window cell offsets are far below f32's exact integer range"
+    )]
+    pub fn centre(self) -> (f32, f32) {
+        (
+            self.xoff as f32 + f32::from(self.sx) / 2.0,
+            self.yoff as f32 + f32::from(self.sy) / 2.0,
+        )
+    }
+}
+
+#[must_use]
+pub fn tile_pane_command(pane: PaneId) -> CommandInvocation {
+    CommandInvocation::new(
+        "join-pane",
+        [
+            "-s".to_owned(),
+            pane.to_string(),
+            "-t".to_owned(),
+            pane.to_string(),
+        ],
+    )
+}
+
+#[must_use]
+pub fn zoom_pane_command(pane: PaneId) -> CommandInvocation {
+    CommandInvocation::new(
+        "resize-pane",
+        ["-Z".to_owned(), "-t".to_owned(), pane.to_string()],
+    )
+}
+
+#[must_use]
+pub fn float_pane_commands(pane: PaneId) -> [CommandInvocation; 2] {
+    [
+        CommandInvocation::new(
+            "break-pane",
+            [
+                "-W".to_owned(),
+                "-x".to_owned(),
+                "33%".to_owned(),
+                "-y".to_owned(),
+                "33%".to_owned(),
+                "-s".to_owned(),
+                pane.to_string(),
+            ],
+        ),
+        FloatPlace::BottomRight.command(pane),
+    ]
+}
+
+#[must_use]
+pub fn pane_floats(snapshot: &MuxSnapshot, pane: PaneId) -> bool {
+    snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .any(|window| window.floating.iter().any(|float| float.pane == pane))
 }
 
 #[cfg(test)]
@@ -513,10 +698,76 @@ mod tests {
     }
 
     #[test]
+    fn places_match_move_pane_p_on_an_80_by_24_window() {
+        let window = (80, 24);
+        let at = |place: FloatPlace, lines| {
+            let cells = place.cells(FLOAT, window, lines);
+            (cells.xoff, cells.yoff)
+        };
+        let single = PaneBorderLines::Single;
+        assert_eq!(at(FloatPlace::TopLeft, single), (1, 1));
+        assert_eq!(at(FloatPlace::TopCentre, single), (30, 1));
+        assert_eq!(at(FloatPlace::TopRight, single), (59, 1));
+        assert_eq!(at(FloatPlace::CentreLeft, single), (1, 9));
+        assert_eq!(at(FloatPlace::Centre, single), (30, 9));
+        assert_eq!(at(FloatPlace::CentreRight, single), (59, 9));
+        assert_eq!(at(FloatPlace::BottomLeft, single), (1, 17));
+        assert_eq!(at(FloatPlace::BottomCentre, single), (30, 17));
+        assert_eq!(at(FloatPlace::BottomRight, single), (59, 17));
+        assert_eq!(at(FloatPlace::BottomRight, PaneBorderLines::None), (60, 18));
+        assert_eq!(FloatPlace::Centre.cells(FLOAT, window, single).sx, FLOAT.sx);
+    }
+
+    #[test]
+    fn the_window_splits_into_nine_zones_and_a_place_lands_with_one_move_pane() {
+        let window = (90, 30);
+        assert_eq!(
+            FloatPlace::zone((89.0, 29.0), window),
+            FloatPlace::BottomRight
+        );
+        assert_eq!(FloatPlace::zone((45.0, 15.0), window), FloatPlace::Centre);
+        assert_eq!(
+            FloatPlace::zone((29.9, 10.0), window),
+            FloatPlace::CentreLeft
+        );
+        assert_eq!(FloatPlace::zone((30.0, 9.9), window), FloatPlace::TopCentre);
+        assert_eq!(FloatPlace::zone((-200.0, 3.0), window), FloatPlace::TopLeft);
+        assert_eq!(
+            FloatPlace::zone((500.0, 500.0), window),
+            FloatPlace::BottomRight
+        );
+        assert_eq!(
+            words(&FloatPlace::TopCentre.command(PaneId(4))),
+            "move-pane -t %4 -P top-centre"
+        );
+    }
+
+    #[test]
+    fn float_asks_for_a_third_of_the_window_in_the_bottom_right_corner() {
+        let [float, place] = float_pane_commands(PaneId(7));
+        assert_eq!(words(&float), "break-pane -W -x 33% -y 33% -s %7");
+        assert_eq!(words(&place), "move-pane -t %7 -P bottom-right");
+    }
+
+    #[test]
     fn a_resize_never_collapses_the_content() {
         let target = float_drag_preview(FLOAT, grip("l"), (50, 0));
         assert_eq!(target.sx, 1);
         assert_eq!(target.xoff, FLOAT.xoff + i32::from(FLOAT.sx) - 1);
+    }
+
+    #[test]
+    fn a_resize_stops_at_the_largest_float_that_fits_and_keeps_the_far_edge() {
+        let grown = float_drag_preview(FLOAT, grip("lb"), (-30, 40));
+        let fitted = float_drag_within(grown, grip("lb"), (40, 16));
+        assert_eq!((fitted.sx, fitted.sy), (40, 16));
+        assert_eq!(
+            fitted.xoff + i32::from(fitted.sx),
+            FLOAT.xoff + i32::from(FLOAT.sx)
+        );
+        assert_eq!(fitted.yoff, FLOAT.yoff);
+        let small = float_drag_preview(FLOAT, grip("r"), (2, 0));
+        assert_eq!(float_drag_within(small, grip("r"), (40, 16)), small);
     }
 
     #[test]

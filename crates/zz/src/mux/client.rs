@@ -2394,6 +2394,41 @@ impl MuxClient {
         self.handle_message(HostId::LOCAL, message, cx);
     }
 
+    #[cfg(test)]
+    #[allow(
+        clippy::arc_with_non_send_sync,
+        reason = "the fake host lives on the test thread, like the connection it stands in for"
+    )]
+    pub(crate) fn connect_for_test(&mut self) {
+        let host = self.attached_host;
+        let connection = self.connections.get_mut(&host).expect("host connection");
+        connection.client = None;
+        connection.fake_client = Some(Arc::new(FakeConnectedHost::new(ServerHello {
+            protocol_version: PROTOCOL_VERSION,
+            server_id: 1,
+            client_id: zz_protocol::ClientId(1),
+            client_instance_id: zz_protocol::ClientInstanceId(1),
+            capabilities: Vec::new(),
+            appearance: TerminalAppearance::default(),
+            appearance_provenance: AppearanceProvenance::default(),
+            mux_options: zz_protocol::MuxOptions::default(),
+            status: StatusLine::default(),
+            key_tables: Vec::new(),
+            clock: 0,
+        })));
+        connection.reader_thread = None;
+        connection.state = HostState::Connected;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn executed_for_test(&self) -> Vec<CommandInvocation> {
+        self.connections
+            .get(&self.attached_host)
+            .and_then(|connection| connection.fake_client.as_ref())
+            .map(|fake| fake.commands.borrow().clone())
+            .unwrap_or_default()
+    }
+
     /// What a cross-host attach leaves behind before the new daemon answers:
     /// the machine has moved and the outgoing snapshot is gone.
     #[cfg(test)]

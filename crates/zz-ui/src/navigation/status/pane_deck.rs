@@ -25,13 +25,7 @@ pub struct StatusPaneEntry {
 
 impl StatusPaneEntry {
     pub fn from_pane(pane: &zz_client::StatusBarPane, select: StatusAction) -> Self {
-        let icon = match &pane.kind {
-            PaneKindSnapshot::Terminal => IconName::SquareTerminal,
-            PaneKindSnapshot::Browser(_) => IconName::Globe,
-            PaneKindSnapshot::Agent(agent) => crate::pane::agent_provider_icon(agent.provider),
-            PaneKindSnapshot::Editor(_) => IconName::File,
-            PaneKindSnapshot::Picker => IconName::Plus,
-        };
+        let icon = crate::pane::pane_kind_icon(&pane.kind);
         let detail = match &pane.kind {
             PaneKindSnapshot::Terminal => format!("Terminal · {}", pane.id),
             PaneKindSnapshot::Browser(browser) => format!(

@@ -5,9 +5,9 @@ use zz_gpui::{
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div, prelude::*,
     px,
 };
-use zz_protocol::{AgentProvider, PaneId};
+use zz_protocol::{AgentProvider, AgentTaskWire, PaneId};
 use zz_ui::{
-    ActiveTheme as _, CHROME_GAP, IconName,
+    CHROME_GAP,
     agent::{
         AgentPaneStatus, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind,
         AgentToolStatus as Status, TimelineRow, agent_pane_header, agent_status_pill,
@@ -43,25 +43,36 @@ let share = (width - floor).max(px(0.0)) / unpinned.max(1.0);\n\
 ```\n\n\
 The new `thirty_tabs_three_pinned` test covers it.";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Look {
+    Page,
+    Tiled,
+    Floating,
+}
+
 pub struct FullPane {
     store: Entity<AgentTimelineStore>,
     rows: Arc<Vec<TimelineRow>>,
     list: ListState,
     input: Entity<InputState>,
     tray: Option<TrayPanel>,
-    embedded: bool,
+    look: Look,
     _observe: Subscription,
 }
 
 pub fn full_pane(window: &mut Window, cx: &mut App) -> AnyView {
-    build(false, window, cx)
+    build(Look::Page, window, cx)
 }
 
 pub(crate) fn embedded_pane(window: &mut Window, cx: &mut App) -> AnyView {
-    build(true, window, cx)
+    build(Look::Tiled, window, cx)
 }
 
-fn build(embedded: bool, window: &mut Window, cx: &mut App) -> AnyView {
+pub(crate) fn floating_pane(window: &mut Window, cx: &mut App) -> AnyView {
+    build(Look::Floating, window, cx)
+}
+
+fn build(look: Look, window: &mut Window, cx: &mut App) -> AnyView {
     let input = composer_input("", window, cx);
     cx.new(|cx| {
         let rows = fold_timeline_rows(&[
@@ -98,7 +109,7 @@ fn build(embedded: bool, window: &mut Window, cx: &mut App) -> AnyView {
             store,
             input,
             tray: None,
-            embedded,
+            look,
             _observe: observe,
         }
     })
@@ -131,19 +142,11 @@ impl Render for FullPane {
         let leading = agent_pane_title(
             AgentProvider::ClaudeCode,
             agent_thread_title_editor("full-pane-title", TITLE, true, |_, _| {}, window, cx),
-            PaneDragSource::new(PaneId(1), TITLE, true, |_, _, _| {}),
+            PaneDragSource::new(PaneId(1), TITLE, true, |_, _, _| {})
+                .floating(self.look == Look::Floating),
             |_, _| {},
         );
-        let trailing = h_flex()
-            .gap(px(CHROME_GAP))
-            .child(
-                pane_header_icon_button("full-pane-split-bottom", IconName::PanelBottom, true, cx)
-                    .tooltip("Split bottom"),
-            )
-            .child(
-                pane_header_icon_button("full-pane-split-right", IconName::PanelRight, true, cx)
-                    .tooltip("Split right"),
-            );
+        let trailing = header_actions("full-pane", self.look == Look::Floating, cx);
         let status = agent_status_pill(
             "full-pane-status",
             AgentPaneStatus::Running,
@@ -171,12 +174,12 @@ impl Render for FullPane {
             window,
             cx,
         );
-        let frame = if self.embedded {
-            div()
+        let frame = match self.look {
+            Look::Page => pane_frame(cx).h(px(720.0)),
+            Look::Tiled => div().size_full(),
+            Look::Floating => div()
                 .size_full()
-                .bg(cx.theme().pane_background(cx.theme().background))
-        } else {
-            pane_frame(cx).h(px(720.0))
+                .rounded(zz_ui::pip::pip_content_radius(cx)),
         };
         frame
             .flex()
@@ -208,5 +211,163 @@ impl Render for FullPane {
                     ),
             )
             .child(composer)
+    }
+}
+
+pub struct FeedPane {
+    store: Entity<AgentTimelineStore>,
+    rows: Arc<Vec<TimelineRow>>,
+    list: ListState,
+    tray: Option<TrayPanel>,
+    _observe: Subscription,
+}
+
+const FEED_CHILDREN: [(&str, &str); 2] = [
+    ("child-1", "Pauli · read mux a"),
+    ("child-2", "Galileo · read mux b"),
+];
+
+fn header_actions(id: &'static str, floats: bool, cx: &App) -> zz_gpui::Div {
+    h_flex()
+        .gap(px(CHROME_GAP))
+        .children(
+            zz_ui::pane::pane_header_actions(floats)
+                .iter()
+                .map(|(action, icon, label)| {
+                    pane_header_icon_button((id, *action as usize), icon.clone(), true, cx)
+                        .tooltip(*label)
+                }),
+        )
+}
+
+pub(crate) fn feed_pane(cx: &mut App) -> AnyView {
+    cx.new(|cx| {
+        let rows = fold_timeline_rows(&[
+            user(1, "explorer · map the pane headers"),
+            done(2, Kind::Search, "rg -n \"pane_header_icon_button\" crates"),
+            done(3, Kind::Read, "Read crates/zz-ui/src/pane.rs"),
+            assistant(
+                4,
+                "Terminal, agent and browser headers all build on `pane_header_icon_button`.",
+            ),
+            user(5, FEED_CHILDREN[0].1),
+            done(
+                6,
+                Kind::Execute,
+                "sleep 2; cat crates/zz-mux/src/command/display.rs",
+            ),
+            done(
+                7,
+                Kind::Execute,
+                "sleep 2; cat crates/zz-mux/src/command/format.rs",
+            ),
+            tool(
+                8,
+                Kind::Execute,
+                Status::Running,
+                "sleep 2; cat crates/zz-mux/src/command/listing.rs",
+            )
+            .entry(),
+        ])
+        .rows;
+        let store = cx.new(|_| AgentTimelineStore::default());
+        let observe = cx.observe(&store, |_, _, cx| cx.notify());
+        FeedPane {
+            list: ListState::new(rows.len(), ListAlignment::Bottom, px(1200.0)),
+            rows,
+            store,
+            tray: Some(TrayPanel::Tasks),
+            _observe: observe,
+        }
+    })
+    .into()
+}
+
+impl Render for FeedPane {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let phase = spinner_phase(cx.entity_id(), cx);
+        let entity = cx.entity();
+        let tasks = FEED_CHILDREN
+            .iter()
+            .map(|(id, description)| AgentTaskWire {
+                id: (*id).into(),
+                kind: "agent".into(),
+                description: (*description).into(),
+                tool_call_id: None,
+            })
+            .collect::<Vec<_>>();
+        let tray = task_tray(
+            "feed-pane-tray",
+            None,
+            &tasks,
+            self.tray,
+            true,
+            phase,
+            move |action, _, cx| {
+                if let TaskTrayAction::Toggle(panel) = action {
+                    entity.update(cx, |view, cx| {
+                        view.tray = (view.tray != Some(panel)).then_some(panel);
+                        cx.notify();
+                    });
+                }
+            },
+            cx,
+        );
+        let leading = agent_pane_title(
+            AgentProvider::Codex,
+            agent_thread_title_editor("feed-pane-title", "Subagents", false, |_, _| {}, window, cx),
+            PaneDragSource::new(PaneId(7), "Subagents", true, |_, _, _| {}).floating(true),
+            |_, _| {},
+        );
+        let trailing = header_actions("feed-pane", true, cx);
+        let status = agent_status_pill(
+            "feed-pane-status",
+            AgentPaneStatus::Running,
+            phase,
+            None::<Rc<dyn Fn(&mut Window, &mut App)>>,
+            cx,
+        )
+        .into_any_element();
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .rounded(zz_ui::pip::pip_content_radius(cx))
+            .child(agent_pane_header(
+                true,
+                leading,
+                Some(status),
+                trailing,
+                true,
+                cx,
+            ))
+            .child(
+                div()
+                    .id("feed-pane-timeline")
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_hidden()
+                    .child(
+                        AgentTimeline::new(
+                            self.rows.clone(),
+                            self.list.clone(),
+                            self.store.clone(),
+                        )
+                        .active_turn(true)
+                        .bottom_padding(COMPOSER_OUTER_PADDING),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .flex_none()
+                    .gap_2()
+                    .px(px(COMPOSER_OUTER_PADDING))
+                    .pb(px(COMPOSER_OUTER_PADDING))
+                    .children(tray),
+            )
     }
 }

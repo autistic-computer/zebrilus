@@ -186,13 +186,6 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                                 .snap_to_window_with_margin(px(8.))
                                                 .anchor(anchor)
                                                 .when_some(menu_view, |this, menu| {
-                                                    if !menu
-                                                        .focus_handle(cx)
-                                                        .contains_focused(window, cx)
-                                                    {
-                                                        menu.focus_handle(cx).focus(window, cx);
-                                                    }
-
                                                     this.child(menu.clone())
                                                 }),
                                         ),
@@ -295,6 +288,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                 menu.update(cx, |menu, cx| {
                                     menu.set_previous_focus(previous_focus_handle, cx);
                                 });
+                                menu.focus_handle(cx).focus(window, cx);
 
                                 let _subscription = window.subscribe(&menu, cx, {
                                     let shared_state = Rc::downgrade(&shared_state);
@@ -386,6 +380,74 @@ mod tests {
                         ),
                 )
         }
+    }
+
+    struct FocusRecordingRoot {
+        content_focus: FocusHandle,
+        focused_renders: Rc<Cell<usize>>,
+    }
+
+    impl Render for FocusRecordingRoot {
+        fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            if self.content_focus.is_focused(window) {
+                self.focused_renders.set(self.focused_renders.get() + 1);
+            }
+            div()
+                .size_full()
+                .child(
+                    div()
+                        .id("content")
+                        .h(px(40.))
+                        .track_focus(&self.content_focus),
+                )
+                .child(
+                    div()
+                        .id("tab")
+                        .h(px(60.))
+                        .context_menu(|menu, _, _| menu.menu("Close", Box::new(RemoveTab))),
+                )
+        }
+    }
+
+    #[zz_gpui::test]
+    fn menu_takes_focus_before_its_first_frame(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let focused_renders = Rc::new(Cell::new(0));
+        let (root, cx) = cx.add_window_view({
+            let focused_renders = focused_renders.clone();
+            move |window, cx| {
+                let content_focus = cx.focus_handle();
+                content_focus.focus(window, cx);
+                FocusRecordingRoot {
+                    content_focus,
+                    focused_renders,
+                }
+            }
+        });
+        let content_focus = root.read_with(cx, |root, _| root.content_focus.clone());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert!(focused_renders.get() > 0);
+        focused_renders.set(0);
+
+        cx.simulate_event(MouseDownEvent {
+            button: MouseButton::Right,
+            position: point(px(50.), px(70.)),
+            modifiers: Default::default(),
+            click_count: 1,
+            first_mouse: false,
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        assert_eq!(
+            focused_renders.get(),
+            0,
+            "focus must leave the content before the frame that draws the menu"
+        );
+        cx.update(|window, cx| {
+            let focused = window.focused(cx);
+            assert!(focused.is_some() && focused.as_ref() != Some(&content_focus));
+        });
     }
 
     #[zz_gpui::test]

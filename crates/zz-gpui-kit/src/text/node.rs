@@ -10,10 +10,11 @@ use std::{
 
 use markdown::mdast;
 use zz_gpui::{
-    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, HighlightStyle, Hsla,
-    InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement, Pixels,
-    ScrollHandle, SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _,
-    Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
+    AnyElement, App, Bounds, DefiniteLength, Div, Element, ElementId, FontStyle, FontWeight,
+    GlobalElementId, HighlightStyle, Hsla, InspectorElementId, InteractiveElement as _,
+    IntoElement, LayoutId, Length, ObjectFit, Overflow, ParentElement, Pixels, ScrollHandle,
+    SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div,
+    img, prelude::FluentBuilder as _, px, relative, rems,
 };
 
 use crate::{
@@ -29,13 +30,15 @@ use crate::{
 use super::{
     TextViewStyle,
     document::NodeRenderOptions,
-    inline::{Inline, InlineState},
+    global::TextGlobal,
+    inline::{Inline, InlineState, point_in_text_selection},
     inline_flow::{InlineFlow, InlineFlowItem},
     markdown_ext::{MarkdownExtensions, MarkdownNode},
     scroll_area::horizontal_scroll_area,
     text_view::CodeBlockActionsFn,
     utils::list_item_prefix,
     veil::{StreamingVeil, VeilKey},
+    window_selection,
 };
 use crate::Colorize as _;
 
@@ -75,7 +78,10 @@ pub(crate) enum BlockNode {
         span: Option<Span>,
     },
     CodeBlock(CodeBlock),
-    Custom(MarkdownNode),
+    Custom {
+        node: MarkdownNode,
+        state: BlockState,
+    },
     Table(Table),
     Break {
         html: bool,
@@ -91,6 +97,136 @@ pub(crate) enum BlockNode {
         span: Option<Span>,
     },
     Unknown,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct BlockState {
+    selected: Arc<Mutex<bool>>,
+}
+
+impl BlockState {
+    fn is_selected(&self) -> bool {
+        self.selected.lock().is_ok_and(|selected| *selected)
+    }
+
+    fn set_selected(&self, value: bool) {
+        if let Ok(mut selected) = self.selected.lock() {
+            *selected = value;
+        }
+    }
+}
+
+impl PartialEq for BlockState {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+struct CustomBlockElement {
+    content: AnyElement,
+    state: BlockState,
+}
+
+impl IntoElement for CustomBlockElement {
+    type Element = Self;
+
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+impl Element for CustomBlockElement {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        (self.content.request_layout(window, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.content.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let view = TextGlobal::current_view(cx).cloned();
+        let selectable = view
+            .as_ref()
+            .is_some_and(|view| view.read(cx).is_selectable());
+        let selected = selectable
+            && view.as_ref().is_some_and(|view| {
+                let state = view.read(cx);
+                if state.is_all_selected() {
+                    return true;
+                }
+                if state.preserves_inline_selection() {
+                    return self.state.is_selected();
+                }
+                state
+                    .selection_points(window, cx)
+                    .is_some_and(|(start, end)| custom_block_is_selected(bounds, start, end))
+            });
+        self.state.set_selected(selected);
+        if let Some(view) = view.as_ref().filter(|_| selectable) {
+            let visible = bounds.intersect(&window.content_mask().bounds);
+            if visible.size.width > Pixels::ZERO && visible.size.height > Pixels::ZERO {
+                window_selection::register_selectable_text_inline(view, vec![visible], window, cx);
+            }
+        }
+        self.content.paint(window, cx);
+        if selected {
+            window.paint_quad(zz_gpui::fill(bounds, cx.theme().foreground.wash()));
+        }
+    }
+}
+
+fn custom_block_is_selected(
+    bounds: Bounds<Pixels>,
+    start: zz_gpui::Point<Pixels>,
+    end: zz_gpui::Point<Pixels>,
+) -> bool {
+    let (start_inside, end_inside) = (bounds.contains(&start), bounds.contains(&end));
+    start != end
+        && !(start_inside && end_inside)
+        && (start_inside
+            || end_inside
+            || point_in_text_selection(
+                bounds.origin,
+                bounds.size.width,
+                start,
+                end,
+                bounds.size.height,
+            ))
 }
 
 #[derive(Clone, Copy)]
@@ -120,7 +256,7 @@ impl BlockNode {
             BlockNode::List { span, .. } => *span,
             BlockNode::ListItem { span, .. } => *span,
             BlockNode::CodeBlock(code_block) => code_block.span,
-            BlockNode::Custom(el) => el.span,
+            BlockNode::Custom { node, .. } => node.span,
             BlockNode::Table(table) => table.span,
             BlockNode::Break { span, .. } => *span,
             BlockNode::HorizontalRule { span, .. } => *span,
@@ -209,8 +345,8 @@ impl BlockNode {
                     text.push('\n');
                 }
             }
-            BlockNode::Custom(node) => {
-                if let BlockTextKind::All = kind {
+            BlockNode::Custom { node, state } => {
+                if matches!(kind, BlockTextKind::All) || state.is_selected() {
                     let content = node.as_text();
                     if !content.is_empty() {
                         text.push_str(content);
@@ -256,8 +392,8 @@ impl BlockNode {
                 }
             }
             BlockNode::CodeBlock(code_block) => code_block.clear_selection(),
-            BlockNode::Custom { .. }
-            | BlockNode::Definition { .. }
+            BlockNode::Custom { state, .. } => state.set_selected(false),
+            BlockNode::Definition { .. }
             | BlockNode::Break { .. }
             | BlockNode::HorizontalRule { .. }
             | BlockNode::Unknown { .. } => {}
@@ -1242,7 +1378,7 @@ impl BlockNode {
                 }
             }
             BlockNode::HorizontalRule { .. } => "---".to_string(),
-            BlockNode::Custom(node) => node.to_markdown(),
+            BlockNode::Custom { node, .. } => node.to_markdown(),
             BlockNode::Definition {
                 identifier,
                 url,
@@ -1383,7 +1519,7 @@ impl BlockNode {
                             | BlockNode::Heading { .. }
                             | BlockNode::Blockquote { .. }
                             | BlockNode::CodeBlock(_)
-                            | BlockNode::Custom(_)
+                            | BlockNode::Custom { .. }
                             | BlockNode::Table(_)
                             | BlockNode::HorizontalRule { .. } => {
                                 let block = child.render_block(
@@ -1433,66 +1569,38 @@ impl BlockNode {
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
-        const DEFAULT_LENGTH: usize = 5;
-
         let table = match item {
             BlockNode::Table(table) => table,
             _ => return div().into_any_element(),
         };
 
-        let mut col_lens: Vec<usize> = vec![];
-        for row in table.children.iter() {
-            for (ix, cell) in row.children.iter().enumerate() {
-                if col_lens.len() <= ix {
-                    col_lens.push(DEFAULT_LENGTH);
-                }
-                col_lens[ix] = col_lens[ix].max(cell.children.text_len());
-            }
-        }
+        let col_count = table
+            .children
+            .iter()
+            .map(|row| row.children.len())
+            .max()
+            .unwrap_or(0);
+        let col_w = measure_table_columns(table, col_count, window);
 
         if matches!(node_cx.style.table.overflow.x, Some(Overflow::Scroll)) {
-            Self::render_scroll_table(table, col_lens.len(), options, node_cx, window, cx)
+            Self::render_scroll_table(table, &col_w, options, node_cx, window, cx)
         } else {
-            Self::render_wrap_table(table, &col_lens, options, node_cx, window, cx)
+            Self::render_wrap_table(table, &col_w, options, node_cx, window, cx)
         }
     }
 
     fn render_scroll_table(
         table: &Table,
-        col_count: usize,
+        col_w: &[f32],
         options: &NodeRenderOptions,
         node_cx: &NodeContext,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        const CELL_PAD_PX: f32 = 16.0; // px_2 horizontal padding
-        const CELL_MIN_PX: f32 = 48.0;
-        const CELL_MAX_PX: f32 = 480.0;
-
-        let text_style = window.text_style();
-        let font_size = text_style.font_size.to_pixels(window.rem_size());
-        let mut col_w = vec![CELL_MIN_PX; col_count];
-        for row in table.children.iter() {
-            for (ix, cell) in row.children.iter().enumerate() {
-                let Some(slot) = col_w.get_mut(ix) else {
-                    continue;
-                };
-                let mut w = 0.0_f32;
-                for line in cell.children.text().split('\n') {
-                    let line = line.trim();
-                    if line.is_empty() {
-                        continue;
-                    }
-                    let run = text_style.to_run(line.len());
-                    let line_w = window
-                        .text_system()
-                        .layout_line(line, font_size, &[run], None)
-                        .width;
-                    w = w.max(f32::from(line_w));
-                }
-                *slot = slot.max((w + CELL_PAD_PX).min(CELL_MAX_PX));
-            }
-        }
+        let col_w = col_w
+            .iter()
+            .map(|width| width.min(CELL_MAX_PX))
+            .collect::<Vec<_>>();
         let total_w: f32 = col_w.iter().sum();
 
         let style = &node_cx.style;
@@ -1566,14 +1674,12 @@ impl BlockNode {
 
     fn render_wrap_table(
         table: &Table,
-        col_lens: &[usize],
+        col_w: &[f32],
         options: &NodeRenderOptions,
         node_cx: &NodeContext,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        const MAX_LENGTH: usize = 150;
-
         let style = &node_cx.style;
         let row_count = table.children.len();
         let mut rows = Vec::with_capacity(row_count);
@@ -1582,11 +1688,11 @@ impl BlockNode {
             for (ix, cell) in row.children.iter().enumerate() {
                 let align = table.column_align(ix);
                 let is_last_col = ix == row.children.len() - 1;
-                let len = col_lens
+                let width = col_w
                     .get(ix)
                     .copied()
-                    .unwrap_or(MAX_LENGTH)
-                    .min(MAX_LENGTH);
+                    .unwrap_or(WRAP_CELL_MAX_PX)
+                    .min(WRAP_CELL_MAX_PX);
 
                 cells.push(
                     div()
@@ -1595,7 +1701,7 @@ impl BlockNode {
                         .when(align == ColumnumnAlign::Center, |this| this.text_center())
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
                         .min_w_16()
-                        .w(Length::Definite(relative(len as f32)))
+                        .w(Length::Definite(relative(width)))
                         .px_2()
                         .py_1()
                         .when(!is_last_col, |this| this.rule_on(RULE, Edge::Right, cx))
@@ -1743,13 +1849,19 @@ impl BlockNode {
                 })
                 .into_any_element(),
             BlockNode::CodeBlock(code_block) => code_block.render(&options, node_cx, window, cx),
-            BlockNode::Custom(node) => {
+            BlockNode::Custom { node, state } => {
                 let inner = match node_cx.markdown_extensions.render_block(node, window, cx) {
                     Some(rendered) => rendered,
                     None => div().child(node.as_text().to_string()).into_any_element(),
                 };
 
-                div().pb(mb).child(inner).into_any_element()
+                div()
+                    .pb(mb)
+                    .child(CustomBlockElement {
+                        content: inner,
+                        state: state.clone(),
+                    })
+                    .into_any_element()
             }
             BlockNode::Table { .. } => {
                 Self::render_table(self, &options, node_cx, window, cx).into_any_element()
@@ -1774,6 +1886,39 @@ impl BlockNode {
             }
         }
     }
+}
+
+const CELL_PAD_PX: f32 = 16.0;
+const CELL_MIN_PX: f32 = 48.0;
+const CELL_MAX_PX: f32 = 480.0;
+const WRAP_CELL_MAX_PX: f32 = 1200.0;
+
+fn measure_table_columns(table: &Table, col_count: usize, window: &mut Window) -> Vec<f32> {
+    let text_style = window.text_style();
+    let font_size = text_style.font_size.to_pixels(window.rem_size());
+    let mut col_w = vec![CELL_MIN_PX; col_count];
+    for row in table.children.iter() {
+        for (ix, cell) in row.children.iter().enumerate() {
+            let Some(slot) = col_w.get_mut(ix) else {
+                continue;
+            };
+            let mut w = 0.0_f32;
+            for line in cell.children.text().split('\n') {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let run = text_style.to_run(line.len());
+                let line_w = window
+                    .text_system()
+                    .layout_line(line, font_size, &[run], None)
+                    .width;
+                w = w.max(f32::from(line_w));
+            }
+            *slot = slot.max(w + CELL_PAD_PX);
+        }
+    }
+    col_w
 }
 
 fn figure<E: Styled>(element: E, role: Option<SurfaceRole>, cx: &App) -> E {
@@ -1818,6 +1963,148 @@ mod tests {
             highlights
                 .iter()
                 .all(|(_, style)| style.background_color.is_none())
+        );
+    }
+
+    #[zz_gpui::test]
+    fn table_columns_follow_measured_width_not_utf8_bytes(cx: &mut zz_gpui::TestAppContext) {
+        let document = super::super::markdown_parse::parse(
+            "| 中文中文 | abcdefghijkl |\n| --- | --- |\n| 中 | a |\n",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Table(table) = &document.blocks[0] else {
+            panic!("expected table");
+        };
+        let cx = cx.add_empty_window();
+        let widths = cx.update(|window, _| measure_table_columns(table, 2, window));
+        let content = widths.iter().map(|w| w - CELL_PAD_PX).collect::<Vec<_>>();
+        assert!(
+            (content[0] * 3.0 - content[1]).abs() < 0.5,
+            "four CJK glyphs should take a third of twelve ASCII glyphs, got {widths:?}"
+        );
+    }
+
+    #[test]
+    fn custom_blocks_are_atomic_in_both_drag_directions() {
+        use zz_gpui::{point, size};
+        let bounds = Bounds::new(point(px(10.), px(20.)), size(px(100.), px(40.)));
+        let inside = bounds.center();
+        let above = point(px(0.), px(0.));
+        let below = point(px(0.), px(80.));
+        for (start, end) in [(above, inside), (inside, below), (above, below)] {
+            assert!(custom_block_is_selected(bounds, start, end));
+            assert!(custom_block_is_selected(bounds, end, start));
+        }
+        assert!(!custom_block_is_selected(bounds, inside, inside));
+        for (start, end) in [
+            (inside, inside + point(px(1.), px(0.))),
+            (bounds.origin, bounds.bottom_right() - point(px(1.), px(1.))),
+        ] {
+            assert!(!custom_block_is_selected(bounds, start, end));
+            assert!(!custom_block_is_selected(bounds, end, start));
+        }
+        assert!(!custom_block_is_selected(
+            bounds,
+            point(px(150.), px(30.)),
+            point(px(160.), px(40.))
+        ));
+    }
+
+    #[test]
+    fn a_selected_custom_block_copies_its_text_and_clears() {
+        let state = BlockState::default();
+        let block = BlockNode::Custom {
+            node: MarkdownNode::new("ticker", ()).text("$TSLA.US"),
+            state: state.clone(),
+        };
+        assert_eq!(block.selected_text(), "");
+        state.set_selected(true);
+        assert_eq!(block.selected_text(), "$TSLA.US\n");
+        assert_eq!(
+            block,
+            BlockNode::Custom {
+                node: MarkdownNode::new("ticker", ()).text("$TSLA.US"),
+                state: BlockState::default(),
+            }
+        );
+        block.clear_selection();
+        assert_eq!(block.selected_text(), "");
+    }
+
+    #[zz_gpui::test]
+    fn a_drag_across_a_custom_block_copies_it(cx: &mut zz_gpui::TestAppContext) {
+        use super::super::{MarkdownExtensions, TextView, TextViewState};
+        use zz_gpui::{
+            AppContext as _, Context, Entity, Modifiers, MouseButton, ParentElement as _, Render,
+            Styled as _, point,
+        };
+
+        struct Host {
+            state: Entity<TextViewState>,
+            extensions: MarkdownExtensions,
+        }
+
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().w(px(300.)).child(
+                    TextView::new(&self.state)
+                        .selectable(true)
+                        .markdown_extensions(self.extensions.clone()),
+                )
+            }
+        }
+
+        let extensions = MarkdownExtensions::default().block_parser(|node, cx| {
+            let mdast::Node::Paragraph(paragraph) = node else {
+                return None;
+            };
+            let [mdast::Node::Text(text)] = paragraph.children.as_slice() else {
+                return None;
+            };
+            text.value.starts_with('$').then(|| {
+                MarkdownNode::new("ticker", ())
+                    .text(text.value.clone())
+                    .markdown(cx.node_source(node).unwrap_or_default())
+            })
+        });
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let host = cx.new(|cx| Host {
+                state: cx.new(|cx| TextViewState::markdown("before\n\n$TSLA.US\n\nafter", cx)),
+                extensions,
+            });
+            crate::Root::new(host, window, cx)
+        });
+        let state = root.read_with(cx, |root, cx| {
+            root.view()
+                .clone()
+                .downcast::<Host>()
+                .unwrap()
+                .read(cx)
+                .state
+                .clone()
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let bounds = state.read_with(cx, |state, _| state.bounds());
+
+        let end = point(px(290.), bounds.bottom() - px(2.));
+        cx.simulate_mouse_down(
+            point(px(1.), px(4.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::default());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let selected = state.read_with(cx, |state, _| state.selected_text());
+        assert!(
+            selected.contains("before") && selected.contains("$TSLA.US"),
+            "the custom block was left out of the drag: {selected:?}"
         );
     }
 

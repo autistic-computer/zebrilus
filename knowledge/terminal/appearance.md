@@ -27,8 +27,9 @@ This is a **terminal-only** system. Application chrome has its own light/dark pa
 `mono_font_family` still crosses the boundary, and it is not chroma. `background-opacity` remains
 pane-local too. The renderer paints the terminal color at that alpha over an opaque app-pane base,
 so `1` shows the configured terminal background and lower values mix toward the app surface.
-The app applies `pane-background-opacity` (default 50%) to that blended color. Terminal
-text and explicit cell backgrounds retain their own colors.
+A tiled pane paints none of it: panes show the window behind them. A PiP lays that color over what
+is under it at `pip-background-opacity` (default 80%). Terminal text and explicit cell
+backgrounds retain their own colors.
 
 # Model
 
