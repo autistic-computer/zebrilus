@@ -25,7 +25,7 @@ use crate::{
 
 /// Client and daemon must match this exactly. The handshake rejects any
 /// mismatch instead of negotiating down.
-pub const PROTOCOL_VERSION: u16 = 109;
+pub const PROTOCOL_VERSION: u16 = 110;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
@@ -4133,6 +4133,13 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_agent_option_text")]
         task_id: String,
     },
+    Ping {
+        token: u64,
+        rtt_us: u32,
+    },
+    Pong {
+        token: u64,
+    },
 }
 
 fn deserialize_client_terminal_type<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -5719,7 +5726,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 109);
+        assert_eq!(super::PROTOCOL_VERSION, 110);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),
