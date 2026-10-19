@@ -927,6 +927,13 @@ impl PopupMenu {
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, window, cx| {
                 if *hovered {
+                    if this.selected_index != Some(ix)
+                        && this.active_submenu().is_some_and(|submenu| {
+                            submenu.focus_handle(cx).contains_focused(window, cx)
+                        })
+                    {
+                        this.focus_handle.focus(window, cx);
+                    }
                     this.selected_index = Some(ix);
                 } else if !is_submenu
                     && this.selected_index == Some(ix)
@@ -1471,6 +1478,62 @@ mod tests {
                 .detach();
         });
         (menu, dismissed, cx)
+    }
+
+    #[zz_gpui::test]
+    fn hovering_away_from_a_keyboard_entered_submenu_refocuses_its_parent(
+        cx: &mut zz_gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        struct Host(Entity<PopupMenu>);
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                v_flex().size_full().items_start().child(self.0.clone())
+            }
+        }
+        let (host, cx) = cx.add_window_view(|window, cx| {
+            Host(cx.new(|cx| {
+                let mut menu = PopupMenu::new(cx)
+                    .item(PopupMenuItem::new("Alpha"))
+                    .submenu_with_icon(None, "More", window, cx, |submenu, _, _| {
+                        submenu.item(PopupMenuItem::new("Open"))
+                    });
+                menu.selected_index = Some(1);
+                menu.focus_handle.focus(window, cx);
+                menu
+            }))
+        });
+        let menu = host.read_with(cx, |host, _| host.0.clone());
+        let draw = |cx: &mut zz_gpui::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.run_until_parked();
+        };
+        draw(cx);
+        cx.simulate_keystrokes("right");
+        draw(cx);
+        let submenu = menu
+            .read_with(cx, |menu, _| menu.active_submenu())
+            .expect("the submenu is open");
+        cx.update(|window, cx| {
+            assert!(submenu.read(cx).focus_handle.contains_focused(window, cx));
+        });
+
+        let alpha = menu.read_with(cx, |menu, _| {
+            menu.bounds.origin + zz_gpui::point(px(20.), px(17.))
+        });
+        cx.simulate_mouse_move(alpha, None, zz_gpui::Modifiers::default());
+        draw(cx);
+        assert_eq!(menu.read_with(cx, |menu, _| menu.selected_index), Some(0));
+        cx.update(|window, cx| {
+            assert!(
+                menu.read(cx).focus_handle.is_focused(window),
+                "the parent menu lost focus with its submenu"
+            );
+        });
     }
 
     #[zz_gpui::test]
