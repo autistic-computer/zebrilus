@@ -140,7 +140,10 @@ CEF handlers noted:
 
 # Popup regression
 
-Run `zz_browser_fixture --popup-regression` from a CEF-capable fixture bundle.
+Run `zz_browser_fixture --popup-regression` from a CEF-capable fixture bundle. On macOS, copy a
+built `zz Dev.app`, put `target/debug/zz_browser_fixture` in place of its `Contents/MacOS/zz`, and
+re-sign the copy ad hoc (`codesign -s - -f` on the binary, then on the app); run beside `zz` instead,
+CEF's GPU helper fails sandbox setup and the fixture exits. `--ime-regression` runs the same way.
 The fixture uses a temporary `zz-default` profile and a loopback server to check
 blank-document pixels, delayed navigation, named-window reuse, opener messages,
 and JavaScript closure. On macOS the profile directory must differ from Chromium's
