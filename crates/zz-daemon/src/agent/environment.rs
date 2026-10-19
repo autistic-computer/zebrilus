@@ -83,6 +83,8 @@ pub(crate) struct AgentWorkspaceEnvironment {
     pub(crate) socket: Option<String>,
     pub(crate) tmux: Option<String>,
     pub(crate) tmux_pane: Option<String>,
+    pub(crate) tools: Option<String>,
+    pub(crate) tools_executable: Option<String>,
 }
 
 impl AgentWorkspaceEnvironment {
@@ -110,9 +112,31 @@ impl AgentWorkspaceEnvironment {
             ("ZZ_SOCKET", self.socket.as_deref()),
             ("TMUX", self.tmux.as_deref()),
             ("TMUX_PANE", self.tmux_pane.as_deref()),
+            (
+                crate::TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE,
+                self.tools_executable.as_deref(),
+            ),
+            (
+                crate::TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE,
+                self.tools.as_deref(),
+            ),
         ]
         .into_iter()
         .filter_map(|(name, value)| value.map(|value| (name, value)))
+    }
+
+    pub(crate) fn path(&self, base: Option<&str>) -> Option<String> {
+        let Some(tools) = self.tools.as_deref() else {
+            return base.map(str::to_owned);
+        };
+        let inherited = std::env::var("PATH").ok();
+        let rest = base.or(inherited.as_deref()).unwrap_or_default();
+        let paths =
+            std::iter::once(std::path::PathBuf::from(tools)).chain(std::env::split_paths(rest));
+        std::env::join_paths(paths)
+            .ok()
+            .and_then(|path| path.into_string().ok())
+            .or_else(|| base.map(str::to_owned))
     }
 }
 
@@ -128,6 +152,11 @@ pub(crate) fn with_workspace_environment(
             continue;
         }
         config = config.env(name, value);
+    }
+    if workspace.tools.is_some()
+        && let Some(path) = workspace.path(config.environment().get("PATH").map(String::as_str))
+    {
+        config = config.env("PATH", path);
     }
     AcpAgent::new(config)
 }
@@ -659,6 +688,7 @@ mod workspace_tests {
             socket: Some("/tmp/zz.sock".to_owned()),
             tmux: None,
             tmux_pane: None,
+            ..AgentWorkspaceEnvironment::default()
         };
         config.adopt_pane_identity(&AgentWorkspaceEnvironment {
             pane: Some("%4".to_owned()),
@@ -666,6 +696,7 @@ mod workspace_tests {
             socket: None,
             tmux: Some("/tmp/zz.sock,99,4".to_owned()),
             tmux_pane: Some("%4".to_owned()),
+            ..AgentWorkspaceEnvironment::default()
         });
         assert_eq!(config.pane.as_deref(), Some("%4"));
         assert_eq!(config.session.as_deref(), Some("work"));
@@ -685,6 +716,7 @@ mod workspace_tests {
             socket: Some("/tmp/zz/default.sock".to_owned()),
             tmux: Some("/tmp/zz/default.sock,99,4".to_owned()),
             tmux_pane: Some("%4".to_owned()),
+            ..AgentWorkspaceEnvironment::default()
         }
     }
 
@@ -737,6 +769,36 @@ mod workspace_tests {
         let environment = environment(&agent);
         assert_eq!(environment.len(), 1);
         assert_eq!(environment[0], ("ZZ_PANE".to_owned(), "%1".to_owned()));
+    }
+
+    #[test]
+    fn the_tools_folder_leads_the_agent_path() {
+        let agent = AcpAgent::from_str("npx -y example").expect("valid command");
+        let agent = with_executable_path(agent, Some("/login/bin:/usr/bin"));
+        let agent = with_workspace_environment(
+            agent,
+            &AgentWorkspaceEnvironment {
+                tools: Some("/tmp/zz-tmux-shim-1-0".to_owned()),
+                tools_executable: Some("/tmp/zz-tmux-shim-1-0/cli".to_owned()),
+                ..AgentWorkspaceEnvironment::default()
+            },
+        );
+        let environment = environment(&agent);
+        let value = |name: &str| {
+            environment
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.as_str())
+        };
+        assert_eq!(
+            value("PATH"),
+            Some("/tmp/zz-tmux-shim-1-0:/login/bin:/usr/bin")
+        );
+        assert_eq!(
+            value("ZZ_TMUX_EXECUTABLE"),
+            Some("/tmp/zz-tmux-shim-1-0/cli")
+        );
+        assert_eq!(value("ZZ_TMUX_SHIM_DIR"), Some("/tmp/zz-tmux-shim-1-0"));
     }
 
     #[test]

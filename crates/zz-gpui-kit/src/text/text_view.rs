@@ -20,6 +20,8 @@ use super::{
 
 pub(crate) type CodeBlockActionsFn =
     dyn Fn(&CodeBlock, &mut Window, &mut App) -> AnyElement + Send + Sync;
+pub(crate) type CodeBlockBodyFn =
+    dyn Fn(&CodeBlock, &mut Window, &mut App) -> Option<AnyElement> + Send + Sync;
 
 #[derive(Clone)]
 pub struct TextView {
@@ -32,6 +34,7 @@ pub struct TextView {
     scrollable: bool,
     streaming: bool,
     code_block_actions: Option<Arc<CodeBlockActionsFn>>,
+    code_block_body: Option<Arc<CodeBlockBodyFn>>,
     markdown_extensions: Arc<MarkdownExtensions>,
 }
 
@@ -53,6 +56,7 @@ impl TextView {
             scrollable: false,
             streaming: false,
             code_block_actions: None,
+            code_block_body: None,
             markdown_extensions: Arc::default(),
         }
     }
@@ -69,6 +73,7 @@ impl TextView {
             scrollable: false,
             streaming: false,
             code_block_actions: None,
+            code_block_body: None,
             markdown_extensions: Arc::default(),
         }
     }
@@ -106,6 +111,14 @@ impl TextView {
         self.code_block_actions = Some(Arc::new(move |code_block, window, cx| {
             f(&code_block, window, cx).into_any_element()
         }));
+        self
+    }
+
+    pub fn code_block_body<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&CodeBlock, &mut Window, &mut App) -> Option<AnyElement> + Send + Sync + 'static,
+    {
+        self.code_block_body = Some(Arc::new(f));
         self
     }
 
@@ -164,6 +177,7 @@ impl Element for TextView {
 
         state.update(cx, |state, cx| {
             state.code_block_actions = self.code_block_actions.clone();
+            state.code_block_body = self.code_block_body.clone();
             state.set_markdown_extensions(self.markdown_extensions.clone(), cx);
             state.selectable = self.selectable;
             state.scrollable = self.scrollable;

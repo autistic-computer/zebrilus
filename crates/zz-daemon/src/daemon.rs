@@ -27,6 +27,7 @@ mod agent_inbox;
 #[cfg(feature = "agent")]
 mod agent_publisher;
 mod agent_waits;
+mod artifacts;
 mod chooser_presentation;
 pub(crate) mod cmdq;
 #[cfg(unix)]
@@ -2073,16 +2074,15 @@ impl TmuxShimGuard {
                 Err(error) => return Err(error),
             }
         };
-        let path = directory.join("tmux");
-        let result = (|| {
+        let write = |name: &str, script: &[u8]| -> std::io::Result<()> {
             let mut options = fs::OpenOptions::new();
             options.create_new(true).write(true).mode(0o700);
-            let mut file = options.open(&path)?;
-            file.write_all(b"#!/bin/sh\nif [ \"$#\" -eq 0 ] && [ -n \"${TMUX-}\" ]; then\n    printf '%s\\n' 'sessions should be nested with care, unset $TMUX to force' >&2\n    exit 1\nfi\nexec \"$ZZ_TMUX_EXECUTABLE\" \"$@\"\n")?;
+            let mut file = options.open(directory.join(name))?;
+            file.write_all(script)?;
             file.flush()
-        })();
-        if let Err(error) = result {
-            let _ = fs::remove_file(path);
+        };
+        if let Err(error) = write("tmux", b"#!/bin/sh\nif [ \"$#\" -eq 0 ] && [ -n \"${TMUX-}\" ]; then\n    printf '%s\\n' 'sessions should be nested with care, unset $TMUX to force' >&2\n    exit 1\nfi\nexec \"$ZZ_TMUX_EXECUTABLE\" \"$@\"\n") {
+            let _ = fs::remove_file(directory.join("tmux"));
             let _ = fs::remove_dir(&directory);
             return Err(error);
         }
@@ -2091,6 +2091,15 @@ impl TmuxShimGuard {
         } else {
             executable
         };
+        if !directory.join("zz").exists()
+            && let Err(error) = write("zz", b"#!/bin/sh\nexec \"$ZZ_TMUX_EXECUTABLE\" \"$@\"\n")
+        {
+            drop(Self {
+                directory,
+                executable,
+            });
+            return Err(error);
+        }
         Ok(Self {
             directory,
             executable,
@@ -2105,6 +2114,7 @@ impl Drop for TmuxShimGuard {
             let _ = fs::remove_file(&self.executable);
         }
         let _ = fs::remove_file(self.directory.join("tmux"));
+        let _ = fs::remove_file(self.directory.join("zz"));
         let _ = fs::remove_dir(&self.directory);
     }
 }
@@ -4507,6 +4517,7 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
             "set-browser-url",
             "set-browser-profile",
             "capture-browser",
+            "html",
             "resize-pane",
             "kill-pane",
         ],
@@ -4562,6 +4573,7 @@ enum DaemonCommandDispatch {
     WaitPane,
     RunPane,
     CaptureBrowser,
+    Html,
     DebugMarker,
     Tools,
     Buffer,
@@ -4597,6 +4609,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("wait-pane", DaemonCommandDispatch::WaitPane),
     ("run-pane", DaemonCommandDispatch::RunPane),
     ("capture-browser", DaemonCommandDispatch::CaptureBrowser),
+    ("html", DaemonCommandDispatch::Html),
     ("debug-marker", DaemonCommandDispatch::DebugMarker),
     ("tools", DaemonCommandDispatch::Tools),
     ("set-buffer", DaemonCommandDispatch::Buffer),
@@ -8478,6 +8491,16 @@ impl Shared {
                     DaemonCommandDispatch::CaptureBrowser => {
                         self.capture_browser(context, &command.args)
                     }
+                    DaemonCommandDispatch::Html => self.html(
+                        client,
+                        kind,
+                        context,
+                        &command.args,
+                        mux_source,
+                        invoking_client_terminal,
+                        queue_execution,
+                        format_facts_unread,
+                    ),
                     DaemonCommandDispatch::DebugMarker => {
                         Ok(debug_marker(client, context, &command.args))
                     }
@@ -33135,6 +33158,16 @@ impl Shared {
     }
 
     fn agent_spawn_config(&self) -> AgentSpawnConfig {
+        #[cfg(unix)]
+        let (tools, tools_executable) =
+            self.tmux_shim.lock().as_ref().map_or((None, None), |shim| {
+                (
+                    Some(shim.directory.display().to_string()),
+                    Some(shim.executable.display().to_string()),
+                )
+            });
+        #[cfg(not(unix))]
+        let (tools, tools_executable) = (None, None);
         let inner = self.inner.lock();
         let options = inner.engine.agent_options();
         AgentSpawnConfig {
@@ -33147,6 +33180,8 @@ impl Shared {
                 socket: Some(self.socket_path.display().to_string()),
                 tmux: None,
                 tmux_pane: None,
+                tools,
+                tools_executable,
             },
         }
     }
@@ -33274,6 +33309,7 @@ impl Shared {
                 socket: None,
                 tmux: session.map(|session| tmux_environment(&self.socket_path, Some(session))),
                 tmux_pane: Some(pane.to_string()),
+                ..AgentWorkspaceEnvironment::default()
             },
         })
     }
@@ -35611,6 +35647,8 @@ struct ServerState {
     claude_peer_states: BTreeMap<PaneId, String>,
     #[cfg(feature = "agent")]
     subagent_feeds: subagent_feeds::SubagentFeeds,
+    artifacts: artifacts::Artifacts,
+    artifacts_watching: bool,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
     next_command_output_id: u64,
     control_command_event_captures:
@@ -50422,6 +50460,8 @@ pub fn command_stdin_sink(canonical_name: &str, args: &[RawText]) -> Option<Comm
         "send-text" => {
             send_text_reads_stdin(args).then_some(CommandStdinSink::Argument { binary: false })
         }
+        "html" => artifacts::html_reads_stdin(args)
+            .then_some(CommandStdinSink::Argument { binary: false }),
         "load-buffer" => {
             load_buffer_reads_stdin(args).then_some(CommandStdinSink::Argument { binary: true })
         }
@@ -52353,15 +52393,24 @@ Target panes by id (`-t %N`), never `session:%N`. Keep the ids that creating com
 Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output and exits with its status); read a pane with `zz capture-pane -p -J -t %N -S -`. Run `zz tools --skill` for the full guide.
 "#;
 
+const AGENT_PANE_CONTEXT: &str = r"
+This is an Agent pane. To show a chart, diagram, mockup, or small page, put the HTML in your reply in a fenced block opened with ```html preview (a fragment or a whole page; scripts may load from CDNs). The pane shows it rendered, and a click makes it live. For a bigger page beside you, write a file and run `zz html PATH`.
+";
+
 pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
 
 const WORKSPACE_TOOLS_LOCAL_FLAGS: [&str; 3] = ["--context", "--install-hooks", "--remove-hooks"];
 
 #[must_use]
-pub fn workspace_context(pane: &str, session: &str) -> String {
-    WORKSPACE_CONTEXT
+pub fn workspace_context(pane: &str, session: &str, agent_pane: bool) -> String {
+    let context = WORKSPACE_CONTEXT
         .replace("{session}", session)
-        .replace("{pane}", pane)
+        .replace("{pane}", pane);
+    if agent_pane {
+        context + AGENT_PANE_CONTEXT
+    } else {
+        context
+    }
 }
 
 macro_rules! workspace_tools_sections {
@@ -52628,6 +52677,17 @@ add `-F '#{pane_id}'` to print the new pane ID.
 ### `zz set-browser-url -t %N URL`
 
 Navigate a browser pane. Print nothing on success. `#{browser_url}` reports the active tab's URL.
+
+### `zz html [--float] [--reply] [-t %N] PATH|-`
+
+Show a page you wrote beside your pane: a file, a directory with `index.html`, or `-` to read
+HTML from stdin. The pane reloads each time a file the page loaded changes, so rewrite the file
+and look again. A file serves only itself; a directory also serves the files under it, except
+names that start with `.`. Pages can load scripts from CDNs. `--float` opens a floating pane.
+`-t %N` shows the page in that pane if it is a browser, or opens it beside that pane. With
+`--reply` the page can call `zz.reply(text)`, which sends the text to your pane. Print the page
+URL and the new pane. In an Agent pane, a small page can go in your reply instead, as a fenced
+block opened with ```html preview: the pane shows it rendered in place.
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
 
@@ -53428,6 +53488,18 @@ fn handle_connection_message<S: TransportStream>(
                 if hello.kind == ClientKind::Interactive =>
             {
                 shared.fetch_pasted_image(client, pane, number);
+            }
+            ProtocolMessage::FetchArtifact {
+                request_id,
+                token,
+                path,
+            } if hello.kind == ClientKind::Interactive => {
+                shared.fetch_artifact(client, request_id, &token, &path);
+            }
+            ProtocolMessage::ArtifactReply { token, text }
+                if hello.kind == ClientKind::Interactive =>
+            {
+                shared.reply_from_artifact(client, &token, &text);
             }
             message @ (ProtocolMessage::AgentPrompt { .. }
             | ProtocolMessage::AgentCancel { .. }
@@ -83785,6 +83857,7 @@ set-option -g @alias-mixed-next yes
             "wait-pane",
             "run-pane",
             "capture-browser",
+            "html",
             "debug-marker",
             "tools",
             "wait-for",
@@ -83905,11 +83978,19 @@ set-option -g @alias-mixed-next yes
 
     #[test]
     fn workspace_context_names_the_pane_and_session() {
-        let text = workspace_context("%4", "work");
+        let text = workspace_context("%4", "work", false);
         assert!(text.contains("ZZ_SESSION=work\nZZ_PANE=%4\n"));
         assert!(text.contains("'#{pane_id}'"));
         assert!(!text.contains("{pane}") && !text.contains("{session}"));
+        assert!(!text.contains("```html preview"));
         assert!(text.len() < 1600, "context grew to {} bytes", text.len());
+        let agent = workspace_context("%4", "work", true);
+        assert!(agent.starts_with(&text) && agent.contains("```html preview"));
+        assert!(
+            agent.len() < 2000,
+            "agent context grew to {} bytes",
+            agent.len()
+        );
         assert!(WORKSPACE_STUB_SKILL.contains("zz-stub:"));
         assert!(WORKSPACE_STUB_SKILL.contains("zz tools --skill"));
     }
@@ -87469,6 +87550,24 @@ set-option -g @alias-mixed-next yes
             output.stderr,
             b"sessions should be nested with care, unset $TMUX to force\n"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_shim_folder_runs_the_daemons_own_zz() {
+        let shim = TmuxShimGuard::install(PathBuf::from("/bin/echo"), false).expect("install shim");
+        let output = std::process::Command::new(shim.directory.join("zz"))
+            .arg("tools")
+            .env(
+                crate::TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE,
+                &shim.executable,
+            )
+            .output()
+            .expect("run zz wrapper");
+        assert_eq!(output.stdout, b"tools\n");
+        let directory = shim.directory.clone();
+        drop(shim);
+        assert!(!directory.exists());
     }
 
     #[cfg(unix)]

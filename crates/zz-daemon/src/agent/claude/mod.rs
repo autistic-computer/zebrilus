@@ -833,11 +833,11 @@ impl Runtime {
             let session = self.workspace.session.as_deref().unwrap_or_default();
             command.args([
                 "--append-system-prompt",
-                &crate::workspace_context(pane, session),
+                &crate::workspace_context(pane, session, true),
             ]);
             command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
         }
-        if let Some(path) = agent_path() {
+        if let Some(path) = self.workspace.path(agent_path()) {
             command.env("PATH", path);
         }
         for (name, value) in self.workspace.entries() {

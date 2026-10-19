@@ -743,7 +743,7 @@ impl Runtime {
         })?;
         let mut command = Command::new(program);
         command.arg("app-server").args(&self.command.args);
-        if let Some(path) = agent_path() {
+        if let Some(path) = self.workspace.path(agent_path()) {
             command.env("PATH", path);
         }
         for (name, value) in self.workspace.entries() {
@@ -819,7 +819,7 @@ impl Runtime {
             return;
         };
         let session = self.workspace.session.as_deref().unwrap_or_default();
-        self.instructions = Some(crate::workspace_context(pane, session));
+        self.instructions = Some(crate::workspace_context(pane, session, true));
         let params = self.starting.as_ref().map_or_else(
             || json!({}),
             |starting| json!({ "cwd": starting.cwd.display().to_string() }),

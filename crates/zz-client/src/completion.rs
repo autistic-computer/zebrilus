@@ -21,7 +21,12 @@ const KEY_TABLES: &[&str] = &[
     "choose-tree",
     "choose-buffer",
 ];
-const BROWSER_COMMANDS: &[&str] = &["capture-browser", "set-browser-url", "set-browser-profile"];
+const BROWSER_COMMANDS: &[&str] = &[
+    "capture-browser",
+    "html",
+    "set-browser-url",
+    "set-browser-profile",
+];
 const AGENT_COMMANDS: &[&str] = &[
     "agent-respond",
     "agent-send",

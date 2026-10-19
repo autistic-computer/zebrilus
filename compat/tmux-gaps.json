@@ -325,6 +325,7 @@
         "native-command:debug-marker",
         "native-command:events",
         "native-command:focus-sidebar",
+        "native-command:html",
         "native-command:import-tmux-config",
         "native-command:inspect",
         "native-command:new-agent-session",

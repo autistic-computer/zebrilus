@@ -1816,6 +1816,23 @@ impl InteractiveClient {
         self.send(&ProtocolMessage::FetchPastedImage { pane, number })
     }
 
+    pub fn fetch_artifact(&self, token: &str, path: &str) -> Result<u64, DaemonError> {
+        let request_id = REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        self.send(&ProtocolMessage::FetchArtifact {
+            request_id,
+            token: token.to_owned(),
+            path: path.to_owned(),
+        })?;
+        Ok(request_id)
+    }
+
+    pub fn send_artifact_reply(&self, token: &str, text: &str) -> Result<(), DaemonError> {
+        self.send(&ProtocolMessage::ArtifactReply {
+            token: token.to_owned(),
+            text: text.to_owned(),
+        })
+    }
+
     pub fn execute(&self, command: CommandInvocation) -> Result<u64, DaemonError> {
         self.execute_with_prepared(command, false)
     }
