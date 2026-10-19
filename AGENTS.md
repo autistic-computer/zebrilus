@@ -57,7 +57,7 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 
 | Command | What it does |
 |---|---|
-| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` minus zz-gpui-platform (alias in `.cargo/config.toml`). CI's Linux leg runs that crate's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json cargo test -p zz-gpui-platform --all-features` (Arch: `vulkan-swrast`). macOS and Windows run only its iOS input tests: `cargo test -p zz-gpui-platform --all-features --test ios` |
+| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` minus zz-gpui-platform (alias in `.cargo/config.toml`). CI's Linux leg runs that crate's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json cargo test -p zz-gpui-platform --all-features` (Arch: `vulkan-swrast`, whose file is `lvp_icd.json`; on an NVIDIA box also set `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`, or the atlas tests take NVIDIA's GL backend and fail). macOS and Windows run only its iOS input tests: `cargo test -p zz-gpui-platform --all-features --test ios` |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Lint (what CI runs) |
 | `cargo clippy -p zz-daemon -p zz-daemon-client --no-default-features --all-targets -- -D warnings` | Lint the daemon without agent support (CI runs this too) |
 | `cargo fmt --all` | Format |
