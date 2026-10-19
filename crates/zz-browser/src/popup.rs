@@ -1,4 +1,4 @@
-use crate::frame::FrameDamage;
+use crate::{PointerPhase, frame::FrameDamage};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PopupRect {
@@ -91,12 +91,16 @@ pub(crate) struct PopupState {
     pixels: Vec<u8>,
     pixel_width: u32,
     pixel_height: u32,
+    pressed_on_view: bool,
 }
 
 impl PopupState {
     pub(crate) fn set_visible(&mut self, visible: bool) {
         if !visible {
-            *self = Self::default();
+            *self = Self {
+                pressed_on_view: self.pressed_on_view,
+                ..Self::default()
+            };
         }
         self.visible = visible;
     }
@@ -116,32 +120,52 @@ impl PopupState {
         view_width: u32,
         view_height: u32,
     ) -> (i32, i32) {
-        let Some(rect) = self.rect() else {
-            return (x, y);
-        };
-        let (Ok(width), Ok(height)) = (u32::try_from(rect.width), u32::try_from(rect.height))
-        else {
-            return (x, y);
-        };
-        let Some(placement) = popup_placement(rect, width, height, view_width, view_height) else {
-            return (x, y);
-        };
-        let (Ok(px), Ok(py)) = (u32::try_from(x), u32::try_from(y)) else {
-            return (x, y);
-        };
+        self.popup_position(x, y, view_width, view_height)
+            .unwrap_or((x, y))
+    }
+
+    pub(crate) fn pointer_position(
+        &mut self,
+        phase: PointerPhase,
+        x: i32,
+        y: i32,
+        view_width: u32,
+        view_height: u32,
+    ) -> Option<(i32, i32)> {
+        let popup = self.popup_position(x, y, view_width, view_height);
+        match phase {
+            PointerPhase::Down => self.pressed_on_view = popup.is_none(),
+            PointerPhase::Up if self.pressed_on_view && popup.is_some() => return None,
+            PointerPhase::Move | PointerPhase::Leave | PointerPhase::Up => {}
+        }
+        Some(popup.unwrap_or((x, y)))
+    }
+
+    fn popup_position(
+        &self,
+        x: i32,
+        y: i32,
+        view_width: u32,
+        view_height: u32,
+    ) -> Option<(i32, i32)> {
+        let rect = self.rect()?;
+        let width = u32::try_from(rect.width).ok()?;
+        let height = u32::try_from(rect.height).ok()?;
+        let placement = popup_placement(rect, width, height, view_width, view_height)?;
+        let (px, py) = (u32::try_from(x).ok()?, u32::try_from(y).ok()?);
         if px >= placement.x
             && px < placement.x + placement.width
             && py >= placement.y
             && py < placement.y + placement.height
         {
-            (
+            Some((
                 rect.x
                     .saturating_add(i32::try_from(px - placement.x).unwrap_or(i32::MAX)),
                 rect.y
                     .saturating_add(i32::try_from(py - placement.y).unwrap_or(i32::MAX)),
-            )
+            ))
         } else {
-            (x, y)
+            None
         }
     }
 
@@ -259,6 +283,41 @@ mod tests {
         assert_eq!(state.input_position(1520, 1140, 1600, 1200), (1580, 1200));
         state.set_visible(false);
         assert_eq!(state.input_position(1520, 1140, 1600, 1200), (1520, 1140));
+    }
+
+    #[test]
+    fn opening_release_is_not_forwarded_into_the_popup() {
+        let mut state = PopupState::default();
+        assert_eq!(
+            state.pointer_position(PointerPhase::Down, 110, 565, 800, 600),
+            Some((110, 565))
+        );
+        state.set_visible(true);
+        state.set_rect(rect(100, 580, 100, 200));
+        assert_eq!(state.input_position(110, 565, 800, 600), (110, 745));
+        assert_eq!(
+            state.pointer_position(PointerPhase::Up, 110, 565, 800, 600),
+            None
+        );
+        assert_eq!(
+            state.pointer_position(PointerPhase::Down, 110, 420, 800, 600),
+            Some((110, 600))
+        );
+        assert_eq!(
+            state.pointer_position(PointerPhase::Up, 110, 420, 800, 600),
+            Some((110, 600))
+        );
+        state.set_visible(false);
+        assert_eq!(
+            state.pointer_position(PointerPhase::Down, 110, 100, 800, 600),
+            Some((110, 100))
+        );
+        state.set_visible(true);
+        state.set_rect(rect(100, 80, 100, 200));
+        assert_eq!(
+            state.pointer_position(PointerPhase::Up, 110, 100, 800, 600),
+            None
+        );
     }
 
     #[test]

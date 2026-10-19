@@ -1882,7 +1882,17 @@ impl BrowserSession {
         let Some(host) = self.browser.host() else {
             return;
         };
-        let (x, y) = self.input_position(event.x, event.y);
+        let viewport = *self.viewport.lock();
+        let scale = osr_raster_scale(viewport);
+        let Some((x, y)) = self.popup.lock().pointer_position(
+            event.phase,
+            scaled_osr_coordinate(event.x, scale),
+            scaled_osr_coordinate(event.y, scale),
+            scaled_osr_dimension(viewport.width, scale).cast_unsigned(),
+            scaled_osr_dimension(viewport.height, scale).cast_unsigned(),
+        ) else {
+            return;
+        };
         let mouse = MouseEvent {
             x,
             y,
