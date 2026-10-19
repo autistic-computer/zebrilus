@@ -44,8 +44,8 @@ pub use catalog::{
 };
 pub use control::{
     AttachOperation, Batch, CAPABILITY_NAMES, CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY,
-    ClientView, ClientViewport, Hello, KeySubscription, MAX_BATCH_FRAMES, MouseBindings,
-    Subscriptions, TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
+    ClientView, ClientViewport, FLOW_WINDOW_CAPABILITY, Hello, KeySubscription, MAX_BATCH_FRAMES,
+    MouseBindings, Subscriptions, TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
 };
 pub const UNZOOMED_LAYOUT_VARIABLE: &str = "unzoomed_layout";
 pub const EVENT_SESSION_VARIABLE: &str = "zz_event_session";
