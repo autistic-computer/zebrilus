@@ -293,6 +293,7 @@ impl Inline {
         &self,
         text_layout: &TextLayout,
         bounds: &Bounds<Pixels>,
+        current: Option<Selection>,
         window: &mut Window,
         cx: &mut App,
     ) -> (bool, bool, Option<Selection>) {
@@ -308,6 +309,10 @@ impl Inline {
 
         if text_view_state.is_all_selected() {
             return (is_selectable, true, Some((0..self.text.len()).into()));
+        }
+
+        if text_view_state.preserves_inline_selection() {
+            return (is_selectable, true, current);
         }
 
         if let Some(selection) = text_view_state.multi_click_selection() {
@@ -533,7 +538,7 @@ impl Element for Inline {
             .paint(global_id, None, bounds, &mut (), &mut (), window, cx);
 
         let (is_selectable, is_selection, selection) =
-            self.layout_selections(&text_layout, &bounds, window, cx);
+            self.layout_selections(&text_layout, &bounds, state.selection, window, cx);
 
         state.selection = selection;
 

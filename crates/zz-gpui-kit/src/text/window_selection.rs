@@ -121,11 +121,6 @@ impl WindowTextSelection {
         (anchor == cursor).then_some(anchor)
     }
 
-    fn involves(&self, view_id: EntityId) -> bool {
-        self.anchor.as_ref().and_then(|e| e.view_id()) == Some(view_id)
-            || self.cursor.as_ref().and_then(|e| e.view_id()) == Some(view_id)
-    }
-
     /// Whether there is an active text selection (window-level or view-local).
     pub fn has_selection(&self, cx: &App) -> bool {
         if self.resolved_points(cx).is_some() {
@@ -198,15 +193,6 @@ impl WindowTextSelection {
             true
         });
         self.inlines.retain(|id, _| self.views.contains_key(id));
-    }
-
-    pub(super) fn clear_for_resized_view(&mut self, view_id: EntityId, cx: &mut App) {
-        if self.is_selecting {
-            return;
-        }
-        if self.involves(view_id) {
-            self.clear(cx);
-        }
     }
 
     pub(super) fn start(
@@ -555,7 +541,8 @@ mod tests {
     use zz_gpui::{
         AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement,
         Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render,
-        Styled as _, TestAppContext, VisualTestContext, Window, div, point, px,
+        Styled as _, TestAppContext, VisualTestContext, Window, div, point,
+        prelude::FluentBuilder as _, px,
     };
 
     struct ChatTestView {
@@ -565,6 +552,7 @@ mod tests {
         second_selectable: bool,
         top_offset: zz_gpui::Pixels,
         mid_gap: zz_gpui::Pixels,
+        width: Option<zz_gpui::Pixels>,
     }
 
     impl ChatTestView {
@@ -576,6 +564,7 @@ mod tests {
                 second_selectable,
                 top_offset: px(10.),
                 mid_gap: px(0.),
+                width: None,
             }
         }
     }
@@ -585,6 +574,7 @@ mod tests {
             div()
                 .track_focus(&self.focus_handle)
                 .size_full()
+                .when_some(self.width, |this, width| this.w(width))
                 .pt(self.top_offset)
                 .child(
                     div()
@@ -759,6 +749,45 @@ mod tests {
 
         let after = window_selected_text(cx);
         assert_eq!(before, after, "selection drifted after layout shift");
+    }
+
+    #[zz_gpui::test]
+    fn finished_selection_survives_its_view_growing(cx: &mut TestAppContext) {
+        let (chat, cx) = setup(true, cx);
+        drag(cx, point(px(0.), px(15.)), point(px(300.), px(15.)));
+        let before = window_selected_text(cx);
+        assert_eq!(before.trim(), "Hello world");
+
+        let first = chat.read_with(cx, |chat, _| chat.first.clone());
+        first.update(cx, |state, cx| {
+            state.push_str("\n\nA streamed reply grows", cx)
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        assert_eq!(window_selected_text(cx), before);
+    }
+
+    #[zz_gpui::test]
+    fn finished_selection_keeps_its_text_across_a_resize(cx: &mut TestAppContext) {
+        let (chat, cx) = setup(true, cx);
+        drag(cx, point(px(0.), px(15.)), point(px(300.), px(15.)));
+        let before = window_selected_text(cx);
+        assert_eq!(before.trim(), "Hello world");
+
+        chat.update(cx, |chat, cx| {
+            chat.width = Some(px(40.));
+            cx.notify();
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        assert_eq!(window_selected_text(cx), before);
+
+        cx.simulate_click(point(px(300.), px(100.)), Modifiers::default());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(window_selected_text(cx), "");
     }
 
     #[zz_gpui::test]

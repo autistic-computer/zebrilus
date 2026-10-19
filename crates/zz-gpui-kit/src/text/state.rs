@@ -59,6 +59,7 @@ pub struct TextViewState {
     pub(super) streaming: bool,
 
     pub(super) is_selecting: bool,
+    preserve_inline_selection: bool,
     multi_click_selection: Option<TextViewMultiClickSelection>,
     selected_text_override: Option<String>,
     select_all: bool,
@@ -121,6 +122,7 @@ impl TextViewState {
             markdown_extensions: Arc::default(),
             streaming: false,
             is_selecting: false,
+            preserve_inline_selection: false,
             auto_scroll: AutoScroll::default(),
             parsed_content: Default::default(),
             parsed_error: None,
@@ -291,17 +293,21 @@ impl TextViewState {
             }
         }
         self.deferred_full_parse = false;
-        if !self.is_selecting {
+        if !parsed_update.append && !self.is_selecting {
             self.reset_selection();
         }
         cx.notify();
     }
 
-    pub(super) fn update_bounds(&mut self, bounds: Bounds<Pixels>) {
-        if self.bounds.size != bounds.size {
-            self.reset_selection();
+    pub(super) fn update_bounds(&mut self, bounds: Bounds<Pixels>, has_selection: bool) {
+        if self.bounds.size.width != bounds.size.width && has_selection && !self.is_selecting {
+            self.preserve_inline_selection = true;
         }
         self.bounds = bounds;
+    }
+
+    pub(crate) fn preserves_inline_selection(&self) -> bool {
+        self.preserve_inline_selection
     }
 
     pub(super) fn bounds(&self) -> Bounds<Pixels> {
@@ -310,6 +316,7 @@ impl TextViewState {
 
     pub(super) fn has_view_selection(&self) -> bool {
         self.select_all
+            || self.preserve_inline_selection
             || self.multi_click_selection.is_some()
             || self.selected_text_override.is_some()
     }
@@ -323,6 +330,7 @@ impl TextViewState {
         self.selected_text_override = None;
         self.select_all = false;
         self.is_selecting = false;
+        self.preserve_inline_selection = false;
         self.auto_scroll.stop();
         self.parsed_content.document.clear_selection();
     }
@@ -361,6 +369,7 @@ impl TextViewState {
         self.multi_click_selection = Some(TextViewMultiClickSelection { pos, kind });
         self.selected_text_override = Some(selected_text);
         self.select_all = false;
+        self.preserve_inline_selection = false;
         self.is_selecting = false;
         self.auto_scroll.stop();
     }
@@ -482,18 +491,11 @@ impl Render for TextViewState {
             .child(
                 canvas(
                     move |bounds, window, cx| {
-                        let size_changed = state.read(cx).bounds().size != bounds.size;
-                        let id = state.entity_id();
+                        let resized = state.read(cx).bounds().size.width != bounds.size.width;
+                        let has_selection = resized && state.read(cx).has_selection(window, cx);
                         state.update(cx, |state, _| {
-                            state.update_bounds(bounds);
+                            state.update_bounds(bounds, has_selection);
                         });
-                        if size_changed {
-                            if let Some(root) = window.root::<crate::Root>().flatten() {
-                                root.update(cx, |root, cx| {
-                                    root.text_selection.clear_for_resized_view(id, cx);
-                                });
-                            }
-                        }
                     },
                     |_, _, _, _| {},
                 )
