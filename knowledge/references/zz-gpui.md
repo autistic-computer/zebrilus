@@ -4,7 +4,7 @@ title: zz-gpui
 description: zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 resource: crates/zz-gpui/Cargo.toml
 tags: [zz-gpui, gpui, reference, vendored]
-timestamp: 2026-10-12T00:00:00Z
+timestamp: 2026-10-19T00:00:00Z
 ---
 
 # Overview
@@ -47,8 +47,17 @@ features, but only for the host OS. The `fork-rebase` skill has the recipe for c
 other backends from macOS. Zed's extras zz never used are gone: screen capture (the `scap` and
 ScreenCaptureKit backends; the `ScreenCaptureSource` API stays and reports unsupported), the
 tracy profiler, and Zed's `#[perf]` test harness (`tooling/perf`). CI's `cargo ci-test` alias
-runs every test except zz-gpui-platform's, which need a GPU or a display server; CI runs its
-plain-logic iOS tests separately (`--test ios`). Two things differ from the zz crates:
+runs every test except zz-gpui-platform's. The Linux leg runs that crate's whole suite on its
+own step with Mesa lavapipe, a software Vulkan driver (`mesa-vulkan-drivers`, selected with
+`VK_ICD_FILENAMES`), so the wgpu headless renderer's pixel tests run without a GPU. That step
+includes `tests/headless.rs`, which renders a laid-out window through `HeadlessAppContext` and
+`current_headless_renderer` and checks pixels of `capture_screenshot`. The one test that needs a
+live Wayland compositor stays `#[ignore]`d. macOS and Windows run only the plain-logic iOS tests
+(`--test ios`), so the Metal and DirectX renderers still need a local run. Locally on Arch,
+lavapipe is the `vulkan-swrast` package; the SwiftShader ICD that ships with CEF
+(`vk_swiftshader_icd.json` beside `libcef.so`) also passes the suite. With NVIDIA's proprietary driver the
+wgpu tests hung in a parallel run (2026-10-19) and pass with `--test-threads=1`. Two things differ from the
+zz crates:
 
 | What | Where | Why |
 | --- | --- | --- |
