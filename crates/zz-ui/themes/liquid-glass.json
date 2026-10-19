@@ -68,7 +68,9 @@
     },
     "agent.status": {
       "fill": "tint",
-      "outline": true
+      "outline": true,
+      "shape": "pill",
+      "smoothing": 2.0
     },
     "badge": {
       "fill": "none"
@@ -80,6 +82,7 @@
       "selected": "glass"
     },
     "chrome.button": {
+      "hover": "tint",
       "selected": "none"
     },
     "code": {
@@ -87,7 +90,8 @@
       "shadow": "float"
     },
     "pane-stack": {
-      "outline": true
+      "outline": true,
+      "smoothing": 2.0
     },
     "pane.chip": {
       "fill": "solid",
@@ -103,8 +107,8 @@
       "fill": "glass"
     },
     "pane.header.button": {
-      "hover": "lift",
-      "selected": "lift"
+      "hover": "tint",
+      "selected": "tint"
     },
     "pane.picker": {
       "fill": "solid",
@@ -120,6 +124,7 @@
       "outline": true
     },
     "sidebar.entry": {
+      "smoothing": 2.0,
       "hover": "tint",
       "selected": "glass"
     },

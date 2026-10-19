@@ -61,6 +61,52 @@ pub enum Shape {
     Pill,
 }
 
+/// How a surface's rounded corners curve: the exponent of the superellipse
+/// they follow, in tenths. 2 is a circular arc; higher keeps the sides
+/// straight longer and turns the corner tighter. Pills always end in half
+/// circles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "f32", into = "f32")]
+pub struct Smoothing(u8);
+
+impl Smoothing {
+    pub const CIRCLE: Self = Self(20);
+    /// The continuous corner every window draws with,
+    /// [`super::CORNER_SMOOTHING`].
+    pub const THEME: Self = Self(40);
+    pub const ALL: &'static [Self] = &[
+        Self(20),
+        Self(25),
+        Self(30),
+        Self(35),
+        Self::THEME,
+        Self(50),
+    ];
+
+    pub fn exponent(self) -> f32 {
+        f32::from(self.0) / 10.0
+    }
+}
+
+impl From<Smoothing> for f32 {
+    fn from(smoothing: Smoothing) -> Self {
+        smoothing.exponent()
+    }
+}
+
+impl TryFrom<f32> for Smoothing {
+    type Error = String;
+
+    fn try_from(exponent: f32) -> Result<Self, Self::Error> {
+        if (2.0..=10.0).contains(&exponent) {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            Ok(Self((exponent * 10.0).round() as u8))
+        } else {
+            Err(format!("smoothing must be from 2 to 10, not {exponent}"))
+        }
+    }
+}
+
 /// What a surface adds while it is pointed at or pressed, or while it is
 /// the selected or current one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -79,6 +125,8 @@ pub enum Highlight {
     /// A bar in the accent along the leading edge.
     Bar,
     Glass,
+    /// The outline in the focus color, where a field draws one.
+    Edge,
 }
 
 impl Highlight {
@@ -101,6 +149,7 @@ pub struct Style {
     pub outline: bool,
     pub shadow: Shadow,
     pub shape: Shape,
+    pub smoothing: Smoothing,
     pub hover: Highlight,
     pub selected: Highlight,
 }
@@ -118,6 +167,8 @@ pub struct StylePatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shape: Option<Shape>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub smoothing: Option<Smoothing>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hover: Option<Highlight>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected: Option<Highlight>,
@@ -129,6 +180,7 @@ impl StylePatch {
         outline: None,
         shadow: None,
         shape: None,
+        smoothing: None,
         hover: None,
         selected: None,
     };
@@ -157,6 +209,13 @@ impl StylePatch {
     pub const fn shape(self, shape: Shape) -> Self {
         Self {
             shape: Some(shape),
+            ..self
+        }
+    }
+
+    pub const fn smoothing(self, smoothing: Smoothing) -> Self {
+        Self {
+            smoothing: Some(smoothing),
             ..self
         }
     }
@@ -192,6 +251,9 @@ impl StylePatch {
         if let Some(shape) = self.shape {
             style.shape = shape;
         }
+        if let Some(smoothing) = self.smoothing {
+            style.smoothing = smoothing;
+        }
         if let Some(hover) = self.hover {
             style.hover = hover;
         }
@@ -208,6 +270,7 @@ impl StylePatch {
             outline: differs(from.outline == to.outline).then_some(to.outline),
             shadow: differs(from.shadow == to.shadow).then_some(to.shadow),
             shape: differs(from.shape == to.shape).then_some(to.shape),
+            smoothing: differs(from.smoothing == to.smoothing).then_some(to.smoothing),
             hover: differs(from.hover == to.hover).then_some(to.hover),
             selected: differs(from.selected == to.selected).then_some(to.selected),
         }
@@ -321,6 +384,7 @@ impl Kind {
                 outline,
                 shadow,
                 shape: Shape::Round,
+                smoothing: Smoothing::THEME,
                 hover,
                 selected,
             }
@@ -340,7 +404,7 @@ impl Kind {
             Self::Floating => style(Fill::Glass, true, Shadow::Float, H::None, H::Accent),
             Self::Button => style(Fill::Solid, true, Shadow::Contact, H::Tint, H::Tint),
             Self::Item => style(Fill::None, false, Shadow::None, H::Lift, H::Lift),
-            Self::Field => style(Fill::Tint, true, Shadow::None, H::Tint, H::None),
+            Self::Field => style(Fill::Tint, true, Shadow::None, H::Tint, H::Edge),
             Self::Label => style(Fill::Tint, true, Shadow::None, H::None, H::None),
         }
     }
@@ -378,10 +442,12 @@ impl Kind {
         const SHADOWS: &[Shadow] = &[S::None, S::Contact, S::Float];
         const RESTING: &[Shadow] = &[S::None, S::Contact];
         const SHAPES: &[Shape] = &[Sh::Square, Sh::Round, Sh::Pill];
+        const SMOOTH: &[Smoothing] = Smoothing::ALL;
         const ALL: &[Highlight] = Highlight::ALL;
         const LIT: &[Highlight] = &[Highlight::None, Highlight::Ring];
         const FOCUS: &[Highlight] = &[
             Highlight::None,
+            Highlight::Edge,
             Highlight::Tint,
             Highlight::Lift,
             Highlight::Ring,
@@ -397,6 +463,7 @@ impl Kind {
         };
         const CONTROL: Knobs = Knobs {
             shape: SHAPES,
+            smoothing: SMOOTH,
             hover: ALL,
             selected: ALL,
             ..SURFACE
@@ -413,11 +480,13 @@ impl Kind {
             },
             Self::Card => Knobs {
                 shape: Knobs::BOXES,
+                smoothing: SMOOTH,
                 ..SURFACE
             },
             Self::Floating => Knobs {
                 fill: BACKED,
                 shape: SHAPES,
+                smoothing: SMOOTH,
                 ..SURFACE
             },
             Self::Button => CONTROL,
@@ -432,6 +501,7 @@ impl Kind {
             Self::Label => Knobs {
                 shadow: RESTING,
                 shape: SHAPES,
+                smoothing: SMOOTH,
                 ..SURFACE
             },
             Self::Rule => Knobs {
@@ -448,6 +518,7 @@ pub struct Knobs {
     pub outline: &'static [bool],
     pub shadow: &'static [Shadow],
     pub shape: &'static [Shape],
+    pub smoothing: &'static [Smoothing],
     pub hover: &'static [Highlight],
     pub selected: &'static [Highlight],
 }
@@ -458,6 +529,7 @@ impl Knobs {
         outline: &[],
         shadow: &[],
         shape: &[],
+        smoothing: &[],
         hover: &[],
         selected: &[],
     };
@@ -474,12 +546,13 @@ impl Knobs {
         }
     }
 
-    fn open(&self) -> [bool; 6] {
+    fn open(&self) -> [bool; 7] {
         [
             !self.fill.is_empty(),
             !self.outline.is_empty(),
             !self.shadow.is_empty(),
             !self.shape.is_empty(),
+            !self.smoothing.is_empty(),
             !self.hover.is_empty(),
             !self.selected.is_empty(),
         ]
@@ -494,6 +567,7 @@ impl Knobs {
             outline: keep(patch.outline, self.outline),
             shadow: keep(patch.shadow, self.shadow),
             shape: keep(patch.shape, self.shape),
+            smoothing: keep(patch.smoothing, self.smoothing),
             hover: keep(patch.hover, self.hover),
             selected: keep(patch.selected, self.selected),
         }
@@ -521,6 +595,7 @@ impl Knobs {
             .or_else(|| check("outline", patch.outline, self.outline))
             .or_else(|| check("shadow", patch.shadow, self.shadow))
             .or_else(|| check("shape", patch.shape, self.shape))
+            .or_else(|| check("smoothing", patch.smoothing, self.smoothing))
             .or_else(|| check("hover", patch.hover, self.hover))
             .or_else(|| check("selected", patch.selected, self.selected))
     }
@@ -637,6 +712,12 @@ impl SurfaceRole {
             .shadow
             .iter()
             .any(|shadow| *shadow != Shadow::None)
+    }
+
+    /// Whether a theme that picks its smoothing decides this one's: a theme
+    /// can set it.
+    pub fn picks_smoothing(&self) -> bool {
+        !self.knobs().smoothing.is_empty()
     }
 
     /// Whether this role is its kind, not a place within it.
@@ -999,6 +1080,8 @@ pub struct Layer {
     pub shadow: Vec<BoxShadow>,
     pub text: Hsla,
     pub radius: Pixels,
+    /// The superellipse exponent its corners follow.
+    pub smoothing: f32,
     /// What content inside it paints on.
     pub ground: Ground,
 }
@@ -1027,11 +1110,12 @@ impl Theme {
                 patch.outline.is_some(),
                 patch.shadow.is_some(),
                 patch.shape.is_some(),
+                patch.smoothing.is_some(),
                 patch.hover.is_some(),
                 patch.selected.is_some(),
             ]
         };
-        let mut held = [false; 6];
+        let mut held = [false; 7];
         for node in role.lineage().take_while(|node| node.id != group.id) {
             let themed = self.styles.get(node.id).copied().unwrap_or_default();
             for (held, themed) in held.iter_mut().zip(named(themed)) {
@@ -1062,8 +1146,9 @@ impl Theme {
     /// The style `role` resolves to in this theme: its kind's built-in
     /// style and each group's built-in patch from the kind inward, then the
     /// theme's patches the same way, so a theme's patch for a kind beats
-    /// the built-in look of everything in it. A theme that picks its
-    /// outlines or shadows drops every built-in one first.
+    /// the built-in look of everything in it. Every corner starts at the
+    /// theme's smoothing. A theme that picks its outlines, shadows or
+    /// smoothing drops every built-in one first.
     pub fn style(&self, role: SurfaceRole) -> Style {
         DRAWN.with_borrow_mut(|drawn| {
             if let Some(drawn) = drawn {
@@ -1076,12 +1161,16 @@ impl Theme {
             }
         });
         let mut style = role.kind.base();
+        style.smoothing = self.smoothing;
         Self::built_in(role, &mut style);
         if self.picked_outlines && role.picks_outline() {
             style.outline = false;
         }
         if self.picked_shadows && role.picks_shadow() {
             style.shadow = Shadow::None;
+        }
+        if self.picked_smoothing && role.picks_smoothing() {
+            style.smoothing = Smoothing::CIRCLE;
         }
         self.themed(role, role.knobs(), &mut style);
         style
@@ -1243,11 +1332,16 @@ impl Theme {
             }
         };
         let (mut fill_color, mut text) = match highlight {
-            Highlight::Tint | Highlight::Lift => (washed(&paint), paint.text),
+            Highlight::Tint | Highlight::Lift => (
+                super::color::toward(paint.fill, washed(&paint), self.highlight_strength),
+                paint.text,
+            ),
             Highlight::Accent => (paint.selected, paint.selected_text),
             Highlight::Glass if kind.is_control() => (soft.opaque().fill, paint.text),
             Highlight::Glass => (base.raised(step), paint.text),
-            Highlight::None | Highlight::Ring | Highlight::Bar => (paint.fill, paint.text),
+            Highlight::None | Highlight::Ring | Highlight::Bar | Highlight::Edge => {
+                (paint.fill, paint.text)
+            }
         };
         if state == PaintState::Disabled {
             fill_color = paint.fill.opacity(DISABLED);
@@ -1347,13 +1441,20 @@ impl Theme {
             material.tint(tint.alpha(material.tint.a)).fallback(tint)
         });
         let under = ground.fill.opaque().blend(fill_color);
+        let radius = self.shape_radius(surface.role, style.shape);
         Layer {
             fill: fill_color,
             border,
             border_width,
             shadow,
             text,
-            radius: self.shape_radius(surface.role, style.shape),
+            radius,
+            smoothing: if style.shape == Shape::Pill {
+                Smoothing::CIRCLE
+            } else {
+                style.smoothing
+            }
+            .exponent(),
             ground: Ground {
                 fill: under,
                 ink: text,
@@ -1444,7 +1545,7 @@ pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ThemeColor;
+    use crate::{ThemeColor, oklab_lightness};
 
     fn theme() -> Theme {
         Theme::from(&*ThemeColor::dark())
@@ -1473,6 +1574,35 @@ mod tests {
     }
 
     #[test]
+    fn highlight_strength_scales_tint_and_lift_washes() {
+        let mut theme = theme();
+        let tab = SurfaceRole::under(&SurfaceRole::TAB, "test.tab", "Test", "")
+            .with(StylePatch::EMPTY.selected(Highlight::Tint));
+        let button = Kind::Button.role();
+        let fill = |theme: &Theme, role, state| theme.layer(role, state).fill;
+        let tab_wash = fill(&theme, tab, PaintState::Selected);
+        let button_wash = fill(&theme, button, PaintState::Hover);
+        let button_rest = oklab_lightness(fill(&theme, button, PaintState::Rest));
+
+        theme.highlight_strength = 0.0;
+        assert_eq!(
+            fill(&theme, tab, PaintState::Selected),
+            fill(&theme, tab, PaintState::Rest)
+        );
+        assert_eq!(
+            fill(&theme, button, PaintState::Hover),
+            fill(&theme, button, PaintState::Rest)
+        );
+        let lift = theme.layer(SurfaceRole::TAB, PaintState::Selected);
+        assert!(!lift.shadow.is_empty(), "a lift still rises");
+
+        theme.highlight_strength = 2.0;
+        assert!(fill(&theme, tab, PaintState::Selected).a > tab_wash.a);
+        let deeper = oklab_lightness(fill(&theme, button, PaintState::Hover));
+        assert!((deeper - button_rest).abs() > (oklab_lightness(button_wash) - button_rest).abs());
+    }
+
+    #[test]
     fn a_theme_that_picks_outlines_draws_them_only_where_it_picks() {
         let mut theme = theme();
         theme.picked_outlines = true;
@@ -1490,6 +1620,28 @@ mod tests {
             .insert("card".into(), StylePatch::EMPTY.outline(true));
         assert!(theme.layer(card, PaintState::Rest).border_width > px(0.0));
         assert!(!theme.style(Kind::Button.role()).outline);
+    }
+
+    #[test]
+    fn a_theme_smooths_every_corner_or_only_the_ones_it_picks() {
+        let mut theme = theme();
+        let soft = Smoothing::try_from(3.0).unwrap();
+        theme.smoothing = soft;
+        let button = Kind::Button.role();
+        assert_eq!(theme.style(button).smoothing, soft);
+        assert_eq!(theme.layer(button, PaintState::Rest).smoothing, 3.0);
+        let pane = Kind::Pane.role();
+        assert_eq!(theme.style(pane).smoothing, soft);
+
+        theme.picked_smoothing = true;
+        assert_eq!(theme.style(button).smoothing, Smoothing::CIRCLE);
+        assert_eq!(theme.style(pane).smoothing, soft, "no theme could set it");
+        theme.styles.insert(
+            "button".into(),
+            StylePatch::EMPTY.smoothing(Smoothing::THEME),
+        );
+        assert_eq!(theme.style(button).smoothing, Smoothing::THEME);
+        assert_eq!(theme.style(Kind::Card.role()).smoothing, Smoothing::CIRCLE);
     }
 
     #[test]
@@ -1784,6 +1936,7 @@ mod tests {
                 .outline(false)
                 .shadow(Shadow::None)
                 .shape(Shape::Pill)
+                .smoothing(Smoothing::THEME)
                 .hover(Highlight::Lift)
                 .selected(Highlight::Lift),
         );

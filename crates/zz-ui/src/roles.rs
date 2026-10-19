@@ -96,7 +96,7 @@ pub const ROW_ACTION: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "sidebar.row-action",
     "Row actions",
-    "The +, ×, … and layout buttons that show on a hovered row",
+    "The + and × buttons that show on a hovered row",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
 pub const PANE_STACK: SurfaceRole = SurfaceRole::under(

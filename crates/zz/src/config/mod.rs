@@ -1062,7 +1062,10 @@ mod tests {
         );
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(parsed.diagnostics.len(), 2, "{:?}", parsed.diagnostics);
-        assert_f32_eq(loaded.active.materials.radius, 10.0);
+        assert_f32_eq(
+            loaded.active.materials.radius,
+            zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
+        );
         assert_eq!(
             parsed.config.widget_corner_radius,
             ConfigValue::from_default(loaded.active.materials.radius)

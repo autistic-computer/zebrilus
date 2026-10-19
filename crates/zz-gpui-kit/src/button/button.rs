@@ -152,6 +152,7 @@ fn text_layer(variant: ButtonVariant, state: PaintState, ground: Ground, cx: &Ap
             _ => foreground,
         },
         radius: px(0.0),
+        smoothing: crate::CORNER_SMOOTHING,
         ground,
     }
 }

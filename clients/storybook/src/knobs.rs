@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
-    ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Shadow, Style, StylePatch,
-    SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
+    ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Shadow, Smoothing, Style,
+    StylePatch, SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
     interface_theme::{self, InterfaceTheme, Materials, ThemeColors},
 };
 
@@ -72,6 +72,11 @@ pub const MATERIAL_KNOBS: &[Knob<Materials>] = &[
     ("radius", |m| m.radius, |m, v| m.radius = v),
     ("outline", |m| m.outline, |m, v| m.outline = v),
     ("row-inset", |m| m.row_inset, |m, v| m.row_inset = v),
+    (
+        "highlight-strength",
+        |m| m.highlight_strength,
+        |m, v| m.highlight_strength = v,
+    ),
     ("contact-y", |m| m.contact.y, |m, v| m.contact.y = v),
     (
         "contact-blur",
@@ -284,6 +289,18 @@ impl Knobs {
                         }
                     }
                 }
+                "smoothing" => {
+                    knobs.materials.smoothing = Smoothing::try_from(number(key, value)?)?;
+                }
+                "smoothed" => {
+                    knobs.materials.picked_smoothing = match value {
+                        "global" => false,
+                        "picked" => true,
+                        _ => {
+                            return Err(format!("smoothed must be global or picked, not {value}"));
+                        }
+                    }
+                }
                 "shadows" => {
                     knobs.materials.picked_shadows = match value {
                         "built-in" => false,
@@ -421,6 +438,18 @@ pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_js
         .collect::<serde_json::Map<_, _>>();
     knobs.insert("primary".to_owned(), serde_json::json!(materials.primary));
     knobs.insert(
+        "smoothing".to_owned(),
+        serde_json::json!(materials.smoothing.exponent()),
+    );
+    knobs.insert(
+        "smoothed".to_owned(),
+        serde_json::json!(if materials.picked_smoothing {
+            "picked"
+        } else {
+            "global"
+        }),
+    );
+    knobs.insert(
         "outlines".to_owned(),
         serde_json::json!(if materials.picked_outlines {
             "picked"
@@ -506,8 +535,9 @@ fn parse_roles(json: &str) -> Result<BTreeMap<String, StylePatch>, String> {
 
 /// Where a role's prop comes from before the theme names the role itself:
 /// the built-in style or patch of the role or one of its groups, or the
-/// theme's patch for one of its groups, which beats every built-in. A
-/// theme that picks its outlines or shadows drops the built-in one, with no
+/// theme's patch for one of its groups, which beats every built-in. The
+/// theme's smoothing, and a theme that picks its outlines, shadows or
+/// smoothing dropping the built-in one, come from the materials, with no
 /// role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Origin {
@@ -515,8 +545,28 @@ pub struct Origin {
     pub themed: bool,
 }
 
+/// Where a prop with no role comes from: the materials step's smoothing, or
+/// a picked outline, shadow or smoothing.
+pub fn material_origin(prop: &str, role: SurfaceRole, materials: &Materials) -> String {
+    match prop {
+        "smoothing" if materials.picked_smoothing && role.picks_smoothing() => {
+            "picked smoothing".to_owned()
+        }
+        "smoothing" => "global smoothing".to_owned(),
+        prop => format!("picked {prop}s"),
+    }
+}
+
 /// The props of a [`Style`] in theme-file order.
-pub const PROPS: [&str; 6] = ["fill", "outline", "shadow", "shape", "hover", "selected"];
+pub const PROPS: [&str; 7] = [
+    "fill",
+    "outline",
+    "shadow",
+    "shape",
+    "smoothing",
+    "hover",
+    "selected",
+];
 
 /// The style `role` takes from everything but the theme's patch for it, and
 /// where each of its [`PROPS`] comes from.
@@ -524,13 +574,20 @@ pub fn inherited(
     role: SurfaceRole,
     roles: &BTreeMap<String, StylePatch>,
     materials: &Materials,
-) -> (Style, [Origin; 6]) {
+) -> (Style, [Origin; 7]) {
     let knobs = role.knobs();
-    let mut style = role.kind.base();
+    let mut style = Style {
+        smoothing: materials.smoothing,
+        ..role.kind.base()
+    };
     let mut origins = [Origin {
         role: Some(role.kind.role()),
         themed: false,
-    }; 6];
+    }; 7];
+    origins[4] = Origin {
+        role: None,
+        themed: true,
+    };
     let mut layer = |patch: StylePatch, origin: Origin| {
         patch.apply(&mut style);
         let named = [
@@ -538,6 +595,7 @@ pub fn inherited(
             patch.outline.is_some(),
             patch.shadow.is_some(),
             patch.shape.is_some(),
+            patch.smoothing.is_some(),
             patch.hover.is_some(),
             patch.selected.is_some(),
         ];
@@ -561,6 +619,9 @@ pub fn inherited(
         role: None,
         themed: true,
     };
+    if materials.picked_smoothing && role.picks_smoothing() {
+        layer(StylePatch::EMPTY.smoothing(Smoothing::CIRCLE), picked);
+    }
     if materials.picked_outlines && role.picks_outline() {
         layer(StylePatch::EMPTY.outline(false), picked);
     }
@@ -587,6 +648,7 @@ pub fn knobs_json(knobs: zz_ui::Knobs) -> serde_json::Value {
         "outline": knobs.outline,
         "shadow": knobs.shadow,
         "shape": knobs.shape,
+        "smoothing": knobs.smoothing,
         "hover": knobs.hover,
         "selected": knobs.selected,
     })
@@ -599,6 +661,7 @@ pub fn style_json(style: Style) -> serde_json::Value {
         "outline": style.outline,
         "shadow": style.shadow,
         "shape": style.shape,
+        "smoothing": style.smoothing,
         "hover": style.hover,
         "selected": style.selected,
     })
@@ -732,6 +795,20 @@ mod tests {
     }
 
     #[test]
+    fn the_smoothing_knobs_set_the_corners_and_where_they_go() {
+        let materials = Knobs::parse("smoothing=2.5&smoothed=picked")
+            .unwrap()
+            .materials;
+        assert_eq!(materials.smoothing.exponent(), 2.5);
+        assert!(materials.picked_smoothing);
+        assert_eq!(material_knobs(&materials)["smoothing"], 2.5);
+        assert_eq!(material_knobs(&materials)["smoothed"], "picked");
+        assert_eq!(material_knobs(&Materials::default())["smoothed"], "global");
+        assert!(Knobs::parse("smoothing=1").is_err());
+        assert!(Knobs::parse("smoothed=some").is_err());
+    }
+
+    #[test]
     fn the_outlines_knob_picks_where_outlines_go() {
         assert!(
             Knobs::parse("outlines=picked")
@@ -819,6 +896,8 @@ mod tests {
         let materials = Materials {
             picked_outlines: true,
             picked_shadows: true,
+            smoothing: Smoothing::try_from(3.0).unwrap(),
+            picked_smoothing: true,
             ..patched.materials.clone()
         };
         let picked = InterfaceTheme {
@@ -827,12 +906,11 @@ mod tests {
         };
         for (id, theme) in themes().into_iter().chain([
             ("patched groups".to_owned(), patched),
-            ("picked outlines and shadows".to_owned(), picked),
+            ("picked outlines, shadows and smoothing".to_owned(), picked),
         ]) {
             let mut kit = Theme::default();
             theme.apply_roles(&mut kit);
-            kit.picked_outlines = theme.materials.picked_outlines;
-            kit.picked_shadows = theme.materials.picked_shadows;
+            theme.materials.apply(&mut kit);
             for role in zz_ui::roles::all() {
                 let (mut style, _) = inherited(role, &theme.roles, &theme.materials);
                 if let Some(patch) = theme.roles.get(role.id) {
@@ -852,7 +930,7 @@ mod tests {
         assert_eq!(origins[2], origin(zz_ui::SurfaceRole::ICON_BUTTON, false));
         assert_eq!(origins[3], origin(zz_ui::roles::WINDOW_CONTROLS, false));
         assert_eq!(style.hover, zz_ui::Highlight::Ring);
-        assert_eq!(origins[4], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
+        assert_eq!(origins[5], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
         let (style, origins) = inherited(zz_ui::roles::DROP_ZONE, &group_patches, &built_in);
         assert_eq!(style.fill, zz_ui::Fill::Glass);
         assert_eq!(origins[0], origin(zz_ui::Kind::Floating.role(), true));
