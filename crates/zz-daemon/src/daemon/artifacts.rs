@@ -556,7 +556,13 @@ impl Shared {
         }
     }
 
-    fn serve_artifact(self: &Arc<Self>, client: ClientId, request_id: u64, token: &str, path: &str) {
+    fn serve_artifact(
+        self: &Arc<Self>,
+        client: ClientId,
+        request_id: u64,
+        token: &str,
+        path: &str,
+    ) {
         let (subscriber, found) = {
             let inner = self.inner.lock();
             let Some(subscriber) = inner

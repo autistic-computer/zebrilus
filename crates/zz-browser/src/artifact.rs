@@ -249,10 +249,16 @@ mod tests {
     fn urls_the_wire_would_refuse_never_parse() {
         assert_eq!(parse_artifact_url("zz://ab12/x"), None);
         assert_eq!(parse_artifact_url(&format!("zz://{TOKEN}0/x")), None);
-        assert_eq!(parse_artifact_url(&format!("zz://{}/x", "g".repeat(32))), None);
+        assert_eq!(
+            parse_artifact_url(&format!("zz://{}/x", "g".repeat(32))),
+            None
+        );
         let longest = "x".repeat(MAX_ARTIFACT_PATH_BYTES);
         assert!(parse_artifact_url(&format!("zz://{TOKEN}/{longest}")).is_some());
-        assert_eq!(parse_artifact_url(&format!("zz://{TOKEN}/{longest}x")), None);
+        assert_eq!(
+            parse_artifact_url(&format!("zz://{TOKEN}/{longest}x")),
+            None
+        );
     }
 
     #[test]
