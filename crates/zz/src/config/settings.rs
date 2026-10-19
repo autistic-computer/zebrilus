@@ -117,7 +117,7 @@ pub(crate) struct SettingsView {
     browser_search_provider: Entity<SelectState<Vec<SettingsSelectItem>>>,
     ui_zoom: Entity<InputState>,
     observed_ui_zoom: u32,
-    pane_background_opacity: Entity<InputState>,
+    pip_background_opacity: Entity<InputState>,
     pane_glow_strength: Entity<InputState>,
     pane_inactive_opacity: Entity<InputState>,
     pane_margin: Entity<InputState>,
@@ -161,9 +161,9 @@ impl SettingsView {
         let browser_search_provider =
             search_provider_select(observed_browser.search_provider.value, window, cx);
         let ui_zoom = ui_zoom_input(window, cx);
-        let pane_background_opacity = numeric_value_input(
-            ConfigKey::PaneBackgroundOpacity,
-            observed.pane_background_opacity.value,
+        let pip_background_opacity = numeric_value_input(
+            ConfigKey::PipBackgroundOpacity,
+            observed.pip_background_opacity.value,
             5.0,
             window,
             cx,
@@ -222,8 +222,8 @@ impl SettingsView {
             ui_font_subscription(&ui_font_family, window, cx),
             ui_zoom_subscription(&ui_zoom, window, cx),
             numeric_input_subscription(
-                &pane_background_opacity,
-                ConfigKey::PaneBackgroundOpacity,
+                &pip_background_opacity,
+                ConfigKey::PipBackgroundOpacity,
                 window,
                 cx,
             ),
@@ -269,7 +269,7 @@ impl SettingsView {
             browser_search_provider,
             ui_zoom,
             observed_ui_zoom: crate::ui_scale::percent(cx),
-            pane_background_opacity,
+            pip_background_opacity,
             pane_glow_strength,
             pane_inactive_opacity,
             pane_margin,
@@ -485,15 +485,15 @@ impl SettingsView {
                 picker.set_color(accent, window, cx);
             });
             if !numeric_input_matches_value(
-                ConfigKey::PaneBackgroundOpacity,
-                &self.pane_background_opacity.read(cx).value(),
-                resolved.pane_background_opacity.value,
+                ConfigKey::PipBackgroundOpacity,
+                &self.pip_background_opacity.read(cx).value(),
+                resolved.pip_background_opacity.value,
             ) {
                 synchronize_text_input(
-                    &self.pane_background_opacity,
+                    &self.pip_background_opacity,
                     &numeric_input_text(
-                        ConfigKey::PaneBackgroundOpacity,
-                        resolved.pane_background_opacity.value,
+                        ConfigKey::PipBackgroundOpacity,
+                        resolved.pip_background_opacity.value,
                     ),
                     window,
                     cx,
@@ -1731,11 +1731,11 @@ impl SettingsView {
                 cx,
             )],
 [Self::numeric_setting(
-                ConfigKey::PaneBackgroundOpacity,
+                ConfigKey::PipBackgroundOpacity,
                 "Background opacity",
-                "Pane and Agent composer backgrounds (0–100%). Browser panes apply this to the toolbar only.",
-                resolved.pane_background_opacity,
-                &self.pane_background_opacity,
+                "How much of its own color a PiP lays over the panes under it (0–100%). Below 100% they show through, blurred.",
+                resolved.pip_background_opacity,
+                &self.pip_background_opacity,
                 cx,
             )],
 [Self::numeric_setting(
@@ -2381,7 +2381,7 @@ fn is_pane_setting(key: ConfigKey) -> bool {
     matches!(
         key,
         ConfigKey::PaneGaps
-            | ConfigKey::PaneBackgroundOpacity
+            | ConfigKey::PipBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
@@ -2455,7 +2455,7 @@ fn numeric_range(key: ConfigKey) -> (f32, f32) {
 fn numeric_input_scale(key: ConfigKey) -> f32 {
     if matches!(
         key,
-        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity
+        ConfigKey::PaneGlowStrength | ConfigKey::PipBackgroundOpacity
     ) {
         100.0
     } else {
@@ -2466,7 +2466,7 @@ fn numeric_input_scale(key: ConfigKey) -> f32 {
 fn numeric_input_text(key: ConfigKey, value: f32) -> String {
     if matches!(
         key,
-        ConfigKey::PaneGlowStrength | ConfigKey::PaneBackgroundOpacity
+        ConfigKey::PaneGlowStrength | ConfigKey::PipBackgroundOpacity
     ) {
         format!("{:.2}", value * numeric_input_scale(key))
             .trim_end_matches('0')
@@ -2494,7 +2494,7 @@ fn numeric_input_matches_value(key: ConfigKey, text: &str, value: f32) -> bool {
 
 fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> {
     match key {
-        ConfigKey::PaneBackgroundOpacity => config.pane_background_opacity,
+        ConfigKey::PipBackgroundOpacity => config.pip_background_opacity,
         ConfigKey::PaneGlowStrength => config.pane_glow_strength,
         ConfigKey::PaneInactiveOpacity => config.pane_inactive_opacity,
         ConfigKey::PaneMargin => config.pane_margin,
@@ -2700,7 +2700,7 @@ mod tests {
     #[test]
     fn percentage_inputs_convert_and_reject_invalid_edits() {
         for (key, default, max) in [
-            (ConfigKey::PaneBackgroundOpacity, "50", 100.0),
+            (ConfigKey::PipBackgroundOpacity, "80", 100.0),
             (ConfigKey::PaneGlowStrength, "100", 200.0),
         ] {
             assert_eq!(numeric_range(key), (0.0, max));

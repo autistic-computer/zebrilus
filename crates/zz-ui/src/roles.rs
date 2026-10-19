@@ -96,7 +96,7 @@ pub const ROW_ACTION: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "sidebar.row-action",
     "Row actions",
-    "The +, ×, … and layout buttons that show on a hovered row",
+    "The + and × buttons that show on a hovered row",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
 pub const PANE_STACK: SurfaceRole = SurfaceRole::under(
@@ -121,6 +121,13 @@ pub const FLOATING_PANE: SurfaceRole = SurfaceRole::new(
 )
 .with(P.selected(Highlight::Ring))
 .with_knobs(SurfaceRole::DIALOG.knobs());
+pub const PIP: SurfaceRole = SurfaceRole::under(
+    &FLOATING_PANE,
+    "pane.pip",
+    "PiPs",
+    "Floating panes in the GUI: any pane over the window, casting the float shadow",
+)
+.with(P.shadow(Shadow::Float));
 pub const PANE_HEADER: SurfaceRole = SurfaceRole::new(
     "pane.header",
     Kind::Bar,
@@ -481,6 +488,7 @@ const ZZ: &[SurfaceRole] = &[
     PICKER,
     INLINE_PANEL,
     FLOATING_PANE,
+    PIP,
     PANE_CHIP,
     DISPLAY_PANES,
     DRAG_CHIP,

@@ -45,7 +45,7 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
 fn pane_preferences_bound_values_and_preserve_fractional_frames() {
     let preferences = Preferences {
         gaps: true,
-        pane_background_opacity: -1.0,
+        pip_background_opacity: -1.0,
         pane_inactive_opacity: 3.0,
         pane_glow_strength: f32::NAN,
         pane_margin: 33.0,
@@ -53,7 +53,7 @@ fn pane_preferences_bound_values_and_preserve_fractional_frames() {
     }
     .sanitized();
     assert!(preferences.gaps);
-    assert_eq!(preferences.pane_background_opacity, 0.0);
+    assert_eq!(preferences.pip_background_opacity, 0.0);
     assert_eq!(preferences.pane_inactive_opacity, 1.0);
     assert_eq!(preferences.pane_glow_strength, 1.0);
     assert_eq!(preferences.pane_margin, 32.0);

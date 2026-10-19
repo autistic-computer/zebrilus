@@ -34,7 +34,7 @@ use zz_gpui::{ObjectFit, external_texture};
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use zz_gpui::{ObjectFit, external_texture, wgpu};
 use zz_protocol::{
-    Axis, BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
+    BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
     InputMessage, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
 };
 use zz_terminal::{KeyAction as TerminalKeyAction, KeyInput as TerminalKeyInput};
@@ -74,7 +74,7 @@ use crate::{
     keymap::ChromeChord,
     mux::{
         client::MuxClient,
-        nav::{TreeTarget, kill_target_command, picker_split_command},
+        nav::{TreeTarget, kill_target_command},
         prefix::terminal_key_input,
     },
     window::corners::{WindowCorners, round_div_radii},
@@ -360,6 +360,7 @@ enum ChromeProfileDiscovery {
 struct ChromeState {
     active: bool,
     can_drag: bool,
+    floats: bool,
     drag_title: String,
     opacity: f32,
     shows_empty_state: bool,
@@ -616,6 +617,7 @@ impl BrowserView {
             let state = ChromeState {
                 active: false,
                 can_drag: false,
+                floats: false,
                 drag_title: initial_url.clone(),
                 opacity: 1.0,
                 shows_empty_state: is_blank_url(&initial_url),
@@ -3613,13 +3615,14 @@ impl Render for BrowserChromeView {
                     PaneDragSource::new(
                         browser.read(cx).pane,
                         self.state.drag_title.clone(),
-                        self.state.can_drag,
+                        self.state.can_drag || self.state.floats,
                         move |drag, _, cx| {
                             if let Some(browser) = drag_browser.upgrade() {
                                 browser.update(cx, |_, cx| cx.emit(*drag));
                             }
                         },
-                    ),
+                    )
+                    .floating(self.state.floats),
                     move |_, cx| {
                         if let Some(browser) = close_browser.upgrade() {
                             browser.update(cx, |view, cx| {
@@ -3633,36 +3636,26 @@ impl Render for BrowserChromeView {
             }
             None => tabs,
         };
-        let action = |icon, label: &'static str, axis: Axis| {
-            let browser = self.browser.clone();
-            pane_header_icon_button(label, icon, true, cx)
-                .tooltip(label)
-                .on_click(move |_, _, cx| {
-                    cx.stop_propagation();
-                    if let Some(browser) = browser.upgrade() {
-                        browser.update(cx, |view, cx| {
-                            view.mux
-                                .read(cx)
-                                .execute(picker_split_command(view.pane, axis));
-                        });
-                    }
-                })
-        };
-        let actions = div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap_1()
-            .child(action(
-                IconName::PanelBottom,
-                "Split bottom",
-                Axis::Vertical,
-            ))
-            .child(action(
-                IconName::PanelRight,
-                "Split right",
-                Axis::Horizontal,
-            ));
+        let actions = div().flex().flex_none().items_center().gap_1().children(
+            zz_ui::pane::pane_header_actions(self.state.floats)
+                .iter()
+                .map(|(action, icon, label)| {
+                    let browser = self.browser.clone();
+                    let action = *action;
+                    pane_header_icon_button(*label, icon.clone(), true, cx)
+                        .tooltip(*label)
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            if let Some(browser) = browser.upgrade() {
+                                browser.update(cx, |view, cx| {
+                                    for command in action.commands(view.pane) {
+                                        view.mux.read(cx).execute(command);
+                                    }
+                                });
+                            }
+                        })
+                }),
+        );
         div()
             .h(BrowserHeader::HEIGHT)
             .w_full()
@@ -3686,7 +3679,7 @@ impl Render for BrowserView {
             self.refresh_chrome_profiles(false, window, cx);
         }
         let (tabs, active_tab_index) = self.tab_strip_state(cx);
-        let (active, can_drag, drag_title) = {
+        let (active, can_drag, floats, drag_title) = {
             let mux = self.mux.read(cx);
             let snapshot = mux.snapshot();
             let pane_window = snapshot
@@ -3700,6 +3693,7 @@ impl Render for BrowserView {
                     && pane_window.is_some_and(|window| {
                         window.zoomed_pane.is_none() && window.panes.len() > 1
                     }),
+                zz_client::floating::pane_floats(&snapshot, self.pane),
                 pane_window
                     .and_then(|window| window.panes.get(&self.pane))
                     .map_or_else(|| "Browser".to_owned(), zz_client::navigation::pane_label),
@@ -3708,6 +3702,7 @@ impl Render for BrowserView {
         let snapshot = ChromeState {
             active,
             can_drag,
+            floats,
             drag_title,
             opacity: self.chrome_opacity,
             shows_empty_state,
@@ -3728,7 +3723,11 @@ impl Render for BrowserView {
                 cx.notify();
             });
         }
-        let content_radii = pane_content_radii(cx, self.window_corners);
+        let content_radii = if floats {
+            Corners::all(zz_ui::pip::pip_content_radius(cx))
+        } else {
+            pane_content_radii(cx, self.window_corners)
+        };
         let surface_radii = Corners {
             top_left: px(0.0),
             top_right: px(0.0),
@@ -3805,10 +3804,8 @@ impl Render for BrowserView {
 
         let browser_surface = div()
             .id("browser-content")
-            .bg(if shows_empty_state {
-                crate::theme::app_pane_background(cx)
-            } else {
-                crate::theme::app_pane_background(cx).opaque()
+            .when(!shows_empty_state, |surface| {
+                surface.bg(cx.theme().pane_color(cx.theme().background))
             })
             .relative()
             .flex()
@@ -3970,7 +3967,6 @@ impl Render for BrowserView {
                 .child(
                     div()
                         .relative()
-                        .bg(crate::theme::app_pane_background(cx))
                         .rounded_tl(content_radii.top_left)
                         .rounded_tr(content_radii.top_right)
                         .h(BrowserHeader::HEIGHT)

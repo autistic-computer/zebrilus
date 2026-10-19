@@ -45,6 +45,7 @@ use zz_ui::dialog::DialogButtonProps;
 use zz_ui::path_picker::{
     PATH_PICKER_VISIBLE_ROWS, PathPickerBackend, PathPickerEvent, PathPickerView,
 };
+use zz_ui::pip::{PipCard, PipDrag, PipLayout, PipPlaced, PipStage, PipSurface, PipThrow};
 use zz_ui::{
     ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _, button::ButtonVariant,
     draws_window_controls, notification::Notification,
@@ -52,11 +53,11 @@ use zz_ui::{
 use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneArrivals, PaneChrome, PaneDrag,
-        PaneDragOverlayState, PaneDragSource, PaneOverlayCorner, PaneSplitAxis, PaneSplitHighlight,
-        PaneSplitSide, TerminalPaneAction, pane_border_color, pane_drag_overlay, pane_drag_preview,
-        pane_drop_preview, pane_header_frame, pane_indicator, pane_indicator_overlay,
-        pane_overlay_stack, pane_split_hit_target, pane_split_slot, pane_split_surface,
-        pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
+        PaneDragOverlayState, PaneDragSource, PaneMotion, PaneOverlayCorner, PaneSplitAxis,
+        PaneSplitHighlight, PaneSplitSide, PipGrab, moving_pane, pane_border_color,
+        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame, pane_indicator,
+        pane_indicator_overlay, pane_overlay_stack, pane_split_hit_target, pane_split_slot,
+        pane_split_surface, pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
         terminal_pane_header,
     },
     shell::{app_connection_state, app_workspace_surface},
@@ -91,7 +92,7 @@ use crate::{
             KeyTableChanged, MuxClient, PathPickerUpdate, RemoteInstallOffer, SshPromptRequest,
         },
         hosts::HostId,
-        nav::{TreeTarget, kill_target_command, picker_split_command, select_window_command},
+        nav::{TreeTarget, kill_target_command, select_window_command},
         prefix::{is_all_keys_input, is_sidebar_picker_input, terminal_key_input},
     },
     pane::display::DisplayPanesView,
@@ -100,7 +101,6 @@ use crate::{
     terminal::view::TerminalView,
     window::corners::WindowCorners,
 };
-use zz_ui::Colorize as _;
 
 const DROP_PREVIEW_MORPH: Duration = Duration::from_millis(180);
 const DROP_PREVIEW_FADE: Duration = Duration::from_millis(140);
@@ -301,6 +301,8 @@ struct SplitDragState {
 
 struct SplitDragPreview;
 
+const PIP_GRIP: f32 = 8.0;
+
 #[derive(Clone, Copy, Debug)]
 struct FloatDrag {
     pane: PaneId,
@@ -320,15 +322,36 @@ struct FloatDragState {
     started: bool,
     committed_snapshot_revision: Option<u64>,
     request: Option<u64>,
+    pip: Option<PipDrag>,
+    limit: Option<(u16, u16)>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PipLandingState {
+    window: WindowId,
+    pane: PaneId,
+    target: FloatCells,
+    request: Option<u64>,
 }
 
 impl FloatDragState {
     fn target(&self) -> FloatCells {
-        float_drag_preview(self.start, self.grip, self.delta)
+        let target = float_drag_preview(self.start, self.grip, self.delta);
+        self.limit.map_or(target, |limit| {
+            zz_client::floating::float_drag_within(target, self.grip, limit)
+        })
     }
 
     fn preview(&self) -> Option<FloatCells> {
         self.started.then(|| self.target())
+    }
+
+    const fn throwing(&self) -> bool {
+        self.pip.is_some()
+    }
+
+    fn thrown(&self) -> Option<PipDrag> {
+        self.pip.filter(|_| self.started)
     }
 
     fn halfway(&self) -> Option<FloatCells> {
@@ -486,9 +509,8 @@ impl PaneDragState {
     fn matches(&self, window: &WindowSnapshot, prefix_armed: bool) -> bool {
         (!self.requires_prefix || prefix_armed)
             && window.zoomed_pane.is_none()
-            && window.panes.len() > 1
+            && self.slots.len() > 1
             && self.matches_layout(window.id, &window.layout)
-            && self.slots.len() == window.panes.len()
             && self
                 .slots
                 .iter()
@@ -541,7 +563,7 @@ struct TerminalHeaderState {
     active: bool,
     title: String,
     can_drag: bool,
-    background: zz_gpui::Hsla,
+    floats: bool,
     radii: Corners<Pixels>,
     opacity: f32,
 }
@@ -580,13 +602,11 @@ impl Render for TerminalHeaderView {
                     app.update(cx, |view, cx| view.on_pane_drag_start(*drag, cx));
                 }
             }),
+            state.floats,
             move |action, _, cx| {
-                let command = match action {
-                    TerminalPaneAction::SplitBottom => picker_split_command(pane, Axis::Vertical),
-                    TerminalPaneAction::SplitRight => picker_split_command(pane, Axis::Horizontal),
-                    TerminalPaneAction::Close => kill_target_command(TreeTarget::Pane(pane)),
-                };
-                mux.read(cx).execute(command);
+                for command in action.commands(pane) {
+                    mux.read(cx).execute(command);
+                }
             },
             cx,
         )
@@ -601,7 +621,7 @@ impl Render for TerminalHeaderView {
                 }
             });
         });
-        pane_header_frame(header, state.background, state.radii, state.opacity).into_any_element()
+        pane_header_frame(header, state.radii, state.opacity).into_any_element()
     }
 }
 
@@ -792,6 +812,10 @@ pub struct AppView {
     window_handle: AnyWindowHandle,
     split_drag: Option<SplitDragState>,
     float_drag: Option<FloatDragState>,
+    pip_throw: PipThrow,
+    pip_landing: Option<PipLandingState>,
+    pip_stage: PipStage,
+    pane_motion: PaneMotion,
     terminal_resize_suppressed: Rc<Cell<bool>>,
     terminal_resizes_held: bool,
     snapshot_revision: u64,
@@ -1131,6 +1155,10 @@ impl AppView {
             window_handle,
             split_drag: None,
             float_drag: None,
+            pip_throw: PipThrow::default(),
+            pip_landing: None,
+            pip_stage: PipStage::default(),
+            pane_motion: PaneMotion::default(),
             terminal_resize_suppressed: Rc::new(Cell::new(false)),
             terminal_resizes_held: false,
             snapshot_revision: 0,
@@ -2699,13 +2727,38 @@ impl AppView {
         {
             return;
         }
-        let rows = mux
-            .snapshot()
+        let snapshot = mux.snapshot();
+        let window_snapshot = snapshot
             .sessions
             .iter()
             .flat_map(|session| &session.windows)
-            .find(|snapshot| snapshot.id == window)
-            .map_or(0, |snapshot| snapshot.sy);
+            .find(|snapshot| snapshot.id == window);
+        let (columns, rows) = window_snapshot.map_or((0, 0), |snapshot| (snapshot.sx, snapshot.sy));
+        let modal = window_snapshot
+            .and_then(|snapshot| snapshot.modal)
+            .is_some_and(|modal| modal.pane == float.pane);
+        let landing = self
+            .pip_landing
+            .take_if(|landing| landing.window == window && landing.pane == float.pane);
+        let start = landing.map_or_else(|| FloatCells::from(&float), |landing| landing.target);
+        let layout = PipLayout {
+            window: (columns, rows),
+            cell,
+            canvas: self.pane_canvas_bounds.get().size,
+            lines: float.border_lines,
+            header: cx.theme().pane_header_height(),
+        };
+        let shown = self
+            .pane_motion
+            .drawn(float.pane)
+            .map_or_else(Point::default, |drawn| {
+                drawn.origin - self.pane_canvas_bounds.get().origin - layout.frame(start).origin
+            });
+        let pip = (!modal && grip.is_move()).then(|| PipDrag::new(start, layout, press, shown));
+        if pip.is_some() {
+            self.pip_throw = PipThrow::default();
+            self.pip_throw.track(cx.background_executor().now(), press);
+        }
         self.float_drag = Some(FloatDragState {
             window,
             pane: float.pane,
@@ -2715,14 +2768,67 @@ impl AppView {
                 border_status,
                 rows,
             },
-            start: FloatCells::from(&float),
+            start,
             press,
             cell,
             delta: (0, 0),
             started: false,
             committed_snapshot_revision: None,
             request: None,
+            pip,
+            limit: (!modal).then(|| layout.max_cells()),
         });
+    }
+
+    fn on_pip_grab_move(
+        &mut self,
+        event: &DragMoveEvent<PipGrab>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane = event.drag(cx).pane;
+        let window_handle = window;
+        if self.float_drag.is_none_or(|drag| drag.pane != pane) {
+            let snapshot = self.mux.read(cx).snapshot();
+            let Some((window, float)) = snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .find_map(|window| {
+                    let float = window.floating.iter().find(|float| float.pane == pane)?;
+                    Some((window, *float))
+                })
+            else {
+                return;
+            };
+            let (id, border_status) = (window.id, window.pane_border_status);
+            let cell = self.float_cell_size(window_handle, cx);
+            self.begin_float_drag(
+                id,
+                border_status,
+                float,
+                FloatGrip::MOVE,
+                cell,
+                event.event.position,
+                cx,
+            );
+        }
+        let Some(drag) = self
+            .float_drag
+            .as_mut()
+            .filter(|drag| drag.pane == pane && drag.committed_snapshot_revision.is_none())
+        else {
+            return;
+        };
+        let Some(pip) = drag.pip.as_mut() else {
+            return;
+        };
+        drag.started = true;
+        pip.moved(event.event.position);
+        self.pip_throw
+            .track(cx.background_executor().now(), event.event.position);
+        cx.notify();
+        cx.stop_propagation();
     }
 
     fn on_float_drag_move(
@@ -2739,6 +2845,15 @@ impl AppView {
         else {
             return;
         };
+        if let Some(pip) = drag.pip.as_mut() {
+            drag.started = true;
+            pip.moved(event.event.position);
+            self.pip_throw
+                .track(cx.background_executor().now(), event.event.position);
+            cx.notify();
+            cx.stop_propagation();
+            return;
+        }
         let offset = event.event.position - drag.press;
         let delta = (
             (offset.x / drag.cell.width).round() as i32,
@@ -2768,6 +2883,13 @@ impl AppView {
         let Some(mut drag) = self.float_drag else {
             return;
         };
+        if drag.throwing() {
+            self.float_drag = None;
+            if let Some(pip) = drag.thrown() {
+                self.throw_pip(drag.window, drag.pane, pip, cx);
+            }
+            return;
+        }
         let target = drag.target();
         if !drag.started || target == drag.start {
             self.float_drag = None;
@@ -2778,6 +2900,36 @@ impl AppView {
             drag.pane, drag.grip, drag.start, target, drag.lines, drag.area,
         ));
         self.float_drag = drag.request.is_some().then_some(drag);
+    }
+
+    fn throw_pip(&mut self, window: WindowId, pane: PaneId, pip: PipDrag, cx: &App) {
+        let velocity = self.pip_throw.velocity(cx.background_executor().now());
+        let landing = pip.release(velocity);
+        if landing.stash.is_some() {
+            self.pip_stage.stash(pane);
+        }
+        self.pane_motion
+            .fling(pane, velocity, landing.stash.is_none());
+        let request = self
+            .mux
+            .read(cx)
+            .execute_tracked(landing.place.command(pane));
+        self.pip_landing = Some(PipLandingState {
+            window,
+            pane,
+            target: landing.target,
+            request,
+        });
+    }
+
+    fn settle_pip_landing(&mut self, cx: &App) {
+        if self.pip_landing.is_some_and(|landing| {
+            landing
+                .request
+                .is_none_or(|request| self.mux.read(cx).command_settled(request))
+        }) {
+            self.pip_landing = None;
+        }
     }
 
     fn reconcile_float_drag(&mut self, active_window: Option<&WindowSnapshot>, cx: &App) {
@@ -3262,24 +3414,11 @@ impl AppView {
                 let waiting = pane_content.is_none();
                 let content = pane_content.as_ref().map_or_else(
                     || {
-                        crate::window::corners::round_div_radii(
-                            div().size_full().bg(crate::theme::app_pane_background(cx)),
-                            radii,
-                        )
-                        .into_any_element()
+                        crate::window::corners::round_div_radii(div().size_full(), radii)
+                            .into_any_element()
                     },
                     PaneContent::element,
                 );
-                let background = self
-                    .command_output
-                    .as_ref()
-                    .filter(|(output_pane, _)| output_pane == pane)
-                    .map(|(_, terminal)| terminal)
-                    .or_else(|| self.terminals.get(pane))
-                    .map_or_else(
-                        || crate::theme::app_pane_background(cx),
-                        |terminal| terminal.read(cx).pane_background(cx),
-                    );
                 let terminal_header =
                     pane_snapshot.filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal));
                 let header_view = terminal_header
@@ -3291,7 +3430,7 @@ impl AppView {
                         can_drag: self.mux.read(cx).is_connected()
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
-                        background,
+                        floats: window.floating.iter().any(|float| float.pane == *pane),
                         radii,
                         opacity: if inactive { inactive_opacity } else { 1.0 },
                     };
@@ -3382,7 +3521,7 @@ impl AppView {
                     self.pane_arrivals
                         .shown(*pane, cx.background_executor().now())
                 };
-                pane_surface(
+                let surface = pane_surface(
                     ("mux-pane", pane.0),
                     content,
                     overlays,
@@ -3390,11 +3529,8 @@ impl AppView {
                         .active(active)
                         .dimmed(surface_dimmed, inactive_opacity)
                         .frame(gaps.then(|| {
-                            cx.theme().pane_frame(
-                                background.opaque(),
-                                crate::theme::chrome_background(cx),
-                                active,
-                            )
+                            cx.theme()
+                                .pane_frame(crate::theme::chrome_background(cx), active)
                         })),
                     cx,
                 )
@@ -3408,8 +3544,14 @@ impl AppView {
                             }
                         },
                     ))
-                })
-                .into_any_element()
+                });
+                moving_pane(*pane, &self.pane_motion, surface)
+                    .hold(
+                        self.terminals
+                            .get(pane)
+                            .map(|terminal| terminal.read(cx).moving()),
+                    )
+                    .into_any_element()
             }
             LayoutNode::Empty => div().size_full().into_any_element(),
             LayoutNode::Split {
@@ -3589,20 +3731,49 @@ impl AppView {
         canvas: Size<Pixels>,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let mut layer = Vec::new();
-        for float in window_snapshot
+        let floats = window_snapshot
             .floating
             .iter()
-            .rev()
             .filter(|float| float.visible)
-        {
+            .collect::<Vec<_>>();
+        let cards = floats
+            .iter()
+            .filter(|float| {
+                window_snapshot
+                    .modal
+                    .is_none_or(|modal| modal.pane != float.pane)
+            })
+            .filter_map(|float| {
+                let (frame, held) = self.float_frame(window_snapshot, float, cell, canvas, cx)?;
+                Some(PipCard {
+                    pane: float.pane,
+                    frame,
+                    held,
+                })
+            })
+            .collect::<Vec<_>>();
+        let placed = self
+            .pip_stage
+            .arrange(&cards, canvas, cx.theme().pane_header_height())
+            .into_iter()
+            .map(|placed| (placed.pane, placed))
+            .collect::<BTreeMap<_, _>>();
+        let mut layer = Vec::new();
+        for float in floats.into_iter().rev() {
             if let Some(modal) = window_snapshot
                 .modal
                 .filter(|modal| modal.pane == float.pane)
             {
                 layer.push(self.modal_scrim(modal, cx));
             }
-            layer.extend(self.floating_pane(window_snapshot, float, cell, canvas, cx));
+            layer.extend(self.floating_pane(
+                window_snapshot,
+                float,
+                cell,
+                canvas,
+                placed.get(&float.pane).copied(),
+                cx,
+            ));
         }
         (!layer.is_empty()).then(|| {
             div()
@@ -3635,20 +3806,33 @@ impl AppView {
             .into_any_element()
     }
 
-    fn floating_pane(
+    fn float_frame(
         &self,
         window_snapshot: &WindowSnapshot,
         float: &FloatingPaneSnapshot,
         cell: Size<Pixels>,
         canvas: Size<Pixels>,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
+        cx: &App,
+    ) -> Option<(Bounds<Pixels>, bool)> {
         let pane = float.pane;
-        let cells = self
+        let modal = window_snapshot
+            .modal
+            .is_some_and(|modal| modal.pane == pane);
+        let drag = self
             .float_drag
-            .filter(|drag| drag.window == window_snapshot.id && drag.pane == pane)
-            .and_then(|drag| drag.preview())
-            .unwrap_or_else(|| FloatCells::from(float));
+            .filter(|drag| drag.window == window_snapshot.id && drag.pane == pane);
+        let throw = drag.and_then(|drag| drag.thrown());
+        let landing = self
+            .pip_landing
+            .filter(|landing| landing.window == window_snapshot.id && landing.pane == pane);
+        let cells = match (throw, landing) {
+            (Some(pip), _) => pip.start,
+            (None, Some(landing)) => landing.target,
+            (None, None) => drag
+                .filter(|drag| !drag.throwing())
+                .and_then(|drag| drag.preview())
+                .unwrap_or_else(|| FloatCells::from(float)),
+        };
         let bordered = float.border_lines != PaneBorderLines::None;
         if canvas.width > Pixels::ZERO
             && canvas.height > Pixels::ZERO
@@ -3663,16 +3847,52 @@ impl AppView {
             return None;
         }
         let pad = i32::from(bordered);
-        let frame = Bounds::new(
-            point(
-                cell.width * (cells.xoff - pad) as f32,
-                cell.height * (cells.yoff - pad) as f32,
-            ),
-            zz_gpui::size(
-                cell.width * (i32::from(cells.sx) + 2 * pad) as f32,
-                cell.height * (i32::from(cells.sy) + 2 * pad) as f32,
-            ),
-        );
+        let mut frame = if modal {
+            Bounds::new(
+                point(
+                    cell.width * (cells.xoff - pad) as f32,
+                    cell.height * (cells.yoff - pad) as f32,
+                ),
+                zz_gpui::size(
+                    cell.width * (i32::from(cells.sx) + 2 * pad) as f32,
+                    cell.height * (i32::from(cells.sy) + 2 * pad) as f32,
+                ),
+            )
+        } else {
+            PipLayout {
+                window: (window_snapshot.sx, window_snapshot.sy),
+                cell,
+                canvas,
+                lines: float.border_lines,
+                header: cx.theme().pane_header_height(),
+            }
+            .frame(cells)
+        };
+        if let Some(pip) = throw {
+            frame.origin = pip.drawn_origin();
+        }
+        Some((frame, throw.is_some()))
+    }
+
+    fn floating_pane(
+        &self,
+        window_snapshot: &WindowSnapshot,
+        float: &FloatingPaneSnapshot,
+        cell: Size<Pixels>,
+        canvas: Size<Pixels>,
+        placed: Option<PipPlaced>,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let pane = float.pane;
+        let modal = window_snapshot
+            .modal
+            .is_some_and(|modal| modal.pane == pane);
+        let (mut frame, held) = self.float_frame(window_snapshot, float, cell, canvas, cx)?;
+        if let Some(placed) = placed {
+            frame = placed.frame;
+        }
+        let stashed = placed.and_then(|placed| placed.stashed);
+        let bordered = float.border_lines != PaneBorderLines::None;
         let active = pane == window_snapshot.active_pane;
         let snapshot = window_snapshot.panes.get(&pane);
         if let Some(terminal) = self.terminals.get(&pane) {
@@ -3686,12 +3906,7 @@ impl AppView {
         let content = self
             .pane_content(pane, !active, inactive_opacity, cx)
             .map_or_else(
-                || {
-                    div()
-                        .size_full()
-                        .bg(crate::theme::app_pane_background(cx))
-                        .into_any_element()
-                },
+                || div().size_full().into_any_element(),
                 |content| content.element(),
             );
         let title = snapshot
@@ -3699,18 +3914,76 @@ impl AppView {
             .map(|pane| float_title(&pane.border_status_text))
             .unwrap_or_default();
         let inset = if bordered { cell } else { Size::default() };
-        let grips = if bordered {
+        let grips = if bordered && stashed.is_none() {
             self.float_grips(
                 window_snapshot.id,
                 window_snapshot.pane_border_status,
                 *float,
                 cell,
                 frame.size,
+                !modal,
                 cx,
             )
         } else {
             Vec::new()
         };
+        let surface = if modal {
+            FloatingSurface::new(("floating-pane", pane.0), content, cx)
+                .title(title.left)
+                .title_right(title.right)
+                .content_inset(inset.width, inset.height)
+                .edge_color(pane_border_color(active, cx))
+                .bordered(bordered)
+                .into_any_element()
+        } else {
+            let own_header = snapshot.is_some_and(|pane| {
+                matches!(
+                    pane.kind,
+                    PaneKindSnapshot::Agent(_) | PaneKindSnapshot::Browser(_)
+                )
+            });
+            let fill = self.terminals.get(&pane).map_or_else(
+                || cx.theme().pane_color(cx.theme().background),
+                |terminal| terminal.read(cx).fill(cx),
+            );
+            let surface = PipSurface::new(("floating-pane", pane.0), content)
+                .bordered(bordered)
+                .fill(fill)
+                .stashed(
+                    stashed.is_some(),
+                    cx.listener(move |view, _: &zz_gpui::ClickEvent, _, cx| {
+                        view.pip_stage.restore(pane);
+                        view.mux.read(cx).execute(pane_select_command(pane));
+                        cx.notify();
+                    }),
+                );
+            if own_header {
+                surface.into_any_element()
+            } else {
+                let label = if title.left.is_empty() {
+                    snapshot
+                        .map(zz_client::navigation::pane_label)
+                        .unwrap_or_default()
+                } else {
+                    title.left
+                };
+                let opacity = if active { 1.0 } else { inactive_opacity };
+                surface
+                    .content_inset(inset.width, inset.height)
+                    .header(self.pip_header(pane, snapshot, label, active, opacity, cx))
+                    .into_any_element()
+            }
+        };
+        let card = div()
+            .relative()
+            .size_full()
+            .child(surface)
+            .children(grips)
+            .children(
+                self.pane_indicators
+                    .get(&pane)
+                    .and_then(|indicator| self.pane_indicator(indicator, cx)),
+            );
         Some(
             div()
                 .absolute()
@@ -3720,24 +3993,71 @@ impl AppView {
                 .h(frame.size.height)
                 .debug_selector(move || format!("floating-pane-{}", pane.0))
                 .key_context(pane_key_context(pane))
-                .child(
-                    FloatingSurface::new(("floating-pane", pane.0), content, cx)
-                        .title(title.left)
-                        .title_right(title.right)
-                        .content_inset(inset.width, inset.height)
-                        .edge_color(pane_border_color(active, cx))
-                        .bordered(bordered),
-                )
-                .children(grips)
-                .children(
-                    self.pane_indicators
-                        .get(&pane)
-                        .and_then(|indicator| self.pane_indicator(indicator, cx)),
-                )
+                .map(|slot| {
+                    if modal {
+                        slot.child(card)
+                    } else {
+                        slot.child(moving_pane(pane, &self.pane_motion, card).held(held))
+                    }
+                })
                 .into_any_element(),
         )
     }
 
+    fn pip_header(
+        &self,
+        pane: PaneId,
+        snapshot: Option<&zz_protocol::PaneSnapshot>,
+        label: String,
+        active: bool,
+        opacity: f32,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let connected = self.mux.read(cx).is_connected();
+        if let Some(header_view) = self.terminal_headers.get(&pane) {
+            let state = TerminalHeaderState {
+                active,
+                title: label,
+                can_drag: connected,
+                floats: true,
+                radii: Corners::default(),
+                opacity,
+            };
+            header_view.update(cx, |header, cx| header.sync(state, cx));
+            return AnyView::from(header_view.clone())
+                .cached(
+                    StyleRefinement::default()
+                        .h(cx.theme().pane_header_height())
+                        .w_full(),
+                )
+                .into_any_element();
+        }
+        let mux = self.mux.clone();
+        let icon = snapshot.map_or(zz_ui::IconName::SquareTerminal, |pane| {
+            zz_ui::pane::pane_kind_icon(&pane.kind)
+        });
+        div()
+            .opacity(opacity)
+            .child(zz_ui::pane::pane_header(
+                icon,
+                active,
+                label.clone(),
+                PaneDragSource::new(pane, label, connected, |_, _, _| {}),
+                true,
+                move |action, _, cx| {
+                    for command in action.commands(pane) {
+                        mux.read(cx).execute(command);
+                    }
+                },
+                cx,
+            ))
+            .into_any_element()
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "a grip needs the window, its status row, the float and its frame"
+    )]
     fn float_grips(
         &self,
         window: WindowId,
@@ -3745,12 +4065,25 @@ impl AppView {
         float: FloatingPaneSnapshot,
         cell: Size<Pixels>,
         frame: Size<Pixels>,
+        pip: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let far_x = (frame.width - cell.width).max(Pixels::ZERO);
-        let far_y = (frame.height - cell.height).max(Pixels::ZERO);
-        let inner_width = (frame.width - cell.width * 2.0).max(Pixels::ZERO);
-        let inner_height = (frame.height - cell.height * 2.0).max(Pixels::ZERO);
+        let (edge, near) = if pip {
+            (
+                zz_gpui::size(px(PIP_GRIP), px(PIP_GRIP)),
+                px(-PIP_GRIP / 2.0),
+            )
+        } else {
+            (cell, Pixels::ZERO)
+        };
+        let far_x = (frame.width - edge.width - near).max(Pixels::ZERO);
+        let far_y = (frame.height - edge.height - near).max(Pixels::ZERO);
+        let inner_width = (frame.width - edge.width * 2.0 - near * 2.0).max(Pixels::ZERO);
+        let top = if pip {
+            cx.theme().pane_header_height()
+        } else {
+            edge.height
+        };
         let edges = |left, top, right, bottom| FloatGrip {
             left,
             top,
@@ -3762,8 +4095,8 @@ impl AppView {
                 "move",
                 FloatGrip::MOVE,
                 Bounds::new(
-                    point(cell.width, Pixels::ZERO),
-                    zz_gpui::size(inner_width, cell.height),
+                    point(edge.width, Pixels::ZERO),
+                    zz_gpui::size(inner_width, edge.height),
                 ),
                 None,
             ),
@@ -3771,8 +4104,8 @@ impl AppView {
                 "left",
                 edges(true, false, false, false),
                 Bounds::new(
-                    point(Pixels::ZERO, cell.height),
-                    zz_gpui::size(cell.width, inner_height),
+                    point(near, top),
+                    zz_gpui::size(edge.width, (far_y - top).max(Pixels::ZERO)),
                 ),
                 Some(CursorStyle::ResizeLeftRight),
             ),
@@ -3780,8 +4113,8 @@ impl AppView {
                 "right",
                 edges(false, false, true, false),
                 Bounds::new(
-                    point(far_x, cell.height),
-                    zz_gpui::size(cell.width, inner_height),
+                    point(far_x, top),
+                    zz_gpui::size(edge.width, (far_y - top).max(Pixels::ZERO)),
                 ),
                 Some(CursorStyle::ResizeLeftRight),
             ),
@@ -3789,37 +4122,38 @@ impl AppView {
                 "bottom",
                 edges(false, false, false, true),
                 Bounds::new(
-                    point(cell.width, far_y),
-                    zz_gpui::size(inner_width, cell.height),
+                    point(near + edge.width, far_y),
+                    zz_gpui::size(inner_width, edge.height),
                 ),
                 Some(CursorStyle::ResizeUpDown),
             ),
             (
                 "top-left",
                 edges(true, true, false, false),
-                Bounds::new(point(Pixels::ZERO, Pixels::ZERO), cell),
+                Bounds::new(point(Pixels::ZERO, Pixels::ZERO), edge),
                 Some(CursorStyle::ResizeUpLeftDownRight),
             ),
             (
                 "top-right",
                 edges(false, true, true, false),
-                Bounds::new(point(far_x, Pixels::ZERO), cell),
+                Bounds::new(point(far_x, Pixels::ZERO), edge),
                 Some(CursorStyle::ResizeUpRightDownLeft),
             ),
             (
                 "bottom-left",
                 edges(true, false, false, true),
-                Bounds::new(point(Pixels::ZERO, far_y), cell),
+                Bounds::new(point(near, far_y), edge),
                 Some(CursorStyle::ResizeUpRightDownLeft),
             ),
             (
                 "bottom-right",
                 edges(false, false, true, true),
-                Bounds::new(point(far_x, far_y), cell),
+                Bounds::new(point(far_x, far_y), edge),
                 Some(CursorStyle::ResizeUpLeftDownRight),
             ),
         ]
         .into_iter()
+        .filter(|(name, ..)| !pip || !matches!(*name, "move" | "top-left" | "top-right"))
         .map(|(name, grip, bounds, cursor)| {
             div()
                 .id(zz_gpui::SharedString::from(format!(
@@ -3828,6 +4162,7 @@ impl AppView {
                 )))
                 .debug_selector(move || format!("floating-grip-{}-{name}", float.pane.0))
                 .absolute()
+                .occlude()
                 .left(bounds.origin.x)
                 .top(bounds.origin.y)
                 .w(bounds.size.width)
@@ -4009,6 +4344,15 @@ impl Render for AppView {
             .as_ref()
             .filter(|_| cx.has_active_drag())
             .and_then(|drag| self.pane_drop_preview_element(drag, cx));
+        self.settle_pip_landing(cx);
+        if let Some(active_window) = active_window {
+            self.pip_stage.observe(active_window);
+            self.pane_motion.begin(
+                active_window.id,
+                window.viewport_size(),
+                self.split_drag.is_some(),
+            );
+        }
         let floating_layer = active_window
             .filter(|active_window| {
                 route != WorkspaceRoute::Settings
@@ -4158,6 +4502,7 @@ impl Render for AppView {
                         })
                         .on_drag_move::<PaneDrag>(cx.listener(Self::on_pane_drag_move))
                         .on_drag_move::<FloatDrag>(cx.listener(Self::on_float_drag_move))
+                        .on_drag_move::<PipGrab>(cx.listener(Self::on_pip_grab_move))
                         .on_drop(cx.listener(|view, drag: &PaneDrag, window, cx| {
                             view.on_pane_drop(*drag, window, cx);
                         }))
@@ -6895,6 +7240,8 @@ mod tests {
                 started: true,
                 committed_snapshot_revision: Some(workspace.snapshot_revision),
                 request: Some(7),
+                pip: None,
+                limit: None,
             });
             cx.notify();
         });
@@ -7046,6 +7393,192 @@ mod tests {
         });
     }
 
+    #[zz_gpui::test]
+    fn a_dragged_pip_follows_the_pointer_and_lands_in_the_third_it_was_dropped_in(
+        cx: &mut TestAppContext,
+    ) {
+        let (workspace, mux, cx) = float_workspace_for_test(cx);
+        let mut snapshot = tile_and_float_snapshot(1, false);
+        let window = &mut snapshot.sessions[0].windows[0];
+        window.sx = 80;
+        window.sy = 24;
+        let float = window.floating[0];
+        cx.update(|_, cx| {
+            let mut config = config::AppConfig::default();
+            config.pane_gaps.value = true;
+            config.pane_margin.value = 32.0;
+            cx.set_global(config);
+        });
+        mux.update(cx, |mux, cx| {
+            mux.connect_for_test();
+            mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
+        });
+        cx.run_until_parked();
+        let drawn = |cx: &mut zz_gpui::VisualTestContext| {
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+            cx.debug_bounds("floating-pane-1")
+                .expect("a visible float is drawn")
+                .origin
+        };
+        for _ in 0..120 {
+            cx.executor().advance_clock(Duration::from_millis(16));
+            drawn(cx);
+            if !workspace.read_with(cx, |workspace, _| workspace.pane_motion.moving()) {
+                break;
+            }
+        }
+        let resting = drawn(cx);
+        assert!(
+            workspace.read_with(cx, |workspace, _| workspace.pane_canvas_bounds.get().origin)
+                != Point::default(),
+            "the canvas sits off the window origin, as it does beside a sidebar"
+        );
+        let header = cx
+            .debug_bounds("pip-header")
+            .expect("a PiP draws the pane header in its top border");
+        let title = point(header.left() + px(30.0), header.center().y);
+        let grabbed = title + point(px(4.0), px(0.0));
+        cx.simulate_mouse_down(title, MouseButton::Left, Modifiers::default());
+        for nudge in [title + point(px(3.0), px(0.0)), grabbed] {
+            cx.simulate_mouse_move(nudge, MouseButton::Left, Modifiers::default());
+        }
+        for step in 1..=5 {
+            cx.simulate_mouse_move(
+                grabbed + point(px(300.0 * step as f32), px(180.0 * step as f32)),
+                MouseButton::Left,
+                Modifiers::default(),
+            );
+        }
+        assert_eq!(drawn(cx), resting + point(px(1500.0), px(900.0)));
+        cx.simulate_mouse_up(
+            grabbed + point(px(1500.0), px(900.0)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.run_until_parked();
+        workspace.read_with(cx, |workspace, _| {
+            assert!(workspace.float_drag.is_none());
+            let landing = workspace
+                .pip_landing
+                .expect("a thrown PiP lands on its place");
+            assert_eq!(
+                landing.target,
+                zz_client::floating::FloatPlace::BottomRight.cells(
+                    FloatCells::from(&float),
+                    (80, 24),
+                    PaneBorderLines::Single
+                )
+            );
+        });
+    }
+
+    #[zz_gpui::test]
+    fn focusing_a_tile_slides_the_pip_past_the_edge_and_a_click_brings_it_back(
+        cx: &mut TestAppContext,
+    ) {
+        let (workspace, mux, cx) = float_workspace_for_test(cx);
+        let mut snapshot = tile_and_float_snapshot(1, false);
+        let window = &mut snapshot.sessions[0].windows[0];
+        window.sx = 80;
+        window.sy = 24;
+        window.floating[0].xoff = 58;
+        mux.update(cx, |mux, cx| {
+            mux.connect_for_test();
+            mux.attach_snapshot_for_test(SessionId(0), snapshot.clone(), cx);
+        });
+        cx.run_until_parked();
+        let settle = |cx: &mut zz_gpui::VisualTestContext| {
+            for _ in 0..120 {
+                cx.executor().advance_clock(Duration::from_millis(16));
+                cx.update(|window, cx| {
+                    _ = window.draw(cx);
+                });
+                if !workspace.read_with(cx, |workspace, _| workspace.pane_motion.moving()) {
+                    break;
+                }
+            }
+            cx.debug_bounds("floating-pane-1")
+                .expect("a visible float is drawn")
+        };
+        let resting = settle(cx);
+        let canvas = workspace.read_with(cx, |workspace, _| workspace.pane_canvas_bounds.get());
+        assert!(resting.right() <= canvas.right());
+        snapshot.generation = 2;
+        snapshot.sessions[0].windows[0].active_pane = PaneId(0);
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(SessionId(0), snapshot.clone(), cx);
+        });
+        cx.run_until_parked();
+        let stashed = settle(cx);
+        assert_eq!(stashed.left(), canvas.right() - px(60.0));
+        cx.simulate_click(
+            point(canvas.right() - px(30.0), stashed.center().y),
+            Modifiers::default(),
+        );
+        cx.run_until_parked();
+        assert_eq!(
+            settle(cx),
+            resting,
+            "a click on the peek brings the PiP back"
+        );
+        let sent = mux.read_with(cx, |mux, _| mux.executed_for_test());
+        assert!(
+            sent.iter()
+                .any(|command| command.name == "select-pane" && command.args.contains(&"%1".into())),
+            "{sent:?}"
+        );
+    }
+
+    #[zz_gpui::test]
+    fn a_pip_is_thrown_by_the_title_in_its_pane_header(cx: &mut TestAppContext) {
+        let (workspace, mux, cx) = float_workspace_for_test(cx);
+        let mut snapshot = tile_and_float_snapshot(1, false);
+        let window = &mut snapshot.sessions[0].windows[0];
+        window.sx = 80;
+        window.sy = 24;
+        mux.update(cx, |mux, cx| {
+            mux.connect_for_test();
+            mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let header = cx
+            .debug_bounds("pip-header")
+            .expect("a PiP draws the pane header in its top border");
+        let title = point(header.left() + px(30.0), header.center().y);
+        cx.simulate_mouse_down(title, MouseButton::Left, Modifiers::default());
+        for step in 1..=6 {
+            cx.simulate_mouse_move(
+                title + point(px(100.0 * step as f32), px(60.0 * step as f32)),
+                MouseButton::Left,
+                Modifiers::default(),
+            );
+        }
+        cx.simulate_mouse_up(
+            title + point(px(600.0), px(360.0)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.run_until_parked();
+        workspace.read_with(cx, |workspace, _| {
+            assert!(workspace.float_drag.is_none());
+            assert!(
+                workspace.pip_landing.is_some(),
+                "letting go of the title throws the PiP"
+            );
+        });
+        let sent = mux.read_with(cx, |mux, _| mux.executed_for_test());
+        assert!(
+            sent.iter()
+                .any(|command| command.name == "move-pane" && command.args.contains(&"-P".into())),
+            "{sent:?}"
+        );
+    }
+
     fn float_workspace_for_test(
         cx: &mut TestAppContext,
     ) -> (
@@ -7153,6 +7686,15 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(0), tile_and_float_snapshot(2, true), cx);
         });
         cx.run_until_parked();
+        for _ in 0..120 {
+            cx.executor().advance_clock(Duration::from_millis(16));
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+            if !workspace.read_with(cx, |workspace, _| workspace.pane_motion.moving()) {
+                break;
+            }
+        }
         assert_eq!(
             report(cx),
             vec![(floating, 120, 24)],
@@ -7910,6 +8452,23 @@ mod tests {
             let mut zoomed = active_window.clone();
             zoomed.zoomed_pane = Some(payload.pane);
             assert!(!state.matches(&zoomed, false));
+            let mut floated = active_window.clone();
+            let float = PaneId(9);
+            let mut float_pane = floated.panes[&PaneId(0)].clone();
+            float_pane.id = float;
+            floated.panes.insert(float, float_pane);
+            floated.floating = vec![FloatingPaneSnapshot {
+                pane: float,
+                xoff: 4,
+                yoff: 2,
+                sx: 20,
+                sy: 6,
+                visible: true,
+                border_lines: PaneBorderLines::Single,
+                border_status: PaneBorderStatus::Off,
+            }];
+            floated.active_pane = float;
+            assert!(state.matches(&floated, false));
             assert!(state.target.is_none());
             workspace.on_pane_drop(payload, window, cx);
             assert!(workspace.pane_drag.is_none());

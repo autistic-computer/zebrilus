@@ -127,6 +127,7 @@ pub trait StyledExt: Styled + Sized {
     fn layer(self, layer: &Layer) -> Self {
         let this = self
             .rounded(layer.radius)
+            .corner_smoothing(layer.smoothing)
             .border(layer.border_width)
             .border_color(layer.border)
             .shadow(layer.shadow.clone())

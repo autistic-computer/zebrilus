@@ -41,11 +41,6 @@ pub fn chrome_background(cx: &App) -> Hsla {
     zz_ui::shell::chrome_background(Theme::global(cx).background, chrome_blur(cx))
 }
 
-pub fn app_pane_background(cx: &App) -> Hsla {
-    let theme = Theme::global(cx);
-    theme.pane_background(theme.background)
-}
-
 pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
     let mux = mux.downgrade();
     cx.observe_global::<Theme>(move |cx| {
@@ -120,7 +115,7 @@ fn apply_zz_overrides(cx: &mut App) {
         .filter(|family| cx.text_system().has_font(family))
         .unwrap_or_else(|| zz_gpui::Font::default().family);
     let chrome_contrast = config::chrome_contrast(cx);
-    let pane_background_opacity = config::pane_background_opacity(cx);
+    let pip_opacity = config::pip_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
     let pane_frames = config::pane_gaps(cx);
     let pane_margin = config::pane_margin(cx);
@@ -135,7 +130,7 @@ fn apply_zz_overrides(cx: &mut App) {
     }
 
     theme.set_contrast(chrome_contrast);
-    theme.pane_background_opacity = pane_background_opacity;
+    theme.pip_opacity = pip_opacity;
     theme.pane_glow_strength = pane_glow_strength;
     theme.pane_frames = pane_frames;
     theme.pane_margin = pane_margin;
@@ -239,7 +234,7 @@ mod tests {
     }
 
     #[zz_gpui::test]
-    fn terminal_opacity_never_reaches_chrome_or_app_panes(cx: &mut zz_gpui::TestAppContext) {
+    fn terminal_opacity_never_reaches_the_chrome(cx: &mut zz_gpui::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             set_terminal_appearance(
@@ -255,7 +250,6 @@ mod tests {
             assert!(!chrome_blur(cx));
             assert_alpha(Theme::global(cx).background, 1.0);
             assert_alpha(chrome_background(cx), 1.0);
-            assert_alpha(app_pane_background(cx), 0.5);
         });
 
         cx.update(|cx| {
@@ -269,7 +263,6 @@ mod tests {
             assert!(chrome_blur(cx));
             assert_alpha(Theme::global(cx).background, 1.0);
             assert_alpha(chrome_background(cx), 0.93);
-            assert_alpha(app_pane_background(cx), 0.5);
         });
     }
 
@@ -309,20 +302,20 @@ mod tests {
                     },
                     "{id} with gaps {gaps}"
                 );
-                assert_alpha(app_pane_background(cx), if gaps { 0.0 } else { 0.5 });
             }
         });
     }
 
     #[zz_gpui::test]
-    fn app_panes_ignore_translucent_chrome_overrides(cx: &mut zz_gpui::TestAppContext) {
+    fn pip_fills_ignore_translucent_chrome_overrides(cx: &mut zz_gpui::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             Theme::global_mut(cx).colors.background =
                 zz_ui::parse_hex("#10203066").expect("test background parses");
 
-            assert_alpha(Theme::global(cx).background, 0.4);
-            assert_alpha(app_pane_background(cx), 0.5);
+            let theme = Theme::global(cx);
+            assert_alpha(theme.background, 0.4);
+            assert_alpha(theme.pane_color(theme.background), 1.0);
         });
     }
 

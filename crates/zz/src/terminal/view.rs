@@ -404,6 +404,7 @@ pub(crate) struct TerminalView {
     forwarded_keys: HashSet<String>,
     text_input_key: Option<KeyDownEvent>,
     terminal_resize_suppressed: Rc<Cell<bool>>,
+    moving: Rc<Cell<bool>>,
     last_grid_size: Option<(GridSize, u64)>,
     hit_grid: Option<HitGrid>,
     pointer_position: Option<Point<Pixels>>,
@@ -962,6 +963,7 @@ impl TerminalView {
             forwarded_keys: HashSet::new(),
             text_input_key: None,
             terminal_resize_suppressed,
+            moving: Rc::default(),
             last_grid_size: None,
             hit_grid: None,
             pointer_position: None,
@@ -1047,12 +1049,15 @@ impl TerminalView {
         self.copy_flash.clone()
     }
 
-    pub(crate) fn pane_background(&self, cx: &App) -> Hsla {
-        let background = terminal_background(
+    pub(crate) fn moving(&self) -> Rc<Cell<bool>> {
+        Rc::clone(&self.moving)
+    }
+
+    pub(crate) fn fill(&self, cx: &App) -> Hsla {
+        cx.theme().pane_color(terminal_background(
             self.retained.read().viewport.background,
             self.render_appearance.source.background_opacity,
-        );
-        cx.theme().pane_background(background)
+        ))
     }
 
     pub(crate) fn local_scroll_target(&self) -> Option<u32> {
@@ -1258,7 +1263,8 @@ impl TerminalView {
         );
         if !self.floating
             && self.last_grid_size != Some(reported)
-            && (self.command_output || !self.terminal_resize_suppressed.get())
+            && (self.command_output
+                || !(self.terminal_resize_suppressed.get() || self.moving.get()))
         {
             self.mux.read(cx).send_input(if self.command_output {
                 InputMessage::ResizeCommandOutput {
@@ -2312,7 +2318,6 @@ impl Render for TerminalView {
                 state.viewport.presentation.hovered_uri.clone(),
             )
         };
-        let background = self.pane_background(cx);
         let mode_indicator = mode_indicator(mode, unseen_output);
         let mut root = round_div_radii(
             div()
@@ -2328,7 +2333,6 @@ impl Render for TerminalView {
                         .pb(px(appearance.padding_bottom))
                 })
                 .overflow_hidden()
-                .bg(background)
                 .font(font.clone())
                 .text_size(font_size)
                 .line_height(line_height)

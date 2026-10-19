@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v108)
+title: zz wire protocol (v109)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-10-12T12:00:00-03:00
+timestamp: 2026-10-18T19:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 108`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 109`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (108) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (109) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -951,11 +951,20 @@ as its contents, so its bytes are unchanged. `pane_summary_wire_tests` pins the 
 The daemon now fills `PaneSnapshot.status` for native Agent panes and, from `@agent_state`, for
 terminal panes with no OSC 7501 record, so the record reaches every session on every host.
 
+v109 carries the watch-only agent pane behind PiP subagent feeds
+([PiP panes](/designs/pip-panes.md#subagent-feeds)). `AgentSessionCapabilities` appends
+`watch: bool` with `#[serde(default)]`; a feed's Ready sets it, and clients draw the task tray in
+place of the composer. It travels as JSON on the agent stream, so postcard frames keep their
+layout, but v108 shipped in zz 0.17.0 and `compat/wire-version.py` reads the source diff, so the
+number moves.
+
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 108`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 109`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v109 requires updated clients and daemon together, including the daemon on every ssh host.
+  v108 shipped in zz 0.17.0; v109 appends `AgentSessionCapabilities.watch`.
 - v108 requires updated clients and daemon together, including the daemon on every ssh host.
   It appends `PaneMode::Panes { areas, borders, border_style, copy, format }`, the pin's
   `window_panes_mode` (`display-panes` as a pane mode). Each `PanesModeArea` is one pane of the

@@ -12,7 +12,7 @@ use zz_ui::{
         WORKSPACE_TREE_MARKER_SLOT_WIDTH,
         sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
-            tree_node_marker, tree_row_menu, tree_window_layout_button,
+            tree_node_marker, tree_row_menu,
         },
         tree::{IndentGuideColors, WorkspaceIndentGuides},
         workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
@@ -195,13 +195,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
             )
             .into_any_element(),
         ),
-        Kind::Window => actions.push(tree_window_layout_button(
-            format!("tree-layout-{key}"),
-            disabled,
-            |_, _, _| {},
-            cx,
-        )),
-        Kind::Pane => {}
+        Kind::Window | Kind::Pane => {}
     }
     if !is_host {
         let label = match node.kind {

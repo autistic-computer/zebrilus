@@ -19636,7 +19636,7 @@ fn validate_spawn_kind<'a>(
 ) -> Result<&'a str, ServerError> {
     let kind = options.value("--kind").unwrap_or("terminal");
     if !(matches!(kind, "terminal" | "browser")
-        || command == "split-window" && matches!(kind, "picker" | "agent"))
+        || matches!(command, "split-window" | "new-pane") && matches!(kind, "picker" | "agent"))
     {
         return Err(ServerError::NativeCommandParse(format!(
             "{command}: invalid pane kind {kind:?}"
@@ -28588,6 +28588,27 @@ mod tests {
             Err(ServerError::InvalidCommand(message))
                 if message == "agent panes are disabled; set experimental-agent-pane on"
         ));
+    }
+
+    #[test]
+    fn new_pane_floats_an_agent_or_a_picker() {
+        for kind in ["agent", "picker"] {
+            let mut engine = MuxEngine::default();
+            let mut context = ExecutionContext::default();
+            engine
+                .execute(&mut context, &command("new-session", &[]))
+                .expect("session");
+            let created = engine
+                .execute(
+                    &mut context,
+                    &command(
+                        "new-pane",
+                        &["--kind", kind, "-P", "-F", "#{pane_floating_flag}"],
+                    ),
+                )
+                .unwrap_or_else(|error| panic!("new-pane --kind {kind}: {error}"));
+            assert_eq!(created.output.trim(), "1", "{kind}");
+        }
     }
 
     #[test]

@@ -4,7 +4,8 @@
 
 use std::{collections::HashMap, f32::consts::FRAC_PI_2};
 
-use web_time::{Duration, Instant};
+use web_time::Duration;
+pub use web_time::Instant;
 
 use zz_gpui::{
     Animation, AnimationElement, AnimationExt as _, App, ElementId, Hsla, IntoElement, Length,
@@ -117,6 +118,18 @@ pub fn enter(id: impl Into<ElementId>, row: impl IntoElement) -> impl IntoElemen
         Animation::new(ENTER).with_easing(ease_out_quint()),
         |row, shown| row.top(px(-ENTER_DROP * (1.0 - shown))).opacity(shown),
     )
+}
+
+/// `row` fading in and dropping into place for a moment after `since`, the
+/// instant its group opened. Unlike [`enter`] it keys on that instant, not
+/// on the row's first frame, so a row a list only draws while it is in view
+/// does not replay it as it scrolls in. `row` must be positioned relative.
+pub fn enter_since<E: Styled>(row: E, since: Option<Instant>, window: &Window, cx: &App) -> E {
+    let shown = eased(since, Duration::ZERO, ENTER, window, cx);
+    if shown >= 1.0 {
+        return row;
+    }
+    row.top(px(-ENTER_DROP * (1.0 - shown))).opacity(shown)
 }
 
 /// `control` fading in over the first frames it is drawn under `id`, for a

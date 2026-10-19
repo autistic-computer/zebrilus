@@ -36,6 +36,7 @@ use zz_ui::{
         pane_picker_surface, pane_split_surface, pane_status_badge, pane_surface, pane_sync_badge,
         pane_waiting_state, terminal_mode_indicator,
     },
+    pip::PipSurface,
     select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsStack,
@@ -58,7 +59,7 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
-        pane::embedded_pane,
+        pane::{embedded_pane, feed_pane},
     },
     console::{
         phone::{binding_rows, close, groups, key_row, placement, tool_keys},
@@ -107,6 +108,12 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(panes, cx),
         },
         Section {
+            id: "pip",
+            name: "PiP",
+            summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and a subagent feed.",
+            build: Pip::view,
+        },
+        Section {
             id: "start",
             name: "Start",
             summary: "The workspace before its first session, the first run with no host, and a new split asking what it should become.",
@@ -148,6 +155,7 @@ const GAP: f32 = 16.0;
 const PLATE_PADDING: f32 = 20.0;
 const WHICH_KEY_HEIGHT: f32 = 300.0;
 const PANES_HEIGHT: f32 = 250.0;
+const PIP_HEIGHT: f32 = 420.0;
 const PHONE_WIDTH: f32 = 390.0;
 const START_HEIGHT: f32 = 300.0;
 const START_PAGE_HEIGHT: f32 = 220.0;
@@ -329,6 +337,84 @@ impl Flat {
                 Vec::new(),
             ))
             .into_any_element()
+    }
+}
+
+struct Pip {
+    feed: AnyView,
+}
+
+impl Pip {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        let feed = feed_pane(cx);
+        cx.new(|_| Self { feed }).into()
+    }
+}
+
+impl Render for Pip {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let gaps = crate::pane().gaps;
+        let tiled = pane_split_surface(
+            "showcase-pip-split",
+            PaneSplitAxis::Horizontal,
+            0.5,
+            false,
+            gaps,
+            gap(gaps),
+            None,
+            None,
+            TerminalPane::new(2, "just site", SERVER).gaps(gaps).render(
+                "showcase-pip-server",
+                Vec::new(),
+                cx,
+            ),
+            TerminalPane::new(3, "tail -f daemon.log", LOGS)
+                .gaps(gaps)
+                .render("showcase-pip-logs", Vec::new(), cx),
+            div().absolute(),
+            cx,
+        );
+        let terminal = PipSurface::new(
+            "showcase-pip-terminal",
+            terminal_body(BUILD, false, cx).bg(zz_gpui::transparent_black()),
+        )
+        .header(super::workspace::panes::pip_header(
+            "cargo watch -x test",
+            cx,
+        ))
+        .content_inset(px(8.0), px(16.0));
+        let feed = PipSurface::new("showcase-pip-feed", self.feed.clone());
+        v_flex().w_full().gap(px(GAP)).child(
+            div()
+                .id("showcase-pip")
+                .relative()
+                .w_full()
+                .h(px(PIP_HEIGHT))
+                .overflow_hidden()
+                .rounded(cx.theme().radius)
+                .framed(cx)
+                .bg(cx.theme().background)
+                .p(gap(gaps))
+                .child(tiled)
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(32.0))
+                        .bottom(px(32.0))
+                        .w(px(360.0))
+                        .h(px(180.0))
+                        .child(terminal),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .right(px(32.0))
+                        .top(px(32.0))
+                        .w(px(380.0))
+                        .h(px(320.0))
+                        .child(feed),
+                ),
+        )
     }
 }
 

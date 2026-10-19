@@ -31,9 +31,10 @@ button at the bottom right of the sidebar footer switches between the session tr
 the desktop draws every fleet host from `MuxClient::fleet_hosts` and remembers the choice as
 `flat-sidebar` in `zz/config` (`crates/zz/src/workspace/sidebar/flat.rs`); the web and iPad clients
 draw their one host and keep it in their saved preferences. Row actions open a rename and close menu
-(`FlatMenu`), from the actions button or a right click. A window row draws its highlight with `navigation::workspace_row_fill`, the same fill as the
-tree rows (outline, corners, inset and press), and its corners and tiles follow the theme's corner
-rule like every other control, so neither becomes a pill until the theme's radius asks for pills.
+(`FlatMenu`) from a right click or a long press. A window row draws its highlight with
+`navigation::workspace_row_fill`, the same fill as the tree rows (outline, inset and press), but
+gives a round shape a 24px corner whatever the theme's radius (square and pill stay), and round tiles stay concentric with
+it, so the two-line rows never turn into pills.
 
 # What every client receives
 

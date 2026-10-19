@@ -23,6 +23,7 @@ use crate::agent::{
     claude::{ClaudeCommand, run_claude_runtime},
     codex::{CodexCommand, run_codex_runtime},
     environment::{AgentWorkspaceEnvironment, warm_adapter_cache},
+    feed::{FeedSpec, run_subagent_feed},
     git_summary,
     journal::AgentJournal,
     runtime::{AgentSpawnConfig, RuntimeCommand, RuntimeControl, run_agent_runtime},
@@ -87,6 +88,10 @@ pub(crate) enum HostCommand {
     },
     StopTask {
         task_id: String,
+    },
+    InterruptThread {
+        thread_id: String,
+        turn_id: String,
     },
 }
 
@@ -241,6 +246,7 @@ pub(crate) struct AgentPaneSpec {
     pub(crate) resume_session: Option<String>,
     pub(crate) auto_approve: Option<AgentAutoApprove>,
     pub(crate) workspace: AgentWorkspaceEnvironment,
+    pub(crate) feed: Option<FeedSpec>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -313,6 +319,7 @@ impl AgentPaneState {
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self::new(&AgentPaneSpec {
+            feed: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -459,6 +466,12 @@ impl AgentHost {
             .as_ref()
             .map(|factory| factory(&spec))
         {
+            return self.open_with(pane, generation, spec, runner);
+        }
+        if let Some(feed) = spec.feed.clone() {
+            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
+                Box::pin(run_subagent_feed(feed, channels))
+            });
             return self.open_with(pane, generation, spec, runner);
         }
         let mut config = self.config.lock().clone();
@@ -985,6 +998,9 @@ impl PanePump {
             }
             HostCommand::StopTask { task_id } => {
                 self.send(RuntimeCommand::StopTask { task_id });
+            }
+            HostCommand::InterruptThread { thread_id, turn_id } => {
+                self.send(RuntimeCommand::InterruptThread { thread_id, turn_id });
             }
             HostCommand::Authenticate { method_id } => {
                 if !self.send(RuntimeCommand::Authenticate { method_id }) {
@@ -1992,6 +2008,7 @@ mod tests {
                 pane,
                 1,
                 AgentPaneSpec {
+                    feed: None,
                     provider: AgentProvider::Codex,
                     cwd: PathBuf::from("/"),
                     resume_session: None,
@@ -2023,6 +2040,7 @@ mod tests {
             );
             let pane = PaneId(7);
             let spec = AgentPaneSpec {
+                feed: None,
                 provider: AgentProvider::Codex,
                 cwd: cwd.unwrap_or_else(|| PathBuf::from("/")),
                 resume_session,
@@ -2202,6 +2220,7 @@ mod tests {
                         auth_methods: Vec::new(),
                         capabilities: AgentSessionCapabilities {
                             verbs: true,
+                            watch: false,
                             ..AgentSessionCapabilities::default()
                         },
                     })
@@ -2327,6 +2346,7 @@ mod tests {
                     pane,
                     1,
                     AgentPaneSpec {
+                        feed: None,
                         provider,
                         cwd: directory.path().to_owned(),
                         resume_session: None,
@@ -3239,6 +3259,7 @@ mod tests {
     fn a_new_agent_session_reset_reclaims_prompts_still_in_the_mailbox() {
         let recorder = Recorder::default();
         let spec = AgentPaneSpec {
+            feed: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -3444,6 +3465,7 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
+                feed: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
@@ -3518,6 +3540,7 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
+                feed: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
