@@ -336,7 +336,7 @@ pub fn pane_header_frame(
         .child(div().opacity(opacity).child(header))
 }
 
-const PANE_ARRIVAL: web_time::Duration = web_time::Duration::from_millis(180);
+const PANE_ARRIVAL: web_time::Duration = web_time::Duration::from_millis(140);
 
 /// The panes of the window on screen that appeared after it was first drawn,
 /// so a split's new pane fades in instead of popping. Keyed by pane, not by

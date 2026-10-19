@@ -62,10 +62,11 @@ pub use foundation::{
     Highlight, IndexPath, InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt, Kind,
     Knobs, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint, PaintExt, PaintState,
     PrimaryStyle, RULE_WIDTH, ScrollbarShow, Selectable, Shadow, ShadowMaterial, Shape, Side,
-    Sizable, Size, StatefulSurfaceExt, Style, StylePatch, StyledExt, Surface, SurfaceRole, Theme,
-    ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, drawn_roles, h_flex, lifted_shadow, list_row,
-    muted_on, note_drawn_roles, oklab_lightness, oklch, parse_hex, rems_from_px, row_corners,
-    row_radius, row_state, row_surface, to_hex, to_oklch, v_flex, window_border, window_paddings,
+    Sizable, Size, Smoothing, StatefulSurfaceExt, Style, StylePatch, StyledExt, Surface,
+    SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, drawn_roles, h_flex,
+    lifted_shadow, list_row, muted_on, note_drawn_roles, oklab_lightness, oklch, parse_hex,
+    rems_from_px, row_corners, row_radius, row_state, row_surface, to_hex, to_oklch, v_flex,
+    window_border, window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};

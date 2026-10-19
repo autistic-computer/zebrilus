@@ -533,7 +533,7 @@ pub use zz_client::navigation::{ordered_panes, pane_label};
 pub enum TreeNodeKind {
     Host,
     Session,
-    Window { active_pane: PaneId },
+    Window,
     Pane { kind: MuxTreePaneKind },
 }
 

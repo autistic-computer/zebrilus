@@ -16,6 +16,7 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     command::PaletteHostId,
     menu::PopupMenuItem,
+    motion::Instant,
     navigation::{
         WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH,
@@ -25,10 +26,11 @@ use zz_ui::{
         sidebar::{
             TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
             tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
-            tree_node_marker, tree_row_menu, tree_window_layout_button,
+            tree_node_marker, tree_row_menu,
         },
         tree::{IndentGuideColors, WorkspaceIndentGuides},
-        workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_row,
+        workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_opened,
+        workspace_tree_row,
     },
     scroll::ScrollableElement as _,
 };
@@ -343,7 +345,6 @@ struct TreeRow {
     on_active_path: bool,
     expanded: bool,
     expandable: bool,
-    active_pane: Option<PaneId>,
     bell: bool,
     badge: Option<Badge>,
 }
@@ -387,11 +388,25 @@ pub(super) fn session_tree(
         px(4.0),
         IndentGuideColors::tree(cx),
     );
-    let list = uniform_list("web-session-tree-rows", rows.len(), move |range, _, cx| {
-        range
-            .map(|index| render_row(&rows[index], active_row == Some(index), &runtime, cx))
-            .collect::<Vec<_>>()
-    })
+    let list = uniform_list(
+        "web-session-tree-rows",
+        rows.len(),
+        move |range, window, cx| {
+            range
+                .map(|index| {
+                    let opened = row_opened(&rows, index, cx);
+                    render_row(
+                        &rows[index],
+                        active_row == Some(index),
+                        opened,
+                        &runtime,
+                        window,
+                        cx,
+                    )
+                })
+                .collect::<Vec<_>>()
+        },
+    )
     .size_full()
     .pr(zz_ui::navigation::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
@@ -580,7 +595,6 @@ fn tree_rows(
         on_active_path: attached.is_some(),
         expanded,
         expandable: true,
-        active_pane: None,
         bell: snapshot
             .sessions
             .iter()
@@ -614,7 +628,6 @@ fn tree_rows(
             on_active_path: active_session,
             expanded,
             expandable: !session.windows.is_empty(),
-            active_pane: None,
             bell: session
                 .windows
                 .iter()
@@ -645,7 +658,6 @@ fn tree_rows(
                 on_active_path: active_window,
                 expanded,
                 expandable: !window.panes.is_empty(),
-                active_pane: Some(window.active_pane),
                 bell: window.panes.values().any(|pane| pane.bell),
                 badge: rollup(window.panes.keys().copied(), core, unseen_agents),
             });
@@ -661,7 +673,6 @@ fn tree_rows(
                 on_active_path: active_window && window.active_pane == pane.id,
                 expanded: false,
                 expandable: false,
-                active_pane: None,
                 bell: pane.bell,
                 badge: pane_badge(pane.id, core, unseen_agents),
             }));
@@ -670,7 +681,32 @@ fn tree_rows(
     rows
 }
 
-fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) -> AnyElement {
+fn disclosure_id(target: Target) -> String {
+    format!("web-tree-disclosure-{}", target.id())
+}
+
+/// When the row at `index` came into view by an ancestor opening, so it can
+/// drop in: the latest instant any of its ancestors opened.
+fn row_opened(rows: &[TreeRow], index: usize, cx: &mut App) -> Option<Instant> {
+    let mut depth = rows.get(index)?.depth;
+    let mut opened = None;
+    for row in rows[..index].iter().rev() {
+        if row.depth < depth {
+            opened = opened.max(workspace_tree_opened(disclosure_id(row.target), cx));
+            depth = row.depth;
+        }
+    }
+    opened
+}
+
+fn render_row(
+    entry: &TreeRow,
+    active: bool,
+    opened: Option<Instant>,
+    runtime: &Runtime,
+    window: &Window,
+    cx: &mut App,
+) -> AnyElement {
     let connection = &runtime.connection;
     let connected = connection.read(cx).connected;
     let disabled = !connected || connection.read(cx).core.attached_read_only();
@@ -711,29 +747,6 @@ fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) ->
             })
             .into_any_element(),
         );
-    }
-    if let Some(pane) = entry.active_pane {
-        let connection = connection.clone();
-        actions.push(tree_window_layout_button(
-            format!("web-tree-layout-{id}"),
-            disabled,
-            move |horizontal, _, cx| {
-                connection.update(cx, |connection, cx| {
-                    connection.command(
-                        "split-window",
-                        vec![
-                            "--kind".into(),
-                            "picker".into(),
-                            if horizontal { "-h" } else { "-v" }.into(),
-                            "-t".into(),
-                            pane.to_string(),
-                        ],
-                        cx,
-                    );
-                });
-            },
-            cx,
-        ));
     }
 
     let close = match target {
@@ -787,7 +800,7 @@ fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) ->
     let marker = if entry.expandable {
         let view = runtime.view.clone();
         workspace_tree_disclosure(
-            format!("web-tree-disclosure-{id}"),
+            disclosure_id(target),
             marker,
             entry.expanded,
             group.clone().into(),
@@ -853,6 +866,7 @@ fn render_row(entry: &TreeRow, active: bool, runtime: &Runtime, cx: &mut App) ->
         activate(&connection, target, cx);
         cx.stop_propagation();
     });
+    let row = zz_ui::motion::enter_since(row, opened, window, cx);
     if !disabled
         && let Some((label, command)) =
             rename_command(runtime.connection.read(cx).core.snapshot(), target)

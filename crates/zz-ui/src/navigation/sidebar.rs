@@ -10,14 +10,14 @@ use zz_gpui::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, WindowExt as _,
-    menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
+    menu::{ContextMenuExt as _, PopupMenuItem},
     notification::Notification,
     spinner::Spinner,
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
 };
 
-use super::{workspace_tree_action_button, workspace_tree_marker};
+use super::workspace_tree_marker;
 
 pub fn tree_host_marker(bell: bool, badge_color: Option<Hsla>, cx: &App) -> AnyElement {
     static LOGO: LazyLock<Arc<zz_gpui::Image>> = LazyLock::new(|| {
@@ -160,32 +160,6 @@ pub fn tree_action_strip(
         .into_any_element()
 }
 
-pub fn tree_window_layout_button(
-    id: impl Into<ElementId>,
-    disabled: bool,
-    on_split: impl Fn(bool, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> AnyElement {
-    let on_split = Rc::new(on_split);
-    workspace_tree_action_button(id, IconName::LayoutColumns, "Window layout", disabled, cx)
-        .dropdown_menu_with_anchor(zz_gpui::Anchor::TopRight, move |menu, _, _| {
-            [
-                ("Split right", IconName::PanelRight, true),
-                ("Split bottom", IconName::PanelBottom, false),
-            ]
-            .into_iter()
-            .fold(menu, |menu, (label, icon, horizontal)| {
-                let on_split = on_split.clone();
-                menu.item(
-                    PopupMenuItem::new(label)
-                        .icon(icon)
-                        .on_click(move |_, window, cx| on_split(horizontal, window, cx)),
-                )
-            })
-        })
-        .into_any_element()
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TreeNavigationRow {
     pub depth: u8,
@@ -247,6 +221,7 @@ pub fn tree_navigation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::navigation::workspace_tree_action_button;
 
     struct Row;
 

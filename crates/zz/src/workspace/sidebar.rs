@@ -15,9 +15,7 @@ use zz_gpui::{
     Styled as _, SystemNotification, UniformListScrollHandle, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px, uniform_list,
 };
-use zz_protocol::{
-    Axis, CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId,
-};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId};
 use zz_ui::navigation::{
     WORKSPACE_SIDEBAR_DEFAULT_WIDTH as SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
     WORKSPACE_TREE_CONTENT_INSET as TREE_CONTENT_INSET,
@@ -27,13 +25,13 @@ use zz_ui::navigation::{
     sidebar::{
         TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
-        tree_node_marker, tree_row_menu, tree_window_layout_button,
+        tree_node_marker, tree_row_menu,
     },
     workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
     workspace_sidebar_footer, workspace_sidebar_ground, workspace_sidebar_panel,
     workspace_sidebar_resize_handle, workspace_sidebar_titlebar, workspace_sidebar_view_button,
     workspace_tree_action_button, workspace_tree_action_row, workspace_tree_disclosure,
-    workspace_tree_row,
+    workspace_tree_opened, workspace_tree_row,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, rems_from_px,
@@ -60,7 +58,7 @@ use crate::{
         nav::{
             HostIndicator, MuxTreeHost, MuxTreeModel, MuxTreePaneKind, MuxTreeWindow, TreeNode,
             TreeNodeKind, TreeTarget, activate_nav as activate_sidebar, active_tree_target,
-            expand_path_to, kill_target_command, new_window_command, picker_split_command,
+            expand_path_to, kill_target_command, new_window_command,
         },
     },
     window::{corners::WindowCorners, drag::window_drag_handle},
@@ -1081,9 +1079,7 @@ impl TreeProjection {
                             label: window.label().into(),
                             index: None,
                             depth: 2,
-                            kind: TreeNodeKind::Window {
-                                active_pane: window.active_pane,
-                            },
+                            kind: TreeNodeKind::Window,
                             expandable: window_expandable,
                             expanded: window_expanded,
                             on_active_path: window.active,
@@ -1263,11 +1259,12 @@ fn render_expanded_navigation(
     let rows = uniform_list(
         "workspace-tree-rows",
         entries.len() + 1,
-        move |range, _, cx| {
+        move |range, window, cx| {
             range
                 .map(|index| {
                     if let Some(entry) = row_entries.get(index) {
-                        render_tree_row(index, entry, &row_runtime, cx)
+                        let opened = tree_row_opened(&row_entries, index, cx);
+                        render_tree_row(index, entry, opened, &row_runtime, window, cx)
                     } else {
                         render_add_host_row(cx)
                     }
@@ -1303,6 +1300,27 @@ fn render_expanded_navigation(
         .into_any_element()
 }
 
+fn tree_disclosure_id(node: TreeNode) -> SharedString {
+    format!("workspace-tree-disclosure-{}", node.tree_id()).into()
+}
+
+/// When the row at `index` came into view by an ancestor opening, so it can
+/// drop in: the latest instant any of its ancestors opened.
+fn tree_row_opened(entries: &[VisibleTreeEntry], index: usize, cx: &mut App) -> Option<Instant> {
+    let mut parent = entries.get(index)?.parent;
+    let mut opened = None;
+    for entry in entries[..index].iter().rev() {
+        let Some(node) = parent else {
+            break;
+        };
+        if entry.node == node {
+            opened = opened.max(workspace_tree_opened(tree_disclosure_id(node), cx));
+            parent = entry.parent;
+        }
+    }
+    opened
+}
+
 fn row_is_active(active_target: Option<TreeNode>, node: TreeNode) -> bool {
     active_target == Some(node)
 }
@@ -1310,7 +1328,9 @@ fn row_is_active(active_target: Option<TreeNode>, node: TreeNode) -> bool {
 fn render_tree_row(
     index: usize,
     entry: &VisibleTreeEntry,
+    opened: Option<Instant>,
     runtime: &TreeRowRuntime,
+    window: &Window,
     cx: &mut App,
 ) -> AnyElement {
     let row_group: SharedString =
@@ -1395,7 +1415,7 @@ fn render_tree_row(
     let marker = if expandable {
         let toggle_sidebar = runtime.sidebar.clone();
         workspace_tree_disclosure(
-            format!("workspace-tree-disclosure-{}", node.tree_id()),
+            tree_disclosure_id(node),
             marker,
             entry.expanded,
             row_group.clone(),
@@ -1446,7 +1466,11 @@ fn render_tree_row(
         cx.stop_propagation();
     });
 
-    render_tree_row_context_menu(row, entry, runtime)
+    render_tree_row_context_menu(
+        zz_ui::motion::enter_since(row, opened, window, cx),
+        entry,
+        runtime,
+    )
 }
 
 fn render_add_host_row(cx: &mut App) -> AnyElement {
@@ -1545,7 +1569,7 @@ fn render_node_marker(
             return tree_host_marker(belled, badge.map(|badge| agent_badge_color(badge, cx)), cx);
         }
         TreeNodeKind::Session => IconName::Layers,
-        TreeNodeKind::Window { .. } => IconName::AppWindow,
+        TreeNodeKind::Window => IconName::AppWindow,
         TreeNodeKind::Pane { kind } => pane_kind_icon(*kind),
     };
     tree_node_marker(
@@ -1575,7 +1599,6 @@ fn sidebar_hostname(hostname: Option<&str>) -> SharedString {
 enum NodeAction {
     NewSession(HostId),
     NewWindow(HostId, SessionId),
-    WindowLayout(HostId, WindowId, PaneId),
     Delete(HostId, TreeTarget),
 }
 
@@ -1587,11 +1610,7 @@ fn node_actions(entry: &VisibleTreeEntry) -> Vec<NodeAction> {
             actions.push(NodeAction::NewWindow(host, session));
             actions.push(NodeAction::Delete(host, TreeTarget::Session(session)));
         }
-        (
-            TreeNodeKind::Window { active_pane },
-            TreeNode::Target(host, TreeTarget::Window(window)),
-        ) => {
-            actions.push(NodeAction::WindowLayout(host, window, *active_pane));
+        (TreeNodeKind::Window, TreeNode::Target(host, TreeTarget::Window(window))) => {
             actions.push(NodeAction::Delete(host, TreeTarget::Window(window)));
         }
         (TreeNodeKind::Pane { .. }, TreeNode::Target(host, target @ TreeTarget::Pane(_))) => {
@@ -1613,9 +1632,6 @@ fn render_node_actions(
             NodeAction::NewSession(host) => render_new_session_action(host, runtime, cx),
             NodeAction::NewWindow(host, session) => {
                 render_new_window_action(host, session, runtime, cx)
-            }
-            NodeAction::WindowLayout(host, window, active_pane) => {
-                render_window_layout_action(host, window, active_pane, runtime, cx)
             }
             NodeAction::Delete(host, target) => render_delete_action(host, target, runtime, cx),
         })
@@ -1688,41 +1704,6 @@ fn render_new_window_action(
     .into_any_element()
 }
 
-fn render_window_layout_action(
-    host: HostId,
-    window: WindowId,
-    active_pane: PaneId,
-    runtime: &TreeRowRuntime,
-    cx: &App,
-) -> AnyElement {
-    let connected = runtime
-        .tree_model
-        .host(host)
-        .is_some_and(MuxTreeHost::connected);
-    let mux = runtime.mux.clone();
-    tree_window_layout_button(
-        format!(
-            "sidebar-window-layout-{}",
-            TreeNode::Target(host, TreeTarget::Window(window)).tree_id()
-        ),
-        !connected,
-        move |horizontal, _, cx| {
-            mux.read(cx).execute_on_host(
-                host,
-                picker_split_command(
-                    active_pane,
-                    if horizontal {
-                        Axis::Horizontal
-                    } else {
-                        Axis::Vertical
-                    },
-                ),
-            );
-        },
-        cx,
-    )
-}
-
 fn render_delete_action(
     host: HostId,
     target: TreeTarget,
@@ -1768,11 +1749,11 @@ mod tests {
     use zz_gpui::TestAppContext;
     use zz_protocol::{
         Axis, BrowserDescriptor, LayoutNode, PaneKindSnapshot, PaneSnapshot, PaneStatus,
-        PaneSummary, SessionSnapshot, SplitId, WindowSnapshot,
+        PaneSummary, SessionSnapshot, SplitId, WindowId, WindowSnapshot,
     };
 
     use super::*;
-    use crate::config::AgentConfig;
+    use crate::{config::AgentConfig, mux::nav::picker_split_command};
 
     #[zz_gpui::test]
     fn workspace_tree_key_bindings_register(cx: &mut TestAppContext) {
@@ -2705,10 +2686,7 @@ mod tests {
         );
         assert_eq!(
             actions(TreeNode::Target(remote, TreeTarget::Window(WindowId(21)))),
-            [
-                NodeAction::WindowLayout(remote, WindowId(21), PaneId(303)),
-                NodeAction::Delete(remote, TreeTarget::Window(WindowId(21))),
-            ]
+            [NodeAction::Delete(remote, TreeTarget::Window(WindowId(21)))]
         );
         assert_eq!(
             actions(TreeNode::Target(remote, TreeTarget::Pane(PaneId(303)))),
@@ -2719,10 +2697,10 @@ mod tests {
                 HostId::LOCAL,
                 TreeTarget::Window(WindowId(11))
             )),
-            [
-                NodeAction::WindowLayout(HostId::LOCAL, WindowId(11), PaneId(202)),
-                NodeAction::Delete(HostId::LOCAL, TreeTarget::Window(WindowId(11))),
-            ]
+            [NodeAction::Delete(
+                HostId::LOCAL,
+                TreeTarget::Window(WindowId(11))
+            )]
         );
 
         assert_eq!(
