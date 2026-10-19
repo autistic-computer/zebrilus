@@ -1433,66 +1433,38 @@ impl BlockNode {
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
-        const DEFAULT_LENGTH: usize = 5;
-
         let table = match item {
             BlockNode::Table(table) => table,
             _ => return div().into_any_element(),
         };
 
-        let mut col_lens: Vec<usize> = vec![];
-        for row in table.children.iter() {
-            for (ix, cell) in row.children.iter().enumerate() {
-                if col_lens.len() <= ix {
-                    col_lens.push(DEFAULT_LENGTH);
-                }
-                col_lens[ix] = col_lens[ix].max(cell.children.text_len());
-            }
-        }
+        let col_count = table
+            .children
+            .iter()
+            .map(|row| row.children.len())
+            .max()
+            .unwrap_or(0);
+        let col_w = measure_table_columns(table, col_count, window);
 
         if matches!(node_cx.style.table.overflow.x, Some(Overflow::Scroll)) {
-            Self::render_scroll_table(table, col_lens.len(), options, node_cx, window, cx)
+            Self::render_scroll_table(table, &col_w, options, node_cx, window, cx)
         } else {
-            Self::render_wrap_table(table, &col_lens, options, node_cx, window, cx)
+            Self::render_wrap_table(table, &col_w, options, node_cx, window, cx)
         }
     }
 
     fn render_scroll_table(
         table: &Table,
-        col_count: usize,
+        col_w: &[f32],
         options: &NodeRenderOptions,
         node_cx: &NodeContext,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        const CELL_PAD_PX: f32 = 16.0; // px_2 horizontal padding
-        const CELL_MIN_PX: f32 = 48.0;
-        const CELL_MAX_PX: f32 = 480.0;
-
-        let text_style = window.text_style();
-        let font_size = text_style.font_size.to_pixels(window.rem_size());
-        let mut col_w = vec![CELL_MIN_PX; col_count];
-        for row in table.children.iter() {
-            for (ix, cell) in row.children.iter().enumerate() {
-                let Some(slot) = col_w.get_mut(ix) else {
-                    continue;
-                };
-                let mut w = 0.0_f32;
-                for line in cell.children.text().split('\n') {
-                    let line = line.trim();
-                    if line.is_empty() {
-                        continue;
-                    }
-                    let run = text_style.to_run(line.len());
-                    let line_w = window
-                        .text_system()
-                        .layout_line(line, font_size, &[run], None)
-                        .width;
-                    w = w.max(f32::from(line_w));
-                }
-                *slot = slot.max((w + CELL_PAD_PX).min(CELL_MAX_PX));
-            }
-        }
+        let col_w = col_w
+            .iter()
+            .map(|width| width.min(CELL_MAX_PX))
+            .collect::<Vec<_>>();
         let total_w: f32 = col_w.iter().sum();
 
         let style = &node_cx.style;
@@ -1566,14 +1538,12 @@ impl BlockNode {
 
     fn render_wrap_table(
         table: &Table,
-        col_lens: &[usize],
+        col_w: &[f32],
         options: &NodeRenderOptions,
         node_cx: &NodeContext,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        const MAX_LENGTH: usize = 150;
-
         let style = &node_cx.style;
         let row_count = table.children.len();
         let mut rows = Vec::with_capacity(row_count);
@@ -1582,11 +1552,11 @@ impl BlockNode {
             for (ix, cell) in row.children.iter().enumerate() {
                 let align = table.column_align(ix);
                 let is_last_col = ix == row.children.len() - 1;
-                let len = col_lens
+                let width = col_w
                     .get(ix)
                     .copied()
-                    .unwrap_or(MAX_LENGTH)
-                    .min(MAX_LENGTH);
+                    .unwrap_or(WRAP_CELL_MAX_PX)
+                    .min(WRAP_CELL_MAX_PX);
 
                 cells.push(
                     div()
@@ -1595,7 +1565,7 @@ impl BlockNode {
                         .when(align == ColumnumnAlign::Center, |this| this.text_center())
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
                         .min_w_16()
-                        .w(Length::Definite(relative(len as f32)))
+                        .w(Length::Definite(relative(width)))
                         .px_2()
                         .py_1()
                         .when(!is_last_col, |this| this.rule_on(RULE, Edge::Right, cx))
@@ -1776,6 +1746,39 @@ impl BlockNode {
     }
 }
 
+const CELL_PAD_PX: f32 = 16.0;
+const CELL_MIN_PX: f32 = 48.0;
+const CELL_MAX_PX: f32 = 480.0;
+const WRAP_CELL_MAX_PX: f32 = 1200.0;
+
+fn measure_table_columns(table: &Table, col_count: usize, window: &mut Window) -> Vec<f32> {
+    let text_style = window.text_style();
+    let font_size = text_style.font_size.to_pixels(window.rem_size());
+    let mut col_w = vec![CELL_MIN_PX; col_count];
+    for row in table.children.iter() {
+        for (ix, cell) in row.children.iter().enumerate() {
+            let Some(slot) = col_w.get_mut(ix) else {
+                continue;
+            };
+            let mut w = 0.0_f32;
+            for line in cell.children.text().split('\n') {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let run = text_style.to_run(line.len());
+                let line_w = window
+                    .text_system()
+                    .layout_line(line, font_size, &[run], None)
+                    .width;
+                w = w.max(f32::from(line_w));
+            }
+            *slot = slot.max(w + CELL_PAD_PX);
+        }
+    }
+    col_w
+}
+
 fn figure<E: Styled>(element: E, role: Option<SurfaceRole>, cx: &App) -> E {
     match role {
         Some(role) => element.surface(role, cx),
@@ -1818,6 +1821,25 @@ mod tests {
             highlights
                 .iter()
                 .all(|(_, style)| style.background_color.is_none())
+        );
+    }
+
+    #[zz_gpui::test]
+    fn table_columns_follow_measured_width_not_utf8_bytes(cx: &mut zz_gpui::TestAppContext) {
+        let document = super::super::markdown_parse::parse(
+            "| 中文中文 | abcdefghijkl |\n| --- | --- |\n| 中 | a |\n",
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Table(table) = &document.blocks[0] else {
+            panic!("expected table");
+        };
+        let cx = cx.add_empty_window();
+        let widths = cx.update(|window, _| measure_table_columns(table, 2, window));
+        let content = widths.iter().map(|w| w - CELL_PAD_PX).collect::<Vec<_>>();
+        assert!(
+            (content[0] * 3.0 - content[1]).abs() < 0.5,
+            "four CJK glyphs should take a third of twelve ASCII glyphs, got {widths:?}"
         );
     }
 
