@@ -67,6 +67,8 @@ pub struct TextViewState {
     pub(super) parsed_content: ParsedContent,
     text: String,
     revision: usize,
+    committed_revision: usize,
+    full_update_revision: usize,
     deferred_full_parse: bool,
     parsed_error: Option<SharedString>,
     tx: Sender<UpdateOptions>,
@@ -96,26 +98,7 @@ impl TextViewState {
             async move |weak_self, cx| {
                 while let Ok(parsed_update) = rx_result.recv().await {
                     _ = weak_self.update(cx, |state, cx| {
-                        if parsed_update.revision != state.revision {
-                            return;
-                        }
-
-                        #[cfg(test)]
-                        parse_counters::bump(&parse_counters::COMMITTED);
-                        match parsed_update.result {
-                            Ok(content) => {
-                                state.parsed_content = content;
-                                state.parsed_error = None;
-                            }
-                            Err(err) => {
-                                state.parsed_error = Some(err);
-                            }
-                        }
-                        state.deferred_full_parse = false;
-                        if !state.is_selecting {
-                            state.reset_selection();
-                        }
-                        cx.notify();
+                        state.commit_parsed_update(parsed_update, cx);
                     });
                 }
             }
@@ -143,6 +126,8 @@ impl TextViewState {
             parsed_error: None,
             text: text.to_string(),
             revision: 0,
+            committed_revision: 0,
+            full_update_revision: 0,
             deferred_full_parse: !parse_initial,
             tx,
             streaming_veil: Arc::new(Mutex::new(RowVeil::default())),
@@ -251,6 +236,9 @@ impl TextViewState {
         cx: &mut Context<Self>,
     ) {
         self.revision += 1;
+        if !append {
+            self.full_update_revision = self.revision;
+        }
         let update_options = UpdateOptions {
             revision: self.revision,
             append,
@@ -261,6 +249,7 @@ impl TextViewState {
         if parse_synchronously {
             #[cfg(test)]
             parse_counters::bump(&parse_counters::COMMITTED);
+            self.committed_revision = self.revision;
             match parse_content(ParsedContent::default(), &update_options) {
                 Ok(content) => {
                     self.parsed_content = content;
@@ -277,6 +266,35 @@ impl TextViewState {
         }
 
         _ = self.tx.try_send(update_options);
+    }
+
+    fn commits(&self, parsed_update: &ParsedUpdate) -> bool {
+        parsed_update.revision >= self.full_update_revision
+            && parsed_update.revision > self.committed_revision
+    }
+
+    fn commit_parsed_update(&mut self, parsed_update: ParsedUpdate, cx: &mut Context<Self>) {
+        if !self.commits(&parsed_update) {
+            return;
+        }
+
+        #[cfg(test)]
+        parse_counters::bump(&parse_counters::COMMITTED);
+        self.committed_revision = parsed_update.revision;
+        match parsed_update.result {
+            Ok(content) => {
+                self.parsed_content = content;
+                self.parsed_error = None;
+            }
+            Err(err) => {
+                self.parsed_error = Some(err);
+            }
+        }
+        self.deferred_full_parse = false;
+        if !self.is_selecting {
+            self.reset_selection();
+        }
+        cx.notify();
     }
 
     pub(super) fn update_bounds(&mut self, bounds: Bounds<Pixels>) {
@@ -505,6 +523,7 @@ async fn parse_loop(rx: Receiver<UpdateOptions>, tx_result: Sender<ParsedUpdate>
         }
         _ = tx_result.try_send(ParsedUpdate {
             revision: options.revision,
+            append: options.append,
             result: res,
         });
 
@@ -550,6 +569,7 @@ impl UpdateOptions {
 
 struct ParsedUpdate {
     revision: usize,
+    append: bool,
     result: Result<ParsedContent, SharedString>,
 }
 
@@ -807,6 +827,87 @@ mod tests {
         ));
         let parsed_update = rx_result.try_recv().expect("next parse result");
         assert_eq!(parsed_update.revision, total_updates);
+    }
+
+    fn push_and_parse(
+        state: &zz_gpui::Entity<TextViewState>,
+        chunk: &str,
+        cx: &mut TestAppContext,
+    ) -> ParsedUpdate {
+        let (revision, baseline) = state.update(cx, |state, cx| {
+            state.push_str(chunk, cx);
+            (state.revision, state.parsed_content.clone())
+        });
+        let options = UpdateOptions {
+            revision,
+            pending_text: chunk.to_string(),
+            append: true,
+            markdown_extensions: Arc::default(),
+        };
+        ParsedUpdate {
+            revision,
+            append: true,
+            result: parse_content(baseline, &options),
+        }
+    }
+
+    #[zz_gpui::test]
+    fn stream_commits_a_parse_that_a_newer_chunk_overtook(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("# Answer\n\n", cx)));
+        cx.run_until_parked();
+
+        let parsed = push_and_parse(&state, "Streaming", cx);
+        state.update(cx, |state, cx| {
+            state.push_str(" tokens", cx);
+            state.commit_parsed_update(parsed, cx);
+            assert_eq!(state.source().as_str(), "# Answer\n\nStreaming");
+        });
+
+        cx.run_until_parked();
+        state.read_with(cx, |state, _| {
+            assert_eq!(state.source().as_str(), "# Answer\n\nStreaming tokens");
+        });
+    }
+
+    #[zz_gpui::test]
+    fn a_parse_from_before_a_replacement_is_discarded(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("old", cx)));
+        cx.run_until_parked();
+
+        let parsed = push_and_parse(&state, " text", cx);
+        state.update(cx, |state, cx| {
+            state.replace_markdown("new", true, cx);
+            state.commit_parsed_update(parsed, cx);
+            assert_eq!(state.source().as_str(), "old");
+        });
+
+        cx.run_until_parked();
+        state.read_with(cx, |state, _| {
+            assert_eq!(state.source().as_str(), "new");
+        });
+    }
+
+    #[zz_gpui::test]
+    fn a_synchronous_parse_is_not_committed_again(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("one", cx)));
+        cx.run_until_parked();
+
+        state.update(cx, |state, cx| {
+            state.set_text("**two**", cx);
+            state.select_all(cx);
+        });
+        cx.run_until_parked();
+
+        state.read_with(cx, |state, _| {
+            assert!(
+                state.is_all_selected(),
+                "the background parser's copy of a synchronous parse was committed again"
+            );
+            assert_eq!(state.selected_text().trim(), "two");
+        });
     }
 
     #[zz_gpui::test]
