@@ -904,84 +904,76 @@ fn expand_new_hosts(
 
 impl Render for WorkspaceSidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        crate::hotreload::render!({
-            let (attached_host, attached) = {
-                let mux = self.mux.read(cx);
-                (mux.attached_host(), mux.attached_session())
-            };
-            if self.synchronize_tree(cx) {
-                let agents = self.agents.clone();
-                self.reconcile_attention(&agents, cx);
-            }
+        let (attached_host, attached) = {
+            let mux = self.mux.read(cx);
+            (mux.attached_host(), mux.attached_session())
+        };
+        if self.synchronize_tree(cx) {
+            let agents = self.agents.clone();
+            self.reconcile_attention(&agents, cx);
+        }
 
-            let sidebar = cx.entity().clone();
-            let width = self.width;
-            let settings_route = self.route == WorkspaceRoute::Settings;
-            let navigation = if settings_route {
-                self.render_settings_navigation(&sidebar, cx)
-            } else if self.flat {
-                self.render_flat_navigation(&sidebar, cx)
-            } else {
-                self.render_navigation(&sidebar, attached_host, attached, window, cx)
-            };
-            let controls = if settings_route {
-                None
-            } else {
-                Self::render_controls(&sidebar, self.content_ground(cx), cx)
-            };
-            let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
-            let titlebar = workspace_sidebar_titlebar(
-                "workspace-sidebar-titlebar",
-                div().children(controls),
-                cx,
-            )
-            .window_control_area(WindowControlArea::Drag);
-            let titlebar = if crate::profile::profile(cx).fixed_window {
-                titlebar
-            } else {
-                window_drag_handle("workspace-sidebar-titlebar-drag", titlebar, window, cx)
-            };
-            let docked = self.docked(cx);
-            let corners = if !settings_route && docked {
-                WindowCorners::for_window(window).left().top()
-            } else {
-                WindowCorners::for_window(window).left()
-            };
-            let divider_hidden = (settings_route || docked) && pane_gaps(cx);
-            let shell = corners.round_div(
-                workspace_sidebar_panel(
-                    "workspace-sidebar",
-                    width,
-                    titlebar,
-                    navigation,
-                    self.ground(cx),
-                    !divider_hidden,
-                    cx,
-                )
-                .children(footer),
-                frame_content_corner_radius(cx),
-            );
-            let resize_handle = workspace_sidebar_resize_handle(
-                "workspace-sidebar-resize-handle",
+        let sidebar = cx.entity().clone();
+        let width = self.width;
+        let settings_route = self.route == WorkspaceRoute::Settings;
+        let navigation = if settings_route {
+            self.render_settings_navigation(&sidebar, cx)
+        } else if self.flat {
+            self.render_flat_navigation(&sidebar, cx)
+        } else {
+            self.render_navigation(&sidebar, attached_host, attached, window, cx)
+        };
+        let controls = if settings_route {
+            None
+        } else {
+            Self::render_controls(&sidebar, self.content_ground(cx), cx)
+        };
+        let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
+        let titlebar =
+            workspace_sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)
+                .window_control_area(WindowControlArea::Drag);
+        let titlebar = if crate::profile::profile(cx).fixed_window {
+            titlebar
+        } else {
+            window_drag_handle("workspace-sidebar-titlebar-drag", titlebar, window, cx)
+        };
+        let docked = self.docked(cx);
+        let corners = if !settings_route && docked {
+            WindowCorners::for_window(window).left().top()
+        } else {
+            WindowCorners::for_window(window).left()
+        };
+        let divider_hidden = (settings_route || docked) && pane_gaps(cx);
+        let shell = corners.round_div(
+            workspace_sidebar_panel(
+                "workspace-sidebar",
+                width,
+                titlebar,
+                navigation,
+                self.ground(cx),
                 !divider_hidden,
                 cx,
             )
-            .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
-                cx.new(|_| SidebarResizePreview)
-            });
-            div()
-                .id("workspace-sidebar-clip")
-                .relative()
-                .h_full()
-                .w(px(width))
-                .flex()
-                .flex_none()
-                .overflow_hidden()
-                .child(shell)
-                .when(!crate::profile::profile(cx).fixed_window, |sidebar| {
-                    sidebar.child(resize_handle)
-                })
-        })
+            .children(footer),
+            frame_content_corner_radius(cx),
+        );
+        let resize_handle =
+            workspace_sidebar_resize_handle("workspace-sidebar-resize-handle", !divider_hidden, cx)
+                .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
+                    cx.new(|_| SidebarResizePreview)
+                });
+        div()
+            .id("workspace-sidebar-clip")
+            .relative()
+            .h_full()
+            .w(px(width))
+            .flex()
+            .flex_none()
+            .overflow_hidden()
+            .child(shell)
+            .when(!crate::profile::profile(cx).fixed_window, |sidebar| {
+                sidebar.child(resize_handle)
+            })
     }
 }
 
