@@ -1445,6 +1445,7 @@ impl PreparedSession {
             active_data_operations: self.config.active_data_operations,
             accelerated_paint: self.bridge.accelerated_paint,
             popups: self.popups,
+            popup: self.bridge.popup,
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             accelerated_frames: self.bridge.accelerated_frames,
             #[cfg(target_os = "macos")]
@@ -1475,6 +1476,7 @@ pub struct BrowserSession {
     mailbox: FrameMailbox,
     events: Receiver<BrowserEvent>,
     popups: PendingPopups,
+    popup: Arc<Mutex<PopupState>>,
     element_pick: ElementPickState,
     picker_available: bool,
     pending_capture: PendingCapture,
@@ -1865,14 +1867,25 @@ impl BrowserSession {
         }
     }
 
+    fn input_position(&self, x: i32, y: i32) -> (i32, i32) {
+        let viewport = *self.viewport.lock();
+        let scale = osr_raster_scale(viewport);
+        self.popup.lock().input_position(
+            scaled_osr_coordinate(x, scale),
+            scaled_osr_coordinate(y, scale),
+            scaled_osr_dimension(viewport.width, scale).cast_unsigned(),
+            scaled_osr_dimension(viewport.height, scale).cast_unsigned(),
+        )
+    }
+
     pub fn send_pointer(&self, event: PointerEvent) {
         let Some(host) = self.browser.host() else {
             return;
         };
-        let scale_factor = osr_raster_scale(*self.viewport.lock());
+        let (x, y) = self.input_position(event.x, event.y);
         let mouse = MouseEvent {
-            x: scaled_osr_coordinate(event.x, scale_factor),
-            y: scaled_osr_coordinate(event.y, scale_factor),
+            x,
+            y,
             modifiers: event_flags(event.modifiers),
         };
         match event.phase {
@@ -1902,9 +1915,10 @@ impl BrowserSession {
             flags |=
                 cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA.0);
         }
+        let (x, y) = self.input_position(event.x, event.y);
         let mouse = MouseEvent {
-            x: scaled_osr_coordinate(event.x, scale_factor),
-            y: scaled_osr_coordinate(event.y, scale_factor),
+            x,
+            y,
             modifiers: flags,
         };
         let (delta_x, delta_y) = if event.precise {

@@ -920,4 +920,33 @@ mod tests {
              so its stale highlight would never be repainted away",
         );
     }
+    #[zz_gpui::test]
+    fn selection_survives_resize_then_append(cx: &mut TestAppContext) {
+        let (chat, cx) = setup(true, cx);
+        drag(cx, point(px(0.), px(15.)), point(px(300.), px(15.)));
+        let before = window_selected_text(cx);
+        assert_eq!(before.trim(), "Hello world");
+        chat.update(cx, |chat, cx| {
+            chat.width = Some(px(40.));
+            cx.notify();
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(window_selected_text(cx), before);
+        let first = chat.read_with(cx, |chat, _| chat.first.clone());
+        for appended in [" more streamed words", " and more", "\n\nAnother paragraph"] {
+            first.update(cx, |state, cx| state.push_str(appended, cx));
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            assert_eq!(window_selected_text(cx), before);
+            assert_eq!(
+                first.read_with(cx, |state, _| state.parsed_content.document.selected_text()),
+                before
+            );
+        }
+        cx.simulate_click(point(px(300.), px(100.)), Modifiers::default());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(window_selected_text(cx), "");
+    }
 }

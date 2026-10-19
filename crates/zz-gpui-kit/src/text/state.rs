@@ -288,6 +288,16 @@ impl TextViewState {
         self.committed_revision = parsed_update.revision;
         match parsed_update.result {
             Ok(content) => {
+                if parsed_update.append && self.preserve_inline_selection {
+                    for (block, previous) in content
+                        .document
+                        .blocks
+                        .iter()
+                        .zip(self.parsed_content.document.blocks.iter())
+                    {
+                        block.preserve_selection_from(previous);
+                    }
+                }
                 self.parsed_content = content;
                 self.parsed_error = None;
             }
