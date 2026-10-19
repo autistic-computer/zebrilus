@@ -5,7 +5,7 @@ use zz_gpui::SharedString;
 
 use super::*;
 
-const PREVIEW_PROFILE: &str = "artifacts";
+const PREVIEW_PROFILE: &str = zz_browser::ARTIFACT_PROFILE;
 const PREVIEW_LOAD_HEIGHT: u32 = 801;
 const PREVIEW_MIN_HEIGHT: f64 = 8.0;
 const PREVIEW_MAX_HEIGHT: f64 = 800.0;

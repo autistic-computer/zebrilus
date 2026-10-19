@@ -42,7 +42,8 @@ mod d3d11_osr;
 use d3d11_osr::{D3d11FrameError, D3d11FrameOutcome, D3d11FrameProducer};
 
 use crate::artifact::{
-    ARTIFACT_SCHEME, ArtifactFile, error_page, parse_artifact_url, request_artifact, send_reply,
+    ARTIFACT_PROFILE, ARTIFACT_SCHEME, ArtifactFile, error_page, parse_artifact_url,
+    request_artifact, send_reply,
 };
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::frame::GpuFrameSubmission;
@@ -822,11 +823,12 @@ impl BrowserRuntime {
             return Err(BrowserError::RequestContext);
         };
         let mut artifacts = ArtifactSchemeFactory::new(());
-        if context.register_scheme_handler_factory(
-            Some(&CefString::from(ARTIFACT_SCHEME)),
-            None,
-            Some(&mut artifacts),
-        ) == 0
+        if profile == ARTIFACT_PROFILE
+            && context.register_scheme_handler_factory(
+                Some(&CefString::from(ARTIFACT_SCHEME)),
+                None,
+                Some(&mut artifacts),
+            ) == 0
         {
             log::warn!("could not serve zz:// pages in browser profile {profile}");
         }

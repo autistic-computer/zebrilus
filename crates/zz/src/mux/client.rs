@@ -3265,11 +3265,6 @@ impl MuxClient {
         self.screenshot_requests.clear();
         self.terminal_commands.clear();
         self.clear_all_pasted_images();
-        for fetch in std::mem::take(&mut self.artifact_fetches).into_values() {
-            fetch
-                .request
-                .respond(Err("zz switched to another host".to_owned()));
-        }
         self.pending_commands_revision = self.pending_commands_revision.wrapping_add(1).max(1);
         self.command_output = None;
         self.command_output_diff.invalidate();
@@ -3304,6 +3299,11 @@ impl MuxClient {
         self.confirm_revision = self.confirm_revision.wrapping_add(1).max(1);
         self.clear_all_kitty_images();
         self.clear_all_pasted_images();
+        for fetch in std::mem::take(&mut self.artifact_fetches).into_values() {
+            fetch.request.respond(Err(
+                "zz lost this page's daemon connection; reload to try again".to_owned(),
+            ));
+        }
         if key_table_changed {
             cx.emit(KeyTableChanged);
         }

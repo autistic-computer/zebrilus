@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fs, path::Path};
+use std::{ffi::OsStr, fs, io::Read as _, path::Path};
 
 use serde_json::Value;
 
@@ -122,11 +122,26 @@ fn read_visual(path: &Path) -> Result<String, String> {
     if !html {
         return Err("it is not an .html file".to_owned());
     }
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+    let file = options.open(path).map_err(|error| error.to_string())?;
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err("it is not a regular file".to_owned());
+    }
     if metadata.len() > MAX_VISUAL_BYTES {
         return Err("it is larger than 1 MiB".to_owned());
     }
-    fs::read_to_string(path).map_err(|error| error.to_string())
+    let mut html = String::new();
+    file.take(MAX_VISUAL_BYTES + 1)
+        .read_to_string(&mut html)
+        .map_err(|error| error.to_string())?;
+    if html.len() as u64 > MAX_VISUAL_BYTES {
+        return Err("it is larger than 1 MiB".to_owned());
+    }
+    Ok(html)
 }
 
 fn html_block(html: &str) -> String {
@@ -216,6 +231,27 @@ mod tests {
         });
         assert_eq!(out.len(), 2);
         assert_eq!(texts(&out), ["\u{e200}visualize"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pipe_named_like_a_page_is_refused_without_blocking() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("pipe.html");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .expect("mkfifo")
+                .success()
+        );
+        let mut visuals = Visuals::default();
+        let out = visuals.pass(chunk("m1", &reference(&path)));
+        let texts = texts(&out);
+        let [text] = texts.as_slice() else {
+            panic!("one text chunk");
+        };
+        assert!(text.contains("not a regular file"), "{text}");
     }
 
     #[test]
