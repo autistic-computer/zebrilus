@@ -31,14 +31,34 @@ fn run_rounds(
     sent: &mut u64,
     rounds: usize,
 ) {
-    for _ in 0..rounds {
+    run_jittered(flow, link, now, sent, rounds, |_| Duration::ZERO);
+}
+
+fn run_jittered(
+    flow: &mut FlowWindow,
+    link: &Link,
+    now: &mut Instant,
+    sent: &mut u64,
+    rounds: usize,
+    jitter: impl Fn(usize) -> Duration,
+) {
+    for round in 0..rounds {
         let window = flow.window();
-        flow.sending(*sent, *now);
-        *sent += window;
-        flow.pinged(*sent, *now);
+        let start = *now;
+        flow.sending(*sent, start);
+        let first = *sent;
+        let tokens = (1..=4)
+            .map(|quarter| {
+                *sent = first + window * quarter / 4;
+                flow.pinged(*sent, start);
+                (*sent, window * quarter / 4)
+            })
+            .collect::<Vec<_>>();
         flow.block();
-        *now += link.round_trip(window);
-        flow.acknowledge(*sent, *now);
+        for (token, ahead) in tokens {
+            *now = start + link.round_trip(ahead) + jitter(round);
+            flow.acknowledge(token, *now);
+        }
     }
 }
 
@@ -110,6 +130,22 @@ fn a_slower_link_shrinks_the_window_within_a_few_rounds() {
     };
     run_rounds(&mut flow, &slow, &mut now, &mut sent, 30);
     assert!(near(flow.window(), 25_000), "{}", flow.window());
+}
+
+#[test]
+fn rare_clean_rounds_keep_a_jittery_link_with_room_from_shrinking() {
+    let mut now = Instant::now();
+    let mut flow = seeded(now);
+    now += PROP;
+    let mut sent = 100;
+    let link = Link {
+        capacity: 1_000_000_000,
+        prop: PROP,
+    };
+    run_jittered(&mut flow, &link, &mut now, &mut sent, 60, |round| {
+        if round % 6 == 5 { Duration::ZERO } else { PROP }
+    });
+    assert!(flow.window() >= 64 * 1024, "{}", flow.window());
 }
 
 #[test]

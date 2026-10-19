@@ -150,9 +150,13 @@ All state lives in `FlowWindow`, a plain struct with no I/O, so it is tested on 
 - **Delivery rate per pong**: (token − the acked offset when that ping was sent) / (now − the time
   of that ack). This is BBR's ack-rate sample. Its interval spans at least one RTT, so pongs that
   arrive bunched together skew it far less than a pong-to-pong rate would.
-- **max_rate**: the highest of the last 8 samples whose ping saw the gate shut while it was in
-  flight, which is when the sender was limited by the window. Any other sample counts only if it
-  raises the window, so idle typing never shrinks it. An earlier rule called a round limited when
+- **max_rate**: the highest of the last 40 samples whose ping saw the gate shut while it was in
+  flight, which is when the sender was limited by the window. With about four pings per window that
+  is ten round trips, the span of BBR's bandwidth filter. In a window-limited round the sample reads
+  the window over that round's RTT, so it is only as high as the round's RTT is low; ten rounds
+  nearly always hold one near the minimum. Eight samples (two rounds, the first version) let a run
+  of wifi spikes drag the window down until it shut on a link with room. Any other sample counts
+  only if it raises the window, so idle typing never shrinks it. An earlier rule called a round limited when
   half a window was in flight; on wifi that caught ordinary traffic during RTT spikes, the samples
   read the spike as low capacity, and the window sank until it gated a link that had room (measured
   2026-10-18: +15-40 ms echo, -30% frames).
@@ -191,10 +195,13 @@ congestion-window gain, was also measured; see Results for why 5/4 stays.
   the mailbox goes out ahead of an echo frame.
 - **`ssh host zz attach`.** A TUI running on the remote host writes a plain tty stream that zz
   cannot pace.
-- **A link with room but a jittery RTT.** With mono floods on the harsh profile, which fit the link,
-  the 5/4 window still shut on RTT spikes and cost 20-30 ms of echo p50 (125-135 against 103-106
-  ms). Pacing sends at the measured rate, with a larger window for slack, is BBR's answer; it needs a
-  timer-driven writer.
+- **A link with room but a jittery RTT.** With the first 8-sample filter and mono floods on the
+  harsh profile, which fit the link, the 5/4 window shut on RTT spikes and cost 20-30 ms of echo p50
+  (125-135 against 103-106 ms, 2026-10-18). The 40-sample filter is the fix; its latency effect
+  could not be re-measured on 2026-10-19 under a ~150 ms floor on the Mac side (see Results), but
+  it gives back about half the frame throughput the 8-sample filter lost there. If a quiet re-run
+  still shows a cost, pacing sends at the measured rate with a larger window for slack (BBR's
+  answer); that needs a timer-driven writer.
 
 # Measurement plan
 
@@ -304,6 +311,34 @@ Findings:
 - **No Nagle stall on real ssh.** Idle pings measured the bare RTT (66.6 ms on LTE, 87.6 ms on
   harsh) and pongs never lagged by a delayed-ACK multiple. On loopback the same code needed
   `nodelay` relays, which was the 64 KiB MSS, not ssh.
+
+## Ten-round rate filter (2026-10-19)
+
+Same rig, 40-sample filter, three interleaved rounds of 20 keys per cell. The Mac was in use with
+Bluetooth audio playing, and every run, flow off included, sat on a ~220 ms echo floor that
+yesterday's runs did not have; bare ping through the throttle did not show it, and the unthrottled
+LAN echo had ~130 ms stalls at p90 against 36 ms the day before. Within the day:
+
+| cell | flow off p50 / p90 | flow on p50 / p90 |
+|---|---|---|
+| harsh mono 120x40 | 224-228 / 320-526 ms | 219-226 / 313-326 ms |
+| harsh mono 240x70 | 226-787 / 740-1519 ms | 220-224 / 318-394 ms |
+| harsh colored 120x40 | 225-1023 / 329-2731 ms | 222-225 / 350-481 ms |
+| harsh colored 240x70 | 1203-1577 / 1503-1890 ms | 234-274 / 389-533 ms |
+| LTE colored 240x70 | 220-224 / 238-298 ms | 204-220 / 269-294 ms |
+| LTE mono 120x40 | 222-223 / 226-249 ms | 165-206 / 227-283 ms |
+
+Same-day control on the mono 120x40 cells, 30 keys per run, off, 8-sample and 40-sample builds
+interleaved:
+
+| cell | echo p50, off / 8 / 40 | tty KiB/s, off / 8 / 40 |
+|---|---|---|
+| harsh | 222-229 / 222-224 / 223-225 ms | 311-338 / 185-204 / 249-282 |
+| LTE | 216-223 / 219-225 / 219-225 ms | 415-441 / 271-327 / 267-368 |
+
+Echo was the same for all three under the floor. Frames show the filter working: on harsh the
+8-sample window cost 41% of the frames flow off delivered, the 40-sample one 19%, which means it
+shut less often.
 
 # Decisions
 
