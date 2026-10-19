@@ -7,6 +7,6 @@
 * [Browser history & omnibox autocomplete](history-autocomplete.md) - Profile-scoped browser history, recent-use ranking, learned selections, and Chrome-like URL-bar autocomplete.
 * [Input translation (GPUI → CEF)](input-translation.md) - Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, history-backed omnibox interaction, and why page drag and drop is off.
 * [Browser runtime & session lifecycle](lifecycle.md) - Runtime/profile-context/session state machines and the browser-neutral events that CEF callbacks translate into.
-* [Off-screen rendering & the frame mailbox](osr-rendering.md) - How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, and how zz paces visible sessions.
+* [Off-screen rendering & the frame mailbox](osr-rendering.md) - How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, the macOS layer and Wayland subsurface that show frames below the window, and how zz paces visible sessions.
 * [Named zz profiles & persistent request contexts](profile.md) - Named zz-owned CEF profiles isolate browser state on the client's disk, remote egress uses host-keyed composite contexts, and explicit Chrome import uses bounded read-only snapshots.
 <!-- okf:listing:end -->
