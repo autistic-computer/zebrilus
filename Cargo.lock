@@ -11412,6 +11412,7 @@ dependencies = [
  "spin 0.10.1",
  "stacksafe",
  "strum",
+ "subsecond",
  "taffy",
  "thiserror 2.0.20",
  "ttf-parser",
