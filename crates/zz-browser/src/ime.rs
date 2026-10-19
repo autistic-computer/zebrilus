@@ -1,7 +1,5 @@
 use std::ops::Range;
 
-/// One composition character's box in pane-local logical pixels, the same
-/// space as [`PointerEvent`](crate::PointerEvent) coordinates.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ImeCharacterBounds {
     pub x: f32,
@@ -11,10 +9,6 @@ pub struct ImeCharacterBounds {
 }
 
 impl ImeCharacterBounds {
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "CEF view coordinates stay far below f32's exact integer range"
-    )]
     #[must_use]
     pub fn from_view(x: i32, y: i32, width: i32, height: i32, raster_scale: f32) -> Self {
         let scale = if raster_scale.is_finite() && raster_scale > 0.0 {
@@ -50,9 +44,6 @@ impl ImeCharacterBounds {
     }
 }
 
-/// The box an IME candidate window should anchor to for a UTF-16 range of
-/// the composition: the union of the covered characters, or a caret at the
-/// end of the last character when the range starts past them.
 #[must_use]
 pub fn ime_range_bounds(
     bounds: &[ImeCharacterBounds],
