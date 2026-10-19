@@ -10,4 +10,7 @@ pub(crate) mod screenshot;
 pub(crate) mod tui;
 #[cfg(target_os = "macos")]
 pub(crate) mod underlay;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[path = "underlay_linux.rs"]
+pub(crate) mod underlay;
 pub(crate) mod view;

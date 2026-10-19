@@ -81,6 +81,39 @@ same backing storage, so allocation counts do not measure physical VRAM growth.
 The local importer derives from cef-rs's DMA-BUF implementation. Its upstream
 revision, license, and removal conditions are in `crates/zz-browser/UPSTREAM.md`.
 
+### Wayland subsurface underlay
+
+On Wayland, once a pane has a frame (either Linux tier), `underlay.rs` (the
+Linux build of `underlay_linux.rs`) gives it a desynchronized `wl_subsurface`
+below the window's surface, the Wayland counterpart of the macOS layer:
+
+- `Window::create_underlay` asks zz-gpui-platform for a `PlatformUnderlay`: a
+  `wl_surface` with an empty input region, a `wp_viewport`, and a second wgpu
+  surface on GPUI's device (`WgpuPresenter`). Pointer input keeps going to the
+  window surface above it;
+- `BrowserElement::paint` moves it to the pane's bounds (`place_underlay`
+  multiplies by window zoom into surface coordinates; position takes effect
+  with the window's commit, size through the viewport with the next present)
+  and calls `Window::paint_underlay` with the frame's texture view. The wgpu
+  renderer draws a `PaintSurface` without a view as a hole: `fs_surface_hole`
+  scales the destination by one minus the rounded rect's coverage. Glass that
+  reads its backdrop over the page keeps the view, so the page is drawn into
+  the scene there, exactly as on macOS;
+- on `FrameReady` the view hands the texture to `PaneUnderlay::present`,
+  which copies it into the subsurface's swapchain image and presents it
+  (Mailbox or Immediate when offered, so the main thread never waits on a
+  frame callback) instead of notifying. It falls back to a window redraw
+  while the layer is off screen, glass covers it, or no image was free;
+- `UnderlayFlush` unmaps layers that were not placed this frame (destroying
+  the `wl_subsurface` role) and calls `Window::set_underlay_active`, which
+  keeps the window's alpha mode transparent and its opaque region unset while
+  any hole is on screen.
+
+`ZZ_BROWSER_UNDERLAY=0` turns it off. Compositors without `wl_subcompositor`
+and X11 keep drawing frames through GPUI. Headless gamescope is one of them, so
+the browser benchmarks run under a nested `kwin_wayland --virtual` on a private
+D-Bus and config directory to exercise this path.
+
 ## macOS Metal-IOSurface
 
 `metal_osr.rs` owns a system `MTLDevice`, command queue, and five BGRA
@@ -346,6 +379,8 @@ suppressed by equality checks.
 | `crates/zz/src/browser/view.rs` | Latest-frame consumption, retained surfaces, and hot/idle BeginFrame scheduling. |
 | `crates/zz/src/browser/macos_surface.rs` | Cached `IOSurface` to `CVPixelBuffer` wrapping. |
 | `crates/zz/src/browser/underlay.rs` | macOS per-pane `CALayer`, host view, placement, and the end-of-frame `UnderlayFlush`. |
+| `crates/zz/src/browser/underlay_linux.rs` | Wayland per-pane subsurface placement, direct presents, and the Linux `UnderlayFlush`. |
+| `crates/zz-gpui-platform/src/linux/wayland/underlay.rs` | The `wl_subsurface`, viewport and `WgpuPresenter` behind `PlatformUnderlay`. |
 | `crates/zz/src/browser/element.rs` | GPUI image, wgpu external-texture, and macOS surface painting. |
 
 # Related

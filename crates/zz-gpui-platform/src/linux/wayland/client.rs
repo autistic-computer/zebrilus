@@ -31,7 +31,7 @@ use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle, delegate_noop,
     protocol::{
         wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
-        wl_shm_pool, wl_surface,
+        wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
     },
 };
 use wayland_protocols::ext::background_effect::v1::client::{
@@ -212,6 +212,7 @@ pub struct Globals {
     pub qh: QueueHandle<WaylandClientStatePtr>,
     pub activation: Option<xdg_activation_v1::XdgActivationV1>,
     pub compositor: wl_compositor::WlCompositor,
+    pub subcompositor: Option<wl_subcompositor::WlSubcompositor>,
     pub cursor_shape_manager: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     pub data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
     pub primary_selection_manager:
@@ -255,6 +256,7 @@ impl Globals {
                     (),
                 )
                 .unwrap(),
+            subcompositor: globals.bind(&qh, 1..=1, ()).ok(),
             cursor_shape_manager: globals.bind(&qh, 1..=1, ()).ok(),
             data_device_manager: globals
                 .bind(
@@ -1523,6 +1525,8 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for WaylandClientStat
 delegate_noop!(WaylandClientStatePtr: ignore xdg_activation_v1::XdgActivationV1);
 delegate_noop!(WaylandClientStatePtr: ignore xdg_system_bell_v1::XdgSystemBellV1);
 delegate_noop!(WaylandClientStatePtr: ignore wl_compositor::WlCompositor);
+delegate_noop!(WaylandClientStatePtr: ignore wl_subcompositor::WlSubcompositor);
+delegate_noop!(WaylandClientStatePtr: ignore wl_subsurface::WlSubsurface);
 delegate_noop!(WaylandClientStatePtr: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 delegate_noop!(WaylandClientStatePtr: ignore wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore wl_data_device_manager::WlDataDeviceManager);

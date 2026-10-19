@@ -1486,3 +1486,15 @@ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
     }
     return vec4<f32>(sample.rgb, sample.a * mask);
 }
+
+@fragment
+fn fs_surface_hole(input: SurfaceVarying) -> @location(0) vec4<f32> {
+    if (any(input.clip_distances < vec4<f32>(0.0))) {
+        return vec4<f32>(0.0);
+    }
+    let surface = load_surface(input.surface_id);
+    let coverage = saturate(0.5 - quad_sdf_smooth(
+        input.position.xy, surface.bounds,
+        surface.corner_radii, surface.corner_smoothing));
+    return vec4<f32>(0.0, 0.0, 0.0, coverage);
+}

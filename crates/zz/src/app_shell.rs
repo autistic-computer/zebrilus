@@ -376,6 +376,11 @@ impl Render for AppShell {
             let overlays = overlays.chain(std::iter::once(
                 crate::browser::underlay::UnderlayFlush.into_any_element(),
             ));
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            let overlays = overlays.chain(
+                crate::browser::underlay::flush_needed()
+                    .then(|| crate::browser::underlay::UnderlayFlush.into_any_element()),
+            );
             let overlays = overlays.collect::<Vec<_>>();
             let shell = app_shell_surface(
                 "app-shell",

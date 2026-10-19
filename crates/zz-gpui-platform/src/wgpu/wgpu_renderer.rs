@@ -204,6 +204,8 @@ struct WgpuPipelines {
     poly_sprites: wgpu::RenderPipeline,
     #[allow(dead_code)]
     surfaces: wgpu::RenderPipeline,
+    #[allow(dead_code)]
+    surface_holes: wgpu::RenderPipeline,
 }
 
 /// One frame allocation of instance data, ready to bind.
@@ -1094,7 +1096,31 @@ impl WgpuRendererCore {
             &layouts.instances,
             Some(&layouts.texture),
             wgpu::PrimitiveTopology::TriangleStrip,
-            &[Some(color_target)],
+            &[Some(color_target.clone())],
+            1,
+            &shader_module,
+        );
+
+        let hole_blend = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::Zero,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let surface_holes = create_pipeline(
+            "surface_holes",
+            "vs_surface",
+            "fs_surface_hole",
+            &layouts.globals,
+            &layouts.instances,
+            None,
+            wgpu::PrimitiveTopology::TriangleStrip,
+            &[Some(wgpu::ColorTargetState {
+                blend: Some(wgpu::BlendState {
+                    color: hole_blend,
+                    alpha: hole_blend,
+                }),
+                ..color_target
+            })],
             1,
             &shader_module,
         );
@@ -1109,6 +1135,7 @@ impl WgpuRendererCore {
             subpixel_sprites,
             poly_sprites,
             surfaces,
+            surface_holes,
         }
     }
 
@@ -1276,6 +1303,29 @@ impl WgpuRenderer {
             device: resources.device.clone(),
             queue: resources.queue.clone(),
         })
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub fn create_presenter(
+        &self,
+        raw_window_handle: raw_window_handle::RawWindowHandle,
+    ) -> Result<crate::wgpu::WgpuPresenter> {
+        let context = self
+            .context
+            .as_ref()
+            .context("the renderer has no GPU context")?;
+        let context = context.borrow();
+        let context = context
+            .as_ref()
+            .context("the GPU context is not initialized")?;
+        let resources = &self.core().context("the renderer was released")?.resources;
+        let surface = create_surface(&context.instance, raw_window_handle)?;
+        Ok(crate::wgpu::WgpuPresenter::new(
+            surface,
+            &context.adapter,
+            resources.device.clone(),
+            resources.queue.clone(),
+        ))
     }
 
     /// Whether frames can be read back mid-frame, which glass needs.
@@ -2320,8 +2370,16 @@ impl WgpuRendererCore {
                 pad: 0.0,
             };
             let instances = self.write_instance_binding(instance_offset, &[params])?;
+            let Some(texture_view) = &surface.texture_view else {
+                let resources = self.resources();
+                pass.set_pipeline(&resources.pipelines.surface_holes);
+                pass.set_bind_group(0, &resources.globals_bind_group, &[]);
+                pass.set_bind_group(1, &instances.bind_group, &[]);
+                pass.draw(0..4, instances.first_instance..instances.first_instance + 1);
+                continue;
+            };
             let texture =
-                self.create_texture_bind_group("surface_texture_bind_group", &surface.texture_view);
+                self.create_texture_bind_group("surface_texture_bind_group", texture_view);
             let resources = self.resources();
             pass.set_pipeline(&resources.pipelines.surfaces);
             pass.set_bind_group(0, &resources.globals_bind_group, &[]);

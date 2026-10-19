@@ -57,7 +57,7 @@ use zz_ui::{
 
 #[cfg(target_os = "macos")]
 use crate::browser::macos_surface::MacBrowserSurfaceCache;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
 use crate::browser::underlay::PaneUnderlay;
 use zz_chrome_import as chrome_import;
 
@@ -425,7 +425,7 @@ pub(crate) struct BrowserView {
     mac_surface: Option<CVPixelBuffer>,
     #[cfg(target_os = "macos")]
     mac_surface_cache: MacBrowserSurfaceCache,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
     underlay: Option<PaneUnderlay>,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     gpu_texture: Option<wgpu::Texture>,
@@ -777,7 +777,7 @@ impl BrowserView {
             mac_surface: None,
             #[cfg(target_os = "macos")]
             mac_surface_cache: MacBrowserSurfaceCache::default(),
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
             underlay: None,
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             gpu_texture: None,
@@ -1369,6 +1369,20 @@ impl BrowserView {
                             .is_some_and(|bounds| window.underlay_covered(bounds))
                     {
                         return;
+                    }
+                    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+                    if let Some(texture) = &self.gpu_texture {
+                        if self.underlay.is_none() && crate::browser::underlay::enabled() {
+                            self.underlay = PaneUnderlay::new(window);
+                        }
+                        if let Some(underlay) = &self.underlay
+                            && !self
+                                .content_bounds
+                                .is_some_and(|bounds| window.underlay_covered(bounds))
+                            && underlay.present(texture)
+                        {
+                            return;
+                        }
                     }
                 }
                 BrowserEvent::SharedTextureFailed { .. } | BrowserEvent::FrameReady { .. } => {
@@ -3849,10 +3863,16 @@ impl Render for BrowserView {
             .on_key_down(cx.listener(Self::on_page_key_down))
             .on_key_up(cx.listener(Self::on_page_key_up));
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let linux_underlay = self
+            .underlay
+            .as_ref()
+            .filter(|_| !shows_native_state && self.gpu_texture.is_some())
+            .map(PaneUnderlay::handle);
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         let browser_surface = browser_surface.children(
             self.gpu_texture
                 .clone()
-                .filter(|_| !shows_native_state)
+                .filter(|_| !shows_native_state && linux_underlay.is_none())
                 .map(|texture| {
                     round_div_radii(
                         external_texture(texture)
@@ -3886,6 +3906,12 @@ impl Render for BrowserView {
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         let visible_image = visible_image.filter(|_| self.gpu_texture.is_none());
         let browser_element = BrowserElement::new(cx.entity(), visible_image, surface_radii);
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let browser_element = browser_element.underlay(
+            linux_underlay
+                .zip(self.gpu_texture.clone())
+                .filter(|_| !shows_native_state),
+        );
         #[cfg(target_os = "macos")]
         let browser_element = browser_element
             .surface(if shows_native_state {
