@@ -36,10 +36,10 @@ use crate::{
 use parking_lot::RwLock;
 use presentation::{spinner, spinner_phase};
 use zz_gpui::{
-    AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, FollowMode, FontWeight,
-    Global, Hsla, Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior, ListState,
-    ObjectFit, Pixels, RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas, div, img,
-    list, prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, EntityId, FollowMode,
+    FontWeight, Global, Hsla, Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior,
+    ListState, ObjectFit, Pixels, RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas,
+    div, img, list, prelude::*, px, relative,
 };
 
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
@@ -2778,21 +2778,23 @@ struct AgentMarkdownView {
 impl zz_gpui::RenderOnce for AgentMarkdownView {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let owner = self.owner;
+        let state_id = self.state.entity_id();
         let text = TextView::new(&self.state)
             .style(self.style)
             .max_w_full()
             .min_w_0()
             .selectable(true)
             .streaming(self.streaming)
-            .code_block_actions(agent_code_block_chrome)
+            .code_block_actions(move |code_block, window, cx| {
+                agent_code_block_chrome(code_block, state_id, window, cx)
+            })
             .code_block_body(move |code_block, window, cx| {
-                agent_code_block_body(code_block, owner, window, cx)
+                agent_code_block_body(code_block, state_id, owner, window, cx)
             })
             .markdown_extensions(self.extensions)
             .when(self.truncated, |text| {
                 text.scrollable(true).h(px(MARKDOWN_PREVIEW_HEIGHT))
             });
-        let state_id = self.state.entity_id();
         v_flex().w_full().min_w_0().gap_2().child(text).when_some(
             self.truncated.then_some(self.full_source).flatten(),
             move |this, source| {
@@ -2890,17 +2892,19 @@ fn render_image_bytes(image: &RenderImage) -> usize {
     usize::try_from(size.width.0).unwrap_or(0) * usize::try_from(size.height.0).unwrap_or(0) * 4
 }
 
-fn html_block_id(code: &str) -> u64 {
+fn html_block_id(state: EntityId, code_block: &CodeBlock) -> u64 {
     let mut hasher = DefaultHasher::new();
-    code.hash(&mut hasher);
+    state.hash(&mut hasher);
+    code_block.span.map(|span| span.start).hash(&mut hasher);
+    code_block.code().hash(&mut hasher);
     hasher.finish()
 }
 
-fn html_preview_shown(code: &str, preferred: bool, cx: &App) -> bool {
+fn html_preview_shown(block: u64, preferred: bool, cx: &App) -> bool {
     preferred
         != cx
             .try_global::<HtmlPreviewToggles>()
-            .is_some_and(|toggles| toggles.0.contains(&html_block_id(code)))
+            .is_some_and(|toggles| toggles.0.contains(&block))
 }
 
 fn previews_by_default(code_block: &CodeBlock) -> bool {
@@ -3102,6 +3106,7 @@ impl HtmlPreviewState {
 
 fn agent_code_block_body(
     code_block: &CodeBlock,
+    state_id: EntityId,
     owner: Option<u64>,
     window: &mut Window,
     cx: &mut App,
@@ -3109,11 +3114,11 @@ fn agent_code_block_body(
     let language = code_block_language(code_block.lang());
     let code = code_block.code();
     let visual = previews_by_default(code_block);
-    if !previews_html(&language, cx) || !html_preview_shown(&code, visual, cx) {
+    let block = html_block_id(state_id, code_block);
+    if !previews_html(&language, cx) || !html_preview_shown(block, visual, cx) {
         return None;
     }
     let head = visual.then(|| visual_page_head(cx));
-    let block = html_block_id(&code);
     let state = window.use_keyed_state(
         SharedString::from(format!("zz-html-preview/{block}")),
         cx,
@@ -3255,6 +3260,7 @@ fn agent_code_block_body(
 
 fn agent_code_block_chrome(
     code_block: &CodeBlock,
+    state_id: EntityId,
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -3269,8 +3275,8 @@ fn agent_code_block_chrome(
         })
         .flatten();
     let visual = previews_by_default(code_block);
-    let preview = previews_html(&language, cx).then(|| html_preview_shown(&code, visual, cx));
-    let block = html_block_id(&code);
+    let block = html_block_id(state_id, code_block);
+    let preview = previews_html(&language, cx).then(|| html_preview_shown(block, visual, cx));
     let page = code.clone();
     let ground = cx.theme().ground_of(crate::roles::CODE);
 
@@ -5194,15 +5200,22 @@ mod tests {
                     window.refresh();
                 }),
             });
-            cx.default_global::<HtmlPreviewToggles>()
-                .0
-                .insert(html_block_id("<p>live</p>"));
         });
         let draw = |cx: &mut VisualTestContext| {
             cx.update(|window, cx| {
                 _ = window.draw(cx);
             });
         };
+        draw(cx);
+        let language = cx
+            .debug_bounds("agent-code-language")
+            .expect("the html block is painted");
+        cx.simulate_mouse_move(language.center(), None, zz_gpui::Modifiers::none());
+        draw(cx);
+        let toggle = cx
+            .debug_bounds("agent-code-preview")
+            .expect("an html block offers Preview");
+        cx.simulate_click(toggle.center(), zz_gpui::Modifiers::none());
         draw(cx);
         draw(cx);
         cx.executor().advance_clock(FIGURE_RENDER_DEBOUNCE);
@@ -5223,6 +5236,104 @@ mod tests {
             .expect("the live page takes the picture's place");
         assert_eq!(live.size, picture.size);
         assert!(cx.debug_bounds("agent-html-preview").is_none());
+    }
+
+    #[zz_gpui::test]
+    fn identical_html_blocks_keep_separate_live_owners_and_occurrences(cx: &mut TestAppContext) {
+        struct Panes {
+            first: Entity<TimelineRowsTest>,
+            second: Entity<TimelineRowsTest>,
+        }
+
+        impl Render for Panes {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                h_flex().children([self.first.clone(), self.second.clone()])
+            }
+        }
+
+        cx.update(crate::init);
+        let answer = "```html preview\n<p>same</p>\n```\n";
+        let repeated = format!("{answer}\n{answer}");
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let first = cx.new(|cx| TimelineRowsTest {
+                store: cx.new(|_| AgentTimelineStore::owned_by(7)),
+                rows: fold_timeline_rows(&[test_assistant(1, &repeated)]).rows,
+            });
+            let second = cx.new(|cx| TimelineRowsTest {
+                store: cx.new(|_| AgentTimelineStore::owned_by(8)),
+                rows: fold_timeline_rows(&[test_assistant(1, answer)]).rows,
+            });
+            let view = cx.new(|_| Panes { first, second });
+            crate::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        let active = Rc::new(std::cell::Cell::new(None::<u64>));
+        let visited = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let activated = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let rendered_live = Rc::new(std::cell::Cell::new(0));
+        let shown = Rc::clone(&active);
+        let visits = Rc::clone(&visited);
+        let rendered = Rc::clone(&rendered_live);
+        let started = Rc::clone(&active);
+        let activations = Rc::clone(&activated);
+        cx.update(|_, cx| {
+            cx.set_global(AgentHtmlPreviewer(Rc::new(|_, _, cx| {
+                Task::ready(
+                    cx.svg_renderer()
+                        .render_single_frame(
+                            br#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"/>"#,
+                            1.0,
+                        )
+                        .map_err(|error| error.to_string().into()),
+                )
+            })));
+            cx.set_global(AgentHtmlLive {
+                live: Rc::new(move |block, _| {
+                    visits.borrow_mut().push(block);
+                    (shown.get() == Some(block)).then(|| {
+                        rendered.set(rendered.get() + 1);
+                        div().size_full().into_any_element()
+                    })
+                }),
+                activate: Rc::new(move |live, window, _| {
+                    activations.borrow_mut().push((live.block, live.owner));
+                    started.set(Some(live.block));
+                    window.refresh();
+                }),
+            });
+        });
+        let draw = |cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        };
+        draw(cx);
+        draw(cx);
+        cx.executor().advance_clock(FIGURE_RENDER_DEBOUNCE);
+        cx.run_until_parked();
+        draw(cx);
+        assert_eq!(
+            visited
+                .borrow()
+                .iter()
+                .copied()
+                .collect::<HashSet<_>>()
+                .len(),
+            3
+        );
+        for owner in [8, 7] {
+            let preview = cx
+                .debug_bounds("agent-html-preview")
+                .expect("another occurrence still shows its own preview");
+            cx.simulate_click(preview.center(), zz_gpui::Modifiers::none());
+            cx.run_until_parked();
+            rendered_live.set(0);
+            draw(cx);
+            assert_eq!(rendered_live.get(), 1);
+            assert_eq!(activated.borrow().last().unwrap().1, Some(owner));
+        }
+        let activated = activated.borrow();
+        assert_ne!(activated[0].0, activated[1].0);
     }
 
     #[test]

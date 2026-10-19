@@ -53427,7 +53427,7 @@ fn handle_connection_message<S: TransportStream>(
             ProtocolMessage::ArtifactReply { token, text }
                 if hello.kind == ClientKind::Interactive =>
             {
-                shared.reply_from_artifact(&token, &text);
+                shared.reply_from_artifact(client, &token, &text);
             }
             message @ (ProtocolMessage::AgentPrompt { .. }
             | ProtocolMessage::AgentCancel { .. }

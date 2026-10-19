@@ -211,7 +211,8 @@ The daemon delivers an accepted reply by running `agent-send --submit -t <opener
 pane, to Claude Code in a terminal through its peer socket, or to Codex through its queue. The text
 goes in under a header naming the page (`From report.html:`), so the agent can tell a click from
 the user's typing, and is capped at 64 KiB (`MAX_ARTIFACT_REPLY_BYTES`). One reply per second per
-artifact; extra ones in that second are dropped.
+artifact; extra ones in that second are dropped. Replies keep the caller's client identity and
+cannot submit from a read-only attachment.
 
 That gives the agent a form to ask with:
 
@@ -239,7 +240,7 @@ keeps its code view and gains Preview and Open beside Copy (`agent_code_block_ch
 which opens the page beside the active pane with no reply. Built: Open, through
 `AgentHtmlOpener`, a global the desktop sets from its workspace view; web and iOS leave it unset,
 so their blocks keep only Copy. Preview is built the same way: `AgentHtmlPreviewer` is the global,
-the Preview button (`AppWindow`, then `Braces` for Show code) flips the block's content hash in
+the Preview button (`AppWindow`, then `Braces` for Show code) flips the ID for that message and block occurrence in
 `HtmlPreviewToggles`, and the kit's `TextView::code_block_body` hook lets `agent_code_block_body`
 draw the picture in place of the code.
 
@@ -266,6 +267,9 @@ the GPU. Blocks go through it one at a time:
 The browser starts on the first Preview and closes after 60 s with nothing queued. While it works
 the controller keeps the pump at 16 ms and sends it BeginFrames each turn; idle, it costs nothing.
 Previews render only when asked, so a slow page costs a wait, never scrolling.
+Each preview job owns its hosted page and removes it when the job ends or leaves the queue,
+including when its caller cancels before polling the result. An active job keeps its page until
+the job finishes or fails.
 
 **The cache.** Images are keyed by the block's source, its width rounded to 32 px, light or dark,
 and the scale, so a resize or a mode switch renders again after the debounce. The budget is decoded

@@ -34,6 +34,12 @@ struct PreviewJob {
     done: Sender<PreviewResult>,
 }
 
+impl Drop for PreviewJob {
+    fn drop(&mut self) {
+        zz_browser::drop_local_page(&self.url);
+    }
+}
+
 enum PreviewStage {
     Loading {
         started: bool,
@@ -165,19 +171,17 @@ impl BrowserController {
         self.previews.next_job += 1;
         self.previews.queue.push_back(PreviewJob {
             id: self.previews.next_job,
-            url: url.clone(),
+            url,
             width: width.max(1),
             scale,
             done,
         });
         self.drive_previews(cx);
         cx.background_executor().spawn(async move {
-            let outcome = result
+            result
                 .recv()
                 .await
-                .unwrap_or_else(|_| Err("the preview was dropped".into()));
-            zz_browser::drop_local_page(&url);
-            outcome
+                .unwrap_or_else(|_| Err("the preview was dropped".into()))
         })
     }
 
@@ -543,6 +547,60 @@ impl BrowserController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zz_gpui::{AppContext as _, TestAppContext};
+
+    #[zz_gpui::test]
+    fn canceling_a_queued_preview_before_polling_releases_its_page(cx: &mut TestAppContext) {
+        let (controller, render, token) = cx.update(|cx| {
+            let controller =
+                cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx));
+            let (render, token) = controller.update(cx, |controller, cx| {
+                controller.previews.creating = true;
+                let render = controller.render_html_preview("<p>queued</p>", 320, 1.0, cx);
+                let job = controller.previews.queue.front().unwrap();
+                let (token, _) = zz_browser::parse_artifact_url(&job.url).unwrap();
+                (render, token)
+            });
+            (controller, render, token)
+        });
+        assert!(zz_browser::is_local_page(&token));
+        drop(render);
+        cx.run_until_parked();
+        cx.update(|cx| {
+            controller.update(cx, BrowserController::drive_previews);
+            assert!(controller.read(cx).previews.queue.is_empty());
+        });
+        assert!(!zz_browser::is_local_page(&token));
+    }
+
+    #[zz_gpui::test]
+    fn canceling_an_active_preview_keeps_its_page_until_the_job_finishes(cx: &mut TestAppContext) {
+        let (controller, render, token) = cx.update(|cx| {
+            let controller =
+                cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx));
+            let (render, token) = controller.update(cx, |controller, cx| {
+                controller.previews.creating = true;
+                let render = controller.render_html_preview("<p>loading</p>", 320, 1.0, cx);
+                let job = controller.previews.queue.pop_front().unwrap();
+                let (token, _) = zz_browser::parse_artifact_url(&job.url).unwrap();
+                controller.previews.current = Some((job, PreviewStage::Loading { started: true }));
+                controller.previews.creating = false;
+                (render, token)
+            });
+            (controller, render, token)
+        });
+        cx.run_until_parked();
+        drop(render);
+        cx.run_until_parked();
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                controller.drive_previews(cx);
+                assert!(zz_browser::is_local_page(&token));
+                controller.previews.fail_current("Preview timed out");
+            });
+        });
+        assert!(!zz_browser::is_local_page(&token));
+    }
 
     #[test]
     fn previews_measure_at_a_height_they_never_end_at() {
