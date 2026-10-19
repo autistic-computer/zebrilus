@@ -19,6 +19,7 @@ use thiserror::Error;
 use crate::{
     MacFramePresenter, MacIoSurface, Viewport,
     cef_runtime::{AcceleratedPoolLayout, ExpectedFrameSize, StalePoolFrame},
+    popup::{PopupRect, popup_placement},
 };
 
 // Five: GPUI's CAMetalLayer allows three drawables in flight plus two producer writes.
@@ -45,6 +46,13 @@ struct MetalFrameProducerState {
     presenter: Option<MacFramePresenter>,
     in_flight_sequences: BTreeSet<u64>,
     last_published_sequence: Option<u64>,
+    popup: Option<PopupSurface>,
+}
+
+struct PopupSurface {
+    width: u32,
+    height: u32,
+    surface: DestinationSurface,
 }
 
 struct MetalContext {
@@ -338,6 +346,7 @@ impl MetalFrameProducer {
                 presenter: None,
                 in_flight_sequences: BTreeSet::new(),
                 last_published_sequence: None,
+                popup: None,
             })),
         }
     }
@@ -356,10 +365,117 @@ impl MetalFrameProducer {
         self.state.lock().presenter = presenter;
     }
 
+    pub(super) fn clear_popup(&self) {
+        self.state.lock().popup = None;
+    }
+
+    pub(super) fn produce_popup(&self, info: &AcceleratedPaintInfo) -> Result<(), MetalFrameError> {
+        let layout = AcceleratedPoolLayout::from_info(info)
+            .map_err(|error| MetalFrameError::InvalidMetadata(error.to_string()))?;
+        if info.format != ColorType::BGRA_8888 {
+            return Err(MetalFrameError::InvalidMetadata(format!(
+                "macOS zero-copy requires BGRA_8888, received {}",
+                info.format.get_raw()
+            )));
+        }
+        let source_surface = NonNull::new(info.shared_texture_io_surface.cast::<IOSurfaceRef>())
+            .ok_or_else(|| {
+                MetalFrameError::InvalidMetadata("CEF supplied a null IOSurface".to_owned())
+            })?;
+        let width = layout.width.cast_unsigned();
+        let height = layout.height.cast_unsigned();
+        let mut state = self.state.lock();
+        let Some(context) = state.context.as_ref() else {
+            return Err(MetalFrameError::DeviceUnavailable);
+        };
+        let context = MetalContext {
+            device: context.device.clone(),
+            queue: context.queue.clone(),
+        };
+        // SAFETY: CEF guarantees this Get-rule IOSurface pointer is valid for
+        // the accelerated-paint callback. Retaining it here extends that
+        // lifetime through the asynchronous Metal completion block.
+        let source_surface = RetainedSourceSurface(unsafe { CFRetained::retain(source_surface) });
+        let source_storage_mode = if context.device.hasUnifiedMemory() {
+            MTLStorageMode::Shared
+        } else {
+            MTLStorageMode::Managed
+        };
+        let source_texture = context
+            .texture_for_surface(
+                source_surface.as_ref(),
+                width,
+                height,
+                MTLPixelFormat::BGRA8Unorm,
+                source_storage_mode,
+            )
+            .ok_or(MetalFrameError::SourceTexture)?;
+        if state
+            .popup
+            .as_ref()
+            .is_none_or(|popup| popup.width != width || popup.height != height)
+        {
+            state.popup = Some(PopupSurface {
+                width,
+                height,
+                surface: context.create_destination(width, height)?,
+            });
+        }
+        let popup_texture = state
+            .popup
+            .as_ref()
+            .expect("popup surface was initialized")
+            .surface
+            .texture
+            .clone();
+        drop(state);
+
+        let command_buffer = context
+            .queue
+            .commandBuffer()
+            .ok_or(MetalFrameError::CommandBuffer)?;
+        let encoder = command_buffer
+            .blitCommandEncoder()
+            .ok_or(MetalFrameError::BlitEncoder)?;
+        // SAFETY: both textures are packed BGRA textures of the popup's size,
+        // and they remain retained until completion below.
+        unsafe {
+            encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                &source_texture,
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                MTLSize {
+                    width: width as _,
+                    height: height as _,
+                    depth: 1,
+                },
+                &popup_texture,
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+            );
+        }
+        encoder.endEncoding();
+        let completion_block = RcBlock::new(
+            move |_command_buffer: NonNull<ProtocolObject<dyn MTLCommandBuffer>>| {
+                let _ = CFRetained::as_ptr(&source_surface.0);
+            },
+        );
+        // SAFETY: RcBlock owns a valid heap block for this call. Metal copies
+        // and retains it until the command buffer completes.
+        unsafe {
+            command_buffer.addCompletedHandler(RcBlock::as_ptr(&completion_block));
+        }
+        command_buffer.commit();
+        Ok(())
+    }
+
     pub(super) fn produce<F>(
         &self,
         info: &AcceleratedPaintInfo,
         sequence: u64,
+        popup: Option<PopupRect>,
         completion: F,
     ) -> Result<MetalFrameOutcome, MetalFrameError>
     where
@@ -463,6 +579,10 @@ impl MetalFrameProducer {
         let destination_surface = destination.io_surface.clone();
         let pool_generation = destinations.generation;
         let expected = state.expected;
+        let popup_copy = popup.zip(state.popup.as_ref()).and_then(|(rect, popup)| {
+            popup_placement(rect, popup.width, popup.height, width, height)
+                .map(|placement| (placement, popup.surface.texture.clone()))
+        });
 
         let command_buffer = context
             .queue
@@ -489,6 +609,27 @@ impl MetalFrameProducer {
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
             );
+            if let Some((placement, popup_texture)) = popup_copy.as_ref() {
+                encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                    popup_texture,
+                    0,
+                    0,
+                    MTLOrigin { x: 0, y: 0, z: 0 },
+                    MTLSize {
+                        width: placement.width as _,
+                        height: placement.height as _,
+                        depth: 1,
+                    },
+                    &destination_texture,
+                    0,
+                    0,
+                    MTLOrigin {
+                        x: placement.x as _,
+                        y: placement.y as _,
+                        z: 0,
+                    },
+                );
+            }
         }
         encoder.endEncoding();
         let destinations = state

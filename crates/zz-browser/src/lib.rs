@@ -8,6 +8,8 @@ mod input;
 mod lifecycle;
 #[cfg(any(feature = "cef-runtime", test))]
 mod page_zoom;
+#[cfg(any(feature = "cef-runtime", test))]
+mod popup;
 #[cfg_attr(not(feature = "cef-runtime"), allow(dead_code, unused_imports))]
 mod profile;
 mod url_input;
