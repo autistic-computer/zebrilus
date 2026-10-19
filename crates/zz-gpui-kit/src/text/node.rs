@@ -399,6 +399,75 @@ impl BlockNode {
             | BlockNode::Unknown { .. } => {}
         }
     }
+
+    pub(super) fn preserve_selection_from(&self, previous: &Self) {
+        if self.span().map(|span| span.start) != previous.span().map(|span| span.start) {
+            return;
+        }
+        match (self, previous) {
+            (
+                Self::Root { children, .. }
+                | Self::Blockquote { children, .. }
+                | Self::List { children, .. }
+                | Self::ListItem { children, .. },
+                Self::Root { children: old, .. }
+                | Self::Blockquote { children: old, .. }
+                | Self::List { children: old, .. }
+                | Self::ListItem { children: old, .. },
+            ) => {
+                for (child, old) in children.iter().zip(old) {
+                    child.preserve_selection_from(old);
+                }
+            }
+            (
+                Self::Paragraph(paragraph)
+                | Self::Heading {
+                    children: paragraph,
+                    ..
+                },
+                Self::Paragraph(old) | Self::Heading { children: old, .. },
+            ) => paragraph.preserve_selection_from(old),
+            (Self::Table(table), Self::Table(old)) => {
+                for (row, old) in table.children.iter().zip(&old.children) {
+                    for (cell, old) in row.children.iter().zip(&old.children) {
+                        cell.children.preserve_selection_from(&old.children);
+                    }
+                }
+            }
+            (Self::CodeBlock(block), Self::CodeBlock(old)) => {
+                preserve_inline_selection(&block.state, &old.state, &block.code());
+            }
+            (
+                Self::Custom { node, state },
+                Self::Custom {
+                    node: old,
+                    state: old_state,
+                },
+            ) if node.name() == old.name() && node.as_text().starts_with(old.as_text()) => {
+                state.set_selected(old_state.is_selected());
+            }
+            _ => {}
+        }
+    }
+}
+
+fn preserve_inline_selection(
+    state: &Arc<Mutex<InlineState>>,
+    previous: &Arc<Mutex<InlineState>>,
+    text: &str,
+) {
+    if Arc::ptr_eq(state, previous) {
+        return;
+    }
+    let selection = previous.lock().ok().and_then(|previous| {
+        previous
+            .selection
+            .filter(|selection| text.get(..selection.end) == previous.text.get(..selection.end))
+    });
+    if let Ok(mut state) = state.lock() {
+        state.selection = selection;
+        state.set_text(text.to_owned().into());
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -570,6 +639,20 @@ impl PartialEq for Paragraph {
 }
 
 impl Paragraph {
+    fn preserve_selection_from(&self, previous: &Self) {
+        let mut text = String::new();
+        for (index, child) in self.children.iter().enumerate() {
+            text.push_str(&child.text);
+            if child.image.is_some() {
+                if let Some(old) = previous.children.get(index) {
+                    preserve_inline_selection(&child.state, &old.state, &text);
+                }
+                text.clear();
+            }
+        }
+        preserve_inline_selection(&self.state, &previous.state, &text);
+    }
+
     pub(crate) fn new(text: String) -> Self {
         Self {
             span: None,
