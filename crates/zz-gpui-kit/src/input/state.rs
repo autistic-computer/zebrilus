@@ -11,7 +11,7 @@ use zz_gpui::{
     App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, DismissEvent, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, Hsla, Image, IntoElement,
     KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
-    ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, TextAlign,
+    ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, TextAlign,
     TextInputConfiguration, TextInputMode, UTF16Selection, Window, anchored, deferred, div, point,
     prelude::FluentBuilder as _, px,
 };
@@ -1352,13 +1352,14 @@ impl InputState {
     pub(super) fn on_scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(layout) = self.last_layout.as_ref() else {
             return;
         };
-        if !self.mode.is_multi_line() {
+        let key = ScrollKey::of_entity(cx.entity_id());
+        if !self.mode.is_multi_line() || !window.should_take_scroll(key, true) {
             return;
         }
         let overflow = layout.content_size.height - layout.bounds.size.height;
@@ -1366,9 +1367,13 @@ impl InputState {
             return;
         }
         let delta = event.delta.pixel_delta(layout.line_height).y;
-        self.scroll.y = (self.scroll.y + delta).clamp(-overflow, Pixels::ZERO);
-        self.follow_cursor = false;
-        cx.notify();
+        let next = (self.scroll.y + delta).clamp(-overflow, Pixels::ZERO);
+        if next != self.scroll.y {
+            self.scroll.y = next;
+            self.follow_cursor = false;
+            window.claim_scroll(key);
+            cx.notify();
+        }
     }
 }
 
