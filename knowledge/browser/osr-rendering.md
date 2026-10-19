@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Off-screen rendering & the frame mailbox
-description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, and how zz paces visible sessions.
+description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, the macOS layer and Wayland subsurface that show frames below the window, and how zz paces visible sessions.
 resource: crates/zz-browser/src/frame.rs
 tags: [browser, osr, frame, gpu, iosurface, hidpi, wayland, pacing]
 timestamp: 2026-10-19T00:00:00Z
@@ -15,8 +15,8 @@ payload depends on the active rendering tier:
 
 | Tier | Platforms | CEF callback | Mailbox payload | GPUI paint path |
 | --- | --- | --- | --- | --- |
-| Readback | Universal fallback | `on_paint` | `OsrFrame::OwnedBgra` with owned premultiplied BGRA bytes | Linux/FreeBSD update a persistent BGRA texture; other platforms use `RenderImage` through `BrowserElement::paint_image` |
-| Linux wgpu | Linux/FreeBSD where GPUI exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | GPUI `external_texture` |
+| Readback | Universal fallback | `on_paint` | `OsrFrame::OwnedBgra` with owned premultiplied BGRA bytes | Linux/FreeBSD update a persistent BGRA texture, presented on a `wl_subsurface` below the window on Wayland or drawn by GPUI elsewhere; other platforms use `RenderImage` through `BrowserElement::paint_image` |
+| Linux wgpu | Linux/FreeBSD where GPUI exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | a `wl_subsurface` below the window on Wayland behind a GPUI `paint_underlay` hole; GPUI `external_texture` on X11, without `wl_subcompositor`, or while glass covers it |
 | macOS Metal-IOSurface | macOS | `on_accelerated_paint` | `OsrFrame::MacGpu` with a retained zz-owned `IOSurface` | a per-pane `CALayer` under the window behind a GPUI `paint_underlay` hole, drawn by GPUI instead while glass covers it; `CVPixelBuffer` through `paint_surface` until the layer exists |
 | Windows D3D11 | Windows where GPUI exposes its DirectX context | `on_accelerated_paint` | `OsrFrame::WinGpu` with a zz-owned `ID3D11Texture2D` | GPUI `external_texture` |
 
