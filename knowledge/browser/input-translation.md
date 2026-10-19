@@ -1,7 +1,7 @@
 ---
 type: Subsystem
 title: Input translation (GPUI → CEF)
-description: Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, and history-backed omnibox interaction.
+description: Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, history-backed omnibox interaction, and why page drag and drop is off.
 resource: crates/zz-browser/src/input.rs
 tags: [browser, input, ime, keyboard, url, history, omnibox]
 timestamp: 2026-10-19T00:00:00Z
@@ -96,6 +96,29 @@ text being composed at any display scale or window zoom. With no reported boxes,
 or while the composition belongs to the command prompt, it falls back to a
 caret at the content's top-left. `ime_window_bounds` in `view.rs` and the
 `ime.rs` tests cover the conversion.
+
+# Drag and drop
+
+`start_dragging` returns 0, which cancels every drag that starts in a page: HTML5
+drag and drop inside the page, and dragging a link, image or selection out of
+it. It stays off because each half needs pieces that do not exist yet:
+
+- zz-gpui starts a drag only from an element's `on_drag` on mouse-down, and
+  `App::active_drag` is crate-private, so a drag that CEF starts from inside the
+  page cannot become a GPUI drag. Putting `on_drag` on the page would turn every
+  text selection into a drag.
+- Native drag-out (`ExternalDragPayload`) carries only files: the macOS
+  `beginDraggingSession` and Wayland `start_drag` paths offer path lists, with no
+  text or URL payload, so a link could not reach another app.
+- Terminal panes have no drop target.
+- Chromium must be told how the drag ended (`drag_source_ended_at`, then
+  `drag_source_system_drag_ended`), and a drop back into the page needs the
+  `drag_target_*` calls while the pointer is over it; a drag CEF thinks is still
+  running leaves the page ignoring the mouse.
+
+Turning it on takes a public way to begin a drag with a value and an external
+payload, text and URL payloads in the macOS and Wayland backends, those CEF
+source and target calls, and an `on_drop` on terminal panes that pastes the text.
 
 # Keyboard ownership
 
