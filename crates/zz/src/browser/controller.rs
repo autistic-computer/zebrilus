@@ -2572,6 +2572,7 @@ impl BrowserController {
                 | BrowserEvent::FaviconChanged { .. }
                 | BrowserEvent::AddressChanged { .. }
                 | BrowserEvent::CursorChanged { .. }
+                | BrowserEvent::ImeCompositionChanged { .. }
                 | BrowserEvent::ElementPicked { .. }
                 | BrowserEvent::ElementPickCancelled { .. }
                 | BrowserEvent::ElementPickFailed { .. }

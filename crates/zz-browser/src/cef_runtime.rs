@@ -53,8 +53,9 @@ use crate::{
     BrowserCookie, BrowserCookiePriority, BrowserCookieSameSite, BrowserCursor, BrowserEvent,
     BrowserGpuContext, BrowserKey, BrowserProfileError, BrowserProfilePaths, ContextMenuRequest,
     CookieImportBatch, CookieImportResult, DEFAULT_BROWSER_PROFILE, EditCommand, EditFlags,
-    FrameMailbox, KeyAction, KeyInput, Modifiers, OsrFrame, PointerButton, PointerEvent,
-    PointerPhase, RuntimePhase, SessionId, SessionPhase, SiteDataClearResult, Viewport, WheelEvent,
+    FrameMailbox, ImeCharacterBounds, KeyAction, KeyInput, Modifiers, OsrFrame, PointerButton,
+    PointerEvent, PointerPhase, RuntimePhase, SessionId, SessionPhase, SiteDataClearResult,
+    Viewport, WheelEvent,
     element_picker::{
         ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
     },
@@ -4571,6 +4572,26 @@ cef::wrap_render_handler! {
                 }
             }
             }
+        }
+
+        fn on_ime_composition_range_changed(
+            &self,
+            _browser: Option<&mut Browser>,
+            _selected_range: Option<&Range>,
+            character_bounds: Option<&[Rect]>,
+        ) {
+            let scale = osr_raster_scale(*self.bridge.viewport.lock());
+            let bounds = character_bounds
+                .unwrap_or_default()
+                .iter()
+                .map(|rect| {
+                    ImeCharacterBounds::from_view(rect.x, rect.y, rect.width, rect.height, scale)
+                })
+                .collect();
+            self.bridge.emit(BrowserEvent::ImeCompositionChanged {
+                session: self.bridge.id,
+                bounds,
+            });
         }
 
         fn start_dragging(
