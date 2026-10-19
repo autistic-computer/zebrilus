@@ -54,7 +54,11 @@ includes `tests/headless.rs`, which renders a laid-out window through `HeadlessA
 `current_headless_renderer` and checks pixels of `capture_screenshot`. The one test that needs a
 live Wayland compositor stays `#[ignore]`d. macOS and Windows run only the plain-logic iOS tests
 (`--test ios`), so the Metal and DirectX renderers still need a local run. Locally on Arch,
-lavapipe is the `vulkan-swrast` package; the SwiftShader ICD that ships with CEF
+lavapipe is the `vulkan-swrast` package (`/usr/share/vulkan/icd.d/lvp_icd.json`). On an NVIDIA box
+`VK_ICD_FILENAMES` only hides the Vulkan driver: the atlas tests request any backend and take
+NVIDIA's GL one, which fails headless with "Parent device is lost", so also point EGL at Mesa
+(`__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`); with both set the
+whole suite passed on 2026-10-19. the SwiftShader ICD that ships with CEF
 (`vk_swiftshader_icd.json` beside `libcef.so`) also passes the suite. With NVIDIA's proprietary driver the
 wgpu tests hung in a parallel run (2026-10-19) and pass with `--test-threads=1`. Two things differ from the
 zz crates:
