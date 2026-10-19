@@ -155,6 +155,7 @@ pub struct TerminalPane {
     rows_above: bool,
     rows_below: bool,
     resize_suppressed: Rc<Cell<bool>>,
+    moving: Rc<Cell<bool>>,
     extra_height: Pixels,
     content_offset: Pixels,
     scroll_rows: f32,
@@ -298,6 +299,7 @@ impl TerminalPane {
             rows_above: false,
             rows_below: false,
             resize_suppressed: Rc::default(),
+            moving: Rc::default(),
             extra_height: Pixels::ZERO,
             content_offset: Pixels::ZERO,
             scroll_rows: 0.,
@@ -439,7 +441,11 @@ impl TerminalPane {
         }
     }
 
-    pub(crate) fn pane_background(&self, cx: &App) -> Hsla {
+    pub(crate) fn moving(&self) -> Rc<Cell<bool>> {
+        Rc::clone(&self.moving)
+    }
+
+    pub(crate) fn fill(&self, cx: &App) -> Hsla {
         let core = &self.connection.read(cx).core;
         let background = self.viewport(core).filter(|_| !crate::app::phone()).map_or(
             cx.theme().background,
@@ -451,7 +457,7 @@ impl TerminalPane {
                 )
             },
         );
-        cx.theme().pane_background(background)
+        cx.theme().pane_color(background)
     }
 
     fn observe_image_hover(&mut self, uri: Option<Arc<str>>, cx: &mut Context<Self>) {
@@ -1418,7 +1424,8 @@ impl TerminalPane {
         if measurable
             && self.geometry != Some(reported)
             && attached
-            && (self.surface != TerminalSurface::Pane || !self.resize_suppressed.get())
+            && (self.surface != TerminalSurface::Pane
+                || !(self.resize_suppressed.get() || self.moving.get()))
         {
             self.geometry = Some(reported);
             match self.surface {
@@ -1792,7 +1799,6 @@ impl Render for TerminalPane {
                 !self.rows_above && !self.rows_below,
                 Styled::overflow_hidden,
             )
-            .bg(self.pane_background(cx))
             .rounded_bl(self.corner_radii.bottom_left)
             .rounded_br(self.corner_radii.bottom_right)
             .font(font)

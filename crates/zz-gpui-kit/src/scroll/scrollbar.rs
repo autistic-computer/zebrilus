@@ -760,11 +760,12 @@ impl Element for Scrollbar {
 
                     if is_hover_to_show || is_visible {
                         window.on_mouse_event({
+                            let bar_hitbox = state.bar_hitbox.clone();
                             let state = scrollbar_state.clone();
                             let scroll_handle = self.scroll_handle.clone();
 
-                            move |event: &MouseDownEvent, phase, _, cx| {
-                                if phase.bubble() && bounds.contains(&event.position) {
+                            move |event: &MouseDownEvent, phase, window, cx| {
+                                if phase.bubble() && bar_hitbox.is_hovered(window) {
                                     cx.stop_propagation();
 
                                     if thumb_bounds.contains(&event.position) {
@@ -805,19 +806,21 @@ impl Element for Scrollbar {
                     }
 
                     window.on_mouse_event({
+                        let bar_hitbox = state.bar_hitbox.clone();
                         let scroll_handle = self.scroll_handle.clone();
                         let state = scrollbar_state.clone();
 
-                        move |event: &MouseMoveEvent, _, _, cx| {
+                        move |event: &MouseMoveEvent, _, window, cx| {
                             let mut notify = false;
                             let need_hover_to_update = is_hover_to_show || is_visible;
-                            if bounds.contains(&event.position) && need_hover_to_update {
+                            let bar_hovered = bar_hitbox.is_hovered(window);
+                            if bar_hovered && need_hover_to_update {
                                 notify |= state.set_hovered(Some(axis));
                             } else if state.get().hovered_axis == Some(axis) {
                                 notify |= state.set_hovered(None);
                             }
 
-                            if thumb_bounds.contains(&event.position) {
+                            if bar_hovered && thumb_bounds.contains(&event.position) {
                                 if state.get().hovered_on_thumb != Some(axis) {
                                     state.set(state.get().with_hovered_on_thumb(Some(axis)));
                                     notify = true;
@@ -892,7 +895,10 @@ impl Element for Scrollbar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::{Context, Modifiers, MouseButton, ParentElement as _, Render, Styled as _, div};
+    use zz_gpui::{
+        Context, InteractiveElement as _, Modifiers, MouseButton, ParentElement as _, Render,
+        Styled as _, div,
+    };
 
     #[zz_gpui::test]
     fn track_click_notifies_after_changing_custom_handle_offset(cx: &mut zz_gpui::TestAppContext) {
@@ -948,6 +954,101 @@ mod tests {
 
         assert!(handle.offset().y < Pixels::ZERO);
         assert!(notified.get(), "track click should request a repaint");
+    }
+
+    #[derive(Clone, Default)]
+    struct CoveredHandle(Rc<Cell<Point<Pixels>>>);
+
+    impl ScrollbarHandle for CoveredHandle {
+        fn offset(&self) -> Point<Pixels> {
+            self.0.get()
+        }
+
+        fn set_offset(&self, offset: Point<Pixels>) {
+            self.0.set(offset);
+        }
+
+        fn content_size(&self) -> Size<Pixels> {
+            size(px(100.), px(500.))
+        }
+    }
+
+    struct CoveredRoot {
+        handle: CoveredHandle,
+        show: ScrollbarShow,
+        cover: Bounds<Pixels>,
+    }
+
+    impl Render for CoveredRoot {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .relative()
+                .w(px(100.))
+                .h(px(100.))
+                .child(Scrollbar::vertical(&self.handle).scrollbar_show(self.show))
+                .child(
+                    div()
+                        .absolute()
+                        .left(self.cover.left())
+                        .top(self.cover.top())
+                        .w(self.cover.size.width)
+                        .h(self.cover.size.height)
+                        .occlude(),
+                )
+        }
+    }
+
+    fn covered_root(
+        cx: &mut zz_gpui::TestAppContext,
+        show: ScrollbarShow,
+        cover: Bounds<Pixels>,
+    ) -> (
+        zz_gpui::Entity<CoveredRoot>,
+        &mut zz_gpui::VisualTestContext,
+        CoveredHandle,
+    ) {
+        cx.update(crate::init);
+        let handle = CoveredHandle::default();
+        let (root, cx) = cx.add_window_view({
+            let handle = handle.clone();
+            move |_, _| CoveredRoot {
+                handle,
+                show,
+                cover,
+            }
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        (root, cx, handle)
+    }
+
+    #[zz_gpui::test]
+    fn a_press_on_an_element_over_the_track_is_left_to_it(cx: &mut zz_gpui::TestAppContext) {
+        let cover = Bounds::new(point(px(50.), px(60.)), size(px(50.), px(40.)));
+        let (_, cx, handle) = covered_root(cx, ScrollbarShow::Always, cover);
+        cx.simulate_click(point(px(95.), px(80.)), Modifiers::default());
+        assert_eq!(handle.offset(), Point::default());
+
+        cx.simulate_click(point(px(95.), px(50.)), Modifiers::default());
+        assert!(handle.offset().y < px(0.));
+    }
+
+    #[zz_gpui::test]
+    fn hovering_an_element_over_the_track_leaves_the_bar_alone(cx: &mut zz_gpui::TestAppContext) {
+        let cover = Bounds::new(point(px(50.), px(0.)), size(px(50.), px(50.)));
+        let (root, cx, _) = covered_root(cx, ScrollbarShow::Hover, cover);
+        cx.simulate_mouse_move(point(px(20.), px(20.)), None, Modifiers::default());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let notified = Rc::new(Cell::new(false));
+        let _subscription = cx.update(|_, cx| {
+            let notified = notified.clone();
+            cx.observe(&root, move |_, _| notified.set(true))
+        });
+        cx.simulate_mouse_move(point(px(95.), px(20.)), None, Modifiers::default());
+        assert!(!notified.get(), "the covered track took the hover");
+
+        cx.simulate_mouse_move(point(px(95.), px(80.)), None, Modifiers::default());
+        assert!(notified.get(), "the uncovered track should take the hover");
     }
 
     #[test]

@@ -95,7 +95,7 @@ A ground remembers its `elevation` and whether it is glass, and `paint.ground_at
 
 GPUI draws a shadow under the whole box, not only outside it, so a translucent fill over a shadow turns muddy (a 12% wash over a 20% shadow reads as 30%). A surface that casts a shadow or shows a ring composites its fill over its ground first.
 
-A pane fills with `theme.pane_background(fill)`: its own fill (the window color, or a terminal's background) over the window, at `pane-background-opacity`.
+A pane paints no fill of its own: the window shows through it. `theme.pane_color(fill)` is the solid color of a pane's fill (the window color, or a terminal's background) over the window, which a PiP lays at `pip-background-opacity` (`Theme::pip_opacity`).
 
 ## Lines and backdrops
 

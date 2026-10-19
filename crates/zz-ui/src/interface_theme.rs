@@ -13,14 +13,21 @@ pub use zz_client::appearance::{
     ThemeModeSetting, is_builtin_theme,
 };
 
-use crate::{PrimaryStyle, ShadowMaterial, StylePatch, Theme, ThemeColor, ThemeMode};
+use crate::{PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Theme, ThemeColor, ThemeMode};
 
 /// What each treatment looks like, in logical pixels where it is a length.
-/// Missing keys take [`Materials::default`]: the Default theme's.
+/// Missing keys take [`Materials::default`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Materials {
     pub radius: f32,
+    /// How the corners of every role curve, unless the theme sets another
+    /// for the role.
+    pub smoothing: Smoothing,
+    /// Only the roles the theme sets a smoothing for curve that way; every
+    /// other role a theme could smooth draws plain circular corners.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub picked_smoothing: bool,
     /// The width of every outline; 0 draws none.
     pub outline: f32,
     /// Only the roles the theme turns the outline on for draw it; every
@@ -35,6 +42,9 @@ pub struct Materials {
     /// instead, with no outline or shadow.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub flat_highlights: bool,
+    /// How far a tint or lift highlight washes from the resting fill: 1 is
+    /// the built-in step, 0 none.
+    pub highlight_strength: f32,
     /// The interface font family; `None` keeps the platform's.
     pub font: Option<SharedString>,
     /// What surfaces whose role takes glass become; `None` fills them
@@ -58,11 +68,14 @@ impl Default for Materials {
     fn default() -> Self {
         Self {
             radius: 10.0,
+            smoothing: Smoothing::THEME,
+            picked_smoothing: false,
             outline: 0.5,
             picked_outlines: false,
             row_inset: 4.0,
             primary: PrimaryStyle::Foreground,
             flat_highlights: false,
+            highlight_strength: 1.0,
             font: None,
             glass: None,
             picked_shadows: false,
@@ -75,11 +88,14 @@ impl Default for Materials {
 impl Materials {
     pub fn apply(&self, theme: &mut Theme) {
         theme.radius = px(self.radius);
+        theme.smoothing = self.smoothing;
+        theme.picked_smoothing = self.picked_smoothing;
         theme.outline = px(self.outline);
         theme.picked_outlines = self.picked_outlines;
         theme.row_inset = px(self.row_inset);
         theme.primary = self.primary;
         theme.flat_highlights = self.flat_highlights;
+        theme.highlight_strength = self.highlight_strength.max(0.0);
         if let Some(font) = &self.font {
             theme.font_family = font.clone();
         }

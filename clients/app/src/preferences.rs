@@ -34,7 +34,7 @@ pub struct Preferences {
     #[serde(flatten)]
     pub overrides: ThemeOverrides,
     pub contrast: f32,
-    pub pane_background_opacity: f32,
+    pub pip_background_opacity: f32,
     pub pane_inactive_opacity: f32,
     pub pane_glow_strength: f32,
     pub pane_margin: f32,
@@ -67,7 +67,7 @@ impl Default for Preferences {
             zoom: 1.0,
             overrides: ThemeOverrides::default(),
             contrast: 1.0,
-            pane_background_opacity: 0.5,
+            pip_background_opacity: 0.8,
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
             pane_margin: 6.0,
@@ -121,7 +121,7 @@ impl Preferences {
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         self.contrast = bounded(self.contrast, 1.0, 2.0, 1.0);
         for (value, min, max, fallback) in [
-            (&mut self.pane_background_opacity, 0., 1., 0.5),
+            (&mut self.pip_background_opacity, 0., 1., 0.8),
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
             (&mut self.pane_glow_strength, 0., 2., 1.),
             (&mut self.pane_margin, 0., 32., 6.),
@@ -842,7 +842,7 @@ mod tests {
         assert!(preferences.gaps);
         assert_eq!(preferences.overrides.radius, Some(8.0));
         assert_eq!(preferences.pane_margin, 6.0);
-        assert_eq!(preferences.pane_background_opacity, 0.5);
+        assert_eq!(preferences.pip_background_opacity, 0.8);
         assert_eq!(preferences.pane_glow_strength, 1.0);
         assert_eq!(
             serde_json::from_str::<Preferences>(
@@ -857,23 +857,23 @@ mod tests {
         let preferences = Preferences {
             pane_margin: -1.0,
             pane_inactive_opacity: 2.0,
-            pane_background_opacity: -1.0,
+            pip_background_opacity: -1.0,
             pane_glow_strength: 3.0,
             ..preferences
         }
         .sanitized();
         assert_eq!(preferences.pane_margin, 0.0);
         assert_eq!(preferences.pane_inactive_opacity, 1.0);
-        assert_eq!(preferences.pane_background_opacity, 0.0);
+        assert_eq!(preferences.pip_background_opacity, 0.0);
         assert_eq!(preferences.pane_glow_strength, 2.0);
-        for (value, expected) in [(2.0, 1.0), (f32::NAN, 0.5)] {
+        for (value, expected) in [(2.0, 1.0), (f32::NAN, 0.8)] {
             assert_eq!(
                 Preferences {
-                    pane_background_opacity: value,
+                    pip_background_opacity: value,
                     ..Preferences::default()
                 }
                 .sanitized()
-                .pane_background_opacity,
+                .pip_background_opacity,
                 expected,
             );
         }

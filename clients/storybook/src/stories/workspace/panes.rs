@@ -1,6 +1,6 @@
 use zz_gpui::{
-    AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div, prelude::*, px,
-    relative,
+    AnyElement, AnyView, App, IntoElement, ParentElement as _, Styled as _, Window, div,
+    prelude::*, px, relative,
 };
 use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
@@ -13,13 +13,15 @@ use zz_ui::{
         pane_sync_badge, pane_unzoom_control, pane_waiting_state, terminal_link_popup,
         terminal_mode_indicator, terminal_search_prompt, terminal_status_popup,
     },
+    pip::PipSurface,
     settings::panes_preview::PanesPreview,
 };
 
 use super::fixtures::{
-    BUILD, LOGS, PANE_CHOICES, SERVER, TerminalPane, gap, pane_background, placeholder_pane, radii,
+    BUILD, LOGS, PANE_CHOICES, SERVER, TerminalPane, gap, placeholder_pane, radii, stateful,
     terminal_body,
 };
+use crate::stories::agent::pane::{feed_pane, floating_pane};
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -38,7 +40,7 @@ pub const STORY: Story = Story {
         Section {
             id: "terminal-header",
             name: "Terminal header",
-            summary: "terminal_pane_header with its split, drag and close actions. An inactive header hides its actions until the pointer is over it.",
+            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it.",
             build: |_, cx| stateless(terminal_header, cx),
         },
         Section {
@@ -70,6 +72,12 @@ pub const STORY: Story = Story {
             name: "Floating surface",
             summary: "FloatingSurface hosts display-popup and command output over the panes: bordered with a title in the frame, borderless, and recolored from a popup style. It takes the theme's glass like every popover; set backdrop=code to see it frost the panes behind.",
             build: |_, cx| stateless(floating, cx),
+        },
+        Section {
+            id: "pip",
+            name: "PiP",
+            summary: "PipSurface draws every float that is not modal: the pane's content in a card that casts the float shadow, its title in the top border like a pane header, and tile back, zoom and close while pointed at (always on touch). Any pane can be one: an agent pane drops Float from its own header, and a subagent feed is a watch-only agent pane whose tray stops a child. Thrown by its title, it settles in the third of the window it was headed for.",
+            build: |window, cx| stateful(window, cx, pip_views, pip),
         },
         Section {
             id: "picker",
@@ -154,7 +162,6 @@ fn header_box(
         .when_some(width, |this, width| this.w(px(width)))
         .rounded(cx.theme().radius)
         .framed(cx)
-        .bg(pane_background(cx))
         .overflow_hidden()
         .child(header)
         .into_any_element()
@@ -171,6 +178,7 @@ fn header(
         active,
         title,
         zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(id), title, draggable, |_, _, _| {}),
+        false,
         |_, _, _| {},
         cx,
     )
@@ -757,6 +765,152 @@ fn floating(_: &mut Window, cx: &mut App) -> AnyElement {
                     .title("display-popup -E 'cargo watch -x \"test -p zz-daemon --all-features\"'")
                     .content_inset(px(8.0), px(14.0)),
             ),
+        )
+        .into_any_element()
+}
+
+struct PipViews {
+    agent: AnyView,
+    feed: AnyView,
+}
+
+fn pip_views(window: &mut Window, cx: &mut App) -> PipViews {
+    PipViews {
+        agent: floating_pane(window, cx),
+        feed: feed_pane(cx),
+    }
+}
+
+fn pip_box(id: &'static str, height: f32, surface: impl IntoElement) -> impl IntoElement {
+    div()
+        .id(id)
+        .w_full()
+        .max_w(px(420.0))
+        .h(px(height))
+        .child(surface)
+}
+
+fn pip_surface(id: &'static str, cx: &App) -> PipSurface {
+    PipSurface::new(
+        id,
+        terminal_body(BUILD, false, cx).bg(zz_gpui::transparent_black()),
+    )
+    .header(pip_header("cargo watch -x test", cx))
+    .content_inset(px(8.0), px(16.0))
+}
+
+pub(crate) fn pip_header(title: &'static str, cx: &App) -> impl IntoElement {
+    zz_ui::pane::terminal_pane_header(
+        true,
+        title,
+        zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(4), title, true, |_, _, _| {}),
+        true,
+        |_, _, _| {},
+        cx,
+    )
+}
+
+fn pip(views: &PipViews, _: &mut Window, cx: &mut App) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(24.0))
+        .child(
+            states()
+                .columns(2)
+                .state(
+                    "a terminal PiP: the pane header in the top border, tile back and zoom for the splits",
+                    pip_box("pip-rest", 190.0, pip_surface("pip-rest", cx)),
+                )
+                .state(
+                    "borderless: the header shows over the top only while pointed at",
+                    pip_box(
+                        "pip-borderless",
+                        190.0,
+                        pip_surface("pip-borderless", cx)
+                            .bordered(false)
+                            .content_inset(px(0.0), px(0.0)),
+                    ),
+                ),
+        )
+        .child(
+            states()
+                .columns(2)
+                .state(
+                    "an agent pane as a PiP: its own header, tile back and zoom for the splits",
+                    pip_box(
+                        "pip-agent",
+                        340.0,
+                        PipSurface::new("pip-agent", views.agent.clone()),
+                    ),
+                )
+                .state(
+                    "subagent feed: watch-only, one turn per child, Stop in the tray",
+                    pip_box(
+                        "pip-feed",
+                        340.0,
+                        PipSurface::new("pip-feed", views.feed.clone()),
+                    ),
+                ),
+        )
+        .child(
+            states()
+                .columns(2)
+                .state(
+                    "slid past the right edge while a tiled pane has focus; a click brings it back",
+                    div()
+                        .id("pip-stashed")
+                        .relative()
+                        .w_full()
+                        .max_w(px(420.0))
+                        .h(px(190.0))
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left(px(360.0))
+                                .w(px(360.0))
+                                .h_full()
+                                .child(
+                                    pip_surface("pip-stashed-card", cx)
+                                        .stashed(true, |_, _, _| {}),
+                                ),
+                        ),
+                )
+                .state(
+                    "two PiPs thrown on one place: the one behind shows its header",
+                    div()
+                        .id("pip-pile")
+                        .relative()
+                        .w_full()
+                        .max_w(px(420.0))
+                        .h(px(224.0))
+                        .child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .top_0()
+                                .w(px(360.0))
+                                .h(px(190.0))
+                                .child(PipSurface::new(
+                                    "pip-pile-back",
+                                    terminal_body(LOGS, false, cx)
+                                        .bg(zz_gpui::transparent_black()),
+                                )
+                                .header(pip_header("tail -f daemon.log", cx))
+                                .content_inset(px(8.0), px(16.0))),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .top(px(34.0))
+                                .w(px(360.0))
+                                .h(px(190.0))
+                                .child(pip_surface("pip-pile-front", cx)),
+                        ),
+                ),
         )
         .into_any_element()
 }

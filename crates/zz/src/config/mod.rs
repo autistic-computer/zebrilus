@@ -472,8 +472,8 @@ pub(crate) fn pane_gaps(cx: &App) -> bool {
     resolved_config(cx).pane_gaps.value
 }
 
-pub(crate) fn pane_background_opacity(cx: &App) -> f32 {
-    resolved_config(cx).pane_background_opacity.value
+pub(crate) fn pip_background_opacity(cx: &App) -> f32 {
+    resolved_config(cx).pip_background_opacity.value
 }
 
 pub(crate) fn pane_inactive_opacity(cx: &App) -> f32 {
@@ -1062,7 +1062,10 @@ mod tests {
         );
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(parsed.diagnostics.len(), 2, "{:?}", parsed.diagnostics);
-        assert_f32_eq(loaded.active.materials.radius, 10.0);
+        assert_f32_eq(
+            loaded.active.materials.radius,
+            zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
+        );
         assert_eq!(
             parsed.config.widget_corner_radius,
             ConfigValue::from_default(loaded.active.materials.radius)
@@ -2508,14 +2511,21 @@ mod tests {
     }
 
     #[zz_gpui::test]
-    fn pane_background_opacity_validates_reloads_and_resets_without_changing_shadows(
+    fn pip_background_opacity_validates_reloads_and_resets_without_changing_shadows(
         cx: &mut zz_gpui::TestAppContext,
     ) {
         for value in ["-0.01", "1.01", "NaN", "inf", "invalid"] {
-            let parsed = parse_config(&format!("pane-background-opacity = {value}\n"));
+            let parsed = parse_config(&format!("pip-background-opacity = {value}\n"));
             assert_eq!(parsed.diagnostics.len(), 1, "{value}");
-            assert_f32_eq(parsed.config.pane_background_opacity.value, 0.5);
+            assert_f32_eq(parsed.config.pip_background_opacity.value, 0.8);
         }
+        let retired = parse_config("pane-background-opacity = 0.5\n");
+        assert_eq!(retired.diagnostics.len(), 1);
+        assert!(
+            retired.diagnostics[0]
+                .message
+                .contains("pip-background-opacity")
+        );
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
@@ -2528,18 +2538,17 @@ mod tests {
             (Some("0"), 0.0, ConfigProvenance::Override),
             (Some("0.25"), 0.25, ConfigProvenance::Override),
             (Some("1"), 1.0, ConfigProvenance::Override),
-            (None, 0.5, ConfigProvenance::Default),
+            (None, 0.8, ConfigProvenance::Default),
         ] {
-            write_config_edit_at(&path, ConfigKey::PaneBackgroundOpacity.as_str(), value)
-                .expect("write pane background opacity");
+            write_config_edit_at(&path, ConfigKey::PipBackgroundOpacity.as_str(), value)
+                .expect("write PiP background opacity");
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                assert_f32_eq(pane_background_opacity(cx), expected);
-                assert_f32_eq(zz_ui::Theme::global(cx).pane_background_opacity, expected);
-                assert_f32_eq(crate::theme::app_pane_background(cx).a, expected);
+                assert_f32_eq(pip_background_opacity(cx), expected);
+                assert_f32_eq(zz_ui::Theme::global(cx).pip_opacity, expected);
                 assert_eq!(
-                    resolved_config(cx).pane_background_opacity.provenance,
+                    resolved_config(cx).pip_background_opacity.provenance,
                     provenance
                 );
                 assert_eq!(zz_ui::Theme::global(cx).contact_shadows(), shadows);
@@ -3172,7 +3181,7 @@ mod tests {
             "experimental-agent-pane",
             "experimental-editor-pane",
             "pane-gaps",
-            "pane-background-opacity",
+            "pip-background-opacity",
             "pane-glow-strength",
             "pane-inactive-opacity",
             "pane-margin",

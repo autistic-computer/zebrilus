@@ -13,6 +13,8 @@ mod inline_flow;
 mod markdown_ext;
 mod markdown_parse;
 mod node;
+#[cfg(test)]
+mod perf;
 mod scroll_area;
 mod selection;
 mod state;

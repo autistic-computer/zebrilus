@@ -6,7 +6,7 @@ pub mod tree;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Ground, Icon, IconName,
-    InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _, Surface,
+    InteractiveSurfaceExt as _, Layer, PaintState, Shape, Sizable as _, StyledExt as _, Surface,
     SurfaceRole, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     rems_from_px, roles,
@@ -46,9 +46,9 @@ pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 /// The titlebar's window tabs and status chips: the largest controls in the
 /// chrome, a step up from the sidebar's buttons.
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
-/// The sidebar toggle, settings and view switch: icon buttons a step larger
-/// than a pane header's controls, with 17px glyphs.
-pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = px(28.0);
+/// The sidebar toggle, settings and view switch: icon buttons as tall as the
+/// window tabs beside them, with 17px glyphs.
+pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = WORKSPACE_STATUS_PILL_HEIGHT;
 const WORKSPACE_STATUS_WINDOW_TEXT_SIZE: f32 = 14.0;
 const WORKSPACE_CHROME_ICON_SIZE: Pixels = px(17.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
@@ -469,13 +469,15 @@ pub fn workspace_sidebar_fade(ground: Ground, cx: &App) -> Hsla {
 
 /// The fill behind a sidebar row drawn as `role` on `ground`, in `lit`. A
 /// resting row takes its hover look while the pointer is anywhere in
-/// `hover_group`.
+/// `hover_group`. `radius`, when set, replaces the radius a round shape
+/// resolves to; square and pill corners stay.
 pub fn workspace_row_fill(
     id: &ElementId,
     role: SurfaceRole,
     lit: PaintState,
     hover_group: Option<SharedString>,
     ground: Ground,
+    radius: Option<Pixels>,
     cx: &App,
 ) -> impl Iterator<Item = AnyElement> + use<> {
     let theme = cx.theme();
@@ -486,20 +488,28 @@ pub fn workspace_row_fill(
         px(0.)
     };
     let surface = Surface::new(role).on(ground);
-    let hover = theme.layer(surface, PaintState::Hover);
+    let radius = radius.filter(|_| theme.style(role).shape == Shape::Round);
+    let layer = |state| {
+        let mut layer = theme.layer(surface, state);
+        if let Some(radius) = radius {
+            layer.radius = radius;
+        }
+        layer
+    };
+    let hover = layer(PaintState::Hover);
     let fill = div()
         .absolute()
         .top(vertical_inset)
         .bottom(vertical_inset)
         .left(inset)
         .right(inset)
-        .surface_at(surface, lit, cx)
+        .layer(&layer(lit))
         .when_some(
             hover_group.filter(|_| lit == PaintState::Rest),
             |this, group| this.group_hover(group, move |style| style.layer(&hover)),
         );
     let press = CoarsePointer::get(cx).then(|| {
-        let pressed = theme.layer(surface, PaintState::Active);
+        let pressed = layer(PaintState::Active);
         crate::touch::press_highlight(id.clone(), pressed.fill, pressed.radius)
             .top(vertical_inset)
             .bottom(vertical_inset)
@@ -551,6 +561,7 @@ pub fn workspace_tree_row(
         lit,
         Some(row_group.clone()),
         ground,
+        None,
         cx,
     );
     workspace_tree_row_frame(id, depth, cx)
@@ -681,6 +692,19 @@ pub fn workspace_tree_marker(marker: impl IntoElement) -> zz_gpui::Div {
         .child(marker)
 }
 
+fn workspace_tree_turn(disclosure: ElementId) -> ElementId {
+    ElementId::from((disclosure, "turn"))
+}
+
+/// When the open row whose [`workspace_tree_disclosure`] is `id` last opened,
+/// or `None` if it was open when first drawn.
+pub fn workspace_tree_opened(
+    id: impl Into<ElementId>,
+    cx: &mut App,
+) -> Option<crate::motion::Instant> {
+    crate::motion::turned(workspace_tree_turn(id.into()), true, cx)
+}
+
 /// The expand/collapse affordance an expandable row hangs on its marker slot:
 /// the node's own icon, swapped for a chevron while the row is hovered. The
 /// caller wires the click and passes the [`workspace_tree_marker`] it built.
@@ -695,7 +719,7 @@ pub fn workspace_tree_disclosure(
     let foreground = cx.theme().foreground;
     let id = id.into();
     let chevron = crate::motion::Disclosure::new(
-        ElementId::from((id.clone(), "turn")),
+        workspace_tree_turn(id.clone()),
         expanded,
         rems_from_px(WORKSPACE_TREE_NODE_ICON_SIZE),
     );

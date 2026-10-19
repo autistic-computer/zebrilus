@@ -164,7 +164,7 @@ pub(super) fn code_runs(runs: &mut [TextRun], code_ranges: &[Range<usize>], fami
 
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct InlineState {
-    hovered_index: Option<usize>,
+    hovered_link: Option<Range<usize>>,
     pub(super) text: SharedString,
     pub(super) selection: Option<Selection>,
 }
@@ -174,9 +174,9 @@ impl InlineState {
         self.text = text;
     }
 
-    fn set_hovered_index(&mut self, hovered_index: Option<usize>) -> bool {
-        let changed = self.hovered_index != hovered_index;
-        self.hovered_index = hovered_index;
+    fn set_hovered_link(&mut self, hovered_link: Option<Range<usize>>) -> bool {
+        let changed = self.hovered_link != hovered_link;
+        self.hovered_link = hovered_link;
         changed
     }
 }
@@ -274,6 +274,18 @@ impl Inline {
         }
     }
 
+    fn link_range_for_position(
+        layout: &TextLayout,
+        links: &[(Range<usize>, LinkMark)],
+        position: Point<Pixels>,
+    ) -> Option<Range<usize>> {
+        let offset = layout.index_for_position(position).ok()?;
+        links
+            .iter()
+            .find(|(range, _)| range.contains(&offset))
+            .map(|(range, _)| range.clone())
+    }
+
     fn link_for_position(
         layout: &TextLayout,
         links: &Vec<(Range<usize>, LinkMark)>,
@@ -293,6 +305,7 @@ impl Inline {
         &self,
         text_layout: &TextLayout,
         bounds: &Bounds<Pixels>,
+        current: Option<Selection>,
         window: &mut Window,
         cx: &mut App,
     ) -> (bool, bool, Option<Selection>) {
@@ -308,6 +321,10 @@ impl Inline {
 
         if text_view_state.is_all_selected() {
             return (is_selectable, true, Some((0..self.text.len()).into()));
+        }
+
+        if text_view_state.preserves_inline_selection() {
+            return (is_selectable, true, current);
         }
 
         if let Some(selection) = text_view_state.multi_click_selection() {
@@ -330,7 +347,6 @@ impl Inline {
             return (is_selectable, false, None);
         };
         let line_height = window.line_height();
-        let mask_bounds = window.content_mask().bounds;
 
         let mut selection: Option<Selection> = None;
         let mut offset = 0;
@@ -349,15 +365,7 @@ impl Inline {
                 }
             }
 
-            let char_center = point(pos.x + char_width.half(), pos.y + line_height.half());
-            if mask_bounds.contains(&char_center)
-                && point_in_text_selection(
-                    pos,
-                    char_width,
-                    selection_start,
-                    selection_end,
-                    line_height,
-                )
+            if point_in_text_selection(pos, char_width, selection_start, selection_end, line_height)
             {
                 if selection.is_none() {
                     selection = Some((offset..offset).into());
@@ -542,7 +550,7 @@ impl Element for Inline {
             .paint(global_id, None, bounds, &mut (), &mut (), window, cx);
 
         let (is_selectable, is_selection, selection) =
-            self.layout_selections(&text_layout, &bounds, window, cx);
+            self.layout_selections(&text_layout, &bounds, state.selection, window, cx);
 
         state.selection = selection;
 
@@ -621,32 +629,37 @@ impl Element for Inline {
             });
         }
 
-        window.on_mouse_event({
-            let hitbox = hitbox.clone();
-            let text_layout = text_layout.clone();
-            let inline_state = self.state.clone();
-            let mut hovered_index = state.hovered_index;
-            move |event: &MouseMoveEvent, phase, window, cx| {
-                if !phase.bubble() {
-                    return;
-                }
+        if !self.links.is_empty() {
+            window.on_mouse_event({
+                let hitbox = hitbox.clone();
+                let text_layout = text_layout.clone();
+                let links = self.links.clone();
+                let inline_state = self.state.clone();
+                let mut hovered_link = state.hovered_link.clone();
+                move |event: &MouseMoveEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
 
-                let updated = hitbox
-                    .is_hovered(window)
-                    .then(|| text_layout.index_for_position(event.position).ok())
-                    .flatten();
-                if hovered_index == updated {
-                    return;
-                }
+                    let updated = hitbox
+                        .is_hovered(window)
+                        .then(|| {
+                            Self::link_range_for_position(&text_layout, &links, event.position)
+                        })
+                        .flatten();
+                    if hovered_link == updated {
+                        return;
+                    }
 
-                hovered_index = updated;
-                if let Ok(mut state) = inline_state.lock()
-                    && state.set_hovered_index(updated)
-                {
-                    cx.notify(current_view);
+                    hovered_link = updated.clone();
+                    if let Ok(mut state) = inline_state.lock()
+                        && state.set_hovered_link(updated)
+                    {
+                        cx.notify(current_view);
+                    }
                 }
-            }
-        });
+            });
+        }
 
         if !is_selection {
             window.on_mouse_event({
@@ -705,7 +718,7 @@ fn selection_for_multi_click(
     }
 }
 
-fn point_in_text_selection(
+pub(super) fn point_in_text_selection(
     pos: Point<Pixels>,
     char_width: Pixels,
     selection_start: Point<Pixels>,
@@ -928,14 +941,14 @@ mod tests {
     }
 
     #[test]
-    fn hovered_index_only_changes_on_glyph_transition() {
+    fn hovered_link_only_changes_on_link_transition() {
         let mut state = InlineState::default();
 
-        assert!(state.set_hovered_index(Some(4)));
-        assert!(!state.set_hovered_index(Some(4)));
-        assert!(state.set_hovered_index(Some(5)));
-        assert!(state.set_hovered_index(None));
-        assert!(!state.set_hovered_index(None));
+        assert!(state.set_hovered_link(Some(4..9)));
+        assert!(!state.set_hovered_link(Some(4..9)));
+        assert!(state.set_hovered_link(Some(12..15)));
+        assert!(state.set_hovered_link(None));
+        assert!(!state.set_hovered_link(None));
     }
 
     #[test]

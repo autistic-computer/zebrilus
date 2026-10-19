@@ -4,6 +4,12 @@ use web_time::{Duration, Instant};
 pub trait HistoryItem: Clone + PartialEq {
     fn version(&self) -> usize;
     fn set_version(&mut self, version: usize);
+
+    /// Folds `next`, pushed right after `self` in the same group, into
+    /// `self`. Returns false to keep them as separate items.
+    fn merge(&mut self, _next: &Self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -73,15 +79,21 @@ where
 
     pub fn push(&mut self, item: I) {
         let version = self.inc_version();
+        let mut item = item;
+        item.set_version(version);
+        self.redos.clear();
+
+        if let Some(last) = self.undos.last_mut()
+            && last.version() == version
+            && last.merge(&item)
+        {
+            return;
+        }
 
         if self.undos.len() >= self.max_undos {
             self.undos.remove(0);
         }
-
-        let mut item = item;
-        item.set_version(version);
         self.undos.push(item);
-        self.redos.clear();
     }
 
     pub fn clear(&mut self) {
@@ -189,6 +201,46 @@ mod tests {
         assert_eq!(changes[0].tab_index, 0);
 
         assert_eq!(history.undo().is_none(), true);
+    }
+
+    #[test]
+    fn a_typing_run_undoes_as_one_change() {
+        use super::super::change::Change;
+
+        fn parts(changes: Vec<Change>) -> Vec<(usize, usize, String, usize, usize, String)> {
+            changes
+                .into_iter()
+                .map(|change| {
+                    (
+                        change.old_range.start,
+                        change.old_range.end,
+                        change.old_text,
+                        change.new_range.start,
+                        change.new_range.end,
+                        change.new_text,
+                    )
+                })
+                .collect()
+        }
+
+        let mut history: History<Change> = History::new();
+        history.start_grouping();
+        history.push(Change::new(4..6, "xy", 4..5, "a"));
+        for (offset, text) in [(5, "b"), (6, "c")] {
+            history.push(Change::new(offset..offset, "", offset..offset + 1, text));
+        }
+        history.end_grouping();
+        history.break_group();
+        history.push(Change::new(9..9, "", 9..10, "d"));
+
+        let abc = vec![(4, 6, "xy".to_string(), 4, 7, "abc".to_string())];
+        assert_eq!(
+            parts(history.undo().unwrap()),
+            [(9, 9, String::new(), 9, 10, "d".to_string())]
+        );
+        assert_eq!(parts(history.undo().unwrap()), abc);
+        assert!(history.undo().is_none());
+        assert_eq!(parts(history.redo().unwrap()), abc);
     }
 
     #[test]

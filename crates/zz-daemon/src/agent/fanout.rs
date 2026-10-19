@@ -861,7 +861,8 @@ impl AgentFanout {
             },
             HostCommand::SetAutoApprove(_)
             | HostCommand::AnswerQuestion { .. }
-            | HostCommand::StopTask { .. } => return false,
+            | HostCommand::StopTask { .. }
+            | HostCommand::InterruptThread { .. } => return false,
             HostCommand::Prompt(mut queued) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 return self.reclaim_prompt(pane, queued.prompt);
@@ -2415,6 +2416,7 @@ mod tests {
         }));
         let pane = PaneId(44);
         let spec = AgentPaneSpec {
+            feed: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -2485,6 +2487,7 @@ mod tests {
         }));
         let pane = PaneId(45);
         let spec = AgentPaneSpec {
+            feed: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
