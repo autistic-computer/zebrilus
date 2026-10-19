@@ -556,7 +556,9 @@ fn run_ime_regression() -> ExitCode {
         .try_init();
     match run_ime_regression_inner() {
         Ok(()) => {
-            println!("ime regression passed: a dead key composed and committed, then a multi-step composition");
+            println!(
+                "ime regression passed: a dead key composed and committed, then a multi-step composition"
+            );
             ExitCode::SUCCESS
         }
         Err(error) => {
