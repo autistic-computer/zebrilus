@@ -70,6 +70,9 @@ class Run:
         self.root = root
         self.shape = shape
         self.socket = f"/tmp/zzm{os.getpid() % 1000}.sock"
+        self.gui = None
+        self.gamescope = None
+        self.dbus = None
 
     def env(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith(("ZZ_", "TMUX", "GPUI_"))}
@@ -99,7 +102,6 @@ class Run:
         env["ZZ_BROWSER_REMOTE_DEBUGGING_PORT"] = str(CDP_PORT)
         env.update(EXTRA_ENV)
         env.update(self.app_env)
-        self.dbus = None
         if COMPOSITOR == "kwin":
             out = subprocess.run(["dbus-daemon", "--session", "--fork", "--print-address=1", "--print-pid=1"],
                                  capture_output=True, text=True, check=True).stdout.split()
@@ -130,7 +132,6 @@ class Run:
                 start_new_session=True,
             )
         deadline = time.time() + 30
-        self.gui = None
         binary = self.binary.resolve()
         while time.time() < deadline and self.gui is None:
             time.sleep(0.2)
@@ -188,17 +189,19 @@ class Run:
             self.zz("kill-server", check=False)
         except Exception:
             pass
-        try:
-            os.kill(self.gui, signal.SIGTERM)
-        except (ProcessLookupError, TypeError):
-            pass
-        if COMPOSITOR == "kwin":
-            self.gamescope.terminate()
-        try:
-            self.gamescope.wait(10)
-        except subprocess.TimeoutExpired:
-            self.gamescope.kill()
-            self.gamescope.wait(5)
+        if self.gui is not None:
+            try:
+                os.kill(self.gui, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        if self.gamescope is not None:
+            if COMPOSITOR == "kwin":
+                self.gamescope.terminate()
+            try:
+                self.gamescope.wait(10)
+            except subprocess.TimeoutExpired:
+                self.gamescope.kill()
+                self.gamescope.wait(5)
         if self.dbus:
             for pid in children(self.dbus)[1:]:
                 try:

@@ -16,7 +16,7 @@ pub(crate) struct WaylandUnderlay(RefCell<UnderlayState>);
 struct UnderlayState {
     presenter: Option<WgpuPresenter>,
     surface: wl_surface::WlSurface,
-    viewport: Option<wp_viewport::WpViewport>,
+    viewport: wp_viewport::WpViewport,
     subsurface: Option<wl_subsurface::WlSubsurface>,
     parent: wl_surface::WlSurface,
     subcompositor: wl_subcompositor::WlSubcompositor,
@@ -36,7 +36,7 @@ impl WaylandUnderlay {
     pub(crate) fn new(
         compositor: &wl_compositor::WlCompositor,
         subcompositor: wl_subcompositor::WlSubcompositor,
-        viewporter: Option<&wp_viewporter::WpViewporter>,
+        viewporter: &wp_viewporter::WpViewporter,
         qh: &QueueHandle<WaylandClientStatePtr>,
         parent: wl_surface::WlSurface,
         presenter: impl FnOnce(&wl_surface::WlSurface) -> anyhow::Result<WgpuPresenter>,
@@ -45,13 +45,11 @@ impl WaylandUnderlay {
         let region = compositor.create_region(qh, ());
         surface.set_input_region(Some(&region));
         region.destroy();
-        let viewport = viewporter.map(|viewporter| viewporter.get_viewport(&surface, qh, ()));
+        let viewport = viewporter.get_viewport(&surface, qh, ());
         let presenter = match presenter(&surface) {
             Ok(presenter) => presenter,
             Err(error) => {
-                if let Some(viewport) = viewport {
-                    viewport.destroy();
-                }
+                viewport.destroy();
                 surface.destroy();
                 return Err(error);
             }
@@ -117,9 +115,9 @@ impl PlatformUnderlay for WaylandUnderlay {
         if let Some(subsurface) = &state.subsurface {
             subsurface.set_position(bounds.origin.x, bounds.origin.y);
         }
-        if let Some(viewport) = &state.viewport {
-            viewport.set_destination(bounds.size.width, bounds.size.height);
-        }
+        state
+            .viewport
+            .set_destination(bounds.size.width, bounds.size.height);
     }
 
     fn set_visible(&self, visible: bool) {
@@ -146,9 +144,7 @@ impl Drop for WaylandUnderlay {
         let state = self.0.get_mut();
         state.presenter = None;
         state.unmap();
-        if let Some(viewport) = state.viewport.take() {
-            viewport.destroy();
-        }
+        state.viewport.destroy();
         state.surface.destroy();
     }
 }

@@ -102,15 +102,18 @@ below the window's surface, the Wayland counterpart of the macOS layer:
 - on `FrameReady` the view hands the texture to `PaneUnderlay::present`,
   which copies it into the subsurface's swapchain image and presents it
   (Mailbox or Immediate when offered, so the main thread never waits on a
-  frame callback) instead of notifying. It falls back to a window redraw
-  while the layer is off screen, glass covers it, or no image was free;
+  frame callback) instead of notifying. Glass-covered frames still update
+  the subsurface and redraw the window, so removing glass reveals the latest
+  frame. It also redraws while the layer is off screen or no image was free;
 - `UnderlayFlush` unmaps layers that were not placed this frame (destroying
   the `wl_subsurface` role) and calls `Window::set_underlay_active`, which
   keeps the window's alpha mode transparent and its opaque region unset while
   any hole is on screen.
 
 `ZZ_BROWSER_UNDERLAY=0` turns it off. Compositors without `wl_subcompositor`
-and X11 keep drawing frames through GPUI. Headless gamescope is one of them, so
+or `wp_viewporter`, and X11, keep drawing frames through GPUI. The viewport is
+required to map physical texture dimensions to the pane's logical size.
+Headless gamescope is one of them, so
 the browser benchmarks run under a nested `kwin_wayland --virtual` on a private
 D-Bus and config directory to exercise this path.
 
