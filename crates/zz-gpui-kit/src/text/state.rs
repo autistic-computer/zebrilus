@@ -32,6 +32,18 @@ use super::{
 
 const MAX_COALESCED_UPDATES_PER_PARSE: usize = 64;
 
+#[cfg(test)]
+pub(super) mod parse_counters {
+    use std::sync::atomic::AtomicUsize;
+
+    pub(crate) static BACKGROUND: AtomicUsize = AtomicUsize::new(0);
+    pub(crate) static COMMITTED: AtomicUsize = AtomicUsize::new(0);
+
+    pub(super) fn bump(counter: &AtomicUsize) {
+        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 pub struct TextViewState {
     pub(super) focus_handle: FocusHandle,
     pub(super) entity_id: zz_gpui::EntityId,
@@ -88,6 +100,8 @@ impl TextViewState {
                             return;
                         }
 
+                        #[cfg(test)]
+                        parse_counters::bump(&parse_counters::COMMITTED);
                         match parsed_update.result {
                             Ok(content) => {
                                 state.parsed_content = content;
@@ -245,6 +259,8 @@ impl TextViewState {
         };
 
         if parse_synchronously {
+            #[cfg(test)]
+            parse_counters::bump(&parse_counters::COMMITTED);
             match parse_content(ParsedContent::default(), &update_options) {
                 Ok(content) => {
                     self.parsed_content = content;
@@ -481,6 +497,8 @@ async fn parse_loop(rx: Receiver<UpdateOptions>, tx_result: Sender<ParsedUpdate>
     while let Ok(mut options) = rx.recv().await {
         let hit_coalesce_budget = merge_pending_options(&mut options, &rx);
 
+        #[cfg(test)]
+        parse_counters::bump(&parse_counters::BACKGROUND);
         let res = parse_content(content.clone(), &options);
         if let Ok(parsed) = &res {
             content = parsed.clone();
