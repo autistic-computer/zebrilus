@@ -380,7 +380,7 @@ impl ClaudeSource {
             })
             .filter(|(id, _)| !self.agents.iter().any(|agent| agent.id == *id))
             .collect::<Vec<_>>();
-        found.sort_by_key(|(_, path)| modified(path));
+        found.sort_by_cached_key(|(id, path)| (modified(path), id.clone()));
         for (id, meta_path) in found {
             let log = self.dir.join(format!("agent-{id}.jsonl"));
             let stamp = modified(&log);
