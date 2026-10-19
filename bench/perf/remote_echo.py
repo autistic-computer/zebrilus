@@ -69,8 +69,9 @@ def main():
     args = parser.parse_args()
     env = dict(os.environ, ZZ_SOCKET=args.socket, ZZ_FLOW_WINDOW=args.flow, TERM="xterm-256color")
     client = PtyClient([args.zz, "attach-session", "-t", args.session], env, Clients(), cols=args.cols, rows=args.rows)
-    received = drain(client, args.warmup)
+    drain(client, args.warmup)
     started = time.perf_counter()
+    received = 0
     samples = []
     missed = 0
     for index in range(args.keys):

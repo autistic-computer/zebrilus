@@ -122,6 +122,8 @@ That is the behaviour we want: the daemon coalesces instead of the kernel queuei
   ping is out: with every ping answered there is nothing left to wait for, so the writer sends,
   and that batch carries a new ping. The window can therefore never get stuck, whatever it shrinks
   to. A frame that starts under the window still goes out whole.
+  When the input closes, `Connection::write_ready` disables flow gating so pending output can
+  flush or report a socket error without waiting for another pong.
 - **What it gates.** The whole outbound stream: reliable, command output, agent, terminal. It only
   pauses popping, so it reorders nothing. Terminal slots keep coalescing through the existing
   `NeedsFull` → `replace_terminal_viewport` path. Agent frames queue under their existing per-pane
@@ -135,7 +137,7 @@ That is the behaviour we want: the daemon coalesces instead of the kernel queuei
   sample: during a flood every ping has a window of bytes ahead of it and measures queue as well as
   distance, while a keystroke's small frame after a quiet moment goes out alone. A batch that pops
   nothing never pings.
-- **Pongs.** `connection.rs` hands `Pong { token }` to `OutboundMailbox::acknowledge`, which moves
+- **Pongs.** `daemon/event_loop.rs` hands `Pong { token }` to `OutboundMailbox::acknowledge`, which moves
   the acked offset and updates the estimate below. The loop calls `write_ready` after it reads a
   connection, so a window that a pong opens flushes in the same turn. While the gate is shut the
   writer drops write interest, so a blocked connection costs no wakeups.
@@ -198,8 +200,8 @@ congestion-window gain, was also measured; see Results for why 5/4 stays.
 - **A link with room but a jittery RTT.** With the first 8-sample filter and mono floods on the
   harsh profile, which fit the link, the 5/4 window shut on RTT spikes and cost 20-30 ms of echo p50
   (125-135 against 103-106 ms, 2026-10-18). The 40-sample filter is the fix; its latency effect
-  could not be re-measured on 2026-10-19 under a ~150 ms floor on the Mac side (see Results), but
-  it gives back about half the frame throughput the 8-sample filter lost there. If a quiet re-run
+  could not be re-measured on 2026-10-19 under a ~150 ms floor on the Mac side (see Results).
+  The throughput comparison needs a rerun after correcting warmup accounting. If a quiet re-run
   still shows a cost, pacing sends at the measured rate with a larger window for slack (BBR's
   answer); that needs a timer-driven writer.
 
@@ -232,6 +234,11 @@ congestion-window gain, was also measured; see Results for why 5/4 stays.
 - The Results section below holds the before/after numbers for both profiles.
 
 # Results
+
+Review on 2026-10-19 found that `bench/perf/remote_echo.py` included warmup bytes in
+`tty_kib_s` but excluded warmup time. The fix resets the byte count when measurement starts.
+Historical tty throughput figures below are retained as recorded, but their absolute values and
+percentage comparisons need a rerun. The bug does not affect the separately timed echo samples.
 
 ## Loopback rehearsal (2026-10-18, alienware, one machine)
 
@@ -305,9 +312,8 @@ Findings:
   panes, several flooding panes) or the link is slow.
 - **5/4 beats gain 2 whenever the link is full**, by 6-80 ms at p50. Gain 2 only helped the mono
   harsh 120x40 case, where the link had room. 5/4 stays; the cost it leaves is under Not in v1.
-- **The window costs frames, not freshness.** With flow on, the client draws fewer intermediate
-  frames during a flood (tty output up to a third lower on saturated rows); each one it draws is
-  the newest.
+- **Queued terminal frames coalesce.** With flow on, the mailbox keeps the newest frame while
+  the window is closed. The measured throughput cost needs a rerun with corrected byte accounting.
 - **No Nagle stall on real ssh.** Idle pings measured the bare RTT (66.6 ms on LTE, 87.6 ms on
   harsh) and pongs never lagged by a delayed-ACK multiple. On loopback the same code needed
   `nodelay` relays, which was the 64 KiB MSS, not ssh.
@@ -336,9 +342,8 @@ interleaved:
 | harsh | 222-229 / 222-224 / 223-225 ms | 311-338 / 185-204 / 249-282 |
 | LTE | 216-223 / 219-225 / 219-225 ms | 415-441 / 271-327 / 267-368 |
 
-Echo was the same for all three under the floor. Frames show the filter working: on harsh the
-8-sample window cost 41% of the frames flow off delivered, the 40-sample one 19%, which means it
-shut less often.
+Echo was the same for all three under the floor. The tty throughput values include warmup bytes;
+they cannot establish the filter's throughput cost until this comparison is rerun.
 
 # Decisions
 
