@@ -910,6 +910,32 @@ impl HitboxId {
     }
 }
 
+const SCROLL_LATCH_TIMEOUT: Duration = Duration::from_millis(300);
+
+/// Identifies a scroll container across frames for [`Window::claim_scroll`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScrollKey(ScrollKeySource);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScrollKeySource {
+    State(usize),
+    Entity(EntityId),
+}
+
+impl ScrollKey {
+    /// The key of the container that keeps `state` between frames.
+    pub fn of<T: ?Sized>(state: &Rc<T>) -> Self {
+        Self(ScrollKeySource::State(
+            Rc::as_ptr(state).cast::<()>() as usize
+        ))
+    }
+
+    /// The key of a view that scrolls its own content.
+    pub fn of_entity(entity: EntityId) -> Self {
+        Self(ScrollKeySource::Entity(entity))
+    }
+}
+
 /// A rectangular region that potentially blocks hitboxes inserted prior.
 /// See [Window::insert_hitbox] for more details.
 #[derive(Clone, Debug, Deref)]
@@ -1307,6 +1333,7 @@ pub struct Window {
     pub(crate) focus_lost_listeners: SubscriberSet<(), AnyObserver>,
     focus_lost_path: SmallVec<[FocusId; 8]>,
     default_prevented: bool,
+    scroll_latch: Option<(ScrollKey, Instant)>,
     mouse_position: Point<Pixels>,
     mouse_hit_test: HitTest,
     modifiers: Modifiers,
@@ -2186,6 +2213,7 @@ impl Window {
             focus_lost_listeners: SubscriberSet::new(),
             focus_lost_path: SmallVec::new(),
             default_prevented: true,
+            scroll_latch: None,
             mouse_position,
             mouse_hit_test: HitTest::default(),
             modifiers,
@@ -3474,6 +3502,37 @@ impl Window {
     /// Obtain whether default has been prevented for the event currently being dispatched.
     pub fn default_prevented(&self) -> bool {
         self.default_prevented
+    }
+
+    fn refresh_scroll_latch(&mut self, phase: crate::TouchPhase) {
+        let now = Instant::now();
+        self.scroll_latch = self
+            .scroll_latch
+            .filter(|(_, last)| {
+                phase != crate::TouchPhase::Started
+                    && now.duration_since(*last) < SCROLL_LATCH_TIMEOUT
+            })
+            .map(|(key, _)| (key, now));
+    }
+
+    /// Whether the scroll container `key` takes the scroll wheel event being dispatched.
+    /// The container that first moves during a gesture keeps the rest of it, momentum and
+    /// overscroll included, even once the pointer leaves it. Otherwise the innermost hovered
+    /// container that moves takes the event, and the ones around it leave it alone.
+    pub fn should_take_scroll(&self, key: ScrollKey, hovered: bool) -> bool {
+        match self.scroll_latch {
+            Some((latched, _)) => latched == key,
+            None => hovered && !self.default_prevented,
+        }
+    }
+
+    /// Records that the scroll container `key` moved for the scroll wheel event being
+    /// dispatched, latching the rest of the gesture to it.
+    pub fn claim_scroll(&mut self, key: ScrollKey) {
+        self.default_prevented = true;
+        if self.scroll_latch.is_none() {
+            self.scroll_latch = Some((key, Instant::now()));
+        }
     }
 
     /// Determine whether the given action is available along the dispatch path to the currently focused element.
@@ -6368,6 +6427,7 @@ impl Window {
             PlatformInput::ScrollWheel(scroll_wheel) => {
                 self.mouse_position = scroll_wheel.position;
                 self.modifiers = scroll_wheel.modifiers;
+                self.refresh_scroll_latch(scroll_wheel.touch_phase);
                 PlatformInput::ScrollWheel(scroll_wheel)
             }
             PlatformInput::Pinch(pinch) => {
