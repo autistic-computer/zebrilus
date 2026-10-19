@@ -173,7 +173,9 @@ promising for idle and agent panes but unmeasured.
 `just hot linux` (zz `hotreload` feature, off by default) runs zz Dev through Dioxus Subsecond
 0.7.10 with a separate `zz-hotreload` launcher crate. Dioxus's own same-package bin/library layout
 reported successful patches while the app kept running the old code. Patches land on the
-foreground executor and refresh every window. The sidebar render path is the first hot boundary.
+foreground executor and refresh every window. The lab hot-patched the sidebar render path only;
+since 2026-10-19 zz-gpui's `hot-reload` feature (upstream zed `670a779a5e`, enabled by zz's
+`hotreload`) routes every view and component render through `subsecond::HotFn`.
 
 | Loop | Save to pixels |
 | --- | --- |
@@ -183,7 +185,7 @@ foreground executor and refresh every window. The sidebar render path is the fir
 Five consecutive patches kept the GUI PID, the daemon connection, terminal sessions and sidebar
 state. Each patch keeps its library loaded, about 22 MiB of RSS per patch. Changing the layout of
 a struct that lives across patches still needs a restart. gpui-ce PR #292 adds the same mechanism
-inside gpui itself; zz did not need a fork hook.
+inside gpui itself; zz later took upstream zed's version of that hook.
 
 Linker and codegen tweaks (LLD, mold, split debuginfo, codegen units, shared generics) gave no
 reliable gain on the incremental zz rebuild under load.

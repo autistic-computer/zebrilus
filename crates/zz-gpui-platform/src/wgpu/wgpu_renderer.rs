@@ -3757,7 +3757,7 @@ mod tests {
                 let output = std::process::Command::new(std::env::current_exe()?)
                     .args([
                         "--exact",
-                        "wgpu_renderer::tests::nonfinite_font_environment_uses_defaults_and_draws_glyphs",
+                        "wgpu::wgpu_renderer::tests::nonfinite_font_environment_uses_defaults_and_draws_glyphs",
                         "--nocapture",
                     ])
                     .env(CHILD, "1")
