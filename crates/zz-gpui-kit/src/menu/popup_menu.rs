@@ -925,10 +925,13 @@ impl PopupMenu {
             .map(|this| row_corners(this, &row, item_height))
             .items_center()
             .selected(selected)
-            .on_hover(cx.listener(move |this, hovered, _, cx| {
+            .on_hover(cx.listener(move |this, hovered, window, cx| {
                 if *hovered {
                     this.selected_index = Some(ix);
-                } else if !is_submenu && this.selected_index == Some(ix) {
+                } else if !is_submenu
+                    && this.selected_index == Some(ix)
+                    && !window.last_input_was_keyboard()
+                {
                     // TODO: Better handle the submenu unselection when hover out
                     this.selected_index = None;
                 }
@@ -1603,6 +1606,45 @@ mod tests {
         });
         cx.simulate_keystrokes("escape");
         assert!(dismissed.get());
+    }
+
+    #[zz_gpui::test]
+    fn an_unbound_key_keeps_the_hovered_highlight(cx: &mut zz_gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (menu, cx) = cx.add_window_view(|window, cx| {
+            let menu = PopupMenu::new(cx)
+                .item(PopupMenuItem::new("Alpha"))
+                .item(PopupMenuItem::new("Beta"))
+                .item(PopupMenuItem::new("Gamma"));
+            menu.focus_handle.focus(window, cx);
+            menu
+        });
+        let draw = |cx: &mut zz_gpui::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.run_until_parked();
+        };
+        draw(cx);
+        let center = menu.read_with(cx, |menu, _| menu.bounds.center());
+        cx.simulate_mouse_move(center, None, zz_gpui::Modifiers::default());
+        draw(cx);
+        let hovered = menu
+            .read_with(cx, |menu, _| menu.selected_index)
+            .expect("hovering an item highlights it");
+
+        cx.simulate_keystrokes("x");
+        draw(cx);
+        assert_eq!(
+            menu.read_with(cx, |menu, _| menu.selected_index),
+            Some(hovered)
+        );
+
+        cx.simulate_keystrokes("down");
+        draw(cx);
+        assert_eq!(
+            menu.read_with(cx, |menu, _| menu.selected_index),
+            Some(hovered + 1)
+        );
     }
 
     #[zz_gpui::test]
