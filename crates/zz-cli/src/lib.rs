@@ -15,6 +15,7 @@ mod control_mode;
 pub mod diagnostics;
 mod events;
 mod fleet;
+mod list_hosts;
 
 #[cfg(test)]
 use std::borrow::Cow;
@@ -881,6 +882,16 @@ fn run_command_mode(
                 }
             },
         );
+    }
+
+    if command == "list-hosts" && host.is_none() {
+        return Some(list_hosts::run(
+            &invocation
+                .args
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+        ));
     }
 
     if implicit_tmux_conflict && host.is_none() {
