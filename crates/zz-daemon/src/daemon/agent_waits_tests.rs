@@ -302,12 +302,14 @@ fn gui_delivery_failure_keeps_the_original_error_after_queue_resume() {
     mailbox.close();
     let item = shared.command_item(None);
     item.command_item.as_ref().unwrap().lock().loop_wait = true;
-    let mut result = item.request_from_gui(pane, |request_id| EventPayload::AgentCommand {
-        pane,
-        request_id,
-        command: AgentCommand::ComposerAppend {
-            text: "hello".to_owned(),
-        },
+    let mut result = item.request_from_gui(pane, str::to_owned, |request_id| {
+        EventPayload::AgentCommand {
+            pane,
+            request_id,
+            command: AgentCommand::ComposerAppend {
+                text: "hello".to_owned(),
+            },
+        }
     });
     shared.terminal_requests.turn(&shared);
     let item = item.command_item.as_ref().unwrap().lock();

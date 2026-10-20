@@ -1674,6 +1674,7 @@ pub struct CaptureOptions {
     pub number_lines: bool,
     pub line_flags: bool,
     pub hyperlinks: bool,
+    pub skip_input: bool,
 }
 
 impl Default for CaptureOptions {
@@ -1691,6 +1692,7 @@ impl Default for CaptureOptions {
             number_lines: false,
             line_flags: false,
             hyperlinks: false,
+            skip_input: false,
         }
     }
 }
@@ -1703,6 +1705,7 @@ pub struct LastCommandCapture {
     pub output: String,
     /// Leading output rows dropped by the line or byte cap; zero when none were.
     pub truncated_rows: usize,
+    pub running: bool,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -1892,6 +1895,17 @@ impl ForegroundSource {
 
     fn shell_process_id(&self) -> Option<u32> {
         self.shell.filter(|process_id| *process_id != 0)
+    }
+
+    fn canonical(&self) -> Option<bool> {
+        #[cfg(unix)]
+        {
+            self.master.canonical()
+        }
+        #[cfg(not(unix))]
+        {
+            None
+        }
     }
 }
 
@@ -2724,6 +2738,11 @@ impl TerminalSession {
             .read()
             .as_ref()?
             .shell_process_id()
+    }
+
+    #[must_use]
+    pub fn tty_canonical(&self) -> Option<bool> {
+        self.events.state.foreground.read().as_ref()?.canonical()
     }
 
     pub fn wait_for_identity(&self, timeout: Duration) -> bool {
@@ -9336,6 +9355,16 @@ fn capture_grid(
     };
     let per_row = options.number_lines || options.line_flags;
     let output = format_range(options.join_wrapped && !per_row)?;
+    let output = if options.skip_input {
+        blank_prompt_lines(
+            terminal,
+            &output,
+            (start, end),
+            options.join_wrapped && !per_row,
+        )?
+    } else {
+        output
+    };
     let rows = if per_row && options.join_wrapped {
         Some(
             (start..=end)
@@ -9380,6 +9409,66 @@ fn capture_grid(
         visible_start,
         flags.as_deref(),
     ))
+}
+
+fn blank_prompt_lines(
+    terminal: &impl CaptureGrid,
+    output: &str,
+    (start, end): (u64, u64),
+    joined: bool,
+) -> Result<String, TerminalCaptureError> {
+    let row_at = |row: u64| {
+        terminal
+            .grid_ref(Point::Screen(PointCoordinate {
+                x: 0,
+                y: u32::try_from(row).unwrap_or(u32::MAX),
+            }))
+            .and_then(|grid| grid.row())
+            .map_err(capture_failure)
+    };
+    let mut row = start;
+    let lines = output.split('\n').collect::<Vec<_>>();
+    let mut kinds = Vec::with_capacity(lines.len());
+    for _ in &lines {
+        kinds.push(if row <= end {
+            let first = row_at(row)?;
+            let kind = first.semantic_prompt().map_err(capture_failure)?;
+            let mut wrapped = first.is_wrapped().map_err(capture_failure)?;
+            row += 1;
+            while joined && wrapped && row <= end {
+                wrapped = row_at(row)?.is_wrapped().map_err(capture_failure)?;
+                row += 1;
+            }
+            kind
+        } else {
+            RowSemanticPrompt::None
+        });
+    }
+    let mut output_follows = false;
+    let mut input = vec![false; lines.len()];
+    for (index, kind) in kinds.iter().enumerate().rev() {
+        input[index] = match kind {
+            RowSemanticPrompt::None => {
+                output_follows = true;
+                false
+            }
+            RowSemanticPrompt::Prompt => {
+                output_follows = false;
+                true
+            }
+            RowSemanticPrompt::Continuation => output_follows,
+        };
+    }
+    let mut blanked = String::with_capacity(output.len());
+    for (index, line) in lines.iter().enumerate() {
+        if index > 0 {
+            blanked.push('\n');
+        }
+        if !input[index] {
+            blanked.push_str(line);
+        }
+    }
+    Ok(blanked)
 }
 
 const LINE_FLAG_HYPERLINK: u8 = 1 << 0;
@@ -10268,6 +10357,7 @@ fn capture_last_command(
             command,
             output,
             truncated_rows,
+            running: false,
         });
     }
     if saw_prompt {
@@ -10389,6 +10479,7 @@ fn format_span(
     let selection = Selection::new(start, end, false);
     let options = FormatterOptions::new()
         .with_format(Format::Plain)
+        .with_unwrap(true)
         .with_trim(true)
         .with_selection(&selection);
     let mut formatter = Formatter::new(terminal, options).map_err(capture_failure)?;
@@ -22636,6 +22727,135 @@ mod tests {
         assert_eq!(capture.command, "two --flag");
         assert_eq!(capture.output, "out-two\nmore-two");
         assert_eq!(capture.truncated_rows, 0);
+    }
+
+    #[test]
+    fn last_command_capture_joins_soft_wrapped_rows() {
+        let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+        let command = "echo abcdefghijklmnopqrstuvwxyz0123456789";
+        let output = "o".repeat(30);
+        terminal.vt_write(
+            format!(
+                "\x1b]133;A\x1b\\$ \x1b]133;B\x1b\\{command}\x1b]133;C\x1b\\\r\n{output}\r\n\x1b]133;D;0\x1b\\\x1b]133;A\x1b\\$ "
+            )
+            .as_bytes(),
+        );
+
+        let capture = capture_last_command(&terminal).expect("last command");
+        assert_eq!(capture.command, command);
+        assert_eq!(capture.output, output);
+    }
+
+    #[test]
+    fn last_command_capture_reports_a_running_command() {
+        let session = TerminalSession::spawn_empty_with_appearance(
+            64,
+            Arc::new(TerminalAppearance::default()),
+        );
+        assert!(session.feed(Arc::from(
+            b"\x1b]133;A\x07$ \x1b]133;B\x07one\x1b]133;C\x07\r\nout\r\n\x1b]133;D;1\x07\x1b]133;A\x07$ ".as_slice()
+        )));
+        let capture = session.capture_last_command().expect("last command");
+        assert_eq!((capture.command.as_str(), capture.running), ("one", false));
+        assert!(session.feed(Arc::from(
+            b"\x1b]133;B\x07sleep 9\x1b]133;C\x07\r\n".as_slice()
+        )));
+        let capture = session.capture_last_command().expect("running command");
+        assert_eq!(
+            (capture.command.as_str(), capture.running),
+            ("sleep 9", true)
+        );
+    }
+
+    #[test]
+    fn skip_input_blanks_prompt_and_typed_input_lines() {
+        let options = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            ..CaptureOptions::default()
+        };
+        let skip = CaptureOptions {
+            skip_input: true,
+            ..options
+        };
+        let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+        terminal.vt_write(
+            b"\x1b]133;A\x07$ \x1b]133;B\x07echo DONE\x1b]133;C\x07\r\nDONE\r\n\
+              \x1b]133;D;0\x07\x1b]133;A\x07$ \x1b]133;B\x07echo 'a\r\n> b'\x1b]133;C\x07\r\nout\r\n",
+        );
+        let plain = capture_terminal(&terminal, None, options).expect("capture");
+        let skipped = capture_terminal(&terminal, None, skip).expect("capture");
+        assert_eq!(
+            plain.lines().take(5).collect::<Vec<_>>(),
+            ["$ echo DONE", "DONE", "$ echo 'a", "> b'", "out"]
+        );
+        assert_eq!(
+            skipped.lines().take(5).collect::<Vec<_>>(),
+            ["", "DONE", "", "", "out"]
+        );
+        assert_eq!(skipped.lines().count(), plain.lines().count());
+        let mut bare = new_terminal(24, 8, 64).expect("terminal");
+        bare.vt_write(b"$ echo DONE\r\nDONE\r\n");
+        assert_eq!(
+            capture_terminal(&bare, None, skip),
+            capture_terminal(&bare, None, options)
+        );
+    }
+
+    #[test]
+    fn skip_input_keeps_output_printed_without_a_command_mark() {
+        let skip = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            skip_input: true,
+            ..CaptureOptions::default()
+        };
+        let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+        terminal.vt_write(
+            b"\x1b]133;A\x07$ \x1b]133;B\x07(echo DONE)\r\nDONE\r\n\
+              \x1b]133;A\x07$ \x1b]133;B\x07",
+        );
+        let skipped = capture_terminal(&terminal, None, skip).expect("capture");
+        assert_eq!(
+            skipped.lines().take(3).collect::<Vec<_>>(),
+            ["", "DONE", ""]
+        );
+    }
+
+    #[test]
+    fn skip_input_blanks_a_wrapped_prompt_split_across_capture_steps() {
+        let session = TerminalSession::spawn_empty_with_appearance(
+            4096,
+            Arc::new(TerminalAppearance::default()),
+        );
+        session.resize(40, 10, 8, 16);
+        let mut bytes = "x\r\n"
+            .repeat(usize::try_from(CAPTURE_ROWS_PER_STEP).unwrap() - 1)
+            .into_bytes();
+        let command = format!("echo {}", "y".repeat(40));
+        bytes.extend(
+            format!("\x1b]133;A\x07\x1b]133;B\x07{command}\x1b]133;C\x07\r\nafter\r\n").bytes(),
+        );
+        assert!(session.feed(Arc::from(bytes)));
+        let options = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            ..CaptureOptions::default()
+        };
+        let plain = session.capture(options).expect("capture");
+        assert!(plain.contains(&command), "{plain:?}");
+        let skipped = session
+            .capture(CaptureOptions {
+                skip_input: true,
+                ..options
+            })
+            .expect("capture");
+        assert!(!skipped.contains('y'), "{skipped:?}");
+        assert!(skipped.contains("after"));
+        assert_eq!(skipped.lines().count(), plain.lines().count());
     }
 
     #[test]
