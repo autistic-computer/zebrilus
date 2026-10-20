@@ -281,11 +281,12 @@ Targets take tmux syntax: `$session`, `@window`, `%pane`, plus compound forms
 like `docs:main.0`. `-F` format strings work on `list-sessions`, `list-windows`,
 and `list-panes`.
 
-:::caution[`zz --help` does not exist]
-Argument parsing is hand-rolled and there is no help text, no man page, and no
-shell completions. `zz tools` prints a short catalog aimed at agents, the
+:::tip[Help]
+`zz --help` lists every command and the global flags, and `zz <verb> --help`
+shows one command's options; neither needs a running daemon. `zz -h` keeps
+tmux's usage banner. `zz tools` prints the guide written for agents, and the
 command palette (<kbd>C-b</kbd> <kbd>:</kbd>) completes commands and targets
-live, and the [CLI page](/docs/cli/) is the reference.
+live. There is no man page or shell completion.
 :::
 
 ## Other machines
@@ -294,7 +295,7 @@ Add a host and its sessions join your sidebar tree next to the local ones:
 
 ```sh
 zz fleet add desktop you@desktop
-zz fleet list
+zz list-hosts
 zz fleet remove desktop
 ```
 
@@ -305,32 +306,63 @@ host-desktop = ssh://you@desktop
 host-gpu     = ssh://gpu-box:2222
 ```
 
-Click a session in the tree to attach, or target the host from a shell with
-`zz --host desktop list-sessions`.
+`zz list-hosts` probes the hosts in parallel and prints each one's state and
+zz version. The state is `ready`, `missing` (no zz there), `incompatible`
+(another protocol), `auth` (the login was refused), or `unreachable`;
+`-F '#{host_name} #{host_url}'` skips the probe, and `--json` prints every field.
+The names `local` and `all` are reserved.
 
-The other machine needs zz too. If it has none, the app offers to install it on
-the spot: it runs the installer there over ssh and puts the headless zz in
+Click a session in the tree to attach, or drive a host from a shell. `--host`
+goes before the verb and takes a host name, an ssh destination, or `all`:
+
+```sh
+zz --host desktop                        # attach there
+zz --host desktop list-panes -a
+zz --host desktop send-keys -t %3 'make test' Enter
+zz --host you@other-box list-sessions
+zz --host all inspect -a --json          # read-only verbs on every host
+```
+
+Pane IDs belong to their host, so input verbs over `--host` (`send-keys`,
+`send-text`, `run-pane`, `paste-buffer`, `agent-send`) need `-t`. With `all`,
+text lines start with `NAME: `, JSON lines carry `host_name`, and a host that
+fails says why on stderr while the others still answer. `zz --host NAME events`,
+`agent-send --wait --progress` and `zz -CC --host NAME` stream from the host.
+
+zz signs in with its own ssh key. The first login to a host uses your keys,
+agent, or password and adds zz's key to that host's `authorized_keys`, so later
+connections ask for nothing, security key included. `zz fleet sync` makes every
+listed machine trust every other and know each other's host lines, so an agent
+on any of them can reach the rest; run it after you add a machine.
+`zz fleet key` prints this machine's zz key.
+
+The other machine needs zz too. If it has none, the app installs it on the
+spot: it runs the installer there over ssh and puts the headless zz in
 `~/.local/bin`, picking the right build for that machine. A host with an older
-zz offers **Update zz** from its menu in the sidebar, which also restarts its
-daemon. From a shell:
+zz offers **Update zz**, which also restarts its daemon. From a shell:
 
 ```sh
 zz fleet install desktop
 zz fleet install --restart-daemon desktop
+zz fleet install -a
 ```
 
-The remote needs `curl` and access to GitHub. Linux builds run on glibc 2.28 or
-newer.
+Installing never needs root, skips a host that already runs this version, and
+leaves any packaged or Homebrew zz alone; zz's own scripts prefer
+`~/.local/bin/zz`. The remote needs `curl` and access to GitHub. Linux builds
+run on glibc 2.28 or newer.
 
 The transport is plain OpenSSH. zz shells out to `ssh`, probes for the remote
 socket, starts a daemon over the same connection if none is running, and
-forwards the socket with `ssh -L`. (Windows cannot forward a unix socket, so it
+forwards the socket over that connection. It keeps one connection per host open
+for ten minutes, or rides your own `ControlMaster` setting, so the next
+`zz --host` call skips the login. (Windows cannot forward a unix socket, so it
 bridges a `zz proxy` over stdio instead.) Your keys, your agent, and your
 `~/.ssh/config` aliases all apply. Nothing to pair, no port to open.
 
-On the remote you need two things: ssh access, and `zz` on the login shell's
-`PATH`. The headless install is all a remote needs and pulls in no display libraries.
-The protocol version has to match exactly on both ends.
+On the remote you need ssh access and zz; the headless install is all a remote
+needs and pulls in no display libraries. The protocol version has to match
+exactly on both ends.
 
 Browser panes always render on your machine, but a pane opened while you are
 attached to a remote host sends its traffic back out through that host, so

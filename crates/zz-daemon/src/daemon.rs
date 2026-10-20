@@ -52364,14 +52364,14 @@ pub fn workspace_tools(args: &[RawText]) -> Result<String, ServerError> {
 
 const WORKSPACE_TOOLS_FRONTMATTER: &str = r"---
 name: zz-workspace
-description: Drive the surrounding zz workspace from inside a zz Agent pane using the `zz` CLI to send text or piped output to another agent's composer, read a terminal pane's scrollback, screenshot a browser pane, navigate a browser, and route a failing command's output to an agent. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, or a browser page.
+description: Drive the surrounding zz workspace from inside a zz Agent pane using the `zz` CLI to send text or piped output to another agent's composer, read a terminal pane's scrollback, screenshot a browser pane, navigate a browser, and route a failing command's output to an agent. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
 ---
 
 ";
 
 pub const WORKSPACE_STUB_SKILL: &str = r#"---
 name: zz-workspace
-description: Drive the surrounding zz workspace (panes, windows, terminal output, agent and browser panes) with the `zz` CLI. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, or a browser page.
+description: Drive the surrounding zz workspace (panes, windows, terminal output, agent and browser panes, other machines) with the `zz` CLI. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
 metadata:
   zz-stub: "1"
 ---
@@ -52394,7 +52394,9 @@ ZZ_PANE={pane}
 
 Target panes by id (`-t %N`), never `session:%N`. Keep the ids that creating commands print (`-P -F '#{pane_id}'`), and pass `-d` so you don't take focus from the user. If a creating command times out, list panes before retrying.
 
-Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output and exits with its status); read a pane with `zz capture-pane -p -J -t %N -S -`. Run `zz tools --skill` for the full guide.
+Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output and exits with its status); read a pane with `zz capture-pane -p -J -t %N -S -`.
+
+Other machines: `zz list-hosts` names them and `zz --host NAME VERB -t %N` runs a verb there; pane IDs are per host. Run `zz tools --skill` for the full guide.
 "#;
 
 const AGENT_PANE_CONTEXT: &str = r"
@@ -52470,6 +52472,17 @@ Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 when unknown; terminal and Agent panes report it from OSC 133 marks.
 `#{@name}` reads a user option from pane, window, session, then global scope.
 
+## Remote hosts
+
+`zz list-hosts` lists the machines in `zz/config` with their state and version.
+`zz --host NAME VERB` runs a verb there (NAME may be an ssh destination), and
+`zz --host all VERB` runs a read-only verb on every host, prefixing lines with `NAME: `.
+Pane IDs are per host and none is yours there: always pass `-t %N`, taken from
+`list-panes -a` or from your own `new-window -d -P -F '#{pane_id}'`. Paths resolve on
+that host; `events` and `agent-send --progress` stream from it. Logins use zz’s own
+key after the first; run `zz fleet sync` when a machine joins, and
+`zz fleet install NAME` when a host has no zz, or an older one.
+
 ## CLI contract
 
 The `--help` flag alone, or the `help` verb, prints the command catalog. Use
@@ -52479,8 +52492,8 @@ unknown verb exits 1; an unknown verb requested through zz’s `--help` exits 2.
 Global `-h` keeps the tmux usage banner, and command `-h`
 flags keep their tmux meaning.
 
-Add `--json` to `list-sessions`, `list-windows`, `list-panes`, or `list-clients`
-for one JSON object per row in the same order as text output. Keys are the format
+Add `--json` to `list-sessions`, `list-windows`, `list-panes`, `list-clients`, or
+`list-hosts` for one JSON object per row in the same order as text output. Keys are the format
 variable names for that entity; values are strings with the same expansion as
 `#{name}`, including empty strings for unavailable values. Pane rows include
 `pane_kind`, `agent_state`, `agent_pending_permission`, `browser_url`,
@@ -52494,7 +52507,7 @@ mapping option names to value strings in the selected scope. Combining `-F` and
 | 0 | Success. |
 | 1 | Command failure, a stopped agent turn, missing daemon, connection loss, or a tmux-compatible usage error (including an unknown command). |
 | 2 | Usage error in a zz-native verb or extension: invalid flag, missing argument, or malformed value. |
-| 3 | Blocked or unable to answer now, including `agent-send --on-block fail`. |
+| 3 | Blocked or unable to answer now, including `agent-send --on-block fail`; for `run-pane`, nothing ran and a retry is safe. |
 | 124 | Wait timed out, including `wait-pane --exit`, `agent-send`, and `new-agent-session`; a child may also return 124. |
 | 125 | `run-pane` timed out, or its child returned 125; the timeout writes a diagnostic to stderr. |
 
@@ -52513,17 +52526,18 @@ Commands that set an explicit exit code keep that code.
 
 Split a pane to start an agent; `-t %N` chooses the pane to split and `-c DIR` sets the new pane's cwd.
 Print nothing unless `-P` requests the new pane ID; `-F` changes its format.
+`zz new-window --kind agent [--provider P] [-n NAME]` opens one in its own window.
 
 The providers are `codex` and `claude-code` (`claude` accepted). Choose one with `zz split-window --kind agent --provider <provider>`. The daemon spawns each provider through the `agent-command` or `agent-claude-code-command` option. Claude Code runs the user's own `claude` over its stream-json protocol and Codex runs the user's own `codex` through `codex app-server`; a command whose program is neither runs as an ACP adapter. The model, reasoning effort, and approval policy come from the adapter's own configuration: `~/.codex/config.toml` for Codex or Claude Code's own settings. `zz` does not set them.
 
 ### `zz agent-send [-t %N] [--submit | --notify | --wait [--progress] [--timeout SECS] [--on-block wait|fail|allow|deny] [--json | --final]] [--context PATH[:START[-END]]] [TEXT]`
 
-Draft into another Agent pane's composer for its user to review.
+Draft into another Agent pane's composer for its user to review; that needs an app window showing the pane's session, otherwise use `--submit` or `--wait`.
 Print `appended to the composer in %N` when drafted. An omitted or non-agent target routes to that window's most recently focused Agent pane. Read stdin when TEXT is omitted: `git diff | zz agent-send`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
 
 `--submit` sends now and prints the chosen pane; a busy pane queues the prompt. `--notify` submits from inside an agent pane and, when the target's turn ends, posts its reply back into the calling pane as a prompt, queued behind that pane's own turn. `--wait` submits, waits for that turn, and prints its reply on stdout (pane ID on stderr). Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` answers tool permissions, preferring allow-once, and waits for user questions. `--on-block deny` rejects permissions, including user questions.
 
-Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts tool calls the pane saw, including runtime-approved reads; permission counters count only requests that reached the pane. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters. Over `-H`, it prints `agent-send: --progress is local only` and waits without the progress stream.
+Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts tool calls the pane saw, including runtime-approved reads; permission counters count only requests that reached the pane. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
 ### `zz new-agent-session [-t %N] [-c DIR] [--timeout SECS]`
 
@@ -52556,7 +52570,7 @@ Changes apply live to running agent panes. Use `agent-send --on-block` for per-t
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Lists in text output use spaces; unavailable facts have empty values. `verbs` lists what applies to this pane's kind; terminal panes with a nonempty `agent_state` also include `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; terminal panes with a nonempty `agent_state` also include `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
 zz inspect -a --json | jq -c 'select(.pane_kind=="agent") | {pane_id,agent_state}'
@@ -52587,10 +52601,16 @@ Open a picker with `zz split-window --kind picker -v -P -F '#{pane_id}'`.
 
 Run a command in a terminal pane's POSIX shell without shell integration.
 Join COMMAND words with single spaces, preserving supplied quoting; pass one
-command line. Paste it, verify the echo, then press Enter. Print the output between
+command line. Type it, verify the echo, then press Enter. Print the output between
 unique markers and return the child's exit code. Capture includes scrollback,
-capped to the last 10,000 logical lines. The timeout covers echo and execution;
-it defaults to 120 seconds, accepts fractions, and 0 waits forever. On timeout,
+capped to the last 10,000 logical lines; when the start scrolled past the pane's
+`history-limit`, stderr says `run-pane: output truncated to its last N lines`, so
+send big output to a file. One run-pane runs per pane; a second waits its turn.
+Exit 3 means nothing ran, so a retry is safe: the pane stayed busy past the timeout,
+its foreground program is not a POSIX shell (`run-pane: %N is running vim, not a shell`),
+or the shell was waiting for more input such as an unclosed quote (run-pane sent C-c).
+The timeout covers echo and execution; it defaults to 120 seconds, accepts
+fractions, and 0 waits forever. On timeout,
 print partial output to stdout, write `run-pane: timed out after <N>s on %N; the command keeps running`
 to stderr, and exit 125. A child exit of 125 differs from a timeout only by that
 stderr line. Use a command or Control client.
@@ -52605,7 +52625,8 @@ zz wait-pane -t %3 --until 'ready' --timeout 2.5
 Choose one condition; the default is `--idle 500`, measured from this call.
 Text and regex matches search logical lines on screen at the call or written since,
 including scrollback, capped to the last 10,000 logical lines. Join wrapped lines
-and print the matching line. `--tail N` narrows the search to the last N logical
+and print the matching line. Prompt and typed-command rows never match in panes with
+OSC 133 marks; elsewhere anchor the pattern (`--regex '^DONE$'`) so the echo cannot. `--tail N` narrows the search to the last N logical
 lines after skipping trailing blanks. Idle success prints nothing.
 With `--exit`, wait for the PTY child and mirror its exit status, with no output.
 A retained dead pane returns its status immediately; killing or respawning the
@@ -52618,7 +52639,8 @@ Use a command or Control client.
 
 Paste into a terminal TUI, wait for the text to appear, then press Enter. Read
 stdin when TEXT is omitted. `--no-enter` drafts. The timeout defaults to 2 seconds,
-accepts fractions such as 0.5, and 0 waits forever.
+accepts fractions such as 0.5, and 0 waits forever. Only the target pane gets the text,
+even with `synchronize-panes` on.
 Print nothing on success. If the text never appears, exit non-zero without submitting.
 
 ### `zz send-keys -t %N 'text' Enter`
@@ -52631,13 +52653,15 @@ Print nothing on success.
 ### `zz capture-pane -p -t %N [-S -] [-E -] [-J]`
 
 Print a terminal or Agent pane's text to stdout. `-S -`/`-E -` include the whole scrollback;
-`-J` rejoins soft-wrapped lines.
+`-J` rejoins soft-wrapped lines. An Agent pane shows each tool call as `[tool] TITLE`, or
+`[tool failed] TITLE`.
 
 ### `zz show-last-output -t %N`
 
 Print that last command and output under a `%N $ command` header, with the same
-OSC 133 requirement and caps. For an Agent pane, read its last prompt and reply.
-When known, an `exit: <n>` line follows the header.
+OSC 133 requirement and caps, soft-wrapped lines joined. For an Agent pane, read its last
+prompt and reply. When known, an `exit: <n>` line follows the header, or `exit: running`
+while it runs; after a run-pane the header shows the command it ran.
 
 ### `zz send-last-output -t %N`
 
@@ -52678,6 +52702,10 @@ Use `zz new-window --kind browser [--profile NAME] [URL]` to open a browser wind
 Both default to `about:blank`. Print nothing unless `-P` requests the tmux target;
 add `-F '#{pane_id}'` to print the new pane ID.
 
+A browser pane renders only while a desktop app window shows its session. With none,
+`set-browser-url` and `html` just record the page and `capture-browser` fails; over
+`--host`, open that host's session in the app first.
+
 ### `zz set-browser-url -t %N URL`
 
 Navigate a browser pane. Print nothing on success. `#{browser_url}` reports the active tab's URL.
@@ -52691,12 +52719,13 @@ names that start with `.`. Pages can load scripts from CDNs. `--float` opens a f
 `-t %N` shows the page in that pane if it is a browser, or opens it beside that pane. With
 `--reply` the page can call `zz.reply(text)`, which sends the text to your pane. Print the page
 URL and the new pane. In an Agent pane, a small page can go in your reply instead, as a fenced
-block opened with ```html preview: the pane shows it rendered in place.
+block opened with ```html preview: the pane shows it rendered in place. Over `--host`, PATH
+is read on that host; send a local page with `zz --host NAME html - < page.html`.
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
 
-Save the latest browser frame as a PNG and print its path. Use an absolute path: the window process
-writes the file. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
+Save the latest browser frame as a PNG and print its path. Use an absolute path: the app window
+showing the pane writes the file, on its own machine. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
 path reports that readback is unavailable.
 
 ### Browser through CDP
@@ -52747,7 +52776,7 @@ Run `zz tools advanced` for state subscriptions and terminal-agent integration.
 
 ### State and waiting
 
-Read native Agent state and permission presence through formats.
+Read native Agent state and the pending permission ID through formats.
 A terminal pane whose program reports OSC 7501 program status gets its most urgent
 record mapped into `@agent_state`: `working`, `blocked`, `failed` for `error`, and
 `idle` for `idle`, `done`, or no record. Once a pane has reported, the two heuristics
@@ -52824,7 +52853,8 @@ Agent panes register as Claude Code peers under their `@name` user option
 (default `zz-%N`). `ListAgents` in any Claude Code session lists them, and
 `SendMessage` queues a prompt into the pane while its adapter runs. Claude
 Code refuses idle subscriptions to these peers. Use
-`zz agent-send -t %N --wait "..."` to send and wait for a turn.
+`zz agent-send -t %N --wait "..."` to send and wait for a turn. Peers are per
+machine: for an agent on another host, use `zz --host NAME agent-send -t %N --wait "..."`.
 
 A terminal pane becomes a peer when you set its pane `@name` option:
 `zz set-option -p -t %3 @name codex-1`. A Codex pane with a session name receives
@@ -83868,6 +83898,8 @@ set-option -g @alias-mixed-next yes
             "run-shell",
             "pipe-pane",
             "refresh-client",
+            "fleet",
+            "list-hosts",
         ];
         const MUX_VERBS: &[&str] = &[
             "restart-agent-pane",
@@ -83888,6 +83920,9 @@ set-option -g @alias-mixed-next yes
             .split("zz ")
             .skip(1)
             .filter_map(|text| {
+                let text = text.strip_prefix("--host ").map_or(text, |host| {
+                    host.split_once(' ').map_or("", |(_, verb)| verb)
+                });
                 let verb = text
                     .split(|ch: char| !ch.is_ascii_lowercase() && ch != '-')
                     .next()?;
@@ -83985,6 +84020,7 @@ set-option -g @alias-mixed-next yes
         let text = workspace_context("%4", "work", false);
         assert!(text.contains("ZZ_SESSION=work\nZZ_PANE=%4\n"));
         assert!(text.contains("'#{pane_id}'"));
+        assert!(text.contains("zz list-hosts") && text.contains("zz --host NAME VERB -t %N"));
         assert!(!text.contains("{pane}") && !text.contains("{session}"));
         assert!(!text.contains("```html preview"));
         assert!(text.len() < 1600, "context grew to {} bytes", text.len());
