@@ -4930,7 +4930,10 @@ impl Window {
         corner_smoothing: Option<f32>,
     ) {
         self.invalidator.debug_assert_paint();
-        if shapes.is_empty() {
+        if shapes.is_empty()
+            || material.draws_nothing()
+            || (material.rim_only && !self.platform_window.supports_backdrop_sampling())
+        {
             return;
         }
 

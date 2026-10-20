@@ -131,6 +131,14 @@ stop going through GPUI:
   scene instead, over the layer. While that lasts (`Window::underlay_covered`)
   the view keeps redrawing on `FrameReady`, so the blurred page stays live.
   Glass beside the page whose blur merely reaches in does not count;
+- the page fills the pane below its header and is opaque, so it would hide
+  the rim of the glass pane frame drawn under it. Browser panes set
+  `PaneChrome::rim_over_content`: the frame drawn under the content loses its
+  glint and fresnel, and `GlassMaterial::rim()` draws them over the page
+  instead, which reads nothing and keeps the hole. The layer carries a
+  `CAShapeLayer` mask on the same superellipse as the hole
+  (`zz_ui::CORNER_SMOOTHING`), so its corners never show square through a
+  translucent frame;
 - `UnderlayFlush`, painted last by `AppShell`, hides layers that were not
   placed this frame and calls `Window::set_underlay_active`, which makes GPUI's
   Metal layer non-opaque and presents with the Core Animation transaction only

@@ -397,6 +397,7 @@ pub struct PaneChrome {
     pub active: bool,
     pub inactive_opacity: f32,
     pub frame: Option<GlassMaterial>,
+    pub rim_over_content: bool,
 }
 
 impl PaneChrome {
@@ -408,6 +409,7 @@ impl PaneChrome {
             active: false,
             inactive_opacity: 1.0,
             frame: None,
+            rim_over_content: false,
         }
     }
 
@@ -429,6 +431,12 @@ impl PaneChrome {
     #[must_use]
     pub const fn frame(mut self, frame: Option<GlassMaterial>) -> Self {
         self.frame = frame;
+        self
+    }
+
+    #[must_use]
+    pub const fn rim_over_content(mut self, rim_over_content: bool) -> Self {
+        self.rim_over_content = rim_over_content;
         self
     }
 }
@@ -458,9 +466,18 @@ pub fn pane_surface(
     } else {
         Vec::new()
     };
-    let frame = chrome
+    let rim = chrome
         .frame
-        .map(|frame| pane_frame_layer(frame, glass, rest, cx));
+        .filter(|_| glass && chrome.rim_over_content)
+        .map(|frame| frame.rim());
+    let frame = chrome.frame.map(|frame| {
+        let frame = if rim.is_some() {
+            frame.specular(0.0).fresnel(0.0)
+        } else {
+            frame
+        };
+        pane_frame_layer(frame, glass, rest, cx)
+    });
     div()
         .id(id)
         .relative()
@@ -474,6 +491,9 @@ pub fn pane_surface(
         .rounded_bl(chrome.radii.bottom_left)
         .rounded_br(chrome.radii.bottom_right)
         .child(content)
+        .when_some(rim, |surface, rim| {
+            surface.child(pane_frame_rim(chrome.radii, rim))
+        })
         .when(chrome.inactive_opacity < 1.0, |surface| {
             surface.child(pane_inactive_scrim(
                 chrome.radii,
@@ -514,6 +534,15 @@ fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer, cx: &App) ->
         border_width: Pixels::ZERO,
         ..rest
     }
+}
+
+fn pane_frame_rim(radii: Corners<Pixels>, rim: GlassMaterial) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |bounds, (), window, _| window.paint_glass(bounds, radii, &rim),
+    )
+    .absolute()
+    .inset_0()
 }
 
 /// The frame's edge without glass, or where the window cannot sample its
