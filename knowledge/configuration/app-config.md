@@ -270,9 +270,10 @@ the same way, so a theme file written for it loads only once it is rewritten as 
 
 Three themes ship from `crates/zz-ui/themes/`: Default (`default.json`), Liquid Glass
 (`liquid-glass.json`), and macOS (`macos.json`). macOS uses the existing material settings
-for macOS-style chrome buttons and selected tabs, with directional glass lighting, contact
-shadows, and light and dark palettes. Content cards, sidebar selections, code blocks, and
-ordinary buttons use plain fills. Liquid Glass keeps its separate hand-tuned definition. The JSON
+for macOS-style glass: chrome buttons, selected tabs and sidebar entries, popovers, dialogs and
+other floating surfaces, with directional glass lighting, contact and float shadows, and light and
+dark palettes. Content cards, sidebar rows, code blocks, tooltips, pane chips and ordinary
+buttons use plain fills. Liquid Glass keeps its separate hand-tuned definition. The JSON
 files hold each theme's current colors, material values, and role overrides.
 
 Run `just storybook macos` on macOS 27 with its SDK to compare the macOS theme in zz-ui against native

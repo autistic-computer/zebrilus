@@ -2,11 +2,13 @@
   "name": "macOS",
   "materials": {
     "radius": 24.0,
+    "smoothing": 4.0,
     "outline": 0.5,
     "picked-outlines": true,
     "row-inset": 5.0,
     "primary": "accent",
     "flat-highlights": true,
+    "highlight-strength": 0.7,
     "font": null,
     "glass": {
       "blur": 20.0,
@@ -20,6 +22,8 @@
       "specular": 0.26,
       "glint_width": 0.85,
       "light_angle": -1.5707964,
+      "light_directionality": 0.85,
+      "inactive_flattening": 0.85,
       "light_color": "#ffffffff",
       "fresnel": 0.045,
       "edge_shadow": 0.4,
@@ -34,9 +38,7 @@
       },
       "merge": 20.0,
       "opacity": 1.0,
-      "fallback": null,
-      "light_directionality": 0.85,
-      "inactive_flattening": 0.85
+      "fallback": null
     },
     "picked-shadows": true,
     "contact": {
@@ -50,9 +52,7 @@
       "blur": 24.0,
       "spread": -4.0,
       "strength": 0.4
-    },
-    "smoothing": 2.0,
-    "highlight-strength": 0.7
+    }
   },
   "roles": {
     "agent.attachment": {
@@ -65,7 +65,7 @@
     },
     "agent.composer": {
       "fill": "solid",
-      "outline": false,
+      "outline": true,
       "hover": "none"
     },
     "agent.jump": {
@@ -77,41 +77,86 @@
       "shape": "pill",
       "smoothing": 2.0
     },
+    "agent.tray": {
+      "hover": "tint",
+      "selected": "tint"
+    },
     "badge": {
       "fill": "none"
     },
     "browser.address": {
-      "selected": "glass"
+      "selected": "tint"
+    },
+    "browser.suggestion": {
+      "fill": "tint"
     },
     "browser.tab": {
       "selected": "glass"
     },
+    "button": {
+      "fill": "solid",
+      "outline": false,
+      "shadow": "contact",
+      "shape": "pill"
+    },
+    "button.quiet": {
+      "fill": "none",
+      "shadow": "none"
+    },
     "chrome.button": {
+      "fill": "glass",
       "hover": "tint",
-      "selected": "none",
-      "fill": "glass"
+      "selected": "none"
     },
     "code": {
       "fill": "tint",
       "outline": false,
       "shadow": "none"
     },
+    "dialog": {
+      "fill": "glass"
+    },
+    "field": {
+      "shape": "round"
+    },
+    "field.multiline": {
+      "shape": "round"
+    },
+    "floating": {
+      "fill": "glass",
+      "outline": false,
+      "shadow": "float"
+    },
+    "icon-button": {
+      "fill": "none",
+      "shadow": "none"
+    },
+    "menu-item": {
+      "fill": "none",
+      "shape": "round"
+    },
+    "pane": {
+      "shadow": "contact"
+    },
     "pane-stack": {
       "outline": true,
-      "smoothing": 2.0
+      "shadow": "contact",
+      "smoothing": 3.0
     },
     "pane.chip": {
       "fill": "solid",
-      "outline": true,
-      "shadow": "none"
+      "outline": true
+    },
+    "pane.display-panes": {
+      "hover": "tint",
+      "selected": "accent"
     },
     "pane.drag-chip": {
-      "fill": "tint",
-      "outline": true,
-      "shadow": "contact"
+      "fill": "solid",
+      "outline": true
     },
     "pane.drop-zone": {
-      "fill": "tint"
+      "shadow": "none"
     },
     "pane.header.button": {
       "hover": "tint",
@@ -127,16 +172,23 @@
     "phone.pill": {
       "fill": "glass"
     },
+    "popover": {
+      "fill": "glass"
+    },
+    "row": {
+      "selected": "tint"
+    },
     "settings.card": {
       "outline": true,
       "shadow": "none"
     },
     "sidebar.entry": {
-      "smoothing": 2.0,
+      "smoothing": 2.5,
       "hover": "tint",
-      "selected": "tint"
+      "selected": "glass"
     },
     "sidebar.row": {
+      "hover": "tint",
       "selected": "tint"
     },
     "titlebar.status-chip": {
@@ -151,41 +203,6 @@
       "fill": "solid",
       "outline": true,
       "shadow": "float"
-    },
-    "floating": {
-      "fill": "solid",
-      "outline": false,
-      "shadow": "float"
-    },
-    "button": {
-      "fill": "solid",
-      "shape": "pill",
-      "outline": false,
-      "shadow": "contact"
-    },
-    "field": {
-      "shape": "round"
-    },
-    "row": {
-      "selected": "tint"
-    },
-    "pane": {
-      "shadow": "contact"
-    },
-    "button.quiet": {
-      "fill": "none",
-      "shadow": "none"
-    },
-    "icon-button": {
-      "fill": "none",
-      "shadow": "none"
-    },
-    "menu-item": {
-      "fill": "none",
-      "shape": "round"
-    },
-    "field.multiline": {
-      "shape": "round"
     }
   },
   "light": {
