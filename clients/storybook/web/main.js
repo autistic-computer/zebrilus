@@ -13,10 +13,12 @@ const GLASS_KNOBS = [
     "glass-specular",
     "glass-glint-width",
     "glass-light",
+    "glass-light-directionality",
     "glass-fresnel",
     "glass-edge",
     "glass-edge-width",
     "glass-noise",
+    "glass-inactive-flattening",
 ];
 const SHADOW_KNOBS = [
     "contact-y",

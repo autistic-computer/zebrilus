@@ -4930,6 +4930,7 @@ impl Window {
         corner_smoothing: Option<f32>,
     ) {
         self.invalidator.debug_assert_paint();
+        let material = material.for_window(cfg!(target_family = "wasm") || self.is_window_active());
         if shapes.is_empty()
             || material.draws_nothing()
             || (material.rim_only && !self.platform_window.supports_backdrop_sampling())

@@ -66,6 +66,16 @@ pub struct GlassMaterial {
     /// The axis light falls along, in radians clockwise from the right edge;
     /// `-3π/4` lights the top left and bottom right edges.
     pub light_angle: f32,
+    /// How far the light favors the edge facing it, from 0 to 1: 0 lights
+    /// both edges along the axis alike, 1 puts the glint on the facing edge
+    /// and the contour on the far one.
+    #[serde(default)]
+    pub light_directionality: f32,
+    /// How much of the rim's light, the lensing and the color boost fade
+    /// while the window is inactive, from 0 to 1. The tint, blur and contour
+    /// stay.
+    #[serde(default)]
+    pub inactive_flattening: f32,
     /// Color of the glint and the fresnel glow; its alpha scales both.
     #[serde(default = "white")]
     pub light_color: Hsla,
@@ -140,6 +150,8 @@ impl GlassMaterial {
             specular: 0.6,
             glint_width: px(1.2),
             light_angle: -std::f32::consts::FRAC_PI_4 * 3.,
+            light_directionality: 0.,
+            inactive_flattening: 0.,
             light_color: white(),
             fresnel: 0.08,
             edge_shadow: 0.25,
@@ -286,6 +298,28 @@ impl GlassMaterial {
             edge_shadow: 0.,
             noise: 0.,
             glow: 0.,
+            inactive_flattening: 0.,
+            ..*self
+        }
+    }
+
+    pub(crate) fn for_window(&self, active: bool) -> Self {
+        if active || self.inactive_flattening <= 0. {
+            return *self;
+        }
+        let flattening = self.inactive_flattening.clamp(0., 1.);
+        let retained = 1. - flattening;
+        Self {
+            refraction: self.refraction * retained,
+            dispersion: self.dispersion * retained,
+            saturation: 1. + (self.saturation - 1.) * retained,
+            brightness: self.brightness * retained,
+            contrast: 1. + (self.contrast - 1.) * retained,
+            specular: self.specular * retained,
+            fresnel: self.fresnel * retained,
+            light_directionality: self.light_directionality * retained,
+            noise: self.noise * retained,
+            glow: self.glow * retained,
             ..*self
         }
     }
@@ -511,6 +545,8 @@ impl Interpolate for GlassMaterial {
             specular: lerp(from.specular, to.specular),
             glint_width: length(from.glint_width, to.glint_width),
             light_angle: lerp(from.light_angle, to.light_angle),
+            light_directionality: lerp(from.light_directionality, to.light_directionality),
+            inactive_flattening: lerp(from.inactive_flattening, to.inactive_flattening),
             light_color: Hsla::interpolate(from.light_color, to.light_color, phase),
             fresnel: lerp(from.fresnel, to.fresnel),
             edge_shadow: lerp(from.edge_shadow, to.edge_shadow),
@@ -917,7 +953,12 @@ impl Glass {
                     mask.corner_radii.bottom_left.0,
                 ]
             }),
-            mask: mask.map_or([0.; 4], |mask| [mask.corner_smoothing, 1., 0., 0.]),
+            mask: [
+                mask.map_or(0., |mask| mask.corner_smoothing),
+                if mask.is_some() { 1. } else { 0. },
+                material.light_directionality.clamp(0., 1.),
+                0.,
+            ],
             light_color: [
                 light.r * light.a,
                 light.g * light.a,
@@ -2012,6 +2053,62 @@ pub fn check_glass_rendering(
         ))?,
         "a transparent contour should draw nothing",
     )?;
+    let directional = GlassMaterial {
+        light_directionality: 1.,
+        inactive_flattening: 1.,
+        ..lit
+            .tint(hsla(0., 0., 0.2, 1.))
+            .light_angle(-std::f32::consts::FRAC_PI_2)
+    };
+    let top_lit = render(&glass_body_scene(&body, 2., directional, None))?;
+    let bottom_lit = render(&glass_body_scene(
+        &body,
+        2.,
+        directional.light_angle(std::f32::consts::FRAC_PI_2),
+        None,
+    ))?;
+    let top = top_lit.get_pixel(32, 8).0[0];
+    let bottom = top_lit.get_pixel(32, 55).0[0];
+    anyhow::ensure!(
+        top > bottom + 30,
+        "directional light should favor its facing edge: top {top}, bottom {bottom}"
+    );
+    anyhow::ensure!(
+        top.abs_diff(bottom_lit.get_pixel(32, 55).0[0]) <= 1
+            && bottom.abs_diff(bottom_lit.get_pixel(32, 8).0[0]) <= 1,
+        "rotating the light should swap its lit and unlit edges"
+    );
+    let symmetric = render(&glass_body_scene(
+        &body,
+        2.,
+        GlassMaterial {
+            light_directionality: 0.,
+            ..directional
+        },
+        None,
+    ))?;
+    anyhow::ensure!(
+        symmetric.get_pixel(32, 8).0[0].abs_diff(symmetric.get_pixel(32, 55).0[0]) <= 1,
+        "zero directionality should preserve equal lighting on opposite edges"
+    );
+    close(
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            directional.for_window(false),
+            None,
+        ))?,
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            GlassMaterial {
+                light_directionality: 0.,
+                ..directional.specular(0.).fresnel(0.)
+            },
+            None,
+        ))?,
+        "fully inactive glass should flatten its rim without changing its fill",
+    )?;
     Ok(())
 }
 
@@ -2299,6 +2396,53 @@ mod tests {
                 .size_full()
                 .child(crate::div().size(px(120.)).rounded(px(12.)).glass(self.0))
         }
+    }
+
+    #[crate::test]
+    fn glass_repaints_when_window_activation_changes(cx: &mut crate::TestAppContext) {
+        let material = GlassMaterial {
+            inactive_flattening: 0.8,
+            ..GlassMaterial::regular()
+        };
+        let (_view, visual) = cx.add_window_view(move |_, _| Surface(material));
+        let window = crate::VisualContext::window_handle(visual);
+        visual
+            .test_window(window)
+            .simulate_active_status_change(true);
+        visual.run_until_parked();
+        let active = visual.update(|window, _| window.painted_glasses()[0].material);
+        visual
+            .test_window(window)
+            .simulate_active_status_change(false);
+        visual.run_until_parked();
+        let inactive = visual.update(|window, _| window.painted_glasses()[0].material);
+        assert!(inactive.specular < active.specular);
+        assert_eq!(inactive.tint.a, active.tint.a);
+        assert_eq!(inactive.opacity, active.opacity);
+        visual
+            .test_window(window)
+            .simulate_active_status_change(true);
+        visual.run_until_parked();
+        assert_eq!(
+            visual.update(|window, _| window.painted_glasses()[0].material),
+            active
+        );
+    }
+
+    #[test]
+    fn existing_materials_and_vanished_glass_keep_their_window_behavior() {
+        let material = GlassMaterial::regular();
+        assert_eq!(material.for_window(false), material);
+        let configured = GlassMaterial {
+            inactive_flattening: 1.,
+            ..material
+        };
+        assert_eq!(configured.for_window(true), configured);
+        assert_eq!(
+            configured.vanished().for_window(false),
+            configured.vanished()
+        );
+        assert!(configured.rim().for_window(false).draws_nothing());
     }
 
     #[crate::test]

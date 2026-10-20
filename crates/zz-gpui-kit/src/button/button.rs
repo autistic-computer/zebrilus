@@ -506,6 +506,14 @@ impl RenderOnce for Button {
         let icon_only = self.label.is_none() && self.children.is_empty();
         let surface = variant.surface(self.surface_role, icon_only, self.on);
         let flat = self.flat;
+        let inactive = if cfg!(target_family = "wasm") || window.is_window_active() || self.selected
+        {
+            0.0
+        } else {
+            cx.theme()
+                .glass
+                .map_or(0.0, |glass| glass.inactive_flattening.clamp(0.0, 1.0))
+        };
         let layer_at = move |state: PaintState, cx: &App| -> Layer {
             let Some(surface) = surface else {
                 return text_layer(variant, state, ground, cx);
@@ -514,6 +522,12 @@ impl RenderOnce for Button {
             if flat {
                 layer.border = cx.theme().transparent;
                 layer.shadow.clear();
+            }
+            if inactive > 0.0
+                && matches!(variant, ButtonVariant::Paint(Tone::Neutral, _))
+                && (layer.glass.is_some() || ground.glass)
+            {
+                layer.text = layer.text.opacity(1.0 - 0.65 * inactive);
             }
             layer
         };

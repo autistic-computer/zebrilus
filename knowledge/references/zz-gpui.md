@@ -4,7 +4,7 @@ title: zz-gpui
 description: zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 resource: crates/zz-gpui/Cargo.toml
 tags: [zz-gpui, gpui, reference, vendored]
-timestamp: 2026-10-19T00:00:00Z
+timestamp: 2026-10-20T00:00:00Z
 ---
 
 # Overview
@@ -324,6 +324,15 @@ active pane frame sets only the light color to the accent, keeping its alpha, so
 fresnel rim glow show the focus. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
 blur or refraction, a 1 px glint, faint fresnel, a 0.5 px contour), meant for surfaces that cover
 most of the window, such as pane frames.
+
+`GlassMaterial::light_directionality` (2026-10-20, 0 by default) moves the glint onto the edge
+facing the light and the contour onto the far edge; at 0 both edges along the axis light alike, as
+before. `Glass::uniform` passes it to the shader in `mask.z`. `GlassMaterial::inactive_flattening`
+(0 by default) is how much of the rim light, lensing and color boost `Window::paint_glass` drops
+while the window is inactive (`GlassMaterial::for_window`); the tint, blur and contour stay. The
+activation callback refreshes the window, so cached views paint the new material. Wasm windows
+always count as active. The kit's neutral glass buttons dim their labels by the same fraction.
+`check_glass_rendering` covers both fields.
 
 `check_glass_rendering`, which both renderers' `glass_lenses_its_backdrop` run, compares the flat
 face against the full field within 1/255 for square, round, smoothed, circular and uneven corners,
