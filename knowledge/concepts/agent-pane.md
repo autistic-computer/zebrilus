@@ -269,8 +269,11 @@ The two halves of the verb now sit on opposite sides of the wire:
   pane in another window has no `AgentView` at all, so the daemon publishes
   `EventPayload::AgentCommand { pane, request_id, command: ComposerAppend }` and parks the calling
   command thread until the GUI answers with `ProtocolMessage::GuiResponse` . the protocol's first
-  client → daemon reply, added in v32 and shared with `capture-browser`. The wait is bounded (5 s)
-  and a GUI disconnect fails its waiters immediately. The GUI answers from
+  client → daemon reply, added in v32 and shared with `capture-browser`. The request goes to the
+  desktop app attached to the pane's session first, then to any other Interactive client
+  (`gui_client` in `daemon.rs`); with none, the verb exits 1 with `agent-send: no zz window shows
+  session S on HOST, so %N has no composer to draft into. Use --submit or --wait.` The wait is
+  bounded (5 s) and a GUI disconnect fails its waiters immediately. The GUI answers from
   `AppView::drain_gui_requests`, driven by the mux observation rather than by `render`, so a
   minimized or occluded window (which schedules no frames) still applies the command and replies
   instead of letting the CLI sit out the timeout. Client-side the text lands in
@@ -285,9 +288,10 @@ window. Both verbs are daemon-side commands like `capture-pane`; see
 [the command set](/tmux/commands.md).
 
 Use `#{agent_state}` to read the daemon's phase: `starting`, `idle`, `working`, `blocked`, or
-`failed`. `#{agent_pending_permission}` returns `1` or `0` for an agent and an empty string
-for other pane kinds. For terminal panes, `#{agent_state}` reads the inherited `@agent_state`
-user option, or an empty string when unset; other pane kinds return an empty string.
+`failed`. `#{agent_pending_permission}` returns the pending request ID for an agent, or an
+empty string when nothing is pending and for other pane kinds. For terminal panes,
+`#{agent_state}` reads the inherited `@agent_state` user option, or an empty string when unset;
+other pane kinds return an empty string.
 A terminal pane whose program reports OSC 7501 program status gets its most urgent
 record mapped into `@agent_state`: `working`, `blocked`, `failed` for `error`, and
 `idle` for `idle`, `done`, or no record. Once a pane has reported, the two heuristics
@@ -324,8 +328,8 @@ requests exit 3. An unset state exits 1 before sending.
 Read a pane's pending request with `zz inspect -t %N --json | jq .permission`.
 The `permission` field holds a nested `{"request_id":N,"tool_call":{...},"options":[...]}`
 object, or `null` when no request is pending. Text output prints compact JSON on the
-`permission:` line, or an empty value. `inspect` accepts every pane kind and uses the
-current pane when you omit the target.
+`permission:` line and leaves out keys with no value. `inspect` accepts every pane kind and uses
+the current pane when you omit the target.
 
 `agent-respond [-t %N] (--allow | --deny | --option ID) [REQUEST_ID]` answers the oldest request
 unless you name one. `--allow` prefers the first allow-once option over allow-always; `--deny`
@@ -343,9 +347,11 @@ pane ID to stderr, and exits 3. The turn keeps running. Use `agent-respond` to a
 An Agent pane also owns a PTY-free shadow `TerminalSession` fed with a text projection of its
 transcript, so the tmux read grammar works on it: `capture-pane -p -t %agent` prints what the agent
 said, `show-last-output -t %agent` returns the last turn as a `> prompt` / reply pair (each turn is
-framed with OSC 133 marks), `pipe-pane` taps it live, and a turn ending or a permission request
-rings the bell for `alert-bell`. Clients never receive frames for the shadow and cannot type into
-it; the mechanism and the hazards it closes are in
+framed with OSC 133 marks, so a turn still running reads `exit: running`), `pipe-pane` taps it
+live, and a turn ending or a permission request rings the bell for `alert-bell`. Each new tool call
+adds a `[tool] <title>` line and a failed one a `[tool failed] <title>` line (titles clipped at 120
+characters; completed calls add nothing). Clients never receive frames for the shadow and cannot
+type into it; the mechanism and the hazards it closes are in
 [the projection design](/designs/agent-pane-projection.md).
 
 # Workspace environment for the ACP child

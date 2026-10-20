@@ -127,6 +127,9 @@ fn parked_marker_and_echo_scans_have_no_deadline_without_a_timeout() {
                     started: Instant::now(),
                     output: String::new(),
                     collecting: false,
+                    tail: String::new(),
+                    start_check: None,
+                    _turn: None,
                 },
             );
         } else {
@@ -135,7 +138,6 @@ fn parked_marker_and_echo_scans_have_no_deadline_without_a_timeout() {
                 &item,
                 target,
                 Paste {
-                    sinks: vec![Arc::clone(&terminal)],
                     bytes: Arc::from([]),
                     tail: "e10-unseen-echo".to_owned(),
                     collapsed_before: 0,
@@ -191,7 +193,6 @@ fn old_echo_does_not_submit_a_new_paste_before_output_changes() {
         &item,
         target,
         Paste {
-            sinks: Vec::new(),
             bytes: Arc::from([]),
             tail: "repeated payload".to_owned(),
             collapsed_before: 0,
@@ -221,5 +222,82 @@ fn old_echo_does_not_submit_a_new_paste_before_output_changes() {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(1));
     }
+    shared.request_shutdown();
+}
+
+#[test]
+fn a_run_claim_ends_with_its_client() {
+    let (shared, _watchers, _client, context) = setup();
+    let pane = context.pane.unwrap();
+    let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while terminal_current_command(&terminal) != "sleep" {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+    let (holder, _) =
+        shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());
+    let (waiter, _) =
+        shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());
+    let item = shared.command_item(None);
+    item.command_item.as_ref().unwrap().lock().loop_wait = true;
+    let wait = terminal_requests::CommandWait::new(&item);
+    let target = Target::new(&item, holder, pane, terminal, wait.start());
+    let turn = RunTurn::claim(&target.observation).expect("free pane");
+    poll_run(
+        &item,
+        target,
+        Run {
+            parsed: parse_run_pane_args(&["--timeout".into(), "0".into(), "true".into()]).unwrap(),
+            marker: "ZZRUN-held".to_owned(),
+            started: Instant::now(),
+            output: String::new(),
+            collecting: false,
+            tail: String::new(),
+            start_check: None,
+            _turn: Some(turn),
+        },
+    );
+    wait.finish(&item, Execution::default()).unwrap();
+    let mut task = wait_queue::CommandTask::new(
+        &shared,
+        waiter,
+        ClientKind::Command,
+        &context,
+        1,
+        &CommandInvocation::new(
+            "run-pane",
+            ["-t", &pane.to_string(), "--timeout", "0", "--", "true"],
+        ),
+        false,
+    )
+    .unwrap();
+    assert!(matches!(task.run(true), wait_queue::Progress::Waiting));
+    loop {
+        let next = shared.terminal_requests.turn(&shared);
+        if next.is_none() && !shared.terminal_requests.pending() {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(!task.ready());
+    pane_changed(&mut shared.inner.lock(), pane);
+    for _ in 0..10 {
+        shared.terminal_requests.turn(&shared);
+    }
+    assert!(!task.ready());
+    shared.unregister(holder);
+    while !task.ready() {
+        shared.terminal_requests.turn(&shared);
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(matches!(task.run(true), wait_queue::Progress::Done));
+    let (response, ..) = task.finish();
+    assert!(
+        matches!(&response, CommandResponse::Success { exit_code: 3, stderr, .. } if stderr.contains("is running sleep, not a shell")),
+        "{response:?}"
+    );
     shared.request_shutdown();
 }
