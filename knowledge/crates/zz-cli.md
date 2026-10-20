@@ -52,8 +52,9 @@ starting with `-` is refused. `local` and `all` are reserved. `--host all` re-ru
 configured host in parallel for a chain whose every command passes `!spec.mutates` (`inspect`,
 `list-hosts` and `protocol-version` count as read-only). The parent checks the chain once first,
 so an unknown verb or a usage error prints a single time with its own exit status. Each child
-runs in its own session with no controlling terminal, so ssh can never prompt on the caller's
-tty; a host that needs a password or a host-key answer fails with the hint below. Text lines get
+gets `ZZ_SSH_BATCH=1`, so every ssh it starts runs with `BatchMode=yes` and no security-key
+identities, and on unix it also runs in its own session with no controlling terminal; a host that
+needs a password, a touch or a host-key answer fails with the hint below. Text lines get
 a `NAME: ` prefix, JSON lines under `--json` get `host_name` first (`from_host` when the row has
 its own `host_name`, as `list-hosts` rows do), and the exit is 1 when any host failed. Bare
 `zz --host NAME` runs `new-session -A` there. Over `--host`, `send-keys`, `send-text`,
