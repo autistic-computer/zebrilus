@@ -108,7 +108,7 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 20
         run: |
-          export VK_ICD_FILENAMES=$(echo /usr/share/vulkan/icd.d/lvp_icd.*.json)
+          export VK_ICD_FILENAMES=$(echo /usr/share/vulkan/icd.d/lvp_icd*.json)
           cargo test -p zz-gpui-platform --all-features
 
       - name: Test zz-mux release profile
