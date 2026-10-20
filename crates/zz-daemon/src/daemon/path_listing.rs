@@ -627,7 +627,7 @@ fn display_root(root: &Path, home: Option<&str>) -> String {
     }
 }
 
-fn foreground_basename(command: &str) -> String {
+pub(super) fn foreground_basename(command: &str) -> String {
     let name = command.rsplit(['/', '\\']).next().unwrap_or(command);
     let name = name.trim_start_matches('-').to_lowercase();
     name.strip_suffix(".exe").map(str::to_owned).unwrap_or(name)
