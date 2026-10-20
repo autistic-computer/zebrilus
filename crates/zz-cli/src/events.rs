@@ -16,8 +16,8 @@ use zz_daemon_client::{Endpoint, InteractiveClient};
 use zz_protocol::{CommandInvocation, CommandResponse, EventPayload, ProtocolMessage, RawText};
 
 use super::{
-    SocketSelectionSource, command_error_message, connect_or_spawn_daemon,
-    format_local_command_error, tmux_command_starts_server, tmux_label_creation_error,
+    SocketSelectionSource, connect_or_spawn_daemon, format_local_command_error,
+    host_command_error_message, tmux_command_starts_server, tmux_label_creation_error,
 };
 
 pub(crate) fn run(
@@ -64,7 +64,7 @@ pub(crate) fn run_host(host: &str, endpoint: &Endpoint, arguments: &[RawText]) -
     };
     stream(target, Some(host), || {
         InteractiveClient::connect_control_endpoint(endpoint)
-            .map_err(|error| command_error_message(&error))
+            .map_err(|error| host_command_error_message(host, &error))
     })
 }
 
