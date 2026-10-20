@@ -123,6 +123,33 @@ fn host_verbs_have_help_without_a_daemon() {
 }
 
 #[test]
+fn tools_answers_from_the_cli_without_a_daemon() {
+    for (arguments, start, status) in [
+        (&["tools"][..], "# Workspace tools\n", 0),
+        (&["tools", "terminal"][..], "# Workspace tools\n", 0),
+        (&["tools", "--skill"][..], "---\nname: zz-workspace\n", 0),
+        (&["tools", "bogus"][..], "", 2),
+    ] {
+        let (home, mut zz) = isolated_zz();
+        let socket = home.path().join("absent.sock");
+        let output = zz
+            .env_remove("TMUX")
+            .arg("-S")
+            .arg(&socket)
+            .args(arguments)
+            .output()
+            .expect("run zz tools");
+        assert_eq!(output.status.code(), Some(status), "{arguments:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stdout).starts_with(start),
+            "{arguments:?}"
+        );
+        assert_eq!(output.stderr.is_empty(), status == 0, "{arguments:?}");
+        assert!(!socket.exists());
+    }
+}
+
+#[test]
 fn internal_command_help_remains_available_without_a_daemon() {
     for name in zz_protocol::INTERNAL_COMMAND_NAMES {
         let (home, mut zz) = isolated_zz();

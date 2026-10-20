@@ -52330,20 +52330,23 @@ fn debug_marker(client: ClientId, context: &ExecutionContext, args: &[RawText]) 
 }
 
 fn workspace_tools_catalog(args: &[RawText]) -> Result<Execution, ServerError> {
+    workspace_tools(args).map(|output| Execution {
+        output: output.into(),
+        effects: Vec::new(),
+    })
+}
+
+pub fn workspace_tools(args: &[RawText]) -> Result<String, ServerError> {
     let section = match args {
-        [] => None,
-        [section] if section == "agent" => Some(WORKSPACE_TOOLS_AGENT),
-        [section] if section == "terminal" => Some(WORKSPACE_TOOLS_TERMINAL),
-        [section] if section == "browser" => Some(WORKSPACE_TOOLS_BROWSER),
-        [section] if section == "advanced" => Some(WORKSPACE_TOOLS_ADVANCED),
+        [] => return Ok(WORKSPACE_TOOLS.to_owned()),
+        [section] if section == "agent" => WORKSPACE_TOOLS_AGENT,
+        [section] if section == "terminal" => WORKSPACE_TOOLS_TERMINAL,
+        [section] if section == "browser" => WORKSPACE_TOOLS_BROWSER,
+        [section] if section == "advanced" => WORKSPACE_TOOLS_ADVANCED,
         [flag] if flag == "--skill" => {
-            return Ok(Execution {
-                output: format!(
-                    "{WORKSPACE_TOOLS_FRONTMATTER}{WORKSPACE_TOOLS_HEAD}{WORKSPACE_TOOLS_AGENT}{WORKSPACE_TOOLS_ETIQUETTE}"
-                )
-                .into(),
-                effects: Vec::new(),
-            });
+            return Ok(format!(
+                "{WORKSPACE_TOOLS_FRONTMATTER}{WORKSPACE_TOOLS_HEAD}{WORKSPACE_TOOLS_AGENT}{WORKSPACE_TOOLS_ETIQUETTE}"
+            ));
         }
         [flag] if WORKSPACE_TOOLS_LOCAL_FLAGS.contains(&flag.as_str()) => {
             return Err(ServerError::CommandParse(format!(
@@ -52356,13 +52359,7 @@ fn workspace_tools_catalog(args: &[RawText]) -> Result<Execution, ServerError> {
             ));
         }
     };
-    Ok(Execution {
-        output: match section {
-            Some(section) => format!("{WORKSPACE_TOOLS_HEAD}{section}").into(),
-            None => WORKSPACE_TOOLS.into(),
-        },
-        effects: Vec::new(),
-    })
+    Ok(format!("{WORKSPACE_TOOLS_HEAD}{section}"))
 }
 
 const WORKSPACE_TOOLS_FRONTMATTER: &str = r"---
