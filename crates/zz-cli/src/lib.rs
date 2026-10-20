@@ -2665,14 +2665,24 @@ pub fn launch_application(socket_path: &Path) -> ExitCode {
         }
     };
 
-    let executable = launcher.with_file_name(if cfg!(windows) { "zz.exe" } else { "zz" });
-    if !executable.is_file() {
+    let roots = if cfg!(windows) {
+        Vec::new()
+    } else {
+        let directory = zz_protocol::app_identity::DIRECTORY;
+        std::iter::once(Path::new("/usr/lib").join(directory))
+            .chain(
+                zz_daemon_client::home_directory()
+                    .map(|home| home.join(".local/lib").join(directory)),
+            )
+            .collect()
+    };
+    let Some(executable) = desktop_executable_from(&launcher, &roots) else {
         eprintln!(
             "zz app: the desktop app is not installed beside {}; this is a headless install",
             launcher.display(),
         );
         return ExitCode::FAILURE;
-    }
+    };
 
     let mut command = Command::new(executable);
     command
@@ -2707,10 +2717,22 @@ pub fn daemon_executable() -> io::Result<PathBuf> {
     }
 }
 
+#[cfg(any(not(target_os = "macos"), test))]
+fn desktop_executable_from(launcher: &Path, roots: &[PathBuf]) -> Option<PathBuf> {
+    let name = if cfg!(windows) { "zz.exe" } else { "zz" };
+    std::iter::once(launcher.with_file_name(name))
+        .chain(roots.iter().map(|root| root.join(name)))
+        .find(|candidate| {
+            candidate.is_file() && candidate.canonicalize().ok().as_deref() != Some(launcher)
+        })
+}
+
 #[must_use]
 fn daemon_executable_from(executable: &Path) -> PathBuf {
     let name = if cfg!(windows) { "cli.exe" } else { "cli" };
-    if executable.file_name() != Some(std::ffi::OsStr::new(name)) {
+    if executable.file_name() != Some(std::ffi::OsStr::new(name))
+        && executable.parent().and_then(Path::file_name) != Some(std::ffi::OsStr::new("bin"))
+    {
         let cli = executable.with_file_name(name);
         if cli.is_file() {
             return cli;
@@ -4091,6 +4113,48 @@ mod tests {
         assert_eq!(super::daemon_executable_from(&application), cli);
         std::fs::remove_file(&application).expect("remove application");
         assert_eq!(super::daemon_executable_from(&cli), cli);
+
+        let bin = directory.path().join("bin");
+        std::fs::create_dir(&bin).expect("create bin");
+        let headless = bin.join(if cfg!(windows) { "zz.exe" } else { "zz" });
+        std::fs::write(&headless, b"").expect("write headless zz");
+        std::fs::write(bin.join(if cfg!(windows) { "cli.exe" } else { "cli" }), b"")
+            .expect("write an unrelated cli");
+        assert_eq!(super::daemon_executable_from(&headless), headless);
+    }
+
+    #[test]
+    fn zz_app_finds_the_desktop_binary_and_never_picks_the_launcher() {
+        let directory = tempfile::tempdir().expect("temporary installation");
+        let directory = directory.path().canonicalize().expect("canonical directory");
+        let name = if cfg!(windows) { "zz.exe" } else { "zz" };
+        let bin = directory.join("bin");
+        let lib = directory.join("lib/zz");
+        let packaged = directory.join("usr/lib/zz");
+        for path in [&bin, &lib, &packaged] {
+            std::fs::create_dir_all(path).expect("create directory");
+        }
+        let headless = bin.join(name);
+        std::fs::write(&headless, b"").expect("write headless zz");
+        assert_eq!(super::desktop_executable_from(&headless, &[]), None);
+
+        let cli = lib.join(if cfg!(windows) { "cli.exe" } else { "cli" });
+        std::fs::write(&cli, b"").expect("write bundle cli");
+        std::fs::write(lib.join(name), b"").expect("write bundle gui");
+        assert_eq!(
+            super::desktop_executable_from(&cli, std::slice::from_ref(&packaged)),
+            Some(lib.join(name))
+        );
+
+        assert_eq!(
+            super::desktop_executable_from(&headless, &[bin.clone(), packaged.clone()]),
+            None
+        );
+        std::fs::write(packaged.join(name), b"").expect("write packaged gui");
+        assert_eq!(
+            super::desktop_executable_from(&headless, &[bin, packaged.clone()]),
+            Some(packaged.join(name))
+        );
     }
 
     #[cfg(unix)]
