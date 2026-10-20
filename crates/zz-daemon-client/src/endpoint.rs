@@ -46,15 +46,20 @@ use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
 #[cfg(any(unix, windows, test))]
 use crate::unmasked::SpawnUnmasked as _;
 
-/// `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported from `~/.bash_profile` or
-/// `~/.zshrc` never reaches it, which hides the CLI that install.sh linked into one of these.
-/// Appending leaves whatever the profile did contribute ahead of the fallbacks. A Mac app dragged
-/// out of the disk image has no CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
+/// `$zz_managed` is the copy installing over ssh puts in place and can update, so it wins over any
+/// other zz on the login PATH; otherwise a package or cargo copy earlier on PATH would keep
+/// answering after every update. `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported
+/// from `~/.bash_profile` or `~/.zshrc` never reaches it, which hides the CLI that install.sh
+/// linked into one of these. Appending leaves whatever the profile did contribute ahead of the
+/// fallbacks, for the daemon these scripts start. A Mac app dragged out of the disk image has no
+/// CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
 fn remote_path_fallback() -> String {
     format!(
         "PATH=\"$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; export PATH; \
-         zz_cli={name}; if ! command -v {name} >/dev/null 2>&1; then \
+         zz_managed=\"$HOME/.local/bin/{name}\"; zz_cli={name}; \
+         if [ -x \"$zz_managed\" ]; then zz_cli=\"$zz_managed\"; \
+         elif ! command -v {name} >/dev/null 2>&1; then \
          for zz_apps in /Applications \"$HOME/Applications\"; do \
          if [ -x \"$zz_apps/{app}.app/Contents/MacOS/cli\" ]; \
          then zz_cli=\"$zz_apps/{app}.app/Contents/MacOS/cli\"; break; fi; done; fi; ",
@@ -176,8 +181,12 @@ pub enum EndpointError {
     },
     #[error("zz on {target} predates protocol version reporting; update it, then reconnect")]
     RemoteProtocolUnknown { target: String },
-    #[error("zz on {target} is {path}, which installing over ssh does not manage")]
-    RemoteInstallElsewhere { target: String, path: String },
+    #[error("zz on {target} is {path}, a link to {link} that zz did not install")]
+    RemoteInstallElsewhere {
+        target: String,
+        path: String,
+        link: String,
+    },
     #[error("installing zz on {target} failed: {reason}")]
     RemoteInstallFailed { target: String, reason: String },
     #[error("the zz installed on {target} speaks protocol v{remote}; this zz speaks v{client}")]
@@ -285,9 +294,9 @@ impl EndpointError {
                     zz_protocol::app_identity::DIRECTORY,
                 )
             }
-            Self::RemoteInstallElsewhere { target, path } => format!(
-                "{name} on {target} is {path}, which installing over ssh does not manage.\nUpdate \
-                 it the way it was installed, then reconnect.",
+            Self::RemoteInstallElsewhere { target, path, link } => format!(
+                "{path} on {target} links to {link}, which {name} did not install.\nRemove the \
+                 link or update that install, then reconnect.",
                 name = zz_protocol::app_identity::DIRECTORY,
             ),
             Self::RemoteInstallFailed { target, reason } => format!(
@@ -612,31 +621,35 @@ pub(crate) fn remote_daemon_start_script(remote_socket: &Path) -> String {
 
 #[cfg(any(unix, windows, test))]
 pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon: bool) -> String {
-    let installed = format!(
-        "\"$HOME/.local/bin/{}\"",
-        zz_protocol::app_identity::DIRECTORY
-    );
     let restart = if restart_daemon {
         let socket = remote_socket.map_or_else(String::new, |socket| {
             format!("--socket {} ", shell_quote(&socket.to_string_lossy()))
         });
         format!(
-            "if [ \"$zz_protocol\" = {protocol} ]; then {installed} {socket}kill-server \
-             >/dev/null 2>&1; fi; ",
+            "if [ \"$zz_protocol\" = {protocol} ]; then \
+             zz_restart=$(\"$zz_managed\" {socket}kill-server 2>&1 >/dev/null); \
+             printf 'zz-install-restart=%s\\n' \"$?\"; \
+             printf '%s\\n' \"$zz_restart\" | sed 's/^/zz-install-restart-error=/'; fi; ",
             protocol = zz_protocol::PROTOCOL_VERSION,
         )
     } else {
         String::new()
     };
     format!(
-        "{fallback}zz_found=$(command -v \"$zz_cli\" 2>/dev/null); \
-         if [ -n \"$zz_found\" ] && {{ [ \"$zz_found\" != {installed} ] || [ -L \"$zz_found\" ]; }}; \
-         then printf 'zz-install-elsewhere=%s\\n' \"$zz_found\"; exit {REMOTE_INSTALL_ELSEWHERE_STATUS}; fi; \
-         sh -s -- --headless --version {version} || exit {REMOTE_INSTALL_FAILED_STATUS}; \
-         zz_protocol=$({installed} protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
+        "{fallback}if [ \"$(\"$zz_managed\" --version 2>/dev/null </dev/null)\" = 'zz {version}' ] \
+         && [ \"$(\"$zz_managed\" protocol-version 2>/dev/null </dev/null)\" = {protocol} ]; \
+         then printf 'zz-install-current=1\\n'; \
+         else zz_link=$(readlink \"$zz_managed\" 2>/dev/null); case \"$zz_link\" in \
+         \"\") printf 'zz-install-mode=headless\\n'; sh -s -- --headless --version {version} ;; \
+         ../lib/zz/cli|\"$HOME/.local/lib/zz/cli\") printf 'zz-install-mode=desktop\\n'; \
+         sh -s -- --prefix \"$HOME/.local\" --version {version} ;; \
+         *) printf 'zz-install-elsewhere=%s\\nzz-install-link=%s\\n' \"$zz_managed\" \"$zz_link\"; \
+         exit {REMOTE_INSTALL_ELSEWHERE_STATUS} ;; esac || exit {REMOTE_INSTALL_FAILED_STATUS}; fi; \
+         zz_protocol=$(\"$zz_managed\" protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
          {restart}printf 'zz-install-protocol=%s\\n' \"$zz_protocol\"",
         fallback = remote_path_fallback(),
         version = env!("CARGO_PKG_VERSION"),
+        protocol = zz_protocol::PROTOCOL_VERSION,
     )
 }
 
@@ -667,7 +680,7 @@ pub(crate) fn parse_remote_install_output(
     stdout: &[u8],
     stderr: &[u8],
     status: &str,
-) -> Result<(), EndpointError> {
+) -> Result<RemoteInstall, EndpointError> {
     let stdout = String::from_utf8_lossy(stdout);
     let value = |prefix: &str| {
         stdout
@@ -679,7 +692,36 @@ pub(crate) fn parse_remote_install_output(
     let target = target.to_owned();
     match code {
         Some(0) => match value("zz-install-protocol=").map(|value| value.parse::<u16>()) {
-            Some(Ok(zz_protocol::PROTOCOL_VERSION)) => Ok(()),
+            Some(Ok(zz_protocol::PROTOCOL_VERSION)) => Ok(RemoteInstall {
+                installed: if value("zz-install-current=").is_some() {
+                    RemoteInstalled::Current
+                } else if value("zz-install-mode=").as_deref() == Some("desktop") {
+                    RemoteInstalled::Desktop
+                } else {
+                    RemoteInstalled::Headless
+                },
+                restart: match value("zz-install-restart=").as_deref() {
+                    None => RemoteRestart::NotAsked,
+                    Some("0") => RemoteRestart::Restarted,
+                    Some(code) => match stdout
+                        .lines()
+                        .filter_map(|line| line.strip_prefix("zz-install-restart-error="))
+                        .map(str::trim)
+                        .rfind(|line| !line.is_empty())
+                    {
+                        Some(reason) if daemon_was_not_running(reason) => RemoteRestart::NotRunning,
+                        Some(reason) => RemoteRestart::Failed(
+                            reason.strip_prefix("zz: ").unwrap_or(reason).to_owned(),
+                        ),
+                        None => RemoteRestart::Failed(format!("kill-server exited with {code}")),
+                    },
+                },
+                warnings: stderr
+                    .lines()
+                    .filter_map(|line| line.trim().strip_prefix("warning: "))
+                    .map(ToOwned::to_owned)
+                    .collect(),
+            }),
             Some(Ok(remote)) => Err(EndpointError::RemoteInstallMismatch {
                 target,
                 remote,
@@ -691,9 +733,10 @@ pub(crate) fn parse_remote_install_output(
             }),
         },
         Some(REMOTE_INSTALL_ELSEWHERE_STATUS)
-            if let Some(path) = value("zz-install-elsewhere=") =>
+            if let Some(path) = value("zz-install-elsewhere=")
+                && let Some(link) = value("zz-install-link=") =>
         {
-            Err(EndpointError::RemoteInstallElsewhere { target, path })
+            Err(EndpointError::RemoteInstallElsewhere { target, path, link })
         }
         Some(REMOTE_INSTALL_FAILED_STATUS) => {
             let reason = ssh_failure_reason(&stderr, status);
@@ -714,6 +757,13 @@ pub(crate) fn parse_remote_install_output(
             reason: ssh_failure_reason(&stderr, status),
         }),
     }
+}
+
+#[cfg(any(unix, windows, test))]
+fn daemon_was_not_running(message: &str) -> bool {
+    message.starts_with("no server running on ")
+        || (message.starts_with("error connecting to ")
+            && message.ends_with("(No such file or directory)"))
 }
 
 /// The remote half of an attach that cannot forward a Unix socket: `zz proxy` on its stdio.
@@ -1099,12 +1149,55 @@ fn shared_control_path(endpoint: &SshEndpoint) -> Option<PathBuf> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteInstall {
+    pub installed: RemoteInstalled,
+    pub restart: RemoteRestart,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteInstalled {
+    Current,
+    Headless,
+    Desktop,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RemoteRestart {
+    NotAsked,
+    Restarted,
+    NotRunning,
+    Failed(String),
+}
+
+impl RemoteInstall {
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let version = env!("CARGO_PKG_VERSION");
+        let installed = match self.installed {
+            RemoteInstalled::Current => format!("already {name} {version}"),
+            RemoteInstalled::Headless => format!("{name} {version} installed (headless)"),
+            RemoteInstalled::Desktop => format!("{name} {version} installed (desktop)"),
+        };
+        match &self.restart {
+            RemoteRestart::NotAsked => installed,
+            RemoteRestart::Restarted => format!("{installed}, daemon restarted"),
+            RemoteRestart::NotRunning => format!("{installed}, no daemon was running"),
+            RemoteRestart::Failed(reason) => {
+                format!("{installed}, but its daemon did not stop: {reason}")
+            }
+        }
+    }
+}
+
 #[cfg(any(unix, windows))]
 pub fn install_remote(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
     restart_daemon: bool,
-) -> Result<(), EndpointError> {
+) -> Result<RemoteInstall, EndpointError> {
     let target = endpoint.to_string();
     if zz_protocol::app_identity::DEVELOPMENT {
         return Err(EndpointError::RemoteInstallFailed {
@@ -2069,6 +2162,7 @@ mod tests {
             remote_socket_probe(),
             remote_daemon_start_script(Path::new("/run/zz.sock")),
             remote_proxy_script(Path::new("/run/zz.sock")),
+            remote_install_script(Some(Path::new("/run/zz.sock")), true),
         ];
         for script in scripts {
             for dir in ["$HOME/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"] {
@@ -2088,6 +2182,7 @@ mod tests {
             fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))
                 .expect("executable permissions");
         }
+        let home = tempfile::tempdir().expect("temporary home");
         let path = format!("{}:/usr/bin:/bin", directory.path().display());
         let name = zz_protocol::app_identity::DIRECTORY;
         for (script, expected) in [
@@ -2100,6 +2195,7 @@ mod tests {
             let output = Command::new("/bin/sh")
                 .args(["-c", &format!("sh -c {script}")])
                 .env("PATH", &path)
+                .env("HOME", home.path())
                 .output()
                 .expect("run remote script");
             assert!(output.status.success());
@@ -2108,15 +2204,86 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn remote_scripts_prefer_the_managed_copy_over_an_earlier_path_zz() {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let home = tempfile::tempdir().expect("temporary home");
+        let package = tempfile::tempdir().expect("package prefix");
+        let managed = home.path().join(".local/bin");
+        fs::create_dir_all(&managed).expect("managed bin");
+        for (directory, label) in [(package.path(), "package"), (managed.as_path(), "managed")] {
+            let binary = directory.join(name);
+            fs::write(
+                &binary,
+                format!(
+                    "#!/bin/sh\nif [ \"$1\" = daemon ]; then : > \"$HOME/{label}-ran\"; fi\n\
+                     printf '%s\\n' '{label}'\n"
+                ),
+            )
+            .expect("write executable");
+            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))
+                .expect("executable permissions");
+        }
+        let socket_dir = tempfile::tempdir().expect("socket directory");
+        let socket = socket_dir.path().join("zz.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).expect("bind socket");
+        let path = format!("{}:/usr/bin:/bin", package.path().display());
+        let run = |script: String| {
+            let output = Command::new("/bin/sh")
+                .args(["-c", &format!("sh -c {script}")])
+                .env("PATH", &path)
+                .env("HOME", home.path())
+                .output()
+                .expect("run remote script");
+            assert!(output.status.success(), "{output:?}");
+            String::from_utf8_lossy(&output.stdout).into_owned()
+        };
+
+        assert!(run(remote_socket_probe()).ends_with("zz-probe-protocol=managed\n"));
+        assert!(run(shell_quote(&remote_proxy_script(&socket))).ends_with("managed\n"));
+        run(shell_quote(&remote_daemon_start_script(&socket)));
+        let started = home.path().join("managed-ran");
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !started.exists() && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(started.exists(), "the auto-start ran another zz");
+        assert!(!home.path().join("package-ran").exists());
+    }
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, body: &str) {
+        fs::create_dir_all(path.parent().expect("parent directory")).unwrap();
+        fs::write(path, body).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn fake_zz(protocol: &str, calls: &str) -> String {
+        format!(
+            "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol} ;; \
+             --version) echo \"zz 0.0.1\" ;; *) echo \"$*\" >> \"$HOME/{calls}\" ;; esac\n"
+        )
+    }
+
+    #[cfg(unix)]
     fn fake_installer(protocol: &str) -> String {
         format!(
-            "case \"$*\" in \"--headless --version {version}\") ;; \
-             *) echo \"error: unexpected arguments $*\" >&2; exit 1 ;; esac\n\
-             mkdir -p \"$HOME/.local/bin\"\n\
-             rm -f \"$HOME/.local/bin/{name}\"\n\
-             printf '#!/bin/sh\\nif [ \"$1\" = protocol-version ]; then echo {protocol}; \
-             else echo \"$*\" >> \"$HOME/calls\"; fi\\n' > \"$HOME/.local/bin/{name}\"\n\
-             chmod 755 \"$HOME/.local/bin/{name}\"\n",
+            "printf '%s\\n' \"$*\" > \"$HOME/installer-args\"\n\
+             zz_body='{body}'\n\
+             case \"$*\" in\n\
+             \"--headless --version {version}\")\n\
+             mkdir -p \"$HOME/.local/bin\"; rm -f \"$HOME/.local/bin/{name}\"\n\
+             printf '%s' \"$zz_body\" > \"$HOME/.local/bin/{name}\"\n\
+             chmod 755 \"$HOME/.local/bin/{name}\" ;;\n\
+             \"--prefix $HOME/.local --version {version}\")\n\
+             rm -rf \"$HOME/.local/lib/zz\"; mkdir -p \"$HOME/.local/lib/zz\" \"$HOME/.local/bin\"\n\
+             printf '%s' \"$zz_body\" > \"$HOME/.local/lib/zz/cli\"\n\
+             chmod 755 \"$HOME/.local/lib/zz/cli\"\n\
+             ln -sfn ../lib/zz/cli \"$HOME/.local/bin/{name}\" ;;\n\
+             *) echo \"error: unexpected arguments $*\" >&2; exit 1 ;;\n\
+             esac\n",
+            body = fake_zz(protocol, "calls"),
             version = env!("CARGO_PKG_VERSION"),
             name = zz_protocol::app_identity::DIRECTORY,
         )
@@ -2129,7 +2296,7 @@ mod tests {
         path: &str,
         installer: &str,
         restart: bool,
-    ) -> Result<(), EndpointError> {
+    ) -> Result<RemoteInstall, EndpointError> {
         let script = shell_quote(&remote_install_script(
             Some(Path::new("/run/zz.sock")),
             restart,
@@ -2159,23 +2326,46 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn install_shells() -> impl Iterator<Item = &'static str> {
+        ["/bin/sh", "/bin/tcsh"]
+            .into_iter()
+            .filter(|shell| Path::new(shell).exists())
+    }
+
+    #[cfg(unix)]
+    fn installer_args(home: &Path) -> String {
+        fs::read_to_string(home.join("installer-args")).unwrap_or_default()
+    }
+
+    #[cfg(unix)]
     #[test]
     fn remote_install_replaces_its_own_binary_and_restarts_the_daemon() {
-        let shells = ["/bin/sh", "/bin/tcsh"]
-            .into_iter()
-            .filter(|shell| Path::new(shell).exists());
-        for shell in shells {
+        for shell in install_shells() {
             let home = tempfile::tempdir().expect("temporary home");
             let bin = home.path().join(".local/bin");
-            fs::create_dir_all(&bin).unwrap();
-            let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
-            fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
-            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                "#!/bin/sh\necho 1\n",
+            );
             let path = format!("{}:/usr/bin:/bin", bin.display());
             let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
 
-            run_install_script(shell, home.path(), &path, &installer, true)
+            let outcome = run_install_script(shell, home.path(), &path, &installer, true)
                 .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(
+                outcome,
+                RemoteInstall {
+                    installed: RemoteInstalled::Headless,
+                    restart: RemoteRestart::Restarted,
+                    warnings: Vec::new(),
+                },
+                "{shell}",
+            );
+            assert_eq!(
+                installer_args(home.path()),
+                format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+                "{shell}",
+            );
             assert_eq!(
                 fs::read_to_string(home.path().join("calls")).unwrap(),
                 "--socket /run/zz.sock kill-server\n",
@@ -2183,41 +2373,270 @@ mod tests {
             );
 
             fs::remove_file(home.path().join("calls")).unwrap();
-            run_install_script(shell, home.path(), &path, &installer, false).unwrap();
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                "#!/bin/sh\necho 1\n",
+            );
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false).unwrap();
+            assert_eq!(outcome.restart, RemoteRestart::NotAsked, "{shell}");
             assert!(!home.path().join("calls").exists(), "{shell}");
         }
     }
 
     #[cfg(unix)]
     #[test]
-    fn remote_install_leaves_a_zz_it_did_not_install_alone() {
+    fn remote_install_puts_its_own_copy_beside_a_zz_it_did_not_install() {
         let home = tempfile::tempdir().expect("temporary home");
         let other = tempfile::tempdir().expect("other prefix");
         let name = zz_protocol::app_identity::DIRECTORY;
         let foreign = other.path().join(name);
-        fs::write(&foreign, "#!/bin/sh\necho 1\n").unwrap();
-        fs::set_permissions(&foreign, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&foreign, &fake_zz("1", "foreign-calls"));
         let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
 
         let path = format!("{}:/usr/bin:/bin", other.path().display());
-        let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
-            .expect_err("a zz elsewhere on PATH is not ours to replace");
-        let EndpointError::RemoteInstallElsewhere { path: found, .. } = error else {
-            panic!("unexpected error: {error}");
-        };
-        assert_eq!(found, foreign.display().to_string());
+        run_install_script("/bin/sh", home.path(), &path, &installer, true)
+            .expect("a zz elsewhere on PATH gets a managed copy beside it");
+        assert_eq!(
+            installer_args(home.path()),
+            format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+        );
+        let managed = home.path().join(".local/bin").join(name);
+        assert!(fs::symlink_metadata(&managed).unwrap().is_file());
+        assert_eq!(
+            fs::read_to_string(home.path().join("calls")).unwrap(),
+            "--socket /run/zz.sock kill-server\n",
+        );
+        assert!(!home.path().join("foreign-calls").exists());
+        assert_eq!(
+            fs::read_to_string(&foreign).unwrap(),
+            fake_zz("1", "foreign-calls")
+        );
+    }
 
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_refreshes_the_desktop_tarball_it_linked() {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        for shell in install_shells() {
+            for absolute in [false, true] {
+                let home = tempfile::tempdir().expect("temporary home");
+                let lib = home.path().join(".local/lib/zz");
+                write_executable(&lib.join("cli"), "#!/bin/sh\necho 1\n");
+                write_executable(&lib.join("zz"), "#!/bin/sh\nexit 0\n");
+                let bin = home.path().join(".local/bin");
+                fs::create_dir_all(&bin).unwrap();
+                let link = if absolute {
+                    lib.join("cli")
+                } else {
+                    PathBuf::from("../lib/zz/cli")
+                };
+                std::os::unix::fs::symlink(&link, bin.join(name)).unwrap();
+                let path = format!("{}:/usr/bin:/bin", bin.display());
+                let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
+                let outcome = run_install_script(shell, home.path(), &path, &installer, true)
+                    .unwrap_or_else(|error| panic!("{shell}: {error}"));
+                assert_eq!(outcome.installed, RemoteInstalled::Desktop, "{shell}");
+                assert_eq!(
+                    installer_args(home.path()),
+                    format!(
+                        "--prefix {}/.local --version {}\n",
+                        home.path().display(),
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                    "{shell}",
+                );
+                assert_eq!(
+                    fs::read_link(bin.join(name)).unwrap(),
+                    Path::new("../lib/zz/cli"),
+                    "{shell}",
+                );
+                assert_eq!(
+                    fs::read_to_string(home.path().join("calls")).unwrap(),
+                    "--socket /run/zz.sock kill-server\n",
+                    "{shell}",
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_refuses_a_link_it_did_not_make_and_names_its_target() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let other = tempfile::tempdir().expect("other prefix");
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let foreign = other.path().join(name);
+        write_executable(&foreign, &fake_zz("1", "foreign-calls"));
         let bin = home.path().join(".local/bin");
         fs::create_dir_all(&bin).unwrap();
         std::os::unix::fs::symlink(&foreign, bin.join(name)).unwrap();
+        let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
         let path = format!("{}:/usr/bin:/bin", bin.display());
         let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
             .expect_err("a link in ~/.local/bin points at someone else's install");
+        let EndpointError::RemoteInstallElsewhere {
+            path: found, link, ..
+        } = &error
+        else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(*found, bin.join(name).display().to_string());
+        assert_eq!(*link, foreign.display().to_string());
+        let reason = error.ssh_reason().unwrap();
         assert!(
-            matches!(error, EndpointError::RemoteInstallElsewhere { .. }),
-            "{error}"
+            reason.contains(&format!("links to {}", foreign.display())),
+            "{reason}"
         );
+        assert!(installer_args(home.path()).is_empty());
         assert!(!home.path().join("calls").exists());
+        assert!(!home.path().join("foreign-calls").exists());
+    }
+
+    #[cfg(unix)]
+    fn current_zz(protocol: u16, kill_server: &str) -> String {
+        format!(
+            "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol} ;; \
+             --version) echo 'zz {version}' ;; *) echo \"$*\" >> \"$HOME/calls\"; {kill_server} ;; esac\n",
+            version = env!("CARGO_PKG_VERSION"),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_skips_the_download_when_its_copy_is_current() {
+        for shell in install_shells() {
+            let home = tempfile::tempdir().expect("temporary home");
+            let bin = home.path().join(".local/bin");
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                &current_zz(zz_protocol::PROTOCOL_VERSION, "exit 0"),
+            );
+            let path = format!("{}:/usr/bin:/bin", bin.display());
+            let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(outcome.installed, RemoteInstalled::Current, "{shell}");
+            assert_eq!(outcome.restart, RemoteRestart::NotAsked, "{shell}");
+            assert!(installer_args(home.path()).is_empty(), "{shell}");
+            assert!(!home.path().join("calls").exists(), "{shell}");
+
+            let outcome = run_install_script(shell, home.path(), &path, &installer, true)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(outcome.installed, RemoteInstalled::Current, "{shell}");
+            assert_eq!(outcome.restart, RemoteRestart::Restarted, "{shell}");
+            assert!(installer_args(home.path()).is_empty(), "{shell}");
+            assert_eq!(
+                outcome.summary(),
+                format!(
+                    "already {} {}, daemon restarted",
+                    zz_protocol::app_identity::DIRECTORY,
+                    env!("CARGO_PKG_VERSION")
+                ),
+            );
+
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                &current_zz(zz_protocol::PROTOCOL_VERSION + 1, "exit 0"),
+            );
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(
+                outcome.installed,
+                RemoteInstalled::Headless,
+                "{shell}: the same version speaking another protocol is replaced"
+            );
+            assert_eq!(
+                installer_args(home.path()),
+                format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+                "{shell}",
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_reports_a_restart_that_failed_and_one_with_nothing_to_stop() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let bin = home.path().join(".local/bin");
+        let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
+        let path = format!("{}:/usr/bin:/bin", bin.display());
+        for (kill_server, expected) in [
+            (
+                "echo 'no server running on /run/zz.sock' >&2; exit 1",
+                RemoteRestart::NotRunning,
+            ),
+            (
+                "echo 'error connecting to /run/zz.sock (No such file or directory)' >&2; exit 1",
+                RemoteRestart::NotRunning,
+            ),
+            (
+                "echo 'error connecting to /run/zz.sock (Permission denied)' >&2; exit 1",
+                RemoteRestart::Failed(
+                    "error connecting to /run/zz.sock (Permission denied)".to_owned(),
+                ),
+            ),
+            (
+                "exit 2",
+                RemoteRestart::Failed("kill-server exited with 2".to_owned()),
+            ),
+            (
+                "echo 'zz: daemon I/O error; recovery failed: no daemon pid' >&2; exit 1",
+                RemoteRestart::Failed(
+                    "daemon I/O error; recovery failed: no daemon pid".to_owned(),
+                ),
+            ),
+            (
+                "echo 'stopping the daemon' >&2; echo 'zz: no daemon pid' >&2; exit 1",
+                RemoteRestart::Failed("no daemon pid".to_owned()),
+            ),
+        ] {
+            write_executable(
+                &binary,
+                &current_zz(zz_protocol::PROTOCOL_VERSION, kill_server),
+            );
+            let outcome = run_install_script("/bin/sh", home.path(), &path, "exit 1\n", true)
+                .expect("the binary is in place whatever the daemon did");
+            assert_eq!(outcome.restart, expected, "{kill_server}");
+        }
+
+        let stdout = format!(
+            "zz-install-current=1\nzz-install-restart=2\nzz-install-restart-error=\n\
+             zz-install-protocol={}\n",
+            zz_protocol::PROTOCOL_VERSION
+        );
+        let outcome = parse_remote_install_output(
+            "ssh://desk",
+            Some(0),
+            stdout.as_bytes(),
+            b"Last login banner from the profile\nwarning: zz is running from ~/.local\n",
+            "exit status: 0",
+        )
+        .expect("installed");
+        assert_eq!(
+            outcome.restart,
+            RemoteRestart::Failed("kill-server exited with 2".to_owned()),
+            "other stderr lines in the session are not kill-server's"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_passes_on_the_installers_warnings() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let installer = format!(
+            "echo 'warning: zz is running from ~/.local; restart it after the install' >&2\n{}",
+            fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string())
+        );
+        let outcome =
+            run_install_script("/bin/sh", home.path(), "/usr/bin:/bin", &installer, false)
+                .expect("install");
+        assert_eq!(
+            outcome.warnings,
+            ["zz is running from ~/.local; restart it after the install"]
+        );
     }
 
     #[cfg(unix)]
@@ -2225,10 +2644,8 @@ mod tests {
     fn remote_install_reports_why_it_failed() {
         let home = tempfile::tempdir().expect("temporary home");
         let bin = home.path().join(".local/bin");
-        fs::create_dir_all(&bin).unwrap();
         let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
-        fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
-        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&binary, "#!/bin/sh\necho 1\n");
         let path = format!("{}:/usr/bin:/bin", bin.display());
 
         let error = run_install_script(
@@ -2425,8 +2842,12 @@ mod tests {
 
     #[test]
     fn autostart_script_stays_on_one_line_for_csh_logins() {
-        let script = remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock"));
-        assert!(!script.contains('\n'), "{script}");
+        for script in [
+            remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock")),
+            remote_install_script(Some(Path::new("/run/user/1000/zz/default.sock")), true),
+        ] {
+            assert!(!script.contains('\n'), "{script}");
+        }
     }
 
     #[test]

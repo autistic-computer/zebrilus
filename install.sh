@@ -18,6 +18,7 @@ version=
 prefix=
 tmp=
 mount=
+staged=
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -64,6 +65,9 @@ cleanup() {
     fi
     if [ -n "$tmp" ]; then
         rm -rf "$tmp"
+    fi
+    if [ -n "$staged" ]; then
+        rm -f "$staged"
     fi
 }
 
@@ -255,9 +259,11 @@ install_headless() {
     binary="$tmp/${asset%.tar.gz}/zz"
     [ -f "$binary" ] || die "the tarball carries no zz binary"
     mkdir -p "$prefix/bin"
-    rm -f "$prefix/bin/zz"
-    cp "$binary" "$prefix/bin/zz"
-    chmod 0755 "$prefix/bin/zz"
+    staged="$prefix/bin/.zz.$$"
+    cp "$binary" "$staged"
+    chmod 0755 "$staged"
+    mv -f "$staged" "$prefix/bin/zz"
+    staged=
     say "installed headless zz $version -> $prefix/bin/zz"
     on_path "$prefix/bin" || warn "$prefix/bin is not on your PATH; add it to run zz from a shell"
 }
