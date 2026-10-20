@@ -388,8 +388,10 @@ the hint to sign in once; `zz fleet install` retries those hosts one at a time o
 `zz fleet sync` copies each host's own zz key to every other machine after checking only its shape
 (`ssh-ed25519 <base64> zz@<name>`). A key collected from a host is trusted as much as that host:
 a compromised fleet host can report a key it does not own and sync plants it fleet-wide, where it
-outlives the cleanup of that host. Revoke a machine by deleting its `zz@NAME` line from every
-`~/.ssh/authorized_keys`.
+outlives the cleanup of that host. Nothing ties a key's comment to the host that reported it, so a
+planted key can carry any `zz@` name. After a compromise, remove every `zz@` line that host could
+have reported (or all of them) from each `~/.ssh/authorized_keys`, then run `zz fleet sync` again
+from a clean machine.
 
 ## Password and host-key prompts
 
