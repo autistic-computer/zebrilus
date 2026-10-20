@@ -39,7 +39,8 @@ host line, as does a remote row's **Close host** . which additionally republishe
 `--host` value that names no host line is read as an ssh destination (`user@box`, `box:2222`,
 `ssh://...`), so the CLI can reach a machine before it has a line. There is no daemon-side setup:
 ssh owns transport, and zz adds only its own ed25519 key (`zz fleet key`), which the first
-login to a host appends to that host's `authorized_keys`. These local schema entries retain `Default`/`Override` provenance. Daemon-owned value
+login to a host listed here appends to that host's `authorized_keys`; a raw `--host` destination
+gets nothing written. These local schema entries retain `Default`/`Override` provenance. Daemon-owned value
 grammar deliberately stays in the zz-terminal appearance loader or
 mux `set-option` engine.
 

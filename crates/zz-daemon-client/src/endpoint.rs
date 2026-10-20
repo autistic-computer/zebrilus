@@ -48,13 +48,10 @@ use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
 #[cfg(any(unix, windows, test))]
 use crate::unmasked::SpawnUnmasked as _;
 
-/// `$zz_managed` is the copy installing over ssh puts in place and can update, so it wins over any
-/// other zz on the login PATH; otherwise a package or cargo copy earlier on PATH would keep
-/// answering after every update. `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported
-/// from `~/.bash_profile` or `~/.zshrc` never reaches it, which hides the CLI that install.sh
-/// linked into one of these. Appending leaves whatever the profile did contribute ahead of the
-/// fallbacks, for the daemon these scripts start. A Mac app dragged out of the disk image has no
-/// CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
+/// `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported from `~/.bash_profile` or
+/// `~/.zshrc` never reaches it, which hides the CLI that install.sh linked into one of these.
+/// Appending leaves whatever the profile did contribute ahead of the fallbacks. A Mac app dragged
+/// out of the disk image has no CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
 pub(crate) fn remote_path_fallback() -> String {
     format!(
@@ -251,6 +248,10 @@ pub enum EndpointError {
         source: io::Error,
     },
     #[error(
+        "{target} stopped answering for {seconds} s; the command may have run there, check before retrying"
+    )]
+    StoppedAnswering { target: String, seconds: u64 },
+    #[error(
         "ssh remote socket path must be absolute: {path}",
         path = .0.display()
     )]
@@ -356,6 +357,7 @@ impl EndpointError {
                 source,
                 ..
             } => format!("The ssh forward to {target} failed while {action} its socket: {source}"),
+            Self::StoppedAnswering { .. } => self.to_string(),
             Self::InvalidRemoteSocket(path) => format!(
                 "The remote socket path must be absolute: {path}",
                 path = path.display()
@@ -363,6 +365,24 @@ impl EndpointError {
             Self::UnsupportedPlatform => "ssh hosts are not supported on this platform.".to_owned(),
             Self::UriParse { .. } => return None,
         })
+    }
+
+    #[must_use]
+    pub fn needs_sign_in(&self) -> bool {
+        match self {
+            Self::AuthenticationFailed { .. }
+            | Self::HostKeyRejected { .. }
+            | Self::SignInExpired { .. } => true,
+            #[cfg(any(unix, windows, test))]
+            Self::ProbeFailure { reason, .. } | Self::SshFailed { reason, .. } => [
+                SshFailure::SecurityKey,
+                SshFailure::Login,
+                SshFailure::HostKey,
+            ]
+            .into_iter()
+            .any(|failure| reason == failure.hint()),
+            _ => false,
+        }
     }
 }
 
@@ -542,6 +562,8 @@ struct SshSession<'a> {
     #[cfg(not(windows))]
     control: Option<&'a SshControl>,
     askpass: Option<SshAskpass<'a>>,
+    identity: Option<&'a Path>,
+    batch: bool,
 }
 
 #[cfg(not(windows))]
@@ -611,30 +633,19 @@ fn available_socks_port() -> Option<u16> {
 fn ssh_probe_command(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
-    identity: Option<&Path>,
     key_line: Option<&str>,
 ) -> Command {
-    ssh_script_command(
-        endpoint,
-        session,
-        identity,
-        &[],
-        &remote_socket_probe(key_line),
-    )
+    ssh_script_command(endpoint, session, &[], &remote_socket_probe(key_line))
 }
 
 #[cfg(any(unix, windows, test))]
 fn ssh_script_command(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
-    identity: Option<&Path>,
     options: &[&str],
     script: &str,
 ) -> Command {
     let mut command = Command::new("ssh");
-    if let Some(identity) = identity {
-        zz_key_login_options(&mut command, identity);
-    }
     for option in options {
         command.arg("-o").arg(option);
     }
@@ -649,30 +660,42 @@ fn ssh_script_command(
 }
 
 #[cfg(any(unix, windows, test))]
-fn zz_key_login_options(command: &mut Command, identity: &Path) {
-    command
-        .arg("-o")
-        .arg("IdentitiesOnly=yes")
-        .arg("-o")
-        .arg(format!(
-            "IdentityFile=\"{}\"",
-            identity.to_string_lossy().replace('%', "%%")
-        ))
-        .arg("-o")
-        .arg("PreferredAuthentications=publickey")
-        .arg("-o")
-        .arg("BatchMode=yes");
+fn login_options(command: &mut Command, session: SshSession<'_>) {
+    if let Some(identity) = session.identity {
+        command
+            .arg("-o")
+            .arg("IdentitiesOnly=yes")
+            .arg("-o")
+            .arg(format!(
+                "IdentityFile=\"{}\"",
+                identity.to_string_lossy().replace('%', "%%")
+            ))
+            .arg("-o")
+            .arg("PreferredAuthentications=publickey");
+    }
+    let batch = session.batch || batch_logins();
+    if batch || session.identity.is_some() {
+        command.arg("-o").arg("BatchMode=yes");
+    }
+    if batch {
+        command.arg("-o").arg(NO_SECURITY_KEYS);
+    }
+}
+
+#[cfg(any(unix, windows, test))]
+fn batch_logins() -> bool {
+    std::env::var_os(crate::SSH_BATCH_ENVIRONMENT_VARIABLE).is_some_and(|value| !value.is_empty())
 }
 
 #[cfg(any(unix, windows))]
 fn zz_key_first(
     identity: Option<&Path>,
     command: impl Fn(Option<&Path>) -> Command,
-) -> io::Result<std::process::Output> {
+) -> io::Result<(std::process::Output, bool)> {
     if let Some(identity) = identity {
         let output = command(Some(identity)).output_unmasked()?;
         if !refused_login(output.status.code(), &output.stderr) {
-            return Ok(output);
+            return Ok((output, true));
         }
         log::debug!(
             target: "zz_daemon::diagnostics",
@@ -680,7 +703,7 @@ fn zz_key_first(
             String::from_utf8_lossy(&output.stderr).trim(),
         );
     }
-    command(None).output_unmasked()
+    Ok((command(None).output_unmasked()?, false))
 }
 
 #[cfg(any(unix, windows, test))]
@@ -689,7 +712,7 @@ fn refused_login(code: Option<i32>, stderr: &[u8]) -> bool {
         && SshFailure::classify(&String::from_utf8_lossy(stderr)).is_some_and(SshFailure::is_login)
 }
 
-#[cfg(any(unix, windows))]
+#[cfg(any(unix, windows, test))]
 const NO_SECURITY_KEYS: &str = "PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*";
 
 #[cfg(any(unix, windows))]
@@ -698,25 +721,43 @@ pub(crate) fn run_remote_script(
     connect_timeout_seconds: u32,
     script: &str,
 ) -> io::Result<std::process::Output> {
-    #[cfg(unix)]
-    let control = shared_control(endpoint);
-    let session = SshSession {
-        #[cfg(unix)]
-        control: control.as_ref(),
-        askpass: None,
-    };
     let connect_timeout = format!("ConnectTimeout={connect_timeout_seconds}");
     let script = shell_quote(script);
-    let identity = zz_identity();
-    zz_key_first(identity.as_ref().map(|(path, _)| path.as_path()), |phase| {
-        ssh_script_command(
-            endpoint,
-            session,
-            phase,
-            &["BatchMode=yes", NO_SECURITY_KEYS, &connect_timeout],
-            &script,
-        )
-    })
+    let identity = zz_identity().map(|(path, _)| path);
+    let run = move |endpoint: &SshEndpoint, session: SshSession<'_>| {
+        zz_key_first(identity.as_deref(), |phase| {
+            ssh_script_command(
+                endpoint,
+                SshSession {
+                    identity: phase,
+                    batch: true,
+                    ..session
+                },
+                &[&connect_timeout],
+                &script,
+            )
+        })
+        .map(|(output, _)| output)
+    };
+    #[cfg(unix)]
+    if let Some((control, alive)) = live_control(endpoint) {
+        let step = SshStep {
+            endpoint: endpoint.clone(),
+            control: Some(control),
+            askpass: None,
+            identity: None,
+        };
+        return match step.run(alive, "remote script", move |step| {
+            Ok(run(&step.endpoint, step.session()))
+        }) {
+            Ok(output) => output,
+            Err(EndpointError::SshFailed { reason, .. }) => {
+                Err(io::Error::new(io::ErrorKind::TimedOut, reason))
+            }
+            Err(error) => Err(io::Error::other(error)),
+        };
+    }
+    run(endpoint, SshSession::default())
 }
 
 #[cfg(any(unix, windows))]
@@ -1051,6 +1092,7 @@ pub(crate) fn ssh_failure_reason(stderr: &str, status: &str) -> String {
 
 #[cfg(any(unix, windows, test))]
 fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: SshSession<'_>) {
+    login_options(command, session);
     command
         .arg("-o")
         .arg("ConnectTimeout=10")
@@ -1106,8 +1148,6 @@ fn control_path_option(control_path: &Path) -> String {
     )
 }
 
-/// A 0700 per-user directory for the ssh control, forwarded and askpass sockets, all of which are
-/// capabilities: one owns an ssh session, one reaches a daemon, one can phish a password.
 #[cfg(unix)]
 pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
     static DIRECTORY: OnceLock<Result<SshRuntimeDir, String>> = OnceLock::new();
@@ -1259,7 +1299,7 @@ fn control_master_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
 }
 
 #[cfg(unix)]
-fn kept_forward_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
+pub(crate) fn kept_forward_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
     Ok(ssh_runtime_dir()?.join(format!(
         "c{:016x}.sock",
         endpoint_hash(endpoint, endpoint.remote_socket.as_deref())
@@ -1321,37 +1361,134 @@ fn ssh_control_command(
 fn probe_remote_socket(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
-) -> Result<PathBuf, EndpointError> {
-    let target = endpoint.to_string();
+) -> Result<(PathBuf, Option<PathBuf>), EndpointError> {
+    let (output, identity) = probe_login(endpoint, session, false)?;
+    if !output.status.success() {
+        return Err(probe_ssh_failure(endpoint, &output));
+    }
+    let probe = parse_remote_probe_output(&endpoint.to_string(), &output.stdout);
+    note_key_enrollment(endpoint, session, &probe);
+    probe.socket.map(|socket| (socket, identity))
+}
+
+#[cfg(any(unix, windows))]
+fn sign_in(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+) -> Result<Option<PathBuf>, EndpointError> {
+    use std::io::IsTerminal as _;
+
+    #[cfg(not(windows))]
+    let shared = session.control.is_some();
+    #[cfg(windows)]
+    let shared = false;
+    if !shared {
+        return zz_key_signs_in(endpoint, session);
+    }
+    let shows_login = session.askpass.is_none()
+        && !session.batch
+        && !batch_logins()
+        && io::stderr().is_terminal();
+    let (output, identity) = probe_login(endpoint, session, shows_login)?;
+    if output.status.code() == Some(SSH_FAILURE_STATUS) {
+        return Err(probe_ssh_failure(endpoint, &output));
+    }
+    let probe = parse_remote_probe_output(&endpoint.to_string(), &output.stdout);
+    note_key_enrollment(endpoint, session, &probe);
+    Ok(identity)
+}
+
+#[cfg(any(unix, windows))]
+fn zz_key_signs_in(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+) -> Result<Option<PathBuf>, EndpointError> {
+    let Some((path, _)) = zz_identity() else {
+        return Ok(None);
+    };
+    let output = ssh_probe_command(
+        endpoint,
+        SshSession {
+            identity: Some(&path),
+            ..session
+        },
+        None,
+    )
+    .output_unmasked()
+    .map_err(|source| EndpointError::SshSpawn {
+        operation: "remote socket probe",
+        source,
+    })?;
+    if refused_login(output.status.code(), &output.stderr) {
+        return Ok(None);
+    }
+    if output.status.code() == Some(SSH_FAILURE_STATUS) {
+        return Err(probe_ssh_failure(endpoint, &output));
+    }
+    Ok(Some(path))
+}
+
+#[cfg(any(unix, windows))]
+fn probe_login(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    shows_login: bool,
+) -> Result<(std::process::Output, Option<PathBuf>), EndpointError> {
     let identity = zz_identity();
-    let key_line = identity.as_ref().map(|(_, line)| line.as_str());
-    let output = zz_key_first(identity.as_ref().map(|(path, _)| path.as_path()), |phase| {
-        ssh_probe_command(endpoint, session, phase, key_line)
+    let key_line = identity
+        .as_ref()
+        .filter(|_| configured_fleet_endpoint(endpoint))
+        .map(|(_, line)| line.as_str());
+    let path = identity.as_ref().map(|(path, _)| path.as_path());
+    let (output, signed_in) = zz_key_first(path, |phase| {
+        let mut command = ssh_probe_command(
+            endpoint,
+            SshSession {
+                identity: phase,
+                ..session
+            },
+            key_line,
+        );
+        if shows_login && phase.is_none() {
+            command.stderr(Stdio::inherit());
+        }
+        command
     })
     .map_err(|source| EndpointError::SshSpawn {
         operation: "remote socket probe",
         source,
     })?;
-    if !output.status.success() {
-        return Err(EndpointError::SshFailed {
-            target,
-            reason: ssh_failure_reason(
-                &String::from_utf8_lossy(&output.stderr),
-                &output.status.to_string(),
-            ),
-        });
-    }
+    Ok((output, path.filter(|_| signed_in).map(Path::to_owned)))
+}
 
-    let probe = parse_remote_probe_output(&target, &output.stdout);
-    note_key_enrollment(endpoint, session, &probe);
-    probe.socket
+#[cfg(any(unix, windows))]
+fn probe_ssh_failure(endpoint: &SshEndpoint, output: &std::process::Output) -> EndpointError {
+    EndpointError::SshFailed {
+        target: endpoint.to_string(),
+        reason: ssh_failure_reason(
+            &String::from_utf8_lossy(&output.stderr),
+            &output.status.to_string(),
+        ),
+    }
+}
+
+#[cfg(any(unix, windows))]
+fn configured_fleet_endpoint(endpoint: &SshEndpoint) -> bool {
+    crate::configured_fleet_hosts().is_ok_and(|(hosts, _)| {
+        hosts.iter().any(|host| {
+            matches!(&host.endpoint, Endpoint::Ssh(configured)
+                if configured.user == endpoint.user
+                    && configured.host == endpoint.host
+                    && configured.port == endpoint.port)
+        })
+    })
 }
 
 #[cfg(any(unix, windows))]
 fn note_key_enrollment(endpoint: &SshEndpoint, session: SshSession<'_>, probe: &RemoteProbe) {
     match probe.key {
         Some(KeyEnrollment::Added) => {
-            log::info!(
+            log::debug!(
                 target: "zz_daemon::diagnostics",
                 "added this machine's zz key to {endpoint}'s authorized_keys; its own zz key is {}",
                 probe.pubkey.as_deref().unwrap_or("unknown"),
@@ -1366,7 +1503,7 @@ fn note_key_enrollment(endpoint: &SshEndpoint, session: SshSession<'_>, probe: &
                 }
             }
         }
-        Some(KeyEnrollment::Failed) => log::warn!(
+        Some(KeyEnrollment::Failed) => log::debug!(
             target: "zz_daemon::diagnostics",
             "could not add this machine's zz key to {endpoint}'s authorized_keys",
         ),
@@ -1521,11 +1658,6 @@ fn session_askpass(askpass: Option<&AskpassListener>) -> Option<SshAskpass<'_>> 
 }
 
 #[cfg(unix)]
-fn shared_control(endpoint: &SshEndpoint) -> Option<SshControl> {
-    live_control(endpoint).map(|(control, _)| control)
-}
-
-#[cfg(unix)]
 fn live_control(endpoint: &SshEndpoint) -> Option<(SshControl, bool)> {
     let control = configured_control(endpoint)?;
     let alive = control_master_alive(endpoint, &control.path);
@@ -1602,26 +1734,22 @@ pub fn run_remote_cli(
     use std::io::IsTerminal as _;
 
     #[cfg(unix)]
-    let control = live_control(endpoint).map(|(control, alive)| {
-        if alive {
-            let step = SshStep {
-                endpoint: endpoint.clone(),
-                control: Some(control.clone()),
-                askpass: None,
-            };
-            if let Err(error) = step.run(true, "remote command", master_answers) {
-                log::debug!(
-                    target: "zz_daemon::diagnostics",
-                    "{error}; running the command on a fresh login",
-                );
-            }
-        }
-        control
-    });
+    let (control, answered) = riding_control(endpoint);
+    #[cfg(not(unix))]
+    let answered = false;
     let session = SshSession {
         #[cfg(unix)]
         control: control.as_ref(),
-        askpass: None,
+        ..SshSession::default()
+    };
+    let identity = if answered {
+        None
+    } else {
+        sign_in(endpoint, session)?
+    };
+    let session = SshSession {
+        identity: identity.as_deref(),
+        ..session
     };
     let mut command = ssh_cli_command(endpoint, session, arguments);
     if !io::stdin().is_terminal() {
@@ -1633,6 +1761,33 @@ pub fn run_remote_cli(
             operation: "remote command",
             source,
         })
+}
+
+#[cfg(unix)]
+fn riding_control(endpoint: &SshEndpoint) -> (Option<SshControl>, bool) {
+    let Some((control, alive)) = live_control(endpoint) else {
+        return (None, false);
+    };
+    if !alive {
+        return (Some(control), false);
+    }
+    let step = SshStep {
+        endpoint: endpoint.clone(),
+        control: Some(control),
+        askpass: None,
+        identity: None,
+    };
+    let answered = match step.run(true, "remote command", master_answers) {
+        Ok(()) => true,
+        Err(error) => {
+            log::debug!(
+                target: "zz_daemon::diagnostics",
+                "{error}; signing in again",
+            );
+            false
+        }
+    };
+    (step.control, answered)
 }
 
 #[cfg(unix)]
@@ -1727,6 +1882,24 @@ pub fn install_remote(
     prompts: Option<SshPrompts>,
     restart_daemon: bool,
 ) -> Result<RemoteInstall, EndpointError> {
+    install_remote_with(endpoint, prompts, restart_daemon, false)
+}
+
+#[cfg(any(unix, windows))]
+pub fn install_remote_batch(
+    endpoint: &SshEndpoint,
+    restart_daemon: bool,
+) -> Result<RemoteInstall, EndpointError> {
+    install_remote_with(endpoint, None, restart_daemon, true)
+}
+
+#[cfg(any(unix, windows))]
+fn install_remote_with(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    restart_daemon: bool,
+    batch: bool,
+) -> Result<RemoteInstall, EndpointError> {
     let target = endpoint.to_string();
     if zz_protocol::app_identity::DEVELOPMENT {
         return Err(EndpointError::RemoteInstallFailed {
@@ -1740,11 +1913,24 @@ pub fn install_remote(
     }
     let askpass = start_askpass(endpoint, prompts);
     #[cfg(unix)]
-    let control = shared_control(endpoint);
+    let (control, answered) = riding_control(endpoint);
+    #[cfg(not(unix))]
+    let answered = false;
     let session = SshSession {
         #[cfg(unix)]
         control: control.as_ref(),
         askpass: session_askpass(askpass.as_ref()),
+        identity: None,
+        batch,
+    };
+    let identity = if answered {
+        None
+    } else {
+        sign_in(endpoint, session)?
+    };
+    let session = SshSession {
+        identity: identity.as_deref(),
+        ..session
     };
     let spawn_failed = |source| EndpointError::SshSpawn {
         operation: "remote install",
@@ -1781,6 +1967,7 @@ fn forwarded_local_socket_path() -> io::Result<PathBuf> {
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
+    resendable: bool,
     mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
     let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
@@ -1800,6 +1987,9 @@ pub(crate) fn connect_kept<T>(
     let stalled = match dial(&kept) {
         Ok(connected) => return Ok((connected, None)),
         Err(error) if !kept_forward_failed(&error) => return Err(error),
+        Err(error) if !resendable && link_stalled(&error) => {
+            return Err(give_up_on_stalled_link(endpoint).into());
+        }
         Err(error) => {
             log::debug!(
                 target: "zz_daemon::diagnostics",
@@ -1858,6 +2048,25 @@ fn kept_forward_failed(error: &DaemonError) -> bool {
             matches!(error, zz_protocol::ServerError::ProtocolMismatch { .. })
         }
         _ => false,
+    }
+}
+
+#[cfg(unix)]
+pub(crate) fn give_up_on_stalled_link(endpoint: &SshEndpoint) -> EndpointError {
+    if let Ok(kept) = kept_forward_path(endpoint) {
+        let lock = KeptForwardLock::acquire(&kept);
+        if !lock.contended {
+            abandon_stalled_master(endpoint, &kept);
+        }
+    }
+    stopped_answering(endpoint)
+}
+
+#[cfg(unix)]
+pub(crate) fn stopped_answering(endpoint: &SshEndpoint) -> EndpointError {
+    EndpointError::StoppedAnswering {
+        target: endpoint.to_string(),
+        seconds: MASTER_STEP_TIMEOUT.as_secs(),
     }
 }
 
@@ -1930,6 +2139,7 @@ struct SshStep {
     endpoint: SshEndpoint,
     control: Option<SshControl>,
     askpass: Option<(PathBuf, PathBuf)>,
+    identity: Option<PathBuf>,
 }
 
 #[cfg(unix)]
@@ -1941,6 +2151,8 @@ impl SshStep {
                 .askpass
                 .as_ref()
                 .map(|(helper, socket)| SshAskpass { helper, socket }),
+            identity: self.identity.as_deref(),
+            batch: false,
         }
     }
 
@@ -1995,6 +2207,7 @@ pub(crate) struct SshForward {
     forwarding: OsString,
     socks_port: Option<u16>,
     askpass: Option<AskpassListener>,
+    identity: Option<PathBuf>,
     kept: bool,
 }
 
@@ -2023,17 +2236,19 @@ impl SshForward {
         let askpass = start_askpass(endpoint, prompts);
         let (control, riding) =
             live_control(endpoint).map_or((None, false), |(control, alive)| (Some(control), alive));
-        let step = SshStep {
+        let mut step = SshStep {
             endpoint: endpoint.clone(),
             control,
             askpass: askpass
                 .as_ref()
                 .map(|listener| (listener.helper().to_owned(), listener.socket().to_owned())),
+            identity: None,
         };
 
-        let probed_socket = step.run(riding, "remote socket probe", |step| {
+        let (probed_socket, identity) = step.run(riding, "remote socket probe", |step| {
             probe_remote_socket(&step.endpoint, step.session())
         })?;
+        step.identity = identity;
         let remote_socket = endpoint.remote_socket.clone().unwrap_or(probed_socket);
         if !remote_socket.is_absolute() {
             return Err(EndpointError::InvalidRemoteSocket(remote_socket));
@@ -2067,6 +2282,7 @@ impl SshForward {
             master,
             socks_port: socks.then(available_socks_port).flatten(),
             askpass,
+            identity: step.identity,
             kept: kept.is_some(),
         };
         if forward.kept {
@@ -2112,6 +2328,8 @@ impl SshForward {
             let session = SshSession {
                 control: self.control.as_ref(),
                 askpass: session_askpass(self.askpass.as_ref()),
+                identity: self.identity.as_deref(),
+                batch: false,
             };
             let child = ssh_forward_command(
                 &self.endpoint,
@@ -2257,6 +2475,7 @@ impl Drop for SshForward {
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
+    _resendable: bool,
     mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
     let forward = SshForward::start(endpoint, prompts)?;
@@ -2394,9 +2613,14 @@ impl SshForward {
         let askpass = start_askpass(endpoint, prompts);
         let session = SshSession {
             askpass: session_askpass(askpass.as_ref()),
+            ..SshSession::default()
         };
 
-        let probed_socket = probe_remote_socket(endpoint, session)?;
+        let (probed_socket, identity) = probe_remote_socket(endpoint, session)?;
+        let session = SshSession {
+            identity: identity.as_deref(),
+            ..session
+        };
         let remote_socket = endpoint.remote_socket.clone().unwrap_or(probed_socket);
         if !remote_socket_is_absolute(&remote_socket) {
             return Err(EndpointError::InvalidRemoteSocket(remote_socket));
@@ -2780,7 +3004,7 @@ mod tests {
     fn builds_probe_ssh_argv_for_user_and_port_permutations() {
         for (user, port, options) in ssh_option_cases() {
             let endpoint = test_ssh_endpoint(user, port);
-            let command = ssh_probe_command(&endpoint, test_session(), None, None);
+            let command = ssh_probe_command(&endpoint, test_session(), None);
             let mut expected = shared_ssh_options();
             expected.extend(options.into_iter().map(str::to_owned));
             expected.extend(
@@ -2818,9 +3042,9 @@ mod tests {
             };
             let session = SshSession {
                 control: Some(&control),
-                askpass: None,
+                ..SshSession::default()
             };
-            let arguments = command_args(&ssh_probe_command(&endpoint, session, None, None));
+            let arguments = command_args(&ssh_probe_command(&endpoint, session, None));
             assert!(
                 arguments.contains(&"ControlPath=/home/ada/.ssh/cm-f5de03fd".to_owned()),
                 "{arguments:?}"
@@ -2844,7 +3068,7 @@ mod tests {
     fn every_ssh_child_shares_one_multiplexing_master() {
         let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
         let commands = [
-            command_args(&ssh_probe_command(&endpoint, test_session(), None, None)),
+            command_args(&ssh_probe_command(&endpoint, test_session(), None)),
             command_args(&ssh_daemon_start_command(
                 &endpoint,
                 test_session(),
@@ -2883,7 +3107,7 @@ mod tests {
     #[test]
     fn a_session_without_a_master_uses_platform_safe_options() {
         let endpoint = test_ssh_endpoint(None, None);
-        let command = ssh_probe_command(&endpoint, SshSession::default(), None, None);
+        let command = ssh_probe_command(&endpoint, SshSession::default(), None);
         let mut expected = [
             "-o",
             "ConnectTimeout=10",
@@ -3010,19 +3234,16 @@ mod tests {
         assert_eq!(
             command_args(&ssh_probe_command(
                 &endpoint,
-                test_session(),
-                Some(identity),
+                SshSession {
+                    identity: Some(identity),
+                    ..test_session()
+                },
                 Some(line)
             )),
             expected
         );
 
-        let fallback = command_args(&ssh_probe_command(
-            &endpoint,
-            test_session(),
-            None,
-            Some(line),
-        ));
+        let fallback = command_args(&ssh_probe_command(&endpoint, test_session(), Some(line)));
         assert_eq!(fallback[..shared_ssh_options().len()], shared_ssh_options());
         for option in [
             "IdentitiesOnly",
@@ -3035,6 +3256,90 @@ mod tests {
                 "the user's own login must keep OpenSSH's default identities: {fallback:?}"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_login_the_zz_key_won_and_a_batch_login_reach_every_later_command() {
+        let endpoint = test_ssh_endpoint(None, None);
+        let identity = Path::new("/home/a/.local/share/zz/ssh/id_ed25519");
+        let signed_in = SshSession {
+            identity: Some(identity),
+            ..test_session()
+        };
+        let batch = SshSession {
+            batch: true,
+            ..test_session()
+        };
+        let socket = Path::new("/run/zz.sock");
+        let local = Path::new("/tmp/local.sock");
+        let commands = |session| {
+            [
+                ssh_daemon_start_command(&endpoint, session, socket),
+                ssh_forward_command(&endpoint, session, local, socket, None),
+                ssh_cli_command(&endpoint, session, &["protocol-version".to_owned()]),
+                ssh_install_command(&endpoint, session, false),
+            ]
+            .map(|command| command_args(&command))
+        };
+        for arguments in commands(signed_in) {
+            assert!(
+                arguments.contains(&format!("IdentityFile=\"{}\"", identity.display())),
+                "{arguments:?}"
+            );
+            assert!(
+                arguments.contains(&"BatchMode=yes".to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                !arguments.contains(&NO_SECURITY_KEYS.to_owned()),
+                "{arguments:?}"
+            );
+        }
+        for arguments in commands(batch) {
+            assert!(
+                arguments.contains(&"BatchMode=yes".to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                arguments.contains(&NO_SECURITY_KEYS.to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                !arguments
+                    .iter()
+                    .any(|argument| argument.starts_with("IdentityFile")),
+                "{arguments:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_login_a_person_can_answer_is_retried_on_the_terminal() {
+        let failed = |stderr: &str| EndpointError::SshFailed {
+            target: "ssh://host".to_owned(),
+            reason: ssh_failure_reason(stderr, "exit status: 255"),
+        };
+        for stderr in [
+            "you@host: Permission denied (publickey).",
+            "Host key verification failed.",
+            "sign_and_send_pubkey: signing failed for ED25519-SK \"/k\": device not found",
+        ] {
+            assert!(failed(stderr).needs_sign_in(), "{stderr}");
+        }
+        for stderr in [
+            "ssh: connect to host host port 22: Operation timed out",
+            "ssh: Could not resolve hostname host: nodename nor servname",
+            "bash: line 1: zz: command not found",
+        ] {
+            assert!(!failed(stderr).needs_sign_in(), "{stderr}");
+        }
+        assert!(
+            !EndpointError::RemoteBinaryMissing {
+                target: "ssh://host".to_owned()
+            }
+            .needs_sign_in()
+        );
     }
 
     #[test]
@@ -3191,14 +3496,14 @@ mod tests {
         let helper = PathBuf::from("/opt/zz/bin/zz");
         let socket = PathBuf::from("/tmp/zz-ssh/a1");
         let session = SshSession {
-            control: None,
             askpass: Some(SshAskpass {
                 helper: &helper,
                 socket: &socket,
             }),
+            ..SshSession::default()
         };
         for command in [
-            ssh_probe_command(&endpoint, session, None, None),
+            ssh_probe_command(&endpoint, session, None),
             ssh_daemon_start_command(&endpoint, session, Path::new("/run/zz.sock")),
             ssh_forward_command(
                 &endpoint,
@@ -4126,6 +4431,7 @@ mod tests {
                 user_persist: false,
             }),
             askpass: None,
+            identity: None,
         };
         let slow = |_: &SshStep| {
             thread::sleep(Duration::from_millis(300));
@@ -4292,7 +4598,7 @@ mod tests {
     fn test_session() -> SshSession<'static> {
         SshSession {
             control: Some(&TEST_CONTROL),
-            askpass: None,
+            ..SshSession::default()
         }
     }
 

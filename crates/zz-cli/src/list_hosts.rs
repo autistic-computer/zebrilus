@@ -174,10 +174,18 @@ fn rows(
 }
 
 fn with_advice(name: &str, mut probe: HostProbe) -> HostProbe {
+    let newer = probe
+        .protocol
+        .parse::<u16>()
+        .is_ok_and(|protocol| protocol > zz_protocol::PROTOCOL_VERSION);
     let fix = match probe.status {
         HostStatus::Missing => format!("run: zz fleet install {name}"),
+        HostStatus::Incompatible if newer => "update zz on this machine".to_owned(),
         HostStatus::Incompatible => format!("run: zz fleet install --restart-daemon {name}"),
-        HostStatus::Ready | HostStatus::Auth | HostStatus::Unreachable => return probe,
+        HostStatus::Auth => format!(
+            "run zz --host {name} list-sessions once to sign in, or zz fleet sync from a machine that reaches it"
+        ),
+        HostStatus::Ready | HostStatus::Unreachable => return probe,
     };
     probe.error = format!("{}; {fix}", probe.error);
     probe
@@ -249,10 +257,7 @@ mod tests {
                 error: String::new(),
             }
         } else {
-            HostProbe::failed(
-                HostStatus::Auth,
-                "ssh rejected the login: add your key to the host or start an ssh agent",
-            )
+            HostProbe::failed(HostStatus::Auth, "refused every login zz tried")
         }
     }
 
@@ -264,8 +269,9 @@ mod tests {
     fn the_default_listing_probes_and_names_the_state_version_and_trouble() {
         assert_eq!(
             rows(&hosts(), Listing::Format(DEFAULT_FORMAT), fake_probe),
-            "xps: ssh://demfabris@xps ready 0.19.0\nalienware: ssh://alienware auth (ssh \
-             rejected the login: add your key to the host or start an ssh agent)"
+            "xps: ssh://demfabris@xps ready 0.19.0\nalienware: ssh://alienware auth (refused \
+             every login zz tried; run zz --host alienware list-sessions once to sign in, or zz \
+             fleet sync from a machine that reaches it)"
         );
     }
 
@@ -312,8 +318,9 @@ mod tests {
             "{\"host_name\":\"xps\",\"host_url\":\"ssh://demfabris@xps\",\"host_state\":\"ready\",\
              \"host_version\":\"0.19.0\",\"host_protocol\":\"110\",\"host_error\":\"\"}\n\
              {\"host_name\":\"alienware\",\"host_url\":\"ssh://alienware\",\"host_state\":\"auth\",\
-             \"host_version\":\"\",\"host_protocol\":\"\",\"host_error\":\"ssh rejected the login: \
-             add your key to the host or start an ssh agent\"}"
+             \"host_version\":\"\",\"host_protocol\":\"\",\"host_error\":\"refused every login zz \
+             tried; run zz --host alienware list-sessions once to sign in, or zz fleet sync from a \
+             machine that reaches it\"}"
         );
     }
 
@@ -351,13 +358,34 @@ mod tests {
             .error,
             "zz is not installed; run: zz fleet install gpu"
         );
+        let incompatible = |protocol: u16| HostProbe {
+            status: HostStatus::Incompatible,
+            version: String::new(),
+            protocol: protocol.to_string(),
+            error: format!("speaks protocol v{protocol}"),
+        };
+        let ours = zz_protocol::PROTOCOL_VERSION;
+        assert_eq!(
+            with_advice("gpu", incompatible(ours - 1)).error,
+            format!(
+                "speaks protocol v{}; run: zz fleet install --restart-daemon gpu",
+                ours - 1
+            )
+        );
+        assert_eq!(
+            with_advice("gpu", incompatible(ours + 1)).error,
+            format!("speaks protocol v{}; update zz on this machine", ours + 1)
+        );
         assert_eq!(
             with_advice(
                 "gpu",
-                HostProbe::failed(HostStatus::Incompatible, "speaks protocol v107")
+                HostProbe::failed(
+                    HostStatus::Incompatible,
+                    "zz there predates protocol version reporting"
+                )
             )
             .error,
-            "speaks protocol v107; run: zz fleet install --restart-daemon gpu"
+            "zz there predates protocol version reporting; run: zz fleet install --restart-daemon gpu"
         );
     }
 

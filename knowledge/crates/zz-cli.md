@@ -54,9 +54,10 @@ configured host in parallel for a chain whose every command passes `!spec.mutate
 `list-hosts`, `show-last-output` and `protocol-version` count as read-only). The parent checks the
 chain once first, so an unknown verb or a usage error prints a single time with its own exit
 status, and `events`, `wait-pane`, `fleet` and `tools` are refused with what they do and
-`run it per host with --host NAME`. The children run with no controlling terminal and with ssh
-non-interactive, so a fan-out never prompts on any platform; a host that needs a password or a
-host-key answer fails with the hint below. Text lines get a `NAME: ` prefix, JSON lines under
+`run it per host with --host NAME`. Each child gets `ZZ_SSH_BATCH=1`, so every ssh it starts runs with
+`BatchMode=yes` and no security-key identities, and on unix it also runs in its own session with
+no controlling terminal; a host that needs a password, a touch or a host-key answer fails with the
+hint below. Text lines get a `NAME: ` prefix, JSON lines under
 `--json` get `host_name` first (`from_host` when the row has its own `host_name`, as `list-hosts`
 rows do), and the exit is 1 when any host failed. Bare `zz --host NAME` runs `new-session -A`
 there.

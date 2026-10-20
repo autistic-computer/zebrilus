@@ -1256,7 +1256,7 @@ fn run_host_command_chain(
             exit_code_for(CliFailure::Runtime)
         };
     }
-    let mut client = match connect_host_command_client(host) {
+    let mut client = match connect_host_command_client(host, chain_is_read_only(&command_chain)) {
         Ok(client) => client,
         Err(error) => {
             eprintln!("zz: {error}");
@@ -1683,7 +1683,7 @@ fn run_tmux_shell_command(
             connect_command_client(socket_path, mux_config_files, start_server)
                 .map_err(|error| format_local_command_error(socket_path, error))
         },
-        |host| connect_host_command_client(host).map_err(|error| format!("zz: {error}")),
+        |host| connect_host_command_client(host, false).map_err(|error| format!("zz: {error}")),
     ) {
         Ok(client) => client,
         Err(error) => {
@@ -2127,7 +2127,7 @@ fn run_kill_server(path: &Path, args: impl IntoIterator<Item = RawText>) -> Exit
 }
 
 fn run_host_kill_server(host: &str, args: impl IntoIterator<Item = RawText>) -> ExitCode {
-    let mut client = match connect_host_command_client(host) {
+    let mut client = match connect_host_command_client(host, false) {
         Ok(client) => client,
         Err(error) => {
             eprintln!("zz: {error}");
@@ -2668,9 +2668,17 @@ fn host_command_error_message(host: &str, error: &DaemonError) -> String {
     }
 }
 
-fn connect_host_command_client(name: &str) -> Result<CommandClient, String> {
+fn chain_is_read_only(command_chain: &[CommandInvocation]) -> bool {
+    command_chain.iter().all(|invocation| {
+        catalog_command_spec(canonical_command(&invocation.name))
+            .is_some_and(|spec| !spec.mutates(&invocation.args))
+    })
+}
+
+fn connect_host_command_client(name: &str, read_only: bool) -> Result<CommandClient, String> {
     let endpoint = configured_host_endpoint(name)?;
-    CommandClient::connect_endpoint(&endpoint).map_err(|error| host_connect_failure(name, &error))
+    CommandClient::connect_endpoint(&endpoint, read_only)
+        .map_err(|error| host_connect_failure(name, &error))
 }
 
 fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
@@ -2894,7 +2902,8 @@ fn run_on_every_host(arguments: &[RawText], command_chain: &[CommandInvocation])
                     command
                         .arg("--host")
                         .arg(&host.name)
-                        .args(arguments.iter().map(RawText::to_os_string));
+                        .args(arguments.iter().map(RawText::to_os_string))
+                        .env(zz_daemon_client::SSH_BATCH_ENVIRONMENT_VARIABLE, "1");
                     #[cfg(unix)]
                     without_controlling_terminal(&mut command);
                     command.output_unmasked()
@@ -3023,6 +3032,9 @@ fn host_failure_hint(name: &str, known: &[&str], destination: &str, error: &Daem
             refused()
         }
         Some(EndpointError::HostKeyRejected { .. }) => untrusted(),
+        Some(EndpointError::StoppedAnswering { seconds, .. }) => format!(
+            "{name} stopped answering for {seconds} s; the command may have run there, check before retrying"
+        ),
         Some(
             EndpointError::ProbeFailure { reason, .. } | EndpointError::SshFailed { reason, .. },
         ) if reason.starts_with(SSH_LOGIN_REFUSED) => refused(),
@@ -4811,6 +4823,49 @@ mod tests {
             b"xps: can't reach xps: timed out\n"
         );
         assert!(super::host_lines("xps", b"", true, false).is_empty());
+    }
+
+    #[test]
+    fn only_a_chain_that_changes_nothing_may_be_sent_twice() {
+        let chain = |invocations: &[&[&str]]| {
+            invocations
+                .iter()
+                .map(|words| CommandInvocation::new(words[0], words[1..].iter().copied()))
+                .collect::<Vec<_>>()
+        };
+        for read_only in [
+            &[&["list-panes", "-a"][..]][..],
+            &[
+                &["display-message", "-p", "#{pane_id}"],
+                &["capture-pane", "-p"],
+            ],
+            &[&["lsp"]],
+        ] {
+            assert!(
+                super::chain_is_read_only(&chain(read_only)),
+                "{read_only:?}"
+            );
+        }
+        for mutating in [
+            &[&["kill-window", "-t", "work"][..]][..],
+            &[&["list-panes"], &["send-keys", "-t", "%1", "x"]],
+            &[&["capture-pane", "-t", "%1"]],
+            &[&["bogus-verb"]],
+        ] {
+            assert!(!super::chain_is_read_only(&chain(mutating)), "{mutating:?}");
+        }
+        assert_eq!(
+            super::host_failure_hint(
+                "xps",
+                &["xps"],
+                "me@xps",
+                &DaemonError::from(zz_daemon_client::EndpointError::StoppedAnswering {
+                    target: "ssh://me@xps".to_owned(),
+                    seconds: 15,
+                })
+            ),
+            "xps stopped answering for 15 s; the command may have run there, check before retrying"
+        );
     }
 
     #[test]

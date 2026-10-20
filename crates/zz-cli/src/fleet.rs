@@ -1,7 +1,7 @@
 use zz_config::{remove_fleet_host, write_fleet_host};
 use zz_daemon_client::{
     Endpoint, EndpointError, HostEntry, RejectedHost, RemoteInstall, configured_fleet_hosts,
-    install_remote, ssh_public_key, sync_fleet, validate_fleet_host,
+    install_remote, install_remote_batch, ssh_public_key, sync_fleet, validate_fleet_host,
 };
 
 const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] (-a | <name>...)\n       zz fleet key\n       zz fleet list [-F <format> | --json]\n       zz fleet remove <name>\n       zz fleet sync";
@@ -267,21 +267,12 @@ fn fleet_install(selection: &InstallHosts<'_>, restart_daemon: bool) -> Result<S
     let (hosts, rejected) =
         configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
     let targets = install_targets(selection, &hosts, &rejected)?;
-    let results = std::thread::scope(|scope| {
-        let installs = targets
-            .iter()
-            .map(|(_, endpoint)| {
-                scope.spawn(move || install_remote(endpoint, None, restart_daemon))
-            })
-            .collect::<Vec<_>>();
-        installs
-            .into_iter()
-            .map(|install| {
-                install
-                    .join()
-                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-            })
-            .collect::<Vec<_>>()
+    let results = install_everywhere(&targets, |endpoint, batch| {
+        if batch {
+            install_remote_batch(endpoint, restart_daemon)
+        } else {
+            install_remote(endpoint, None, restart_daemon)
+        }
     });
     let mut failed = false;
     for ((name, _), result) in targets.iter().zip(&results) {
@@ -302,6 +293,35 @@ fn fleet_install(selection: &InstallHosts<'_>, restart_daemon: bool) -> Result<S
     } else {
         Ok(String::new())
     }
+}
+
+fn install_everywhere<T: Send>(
+    targets: &[(&str, &zz_daemon_client::SshEndpoint)],
+    install: impl Fn(&zz_daemon_client::SshEndpoint, bool) -> Result<T, EndpointError> + Sync,
+) -> Vec<Result<T, EndpointError>> {
+    let install = &install;
+    let results = std::thread::scope(|scope| {
+        let installs = targets
+            .iter()
+            .map(|(_, endpoint)| scope.spawn(move || install(endpoint, true)))
+            .collect::<Vec<_>>();
+        installs
+            .into_iter()
+            .map(|install| {
+                install
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect::<Vec<_>>()
+    });
+    results
+        .into_iter()
+        .zip(targets)
+        .map(|(result, (_, endpoint))| match result {
+            Err(error) if error.needs_sign_in() => install(endpoint, false),
+            result => result,
+        })
+        .collect()
 }
 
 fn fleet_sync() -> Result<String, String> {
@@ -488,6 +508,46 @@ mod tests {
             ),
             Err("xps: Could not install zz on ssh://xps: curl is missing".to_owned())
         );
+    }
+
+    #[test]
+    fn hosts_that_need_a_login_are_retried_one_at_a_time_after_the_batch_pass() {
+        let endpoint = |host: &str| zz_daemon_client::SshEndpoint {
+            user: None,
+            host: host.to_owned(),
+            port: None,
+            remote_socket: None,
+        };
+        let hosts = [endpoint("xps"), endpoint("yk"), endpoint("gone")];
+        let targets = [("xps", &hosts[0]), ("yk", &hosts[1]), ("gone", &hosts[2])];
+        let attempts = std::sync::Mutex::new(Vec::new());
+        let results = install_everywhere(&targets, |endpoint, batch| {
+            attempts
+                .lock()
+                .unwrap()
+                .push((endpoint.host.clone(), batch));
+            let target = endpoint.to_string();
+            match (endpoint.host.as_str(), batch) {
+                ("xps", _) | ("yk", false) => Ok(endpoint.host.clone()),
+                ("yk", true) => Err(EndpointError::SshFailed {
+                    target,
+                    reason:
+                        "ssh rejected the login: add your key to the host or start an ssh agent"
+                            .to_owned(),
+                }),
+                _ => Err(EndpointError::SshFailed {
+                    target,
+                    reason: "the ssh connection timed out".to_owned(),
+                }),
+            }
+        });
+        assert_eq!(results[0].as_deref().ok(), Some("xps"));
+        assert_eq!(results[1].as_deref().ok(), Some("yk"));
+        assert!(results[2].is_err());
+        let mut attempts = attempts.into_inner().unwrap();
+        let retried = attempts.split_off(3);
+        assert!(attempts.iter().all(|(_, batch)| *batch), "{attempts:?}");
+        assert_eq!(retried, [("yk".to_owned(), false)]);
     }
 
     #[test]
