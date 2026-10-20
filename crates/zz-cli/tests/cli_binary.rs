@@ -149,6 +149,83 @@ fn tools_answers_from_the_cli_without_a_daemon() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn host_connect_failures_over_openssh_name_the_host_and_the_fix() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (home, _) = isolated_zz();
+    let bin = home.path().join("bin");
+    std::fs::create_dir_all(&bin).expect("fake ssh directory");
+    let ssh = bin.join("ssh");
+    std::fs::write(
+        &ssh,
+        "#!/bin/sh\n\
+         case \"$*\" in *zz-probe-socket*) ;; *) exit 127 ;; esac\n\
+         if [ -n \"$FAKE_SSH_ERROR\" ]; then printf '%s\\n' \"$FAKE_SSH_ERROR\" >&2; exit 255; fi\n\
+         printf 'zz-probe-socket=/tmp/zz-fake.sock\\nzz-probe-protocol=%s\\n' \"$FAKE_SSH_PROTOCOL\"\n",
+    )
+    .expect("write fake ssh");
+    std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).expect("chmod ssh");
+    std::fs::create_dir_all(home.path().join("zz")).expect("config directory");
+    std::fs::write(
+        home.path().join("zz/config"),
+        "host-gpu = ssh://you@gpu-box:2222\n",
+    )
+    .expect("write host config");
+    let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .expect("PATH");
+    let newer = (zz_protocol::PROTOCOL_VERSION + 1).to_string();
+    let missing = "zz: gpu has no zz; run: zz fleet install gpu\n";
+    for (error, protocol, arguments, expected) in [
+        (
+            "Permission denied (publickey).",
+            "",
+            &["list-sessions"][..],
+            "zz: gpu refused every login zz tried; run ssh ssh://you@gpu-box:2222 once, or zz fleet sync from a machine that reaches it\n".to_owned(),
+        ),
+        (
+            "Host key verification failed.",
+            "",
+            &["list-sessions"][..],
+            "zz: gpu's ssh host key is not trusted; run ssh ssh://you@gpu-box:2222 once to check and accept it\n".to_owned(),
+        ),
+        (
+            "",
+            newer.as_str(),
+            &["list-sessions"][..],
+            format!(
+                "zz: gpu runs protocol v{newer}, newer than this zz (v{}); update zz on this machine\n",
+                zz_protocol::PROTOCOL_VERSION
+            ),
+        ),
+        ("", "missing", &["list-sessions"][..], missing.to_owned()),
+        ("", "missing", &[][..], missing.to_owned()),
+        ("", "missing", &["attach"][..], missing.to_owned()),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_zz_cli"))
+            .env("HOME", home.path())
+            .env("XDG_CONFIG_HOME", home.path())
+            .env("PATH", &path)
+            .env("FAKE_SSH_ERROR", error)
+            .env("FAKE_SSH_PROTOCOL", protocol)
+            .env_remove("TMUX")
+            .env_remove("ZZ_SOCKET")
+            .args(["--host", "gpu"])
+            .args(arguments)
+            .output()
+            .expect("run zz --host gpu");
+        assert_eq!(output.status.code(), Some(1), "{arguments:?} {error}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{arguments:?} {error}"
+        );
+    }
+}
+
 #[test]
 fn internal_command_help_remains_available_without_a_daemon() {
     for name in zz_protocol::INTERNAL_COMMAND_NAMES {
@@ -825,6 +902,20 @@ mod daemon_autostart {
             assert!(
                 String::from_utf8_lossy(&refused.stderr).contains("read-only"),
                 "{mutating:?}"
+            );
+        }
+        for (usage, status) in [
+            (&["--host", "all", "bogus"][..], 1),
+            (&["--host", "all", "list-panes", "-Z"][..], 1),
+            (&["--host", "all", "inspect", "--bogus"][..], 2),
+        ] {
+            let refused = zz(usage);
+            assert_eq!(refused.status.code(), Some(status), "{usage:?}");
+            let errors = String::from_utf8_lossy(&refused.stderr);
+            assert_eq!(errors.lines().count(), 1, "{usage:?} {errors}");
+            assert!(
+                !errors.contains("peer") && !errors.contains("can change state"),
+                "{usage:?} {errors}"
             );
         }
         let sessions = fixture.run(&["list-sessions", "-F", "#{session_name}"]);

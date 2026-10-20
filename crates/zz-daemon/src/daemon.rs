@@ -52476,12 +52476,12 @@ when unknown; terminal and Agent panes report it from OSC 133 marks.
 
 `zz list-hosts` lists the machines in `zz/config` with their state and version.
 `zz --host NAME VERB` runs a verb there (NAME may be an ssh destination), and
-`zz --host all VERB` runs a read-only verb on every host, prefixing lines with `NAME: `.
-Pane IDs are per host and none is yours there: always pass `-t %N`, taken from
-`list-panes -a` or from your own `new-window -d -P -F '#{pane_id}'`. Paths resolve on
-that host; `events` and `agent-send --progress` stream from it. Logins use zz’s own
-key after the first; run `zz fleet sync` when a machine joins, and
-`zz fleet install NAME` when a host has no zz, or an older one.
+`zz --host all VERB` runs a read-only verb on every host, prefixing text lines with
+`NAME: ` and adding `host_name` to JSON lines. Pane IDs are per host and none is
+yours there: always pass `-t %N`, from `list-panes -a` or your own
+`new-window -d -P -F '#{pane_id}'`. Paths resolve on that host; `events` and
+`agent-send --progress` stream from it. Logins use zz’s own key after the first; run
+`zz fleet sync` when a machine joins, `zz fleet install NAME` for a missing or old zz.
 
 ## CLI contract
 
@@ -52509,7 +52509,7 @@ mapping option names to value strings in the selected scope. Combining `-F` and
 | 2 | Usage error in a zz-native verb or extension: invalid flag, missing argument, or malformed value. |
 | 3 | Blocked or unable to answer now, including `agent-send --on-block fail`; for `run-pane`, nothing ran and a retry is safe. |
 | 124 | Wait timed out, including `wait-pane --exit`, `agent-send`, and `new-agent-session`; a child may also return 124. |
-| 125 | `run-pane` timed out, or its child returned 125; the timeout writes a diagnostic to stderr. |
+| 125 | `run-pane` typed the command and it was still running at the timeout, or its child returned 125; the timeout writes a diagnostic to stderr. |
 
 For `wait-pane`, `run-pane`, `send-text`, `agent-send`, and `new-agent-session`,
 `--timeout` takes seconds, accepts fractions such as 0.5, and 0 waits forever.
@@ -52608,10 +52608,11 @@ capped to the last 10,000 logical lines; when the start scrolled past the pane's
 send big output to a file. One run-pane runs per pane; a second waits its turn.
 Exit 3 means nothing ran, so a retry is safe: the pane stayed busy past the timeout,
 its foreground program is not a POSIX shell (`run-pane: %N is running vim, not a shell`),
-or the shell was waiting for more input such as an unclosed quote (run-pane sent C-c).
-The timeout covers echo and execution; it defaults to 120 seconds, accepts
-fractions, and 0 waits forever. On timeout,
-print partial output to stdout, write `run-pane: timed out after <N>s on %N; the command keeps running`
+the shell was waiting for more input such as an unclosed quote (run-pane sent C-c),
+or the echo never appeared (`nothing was submitted`).
+The timeout covers waiting, echo and execution; it defaults to 120 seconds, accepts
+fractions, and 0 waits forever. When the command was typed and still runs at the
+timeout, print partial output to stdout, write `run-pane: timed out after <N>s on %N; the command keeps running`
 to stderr, and exit 125. A child exit of 125 differs from a timeout only by that
 stderr line. Use a command or Control client.
 

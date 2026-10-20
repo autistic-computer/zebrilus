@@ -212,6 +212,11 @@ pub fn application_args_from(arguments: impl IntoIterator<Item = OsString>) -> V
     let mut output = Vec::new();
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
+        if argument == OsStr::new("--") {
+            output.push(RawText::from_os_str(&argument));
+            output.extend(arguments.map(|argument| RawText::from_os_str(&argument)));
+            break;
+        }
         if argument == OsStr::new("--verbose") {
             continue;
         }
@@ -339,7 +344,7 @@ pub fn prune_stall_samples(dir: &Path) {
 
 #[must_use]
 pub fn verbose_requested(arguments: &[OsString]) -> bool {
-    arguments.iter().skip(1).any(|argument| {
+    zz_flag_arguments(arguments).any(|argument| {
         argument == OsStr::new("--verbose")
             || argument == OsStr::new(INTERNAL_LOG_ARGUMENT)
             || argument
@@ -348,9 +353,16 @@ pub fn verbose_requested(arguments: &[OsString]) -> bool {
     })
 }
 
+fn zz_flag_arguments(arguments: &[OsString]) -> impl Iterator<Item = &OsString> {
+    arguments
+        .iter()
+        .skip(1)
+        .take_while(|argument| *argument != OsStr::new("--"))
+}
+
 #[must_use]
 pub fn verbose_log_path(arguments: &[OsString]) -> Option<PathBuf> {
-    let mut arguments = arguments.iter().skip(1);
+    let mut arguments = zz_flag_arguments(arguments);
     while let Some(argument) = arguments.next() {
         if argument == OsStr::new(INTERNAL_LOG_ARGUMENT) {
             return arguments.next().map(PathBuf::from);
@@ -697,6 +709,43 @@ mod tests {
         let values = arguments(&["zz", "--verbose", "--zz-verbose-log", "/tmp/a.log"]);
         assert!(verbose_requested(&values));
         assert_eq!(verbose_log_path(&values), Some(PathBuf::from("/tmp/a.log")));
+    }
+
+    #[test]
+    fn words_after_a_bare_double_dash_are_never_zz_flags() {
+        let command = arguments(&[
+            "zz",
+            "run-pane",
+            "-t",
+            "%1",
+            "--",
+            "cargo",
+            "test",
+            "--verbose",
+            "--zz-verbose-log=/tmp/a.log",
+        ]);
+        assert!(!verbose_requested(&command));
+        assert_eq!(verbose_log_path(&command), None);
+        assert_eq!(
+            application_args_from(command.into_iter().skip(1)),
+            [
+                "run-pane",
+                "-t",
+                "%1",
+                "--",
+                "cargo",
+                "test",
+                "--verbose",
+                "--zz-verbose-log=/tmp/a.log"
+            ]
+            .map(RawText::from)
+        );
+        let daemon = arguments(&["zz", "daemon", "--server-id", "1", "--verbose"]);
+        assert!(verbose_requested(&daemon));
+        assert_eq!(
+            application_args_from(daemon.into_iter().skip(1)),
+            ["daemon", "--server-id", "1"].map(RawText::from)
+        );
     }
 
     #[test]
