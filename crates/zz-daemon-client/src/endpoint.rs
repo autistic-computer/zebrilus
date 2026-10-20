@@ -51,7 +51,7 @@ use crate::unmasked::SpawnUnmasked as _;
 /// Appending leaves whatever the profile did contribute ahead of the fallbacks. A Mac app dragged
 /// out of the disk image has no CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
-fn remote_path_fallback() -> String {
+pub(crate) fn remote_path_fallback() -> String {
     format!(
         "PATH=\"$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; export PATH; \
          zz_cli={name}; if ! command -v {name} >/dev/null 2>&1; then \
@@ -71,7 +71,7 @@ pub(crate) fn remote_socket_probe(key_line: Option<&str>) -> String {
 }
 
 #[cfg(any(unix, windows, test))]
-fn remote_socket_probe_script(key_line: Option<&str>) -> String {
+pub(crate) fn remote_socket_probe_script(key_line: Option<&str>) -> String {
     let desktop_socket = format!(
         "elif [ \"$(uname -s)\" = Darwin ] && [ -S \"/tmp/{name}-$USER/default.sock\" ]; \
          then zz_dir=\"/tmp/{name}-$USER\"; ",
@@ -671,6 +671,33 @@ fn refused_login(code: Option<i32>, stderr: &[u8]) -> bool {
 }
 
 #[cfg(any(unix, windows))]
+pub(crate) fn run_remote_script(
+    endpoint: &SshEndpoint,
+    connect_timeout_seconds: u32,
+    script: &str,
+) -> io::Result<std::process::Output> {
+    #[cfg(unix)]
+    let control_path = shared_control_path(endpoint);
+    let session = SshSession {
+        #[cfg(unix)]
+        control_path: control_path.as_deref(),
+        askpass: None,
+    };
+    let connect_timeout = format!("ConnectTimeout={connect_timeout_seconds}");
+    let script = shell_quote(script);
+    let identity = zz_identity();
+    zz_key_first(identity.as_ref().map(|(path, _)| path.as_path()), |phase| {
+        ssh_script_command(
+            endpoint,
+            session,
+            phase,
+            &["BatchMode=yes", &connect_timeout],
+            &script,
+        )
+    })
+}
+
+#[cfg(any(unix, windows))]
 fn zz_identity() -> Option<(PathBuf, String)> {
     let identity = crate::ssh_key::ssh_key_path()
         .and_then(|path| crate::ssh_key::ssh_public_key().map(|line| (path, line)));
@@ -869,7 +896,7 @@ pub fn shell_quote(value: &str) -> String {
 }
 
 #[cfg(any(unix, windows, test))]
-const SSH_FAILURE_STATUS: i32 = 255;
+pub(crate) const SSH_FAILURE_STATUS: i32 = 255;
 
 #[cfg(any(unix, windows, test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -947,7 +974,7 @@ pub(crate) fn ssh_failure_hint(stderr: &str) -> Option<&'static str> {
 }
 
 #[cfg(any(unix, windows, test))]
-fn ssh_failure_reason(stderr: &str, status: &str) -> String {
+pub(crate) fn ssh_failure_reason(stderr: &str, status: &str) -> String {
     if let Some(hint) = ssh_failure_hint(stderr) {
         return hint.to_owned();
     }

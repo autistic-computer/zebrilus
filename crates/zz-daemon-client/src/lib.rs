@@ -29,6 +29,9 @@ mod client;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
 mod endpoint;
 mod fleet_hosts;
+#[cfg(any(unix, windows))]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod fleet_sync;
 #[cfg(target_os = "ios")]
 mod ios_keychain;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
@@ -73,6 +76,8 @@ pub use fleet_hosts::{
     HostEntry, RejectedHost, apply_fleet_host_entry, atomic_write, configured_fleet_hosts,
     validate_fleet_host, write_fleet_host,
 };
+#[cfg(any(unix, windows))]
+pub use fleet_sync::{SyncLine, sync_fleet};
 pub use lifecycle::{
     DaemonIdentityGuard, DaemonRecoveryError, RecoveredDaemon, daemon_identity_protocol_version,
     terminate_incompatible_daemon,
