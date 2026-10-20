@@ -277,6 +277,62 @@ fn usage_errors_keep_their_surface_status_without_a_daemon() {
 }
 
 #[test]
+fn list_hosts_reads_zz_config_without_a_daemon_or_ssh() {
+    let (home, _) = isolated_zz();
+    let config = home
+        .path()
+        .join(zz_protocol::app_identity::DIRECTORY)
+        .join("config");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(
+        &config,
+        "host-xps = ssh://demfabris@xps\nhost-gpu = quic://gpu:9922\n",
+    )
+    .unwrap();
+    let run = |arguments: &[&str]| {
+        let (_, mut zz) = isolated_zz();
+        zz.env("HOME", home.path())
+            .env("XDG_CONFIG_HOME", home.path())
+            .env_remove("TMUX")
+            .arg("-S")
+            .arg(home.path().join("absent.sock"))
+            .args(arguments)
+            .output()
+            .expect("run zz")
+    };
+
+    let listed = run(&["list-hosts", "-F", "#{host_name}: #{host_url}"]);
+    assert_eq!(listed.status.code(), Some(0));
+    assert_eq!(listed.stdout, b"xps: ssh://demfabris@xps\n");
+    assert!(
+        String::from_utf8_lossy(&listed.stderr).contains("host-gpu: "),
+        "{listed:?}"
+    );
+
+    let both = run(&["list-hosts", "--json", "-F", "x"]);
+    assert_eq!(both.status.code(), Some(2));
+    assert_eq!(
+        both.stderr,
+        b"command list-hosts: --json cannot be combined with -F\n"
+    );
+
+    let alias = run(&["fleet", "list", "--json", "-F", "x"]);
+    assert_eq!(alias.status.code(), Some(2));
+    assert_eq!(
+        alias.stderr,
+        b"zz: usage: zz fleet list [-F <format> | --json]\n"
+    );
+
+    let fleet = run(&["fleet", "list"]);
+    assert_eq!(fleet.status.code(), Some(0));
+    assert!(
+        String::from_utf8_lossy(&fleet.stdout).starts_with("xps  ssh://demfabris@xps\n\ndropped"),
+        "{fleet:?}"
+    );
+    assert!(!home.path().join("absent.sock").exists());
+}
+
+#[test]
 fn short_help_retains_tmux_usage() {
     let (_home, mut zz) = isolated_zz();
     let output = zz.arg("-h").output().expect("run zz -h");

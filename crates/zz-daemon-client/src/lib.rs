@@ -29,6 +29,12 @@ mod client;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
 mod endpoint;
 mod fleet_hosts;
+#[cfg(any(unix, windows))]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod fleet_sync;
+#[cfg(any(unix, windows))]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod host_probe;
 #[cfg(target_os = "ios")]
 mod ios_keychain;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
@@ -44,6 +50,8 @@ mod russh_prompt;
 mod russh_socks;
 #[cfg(test)]
 mod solo_tests;
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod ssh_key;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
 mod terminal_features;
 pub mod transport;
@@ -74,6 +82,10 @@ pub use fleet_hosts::{
     HostEntry, RejectedHost, apply_fleet_host_entry, atomic_write, configured_fleet_hosts,
     resolve_fleet_host, validate_fleet_host, write_fleet_host,
 };
+#[cfg(any(unix, windows))]
+pub use fleet_sync::{SyncLine, sync_fleet};
+#[cfg(any(unix, windows))]
+pub use host_probe::{HostProbe, HostStatus, probe_host};
 pub use lifecycle::{
     DaemonIdentityGuard, DaemonRecoveryError, RecoveredDaemon, daemon_identity_protocol_version,
     terminate_incompatible_daemon,
@@ -84,6 +96,7 @@ pub use paths::{
 };
 #[cfg(target_os = "ios")]
 pub use russh_client::ios_ssh_public_key;
+pub use ssh_key::{ssh_key_path, ssh_public_key};
 pub use terminal_features::{
     TERMINAL_FEATURES, terminal_colour_count, terminal_default_features, terminal_feature_mask,
     terminal_features_list,

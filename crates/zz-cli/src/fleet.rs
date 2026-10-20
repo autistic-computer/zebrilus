@@ -1,14 +1,16 @@
 use zz_config::{remove_fleet_host, write_fleet_host};
 use zz_daemon_client::{
     Endpoint, EndpointError, HostEntry, RejectedHost, RemoteInstall, configured_fleet_hosts,
-    install_remote, validate_fleet_host,
+    install_remote, ssh_public_key, sync_fleet, validate_fleet_host,
 };
 
-const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] (-a | <name>...)\n       zz fleet list [-F <format>]\n       zz fleet remove <name>";
+const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] (-a | <name>...)\n       zz fleet key\n       zz fleet list [-F <format> | --json]\n       zz fleet remove <name>\n       zz fleet sync";
 const FLEET_INSTALL_USAGE: &str = "usage: zz fleet install [--restart-daemon] (-a | <name>...)";
 const FLEET_ADD_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>";
-const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format>]";
+const FLEET_KEY_USAGE: &str = "usage: zz fleet key";
+const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format> | --json]";
 const FLEET_REMOVE_USAGE: &str = "usage: zz fleet remove <name>";
+const FLEET_SYNC_USAGE: &str = "usage: zz fleet sync";
 
 pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String, String> {
     let arguments = arguments.into_iter().collect::<Vec<_>>();
@@ -21,12 +23,28 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String,
             let (hosts, restart_daemon) = parse_fleet_install(arguments)?;
             fleet_install(&hosts, restart_daemon)
         }
-        "list" => fleet_list(parse_fleet_list(arguments)?),
+        "key" => {
+            if !arguments.is_empty() {
+                return Err(FLEET_KEY_USAGE.to_owned());
+            }
+            ssh_public_key().map_err(|error| format!("could not make the zz key: {error}"))
+        }
+        "list" => match crate::list_hosts::parse(arguments) {
+            Ok(None) => fleet_list(),
+            Ok(Some(listing)) => crate::list_hosts::output(listing),
+            Err(_) => Err(FLEET_LIST_USAGE.to_owned()),
+        },
         "remove" => {
             let [name] = arguments else {
                 return Err(FLEET_REMOVE_USAGE.to_owned());
             };
             Ok(format_forget_outcome(&forget_host(name)?))
+        }
+        "sync" => {
+            if !arguments.is_empty() {
+                return Err(FLEET_SYNC_USAGE.to_owned());
+            }
+            fleet_sync()
         }
         _ => Err(FLEET_USAGE.to_owned()),
     }
@@ -66,36 +84,14 @@ pub(crate) fn forget_host(name: &str) -> Result<ForgetOutcome, String> {
     })
 }
 
-fn parse_fleet_list(arguments: &[String]) -> Result<Option<&str>, String> {
-    match arguments {
-        [] => Ok(None),
-        [option, format] if option == "-F" => Ok(Some(format)),
-        _ => Err(FLEET_LIST_USAGE.to_owned()),
-    }
-}
-
-fn fleet_list(format: Option<&str>) -> Result<String, String> {
+fn fleet_list() -> Result<String, String> {
     let (hosts, rejected) =
         configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
     let rows = hosts
         .into_iter()
         .map(|host| (host.name, host.endpoint.to_string()))
         .collect::<Vec<_>>();
-    if let Some(format) = format {
-        return Ok(format_fleet_rows_with_format(&rows, format));
-    }
     Ok(format_fleet_listing(&rows, &rejected))
-}
-
-fn format_fleet_rows_with_format(rows: &[(String, String)], format: &str) -> String {
-    rows.iter()
-        .map(|(name, endpoint)| {
-            format
-                .replace("#{host_name}", name)
-                .replace("#{host_endpoint}", endpoint)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn format_fleet_listing(rows: &[(String, String)], rejected: &[RejectedHost]) -> String {
@@ -308,6 +304,25 @@ fn fleet_install(selection: &InstallHosts<'_>, restart_daemon: bool) -> Result<S
     }
 }
 
+fn fleet_sync() -> Result<String, String> {
+    let lines = sync_fleet().map_err(|error| format!("fleet sync: {error}"))?;
+    let failed = lines.iter().filter(|line| line.outcome.is_err()).count();
+    for line in &lines {
+        match &line.outcome {
+            Ok(text) => println!("{}: {text}", line.name),
+            Err(reason) => eprintln!("{}: {reason}", line.name),
+        }
+    }
+    if failed == 0 {
+        Ok(String::new())
+    } else {
+        Err(format!(
+            "fleet sync: {failed} of {} machines did not sync",
+            lines.len()
+        ))
+    }
+}
+
 fn fleet_add(arguments: &FleetAddArguments) -> Result<String, String> {
     write_fleet_host(&arguments.name, &arguments.endpoint)
         .map_err(|error| format!("could not write zz/config: {error}"))?;
@@ -487,23 +502,6 @@ mod tests {
     }
 
     #[test]
-    fn formatted_list_rows_use_literal_host_substitution() {
-        let rows = [
-            ("gpu".to_owned(), "ssh://gpu-box".to_owned()),
-            ("desktop".to_owned(), "ssh://desktop".to_owned()),
-        ];
-        assert_eq!(
-            format_fleet_rows_with_format(&rows, "#{host_name}=#{host_endpoint} #{unknown}",),
-            "gpu=ssh://gpu-box #{unknown}\ndesktop=ssh://desktop #{unknown}"
-        );
-        assert_eq!(
-            parse_fleet_list(&["-F".to_owned(), "#{host_name}".to_owned()]),
-            Ok(Some("#{host_name}"))
-        );
-        assert!(parse_fleet_list(&["-F".to_owned()]).is_err());
-    }
-
-    #[test]
     fn listing_names_the_lines_the_parser_dropped() {
         assert_eq!(
             format_fleet_listing(
@@ -571,6 +569,7 @@ mod tests {
             .env("ZZ_FLEET_TEST_CHILD", TEST_NAME)
             .env("ZZ_DATA_DIR", directory.path().join("data"))
             .env("XDG_CONFIG_HOME", directory.path().join("config"))
+            .env("XDG_DATA_HOME", directory.path().join("share"))
             .env("HOME", directory.path().join("home"))
             .status()
             .unwrap();
@@ -602,9 +601,33 @@ mod tests {
             "# keep\nhost-desktop = ssh://fabrico@arch-desktop # keep too\ntray = false\n"
         );
 
+        let key = run(["key".to_owned()]).unwrap();
+        assert!(
+            key.starts_with("ssh-ed25519 ") && key.contains(" zz@"),
+            "{key}"
+        );
+        assert_eq!(run(["key".to_owned()]).unwrap(), key);
+        assert_eq!(
+            run(["key".to_owned(), "-f".to_owned()]).unwrap_err(),
+            FLEET_KEY_USAGE
+        );
+
         assert_eq!(
             run(["list".to_owned()]).unwrap(),
             "desktop  ssh://fabrico@arch-desktop"
+        );
+        assert_eq!(
+            run([
+                "list".to_owned(),
+                "-F".to_owned(),
+                "#{host_name}=#{host_endpoint}#{?host_name,!,}".to_owned()
+            ])
+            .unwrap(),
+            "desktop=ssh://fabrico@arch-desktop!"
+        );
+        assert_eq!(
+            run(["list".to_owned(), "-F".to_owned()]).unwrap_err(),
+            FLEET_LIST_USAGE
         );
         assert_eq!(
             run(["remove".to_owned(), "missing".to_owned()]).unwrap_err(),
@@ -618,6 +641,14 @@ mod tests {
             "# keep\ntray = false\n"
         );
         assert_eq!(run(["list".to_owned()]).unwrap(), "");
+        assert_eq!(
+            run(["sync".to_owned()]).unwrap_err(),
+            "fleet sync: zz/config lists no ssh hosts; add one with zz fleet add NAME DEST"
+        );
+        assert_eq!(
+            run(["sync".to_owned(), "xps".to_owned()]).unwrap_err(),
+            FLEET_SYNC_USAGE
+        );
 
         assert_eq!(
             run(["remove".to_owned(), "desktop".to_owned()]).unwrap_err(),

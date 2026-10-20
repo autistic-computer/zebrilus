@@ -1771,7 +1771,9 @@ impl MuxClient {
             helper,
             move |prompt: &AskpassPrompt| {
                 let (reply, answers) = async_channel::bounded(1);
-                if requests.send_blocking((prompt.clone(), reply)).is_err() {
+                if requests.send_blocking((prompt.clone(), reply)).is_err()
+                    || prompt.kind().is_notice()
+                {
                     return AskpassReply::Cancel;
                 }
                 answers.recv_blocking().unwrap_or(AskpassReply::Cancel)
