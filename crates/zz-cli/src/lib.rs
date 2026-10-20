@@ -757,12 +757,6 @@ fn run_command_mode(
         print!("{}", top_level_help());
         return Some(ExitCode::SUCCESS);
     }
-    if canonical_command(&command) == "tools"
-        && let [flag] = invocation.args.as_slice()
-        && let Some(code) = agent_hooks::run(flag.as_str(), host.is_some())
-    {
-        return Some(code);
-    }
     if invocation.args.iter().any(|argument| argument == "--help") {
         return Some(match command_help(&command) {
             Ok(help) => {
@@ -774,6 +768,9 @@ fn run_command_mode(
                 exit_code_for(CliFailure::Server(&error))
             }
         });
+    }
+    if canonical_command(&command) == "tools" && host.is_none() && command_chain.len() == 1 {
+        return Some(agent_hooks::run(&invocation.args));
     }
     if host == Some(ALL_HOSTS) {
         return Some(run_on_every_host(arguments, &command_chain));
