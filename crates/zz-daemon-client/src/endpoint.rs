@@ -2367,8 +2367,7 @@ mod tests {
                 &bin.join(zz_protocol::app_identity::DIRECTORY),
                 "#!/bin/sh\necho 1\n",
             );
-            let outcome =
-                run_install_script(shell, home.path(), &path, &installer, false).unwrap();
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false).unwrap();
             assert_eq!(outcome.restart, RemoteRestart::NotAsked, "{shell}");
             assert!(!home.path().join("calls").exists(), "{shell}");
         }
@@ -2398,7 +2397,10 @@ mod tests {
             "--socket /run/zz.sock kill-server\n",
         );
         assert!(!home.path().join("foreign-calls").exists());
-        assert_eq!(fs::read_to_string(&foreign).unwrap(), fake_zz("1", "foreign-calls"));
+        assert_eq!(
+            fs::read_to_string(&foreign).unwrap(),
+            fake_zz("1", "foreign-calls")
+        );
     }
 
     #[cfg(unix)]
@@ -2465,9 +2467,7 @@ mod tests {
         let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
             .expect_err("a link in ~/.local/bin points at someone else's install");
         let EndpointError::RemoteInstallElsewhere {
-            path: found,
-            link,
-            ..
+            path: found, link, ..
         } = &error
         else {
             panic!("unexpected error: {error}");
@@ -2548,7 +2548,9 @@ mod tests {
             ),
             (
                 "echo 'zz: daemon I/O error; recovery failed: no daemon pid' >&2; exit 1",
-                RemoteRestart::Failed("daemon I/O error; recovery failed: no daemon pid".to_owned()),
+                RemoteRestart::Failed(
+                    "daemon I/O error; recovery failed: no daemon pid".to_owned(),
+                ),
             ),
         ] {
             write_executable(&binary, &current_zz(kill_server));
@@ -2566,8 +2568,9 @@ mod tests {
             "echo 'warning: zz is running from ~/.local; restart it after the install' >&2\n{}",
             fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string())
         );
-        let outcome = run_install_script("/bin/sh", home.path(), "/usr/bin:/bin", &installer, false)
-            .expect("install");
+        let outcome =
+            run_install_script("/bin/sh", home.path(), "/usr/bin:/bin", &installer, false)
+                .expect("install");
         assert_eq!(
             outcome.warnings,
             ["zz is running from ~/.local; restart it after the install"]

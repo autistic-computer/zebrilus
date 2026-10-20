@@ -868,7 +868,9 @@ fn run_command_mode(
                     ExitCode::SUCCESS
                 }
                 Err(error) => {
-                    eprintln!("zz: {error}");
+                    if !error.is_empty() {
+                        eprintln!("zz: {error}");
+                    }
                     exit_code_for(
                         if error.starts_with("usage:")
                             || error == "ssh destination must not start with `-`"
@@ -4126,7 +4128,10 @@ mod tests {
     #[test]
     fn zz_app_finds_the_desktop_binary_and_never_picks_the_launcher() {
         let directory = tempfile::tempdir().expect("temporary installation");
-        let directory = directory.path().canonicalize().expect("canonical directory");
+        let directory = directory
+            .path()
+            .canonicalize()
+            .expect("canonical directory");
         let name = if cfg!(windows) { "zz.exe" } else { "zz" };
         let bin = directory.join("bin");
         let lib = directory.join("lib/zz");
