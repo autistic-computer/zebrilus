@@ -225,7 +225,9 @@ root: zz owns `~/.local/bin/zz` (`$zz_managed`), plus `~/.local/lib/zz` when ins
 tarball put the app there, and leaves every other install alone. The script:
 
 1. Prints `zz-install-current=1` and downloads nothing when `"$zz_managed" --version` already
-   reports this build's version, so agents can run it any time.
+   reports this build's version and its `protocol-version` this build's protocol, so agents can run
+   it any time. Builds from main keep the release's version across protocol bumps, so the version
+   alone would leave such a copy in place.
 2. Otherwise looks at the managed path. Missing or a regular file: `sh -s -- --headless --version
    <this build's version>` (`zz-install-mode=headless`), whatever else is on PATH. A deb or pacman
    `/usr/bin/zz`, a Homebrew or `/Applications` app, a cargo copy all stay, and the managed copy wins
@@ -239,9 +241,11 @@ tarball put the app there, and leaves every other install alone. The script:
 3. Runs the managed copy's `protocol-version`. A binary that cannot start there (an older glibc,
    say) exits 6 with its stderr.
 4. With `restart_daemon`, runs the managed copy's `kill-server` only when that protocol matches this
-   build and prints its status as `zz-install-restart=<n>`; the daemon starts again on the next
-   connection. kill-server saying there was no server reads as nothing to restart, and any other
-   failure is reported instead of swallowed. Last comes `zz-install-protocol=<n>`.
+   build and prints its status as `zz-install-restart=<n>`, with each line kill-server wrote to
+   stderr as `zz-install-restart-error=<line>`; the daemon starts again on the next connection.
+   kill-server saying there was no server reads as nothing to restart, and any other failure is
+   reported with its last line (or its exit status), never a login banner or an installer warning
+   from the same session. Last comes `zz-install-protocol=<n>`.
 
 `install_remote` returns a `RemoteInstall`: what it did (`Current`, `Headless`, `Desktop`), the
 restart (`NotAsked`, `Restarted`, `NotRunning`, `Failed`), and install.sh's `warning:` lines, which
@@ -258,9 +262,12 @@ GitHub releases. The Linux headless build targets glibc 2.28 (see [zz-cli](/crat
 The GUI maps `RemoteBinaryMissing` to `HostState::Missing` and installs right away, without a
 restart, once per host per run (Reconnect allows another try), never in dev builds; the row reads
 installing and a toast reports the summary. Replacing a binary ends nothing; restarting a daemon
-ends its sessions, so only that is asked. `Incompatible` carries an optional remote protocol: an
-older one, the same protocol from an older build, `RemoteProtocolUnknown` and a daemon of unknown
-version all offer **Update**. Offers collect in `MuxClient::update_offers`; the first emits
+ends its sessions, so only that is asked. Choosing a host that still lacks zz in the palette or the
+sidebar installs at once (`MuxClient::install_or_retry_host`), so a dev build answers with its
+refusal instead of a silent re-dial. `Incompatible` carries an optional remote protocol: an older
+one, the same protocol from an older build and `RemoteProtocolUnknown` all offer **Update**. The
+local daemon's `IncompatibleDaemon { daemon: None }` (an identity file too old to name its protocol)
+stays an unreachable row with its own message. Offers collect in `MuxClient::update_offers`; the first emits
 `RemoteInstallOffer`, and the workspace opens one dialog whose title and text read the list every
 frame, so hosts that report later join it. **Update and restart** installs on all of them with a
 restart; closing the dialog clears the list. The host row's menu keeps **Install zz** (runs at once)

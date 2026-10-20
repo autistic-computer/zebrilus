@@ -182,10 +182,15 @@ fn decoded_message_channel() -> (
 
 fn connect_error_state(error: &DaemonError) -> HostState {
     if let DaemonError::IncompatibleDaemon { daemon, client } = error {
-        return HostState::Incompatible {
-            local: *client,
-            remote: *daemon,
-        };
+        return daemon.map_or_else(
+            || HostState::Unreachable {
+                reason: error.to_string(),
+            },
+            |daemon| HostState::Incompatible {
+                local: *client,
+                remote: Some(daemon),
+            },
+        );
     }
     let mut ssh_reason = None;
     let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
@@ -248,20 +253,18 @@ fn connect_result_state<T>(result: &Result<T, DaemonError>) -> HostState {
 }
 
 fn install_notification(name: &str, outcome: &RemoteInstall) -> (ClientMessageKind, String) {
-    let summary = format!("{name}: {}", outcome.summary());
-    if matches!(outcome.restart, RemoteRestart::Failed(_)) {
-        (ClientMessageKind::Error, summary)
+    let kind = if matches!(outcome.restart, RemoteRestart::Failed(_)) {
+        ClientMessageKind::Error
     } else if outcome.warnings.is_empty() {
-        (ClientMessageKind::Success, summary)
+        ClientMessageKind::Success
     } else {
-        (
-            ClientMessageKind::Warning,
-            std::iter::once(summary)
-                .chain(outcome.warnings.iter().cloned())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        )
-    }
+        ClientMessageKind::Warning
+    };
+    let text = std::iter::once(format!("{name}: {}", outcome.summary()))
+        .chain(outcome.warnings.iter().cloned())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (kind, text)
 }
 
 fn reconnect_timer_is_current(connection: &HostConnection, generation: u64, attempt: u32) -> bool {
@@ -1706,6 +1709,18 @@ impl MuxClient {
             }
         }
         self.ensure_connected(host, cx);
+    }
+
+    pub(crate) fn install_or_retry_host(&mut self, host: HostId, cx: &mut Context<Self>) {
+        if self
+            .connections
+            .get(&host)
+            .is_some_and(|connection| connection.state == HostState::Missing)
+        {
+            self.install_zz_on_host(host, cx);
+        } else {
+            self.retry_host_now(host, cx);
+        }
     }
 
     pub(crate) fn note_ssh_auth_declined(&mut self, host: HostId, cx: &mut Context<Self>) {
@@ -5583,15 +5598,11 @@ mod tests {
             daemon: None,
             client: PROTOCOL_VERSION,
         }));
-        assert_eq!(
-            state,
-            HostState::Incompatible {
-                local: PROTOCOL_VERSION,
-                remote: None,
-            }
-        );
-        assert_eq!(state.install_offer(), Some(InstallOffer::Update));
-        assert!(!state.failure_detail().unwrap().contains("v0"));
+        let HostState::Unreachable { reason } = state else {
+            panic!("an unknown daemon protocol must remain readable, got {state:?}");
+        };
+        assert!(reason.contains("older than this zz"));
+        assert!(!reason.contains("v0"));
 
         assert_eq!(
             connect_result_state(&Err::<(), _>(DaemonError::from(
@@ -5935,6 +5946,14 @@ mod tests {
             usize::from(auto),
             "a host still missing after its install gets no second attempt this run"
         );
+
+        cx.update(|cx| mux.update(cx, |mux, cx| mux.install_or_retry_host(desk, cx)));
+        assert_eq!(
+            requests(cx).last(),
+            Some(&(desk, false)),
+            "asking for the missing host installs at once, in dev builds too"
+        );
+        assert_eq!(state(cx), HostState::Installing);
     }
 
     #[zz_gpui::test]
@@ -5967,10 +5986,11 @@ mod tests {
                 fail_connect(
                     mux,
                     ubuntu,
-                    DaemonError::IncompatibleDaemon {
-                        daemon: None,
+                    DaemonError::from(EndpointError::RemoteProtocolMismatch {
+                        target: "ssh://ubuntu".to_owned(),
+                        daemon: PROTOCOL_VERSION - 1,
                         client: PROTOCOL_VERSION,
-                    },
+                    }),
                     cx,
                 );
                 fail_connect(
@@ -6047,10 +6067,18 @@ mod tests {
         assert_eq!(
             install_notification(
                 "xps",
-                &outcome(RemoteRestart::Failed("recovery failed".to_owned()), &[])
+                &outcome(
+                    RemoteRestart::Failed("recovery failed".to_owned()),
+                    &["restart it"]
+                )
+            ),
+            (
+                ClientMessageKind::Error,
+                format!(
+                    "xps: zz {version} installed (headless), but its daemon did not stop: \
+                     recovery failed\nrestart it"
+                )
             )
-            .0,
-            ClientMessageKind::Error
         );
     }
 
