@@ -293,8 +293,23 @@ fn command_failure(error: ServerError, output: RawText) -> DaemonError {
     }
 }
 
-fn exec_environment() -> ClientEnvironmentBlob {
-    exec_environment_with(std::env::vars_os())
+fn exec_environment(facts: EndpointFactsScope) -> ClientEnvironmentBlob {
+    exec_environment_with(scoped_environment(facts, std::env::vars_os()))
+}
+
+/// What a remote daemon gets of this machine's environment: enough to pick terminal features and
+/// a locale. `SSH_AUTH_SOCK`, `DISPLAY` and the rest name things only this machine has, and the
+/// daemon's `update-environment` would put them into that host's panes.
+const REMOTE_ENVIRONMENT: [&str; 5] = ["TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"];
+
+fn scoped_environment(
+    facts: EndpointFactsScope,
+    environment: impl IntoIterator<Item = (OsString, OsString)>,
+) -> impl Iterator<Item = (OsString, OsString)> {
+    let remote = facts.is_remote();
+    environment
+        .into_iter()
+        .filter(move |(name, _)| !remote || REMOTE_ENVIRONMENT.iter().any(|keep| name == keep))
 }
 
 fn exec_environment_with<I, K, V>(environment: I) -> ClientEnvironmentBlob
@@ -385,7 +400,7 @@ impl CommandRoute {
             spawned_server_id,
             expect_server_id,
             process_id: std::process::id(),
-            environment: exec_environment(),
+            environment: exec_environment(self.facts),
             commands,
             raw_control_line: None,
         }
@@ -2894,8 +2909,8 @@ fn logical_current_dir() -> Option<PathBuf> {
     }
 }
 
-fn client_environment() -> Vec<RawText> {
-    client_environment_with(std::env::vars_os())
+fn client_environment(facts: EndpointFactsScope) -> Vec<RawText> {
+    client_environment_with(scoped_environment(facts, std::env::vars_os()))
 }
 
 /// The caller's environment as the bytes the OS gave it. A Unix name and value
@@ -3136,7 +3151,7 @@ fn connect_stream_hello<S: TransportStream>(
             .flatten()
             .and_then(|pane| pane.parse().ok()),
         working_directory: client_working_directory(client_facts, logical_current_dir),
-        environment: client_environment(),
+        environment: client_environment(client_facts),
         process_id: std::process::id(),
     };
     if kind == ClientKind::Command {
@@ -3389,8 +3404,8 @@ mod tests {
     use super::{
         CallerTtyScope, EndpointFactsScope, MAX_CLIENT_FEATURE_SPECS, attach_session_command,
         client_environment_with, client_features_capabilities, client_takes_utf8,
-        client_working_directory, startup_config_owner_capability, terminal_facts_capabilities,
-        terminal_facts_capabilities_with,
+        client_working_directory, scoped_environment, startup_config_owner_capability,
+        terminal_facts_capabilities, terminal_facts_capabilities_with,
     };
 
     static SIGTERM_DISPOSITION: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -3570,6 +3585,43 @@ mod tests {
                 client_working_directory(scope, || Some(fixture.clone())),
                 ClientPath::from_path(&fixture)
             );
+        }
+    }
+
+    #[test]
+    fn remote_scopes_send_only_terminal_and_locale_names() {
+        let environment = [
+            ("TERM", "xterm-ghostty"),
+            ("COLORTERM", "truecolor"),
+            ("LANG", "en_US.UTF-8"),
+            ("LC_ALL", "C.UTF-8"),
+            ("LC_CTYPE", "UTF-8"),
+            ("SSH_AUTH_SOCK", "/var/run/com.apple.launchd.x/Listeners"),
+            ("DISPLAY", ":0"),
+            ("ZZ_PANE", "%3"),
+            ("TERMINFO", "/Applications/zz.app/terminfo"),
+        ]
+        .map(|(name, value)| (OsString::from(name), OsString::from(value)));
+        let names = |facts| {
+            scoped_environment(facts, environment.clone())
+                .map(|(name, _)| name.into_string().unwrap())
+                .collect::<Vec<_>>()
+        };
+        for facts in [
+            EndpointFactsScope::None,
+            EndpointFactsScope::PortableTerminalSize,
+        ] {
+            assert_eq!(
+                names(facts),
+                ["TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"]
+            );
+        }
+        for facts in [
+            EndpointFactsScope::LocalHostWorkingDirectory,
+            EndpointFactsScope::LocalControlTerminalIdentity,
+            EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal,
+        ] {
+            assert_eq!(names(facts).len(), environment.len());
         }
     }
 
