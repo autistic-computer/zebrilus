@@ -180,7 +180,14 @@ fn list_hosts_reads_zz_config_without_a_daemon_or_ssh() {
     assert_eq!(both.status.code(), Some(2));
     assert_eq!(
         both.stderr,
-        b"zz: command list-hosts: --json cannot be combined with -F\n"
+        b"command list-hosts: --json cannot be combined with -F\n"
+    );
+
+    let alias = run(&["fleet", "list", "--json", "-F", "x"]);
+    assert_eq!(alias.status.code(), Some(2));
+    assert_eq!(
+        alias.stderr,
+        b"zz: usage: zz fleet list [-F <format> | --json]\n"
     );
 
     let fleet = run(&["fleet", "list"]);

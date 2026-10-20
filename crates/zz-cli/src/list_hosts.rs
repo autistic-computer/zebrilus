@@ -34,6 +34,10 @@ pub(crate) fn run(arguments: &[String]) -> ExitCode {
                 }
             }
         }
+        Err(error) if error == JSON_WITH_FORMAT => {
+            eprintln!("{error}");
+            crate::exit_code_for(crate::CliFailure::Usage)
+        }
         Err(usage) => {
             eprintln!("zz: {usage}");
             crate::exit_code_for(crate::CliFailure::Usage)

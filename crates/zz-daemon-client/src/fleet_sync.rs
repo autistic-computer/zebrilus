@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     fs, io,
     net::{Ipv4Addr, SocketAddr, TcpStream},
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
     thread,
     time::Duration,
 };
@@ -99,6 +99,7 @@ struct FleetHost {
 struct Hub {
     name: String,
     key: String,
+    hosts: Vec<(String, String)>,
     entry: Option<(String, String)>,
     known_hosts: Vec<KnownHost>,
 }
@@ -132,6 +133,10 @@ impl Hub {
         Ok(Self {
             name,
             key,
+            hosts: hosts
+                .iter()
+                .map(|host| (host.name.clone(), host.endpoint.to_string()))
+                .collect(),
             entry,
             known_hosts,
         })
@@ -178,6 +183,10 @@ fn own_host_keys(name: &str) -> Vec<KnownHost> {
         .collect()
 }
 
+fn tcsh_safe(text: &str) -> bool {
+    !text.contains('!')
+}
+
 fn known_host(name: &str, lookup: &str, line: &str) -> Option<KnownHost> {
     let mut fields = line.split_whitespace();
     let (hosts, kind, key) = (fields.next()?, fields.next()?, fields.next()?);
@@ -191,7 +200,8 @@ fn known_host(name: &str, lookup: &str, line: &str) -> Option<KnownHost> {
     let base64 = key
         .bytes()
         .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='));
-    (!hosts.starts_with(['@', '#']) && printable(hosts) && key_type && base64).then(|| KnownHost {
+    let plain = !hosts.starts_with(['@', '#']) && !hosts.contains(['*', '?', '!']);
+    (plain && printable(hosts) && tcsh_safe(lookup) && key_type && base64).then(|| KnownHost {
         name: name.to_owned(),
         lookup: lookup.to_owned(),
         line: format!("{hosts} {kind} {key}"),
@@ -262,6 +272,7 @@ struct HostPlan {
     host_lines: Vec<(String, String)>,
     known_hosts: Vec<KnownHost>,
     unwritable_hosts: usize,
+    unsafe_hosts: usize,
 }
 
 fn plan_host(
@@ -288,10 +299,11 @@ fn plan_host(
         .filter_map(|(_, url)| destination_host(url))
         .chain([host.endpoint.host.to_ascii_lowercase()])
         .collect::<HashSet<_>>();
-    let candidates = fleet
+    let (candidates, unsafe_hosts) = hub
+        .hosts
         .iter()
-        .filter(|(other, _)| other.name != host.name)
-        .map(|(other, _)| (other.name.clone(), other.endpoint.to_string()))
+        .filter(|(name, _)| *name != host.name)
+        .cloned()
         .chain(hub.entry.clone())
         .filter(|(name, url)| {
             !names.contains(name.as_str())
@@ -301,7 +313,7 @@ fn plan_host(
             let destination = url.strip_prefix("ssh://").unwrap_or(&url).to_owned();
             (name, destination)
         })
-        .collect::<Vec<_>>();
+        .partition::<Vec<_>, _>(|(name, destination)| tcsh_safe(name) && tcsh_safe(destination));
     let (host_lines, unwritable_hosts) = if facts.zz {
         (candidates, 0)
     } else {
@@ -317,6 +329,7 @@ fn plan_host(
             .cloned()
             .collect(),
         unwritable_hosts,
+        unsafe_hosts: unsafe_hosts.len(),
     }
 }
 
@@ -395,7 +408,7 @@ struct Tally {
 }
 
 impl Tally {
-    fn of(stdout: &str, prefix: &str) -> Self {
+    fn of(stdout: &str, prefix: &str, expected: usize) -> Self {
         let mut tally = Self::default();
         for value in stdout
             .lines()
@@ -407,6 +420,7 @@ impl Tally {
                 _ => tally.failed += 1,
             }
         }
+        tally.failed += expected.saturating_sub(tally.added + tally.present + tally.failed);
         tally
     }
 }
@@ -419,12 +433,12 @@ struct Applied {
 }
 
 impl Applied {
-    fn of(stdout: &[u8]) -> Self {
+    fn of(stdout: &[u8], plan: &HostPlan) -> Self {
         let stdout = String::from_utf8_lossy(stdout);
         Self {
-            keys: Tally::of(&stdout, "zz-probe-key="),
-            hosts: Tally::of(&stdout, HOST_LINE_PREFIX),
-            known_hosts: Tally::of(&stdout, "zz-sync-known="),
+            keys: Tally::of(&stdout, "zz-probe-key=", plan.keys.len()),
+            hosts: Tally::of(&stdout, HOST_LINE_PREFIX, plan.host_lines.len()),
+            known_hosts: Tally::of(&stdout, "zz-sync-known=", plan.known_hosts.len()),
         }
     }
 }
@@ -441,7 +455,21 @@ fn apply(endpoint: &SshEndpoint, plan: &HostPlan) -> Result<Applied, String> {
             &output.status.to_string(),
         ));
     }
-    Ok(Applied::of(&output.stdout))
+    applied(&output, plan)
+}
+
+fn applied(output: &Output, plan: &HostPlan) -> Result<Applied, String> {
+    if output.status.success() {
+        return Ok(Applied::of(&output.stdout, plan));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map_or_else(|| output.status.to_string(), ToOwned::to_owned);
+    Err(format!("the sync script stopped early: {detail}"))
 }
 
 fn summary(facts: &HostFacts, plan: &HostPlan, applied: &Applied) -> Result<String, String> {
@@ -449,8 +477,7 @@ fn summary(facts: &HostFacts, plan: &HostPlan, applied: &Applied) -> Result<Stri
     match facts.hub_key {
         Some(KeyEnrollment::Added) => keys.added += 1,
         Some(KeyEnrollment::Present) => keys.present += 1,
-        Some(KeyEnrollment::Failed) => keys.failed += 1,
-        None => {}
+        Some(KeyEnrollment::Failed) | None => keys.failed += 1,
     }
     let known = facts.hosts.len() + applied.hosts.added;
     let text = format!(
@@ -481,6 +508,12 @@ fn summary(facts: &HostFacts, plan: &HostPlan, applied: &Applied) -> Result<Stri
         problems.push(format!(
             "zz is not installed there to learn {}",
             count(plan.unwritable_hosts, "host")
+        ));
+    }
+    if plan.unsafe_hosts > 0 {
+        problems.push(format!(
+            "skipped {} whose name or destination has a !",
+            count(plan.unsafe_hosts, "host")
         ));
     }
     if problems.is_empty() {
@@ -525,7 +558,7 @@ fn trust_locally(keys: &[String]) -> Result<String, String> {
         .stdin(Stdio::null())
         .output_unmasked()
         .map_err(|error| format!("could not run sh: {error}"))?;
-    let keys = Applied::of(&output.stdout).keys;
+    let keys = applied(&output, &plan)?.keys;
     let text = trust_text(keys);
     if keys.failed > 0 {
         Err(format!(
@@ -538,8 +571,9 @@ fn trust_locally(keys: &[String]) -> Result<String, String> {
 }
 
 #[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
 fn trust_locally(_: &[String]) -> Result<String, String> {
-    Err("trusting the other machines' keys here is not supported on this platform".to_owned())
+    Ok("skipped; zz does not manage this machine's authorized_keys on Windows".to_owned())
 }
 
 fn in_parallel<'a, T: Sync, R: Send>(items: &'a [T], work: impl Fn(&'a T) -> R + Sync) -> Vec<R> {
@@ -557,7 +591,11 @@ fn in_parallel<'a, T: Sync, R: Send>(items: &'a [T], work: impl Fn(&'a T) -> R +
 
 #[cfg(all(test, unix))]
 mod tests {
-    use std::{os::unix::fs::PermissionsExt as _, path::Path};
+    use std::{
+        os::unix::{fs::PermissionsExt as _, process::ExitStatusExt as _},
+        path::Path,
+        process::ExitStatus,
+    };
 
     use super::*;
 
@@ -592,10 +630,14 @@ mod tests {
         known_host(name, name, &format!("{name} ssh-ed25519 AAAA{name}")).unwrap()
     }
 
-    fn hub() -> Hub {
+    fn hub(hosts: &[&FleetHost]) -> Hub {
         Hub {
             name: "macbook".to_owned(),
             key: HUB_KEY.to_owned(),
+            hosts: hosts
+                .iter()
+                .map(|host| (host.name.clone(), host.endpoint.to_string()))
+                .collect(),
             entry: Some(("macbook".to_owned(), "ssh://demfabris@macbook".to_owned())),
             known_hosts: ["xps", "ubuntu", "alienware", "macbook"]
                 .into_iter()
@@ -613,10 +655,11 @@ mod tests {
 
     #[test]
     fn each_host_learns_the_other_keys_hosts_and_host_keys_it_lacks() {
-        let hub = hub();
         let xps = fleet_host("xps", "ssh://demfabris@xps");
         let ubuntu = fleet_host("ubuntu", "ssh://ubuntu");
         let alienware = fleet_host("alienware", "ssh://alienware:2222");
+        let gpu = fleet_host("gpu", "ssh://gpu");
+        let hub = hub(&[&xps, &ubuntu, &alienware, &gpu]);
         let xps_facts = facts(Some(XPS_KEY), &[("macbook", "ssh://macbook")]);
         let ubuntu_facts = facts(Some(UBUNTU_KEY), &[]);
         let alienware_facts = facts(
@@ -636,8 +679,12 @@ mod tests {
         assert_eq!(plan.keys, [UBUNTU_KEY, ALIENWARE_KEY]);
         assert_eq!(
             names(&plan),
-            [("ubuntu", "ubuntu"), ("alienware", "alienware:2222")],
-            "a name xps already has stays as xps wrote it"
+            [
+                ("ubuntu", "ubuntu"),
+                ("alienware", "alienware:2222"),
+                ("gpu", "gpu")
+            ],
+            "a name xps already has stays as xps wrote it, and gpu is listed though it was not reached"
         );
         assert_eq!(
             plan.known_hosts
@@ -655,6 +702,7 @@ mod tests {
             [
                 ("xps", "demfabris@xps"),
                 ("alienware", "alienware:2222"),
+                ("gpu", "gpu"),
                 ("macbook", "demfabris@macbook"),
             ]
         );
@@ -662,17 +710,21 @@ mod tests {
         let plan = plan_host(&hub, &alienware, &alienware_facts, &fleet);
         assert_eq!(
             names(&plan),
-            [("xps", "demfabris@xps"), ("ubuntu", "ubuntu")],
+            [
+                ("xps", "demfabris@xps"),
+                ("ubuntu", "ubuntu"),
+                ("gpu", "gpu")
+            ],
             "this machine is already there as mac, and box is alienware itself"
         );
     }
 
     #[test]
     fn a_host_without_zz_still_gets_keys_and_says_what_it_could_not_learn() {
-        let mut hub = hub();
-        hub.entry = None;
         let xps = fleet_host("xps", "ssh://xps");
         let ubuntu = fleet_host("ubuntu", "ssh://ubuntu");
+        let mut hub = hub(&[&xps, &ubuntu]);
+        hub.entry = None;
         let mut xps_facts = facts(Some(XPS_KEY), &[]);
         xps_facts.zz = false;
         let ubuntu_facts = facts(Some(UBUNTU_KEY), &[]);
@@ -706,11 +758,11 @@ mod tests {
             ),
             [XPS_KEY, UBUNTU_KEY]
         );
-        let hub = hub();
         let xps = fleet_host("xps", "ssh://xps");
+        let twin = fleet_host("twin", "ssh://twin");
+        let hub = hub(&[&xps, &twin]);
         let xps_facts = facts(Some(XPS_KEY), &[]);
         let shared = facts(Some(HUB_KEY), &[]);
-        let twin = fleet_host("twin", "ssh://twin");
         assert_eq!(
             local_keys(&hub, &[(&xps, &xps_facts), (&twin, &shared)]),
             [XPS_KEY]
@@ -782,9 +834,79 @@ mod tests {
             "xps ssh-ed25519",
             "xps rsa AAAA",
             "xps ssh-ed25519 AAAA;rm",
+            "* ssh-ed25519 AAAA",
+            "*.ts.net,xps ssh-ed25519 AAAA",
+            "xps,!xps-old ssh-ed25519 AAAA",
+            "xps? ssh-ed25519 AAAA",
         ] {
             assert_eq!(known_host("xps", "xps", rejected), None, "{rejected}");
         }
+        assert_eq!(known_host("x!y", "x!y", "x!y ssh-ed25519 AAAA"), None);
+    }
+
+    #[test]
+    fn a_host_whose_name_or_destination_has_a_bang_is_skipped_and_reported() {
+        let xps = fleet_host("xps", "ssh://xps");
+        let bang = fleet_host("bang!", "ssh://bang");
+        let odd = fleet_host("odd", "ssh://me!@odd");
+        let mut hub = hub(&[&xps, &bang, &odd]);
+        hub.entry = None;
+        let xps_facts = facts(Some(XPS_KEY), &[]);
+        let plan = plan_host(&hub, &xps, &xps_facts, &[(&xps, &xps_facts)]);
+        assert!(plan.host_lines.is_empty());
+        assert_eq!(plan.unsafe_hosts, 2);
+        assert_eq!(
+            summary(&xps_facts, &plan, &Applied::default()),
+            Err(
+                "trusts 1 zz key (+1), knows 0 hosts (+0); skipped 2 hosts whose name or \
+                 destination has a !"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn an_apply_that_stops_early_or_skips_a_step_is_a_failure() {
+        let plan = HostPlan {
+            keys: vec![UBUNTU_KEY.to_owned()],
+            host_lines: vec![("ubuntu".to_owned(), "ubuntu".to_owned())],
+            known_hosts: vec![known("ubuntu")],
+            ..HostPlan::default()
+        };
+        let output = |code: i32, stdout: &[u8], stderr: &[u8]| Output {
+            status: ExitStatus::from_raw(code << 8),
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+        };
+        assert_eq!(
+            applied(&output(1, b"", b"xps: Event not found.\n"), &plan),
+            Err("the sync script stopped early: xps: Event not found.".to_owned())
+        );
+        assert_eq!(
+            applied(&output(2, b"", b""), &plan),
+            Err("the sync script stopped early: exit status: 2".to_owned())
+        );
+        let partial = applied(&output(0, b"zz-probe-key=added\n", b""), &plan).unwrap();
+        assert_eq!(
+            (
+                partial.keys.added,
+                partial.hosts.failed,
+                partial.known_hosts.failed
+            ),
+            (1, 1, 1)
+        );
+        let facts = facts(Some(XPS_KEY), &[]);
+        assert!(summary(&facts, &plan, &partial).is_err());
+        let mut silent = facts.clone();
+        silent.hub_key = None;
+        assert_eq!(
+            summary(&silent, &HostPlan::default(), &Applied::default()),
+            Err(
+                "trusts 0 zz keys (+0), knows 0 hosts (+0); could not add 1 zz key to \
+                 ~/.ssh/authorized_keys"
+                    .to_owned()
+            )
+        );
     }
 
     #[test]
@@ -793,13 +915,16 @@ mod tests {
         let applied = Applied::of(
             b"zz-probe-key=added\nzz-probe-key=added\nzz-sync-host=added\nzz-sync-host=added\n\
               zz-sync-known=present\n",
+            &HostPlan::default(),
         );
         assert_eq!(
             summary(&facts, &HostPlan::default(), &applied),
             Ok("trusts 3 zz keys (+3), knows 3 hosts (+2)".to_owned())
         );
-        let applied =
-            Applied::of(b"zz-probe-key=failed\nzz-sync-host=failed\nzz-sync-known=failed\n");
+        let applied = Applied::of(
+            b"zz-probe-key=failed\nzz-sync-host=failed\nzz-sync-known=failed\n",
+            &HostPlan::default(),
+        );
         assert_eq!(
             summary(&facts, &HostPlan::default(), &applied),
             Err(
@@ -839,13 +964,13 @@ mod tests {
                 ("macbook".to_owned(), "demfabris@macbook".to_owned()),
             ],
             known_hosts: vec![known("ubuntu"), known("macbook")],
-            unwritable_hosts: 0,
+            ..HostPlan::default()
         };
         let ssh = home.path().join(".ssh");
         fs::create_dir_all(&ssh).unwrap();
         fs::write(ssh.join("known_hosts"), "macbook ssh-ed25519 AAAAmacbook").unwrap();
-        let run = || {
-            let output = Command::new("/bin/sh")
+        let run = |login_shell: &str| {
+            let output = Command::new(login_shell)
                 .args([
                     "-c",
                     &format!("sh -c {}", shell_quote(&apply_script(&plan))),
@@ -854,11 +979,11 @@ mod tests {
                 .env("PATH", &path)
                 .output()
                 .unwrap();
-            assert!(output.status.success(), "{output:?}");
-            Applied::of(&output.stdout)
+            assert!(output.status.success(), "{login_shell}: {output:?}");
+            applied(&output, &plan).unwrap()
         };
 
-        let first = run();
+        let first = run("/bin/sh");
         assert_eq!(
             (first.keys.added, first.hosts.added, first.known_hosts),
             (
@@ -871,7 +996,12 @@ mod tests {
                 }
             )
         );
-        let second = run();
+        let tcsh = Path::new("/bin/tcsh");
+        let second = run(if tcsh.exists() {
+            "/bin/tcsh"
+        } else {
+            "/bin/sh"
+        });
         assert_eq!(
             (
                 second.keys.present,
