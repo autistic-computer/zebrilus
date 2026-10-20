@@ -737,18 +737,21 @@ impl Style {
             CornerRadiusMode::Fixed => requested_radii.clamp_radii_for_quad_size(bounds.size),
         };
 
-        window.paint_drop_shadows_with_smoothing(
-            bounds,
-            corner_radii,
-            &self.box_shadow,
-            self.corner_smoothing,
-        );
-
         if let Some(material) = &self.glass {
-            window.paint_glass_with_smoothing(
+            window.paint_glass_with_shadows(
+                crate::GlassShape {
+                    bounds,
+                    corner_radii,
+                },
+                material,
+                self.corner_smoothing,
+                &self.box_shadow,
+            );
+        } else {
+            window.paint_drop_shadows_with_smoothing(
                 bounds,
                 corner_radii,
-                material,
+                &self.box_shadow,
                 self.corner_smoothing,
             );
         }

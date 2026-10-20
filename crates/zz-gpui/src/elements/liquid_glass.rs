@@ -148,7 +148,7 @@ impl LiquidGlass {
     }
 
     /// Shadows cast by the glass itself, following it as it swells, drags,
-    /// and morphs. They are painted under it, so the rim lenses them.
+    /// and morphs.
     pub fn glass_shadow(mut self, shadows: Vec<BoxShadow>) -> Self {
         self.shadows = shadows;
         self
@@ -502,18 +502,11 @@ impl Element for LiquidGlass {
     ) {
         let presence = frame.presence;
         if presence > 0.001 && !frame.grouped {
-            if !frame.shadows.is_empty() {
-                window.paint_drop_shadows(
-                    frame.shape.bounds,
-                    frame.shape.corner_radii,
-                    &frame.shadows,
-                );
-            }
-            window.paint_glass_with_smoothing(
-                frame.shape.bounds,
-                frame.shape.corner_radii,
+            window.paint_glass_with_shadows(
+                frame.shape,
                 &frame.material,
                 self.corner_smoothing,
+                &frame.shadows,
             );
         }
         // Gone glass paints nothing, so its content takes no input either.
@@ -715,12 +708,14 @@ impl Element for GlassGroup {
         window: &mut Window,
         cx: &mut App,
     ) {
-        for glass in grouped.iter() {
-            if !glass.shadows.is_empty() {
-                window.paint_drop_shadows(
+        let supports_glass = window.supports_backdrop_sampling();
+        if !supports_glass {
+            for glass in grouped.iter() {
+                window.paint_drop_shadows_with_smoothing(
                     glass.shape.bounds,
                     glass.shape.corner_radii,
                     &glass.shadows,
+                    glass.corner_smoothing,
                 );
             }
         }
@@ -758,6 +753,17 @@ impl Element for GlassGroup {
             }
             let corner_smoothing = body.first().and_then(|glass| glass.corner_smoothing);
             window.paint_glass_shapes_with_smoothing(&shapes, &material, corner_smoothing);
+            if supports_glass && body.iter().any(|glass| !glass.shadows.is_empty()) {
+                let glass = window.glass_primitive(&shapes, &material, corner_smoothing);
+                for child in body {
+                    window.paint_glass_shadows(
+                        &glass,
+                        child.shape,
+                        &child.shadows,
+                        child.corner_smoothing,
+                    );
+                }
+            }
         }
         content.paint(window, cx);
     }
@@ -957,5 +963,66 @@ mod tests {
         };
         assert_eq!(bodies(false, cx), vec![1, 1, 1]);
         assert_eq!(bodies(true, cx), vec![3]);
+    }
+
+    struct Shadowed {
+        kind: u8,
+    }
+
+    impl Render for Shadowed {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let shadow = BoxShadow {
+                color: crate::black(),
+                offset: point(px(2.), px(3.)),
+                blur_radius: px(4.),
+                spread_radius: px(1.),
+                inset: false,
+            };
+            let material = GlassMaterial::regular().merge(px(12.));
+            if self.kind == 0 {
+                return div()
+                    .size(px(40.))
+                    .rounded_full()
+                    .glass(material)
+                    .shadow(vec![shadow])
+                    .into_any_element();
+            }
+            let buttons = (0usize..if self.kind == 1 { 1 } else { 3 }).map(|index| {
+                liquid_glass(("shadowed", index), material)
+                    .appear(false)
+                    .size(px(40.))
+                    .rounded_full()
+                    .glass_shadow(vec![shadow.clone()])
+            });
+            let row = div().flex().gap(px(4.)).children(buttons);
+            if self.kind == 2 {
+                glass_group("shadowed-group", material)
+                    .child(row)
+                    .into_any_element()
+            } else {
+                row.into_any_element()
+            }
+        }
+    }
+
+    #[crate::test]
+    fn glass_surfaces_paint_their_own_shadows_after_the_clean_body(cx: &mut TestAppContext) {
+        for kind in 0..3 {
+            let (_, cx) = cx.add_window_view(move |_, _| Shadowed { kind });
+            cx.run_until_parked();
+            let glasses = cx.update(|window, _| window.painted_glasses());
+            let count = if kind == 2 { 3 } else { 1 };
+            assert_eq!(glasses.len(), count + 1);
+            let body = &glasses[0];
+            assert!(body.shadow.is_none());
+            assert_eq!(body.shape_count as usize, count);
+            for shadow in &glasses[1..] {
+                assert!(shadow.shadow.is_some());
+                assert!(!shadow.reads_backdrop());
+                assert_eq!(shadow.shape_count, body.shape_count);
+                assert_eq!(shadow.shapes, body.shapes);
+                assert!(shadow.order >= body.order);
+            }
+        }
     }
 }

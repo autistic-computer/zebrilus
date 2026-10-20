@@ -4,7 +4,7 @@ title: zz-gpui
 description: zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 resource: crates/zz-gpui/Cargo.toml
 tags: [zz-gpui, gpui, reference, vendored]
-timestamp: 2026-10-19T00:00:00Z
+timestamp: 2026-10-20T00:00:00Z
 ---
 
 # Overview
@@ -296,6 +296,13 @@ so over a translucent window bright content under a dark face showed through sha
 blends, and draws in the scene's own pass, and a material with no light either (`is_opaque_fill`)
 is painted as a plain quad.
 
+`GlassMaterial::rim()` (2026-10-20) is the same material drawing only its light: the glint and the
+fresnel glow, premultiplied so they blend over whatever was painted under it, with no face, no
+contour and nothing read back. Its flat face returns clear, so it costs little more than the rim's
+pixels, and since it reads nothing a browser page's underlay hole under it stays a hole. Renderers
+that cannot sample the backdrop skip it. `check_rim_glass_lights_only_the_edge` covers Metal and
+wgpu.
+
 Past the rim nothing lenses, glints or casts the contour, so `fs_glass` skips the signed distance
 field there (2026-10-12). `Glass::uniform` puts the depth where the face goes flat in `shape.w`:
 the bezel or four glint widths, whichever is larger, plus a pixel. A pixel at least that deep inside
@@ -317,6 +324,26 @@ active pane frame sets only the light color to the accent, keeping its alpha, so
 fresnel rim glow show the focus. `GlassMaterial::edge(fill)` is opaque glass lit only at its edge (no
 blur or refraction, a 1 px glint, faint fresnel, a 0.5 px contour), meant for surfaces that cover
 most of the window, such as pane frames.
+
+`GlassMaterial::light_directionality` (2026-10-20, 0 by default) moves the glint onto the edge
+facing the light and the contour onto the far edge; at 0 both edges along the axis light alike, as
+before. `Glass::uniform` passes it to the shader in `mask.z`. `GlassMaterial::inactive_flattening`
+(0 by default) is how much of the rim light, lensing and color boost `Window::paint_glass` drops
+while the window is inactive (`GlassMaterial::for_window`); the tint, blur and contour stay. The
+activation callback refreshes the window, so cached views paint the new material. Wasm windows
+always count as active. The kit's neutral glass buttons dim their labels by the same fraction.
+`check_glass_rendering` covers both fields.
+
+Glass casts its own drop shadows (2026-10-20). A plain `Shadow` primitive is not clipped to its
+element, so under translucent glass it showed through the face and greyed it in light themes.
+Where the platform samples backdrops, `Window::paint_glass_with_shadows` (used by `Style::glass`,
+`LiquidGlass` and `GlassGroup`) paints the body first and then one `Glass::with_shadow` draw per
+non-inset shadow: the same shapes and merge, with `fs_glass` returning only the gaussian shadow
+masked to outside the body's field, so it follows melted groups and swelling glass. These draws read
+nothing, so `plan_glass` now starts a new run only when the next glass reads its backdrop and
+overlaps the run. Platforms without backdrop sampling keep the old drop shadows under their
+fallback fill. `check_glass_shadow_rendering` (Metal and wgpu) holds the face unchanged at any
+shadow strength.
 
 `check_glass_rendering`, which both renderers' `glass_lenses_its_backdrop` run, compares the flat
 face against the full field within 1/255 for square, round, smoothed, circular and uneven corners,

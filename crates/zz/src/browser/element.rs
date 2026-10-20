@@ -17,6 +17,9 @@ const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::browser_render";
 pub(crate) trait BrowserSurfaceHost: EntityInputHandler + 'static {
     fn surface_bounds(&mut self, bounds: Bounds<Pixels>, window: &Window, cx: &mut Context<Self>);
     fn surface_focus(&self) -> FocusHandle;
+    fn paints_page(&self) -> bool {
+        true
+    }
 }
 
 impl BrowserSurfaceHost for BrowserView {
@@ -26,6 +29,10 @@ impl BrowserSurfaceHost for BrowserView {
 
     fn surface_focus(&self) -> FocusHandle {
         self.focus_handle()
+    }
+
+    fn paints_page(&self) -> bool {
+        !self.resize_covered()
     }
 }
 
@@ -78,6 +85,7 @@ impl<V: BrowserSurfaceHost> IntoElement for BrowserElement<V> {
 }
 
 pub(crate) struct BrowserPaintState {
+    paints_page: bool,
     image: Option<Arc<RenderImage>>,
     #[cfg(target_os = "macos")]
     surface: Option<CVPixelBuffer>,
@@ -117,8 +125,9 @@ impl<V: BrowserSurfaceHost> Element for BrowserElement<V> {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let started = diagnostics::timer(DIAGNOSTIC_TARGET);
-        self.view.update(cx, |view, cx| {
+        let paints_page = self.view.update(cx, |view, cx| {
             view.surface_bounds(bounds, window, cx);
+            view.paints_page()
         });
         log::trace!(
             target: "zz::diagnostics::browser_render",
@@ -129,6 +138,7 @@ impl<V: BrowserSurfaceHost> Element for BrowserElement<V> {
             diagnostics::elapsed_us(started),
         );
         BrowserPaintState {
+            paints_page,
             image: self.image.clone(),
             #[cfg(target_os = "macos")]
             surface: self.surface.clone(),
@@ -159,10 +169,17 @@ impl<V: BrowserSurfaceHost> Element for BrowserElement<V> {
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             #[cfg(target_os = "macos")]
             if let Some(underlay) = state.underlay.take()
-                && underlay::place(window, &underlay, bounds)
-                && let Some(surface) = state.surface.take()
+                && underlay::place(window, &underlay, bounds, self.corner_radii)
             {
-                window.paint_underlay(bounds, self.corner_radii, surface);
+                if !state.paints_page {
+                    return;
+                }
+                if let Some(surface) = state.surface.take() {
+                    window.paint_underlay(bounds, self.corner_radii, surface);
+                    return;
+                }
+            }
+            if !state.paints_page {
                 return;
             }
             #[cfg(target_os = "macos")]

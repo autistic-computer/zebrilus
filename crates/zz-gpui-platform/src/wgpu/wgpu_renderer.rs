@@ -4224,10 +4224,42 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
+    fn rim_glass_lights_only_the_edge() -> anyhow::Result<()> {
+        use zz_gpui::PlatformHeadlessRenderer;
+        let mut renderer = WgpuHeadlessRenderer::new()?;
+        zz_gpui::check_rim_glass_lights_only_the_edge(|scene| {
+            renderer.render_scene_to_image(
+                scene,
+                Size {
+                    width: DevicePixels(64),
+                    height: DevicePixels(64),
+                },
+            )
+        })
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
     fn glass_lenses_its_backdrop() -> anyhow::Result<()> {
         use zz_gpui::PlatformHeadlessRenderer;
         let mut renderer = WgpuHeadlessRenderer::new()?;
         zz_gpui::check_glass_rendering(|scene| {
+            renderer.render_scene_to_image(
+                scene,
+                Size {
+                    width: DevicePixels(64),
+                    height: DevicePixels(64),
+                },
+            )
+        })
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn glass_shadows_leave_their_own_faces_unchanged() -> anyhow::Result<()> {
+        use zz_gpui::PlatformHeadlessRenderer;
+        let mut renderer = WgpuHeadlessRenderer::new()?;
+        zz_gpui::check_glass_shadow_rendering(|scene| {
             renderer.render_scene_to_image(
                 scene,
                 Size {

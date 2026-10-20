@@ -4,7 +4,7 @@
 /// The interface themes compiled into every client, by the id
 /// `interface-theme` names. Each one bundles a look with its light and dark
 /// colors.
-pub const BUILTIN_THEMES: [&str; 2] = ["default", "liquid-glass"];
+pub const BUILTIN_THEMES: [&str; 3] = ["default", "liquid-glass", "macos"];
 
 /// The theme a fresh install uses.
 pub const DEFAULT_THEME: &str = "default";

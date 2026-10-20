@@ -9,15 +9,18 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 
+const BLURRED_CHROME_OPACITY: f32 = 0.93;
+
 #[allow(
     clippy::disallowed_methods,
     reason = "blurred chrome lets the window material show through"
 )]
-pub fn chrome_background(background: Hsla, blur: bool) -> Hsla {
-    if blur {
-        background.opacity(0.93)
-    } else {
-        background
+pub fn chrome_background(background: Hsla, blur_opacity: Option<f32>) -> Hsla {
+    match blur_opacity {
+        Some(opacity) => background.opacity(
+            BLURRED_CHROME_OPACITY + (1.0 - BLURRED_CHROME_OPACITY) * opacity.clamp(0.0, 1.0),
+        ),
+        None => background,
     }
 }
 
