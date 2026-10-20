@@ -1378,6 +1378,39 @@ impl InteractiveClient {
         Self::connect_control_with_startup_owner(path, false)
     }
 
+    /// A control client for `zz events`, `agent-send --progress` and `zz -C`, on this machine or
+    /// through a host's kept ssh forward.
+    pub fn connect_control_endpoint(endpoint: &Endpoint) -> Result<Self, DaemonError> {
+        match endpoint {
+            Endpoint::Local(path) => Self::connect_control(path),
+            Endpoint::Ssh(endpoint) => {
+                #[cfg(all(any(unix, windows), not(target_os = "ios")))]
+                {
+                    let (connected, forward) = connect_kept(endpoint, None, |socket| {
+                        connect_stream_with_startup_owner(
+                            ClientStream::Local(LocalTransport::connect(socket)?),
+                            endpoint,
+                            ClientKind::Control,
+                            None,
+                            None,
+                            false,
+                            false,
+                            false,
+                            &[],
+                            EndpointFactsScope::None,
+                        )
+                    })?;
+                    Ok(Self::from_connected_with_ssh(connected, forward))
+                }
+                #[cfg(not(all(any(unix, windows), not(target_os = "ios"))))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
+        }
+    }
+
     pub fn connect_control_with_startup_owner(
         path: &Path,
         startup_config_owner: bool,
