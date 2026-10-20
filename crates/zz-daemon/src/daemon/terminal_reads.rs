@@ -431,11 +431,14 @@ pub(super) fn submit_agent_text(
     }
 }
 
+const WAIT_PROMPT_SETTLE: Duration = Duration::from_millis(200);
+
 struct Wait {
     parsed: ParsedWaitPane,
     started: Instant,
     scan_start: Option<usize>,
     park: Option<Arc<Shared>>,
+    settle: Option<Instant>,
 }
 
 pub(super) fn wait_pane(
@@ -460,6 +463,7 @@ pub(super) fn wait_pane(
             started: Instant::now(),
             scan_start,
             park: Some(Arc::clone(shared)),
+            settle: None,
         },
     );
     wait.finish(shared, Execution::default())
@@ -482,57 +486,69 @@ fn poll_wait(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait) {
                 finish_wait_poll(shared, target, wait, generation);
             }
         }
-        _ => capture_screen(
-            shared,
-            target,
-            CaptureOptions {
-                start: CaptureBoundary::HistoryStart,
-                join_wrapped: true,
-                preserve_trailing: true,
-                skip_input: true,
-                ..CaptureOptions::default()
-            },
-            move |shared, target, result| {
-                let screen = match result {
-                    Ok(screen) => screen,
-                    Err(error) => {
-                        target.state.resolve(Err(error));
-                        return;
-                    }
-                };
-                let scan_start = *wait.scan_start.get_or_insert_with(|| {
-                    screen
-                        .lines()
-                        .count()
-                        .saturating_sub(usize::from(target.terminal.size().1))
-                });
-                if let Some(line) = screen
-                    .lines()
-                    .rev()
-                    .take(
+        _ => {
+            let quiet = target.terminal.last_output();
+            let keep_idle_prompt =
+                quiet.is_none_or(|output| output.elapsed() >= WAIT_PROMPT_SETTLE);
+            capture_screen(
+                shared,
+                target,
+                CaptureOptions {
+                    start: CaptureBoundary::HistoryStart,
+                    join_wrapped: true,
+                    preserve_trailing: true,
+                    skip_input: true,
+                    keep_idle_prompt,
+                    ..CaptureOptions::default()
+                },
+                move |shared, target, result| {
+                    let screen = match result {
+                        Ok(screen) => screen,
+                        Err(error) => {
+                            target.state.resolve(Err(error));
+                            return;
+                        }
+                    };
+                    let latest = target.terminal.last_output();
+                    let settled = keep_idle_prompt && latest == quiet;
+                    wait.settle = latest
+                        .filter(|_| !settled)
+                        .map(|output| output + WAIT_PROMPT_SETTLE);
+                    let scan_start = *wait.scan_start.get_or_insert_with(|| {
                         screen
                             .lines()
                             .count()
-                            .saturating_sub(scan_start)
-                            .min(10_000),
-                    )
-                    .skip_while(|line| line.trim().is_empty())
-                    .take(wait.parsed.tail.unwrap_or(usize::MAX))
-                    .find(|line| match &wait.parsed.condition {
-                        PaneWaitCondition::Until(text) => line.contains(text),
-                        PaneWaitCondition::Regex(regex) => regex.is_match(line),
-                        _ => false,
-                    })
-                {
-                    target.state.resolve(Ok(Execution {
-                        output: format!("{line}\n").into(),
-                        effects: Vec::new(),
-                    }));
-                } else {
-                    finish_wait_poll(shared, target, wait, generation);
-                }
-            },
-        ),
+                            .saturating_sub(usize::from(target.terminal.size().1))
+                    });
+                    if (settled || !keep_idle_prompt)
+                        && let Some(line) = screen
+                            .lines()
+                            .rev()
+                            .take(
+                                screen
+                                    .lines()
+                                    .count()
+                                    .saturating_sub(scan_start)
+                                    .min(10_000),
+                            )
+                            .skip_while(|line| line.trim().is_empty())
+                            .take(wait.parsed.tail.unwrap_or(usize::MAX))
+                            .find(|line| match &wait.parsed.condition {
+                                PaneWaitCondition::Until(text) => line.contains(text),
+                                PaneWaitCondition::Regex(regex) => regex.is_match(line),
+                                _ => false,
+                            })
+                    {
+                        target.state.resolve(Ok(Execution {
+                            output: format!("{line}\n").into(),
+                            effects: Vec::new(),
+                        }));
+                    } else {
+                        finish_wait_poll(shared, target, wait, generation);
+                    }
+                },
+            );
+        }
     }
 }
 
@@ -569,6 +585,7 @@ fn finish_wait_poll(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait, g
         let deadline = timeout_deadline(wait.started, wait.parsed.timeout)
             .into_iter()
             .chain(idle)
+            .chain(wait.settle)
             .min();
         observe_output(
             shared,
@@ -577,6 +594,7 @@ fn finish_wait_poll(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait, g
             deadline,
             move |shared, target| {
                 if target.generation() != generation
+                    || wait.settle.is_some_and(|settle| settle <= Instant::now())
                     || matches!(
                         wait.parsed.condition,
                         PaneWaitCondition::Idle(_) | PaneWaitCondition::Exit
