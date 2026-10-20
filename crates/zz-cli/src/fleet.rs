@@ -1,11 +1,13 @@
 use zz_config::{remove_fleet_host, write_fleet_host};
 use zz_daemon_client::{
-    Endpoint, RejectedHost, configured_fleet_hosts, install_remote, validate_fleet_host,
+    Endpoint, RejectedHost, configured_fleet_hosts, install_remote, ssh_public_key,
+    validate_fleet_host,
 };
 
-const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] <name>\n       zz fleet list [-F <format>]\n       zz fleet remove <name>";
+const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] <name>\n       zz fleet key\n       zz fleet list [-F <format>]\n       zz fleet remove <name>";
 const FLEET_INSTALL_USAGE: &str = "usage: zz fleet install [--restart-daemon] <name>";
 const FLEET_ADD_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>";
+const FLEET_KEY_USAGE: &str = "usage: zz fleet key";
 const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format>]";
 const FLEET_REMOVE_USAGE: &str = "usage: zz fleet remove <name>";
 
@@ -19,6 +21,12 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String,
         "install" => {
             let (name, restart_daemon) = parse_fleet_install(arguments)?;
             fleet_install(name, restart_daemon)
+        }
+        "key" => {
+            if !arguments.is_empty() {
+                return Err(FLEET_KEY_USAGE.to_owned());
+            }
+            ssh_public_key().map_err(|error| format!("could not make the zz key: {error}"))
         }
         "list" => fleet_list(parse_fleet_list(arguments)?),
         "remove" => {
@@ -335,6 +343,7 @@ mod tests {
             .env("ZZ_FLEET_TEST_CHILD", TEST_NAME)
             .env("ZZ_DATA_DIR", directory.path().join("data"))
             .env("XDG_CONFIG_HOME", directory.path().join("config"))
+            .env("XDG_DATA_HOME", directory.path().join("share"))
             .env("HOME", directory.path().join("home"))
             .status()
             .unwrap();
@@ -364,6 +373,17 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&config_path).unwrap(),
             "# keep\nhost-desktop = ssh://fabrico@arch-desktop # keep too\ntray = false\n"
+        );
+
+        let key = run(["key".to_owned()]).unwrap();
+        assert!(
+            key.starts_with("ssh-ed25519 ") && key.contains(" zz@"),
+            "{key}"
+        );
+        assert_eq!(run(["key".to_owned()]).unwrap(), key);
+        assert_eq!(
+            run(["key".to_owned(), "-f".to_owned()]).unwrap_err(),
+            FLEET_KEY_USAGE
         );
 
         assert_eq!(

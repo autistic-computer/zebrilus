@@ -45,6 +45,8 @@ mod russh_socks;
 #[cfg(test)]
 mod solo_tests;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
+mod ssh_key;
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 mod terminal_features;
 pub mod transport;
 pub mod unmasked;
@@ -81,6 +83,7 @@ pub use paths::{
 };
 #[cfg(target_os = "ios")]
 pub use russh_client::ios_ssh_public_key;
+pub use ssh_key::{ssh_key_path, ssh_public_key};
 pub use terminal_features::{
     TERMINAL_FEATURES, terminal_colour_count, terminal_default_features, terminal_feature_mask,
     terminal_features_list,
