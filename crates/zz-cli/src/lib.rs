@@ -732,9 +732,17 @@ fn run_command_mode(
         print!("{}", top_level_help());
         return Some(ExitCode::SUCCESS);
     }
+    if let Some(host) = host
+        && matches!(
+            command.as_str(),
+            "fleet" | "list-hosts" | "tools" | "protocol-version"
+        )
+    {
+        return Some(run_host_cli(host, arguments));
+    }
     if canonical_command(&command) == "tools"
         && let [flag] = invocation.args.as_slice()
-        && let Some(code) = agent_hooks::run(flag.as_str(), host.is_some())
+        && let Some(code) = agent_hooks::run(flag.as_str())
     {
         return Some(code);
     }
@@ -802,7 +810,6 @@ fn run_command_mode(
         return Some(
             match protocol_version_output(
                 invocation.args.iter().map(ToString::to_string),
-                host,
                 socket_source.is_overridden(),
             ) {
                 Ok(version) => {
@@ -817,7 +824,7 @@ fn run_command_mode(
         );
     }
 
-    if host.is_some() && matches!(command.as_str(), "daemon" | "proxy" | "fleet") {
+    if host.is_some() && matches!(command.as_str(), "daemon" | "proxy") {
         eprintln!("zz: --host is not supported for `{command}`");
         return Some(exit_code_for(CliFailure::Usage));
     }
@@ -1853,10 +1860,9 @@ fn os_error_text(error: &io::Error) -> String {
 
 fn protocol_version_output(
     mut args: impl Iterator<Item = String>,
-    host: Option<&str>,
     socket_overridden: bool,
 ) -> Result<String, &'static str> {
-    if host.is_some() || socket_overridden || args.next().is_some() {
+    if socket_overridden || args.next().is_some() {
         return Err("usage: zz protocol-version");
     }
     Ok(PROTOCOL_VERSION.to_string())
@@ -2517,6 +2523,39 @@ fn stored_default_client_command(
         ))
         .ok()?;
     Some(output.trim_end_matches('\n').to_owned())
+}
+
+/// `fleet`, `list-hosts`, `tools` and `protocol-version` answer from a machine's own config and
+/// build, so over `--host` they run that host's CLI, not this one's.
+fn run_host_cli(host: &str, arguments: &[RawText]) -> ExitCode {
+    let endpoint = match configured_host_endpoint(host) {
+        Ok(Endpoint::Ssh(endpoint)) => endpoint,
+        Ok(Endpoint::Local(path)) => {
+            eprintln!(
+                "zz: {host} is the local socket {}; run the command without --host",
+                path.display()
+            );
+            return exit_code_for(CliFailure::Usage);
+        }
+        Err(error) => {
+            eprintln!("zz: {error}");
+            return exit_code_for(CliFailure::Runtime);
+        }
+    };
+    let arguments = arguments
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    match zz_daemon_client::run_remote_cli(&endpoint, &arguments) {
+        Ok(status) => status
+            .code()
+            .and_then(|code| u8::try_from(code).ok())
+            .map_or_else(|| exit_code_for(CliFailure::Runtime), ExitCode::from),
+        Err(error) => {
+            eprintln!("zz: {error}");
+            exit_code_for(CliFailure::Runtime)
+        }
+    }
 }
 
 fn connect_host_command_client(name: &str) -> Result<CommandClient, String> {
@@ -3750,19 +3789,15 @@ mod tests {
     #[test]
     fn protocol_version_command_prints_only_the_wire_version() {
         assert_eq!(
-            protocol_version_output(std::iter::empty(), None, false).unwrap(),
+            protocol_version_output(std::iter::empty(), false).unwrap(),
             zz_protocol::PROTOCOL_VERSION.to_string()
         );
         assert_eq!(
-            protocol_version_output(["extra".to_owned()].into_iter(), None, false),
+            protocol_version_output(["extra".to_owned()].into_iter(), false),
             Err("usage: zz protocol-version")
         );
         assert_eq!(
-            protocol_version_output(std::iter::empty(), Some("remote"), false),
-            Err("usage: zz protocol-version")
-        );
-        assert_eq!(
-            protocol_version_output(std::iter::empty(), None, true),
+            protocol_version_output(std::iter::empty(), true),
             Err("usage: zz protocol-version")
         );
     }

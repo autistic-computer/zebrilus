@@ -678,6 +678,30 @@ mod daemon_autostart {
     }
 
     #[test]
+    fn host_local_verbs_run_the_hosts_own_cli() {
+        let fixture = Fixture::new();
+        for verb in [
+            &["fleet", "list"][..],
+            &["list-hosts"],
+            &["tools", "--context"],
+            &["protocol-version"],
+        ] {
+            let output = fixture
+                .host_command()
+                .args(verb)
+                .stdin(Stdio::null())
+                .output()
+                .expect("host-local verb");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.code(), Some(2), "{verb:?}: {stderr}");
+            assert!(
+                stderr.starts_with("zz: peer is the local socket "),
+                "{verb:?}: {stderr}"
+            );
+        }
+    }
+
+    #[test]
     fn control_mode_runs_over_a_host() {
         let fixture = Fixture::new();
         if !local_socket_bind_available(&fixture.socket) {

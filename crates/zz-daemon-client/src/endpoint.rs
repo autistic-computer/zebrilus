@@ -1286,6 +1286,59 @@ fn user_control(config: &str) -> Option<SshControl> {
     })
 }
 
+/// Runs the zz CLI that lives on `endpoint` with `arguments`, over the host's master, for the verbs
+/// that answer from a machine's own config rather than its daemon. Its output and exit status are
+/// the remote CLI's. A terminal's input is passed through; a pipe is not, so a `while read` loop
+/// around the call keeps its lines.
+#[cfg(any(unix, windows))]
+pub fn run_remote_cli(
+    endpoint: &SshEndpoint,
+    arguments: &[String],
+) -> Result<std::process::ExitStatus, EndpointError> {
+    use std::io::IsTerminal as _;
+
+    #[cfg(unix)]
+    let control = shared_control(endpoint);
+    let session = SshSession {
+        #[cfg(unix)]
+        control: control.as_ref(),
+        askpass: None,
+    };
+    let mut command = ssh_cli_command(endpoint, session, arguments);
+    if !io::stdin().is_terminal() {
+        command.stdin(Stdio::null());
+    }
+    command
+        .status_unmasked()
+        .map_err(|source| EndpointError::SshSpawn {
+            operation: "remote command",
+            source,
+        })
+}
+
+#[cfg(any(unix, windows, test))]
+fn ssh_cli_command(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    arguments: &[String],
+) -> Command {
+    let mut script = format!("{}exec \"$zz_cli\"", remote_path_fallback());
+    for argument in arguments {
+        script.push(' ');
+        script.push_str(&shell_quote(argument));
+    }
+    let mut command = Command::new("ssh");
+    command.arg("-T");
+    append_ssh_options(&mut command, endpoint, session);
+    command
+        .arg("--")
+        .arg(&endpoint.host)
+        .arg("sh")
+        .arg("-lc")
+        .arg(shell_quote(&script));
+    command
+}
+
 #[cfg(any(unix, windows))]
 pub fn install_remote(
     endpoint: &SshEndpoint,
@@ -2562,6 +2615,46 @@ mod tests {
                 "{envs:?}",
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_cli_runs_the_hosts_own_zz_with_quoted_arguments() {
+        let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
+        let arguments = ["fleet", "add", "box", "ssh://ada@box", "it's"].map(str::to_owned);
+        let command = ssh_cli_command(&endpoint, test_session(), &arguments);
+        let mut expected = vec!["-T".to_owned()];
+        expected.extend(shared_ssh_options());
+        expected.extend(["-p", "2222", "-l", "user", "--", "host", "sh", "-lc"].map(str::to_owned));
+        expected.push(shell_quote(&format!(
+            "{}exec \"$zz_cli\" 'fleet' 'add' 'box' 'ssh://ada@box' 'it'\\''s'",
+            remote_path_fallback()
+        )));
+        assert_eq!(command_args(&command), expected);
+
+        let directory = tempfile::tempdir().unwrap();
+        let bin = directory.path().join(".local/bin");
+        fs::create_dir_all(&bin).unwrap();
+        let cli = bin.join(zz_protocol::app_identity::DIRECTORY);
+        fs::write(
+            &cli,
+            "#!/bin/sh\nfor a in \"$@\"; do printf '[%s]' \"$a\"; done; exit 7\n",
+        )
+        .unwrap();
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o755)).unwrap();
+        let script = command_args(&command).pop().unwrap();
+        let output = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("sh -c {script}"))
+            .env("HOME", directory.path())
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "[fleet][add][box][ssh://ada@box][it's]"
+        );
     }
 
     #[test]
