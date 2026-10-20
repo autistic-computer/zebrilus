@@ -52616,12 +52616,12 @@ when unknown; terminal and Agent panes report it from OSC 133 marks.
 yours there: pass `-t %N` from `list-panes -a` or your own
 `new-window -d -P -F '#{pane_id}'` (`new-session -d -P -F '#{pane_id}'` on a host
 with no session); a verb that acts on a pane, window or session exits 2 without
-`-t`. Paths and pane environments are that host's; `events` and
-`agent-send --progress` stream from it. Logins use zz’s own key after the first,
-and `--host all` never prompts. A call that changes state and stalls 15 s exits 1
-and may have run there: check before retrying. When a machine joins, run
-`zz fleet add NAME DEST`, then `zz fleet sync`; run `zz fleet install NAME` for a
-missing or old zz.
+`-t`, and a move or swap without `-s`. Paths and pane environments are that
+host's; `events` and `agent-send --progress` stream from it. Logins use zz’s own
+key after the first, and `--host all` never prompts. A call that changes state
+and stalls 15 s exits 1 and may have run there: check before retrying. When a
+machine joins, run `zz fleet add NAME DEST`, then `zz fleet sync`; run
+`zz fleet install NAME` for a missing or old zz.
 
 ## CLI contract
 
@@ -52862,7 +52862,7 @@ names that start with `.`. Pages can load scripts from CDNs. `--float` opens a f
 `--reply` the page can call `zz.reply(text)`, which sends the text to your pane. Print the page
 URL and the new pane. In an Agent pane, a small page can go in your reply instead, as a fenced
 block opened with ```html preview: the pane shows it rendered in place. Over `--host`, PATH
-is read on that host; send a local page with `zz --host NAME html - < page.html`.
+is read on that host; send a local page with `zz --host NAME html -t %N - < page.html`.
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
 
