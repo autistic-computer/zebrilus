@@ -323,8 +323,11 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let distance = field.x;
     let normal = field.yz / max(length(field.yz), 1e-5);
     let light = glass.light.xy;
-    // Where the edge faces along the light axis, either way round.
-    let facing = abs(dot(normal, light));
+    let incidence = dot(normal, light);
+    let facing = abs(incidence);
+    let toward = max(incidence, 0.0);
+    let away = max(-incidence, 0.0);
+    let directionality = glass.mask.z;
 
     // A thin contour just outside the edge, dark unless the material colors
     // it and strongest along the light axis, separates the glass from what
@@ -334,7 +337,8 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     if (contour_width > 0.0) {
         // Only past the edge: inside, the body covers it.
         contour = glass.rim.y * (1.0 - saturate(distance / contour_width))
-            * saturate(distance + 0.5) * mix(0.35, 1.0, facing);
+            * saturate(distance + 0.5)
+            * mix(mix(0.35, 1.0, facing), mix(0.2, 1.0, away), directionality);
     }
     var clip = 1.0;
     if (glass.mask.y > 0.5) {
@@ -381,8 +385,9 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         let glint_width = max(glass.light.w, 1e-3);
         let line = saturate(1.0 - depth / glint_width) + 0.2 * saturate(1.0 - depth / (glint_width * 4.0));
         let lobe = facing * facing;
-        glint = glass.light.z * line * mix(0.15, 1.0, lobe);
-        glow = glass.rim.x * edge * edge * edge;
+        let directional_lobe = 0.06 + 0.94 * toward * toward + 0.12 * pow(away, 4.0);
+        glint = glass.light.z * line * mix(mix(0.15, 1.0, lobe), directional_lobe, directionality);
+        glow = glass.rim.x * edge * edge * edge * mix(1.0, 0.25 + 0.75 * toward, directionality);
     }
 
     // Rim-only glass lights what is already there: the glint adds to it and

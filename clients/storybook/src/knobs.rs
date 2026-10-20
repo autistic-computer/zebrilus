@@ -174,6 +174,11 @@ pub const GLASS_KNOBS: &[Knob<GlassMaterial>] = &[
         |m| m.light_angle.to_degrees(),
         |m, v| m.light_angle = v.to_radians(),
     ),
+    (
+        "glass-light-directionality",
+        |m| m.light_directionality,
+        |m, v| m.light_directionality = v,
+    ),
     ("glass-fresnel", |m| m.fresnel, |m, v| m.fresnel = v),
     ("glass-edge", |m| m.edge_shadow, |m, v| m.edge_shadow = v),
     (
@@ -182,6 +187,11 @@ pub const GLASS_KNOBS: &[Knob<GlassMaterial>] = &[
         |m, v| m.edge_width = px(v),
     ),
     ("glass-noise", |m| m.noise, |m, v| m.noise = v),
+    (
+        "glass-inactive-flattening",
+        |m| m.inactive_flattening,
+        |m, v| m.inactive_flattening = v,
+    ),
 ];
 
 impl Default for Knobs {
@@ -778,6 +788,60 @@ mod tests {
         let glass = lit.materials.glass.unwrap();
         assert!((glass.light_angle - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
         assert_eq!(glass.glint_width, px(3.0));
+    }
+
+    #[test]
+    fn glass_lighting_and_activity_survive_import_export_and_reset() {
+        let imported = crate::import_theme(
+            r#"{"materials":{"glass":{"preset":"regular","light_directionality":0.37,"inactive_flattening":0.63}}}"#,
+        )
+        .unwrap();
+        let knobs: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&imported).unwrap();
+        let query = knobs
+            .iter()
+            .map(|(name, value)| {
+                let value = value
+                    .as_str()
+                    .map_or_else(|| value.to_string(), |text| text.replace('#', "%23"));
+                format!("{name}={value}")
+            })
+            .collect::<Vec<_>>()
+            .join("&");
+        let restored = Knobs::parse(&query).unwrap().interface_theme();
+        let exported = interface_theme::parse_theme(&restored.to_json()).unwrap();
+        let glass = exported.materials.glass.unwrap();
+        assert_eq!(glass.light_directionality, 0.37);
+        assert_eq!(glass.inactive_flattening, 0.63);
+
+        let regular = Knobs::parse("glass=regular")
+            .unwrap()
+            .materials
+            .glass
+            .unwrap();
+        assert_eq!(regular.light_directionality, 0.0);
+        assert_eq!(regular.inactive_flattening, 0.0);
+        for (id, theme) in interface_theme::builtin_themes() {
+            let Some(expected) = theme.materials.glass else {
+                continue;
+            };
+            let tuned = Knobs::parse(&format!(
+                "interface-theme={id}&glass-light-directionality=0.37&glass-inactive-flattening=0.63"
+            ))
+            .unwrap()
+            .materials
+            .glass
+            .unwrap();
+            assert_eq!(tuned.light_directionality, 0.37);
+            assert_eq!(tuned.inactive_flattening, 0.63);
+            let reset = Knobs::parse(&format!("interface-theme={id}"))
+                .unwrap()
+                .materials
+                .glass
+                .unwrap();
+            assert_eq!(reset.light_directionality, expected.light_directionality);
+            assert_eq!(reset.inactive_flattening, expected.inactive_flattening);
+        }
     }
 
     #[test]
