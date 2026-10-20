@@ -1703,6 +1703,7 @@ pub struct LastCommandCapture {
     pub output: String,
     /// Leading output rows dropped by the line or byte cap; zero when none were.
     pub truncated_rows: usize,
+    pub running: bool,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -10268,6 +10269,7 @@ fn capture_last_command(
             command,
             output,
             truncated_rows,
+            running: false,
         });
     }
     if saw_prompt {
@@ -10389,6 +10391,7 @@ fn format_span(
     let selection = Selection::new(start, end, false);
     let options = FormatterOptions::new()
         .with_format(Format::Plain)
+        .with_unwrap(true)
         .with_trim(true)
         .with_selection(&selection);
     let mut formatter = Formatter::new(terminal, options).map_err(capture_failure)?;
@@ -22636,6 +22639,44 @@ mod tests {
         assert_eq!(capture.command, "two --flag");
         assert_eq!(capture.output, "out-two\nmore-two");
         assert_eq!(capture.truncated_rows, 0);
+    }
+
+    #[test]
+    fn last_command_capture_joins_soft_wrapped_rows() {
+        let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+        let command = "echo abcdefghijklmnopqrstuvwxyz0123456789";
+        let output = "o".repeat(30);
+        terminal.vt_write(
+            format!(
+                "\x1b]133;A\x1b\\$ \x1b]133;B\x1b\\{command}\x1b]133;C\x1b\\\r\n{output}\r\n\x1b]133;D;0\x1b\\\x1b]133;A\x1b\\$ "
+            )
+            .as_bytes(),
+        );
+
+        let capture = capture_last_command(&terminal).expect("last command");
+        assert_eq!(capture.command, command);
+        assert_eq!(capture.output, output);
+    }
+
+    #[test]
+    fn last_command_capture_reports_a_running_command() {
+        let session = TerminalSession::spawn_empty_with_appearance(
+            64,
+            Arc::new(TerminalAppearance::default()),
+        );
+        assert!(session.feed(Arc::from(
+            b"\x1b]133;A\x07$ \x1b]133;B\x07one\x1b]133;C\x07\r\nout\r\n\x1b]133;D;1\x07\x1b]133;A\x07$ ".as_slice()
+        )));
+        let capture = session.capture_last_command().expect("last command");
+        assert_eq!((capture.command.as_str(), capture.running), ("one", false));
+        assert!(session.feed(Arc::from(
+            b"\x1b]133;B\x07sleep 9\x1b]133;C\x07\r\n".as_slice()
+        )));
+        let capture = session.capture_last_command().expect("running command");
+        assert_eq!(
+            (capture.command.as_str(), capture.running),
+            ("sleep 9", true)
+        );
     }
 
     #[test]

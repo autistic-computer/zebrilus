@@ -3097,8 +3097,10 @@ impl StatusHooks for DaemonFormatHooks<'_> {
                         .map_or("starting", |state| agent_state_name(&state.phase))
                         .to_owned()
                 } else {
-                    u8::from(state.is_some_and(|state| state.pending_permission.is_some()))
-                        .to_string()
+                    state
+                        .and_then(|state| state.pending_permission.as_ref())
+                        .map(|permission| permission.request_id.to_string())
+                        .unwrap_or_default()
                 })
             }
             "pane_kind" => context
@@ -3797,7 +3799,7 @@ mod tests {
                         &context,
                         &mut hooks
                     ),
-                    format!("{expected}:{}", u8::from(pending))
+                    format!("{expected}:{}", if pending { "1" } else { "" })
                 );
                 let context = StatusContext::from(StatusValues {
                     pane_id: terminal.to_string(),
