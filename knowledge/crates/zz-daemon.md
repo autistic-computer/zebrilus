@@ -244,10 +244,17 @@ shell, with ssh prompting on the terminal.
 
 ## Connection sharing
 
-Every step also carries `ControlMaster=auto`, `ControlPath=<private dir>/c<hash of user+host+port>`
-and `ControlPersist=60`, so the probe authenticates and the other two ride its connection. This is
-not an optimisation: without it a password-protected host is asked for the same password three times
-for one connect, and each rung of the reconnect ladder asks again.
+Every step also carries `ControlMaster=auto` and a `ControlPath`, so the probe authenticates and
+the other children ride its connection. This is not an optimisation: without it a
+password-protected host is asked for the same password three times for one connect, and each rung
+of the reconnect ladder asks again.
+
+`shared_control` picks the path with `ssh -G [-p] [-l] -- host`. When the user's config has
+`ControlMaster auto` or `yes` and a `ControlPath`, zz rides that path, so a live `~/.ssh/cm-%C`
+master means no login at all, and their `ControlPersist` stays theirs (zz adds
+`ControlPersist=600` only when theirs is `no`). `ask`, `autoask`, `no` or no path get zz's own
+`<ssh dir>/c<hash of user+host+port>` with `ControlPersist=600`, so the GUI, every CLI call and the
+next app launch all meet the same master for ten minutes after its last channel closes.
 
 Two consequences of multiplexing that the code has to know about, both measured against
 OpenSSH 10.3p1:
@@ -268,10 +275,16 @@ OpenSSH 10.3p1:
   handshake. `discard_dead_control_master` runs `ssh -O check` first . a local round trip that costs
   about 5 ms and never touches the network . and unlinks the path when it fails.
 
-The control socket and the askpass socket both live in one 0700 directory created per process by
-`tempfile` under `$TMPDIR` (or `/tmp` when that path is too long for `sun_path`). Both are
-capabilities: whoever reaches the control socket owns the ssh session, and whoever reaches the
-askpass socket can phish a password out of the dialog.
+Control sockets, forwarded sockets and askpass sockets live in one stable 0700 directory per user,
+`ssh_runtime_dir`: `$XDG_RUNTIME_DIR/zz/ssh` on Linux, else `$TMPDIR/zz-ssh-<uid>` (or `/tmp/…`
+when `$TMPDIR` is too long for `sun_path`). All are capabilities: whoever reaches a control socket
+owns the ssh session, a forwarded socket reaches the remote daemon, and the askpass socket can
+phish a password out of the dialog. So zz refuses a symlink, a directory another user owns, or one
+with group or other bits, and falls back to a per-process `tempfile` directory. Each
+`AskpassListener` binds in its own subdirectory, removed when it drops, so processes sharing the
+directory never collide on a name. Builds before 2026-10-20 made a `zz-ssh-XXXXXX` directory per
+process and never removed it; the first process that needs the directory `rmdir`s the empty ones
+older than ten minutes.
 
 **Remaining cost:** a cold connect still runs three ssh children, now over one handshake. Folding the
 probe into the auto-start exec would make it two (the start script already re-checks the socket, so

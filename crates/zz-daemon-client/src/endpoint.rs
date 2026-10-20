@@ -110,9 +110,10 @@ const FORWARD_POLL_ATTEMPTS: usize = 250;
 #[cfg(unix)]
 const FORWARD_POLL_INTERVAL: Duration = Duration::from_millis(20);
 #[cfg(unix)]
-const MAX_FORWARD_SOCKET_PATH_BYTES: usize = 100;
+const CONTROL_PERSIST_SECONDS: u32 = 600;
+/// Empty `zz-ssh-*` directories older than this are what per-process builds left behind.
 #[cfg(unix)]
-const CONTROL_PERSIST_SECONDS: u32 = 60;
+const LEGACY_SSH_DIRECTORY_AGE: Duration = Duration::from_mins(10);
 /// Leaves room inside `sun_path` for the private directory and the socket names under it.
 #[cfg(unix)]
 const MAX_SSH_RUNTIME_ROOT_BYTES: usize = 60;
@@ -501,8 +502,17 @@ fn parse_error(input: &str, reason: impl Into<String>) -> EndpointError {
 #[derive(Clone, Copy, Debug, Default)]
 struct SshSession<'a> {
     #[cfg(not(windows))]
-    control_path: Option<&'a Path>,
+    control: Option<&'a SshControl>,
     askpass: Option<SshAskpass<'a>>,
+}
+
+/// The control socket every ssh child for one host meets on, and whether the user's own config
+/// already keeps that master alive.
+#[cfg(not(windows))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SshControl {
+    path: PathBuf,
+    user_persist: bool,
 }
 
 #[cfg(any(unix, windows, test))]
@@ -825,14 +835,17 @@ fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: Ss
         .arg("-o")
         .arg("ControlPath=none");
     #[cfg(not(windows))]
-    if let Some(control_path) = session.control_path {
+    if let Some(control) = session.control {
         command
             .arg("-o")
             .arg("ControlMaster=auto")
             .arg("-o")
-            .arg(control_path_option(control_path))
-            .arg("-o")
-            .arg(format!("ControlPersist={CONTROL_PERSIST_SECONDS}"));
+            .arg(control_path_option(&control.path));
+        if !control.user_persist {
+            command
+                .arg("-o")
+                .arg(format!("ControlPersist={CONTROL_PERSIST_SECONDS}"));
+        }
     }
     if let Some(port) = endpoint.port {
         command.arg("-p").arg(port.to_string());
@@ -859,12 +872,25 @@ fn control_path_option(control_path: &Path) -> String {
     )
 }
 
-/// A 0700 per-process directory for the ssh control and askpass sockets, both of which are
-/// capabilities: one owns an ssh session, the other can phish a password out of the dialog.
+/// A 0700 per-user directory for the ssh control sockets, forwarded sockets and askpass
+/// directories, all of which are capabilities: one owns an ssh session, another reaches a remote
+/// daemon, and the last can phish a password out of the dialog. It is stable so that every zz
+/// process for this user meets the same masters; when it cannot be made safe, a per-process
+/// directory takes its place.
 #[cfg(unix)]
 pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
-    static DIRECTORY: OnceLock<Result<tempfile::TempDir, String>> = OnceLock::new();
+    static DIRECTORY: OnceLock<Result<SshRuntimeDir, String>> = OnceLock::new();
     match DIRECTORY.get_or_init(|| {
+        let stable = stable_ssh_runtime_dir();
+        remove_legacy_ssh_dirs(&ssh_runtime_root(), &stable);
+        match private_directory(&stable) {
+            Ok(()) => return Ok(SshRuntimeDir::Stable(stable)),
+            Err(error) => log::warn!(
+                target: "zz_daemon::diagnostics",
+                "ssh sockets fall back to a per-process directory: {} is unusable: {error}",
+                stable.display(),
+            ),
+        }
         let directory = tempfile::Builder::new()
             .prefix("zz-ssh-")
             .tempdir_in(ssh_runtime_root())
@@ -877,10 +903,102 @@ pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
                 directory.path().display()
             ));
         }
-        Ok(directory)
+        Ok(SshRuntimeDir::Process(directory))
     }) {
         Ok(directory) => Ok(directory.path()),
         Err(error) => Err(io::Error::other(error.clone())),
+    }
+}
+
+#[cfg(unix)]
+enum SshRuntimeDir {
+    Stable(PathBuf),
+    Process(tempfile::TempDir),
+}
+
+#[cfg(unix)]
+impl SshRuntimeDir {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Stable(path) => path,
+            Self::Process(directory) => directory.path(),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn stable_ssh_runtime_dir() -> PathBuf {
+    let name = zz_protocol::app_identity::DIRECTORY;
+    #[cfg(target_os = "linux")]
+    if let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|runtime| runtime.is_absolute())
+    {
+        return runtime.join(name).join("ssh");
+    }
+    ssh_runtime_root().join(format!(
+        "{name}-ssh-{}",
+        rustix::process::geteuid().as_raw()
+    ))
+}
+
+/// Only a real directory this user owns and nobody else can enter will do: anyone who can reach a
+/// control socket in it rides that ssh login.
+#[cfg(unix)]
+fn private_directory(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _};
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match fs::DirBuilder::new().mode(0o700).create(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() {
+        return Err(io::Error::other("it is not a directory"));
+    }
+    if metadata.uid() != rustix::process::geteuid().as_raw() {
+        return Err(io::Error::other("another user owns it"));
+    }
+    if metadata.mode() & 0o077 != 0 {
+        return Err(io::Error::other(format!(
+            "its mode is {:o}, not 700",
+            metadata.mode() & 0o777
+        )));
+    }
+    if path.to_str().is_none() {
+        return Err(io::Error::other("it is not valid UTF-8"));
+    }
+    Ok(())
+}
+
+/// Builds that made a directory per process never removed it; the empty ones are litter.
+#[cfg(unix)]
+fn remove_legacy_ssh_dirs(root: &Path, keep: &Path) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with("zz-ssh-"))
+        {
+            continue;
+        }
+        let path = entry.path();
+        let settled = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age >= LEGACY_SSH_DIRECTORY_AGE);
+        if settled && path != keep {
+            let _ = fs::remove_dir(&path);
+        }
     }
 }
 
@@ -1085,21 +1203,67 @@ fn session_askpass(askpass: Option<&AskpassListener>) -> Option<SshAskpass<'_>> 
     })
 }
 
+/// The user's own multiplexing wins when their config has one: riding `~/.ssh/cm-%C` reuses the
+/// login they already made, and their `ControlPersist` stays theirs. `ask` and `autoask` would
+/// prompt per child, so those, like `no` or no path, get zz's own path.
 #[cfg(unix)]
-fn shared_control_path(endpoint: &SshEndpoint) -> Option<PathBuf> {
-    match control_master_path(endpoint) {
-        Ok(path) => {
-            discard_dead_control_master(endpoint, &path);
-            Some(path)
-        }
-        Err(error) => {
-            log::warn!(
-                target: "zz_daemon::diagnostics",
-                "ssh connection sharing is unavailable for {endpoint}: {error}",
-            );
-            None
-        }
+fn shared_control(endpoint: &SshEndpoint) -> Option<SshControl> {
+    let control = ssh_config_command(endpoint)
+        .output_unmasked()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| user_control(&String::from_utf8_lossy(&output.stdout)))
+        .or_else(|| match control_master_path(endpoint) {
+            Ok(path) => Some(SshControl {
+                path,
+                user_persist: false,
+            }),
+            Err(error) => {
+                log::warn!(
+                    target: "zz_daemon::diagnostics",
+                    "ssh connection sharing is unavailable for {endpoint}: {error}",
+                );
+                None
+            }
+        })?;
+    discard_dead_control_master(endpoint, &control.path);
+    Some(control)
+}
+
+#[cfg(unix)]
+fn ssh_config_command(endpoint: &SshEndpoint) -> Command {
+    let mut command = Command::new("ssh");
+    command.arg("-G");
+    if let Some(port) = endpoint.port {
+        command.arg("-p").arg(port.to_string());
     }
+    if let Some(user) = &endpoint.user {
+        command.arg("-l").arg(user);
+    }
+    command
+        .arg("--")
+        .arg(&endpoint.host)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+#[cfg(any(unix, test))]
+fn user_control(config: &str) -> Option<SshControl> {
+    let value = |key: &str| {
+        config.lines().find_map(|line| {
+            let (name, value) = line.split_once(' ')?;
+            name.eq_ignore_ascii_case(key).then(|| value.trim())
+        })
+    };
+    if !matches!(value("controlmaster"), Some("auto" | "true" | "yes")) {
+        return None;
+    }
+    let path = value("controlpath").filter(|path| path.starts_with('/'))?;
+    Some(SshControl {
+        path: PathBuf::from(path),
+        user_persist: !matches!(value("controlpersist"), None | Some("no" | "false")),
+    })
 }
 
 #[cfg(any(unix, windows))]
@@ -1121,10 +1285,10 @@ pub fn install_remote(
     }
     let askpass = start_askpass(endpoint, prompts);
     #[cfg(unix)]
-    let control_path = shared_control_path(endpoint);
+    let control = shared_control(endpoint);
     let session = SshSession {
         #[cfg(unix)]
-        control_path: control_path.as_deref(),
+        control: control.as_ref(),
         askpass: session_askpass(askpass.as_ref()),
     };
     let spawn_failed = |source| EndpointError::SshSpawn {
@@ -1153,19 +1317,9 @@ pub fn install_remote(
 }
 
 #[cfg(unix)]
-fn forwarded_local_socket_path() -> PathBuf {
+fn forwarded_local_socket_path() -> io::Result<PathBuf> {
     let counter = FORWARD_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let file_name = format!("zz-fwd-{}-{counter}.sock", std::process::id());
-    let temporary_directory = std::env::var("TMPDIR")
-        .ok()
-        .filter(|path| !path.is_empty())
-        .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
-    let candidate = temporary_directory.join(&file_name);
-    if candidate.as_os_str().as_encoded_bytes().len() < MAX_FORWARD_SOCKET_PATH_BYTES {
-        candidate
-    } else {
-        PathBuf::from("/tmp").join(file_name)
-    }
+    Ok(ssh_runtime_dir()?.join(format!("fwd-{}-{counter}.sock", std::process::id())))
 }
 
 #[cfg(unix)]
@@ -1173,7 +1327,7 @@ pub(crate) struct SshForward {
     child: Option<Child>,
     local_socket: PathBuf,
     endpoint: SshEndpoint,
-    control_path: Option<PathBuf>,
+    control: Option<SshControl>,
     forwarding: OsString,
     socks_port: Option<u16>,
     askpass: Option<AskpassListener>,
@@ -1186,9 +1340,9 @@ impl SshForward {
         prompts: Option<SshPrompts>,
     ) -> Result<Self, EndpointError> {
         let askpass = start_askpass(endpoint, prompts);
-        let control_path = shared_control_path(endpoint);
+        let control = shared_control(endpoint);
         let session = SshSession {
-            control_path: control_path.as_deref(),
+            control: control.as_ref(),
             askpass: session_askpass(askpass.as_ref()),
         };
 
@@ -1199,13 +1353,19 @@ impl SshForward {
         }
         ensure_remote_daemon(endpoint, session, &remote_socket)?;
 
-        let local_socket = forwarded_local_socket_path();
+        let local_socket =
+            forwarded_local_socket_path().map_err(|source| EndpointError::ForwardIo {
+                target: endpoint.to_string(),
+                action: "making a directory for",
+                path: ssh_runtime_root(),
+                source,
+            })?;
         let mut forward = Self {
             child: None,
             forwarding: forwarding_spec(&local_socket, &remote_socket),
             local_socket,
             endpoint: endpoint.clone(),
-            control_path,
+            control,
             socks_port: available_socks_port(),
             askpass,
         };
@@ -1243,12 +1403,13 @@ impl SshForward {
     /// turns a `-N` mux client into a login shell fed by whatever stdin it was given.
     fn open(&mut self, remote_socket: &Path) -> Result<(), EndpointError> {
         let master = self
-            .control_path
-            .clone()
+            .control
+            .as_ref()
+            .map(|control| control.path.clone())
             .filter(|control_path| control_master_alive(&self.endpoint, control_path));
         let Some(control_path) = master else {
             let session = SshSession {
-                control_path: self.control_path.as_deref(),
+                control: self.control.as_ref(),
                 askpass: session_askpass(self.askpass.as_ref()),
             };
             let child = ssh_forward_command(
@@ -1312,7 +1473,7 @@ impl SshForward {
     }
 
     fn cancel_forwards(&self) {
-        let Some(control_path) = &self.control_path else {
+        let Some(control_path) = self.control.as_ref().map(|control| &control.path) else {
             return;
         };
         if !control_path.exists() {
@@ -1932,6 +2093,38 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn a_user_master_keeps_its_own_persistence() {
+        let endpoint = test_ssh_endpoint(None, None);
+        for (user_persist, persists) in [(true, false), (false, true)] {
+            let control = SshControl {
+                path: PathBuf::from("/home/ada/.ssh/cm-f5de03fd"),
+                user_persist,
+            };
+            let session = SshSession {
+                control: Some(&control),
+                askpass: None,
+            };
+            let arguments = command_args(&ssh_probe_command(&endpoint, session));
+            assert!(
+                arguments.contains(&"ControlPath=/home/ada/.ssh/cm-f5de03fd".to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                arguments.contains(&"ControlMaster=auto".to_owned()),
+                "{arguments:?}"
+            );
+            assert_eq!(
+                arguments
+                    .iter()
+                    .any(|argument| argument.starts_with("ControlPersist=")),
+                persists,
+                "{arguments:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn every_ssh_child_shares_one_multiplexing_master() {
         let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
         let commands = [
@@ -1959,7 +2152,7 @@ mod tests {
                 "{arguments:?}",
             );
             assert!(
-                arguments.contains(&format!("ControlPersist={CONTROL_PERSIST_SECONDS}")),
+                arguments.contains(&"ControlPersist=600".to_owned()),
                 "{arguments:?}",
             );
             assert!(
@@ -2085,7 +2278,7 @@ mod tests {
         let helper = PathBuf::from("/opt/zz/bin/zz");
         let socket = PathBuf::from("/tmp/zz-ssh/a1");
         let session = SshSession {
-            control_path: None,
+            control: None,
             askpass: Some(SshAskpass {
                 helper: &helper,
                 socket: &socket,
@@ -2597,23 +2790,124 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn forwarded_socket_path_stays_short() {
-        let path = forwarded_local_socket_path();
-        assert!(path.as_os_str().as_encoded_bytes().len() < 100);
+        let path = forwarded_local_socket_path().expect("ssh runtime directory");
+        assert!(path.as_os_str().as_encoded_bytes().len() < 100, "{path:?}");
+        assert_eq!(path.parent(), Some(ssh_runtime_dir().unwrap()));
         assert!(
             path.file_name()
                 .unwrap()
                 .to_string_lossy()
-                .starts_with("zz-fwd-")
+                .starts_with("fwd-")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_runtime_dir_is_stable_and_private() {
+        use std::os::unix::fs::MetadataExt as _;
+
+        let directory = ssh_runtime_dir().expect("ssh runtime directory");
+        assert_eq!(ssh_runtime_dir().unwrap(), directory);
+        assert_eq!(
+            directory == stable_ssh_runtime_dir(),
+            private_directory(&stable_ssh_runtime_dir()).is_ok()
+        );
+        let metadata = fs::symlink_metadata(directory).unwrap();
+        assert!(metadata.is_dir());
+        assert_eq!(metadata.mode() & 0o777, 0o700);
+
+        let root = tempfile::tempdir().unwrap();
+        let fresh = root.path().join("zz/ssh");
+        private_directory(&fresh).expect("a fresh directory is made private");
+        assert_eq!(fs::metadata(&fresh).unwrap().mode() & 0o777, 0o700);
+        private_directory(&fresh).expect("the same directory is accepted again");
+
+        let open = root.path().join("open");
+        fs::create_dir(&open).unwrap();
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(private_directory(&open).is_err());
+
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&fresh, &link).unwrap();
+        assert!(private_directory(&link).is_err());
+
+        let file = root.path().join("file");
+        fs::write(&file, b"").unwrap();
+        assert!(private_directory(&file).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_empty_settled_legacy_directories_are_removed() {
+        let root = tempfile::tempdir().unwrap();
+        let keep = root.path().join("zz-ssh-501");
+        let stale = root.path().join("zz-ssh-Ab12Cd");
+        let busy = root.path().join("zz-ssh-Ef34Gh");
+        let fresh = root.path().join("zz-ssh-Ij56Kl");
+        let other = root.path().join("zz-other");
+        for directory in [&keep, &stale, &busy, &fresh, &other] {
+            fs::create_dir(directory).unwrap();
+        }
+        fs::write(busy.join("a1"), b"").unwrap();
+        let old = std::time::SystemTime::now() - LEGACY_SSH_DIRECTORY_AGE * 2;
+        for directory in [&keep, &stale, &busy, &other] {
+            fs::File::open(directory)
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        }
+        remove_legacy_ssh_dirs(root.path(), &keep);
+        assert!(!stale.exists());
+        for directory in [&keep, &busy, &fresh, &other] {
+            assert!(directory.exists(), "{directory:?}");
+        }
+    }
+
+    #[test]
+    fn user_control_path_is_reused() {
+        let config = |master: &str, path: Option<&str>, persist: &str| {
+            let path = path.map_or_else(String::new, |path| format!("controlpath {path}\n"));
+            format!(
+                "user ada\ncontrolmaster {master}\n{path}controlpersist {persist}\nhostname box\n"
+            )
+        };
+        let user_path = "/home/ada/.ssh/cm-f5de03fd";
+        for (master, persist, user_persist) in [
+            ("auto", "14400", true),
+            ("true", "yes", true),
+            ("auto", "no", false),
+        ] {
+            assert_eq!(
+                user_control(&config(master, Some(user_path), persist)),
+                Some(SshControl {
+                    path: PathBuf::from(user_path),
+                    user_persist,
+                }),
+                "{master} {persist}",
+            );
+        }
+        for master in ["false", "ask", "autoask"] {
+            assert_eq!(user_control(&config(master, Some(user_path), "600")), None);
+        }
+        assert_eq!(user_control(&config("auto", None, "600")), None);
+        assert_eq!(user_control(&config("auto", Some("none"), "600")), None);
+        assert_eq!(user_control(""), None);
     }
 
     #[cfg(unix)]
     const TEST_CONTROL_PATH: &str = "/tmp/zz-ssh/c0";
 
     #[cfg(unix)]
+    static TEST_CONTROL: std::sync::LazyLock<SshControl> =
+        std::sync::LazyLock::new(|| SshControl {
+            path: PathBuf::from(TEST_CONTROL_PATH),
+            user_persist: false,
+        });
+
+    #[cfg(unix)]
     fn test_session() -> SshSession<'static> {
         SshSession {
-            control_path: Some(Path::new(TEST_CONTROL_PATH)),
+            control: Some(&TEST_CONTROL),
             askpass: None,
         }
     }
