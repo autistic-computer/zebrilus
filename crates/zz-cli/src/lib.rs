@@ -2785,7 +2785,8 @@ fn run_on_every_host(arguments: &[RawText], command_chain: &[CommandInvocation])
                     command
                         .arg("--host")
                         .arg(&host.name)
-                        .args(arguments.iter().map(RawText::to_os_string));
+                        .args(arguments.iter().map(RawText::to_os_string))
+                        .env(zz_daemon_client::SSH_BATCH_ENVIRONMENT_VARIABLE, "1");
                     #[cfg(unix)]
                     without_controlling_terminal(&mut command);
                     command.output_unmasked()
