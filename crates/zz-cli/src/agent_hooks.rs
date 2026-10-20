@@ -8,7 +8,9 @@ use std::{
 use serde_json::{Map, Value, json};
 use zz_daemon::{
     WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, WORKSPACE_STUB_SKILL, workspace_context,
+    workspace_tools,
 };
+use zz_protocol::{RawText, catalog_command_spec};
 
 const HOOK_MARKER: &str = "zz-agent-context";
 const HOOK_COMMAND: &str = r#"/bin/sh -c ': zz-agent-context; [ -n "${ZZ_PANE-}" ] && "${ZZ_TMUX_EXECUTABLE:-zz}" tools --context 2>/dev/null; true'"#;
@@ -16,25 +18,21 @@ const HOOK_TIMEOUT_SECONDS: u64 = 5;
 const STUB_MARKER: &str = "zz-stub:";
 const SKILL_NAME: &str = "zz-workspace";
 
-pub(crate) fn run(flag: &str, remote: bool) -> Option<ExitCode> {
-    let install = match flag {
-        "--context" => {
+pub(crate) fn run(arguments: &[RawText]) -> ExitCode {
+    let (flag, install) = match arguments {
+        [flag] if flag == "--context" => {
             if let Some(text) = context(|name| std::env::var_os(name)) {
                 print!("{text}");
             }
-            return Some(ExitCode::SUCCESS);
+            return ExitCode::SUCCESS;
         }
-        "--install-hooks" => true,
-        "--remove-hooks" => false,
-        _ => return None,
+        [flag] if flag == "--install-hooks" => (flag, true),
+        [flag] if flag == "--remove-hooks" => (flag, false),
+        _ => return guide(arguments),
     };
-    if remote {
-        eprintln!("tools {flag} is local only");
-        return Some(ExitCode::from(2));
-    }
     let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
         eprintln!("tools {flag}: HOME is not set");
-        return Some(ExitCode::from(1));
+        return ExitCode::from(1);
     };
     let home = PathBuf::from(home);
     let mut failed = false;
@@ -53,11 +51,28 @@ pub(crate) fn run(flag: &str, remote: bool) -> Option<ExitCode> {
             }
         }
     }
-    Some(if failed {
+    if failed {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
-    })
+    }
+}
+
+fn guide(arguments: &[RawText]) -> ExitCode {
+    match workspace_tools(arguments) {
+        Ok(text) => {
+            print!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            let error = match catalog_command_spec("tools") {
+                Some(spec) => spec.classify_usage_error(error),
+                None => error,
+            };
+            eprintln!("{}", error.tmux_message());
+            ExitCode::from(error.exit_code())
+        }
+    }
 }
 
 fn context(var: impl Fn(&str) -> Option<OsString>) -> Option<String> {

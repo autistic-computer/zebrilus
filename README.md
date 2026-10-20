@@ -149,7 +149,7 @@ a shell:
 
 ```sh
 zz fleet add desktop you@desktop
-zz fleet list
+zz list-hosts
 zz fleet remove desktop
 ```
 
@@ -159,6 +159,11 @@ Or directly in zz's config file:
 host-desktop = ssh://you@desktop
 host-gpu     = ssh://gpu-box:2222
 ```
+
+Any verb runs on a host with `--host` before it, such as
+`zz --host desktop list-panes -a`, and `zz --host all inspect -a` reads every
+host at once. `zz fleet sync` shares zz's own ssh key across your machines so
+logins stop asking, and `zz fleet install desktop` installs or updates zz there.
 
 ## Browser egress
 

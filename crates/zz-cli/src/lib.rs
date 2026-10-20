@@ -49,6 +49,16 @@ const TMUX_USAGE: &str = concat!(
 );
 const NATIVE_ATTACH_USAGE: &str = "zz: usage: zz [--host <name>] attach [--restart-daemon] [-dEr] [-c working-directory] [-f flags] [session]";
 const NATIVE_APP_USAGE: &str = "zz: usage: zz app";
+const ALL_HOSTS: &str = "all";
+const SSH_LOGIN_REFUSED: &str = "ssh rejected the login";
+const SSH_HOST_KEY_UNTRUSTED: &str = "the host key does not match known_hosts";
+const HOST_INPUT_VERBS: [&str; 5] = [
+    "send-keys",
+    "send-text",
+    "run-pane",
+    "paste-buffer",
+    "agent-send",
+];
 const FOREIGN_TMUX_ERROR: &str = "zz: TMUX is set but ZZ_SOCKET is not; refusing to treat a tmux server as zz\nUse `zz app` to open the GUI, or pass `-S` / set `ZZ_SOCKET` to target a zz daemon.";
 pub const APP_STARTUP_DIRECTORY_ENV: &str = "ZZ_APP_STARTUP_DIRECTORY";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -427,9 +437,11 @@ pub fn application_arguments(
     let mut client_utf8 = false;
     let mut client_features = Vec::new();
     let mut parsing_tmux_options = true;
+    let mut verb_takes_socket = false;
     let mut arguments = arguments.into_iter().collect::<Vec<_>>().into_iter();
     while let Some(argument) = arguments.next() {
-        if argument == diagnostics::SOCKET_ARGUMENT {
+        let socket_flag = parsing_tmux_options || verb_takes_socket;
+        if socket_flag && argument == diagnostics::SOCKET_ARGUMENT {
             let path = arguments.next().ok_or_else(|| {
                 ApplicationArgumentError::Message("--socket requires a path".to_owned())
             })?;
@@ -442,6 +454,7 @@ pub fn application_arguments(
         } else if let Some(path) = argument
             .strip_prefix(diagnostics::SOCKET_ARGUMENT)
             .and_then(|argument| argument.strip_prefix('='))
+            .filter(|_| socket_flag)
         {
             if path.is_empty() {
                 return Err(ApplicationArgumentError::Message(
@@ -449,7 +462,7 @@ pub fn application_arguments(
                 ));
             }
             socket_selection = Some(SocketSelection::Path(PathBuf::from(path)));
-        } else if argument == "--host" {
+        } else if parsing_tmux_options && argument == "--host" {
             let name = arguments.next().ok_or_else(|| {
                 ApplicationArgumentError::Message("--host requires a name".to_owned())
             })?;
@@ -459,7 +472,10 @@ pub fn application_arguments(
                 ));
             }
             host = Some(name.to_string());
-        } else if let Some(name) = argument.strip_prefix("--host=") {
+        } else if let Some(name) = argument
+            .strip_prefix("--host=")
+            .filter(|_| parsing_tmux_options)
+        {
             if name.is_empty() {
                 return Err(ApplicationArgumentError::Message(
                     "--host requires a non-empty name".to_owned(),
@@ -561,6 +577,11 @@ pub fn application_arguments(
                 }
             }
         } else {
+            if parsing_tmux_options {
+                verb_takes_socket = matches!(argument.as_str(), "daemon" | "proxy" | "app");
+            } else if argument == "--" {
+                verb_takes_socket = false;
+            }
             parsing_tmux_options = false;
             remaining.push(argument);
         }
@@ -574,6 +595,12 @@ pub fn application_arguments(
     if foreground_server {
         return Err(ApplicationArgumentError::Message(
             "-D foreground server mode is not supported; use `zz daemon`".to_owned(),
+        ));
+    }
+    if host.as_deref().is_some_and(|host| host.starts_with('-')) {
+        return Err(ApplicationArgumentError::Message(
+            "--host takes a host name or ssh destination, and it must not start with `-`"
+                .to_owned(),
         ));
     }
     let socket_source = match &socket_selection {
@@ -705,6 +732,9 @@ fn run_command_mode(
         ));
     }
     let mut command_chain = split_command_chain(arguments);
+    if command_chain.is_empty() && host.is_some_and(|host| host != ALL_HOSTS) {
+        command_chain = vec![CommandInvocation::new("new-session", ["-A"])];
+    }
     if command_chain.is_empty()
         && host.is_none()
         && !bare_command_line_opens_application(
@@ -717,7 +747,9 @@ fn run_command_mode(
     }
     let Some(invocation) = command_chain.first().cloned() else {
         if host.is_some() {
-            eprintln!("zz: --host requires a command");
+            eprintln!(
+                "zz: --host all needs a read-only command, such as zz --host all list-panes -a"
+            );
             return Some(exit_code_for(CliFailure::Usage));
         }
         return None;
@@ -726,12 +758,6 @@ fn run_command_mode(
     if command == "--help" || command == "help" {
         print!("{}", top_level_help());
         return Some(ExitCode::SUCCESS);
-    }
-    if canonical_command(&command) == "tools"
-        && let [flag] = invocation.args.as_slice()
-        && let Some(code) = agent_hooks::run(flag.as_str(), host.is_some())
-    {
-        return Some(code);
     }
     if invocation.args.iter().any(|argument| argument == "--help") {
         return Some(match command_help(&command) {
@@ -744,6 +770,18 @@ fn run_command_mode(
                 exit_code_for(CliFailure::Server(&error))
             }
         });
+    }
+    if canonical_command(&command) == "tools" && host.is_none() && command_chain.len() == 1 {
+        return Some(agent_hooks::run(&invocation.args));
+    }
+    if host == Some(ALL_HOSTS) {
+        return Some(run_on_every_host(arguments, &command_chain));
+    }
+    if let Some(host) = host
+        && let Some(message) = untargeted_host_input(host, &command_chain)
+    {
+        eprintln!("{message}");
+        return Some(exit_code_for(CliFailure::Usage));
     }
     let progress_target = if command == "agent-send" {
         match events::progress_target(&invocation.args) {
@@ -1249,7 +1287,7 @@ fn run_tui_chain(
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("{}", tui_failure_message(routing.host, &error));
             exit_code_for(CliFailure::Runtime)
         }
     }
@@ -1326,7 +1364,7 @@ fn run_native_attach(
             if default_attach && error.to_string() == "can't find session: current session" {
                 eprintln!("no sessions");
             } else {
-                eprintln!("{error}");
+                eprintln!("{}", tui_failure_message(routing.host, &error));
             }
             exit_code_for(CliFailure::Runtime)
         }
@@ -1336,7 +1374,13 @@ fn run_native_attach(
 fn top_level_help() -> String {
     use std::fmt::Write as _;
 
-    let mut help = String::from("usage: zz [global flags] <command> [flags]\n\nzz verbs\n");
+    let mut help = String::from(concat!(
+        "usage: zz [global flags] <command> [flags]\n\n",
+        "global flags\n",
+        "  --host NAME|DEST|all  run on a host from zz list-hosts, an ssh destination, or every host (read-only verbs)\n",
+        "  -L NAME, -S PATH, -f FILE  tmux socket and config flags; zz -h lists the rest\n",
+        "\nzz verbs\n",
+    ));
     for name in zz_protocol::NATIVE_COMMAND_NAMES {
         if let Some(spec) = catalog_command_spec(name)
             && !spec.is_internal()
@@ -2259,6 +2303,22 @@ fn detach_daemon_session(command: &mut Command, ready_fd: std::os::fd::RawFd) {
     }
 }
 
+#[cfg(unix)]
+#[allow(
+    unsafe_code,
+    reason = "Command::pre_exec is the only way to take a child off the caller's terminal"
+)]
+fn without_controlling_terminal(command: &mut Command) {
+    use std::os::unix::process::CommandExt as _;
+
+    unsafe {
+        command.pre_exec(|| {
+            let _ = rustix::process::setsid();
+            Ok(())
+        });
+    }
+}
+
 #[cfg(target_os = "macos")]
 struct InheritedDescriptors(Vec<libc::proc_fdinfo>);
 
@@ -2488,25 +2548,295 @@ fn stored_default_client_command(
 
 fn connect_host_command_client(name: &str) -> Result<CommandClient, String> {
     let endpoint = configured_host_endpoint(name)?;
-    CommandClient::connect_endpoint(&endpoint).map_err(|error| error.to_string())
+    CommandClient::connect_endpoint(&endpoint).map_err(|error| host_connect_failure(name, &error))
 }
 
 fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
     let (hosts, _) = zz_daemon_client::configured_fleet_hosts()
         .map_err(|error| format!("could not read zz/config: {error}"))?;
-    if let Some(host) = hosts.iter().find(|host| host.name == name) {
-        return Ok(host.endpoint.clone());
-    }
-    let known = if hosts.is_empty() {
-        "(none)".to_owned()
-    } else {
-        hosts
-            .iter()
-            .map(|host| host.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
+    zz_daemon_client::resolve_fleet_host(&hosts, name)
+}
+
+fn host_connect_failure(name: &str, error: &DaemonError) -> String {
+    let hosts = zz_daemon_client::configured_fleet_hosts()
+        .map(|(hosts, _)| hosts)
+        .unwrap_or_default();
+    let configured = hosts.iter().any(|host| host.name == name);
+    let destination = zz_daemon_client::resolve_fleet_host(&hosts, name)
+        .ok()
+        .and_then(|endpoint| ssh_destination(&endpoint))
+        .unwrap_or_else(|| name.to_owned());
+    host_failure_hint(name, configured, &destination, error)
+}
+
+fn ssh_destination(endpoint: &Endpoint) -> Option<String> {
+    let Endpoint::Ssh(endpoint) = endpoint else {
+        return None;
     };
-    Err(format!("unknown fleet host `{name}`; known hosts: {known}"))
+    Some(match (&endpoint.user, endpoint.port) {
+        (_, Some(_)) => zz_daemon_client::SshEndpoint {
+            remote_socket: None,
+            ..endpoint.clone()
+        }
+        .to_string(),
+        (Some(user), None) => format!("{user}@{}", endpoint.host),
+        (None, None) => endpoint.host.clone(),
+    })
+}
+
+fn tui_failure_message(host: Option<&str>, error: &zz_tui::Error) -> String {
+    match (host, error.connect_error()) {
+        (Some(host), Some(connect)) => format!("zz: {}", host_connect_failure(host, connect)),
+        _ => error.to_string(),
+    }
+}
+
+fn untargeted_host_input(host: &str, command_chain: &[CommandInvocation]) -> Option<String> {
+    command_chain
+        .iter()
+        .any(|invocation| {
+            let name = canonical_command(&invocation.name);
+            HOST_INPUT_VERBS.contains(&name)
+                && catalog_command_spec(name)
+                    .and_then(|spec| zz_protocol::parse_tmux_options(spec, &invocation.args).ok())
+                    .is_some_and(|parsed| {
+                        !parsed
+                            .options
+                            .iter()
+                            .any(|option| matches!(option, zz_protocol::TmuxOption::Value("-t", _)))
+                    })
+        })
+        .then(|| {
+            format!("zz --host {host}: name the pane with -t %N (zz --host {host} list-panes -a)")
+        })
+}
+
+fn fan_out_refusal(command_chain: &[CommandInvocation]) -> Option<(String, ExitCode)> {
+    let refuse = |error: ServerError| {
+        Some((
+            server_error_message(&error),
+            exit_code_for(CliFailure::Server(&error)),
+        ))
+    };
+    for invocation in command_chain
+        .iter()
+        .filter(|invocation| invocation.name != "protocol-version")
+    {
+        if let Err(error) = zz_mux::validate_static_command_chain(std::slice::from_ref(invocation))
+        {
+            return refuse(error);
+        }
+        let spec = match zz_protocol::resolve_command(&invocation.name) {
+            zz_protocol::CommandResolution::Unimplemented(name) => {
+                return refuse(ServerError::UnsupportedCommand(name.to_owned()));
+            }
+            zz_protocol::CommandResolution::Canonical(name) => {
+                catalog_command_spec(name).filter(|spec| !spec.mutates(&invocation.args))
+            }
+            _ => None,
+        };
+        let Some(spec) = spec else {
+            return Some((
+                format!(
+                    "zz: --host all runs read-only commands only, and `{}` can change state; name one host with --host NAME",
+                    invocation.name
+                ),
+                exit_code_for(CliFailure::Usage),
+            ));
+        };
+        if !spec.uses_tmux_option_grammar()
+            && let Err(error) = zz_protocol::parse_tmux_options(spec, &invocation.args)
+                .and_then(|parsed| spec.validate_positional_maximum(parsed.positionals.len()))
+        {
+            return refuse(error);
+        }
+    }
+    None
+}
+
+fn run_on_every_host(arguments: &[RawText], command_chain: &[CommandInvocation]) -> ExitCode {
+    if let Some((message, exit)) = fan_out_refusal(command_chain) {
+        eprintln!("{message}");
+        return exit;
+    }
+    let hosts = match zz_daemon_client::configured_fleet_hosts() {
+        Ok((hosts, _)) if !hosts.is_empty() => hosts,
+        Ok(_) => {
+            eprintln!(
+                "zz: --host all: zz/config lists no hosts; add one with zz fleet add NAME user@box"
+            );
+            return exit_code_for(CliFailure::Runtime);
+        }
+        Err(error) => {
+            eprintln!("zz: could not read zz/config: {error}");
+            return exit_code_for(CliFailure::Runtime);
+        }
+    };
+    let executable = match std::env::current_exe() {
+        Ok(executable) => executable,
+        Err(error) => {
+            eprintln!("zz: could not find this zz to run per host: {error}");
+            return exit_code_for(CliFailure::Runtime);
+        }
+    };
+    let json = command_chain
+        .iter()
+        .any(|invocation| invocation.args.iter().any(|argument| argument == "--json"));
+    let mut failed = false;
+    thread::scope(|scope| {
+        let runs = hosts
+            .iter()
+            .map(|host| {
+                let executable = &executable;
+                let run = scope.spawn(move || {
+                    let mut command = Command::new(executable);
+                    command
+                        .arg("--host")
+                        .arg(&host.name)
+                        .args(arguments.iter().map(RawText::to_os_string));
+                    #[cfg(unix)]
+                    without_controlling_terminal(&mut command);
+                    command.output_unmasked()
+                });
+                (host.name.as_str(), run)
+            })
+            .collect::<Vec<_>>();
+        for (name, run) in runs {
+            match run.join() {
+                Ok(Ok(output)) => {
+                    let _ = io::stdout().write_all(&host_lines(name, &output.stdout, json, false));
+                    let _ = io::stderr().write_all(&host_lines(name, &output.stderr, false, true));
+                    failed |= !output.status.success();
+                }
+                Ok(Err(error)) => {
+                    eprintln!("{name}: could not run zz: {error}");
+                    failed = true;
+                }
+                Err(_) => {
+                    eprintln!("{name}: the run for this host panicked");
+                    failed = true;
+                }
+            }
+        }
+    });
+    if failed {
+        exit_code_for(CliFailure::Runtime)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn host_lines(name: &str, bytes: &[u8], json: bool, errors: bool) -> Vec<u8> {
+    let quoted = serde_json::Value::from(name).to_string();
+    let mut output = Vec::with_capacity(bytes.len());
+    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
+        let line = line.strip_suffix(b"\n").unwrap_or(line);
+        if let Some(object) = line.strip_prefix(b"{").filter(|_| json) {
+            let named = serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(line)
+                .is_ok_and(|row| row.contains_key("host_name"));
+            output.extend_from_slice(if named {
+                b"{\"from_host\":".as_slice()
+            } else {
+                b"{\"host_name\":".as_slice()
+            });
+            output.extend_from_slice(quoted.as_bytes());
+            if !object.starts_with(b"}") {
+                output.push(b',');
+            }
+            output.extend_from_slice(object);
+        } else {
+            let line = if errors {
+                line.strip_prefix(b"zz: ").unwrap_or(line)
+            } else {
+                line
+            };
+            output.extend_from_slice(name.as_bytes());
+            output.push(b':');
+            if !line.is_empty() {
+                output.push(b' ');
+                output.extend_from_slice(line);
+            }
+        }
+        output.push(b'\n');
+    }
+    output
+}
+
+fn host_failure_hint(
+    name: &str,
+    configured: bool,
+    destination: &str,
+    error: &DaemonError,
+) -> String {
+    use zz_daemon_client::EndpointError;
+
+    let install = |restart: bool| {
+        let flag = if restart { "--restart-daemon " } else { "" };
+        let ends = if restart { " (ends its sessions)" } else { "" };
+        if configured {
+            format!("run: zz fleet install {flag}{name}{ends}")
+        } else {
+            format!("run: zz fleet add NAME {name}, then zz fleet install {flag}NAME{ends}")
+        }
+    };
+    let protocol = |daemon: u16, client: u16| {
+        if daemon < client {
+            format!(
+                "{name} runs protocol v{daemon}, this zz speaks v{client}; {}",
+                install(true)
+            )
+        } else {
+            format!(
+                "{name} runs protocol v{daemon}, newer than this zz (v{client}); update zz on this machine"
+            )
+        }
+    };
+    let refused = || {
+        format!(
+            "{name} refused every login zz tried; run ssh {destination} once, or zz fleet sync from a machine that reaches it"
+        )
+    };
+    let untrusted = || {
+        format!(
+            "{name}'s ssh host key is not trusted; run ssh {destination} once to check and accept it"
+        )
+    };
+    match EndpointError::find(error) {
+        Some(EndpointError::RemoteBinaryMissing { .. }) => {
+            format!("{name} has no zz; {}", install(false))
+        }
+        Some(EndpointError::RemoteProtocolMismatch { daemon, client, .. }) => {
+            protocol(*daemon, *client)
+        }
+        Some(EndpointError::RemoteProtocolUnknown { .. }) => format!(
+            "{name} runs a zz too old to report its protocol; {}",
+            install(true)
+        ),
+        Some(EndpointError::AuthenticationFailed { .. } | EndpointError::SignInExpired { .. }) => {
+            refused()
+        }
+        Some(EndpointError::HostKeyRejected { .. }) => untrusted(),
+        Some(
+            EndpointError::ProbeFailure { reason, .. } | EndpointError::SshFailed { reason, .. },
+        ) if reason.starts_with(SSH_LOGIN_REFUSED) => refused(),
+        Some(
+            EndpointError::ProbeFailure { reason, .. } | EndpointError::SshFailed { reason, .. },
+        ) if reason.starts_with(SSH_HOST_KEY_UNTRUSTED) => untrusted(),
+        Some(
+            EndpointError::ProbeFailure { reason, .. } | EndpointError::SshFailed { reason, .. },
+        ) => {
+            format!("can't reach {name}: {reason}")
+        }
+        Some(error) => format!("can't reach {name}: {error}"),
+        None => match error {
+            DaemonError::IncompatibleDaemon {
+                daemon: Some(daemon),
+                client,
+            } if daemon != client => protocol(*daemon, *client),
+            DaemonError::IncompatibleDaemon { .. } => format!("{name}: {error}; {}", install(true)),
+            error => format!("can't reach {name}: {error}"),
+        },
+    }
 }
 
 pub fn connect_interactive_client_with_config(
@@ -4044,12 +4374,57 @@ mod tests {
         assert_eq!(parsed.remaining, ["list-sessions"]);
 
         let parsed = application_arguments(
-            ["list-panes".into(), "--host=gpu".into()],
+            ["--host=gpu".into(), "list-panes".into()],
             PathBuf::from("/tmp/default.sock"),
         )
         .unwrap();
         assert_eq!(parsed.host.as_deref(), Some("gpu"));
         assert_eq!(parsed.remaining, ["list-panes"]);
+
+        for arguments in [
+            &["list-panes", "--host=gpu"][..],
+            &["run-pane", "-t", "%1", "--", "zz", "--host", "xps", "ls"][..],
+            &["send-keys", "-t", "%1", "--", "--host"][..],
+            &[
+                "run-pane", "--", "npm", "run", "dev", "--", "--host", "0.0.0.0",
+            ][..],
+            &["list-panes", "--socket", "/tmp/other.sock"][..],
+            &["run-pane", "--socket=/tmp/other.sock"][..],
+            &["daemon", "--", "--socket", "/tmp/other.sock"][..],
+            &["--", "--host", "gpu"][..],
+        ] {
+            let parsed = application_arguments(
+                arguments.iter().copied().map(RawText::from),
+                PathBuf::from("/tmp/default.sock"),
+            )
+            .unwrap();
+            assert_eq!(parsed.host, None, "{arguments:?}");
+            assert_eq!(
+                parsed.socket_path,
+                PathBuf::from("/tmp/default.sock"),
+                "{arguments:?}"
+            );
+            let expected = arguments
+                .iter()
+                .skip(usize::from(arguments[0] == "--"))
+                .copied()
+                .collect::<Vec<_>>();
+            assert_eq!(parsed.remaining, expected, "{arguments:?}");
+        }
+
+        for verb in ["daemon", "proxy", "app"] {
+            let parsed = application_arguments(
+                [verb.into(), "--socket".into(), "/tmp/verb.sock".into()],
+                PathBuf::from("/tmp/default.sock"),
+            )
+            .unwrap();
+            assert_eq!(
+                parsed.socket_path,
+                PathBuf::from("/tmp/verb.sock"),
+                "{verb}"
+            );
+            assert_eq!(parsed.remaining, [verb]);
+        }
 
         for arguments in [
             vec![
@@ -4067,6 +4442,201 @@ mod tests {
         ] as [Vec<RawText>; 2]
         {
             assert!(application_arguments(arguments, PathBuf::from("/tmp/default.sock")).is_err());
+        }
+    }
+
+    #[test]
+    fn host_values_that_look_like_options_are_refused() {
+        for arguments in [
+            vec!["--host".into(), "-oProxyCommand=x".into(), "ls".into()],
+            vec!["--host=-x".into(), "ls".into()],
+        ] as [Vec<RawText>; 2]
+        {
+            assert!(matches!(
+                application_arguments(arguments, PathBuf::from("/tmp/default.sock")),
+                Err(ApplicationArgumentError::Message(message)) if message.contains("must not start with `-`")
+            ));
+        }
+    }
+
+    #[test]
+    fn input_verbs_over_a_host_need_an_explicit_pane() {
+        let chain = |words: &[&str]| {
+            super::split_command_chain(
+                &words.iter().copied().map(RawText::from).collect::<Vec<_>>(),
+            )
+        };
+        let refusal = "zz --host xps: name the pane with -t %N (zz --host xps list-panes -a)";
+        for words in [
+            &["send-keys", "ls", "Enter"][..],
+            &["send", "-l", "x"][..],
+            &["send-text", "hi"][..],
+            &["run-pane", "--", "make"][..],
+            &["pasteb", "-b", "x"][..],
+            &["agent-send", "--wait", "hi"][..],
+            &["list-panes", ";", "send-keys", "x"][..],
+        ] {
+            assert_eq!(
+                super::untargeted_host_input("xps", &chain(words)).as_deref(),
+                Some(refusal),
+                "{words:?}"
+            );
+        }
+        for words in [
+            &["send-keys", "-t", "%3", "ls"][..],
+            &["send-text", "-t%3", "hi"][..],
+            &["run-pane", "-t", "%1", "--", "make"][..],
+            &["agent-send", "-t", "%2", "--wait", "hi"][..],
+            &["list-panes", "-a"][..],
+            &["capture-pane", "-p"][..],
+        ] {
+            assert_eq!(
+                super::untargeted_host_input("xps", &chain(words)),
+                None,
+                "{words:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn fanned_out_lines_name_their_host() {
+        assert_eq!(
+            super::host_lines("xps", b"%0 bash\n\n%1 vim", false, false),
+            b"xps: %0 bash\nxps:\nxps: %1 vim\n"
+        );
+        assert_eq!(
+            super::host_lines("xps", b"{\"pane_id\":\"%0\"}\n{}\n", true, false),
+            b"{\"host_name\":\"xps\",\"pane_id\":\"%0\"}\n{\"host_name\":\"xps\"}\n"
+        );
+        assert_eq!(
+            super::host_lines("xps", b"{\"host_name\":\"ubuntu\"}\n", true, false),
+            b"{\"from_host\":\"xps\",\"host_name\":\"ubuntu\"}\n"
+        );
+        assert_eq!(
+            super::host_lines("xps", b"{literal}\n", false, false),
+            b"xps: {literal}\n"
+        );
+        assert_eq!(
+            super::host_lines("xps", b"zz: can't reach xps: timed out\n", false, true),
+            b"xps: can't reach xps: timed out\n"
+        );
+        assert!(super::host_lines("xps", b"", true, false).is_empty());
+    }
+
+    #[test]
+    fn host_connect_failures_name_the_host_and_the_fix() {
+        use zz_daemon_client::EndpointError;
+
+        let target = || "ssh://me@xps".to_owned();
+        let failure = |configured, error: &DaemonError| {
+            super::host_failure_hint("xps", configured, "me@xps", error)
+        };
+        let hint =
+            |configured, error: EndpointError| failure(configured, &DaemonError::from(error));
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::RemoteBinaryMissing { target: target() }
+            ),
+            "xps has no zz; run: zz fleet install xps"
+        );
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::RemoteProtocolMismatch {
+                    target: target(),
+                    daemon: 107,
+                    client: 110,
+                }
+            ),
+            "xps runs protocol v107, this zz speaks v110; run: zz fleet install --restart-daemon xps (ends its sessions)"
+        );
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::RemoteProtocolMismatch {
+                    target: target(),
+                    daemon: 111,
+                    client: 110,
+                }
+            ),
+            "xps runs protocol v111, newer than this zz (v110); update zz on this machine"
+        );
+        let refused = "xps refused every login zz tried; run ssh me@xps once, or zz fleet sync from a machine that reaches it";
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::AuthenticationFailed {
+                    target: target(),
+                    reason: "Permission denied".to_owned(),
+                }
+            ),
+            refused
+        );
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::SshFailed {
+                    target: target(),
+                    reason: format!("{}: add your key", super::SSH_LOGIN_REFUSED),
+                }
+            ),
+            refused
+        );
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::SshFailed {
+                    target: target(),
+                    reason: format!("{}: verify the host", super::SSH_HOST_KEY_UNTRUSTED),
+                }
+            ),
+            "xps's ssh host key is not trusted; run ssh me@xps once to check and accept it"
+        );
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::SshFailed {
+                    target: target(),
+                    reason: "Could not resolve hostname xps".to_owned(),
+                }
+            ),
+            "can't reach xps: Could not resolve hostname xps"
+        );
+        assert_eq!(
+            hint(
+                false,
+                EndpointError::RemoteBinaryMissing { target: target() }
+            ),
+            "xps has no zz; run: zz fleet add NAME xps, then zz fleet install NAME"
+        );
+        assert_eq!(
+            failure(
+                true,
+                &DaemonError::IncompatibleDaemon {
+                    daemon: Some(107),
+                    client: 110,
+                }
+            ),
+            "xps runs protocol v107, this zz speaks v110; run: zz fleet install --restart-daemon xps (ends its sessions)"
+        );
+        assert!(
+            failure(
+                true,
+                &DaemonError::Io(io::Error::from(io::ErrorKind::ConnectionRefused))
+            )
+            .starts_with("can't reach xps: ")
+        );
+        for (destination, expected) in [
+            ("ssh://me@xps", "me@xps"),
+            ("ssh://gpu-box", "gpu-box"),
+            ("ssh://me@gpu-box:2222/tmp/zz.sock", "ssh://me@gpu-box:2222"),
+        ] {
+            assert_eq!(
+                super::ssh_destination(&super::Endpoint::parse(destination).unwrap()).as_deref(),
+                Some(expected),
+                "{destination}"
+            );
         }
     }
 

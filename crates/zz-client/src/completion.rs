@@ -450,8 +450,11 @@ fn values_for_kind(
             .into_iter()
             .filter(|kind| match *kind {
                 "browser" => availability.browser,
-                "picker" => spec.name == "split-window",
-                "agent" => spec.name == "split-window" && availability.agent,
+                "picker" => matches!(spec.name, "split-window" | "new-pane"),
+                "agent" => {
+                    matches!(spec.name, "split-window" | "new-pane" | "new-window")
+                        && availability.agent
+                }
                 _ => true,
             })
             .map(|kind| (kind.to_owned(), kind.to_owned(), "Pane kind".to_owned()))
@@ -1191,25 +1194,37 @@ mod tests {
 
     #[test]
     fn new_window_only_completes_supported_kinds() {
-        let input = "new-window --kind ";
-        let completions = complete_command(
-            input,
-            input.len(),
-            &[],
-            &snapshot(),
-            PaneKindAvailability {
-                browser: true,
-                agent: true,
-                editor: true,
-            },
-        );
-        assert_eq!(
-            completions
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["browser", "terminal"]),
-        );
+        for (input, kinds) in [
+            ("new-window --kind ", &["agent", "browser", "terminal"][..]),
+            (
+                "new-pane --kind ",
+                &["agent", "browser", "picker", "terminal"][..],
+            ),
+            (
+                "split-window --kind ",
+                &["agent", "browser", "picker", "terminal"][..],
+            ),
+        ] {
+            let completions = complete_command(
+                input,
+                input.len(),
+                &[],
+                &snapshot(),
+                PaneKindAvailability {
+                    browser: true,
+                    agent: true,
+                    editor: true,
+                },
+            );
+            assert_eq!(
+                completions
+                    .iter()
+                    .map(|item| item.label.as_str())
+                    .collect::<BTreeSet<_>>(),
+                kinds.iter().copied().collect::<BTreeSet<_>>(),
+                "{input}"
+            );
+        }
     }
 
     #[test]
