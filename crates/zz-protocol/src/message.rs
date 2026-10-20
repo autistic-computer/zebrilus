@@ -1741,6 +1741,7 @@ impl ClientHello {
     pub const CLIENT_NATIVE_CHOOSER_CAPABILITY: &'static str = "client-native-chooser-v1";
     pub const CLIENT_PATH_PICKER_CAPABILITY: &'static str = "client-path-picker-v1";
     pub const CLIENT_NESTED_CAPABILITY: &'static str = CLIENT_NESTED_CAPABILITY;
+    pub const CLIENT_REMOTE_CAPABILITY: &'static str = "client-remote-v1";
     pub const CLIENT_TTY_CAPABILITY_PREFIX: &'static str = CLIENT_TTY_CAPABILITY_PREFIX;
     pub const CLIENT_SIZE_CAPABILITY_PREFIX: &'static str = CLIENT_SIZE_CAPABILITY_PREFIX;
     pub const CLIENT_CELL_CAPABILITY_PREFIX: &'static str = CLIENT_CELL_CAPABILITY_PREFIX;
