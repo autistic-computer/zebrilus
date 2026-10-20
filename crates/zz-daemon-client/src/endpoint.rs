@@ -248,6 +248,10 @@ pub enum EndpointError {
         source: io::Error,
     },
     #[error(
+        "{target} stopped answering for {seconds} s; the command may have run there, check before retrying"
+    )]
+    StoppedAnswering { target: String, seconds: u64 },
+    #[error(
         "ssh remote socket path must be absolute: {path}",
         path = .0.display()
     )]
@@ -353,6 +357,7 @@ impl EndpointError {
                 source,
                 ..
             } => format!("The ssh forward to {target} failed while {action} its socket: {source}"),
+            Self::StoppedAnswering { .. } => self.to_string(),
             Self::InvalidRemoteSocket(path) => format!(
                 "The remote socket path must be absolute: {path}",
                 path = path.display()
@@ -1254,7 +1259,7 @@ fn control_master_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
 }
 
 #[cfg(unix)]
-fn kept_forward_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
+pub(crate) fn kept_forward_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
     Ok(ssh_runtime_dir()?.join(format!(
         "c{:016x}.sock",
         endpoint_hash(endpoint, endpoint.remote_socket.as_deref())
@@ -1853,6 +1858,20 @@ fn kept_forward_failed(error: &DaemonError) -> bool {
             matches!(error, zz_protocol::ServerError::ProtocolMismatch { .. })
         }
         _ => false,
+    }
+}
+
+#[cfg(all(unix, not(target_os = "ios")))]
+pub(crate) fn give_up_on_stalled_link(endpoint: &SshEndpoint) -> EndpointError {
+    if let Ok(kept) = kept_forward_path(endpoint) {
+        let lock = KeptForwardLock::acquire(&kept);
+        if !lock.contended {
+            abandon_stalled_master(endpoint, &kept);
+        }
+    }
+    EndpointError::StoppedAnswering {
+        target: endpoint.to_string(),
+        seconds: MASTER_STEP_TIMEOUT.as_secs(),
     }
 }
 
