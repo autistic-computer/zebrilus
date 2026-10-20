@@ -684,6 +684,8 @@ pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "html",
     "debug-marker",
     "tools",
+    "fleet",
+    "list-hosts",
     "set-buffer",
     "setb",
     "show-buffer",
@@ -781,9 +783,11 @@ static UNIMPLEMENTED_TMUX_COMMAND_SPECS: &[CommandSpec] = &[
 
 static READ_ONLY_COMMAND_NAMES: &[&str] = &[
     "has-session",
+    "inspect",
     "list-buffers",
     "list-clients",
     "list-commands",
+    "list-hosts",
     "list-keys",
     "list-panes",
     "list-sessions",
@@ -791,6 +795,7 @@ static READ_ONLY_COMMAND_NAMES: &[&str] = &[
     "show-buffer",
     "show-environment",
     "show-hooks",
+    "show-last-output",
     "show-messages",
     "show-options",
     "show-prompt-history",
@@ -814,10 +819,12 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "copy-mode-search-prompt",
     "debug-marker",
     "events",
+    "fleet",
     "html",
     "focus-sidebar",
     "import-tmux-config",
     "inspect",
+    "list-hosts",
     "new-agent-session",
     "reload-config",
     "restart-agent-pane",
@@ -995,7 +1002,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             ),
             CommandOptionSpec::flag(
                 "--progress",
-                "print local progress to stderr; requires --wait and -t %N",
+                "print progress to stderr; requires --wait and -t %N",
             ),
             CommandOptionSpec::value(
                 "--timeout",
@@ -1126,6 +1133,34 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             ),
         ],
         positionals: &[FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "fleet",
+        aliases: &[],
+        description: "Add, list, and remove hosts in zz/config, install zz on them, and share zz's ssh key",
+        usage: "add NAME DEST | remove NAME | install [--restart-daemon] (-a | NAME...) | list | key | sync",
+        options: &[CommandOptionSpec::flag(
+            "--restart-daemon",
+            "with install, restart the host's daemon; this ends its sessions",
+        )],
+        positionals: &[],
+        variadic: Some(FreeForm),
+    },
+    CommandSpec {
+        name: "list-hosts",
+        aliases: &[],
+        description: "List the machines in zz/config with their state and zz version",
+        usage: "[-F format] [--json]",
+        options: &[
+            CommandOptionSpec::value(
+                "-F",
+                FreeForm,
+                "format; host_state, host_version, host_protocol, and host_error probe each host",
+            ),
+            CommandOptionSpec::flag("--json", "one JSON object per host, probed"),
+        ],
+        positionals: &[],
         variadic: None,
     },
     CommandSpec {
@@ -1600,10 +1635,11 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-window",
         aliases: &["neww"],
         description: "Create a window",
-        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser] [--profile NAME] [shell-command [argument ...]]",
+        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|agent] [--profile NAME] [--provider codex|claude-code] [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
+            CommandOptionSpec::value("--provider", FreeForm, "agent provider").native(),
             CommandOptionSpec::value("-t", Window, "destination session or window index"),
             CommandOptionSpec::value("-n", FreeForm, "window name"),
             CommandOptionSpec::value("-c", FreeForm, "start in the current pane path"),
@@ -2925,6 +2961,8 @@ mod tests {
             ("display-message", &["-c", "client", "hello"][..]),
             ("capture-pane", &["-p", "-t", "%1"][..]),
             ("capture-pane", &["-pb", "named"][..]),
+            ("inspect", &["-a", "--json"][..]),
+            ("show-last-output", &["-t", "%1"][..]),
         ] {
             assert!(!mutates(name, args), "{name} {args:?} is read-only");
         }
@@ -4482,7 +4520,7 @@ mod tests {
         assert!(!command_spec("split-window").unwrap().is_internal());
         for name in ["split-window", "new-window"] {
             let spec = command_spec(name).unwrap();
-            for option in ["--kind", "--profile"] {
+            for option in ["--kind", "--profile", "--provider"] {
                 assert!(spec.option(option).unwrap().native);
                 assert!(matches!(
                     parse_tmux_options(spec, &[option.into()]),

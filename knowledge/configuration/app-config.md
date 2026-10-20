@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-20T00:00:00-03:00
+timestamp: 2026-10-20T12:00:00-03:00
 ---
 
 # Overview
@@ -25,14 +25,22 @@ daemon-owned appearance and mux entries as ordered raw `(key, value)` pairs. Cli
 of that: validated via `zz_daemon_client::Endpoint::parse`, published through a dedicated `FleetHosts`
 global (not `AppConfig`, which stays `Copy`), and never forwarded to any daemon.
 Three surfaces write these lines and nothing else: `zz fleet add <name> <ssh-destination>` from the
-CLI, the sidebar's final **Add host** row, and the inline form in **Settings › Hosts**. The
+CLI (which `zz fleet sync` also runs on each host for the lines it lacks), the sidebar's final
+**Add host** row, and the inline form in **Settings › Hosts**. The names `local` and `all` are
+reserved: `all` is the CLI's `--host all` fan-out. The
 two GUI fields share the same `parse_add_host` validation and name the entry after the destination's
 host component. The underlying writer replaces an existing `host-<name>` value in place while
 preserving every other byte, comments included; the GUI fields reject a duplicate name before they
-call it. `zz fleet list` prints name and endpoint; `zz fleet remove <name>` deletes every matching
+call it. `zz list-hosts` prints each host in config order with its probed `host_state` and
+`host_version` (a `-F` that names no probed variable skips the ssh probe; `--json` adds
+`host_protocol` and `host_error`), and `zz fleet list` keeps the old name-and-endpoint listing; rejected `host-` lines go to stderr. `zz fleet remove <name>` deletes every matching
 host line, as does a remote row's **Close host** . which additionally republishes `FleetHosts`
-(`config::remove_fleet_host_live`) so the running fleet drops the machine immediately. There is no bootstrap step, no key pinning, and no daemon-side setup . ssh already owns
-identity. These local schema entries retain `Default`/`Override` provenance. Daemon-owned value
+(`config::remove_fleet_host_live`) so the running fleet drops the machine immediately. A
+`--host` value that names no host line is read as an ssh destination (`user@box`, `box:2222`,
+`ssh://...`), so the CLI can reach a machine before it has a line. There is no daemon-side setup:
+ssh owns transport, and zz adds only its own ed25519 key (`zz fleet key`), which the first
+login to a host listed here appends to that host's `authorized_keys`; a raw `--host` destination
+gets nothing written. These local schema entries retain `Default`/`Override` provenance. Daemon-owned value
 grammar deliberately stays in the zz-terminal appearance loader or
 mux `set-option` engine.
 
@@ -678,7 +686,8 @@ matching later-entry precedence:
 - set appends a canonical `key = value` line when the key is absent;
 - reads and the resulting edited file retain the same UTF-8 and 64 KiB bounds as normal loading;
 - writes use a uniquely created temporary file in the config file's directory, flush it, and rename
-  it over the destination atomically.
+  it over the destination atomically; a symlinked config (dotfiles) is resolved first, so the
+  rename lands on the link's target and the link survives.
 
 Key matching and value replacement use the same quote-aware, whitespace-prefixed `#` boundary as
 the parser. A hash inside a color, palette assignment, word-separator set, or quoted command is never

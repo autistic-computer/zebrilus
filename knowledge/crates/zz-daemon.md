@@ -188,15 +188,18 @@ and proxy scripts. Production builds use `zz`. Desktop dev recipes link the deve
 into `~/.local/bin/zz-dev`; remote dev clients never fall back to the installed `zz` command.
 Explicit socket paths still use the build-selected executable for protocol checks and proxying.
 
-All three remote scripts open with `remote_path_fallback()`, which appends `$HOME/.local/bin`,
-`/opt/homebrew/bin`, and `/usr/local/bin` to `PATH`. Those are the three directories `install.sh`
-links the CLI into, and `sh -l` cannot see them on its own: it reads `/etc/profile` and `~/.profile`
-only, never the `~/.bash_profile` or `~/.zshrc` where a bash or zsh user actually exports PATH.
-Before the fallback, a correctly installed remote answered the probe with `missing` and its host row
-read "zz is not installed". Appending rather than prepending keeps a deliberately chosen `zz` ahead
-of the guesses. When the command is still missing, the prefix points `$zz_cli` at the bundled `cli`
-in `/Applications` or `~/Applications` (`zz.app`, or `zz Dev.app` for dev builds), because a Mac app
-dragged out of the release DMG never gets a PATH link; every script runs `"$zz_cli"`.
+Every remote script (probe, auto-start, proxy, install, and the iOS client's copies) opens with
+`remote_path_fallback()`. It sets `$zz_managed` to `~/.local/bin/zz` (`zz-dev` for dev builds), the
+copy installing over ssh puts in place, and points `$zz_cli` at it whenever it is executable;
+otherwise at `zz` on the login PATH, and when that is missing too, at the bundled `cli` in
+`/Applications` or `~/Applications` (`zz.app`, or `zz Dev.app` for dev builds), because a Mac app
+dragged out of the release DMG never gets a PATH link. Every script runs `"$zz_cli"`. The managed
+copy wins because it is the only one zz can update: until 2026-10-20 the prologue ran the first `zz`
+on PATH, so a package `/usr/bin/zz` or a cargo copy earlier on PATH kept answering after every
+update. The prologue still appends `$HOME/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin` to
+`PATH`, the three directories `install.sh` links the CLI into, because `sh -l` reads `/etc/profile`
+and `~/.profile` only, never the `~/.bash_profile` or `~/.zshrc` where a bash or zsh user actually
+exports PATH, and the daemon the auto-start launches keeps that PATH.
 
 The start is unconditional rather than guarded on the socket file, because a socket outlives a
 daemon that was killed and `[ -S ]` reports those corpses as healthy . the state the auto-start
@@ -217,59 +220,178 @@ typed `EndpointError` variants (`RemoteBinaryMissing`, `RemoteDaemonUnavailable`
 
 `install_remote` handles the host the probe calls `missing`, and one whose zz is older. It runs one
 more ssh child, `ssh … <host> sh -lc '<remote_install_script()>'`, on the same control master, and
-writes this build's own `install.sh` (embedded with `include_str!`) to its stdin. The script:
+writes this build's own `install.sh` (embedded with `include_str!`) to its stdin. It never needs
+root: zz owns `~/.local/bin/zz` (`$zz_managed`), plus `~/.local/lib/zz` when install.sh's desktop
+tarball put the app there, and leaves every other install alone. The script:
 
-1. Resolves `$zz_cli` with the usual fallback. A `zz` that is anything but a regular file at
-   `~/.local/bin/zz` prints `zz-install-elsewhere=<path>` and exits 4: a deb, Homebrew, or app
-   bundle install is left to whatever installed it.
-2. Runs `sh -s -- --headless --version <this build's version>`. install.sh picks the tarball from
-   the remote's own `uname`, so a Mac adding a Linux host gets the Linux build. A failure exits 5,
-   and install.sh's `error:` line becomes the reason.
-3. Runs the new binary's `protocol-version`. A binary that cannot start there (an older glibc, say)
-   exits 6 with its stderr.
-4. With `restart_daemon`, runs `zz kill-server` only when that protocol matches this build, then
-   prints `zz-install-protocol=<n>`.
+1. Prints `zz-install-current=1` and downloads nothing when `"$zz_managed" --version` already
+   reports this build's version and its `protocol-version` this build's protocol, so agents can run
+   it any time. Builds from main keep the release's version across protocol bumps, so the version
+   alone would leave such a copy in place.
+2. Otherwise looks at the managed path. Missing or a regular file: `sh -s -- --headless --version
+   <this build's version>` (`zz-install-mode=headless`), whatever else is on PATH. A deb or pacman
+   `/usr/bin/zz`, a Homebrew or `/Applications` app, a cargo copy all stay, and the managed copy wins
+   in every script. A link to `../lib/zz/cli`, install.sh's Linux desktop tarball: `sh -s --
+   --prefix ~/.local --version <v>` (`zz-install-mode=desktop`), so the GUI, the CLI and the
+   desktop entry update together; replacing that link with the headless binary would break the
+   entry's `~/.local/bin/zz app`. A link anywhere else is the only refusal: it prints
+   `zz-install-elsewhere=<path>` and `zz-install-link=<target>` and exits 4. install.sh picks the
+   build from the remote's own `uname`, so a Mac adding a Linux host gets the Linux build. A failure
+   exits 5, and install.sh's `error:` line becomes the reason.
+3. Runs the managed copy's `protocol-version`. A binary that cannot start there (an older glibc,
+   say) exits 6 with its stderr.
+4. With `restart_daemon`, runs the managed copy's `kill-server` only when that protocol matches this
+   build and prints its status as `zz-install-restart=<n>`, with each line kill-server wrote to
+   stderr as `zz-install-restart-error=<line>`; the daemon starts again on the next connection.
+   kill-server saying there was no server reads as nothing to restart, and any other failure is
+   reported with its last line (or its exit status), never a login banner or an installer warning
+   from the same session. Last comes `zz-install-protocol=<n>`.
+
+`install_remote` returns a `RemoteInstall`: what it did (`Current`, `Headless`, `Desktop`), the
+restart (`NotAsked`, `Restarted`, `NotRunning`, `Failed`), and install.sh's `warning:` lines, which
+used to be dropped on success. `summary()` gives the one line the CLI prints and the app toasts,
+such as `zz 0.20.0 installed (headless), daemon restarted` or `already zz 0.20.0`. install.sh
+replaces the headless binary by copying it to a temp name in the same directory and renaming it, so
+a probe during an install never finds zz missing.
 
 A different protocol after a clean install is `RemoteInstallMismatch`: this build has no published
 release, which is normal for builds from main. Dev builds refuse before dialing, because their
 remote scripts look for `zz-dev` and no release ships it. The remote needs `sh`, `curl`, and access to
 GitHub releases. The Linux headless build targets glibc 2.28 (see [zz-cli](/crates/zz-cli.md)).
 
-The GUI maps `RemoteBinaryMissing` to `HostState::Missing`. The first time a host lands in `Missing`,
-or in `Incompatible` with an older remote, `MuxClient` emits `RemoteInstallOffer` and the workspace
-opens a dialog. The host row's menu keeps **Install zz** / **Update zz** for later, and Reconnect
-arms the dialog again. Update always confirms, because restarting the remote daemon ends the
-sessions on that host. `zz fleet install [--restart-daemon] <name>` runs the same function from a
-shell, with ssh prompting on the terminal.
+The GUI maps `RemoteBinaryMissing` to `HostState::Missing` and installs right away, without a
+restart, once per host per run (Reconnect allows another try), never in dev builds; the row reads
+installing and a toast reports the summary. Replacing a binary ends nothing; restarting a daemon
+ends its sessions, so only that is asked. Choosing a host that still lacks zz in the palette or the
+sidebar installs at once (`MuxClient::install_or_retry_host`), so a dev build answers with its
+refusal instead of a silent re-dial. `Incompatible` carries an optional remote protocol: an older
+one, the same protocol from an older build and `RemoteProtocolUnknown` all offer **Update**. The
+local daemon's `IncompatibleDaemon { daemon: None }` (an identity file too old to name its protocol)
+stays an unreachable row with its own message. Offers collect in `MuxClient::update_offers`; the first emits
+`RemoteInstallOffer`, and the workspace opens one dialog whose title and text read the list every
+frame, so hosts that report later join it. **Update and restart** installs on all of them with a
+restart; closing the dialog clears the list. The host row's menu keeps **Install zz** (runs at once)
+and **Update zz** (joins the list). `zz fleet install [--restart-daemon] (-a | NAME...)` runs the
+same function from a shell on every named host in parallel without prompts
+(`install_remote_batch`), then retries one at a time, on the terminal, each host that needs a typed
+login ([zz's own key](#zzs-own-key)); one line per host, a failing host prints its reason on stderr
+and the exit status is 1.
 
 ## Connection sharing
 
-Every step also carries `ControlMaster=auto`, `ControlPath=<private dir>/c<hash of user+host+port>`
-and `ControlPersist=60`, so the probe authenticates and the other two ride its connection. This is
-not an optimisation: without it a password-protected host is asked for the same password three times
-for one connect, and each rung of the reconnect ladder asks again.
+Every step also carries `ControlMaster=auto` and a `ControlPath`, so the probe authenticates and
+the other children ride its connection. This is not an optimisation: without it a
+password-protected host is asked for the same password three times for one connect, and each rung
+of the reconnect ladder asks again.
+
+`shared_control` picks the path with `ssh -G [-p] [-l] -- host`. When the user's config has
+`ControlMaster auto` or `yes` and a `ControlPath`, zz rides that path, so a live `~/.ssh/cm-%C`
+master means no login at all, and their `ControlPersist` stays theirs (zz adds
+`ControlPersist=600` only when theirs is `no`). `ask`, `autoask`, `no` or no path get zz's own
+`<ssh dir>/c<hash of user+host+port>` with `ControlPersist=600`, so the GUI, every CLI call and the
+next app launch all meet the same master for ten minutes after its last channel closes.
 
 Two consequences of multiplexing that the code has to know about, both measured against
 OpenSSH 10.3p1:
 
-- Against a live master, `ssh -N -L …` becomes a *forward request*: the master binds the socket,
-  answers, and the requesting child **exits 0 in about 16 ms**. `wait_for_socket` therefore treats a
-  finished child as success whenever the socket is there, and `Drop` runs `ssh -O cancel -L <spec>`
-  as well as killing the child, because the listener belongs to the master rather than to the child
-  that asked for it. Forwarded traffic is an open channel, so it keeps the master alive well past
-  `ControlPersist`.
+- Against a live master, `ssh -N -L …` is not a forward request. OpenSSH's mux client sends the
+  forward and then always asks the master for a session (`mux_client_request_session`), handing it
+  the child's stdin, stdout and stderr; with no command that session is a login shell, which runs
+  whatever the caller's stdin holds. `printf 'echo PWNED\n' | zz --host xps list-sessions` printed
+  PWNED from xps, and a `while read` loop around `zz --host` lost the rest of its input. The GUI got
+  away with it only because launchd gives it `/dev/null`, so that shell hit EOF at once: the child
+  that "exits 0 in about 16 ms" was the shell ending, not a forward being granted. Forwards now go
+  through `ssh -O forward -L <spec> [-D <port>]` on the live master, with stdin and stdout null and
+  stderr kept for the error. Only when no master answers `ssh -O check` does a child
+  `ssh -N -n -L …` hold the forward, with null stdin and stdout. `Drop` still runs
+  `ssh -O cancel` for each forward and removes the socket file, which cancel leaves behind.
+  Forwarded traffic is an open channel, so it keeps the master alive past `ControlPersist`.
 - A master that died leaves its socket behind, and ssh then only warns and gives every child its own
-  handshake. `discard_dead_control_master` runs `ssh -O check` first . a local round trip that costs
+  handshake. `live_control` runs `ssh -O check` first (`control_master_alive`) . a local round trip that costs
   about 5 ms and never touches the network . and unlinks the path when it fails.
 
-The control socket and the askpass socket both live in one 0700 directory created per process by
-`tempfile` under `$TMPDIR` (or `/tmp` when that path is too long for `sun_path`). Both are
-capabilities: whoever reaches the control socket owns the ssh session, and whoever reaches the
-askpass socket can phish a password out of the dialog.
+Control sockets, forwarded sockets and askpass sockets live in one stable 0700 directory per user,
+`ssh_runtime_dir`: `$XDG_RUNTIME_DIR/zz/ssh` on Linux, else `$TMPDIR/zz-ssh-<uid>` (or `/tmp/…`
+when `$TMPDIR` is too long for `sun_path`). All are capabilities: whoever reaches a control socket
+owns the ssh session, a forwarded socket reaches the remote daemon, and the askpass socket can
+phish a password out of the dialog. So zz refuses a symlink, a directory another user owns, or one
+with group or other bits, and falls back to a per-process `tempfile` directory,
+`zz-ssh-<uid>-XXXXXX`. Each
+`AskpassListener` binds in its own subdirectory, removed when it drops, so processes sharing the
+directory never collide on a name. Builds before 2026-10-20 made a `zz-ssh-XXXXXX` directory per
+process and never removed it; the first process that needs the directory `rmdir`s the empty ones
+older than ten minutes. Only that shape counts (six random characters, not all digits), so a
+release build's `zz-ssh-<uid>`, a dev build's `zz-dev-ssh-<uid>` and another process's fallback
+are never touched.
 
-**Remaining cost:** a cold connect still runs three ssh children, now over one handshake. Folding the
-probe into the auto-start exec would make it two (the start script already re-checks the socket, so
-it only needs to print the path it resolved).
+### Kept forwards
+
+The CLI does not make a forward per call. `CommandClient`, the TUI and control clients
+(`zz events`, `zz -C`, `agent-send --progress`) go through `connect_kept`, which dials
+`<ssh dir>/c<hash>.sock`, a forward the host's master keeps between calls, and runs probe, start
+and `-O forward` only when that fails: the socket is missing or refused, or the handshake ends early
+or reports another protocol. An exec link has no handshake of its own, so the command client sends
+an empty `Exec` ahead of its first real one; the daemon answers it before reading the next, so a
+link that gives no answer ran nothing, and the forward is made again before the command goes out.
+Parallel calls to a host whose forward is gone take turns on `c<hash>.sock.lock`, so one logs in
+and the rest ride it: a call that waited on the lock first sends an empty `Exec` down the forward
+the holder made, and makes it again only when that gets no answer. A warm `zz --host xps list-sessions` takes about 40 ms from the Mac, 0.45 s
+when the forward has to be made again, and repeated calls leave the one master they found.
+
+Only the desktop app's connection opens `-D` (SOCKS for browser egress) and a forward of its own,
+cancelled when it drops. Probe and start that ride a live master are time-boxed at 15 s: a master
+whose network died answers nothing until its keepalive gives up (minutes for a user's
+`ServerAliveInterval 60`), so past that the master gets `ssh -O stop` and the next call logs in
+afresh. The first answer on a kept link (the command client's empty `Exec`, or a control or
+interactive hello) has the same 15 s bound, set as the socket's read timeout and cleared once the
+answer arrives; past it the master gets `ssh -O stop`, `c<hash>.sock` is removed, and the call
+takes the cold path. The command's own `Exec` went out behind the empty one, so it may have run:
+only a read-only chain (the CLI passes `!spec.mutates` to `CommandClient::connect_endpoint`) is
+sent again; any other fails with `EndpointError::StoppedAnswering`, which the CLI prints as
+`zz: xps stopped answering for 15 s; the command may have run there, check before retrying` (exit 1).
+An interactive hello carries its chain too (`zz --host xps new-session -A -s build \; send-keys …`
+in a terminal), so `connect_kept` makes the link again only when every command in it is
+`attach-session` or changes nothing (`attach_resendable`); otherwise it gives up the same way.
+`fleet`, `list-hosts`, `tools` and `protocol-version` over `--host` and `install_remote` first run
+a bounded `ssh … exit` on a live master, since the host's CLI itself may run for as long as it
+likes; with no master answering they sign in with the probe first (below). `run_remote_script`
+(list-hosts, fleet sync) is bounded the same way when it rides a live master. A cold connect still
+runs probe, start and forward as three ssh steps over one login.
+
+### zz's own key
+
+Each machine has one ed25519 key, `<data dir>/zz/ssh/id_ed25519` (`zz fleet key` prints it). The
+probe signs in twice at most (`zz_key_first`): first with only that key (`IdentitiesOnly=yes`,
+`IdentityFile`, `PreferredAuthentications=publickey`, `BatchMode=yes`), then, only when the key or
+the host key is refused, with the user's own login (config, agent, security key, password,
+host-key prompt). Every path that logs in without a live master goes through that probe first:
+connects, host-local verbs over `--host`, `fleet install` and the app's Install/Update. When the
+zz key won and no master carries the rest (Windows has none), the daemon start, proxy, forward,
+CLI and install logins offer the zz key too (`SshSession::identity`). A host-local verb or install
+with no master to open (`sign_in` without a control path) tries only the zz key, in batch mode,
+and otherwise runs with the user's own login, so a password is typed once. On a terminal with no
+askpass and no batch mode, the sign-in's second login writes ssh's stderr there, so a security-key
+touch notice or a 2FA banner shows; zz then reports a failure by its exit status alone.
+
+The probe carries this machine's key line only for a destination listed in `zz/config` (same user,
+host and port): it appends the line to that host's `authorized_keys` once and makes the host's own
+zz key. A raw `--host user@box` writes nothing there. Enrollment is logged at debug; the app
+toasts it.
+
+Parallel work never prompts. `ZZ_SSH_BATCH=1`, which the `--host all` fan-out sets in each child,
+and `SshSession::batch` (list-hosts, fleet sync, the first pass of `zz fleet install`) add
+`BatchMode=yes` and `PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*` to every login, since BatchMode
+alone still waits for a security-key touch. A `--host all` host that needs a typed login reports
+the hint to sign in once; `zz fleet install` retries those hosts one at a time on the terminal
+(`EndpointError::needs_sign_in`).
+
+`zz fleet sync` copies each host's own zz key to every other machine after checking only its shape
+(`ssh-ed25519 <base64> zz@<name>`). A key collected from a host is trusted as much as that host:
+a compromised fleet host can report a key it does not own and sync plants it fleet-wide, where it
+outlives the cleanup of that host. Nothing ties a key's comment to the host that reported it, so a
+planted key can carry any `zz@` name. After a compromise, remove every `zz@` line that host could
+have reported (or all of them) from each `~/.ssh/authorized_keys`, then run `zz fleet sync` again
+from a clean machine.
 
 ## Password and host-key prompts
 
@@ -469,7 +591,13 @@ interactive clients as the user has devices. Per-client maps carry the rest:
   `update-environment` update. Attach refresh follows target and terminal preflight. A table-only
   `switch-client -T` returns before refresh, while `-E` preserves the destination session map.
   Existing terminal processes keep their spawn environment; later panes consume the updated map.
-  The UTF-8 wire omits unrepresentable Unix names or values instead of substituting them.
+  The UTF-8 wire omits unrepresentable Unix names or values instead of substituting them. A remote
+  client (`client-remote-v1` in its hello, `ExecFlags::REMOTE` on an exec) is no
+  `update-environment` source: new-session seeds nothing from it and attach and switch skip the
+  refresh, so its sessions keep the daemon's own `SSH_AUTH_SOCK`, `DISPLAY` and the rest, and its
+  `TMUX_PANE` or `ZZ_PANE` never names a client hook's origin. `Client::local_environment` and
+  `Client::seed_context_environment` hold that rule; the map itself still feeds terminal features
+  and UTF-8 detection.
 - **Client formats.** Protocol v83 adds the originating process ID to the retained connection facts.
   `client_format_facts` combines it with tty, environment, size, cell geometry, colour scheme,
   requested flags, focus, attachment history, key-table state, timestamps, and mailbox counters.

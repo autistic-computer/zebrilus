@@ -112,17 +112,35 @@ impl<'a> RunRequest<'a> {
 }
 
 #[derive(Debug)]
-pub struct Error(String);
+pub struct Error {
+    message: String,
+    connect: Option<DaemonError>,
+}
 
 impl Error {
     fn message(message: impl Into<String>) -> Self {
-        Self(message.into())
+        Self {
+            message: message.into(),
+            connect: None,
+        }
+    }
+
+    fn connect(error: DaemonError) -> Self {
+        Self {
+            message: error.to_string(),
+            connect: Some(error),
+        }
+    }
+
+    #[must_use]
+    pub fn connect_error(&self) -> Option<&DaemonError> {
+        self.connect.as_ref()
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
+        formatter.write_str(&self.message)
     }
 }
 
@@ -130,7 +148,7 @@ impl StdError for Error {}
 
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
-        Self(error.to_string())
+        Self::message(error.to_string())
     }
 }
 
@@ -148,7 +166,7 @@ pub fn run<'a>(request: impl Into<RunRequest<'a>>) -> Result<(), Error> {
         Some(attach_operation(options)),
     )?;
     run_connected(request, initial).map_err(|error| {
-        if options.session.is_none() && error.0 == "can't find session: current session" {
+        if options.session.is_none() && error.message == "can't find session: current session" {
             Error::message("no sessions")
         } else {
             error
@@ -317,7 +335,7 @@ fn initial_connection(
             )
             .map_err(|restart| Error::message(format!("daemon restart failed: {restart}")))
         }
-        Err(error) => Err(Error::message(error.to_string())),
+        Err(error) => Err(Error::connect(error)),
     }
 }
 
@@ -401,21 +419,7 @@ fn resolve_endpoint(
     let Some(name) = options.host.as_deref() else {
         return Ok(Endpoint::Local(options.socket_path.clone()));
     };
-    if let Some(host) = hosts.iter().find(|host| host.name == name) {
-        return Ok(host.endpoint.clone());
-    }
-    let known = if hosts.is_empty() {
-        "(none)".to_owned()
-    } else {
-        hosts
-            .iter()
-            .map(|host| host.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    Err(Error::message(format!(
-        "unknown fleet host `{name}`; known hosts: {known}"
-    )))
+    zz_daemon_client::resolve_fleet_host(hosts, name).map_err(Error::message)
 }
 
 #[cfg(test)]

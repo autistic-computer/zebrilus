@@ -519,7 +519,11 @@ impl<'a, 'b> SurfaceActor<'a, 'b> {
                 );
             }
             Command::SemanticCapture(request) => {
-                let _ = request.reply.send(capture_last_command(&self.terminal));
+                let running = self.engine_filter.output.command_running;
+                let _ = request.reply.send(
+                    capture_last_command(&self.terminal)
+                        .map(|capture| LastCommandCapture { running, ..capture }),
+                );
             }
             Command::History(request) => {
                 let HistoryCommand {

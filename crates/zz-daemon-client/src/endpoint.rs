@@ -39,9 +39,11 @@ use thiserror::Error;
 
 use crate::DaemonError;
 #[cfg(any(unix, windows))]
-use crate::askpass::{AskpassListener, SshPrompts};
+use crate::askpass::{AskpassListener, AskpassMode, AskpassPrompt, SshPrompts};
+#[cfg(any(unix, windows))]
+use crate::transport::LocalStream;
 #[cfg(windows)]
-use crate::transport::{LocalListener, LocalStream, TransportListener as _};
+use crate::transport::{LocalListener, TransportListener as _};
 use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
 #[cfg(any(unix, windows, test))]
 use crate::unmasked::SpawnUnmasked as _;
@@ -51,10 +53,12 @@ use crate::unmasked::SpawnUnmasked as _;
 /// Appending leaves whatever the profile did contribute ahead of the fallbacks. A Mac app dragged
 /// out of the disk image has no CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
-fn remote_path_fallback() -> String {
+pub(crate) fn remote_path_fallback() -> String {
     format!(
         "PATH=\"$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; export PATH; \
-         zz_cli={name}; if ! command -v {name} >/dev/null 2>&1; then \
+         zz_managed=\"$HOME/.local/bin/{name}\"; zz_cli={name}; \
+         if [ -x \"$zz_managed\" ]; then zz_cli=\"$zz_managed\"; \
+         elif ! command -v {name} >/dev/null 2>&1; then \
          for zz_apps in /Applications \"$HOME/Applications\"; do \
          if [ -x \"$zz_apps/{app}.app/Contents/MacOS/cli\" ]; \
          then zz_cli=\"$zz_apps/{app}.app/Contents/MacOS/cli\"; break; fi; done; fi; ",
@@ -66,14 +70,26 @@ fn remote_path_fallback() -> String {
 #[cfg(any(unix, windows, test))]
 // Runs under `sh -lc` so `zz` resolves through the login shell's PATH; the sentinel prefixes
 // let the parser skip whatever a login profile prints around the probe's own output.
-pub(crate) fn remote_socket_probe() -> String {
+pub(crate) fn remote_socket_probe(key_line: Option<&str>) -> String {
+    shell_quote(&remote_socket_probe_script(key_line))
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn remote_socket_probe_script(key_line: Option<&str>) -> String {
     let desktop_socket = format!(
         "elif [ \"$(uname -s)\" = Darwin ] && [ -S \"/tmp/{name}-$USER/default.sock\" ]; \
          then zz_dir=\"/tmp/{name}-$USER\"; ",
         name = zz_protocol::app_identity::DIRECTORY,
     );
-    shell_quote(&format!(
-        "{fallback}if [ -n \"$XDG_RUNTIME_DIR\" ]; then zz_dir=\"$XDG_RUNTIME_DIR/{name}\"; \
+    let enrollment = key_line.map_or_else(String::new, |line| {
+        format!(
+            "( {} ) || printf 'zz-probe-key=failed\\n'; {}",
+            authorized_key_script(crate::ssh_key::key_body(line), line),
+            remote_zz_key_script(),
+        )
+    });
+    format!(
+        "{fallback}{enrollment}if [ -n \"$XDG_RUNTIME_DIR\" ]; then zz_dir=\"$XDG_RUNTIME_DIR/{name}\"; \
          {desktop_socket}else zz_tmp=\"$TMPDIR\"; \
          if [ -z \"$zz_tmp\" ]; then zz_tmp=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null); fi; \
          case \"$zz_tmp\" in /*) ;; *) zz_tmp=/tmp ;; esac; \
@@ -83,7 +99,23 @@ pub(crate) fn remote_socket_probe() -> String {
          else printf \"zz-probe-protocol=missing\\n\"; fi",
         fallback = remote_path_fallback(),
         name = zz_protocol::app_identity::DIRECTORY,
-    ))
+    )
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn remote_zz_key_script() -> String {
+    format!(
+        "if [ \"$(uname -s)\" = Darwin ]; then zz_ssh=\"$HOME/Library/Application Support/{name}/ssh\"; \
+         else case \"$XDG_DATA_HOME\" in /*) zz_ssh=\"$XDG_DATA_HOME/{name}/ssh\" ;; \
+         *) zz_ssh=\"$HOME/.local/share/{name}/ssh\" ;; esac; fi; \
+         if [ ! -f \"$zz_ssh/id_ed25519\" ] && command -v ssh-keygen >/dev/null 2>&1; then \
+         zz_host=$(uname -n | cut -d. -f1 | tr -cd 'A-Za-z0-9_-'); \
+         ( umask 077; mkdir -p \"$zz_ssh\" && chmod 700 \"$zz_ssh\" && ssh-keygen -q -t ed25519 -N '' \
+         -C \"zz@${{zz_host:-host}}\" -f \"$zz_ssh/id_ed25519\" </dev/null >/dev/null 2>&1 ); fi; \
+         if [ -f \"$zz_ssh/id_ed25519.pub\" ]; \
+         then printf 'zz-probe-pubkey=%s\\n' \"$(cat \"$zz_ssh/id_ed25519.pub\")\"; fi; ",
+        name = zz_protocol::app_identity::DIRECTORY,
+    )
 }
 /// Exit codes the auto-start script picks for itself; ssh reports its own failures as 255.
 #[cfg(any(unix, windows, test))]
@@ -110,9 +142,9 @@ const FORWARD_POLL_ATTEMPTS: usize = 250;
 #[cfg(unix)]
 const FORWARD_POLL_INTERVAL: Duration = Duration::from_millis(20);
 #[cfg(unix)]
-const MAX_FORWARD_SOCKET_PATH_BYTES: usize = 100;
+const CONTROL_PERSIST_SECONDS: u32 = 600;
 #[cfg(unix)]
-const CONTROL_PERSIST_SECONDS: u32 = 60;
+const LEGACY_SSH_DIRECTORY_AGE: Duration = Duration::from_mins(10);
 /// Leaves room inside `sun_path` for the private directory and the socket names under it.
 #[cfg(unix)]
 const MAX_SSH_RUNTIME_ROOT_BYTES: usize = 60;
@@ -176,8 +208,12 @@ pub enum EndpointError {
     },
     #[error("zz on {target} predates protocol version reporting; update it, then reconnect")]
     RemoteProtocolUnknown { target: String },
-    #[error("zz on {target} is {path}, which installing over ssh does not manage")]
-    RemoteInstallElsewhere { target: String, path: String },
+    #[error("zz on {target} is {path}, a link to {link} that zz did not install")]
+    RemoteInstallElsewhere {
+        target: String,
+        path: String,
+        link: String,
+    },
     #[error("installing zz on {target} failed: {reason}")]
     RemoteInstallFailed { target: String, reason: String },
     #[error("the zz installed on {target} speaks protocol v{remote}; this zz speaks v{client}")]
@@ -211,6 +247,10 @@ pub enum EndpointError {
         #[source]
         source: io::Error,
     },
+    #[error(
+        "{target} stopped answering for {seconds} s; the command may have run there, check before retrying"
+    )]
+    StoppedAnswering { target: String, seconds: u64 },
     #[error(
         "ssh remote socket path must be absolute: {path}",
         path = .0.display()
@@ -285,9 +325,9 @@ impl EndpointError {
                     zz_protocol::app_identity::DIRECTORY,
                 )
             }
-            Self::RemoteInstallElsewhere { target, path } => format!(
-                "{name} on {target} is {path}, which installing over ssh does not manage.\nUpdate \
-                 it the way it was installed, then reconnect.",
+            Self::RemoteInstallElsewhere { target, path, link } => format!(
+                "{path} on {target} links to {link}, which {name} did not install.\nRemove the \
+                 link or update that install, then reconnect.",
                 name = zz_protocol::app_identity::DIRECTORY,
             ),
             Self::RemoteInstallFailed { target, reason } => format!(
@@ -317,6 +357,7 @@ impl EndpointError {
                 source,
                 ..
             } => format!("The ssh forward to {target} failed while {action} its socket: {source}"),
+            Self::StoppedAnswering { .. } => self.to_string(),
             Self::InvalidRemoteSocket(path) => format!(
                 "The remote socket path must be absolute: {path}",
                 path = path.display()
@@ -324,6 +365,24 @@ impl EndpointError {
             Self::UnsupportedPlatform => "ssh hosts are not supported on this platform.".to_owned(),
             Self::UriParse { .. } => return None,
         })
+    }
+
+    #[must_use]
+    pub fn needs_sign_in(&self) -> bool {
+        match self {
+            Self::AuthenticationFailed { .. }
+            | Self::HostKeyRejected { .. }
+            | Self::SignInExpired { .. } => true,
+            #[cfg(any(unix, windows, test))]
+            Self::ProbeFailure { reason, .. } | Self::SshFailed { reason, .. } => [
+                SshFailure::SecurityKey,
+                SshFailure::Login,
+                SshFailure::HostKey,
+            ]
+            .into_iter()
+            .any(|failure| reason == failure.hint()),
+            _ => false,
+        }
     }
 }
 
@@ -501,8 +560,17 @@ fn parse_error(input: &str, reason: impl Into<String>) -> EndpointError {
 #[derive(Clone, Copy, Debug, Default)]
 struct SshSession<'a> {
     #[cfg(not(windows))]
-    control_path: Option<&'a Path>,
+    control: Option<&'a SshControl>,
     askpass: Option<SshAskpass<'a>>,
+    identity: Option<&'a Path>,
+    batch: bool,
+}
+
+#[cfg(not(windows))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SshControl {
+    path: PathBuf,
+    user_persist: bool,
 }
 
 #[cfg(any(unix, windows, test))]
@@ -537,6 +605,7 @@ fn ssh_forward_command(
     let mut command = Command::new("ssh");
     command
         .arg("-N")
+        .arg("-n")
         .arg("-o")
         .arg("ExitOnForwardFailure=yes")
         .arg("-o")
@@ -561,16 +630,147 @@ fn available_socks_port() -> Option<u16> {
 }
 
 #[cfg(any(unix, windows, test))]
-fn ssh_probe_command(endpoint: &SshEndpoint, session: SshSession<'_>) -> Command {
+fn ssh_probe_command(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    key_line: Option<&str>,
+) -> Command {
+    ssh_script_command(endpoint, session, &[], &remote_socket_probe(key_line))
+}
+
+#[cfg(any(unix, windows, test))]
+fn ssh_script_command(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    options: &[&str],
+    script: &str,
+) -> Command {
     let mut command = Command::new("ssh");
+    for option in options {
+        command.arg("-o").arg(option);
+    }
     append_ssh_options(&mut command, endpoint, session);
     command
         .arg("--")
         .arg(&endpoint.host)
         .arg("sh")
         .arg("-lc")
-        .arg(remote_socket_probe());
+        .arg(script);
     command
+}
+
+#[cfg(any(unix, windows, test))]
+fn login_options(command: &mut Command, session: SshSession<'_>) {
+    if let Some(identity) = session.identity {
+        command
+            .arg("-o")
+            .arg("IdentitiesOnly=yes")
+            .arg("-o")
+            .arg(format!(
+                "IdentityFile=\"{}\"",
+                identity.to_string_lossy().replace('%', "%%")
+            ))
+            .arg("-o")
+            .arg("PreferredAuthentications=publickey");
+    }
+    let batch = session.batch || batch_logins();
+    if batch || session.identity.is_some() {
+        command.arg("-o").arg("BatchMode=yes");
+    }
+    if batch {
+        command.arg("-o").arg(NO_SECURITY_KEYS);
+    }
+}
+
+#[cfg(any(unix, windows, test))]
+fn batch_logins() -> bool {
+    std::env::var_os(crate::SSH_BATCH_ENVIRONMENT_VARIABLE).is_some_and(|value| !value.is_empty())
+}
+
+#[cfg(any(unix, windows))]
+fn zz_key_first(
+    identity: Option<&Path>,
+    command: impl Fn(Option<&Path>) -> Command,
+) -> io::Result<(std::process::Output, bool)> {
+    if let Some(identity) = identity {
+        let output = command(Some(identity)).output_unmasked()?;
+        if !refused_login(output.status.code(), &output.stderr) {
+            return Ok((output, true));
+        }
+        log::debug!(
+            target: "zz_daemon::diagnostics",
+            "the zz key did not sign in: {}",
+            String::from_utf8_lossy(&output.stderr).trim(),
+        );
+    }
+    Ok((command(None).output_unmasked()?, false))
+}
+
+#[cfg(any(unix, windows, test))]
+fn refused_login(code: Option<i32>, stderr: &[u8]) -> bool {
+    code == Some(SSH_FAILURE_STATUS)
+        && SshFailure::classify(&String::from_utf8_lossy(stderr)).is_some_and(SshFailure::is_login)
+}
+
+#[cfg(any(unix, windows, test))]
+const NO_SECURITY_KEYS: &str = "PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*";
+
+#[cfg(any(unix, windows))]
+pub(crate) fn run_remote_script(
+    endpoint: &SshEndpoint,
+    connect_timeout_seconds: u32,
+    script: &str,
+) -> io::Result<std::process::Output> {
+    let connect_timeout = format!("ConnectTimeout={connect_timeout_seconds}");
+    let script = shell_quote(script);
+    let identity = zz_identity().map(|(path, _)| path);
+    let run = move |endpoint: &SshEndpoint, session: SshSession<'_>| {
+        zz_key_first(identity.as_deref(), |phase| {
+            ssh_script_command(
+                endpoint,
+                SshSession {
+                    identity: phase,
+                    batch: true,
+                    ..session
+                },
+                &[&connect_timeout],
+                &script,
+            )
+        })
+        .map(|(output, _)| output)
+    };
+    #[cfg(unix)]
+    if let Some((control, alive)) = live_control(endpoint) {
+        let step = SshStep {
+            endpoint: endpoint.clone(),
+            control: Some(control),
+            askpass: None,
+            identity: None,
+        };
+        return match step.run(alive, "remote script", move |step| {
+            Ok(run(&step.endpoint, step.session()))
+        }) {
+            Ok(output) => output,
+            Err(EndpointError::SshFailed { reason, .. }) => {
+                Err(io::Error::new(io::ErrorKind::TimedOut, reason))
+            }
+            Err(error) => Err(io::Error::other(error)),
+        };
+    }
+    run(endpoint, SshSession::default())
+}
+
+#[cfg(any(unix, windows))]
+fn zz_identity() -> Option<(PathBuf, String)> {
+    let identity = crate::ssh_key::ssh_key_path()
+        .and_then(|path| crate::ssh_key::ssh_public_key().map(|line| (path, line)));
+    match identity {
+        Ok(identity) => Some(identity),
+        Err(error) => {
+            log::debug!(target: "zz_daemon::diagnostics", "no zz ssh key: {error}");
+            None
+        }
+    }
 }
 
 #[cfg(any(unix, windows, test))]
@@ -612,31 +812,35 @@ pub(crate) fn remote_daemon_start_script(remote_socket: &Path) -> String {
 
 #[cfg(any(unix, windows, test))]
 pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon: bool) -> String {
-    let installed = format!(
-        "\"$HOME/.local/bin/{}\"",
-        zz_protocol::app_identity::DIRECTORY
-    );
     let restart = if restart_daemon {
         let socket = remote_socket.map_or_else(String::new, |socket| {
             format!("--socket {} ", shell_quote(&socket.to_string_lossy()))
         });
         format!(
-            "if [ \"$zz_protocol\" = {protocol} ]; then {installed} {socket}kill-server \
-             >/dev/null 2>&1; fi; ",
+            "if [ \"$zz_protocol\" = {protocol} ]; then \
+             zz_restart=$(\"$zz_managed\" {socket}kill-server 2>&1 >/dev/null); \
+             printf 'zz-install-restart=%s\\n' \"$?\"; \
+             printf '%s\\n' \"$zz_restart\" | sed 's/^/zz-install-restart-error=/'; fi; ",
             protocol = zz_protocol::PROTOCOL_VERSION,
         )
     } else {
         String::new()
     };
     format!(
-        "{fallback}zz_found=$(command -v \"$zz_cli\" 2>/dev/null); \
-         if [ -n \"$zz_found\" ] && {{ [ \"$zz_found\" != {installed} ] || [ -L \"$zz_found\" ]; }}; \
-         then printf 'zz-install-elsewhere=%s\\n' \"$zz_found\"; exit {REMOTE_INSTALL_ELSEWHERE_STATUS}; fi; \
-         sh -s -- --headless --version {version} || exit {REMOTE_INSTALL_FAILED_STATUS}; \
-         zz_protocol=$({installed} protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
+        "{fallback}if [ \"$(\"$zz_managed\" --version 2>/dev/null </dev/null)\" = 'zz {version}' ] \
+         && [ \"$(\"$zz_managed\" protocol-version 2>/dev/null </dev/null)\" = {protocol} ]; \
+         then printf 'zz-install-current=1\\n'; \
+         else zz_link=$(readlink \"$zz_managed\" 2>/dev/null); case \"$zz_link\" in \
+         \"\") printf 'zz-install-mode=headless\\n'; sh -s -- --headless --version {version} ;; \
+         ../lib/zz/cli|\"$HOME/.local/lib/zz/cli\") printf 'zz-install-mode=desktop\\n'; \
+         sh -s -- --prefix \"$HOME/.local\" --version {version} ;; \
+         *) printf 'zz-install-elsewhere=%s\\nzz-install-link=%s\\n' \"$zz_managed\" \"$zz_link\"; \
+         exit {REMOTE_INSTALL_ELSEWHERE_STATUS} ;; esac || exit {REMOTE_INSTALL_FAILED_STATUS}; fi; \
+         zz_protocol=$(\"$zz_managed\" protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
          {restart}printf 'zz-install-protocol=%s\\n' \"$zz_protocol\"",
         fallback = remote_path_fallback(),
         version = env!("CARGO_PKG_VERSION"),
+        protocol = zz_protocol::PROTOCOL_VERSION,
     )
 }
 
@@ -667,7 +871,7 @@ pub(crate) fn parse_remote_install_output(
     stdout: &[u8],
     stderr: &[u8],
     status: &str,
-) -> Result<(), EndpointError> {
+) -> Result<RemoteInstall, EndpointError> {
     let stdout = String::from_utf8_lossy(stdout);
     let value = |prefix: &str| {
         stdout
@@ -679,7 +883,36 @@ pub(crate) fn parse_remote_install_output(
     let target = target.to_owned();
     match code {
         Some(0) => match value("zz-install-protocol=").map(|value| value.parse::<u16>()) {
-            Some(Ok(zz_protocol::PROTOCOL_VERSION)) => Ok(()),
+            Some(Ok(zz_protocol::PROTOCOL_VERSION)) => Ok(RemoteInstall {
+                installed: if value("zz-install-current=").is_some() {
+                    RemoteInstalled::Current
+                } else if value("zz-install-mode=").as_deref() == Some("desktop") {
+                    RemoteInstalled::Desktop
+                } else {
+                    RemoteInstalled::Headless
+                },
+                restart: match value("zz-install-restart=").as_deref() {
+                    None => RemoteRestart::NotAsked,
+                    Some("0") => RemoteRestart::Restarted,
+                    Some(code) => match stdout
+                        .lines()
+                        .filter_map(|line| line.strip_prefix("zz-install-restart-error="))
+                        .map(str::trim)
+                        .rfind(|line| !line.is_empty())
+                    {
+                        Some(reason) if daemon_was_not_running(reason) => RemoteRestart::NotRunning,
+                        Some(reason) => RemoteRestart::Failed(
+                            reason.strip_prefix("zz: ").unwrap_or(reason).to_owned(),
+                        ),
+                        None => RemoteRestart::Failed(format!("kill-server exited with {code}")),
+                    },
+                },
+                warnings: stderr
+                    .lines()
+                    .filter_map(|line| line.trim().strip_prefix("warning: "))
+                    .map(ToOwned::to_owned)
+                    .collect(),
+            }),
             Some(Ok(remote)) => Err(EndpointError::RemoteInstallMismatch {
                 target,
                 remote,
@@ -691,9 +924,10 @@ pub(crate) fn parse_remote_install_output(
             }),
         },
         Some(REMOTE_INSTALL_ELSEWHERE_STATUS)
-            if let Some(path) = value("zz-install-elsewhere=") =>
+            if let Some(path) = value("zz-install-elsewhere=")
+                && let Some(link) = value("zz-install-link=") =>
         {
-            Err(EndpointError::RemoteInstallElsewhere { target, path })
+            Err(EndpointError::RemoteInstallElsewhere { target, path, link })
         }
         Some(REMOTE_INSTALL_FAILED_STATUS) => {
             let reason = ssh_failure_reason(&stderr, status);
@@ -716,6 +950,13 @@ pub(crate) fn parse_remote_install_output(
     }
 }
 
+#[cfg(any(unix, windows, test))]
+fn daemon_was_not_running(message: &str) -> bool {
+    message.starts_with("no server running on ")
+        || (message.starts_with("error connecting to ")
+            && message.ends_with("(No such file or directory)"))
+}
+
 /// The remote half of an attach that cannot forward a Unix socket: `zz proxy` on its stdio.
 #[cfg(any(windows, target_os = "ios", test))]
 pub(crate) fn remote_proxy_script(remote_socket: &Path) -> String {
@@ -729,14 +970,14 @@ pub(crate) fn remote_proxy_script(remote_socket: &Path) -> String {
 /// Appends `line` to the remote `~/.ssh/authorized_keys` unless `key` is already there, creating
 /// the directory and file private as sshd's `StrictModes` wants, and never gluing onto a last line
 /// that lacks its newline.
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(unix, windows, test))]
 pub(crate) fn authorized_key_script(key: &str, line: &str) -> String {
     let file = "\"$HOME/.ssh/authorized_keys\"";
     format!(
         "umask 077; mkdir -p \"$HOME/.ssh\" && touch {file} || exit 1; \
-         grep -qF {key} {file} && exit 0; \
+         if grep -qF {key} {file}; then printf 'zz-probe-key=present\\n'; exit 0; fi; \
          if [ -s {file} ] && [ -n \"$(tail -c 1 {file})\" ]; then echo >> {file}; fi; \
-         printf '%s\\n' {line} >> {file}",
+         printf '%s\\n' {line} >> {file} || exit 1; printf 'zz-probe-key=added\\n'",
         key = shell_quote(key),
         line = shell_quote(line),
     )
@@ -758,41 +999,86 @@ pub fn shell_quote(value: &str) -> String {
     quoted
 }
 
-/// ssh collapses every failure of its own into exit 255, so stderr is all there is to go on.
 #[cfg(any(unix, windows, test))]
-pub(crate) fn ssh_failure_hint(stderr: &str) -> Option<&'static str> {
-    let stderr = stderr.to_ascii_lowercase();
-    let contains = |needle: &str| stderr.contains(needle);
-    if contains("permission denied")
-        || contains("too many authentication failures")
-        || contains("no supported authentication methods")
-    {
-        Some("ssh rejected the login: add your key to the host or start an ssh agent")
-    } else if contains("host key verification failed")
-        || contains("remote host identification has changed")
-    {
-        Some("the host key does not match known_hosts: verify the host before connecting")
-    } else if contains("could not resolve hostname")
-        || contains("name or service not known")
-        || contains("nodename nor servname")
-    {
-        Some("the host name did not resolve")
-    } else if contains("connection refused") {
-        Some(
-            "nothing accepted the ssh connection: start sshd there, or on a Mac turn on Remote \
-             Login in System Settings › General › Sharing",
-        )
-    } else if contains("timed out") {
-        Some("the ssh connection timed out")
-    } else if contains("no route to host") || contains("network is unreachable") {
-        Some("the host is not reachable from this network")
-    } else {
-        None
-    }
+pub(crate) const SSH_FAILURE_STATUS: i32 = 255;
+
+#[cfg(any(unix, windows, test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SshFailure {
+    SecurityKey,
+    Login,
+    HostKey,
+    Resolve,
+    Refused,
+    Timeout,
+    Unreachable,
 }
 
 #[cfg(any(unix, windows, test))]
-fn ssh_failure_reason(stderr: &str, status: &str) -> String {
+impl SshFailure {
+    pub(crate) fn classify(stderr: &str) -> Option<Self> {
+        let stderr = stderr.to_ascii_lowercase();
+        let contains = |needle: &str| stderr.contains(needle);
+        if (contains("signing failed for") && contains("-sk"))
+            || contains("device not found")
+            || contains("user presence")
+        {
+            Some(Self::SecurityKey)
+        } else if contains("permission denied")
+            || contains("too many authentication failures")
+            || contains("no supported authentication methods")
+        {
+            Some(Self::Login)
+        } else if contains("host key verification failed")
+            || contains("remote host identification has changed")
+        {
+            Some(Self::HostKey)
+        } else if contains("could not resolve hostname")
+            || contains("name or service not known")
+            || contains("nodename nor servname")
+        {
+            Some(Self::Resolve)
+        } else if contains("connection refused") {
+            Some(Self::Refused)
+        } else if contains("timed out") {
+            Some(Self::Timeout)
+        } else if contains("no route to host") || contains("network is unreachable") {
+            Some(Self::Unreachable)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) const fn is_login(self) -> bool {
+        matches!(self, Self::SecurityKey | Self::Login | Self::HostKey)
+    }
+
+    const fn hint(self) -> &'static str {
+        match self {
+            Self::SecurityKey => "the security key was not touched",
+            Self::Login => "ssh rejected the login: add your key to the host or start an ssh agent",
+            Self::HostKey => {
+                "the host key does not match known_hosts: verify the host before connecting"
+            }
+            Self::Resolve => "the host name did not resolve",
+            Self::Refused => {
+                "nothing accepted the ssh connection: start sshd there, or on a Mac turn on Remote \
+                 Login in System Settings › General › Sharing"
+            }
+            Self::Timeout => "the ssh connection timed out",
+            Self::Unreachable => "the host is not reachable from this network",
+        }
+    }
+}
+
+/// ssh collapses every failure of its own into exit 255, so stderr is all there is to go on.
+#[cfg(any(unix, windows, test))]
+pub(crate) fn ssh_failure_hint(stderr: &str) -> Option<&'static str> {
+    SshFailure::classify(stderr).map(SshFailure::hint)
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn ssh_failure_reason(stderr: &str, status: &str) -> String {
     if let Some(hint) = ssh_failure_hint(stderr) {
         return hint.to_owned();
     }
@@ -806,6 +1092,7 @@ fn ssh_failure_reason(stderr: &str, status: &str) -> String {
 
 #[cfg(any(unix, windows, test))]
 fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: SshSession<'_>) {
+    login_options(command, session);
     command
         .arg("-o")
         .arg("ConnectTimeout=10")
@@ -824,14 +1111,17 @@ fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: Ss
         .arg("-o")
         .arg("ControlPath=none");
     #[cfg(not(windows))]
-    if let Some(control_path) = session.control_path {
+    if let Some(control) = session.control {
         command
             .arg("-o")
             .arg("ControlMaster=auto")
             .arg("-o")
-            .arg(control_path_option(control_path))
-            .arg("-o")
-            .arg(format!("ControlPersist={CONTROL_PERSIST_SECONDS}"));
+            .arg(control_path_option(&control.path));
+        if !control.user_persist {
+            command
+                .arg("-o")
+                .arg(format!("ControlPersist={CONTROL_PERSIST_SECONDS}"));
+        }
     }
     if let Some(port) = endpoint.port {
         command.arg("-p").arg(port.to_string());
@@ -858,14 +1148,22 @@ fn control_path_option(control_path: &Path) -> String {
     )
 }
 
-/// A 0700 per-process directory for the ssh control and askpass sockets, both of which are
-/// capabilities: one owns an ssh session, the other can phish a password out of the dialog.
 #[cfg(unix)]
 pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
-    static DIRECTORY: OnceLock<Result<tempfile::TempDir, String>> = OnceLock::new();
+    static DIRECTORY: OnceLock<Result<SshRuntimeDir, String>> = OnceLock::new();
     match DIRECTORY.get_or_init(|| {
+        let stable = stable_ssh_runtime_dir();
+        remove_legacy_ssh_dirs(&ssh_runtime_root());
+        match private_directory(&stable) {
+            Ok(()) => return Ok(SshRuntimeDir::Stable(stable)),
+            Err(error) => log::warn!(
+                target: "zz_daemon::diagnostics",
+                "ssh sockets fall back to a per-process directory: {} is unusable: {error}",
+                stable.display(),
+            ),
+        }
         let directory = tempfile::Builder::new()
-            .prefix("zz-ssh-")
+            .prefix(&format!("{}-", user_ssh_dir_name()))
             .tempdir_in(ssh_runtime_root())
             .map_err(|error| error.to_string())?;
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
@@ -876,11 +1174,112 @@ pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
                 directory.path().display()
             ));
         }
-        Ok(directory)
+        Ok(SshRuntimeDir::Process(directory))
     }) {
         Ok(directory) => Ok(directory.path()),
         Err(error) => Err(io::Error::other(error.clone())),
     }
+}
+
+#[cfg(unix)]
+enum SshRuntimeDir {
+    Stable(PathBuf),
+    Process(tempfile::TempDir),
+}
+
+#[cfg(unix)]
+impl SshRuntimeDir {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Stable(path) => path,
+            Self::Process(directory) => directory.path(),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn stable_ssh_runtime_dir() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    if let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|runtime| runtime.is_absolute())
+    {
+        return runtime
+            .join(zz_protocol::app_identity::DIRECTORY)
+            .join("ssh");
+    }
+    ssh_runtime_root().join(user_ssh_dir_name())
+}
+
+#[cfg(unix)]
+fn user_ssh_dir_name() -> String {
+    format!(
+        "{}-ssh-{}",
+        zz_protocol::app_identity::DIRECTORY,
+        rustix::process::geteuid().as_raw()
+    )
+}
+
+#[cfg(unix)]
+fn private_directory(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _};
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match fs::DirBuilder::new().mode(0o700).create(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() {
+        return Err(io::Error::other("it is not a directory"));
+    }
+    if metadata.uid() != rustix::process::geteuid().as_raw() {
+        return Err(io::Error::other("another user owns it"));
+    }
+    if metadata.mode() & 0o077 != 0 {
+        return Err(io::Error::other(format!(
+            "its mode is {:o}, not 700",
+            metadata.mode() & 0o777
+        )));
+    }
+    if path.to_str().is_none() {
+        return Err(io::Error::other("it is not valid UTF-8"));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn remove_legacy_ssh_dirs(root: &Path) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_str().is_some_and(legacy_ssh_dir_name) {
+            continue;
+        }
+        let path = entry.path();
+        let settled = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age >= LEGACY_SSH_DIRECTORY_AGE);
+        if settled {
+            let _ = fs::remove_dir(&path);
+        }
+    }
+}
+
+#[cfg(unix)]
+fn legacy_ssh_dir_name(name: &str) -> bool {
+    name.strip_prefix("zz-ssh-").is_some_and(|suffix| {
+        suffix.len() == 6
+            && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            && !suffix.bytes().all(|byte| byte.is_ascii_digit())
+    })
 }
 
 #[cfg(unix)]
@@ -896,24 +1295,35 @@ fn ssh_runtime_root() -> PathBuf {
 
 #[cfg(unix)]
 fn control_master_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
+    Ok(ssh_runtime_dir()?.join(format!("c{:016x}", endpoint_hash(endpoint, None))))
+}
+
+#[cfg(unix)]
+pub(crate) fn kept_forward_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
+    Ok(ssh_runtime_dir()?.join(format!(
+        "c{:016x}.sock",
+        endpoint_hash(endpoint, endpoint.remote_socket.as_deref())
+    )))
+}
+
+#[cfg(unix)]
+fn endpoint_hash(endpoint: &SshEndpoint, remote_socket: Option<&Path>) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     endpoint.user.hash(&mut hasher);
     endpoint.host.hash(&mut hasher);
     endpoint.port.hash(&mut hasher);
-    Ok(ssh_runtime_dir()?.join(format!("c{:016x}", hasher.finish())))
+    if let Some(remote_socket) = remote_socket {
+        remote_socket.hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 #[cfg(unix)]
-fn discard_dead_control_master(endpoint: &SshEndpoint, control_path: &Path) {
-    if !control_path.exists() {
-        return;
-    }
-    let alive = ssh_control_command(endpoint, control_path, "check", None)
-        .status_unmasked()
-        .is_ok_and(|status| status.success());
-    if !alive {
-        let _ = fs::remove_file(control_path);
-    }
+fn control_master_alive(endpoint: &SshEndpoint, control_path: &Path) -> bool {
+    control_path.exists()
+        && ssh_control_command(endpoint, control_path, "check", &[])
+            .status_unmasked()
+            .is_ok_and(|status| status.success())
 }
 
 #[cfg(unix)]
@@ -921,7 +1331,7 @@ fn ssh_control_command(
     endpoint: &SshEndpoint,
     control_path: &Path,
     request: &str,
-    forwarding: Option<(&str, &OsStr)>,
+    forwarding: &[(&str, &OsStr)],
 ) -> Command {
     let mut command = Command::new("ssh");
     command
@@ -929,7 +1339,7 @@ fn ssh_control_command(
         .arg(request)
         .arg("-o")
         .arg(control_path_option(control_path));
-    if let Some((flag, spec)) = forwarding {
+    for (flag, spec) in forwarding {
         command.arg(flag).arg(spec);
     }
     if let Some(port) = endpoint.port {
@@ -951,43 +1361,208 @@ fn ssh_control_command(
 fn probe_remote_socket(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
-) -> Result<PathBuf, EndpointError> {
-    let target = endpoint.to_string();
-    let output = ssh_probe_command(endpoint, session)
-        .output_unmasked()
-        .map_err(|source| EndpointError::SshSpawn {
-            operation: "remote socket probe",
-            source,
-        })?;
+) -> Result<(PathBuf, Option<PathBuf>), EndpointError> {
+    let (output, identity) = probe_login(endpoint, session, false)?;
     if !output.status.success() {
-        return Err(EndpointError::SshFailed {
-            target,
-            reason: ssh_failure_reason(
-                &String::from_utf8_lossy(&output.stderr),
-                &output.status.to_string(),
-            ),
-        });
+        return Err(probe_ssh_failure(endpoint, &output));
     }
-
-    parse_remote_probe_output(&target, &output.stdout)
+    let probe = parse_remote_probe_output(&endpoint.to_string(), &output.stdout);
+    note_key_enrollment(endpoint, session, &probe);
+    probe.socket.map(|socket| (socket, identity))
 }
 
-pub(crate) fn parse_remote_probe_output(
-    target: &str,
-    output: &[u8],
-) -> Result<PathBuf, EndpointError> {
-    let stdout = std::str::from_utf8(output).map_err(|_| EndpointError::ProbeFailure {
-        target: target.to_owned(),
-        reason: "probe output was not valid UTF-8".to_owned(),
-    })?;
-    // Login profiles may print arbitrary noise around the probe's output; only the
-    // sentinel-prefixed lines are ours.
-    let probe_value = |prefix: &str| {
-        stdout
-            .lines()
-            .find_map(|line| line.strip_prefix(prefix))
-            .map(str::trim)
+#[cfg(any(unix, windows))]
+fn sign_in(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+) -> Result<Option<PathBuf>, EndpointError> {
+    use std::io::IsTerminal as _;
+
+    #[cfg(not(windows))]
+    let shared = session.control.is_some();
+    #[cfg(windows)]
+    let shared = false;
+    if !shared {
+        return zz_key_signs_in(endpoint, session);
+    }
+    let shows_login = session.askpass.is_none()
+        && !session.batch
+        && !batch_logins()
+        && io::stderr().is_terminal();
+    let (output, identity) = probe_login(endpoint, session, shows_login)?;
+    if output.status.code() == Some(SSH_FAILURE_STATUS) {
+        return Err(probe_ssh_failure(endpoint, &output));
+    }
+    let probe = parse_remote_probe_output(&endpoint.to_string(), &output.stdout);
+    note_key_enrollment(endpoint, session, &probe);
+    Ok(identity)
+}
+
+#[cfg(any(unix, windows))]
+fn zz_key_signs_in(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+) -> Result<Option<PathBuf>, EndpointError> {
+    let Some((path, _)) = zz_identity() else {
+        return Ok(None);
     };
+    let output = ssh_probe_command(
+        endpoint,
+        SshSession {
+            identity: Some(&path),
+            ..session
+        },
+        None,
+    )
+    .output_unmasked()
+    .map_err(|source| EndpointError::SshSpawn {
+        operation: "remote socket probe",
+        source,
+    })?;
+    if refused_login(output.status.code(), &output.stderr) {
+        return Ok(None);
+    }
+    if output.status.code() == Some(SSH_FAILURE_STATUS) {
+        return Err(probe_ssh_failure(endpoint, &output));
+    }
+    Ok(Some(path))
+}
+
+#[cfg(any(unix, windows))]
+fn probe_login(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    shows_login: bool,
+) -> Result<(std::process::Output, Option<PathBuf>), EndpointError> {
+    let identity = zz_identity();
+    let key_line = identity
+        .as_ref()
+        .filter(|_| configured_fleet_endpoint(endpoint))
+        .map(|(_, line)| line.as_str());
+    let path = identity.as_ref().map(|(path, _)| path.as_path());
+    let (output, signed_in) = zz_key_first(path, |phase| {
+        let mut command = ssh_probe_command(
+            endpoint,
+            SshSession {
+                identity: phase,
+                ..session
+            },
+            key_line,
+        );
+        if shows_login && phase.is_none() {
+            command.stderr(Stdio::inherit());
+        }
+        command
+    })
+    .map_err(|source| EndpointError::SshSpawn {
+        operation: "remote socket probe",
+        source,
+    })?;
+    Ok((output, path.filter(|_| signed_in).map(Path::to_owned)))
+}
+
+#[cfg(any(unix, windows))]
+fn probe_ssh_failure(endpoint: &SshEndpoint, output: &std::process::Output) -> EndpointError {
+    EndpointError::SshFailed {
+        target: endpoint.to_string(),
+        reason: ssh_failure_reason(
+            &String::from_utf8_lossy(&output.stderr),
+            &output.status.to_string(),
+        ),
+    }
+}
+
+#[cfg(any(unix, windows))]
+fn configured_fleet_endpoint(endpoint: &SshEndpoint) -> bool {
+    crate::configured_fleet_hosts().is_ok_and(|(hosts, _)| {
+        hosts.iter().any(|host| {
+            matches!(&host.endpoint, Endpoint::Ssh(configured)
+                if configured.user == endpoint.user
+                    && configured.host == endpoint.host
+                    && configured.port == endpoint.port)
+        })
+    })
+}
+
+#[cfg(any(unix, windows))]
+fn note_key_enrollment(endpoint: &SshEndpoint, session: SshSession<'_>, probe: &RemoteProbe) {
+    match probe.key {
+        Some(KeyEnrollment::Added) => {
+            log::debug!(
+                target: "zz_daemon::diagnostics",
+                "added this machine's zz key to {endpoint}'s authorized_keys; its own zz key is {}",
+                probe.pubkey.as_deref().unwrap_or("unknown"),
+            );
+            if let Some(askpass) = session.askpass {
+                let notice = AskpassPrompt::new(AskpassMode::KeyAdded, endpoint.to_string());
+                if let Err(error) = crate::askpass::notify(askpass.socket, &notice) {
+                    log::debug!(
+                        target: "zz_daemon::askpass",
+                        "could not tell the window about {endpoint}'s new key: {error}",
+                    );
+                }
+            }
+        }
+        Some(KeyEnrollment::Failed) => log::debug!(
+            target: "zz_daemon::diagnostics",
+            "could not add this machine's zz key to {endpoint}'s authorized_keys",
+        ),
+        Some(KeyEnrollment::Present) | None => {}
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RemoteProbe {
+    pub(crate) socket: Result<PathBuf, EndpointError>,
+    pub(crate) key: Option<KeyEnrollment>,
+    pub(crate) pubkey: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KeyEnrollment {
+    Added,
+    Present,
+    Failed,
+}
+
+// Login profiles may print arbitrary noise around the probe's output; only the
+// sentinel-prefixed lines are ours.
+pub(crate) fn probe_value<'a>(stdout: &'a str, prefix: &str) -> Option<&'a str> {
+    stdout
+        .lines()
+        .find_map(|line| line.strip_prefix(prefix))
+        .map(str::trim)
+}
+
+pub(crate) fn parse_remote_probe_output(target: &str, output: &[u8]) -> RemoteProbe {
+    let Ok(stdout) = std::str::from_utf8(output) else {
+        return RemoteProbe {
+            socket: Err(EndpointError::ProbeFailure {
+                target: target.to_owned(),
+                reason: "probe output was not valid UTF-8".to_owned(),
+            }),
+            key: None,
+            pubkey: None,
+        };
+    };
+    let key = match probe_value(stdout, "zz-probe-key=") {
+        Some("added") => Some(KeyEnrollment::Added),
+        Some("present") => Some(KeyEnrollment::Present),
+        Some(_) => Some(KeyEnrollment::Failed),
+        None => None,
+    };
+    let pubkey = probe_value(stdout, "zz-probe-pubkey=")
+        .filter(|line| crate::ssh_key::is_zz_key_line(line))
+        .map(str::to_owned);
+    RemoteProbe {
+        socket: remote_probe_socket(target, stdout),
+        key,
+        pubkey,
+    }
+}
+
+fn remote_probe_socket(target: &str, stdout: &str) -> Result<PathBuf, EndpointError> {
+    let probe_value = |prefix: &str| probe_value(stdout, prefix);
     let path = probe_value("zz-probe-socket=").unwrap_or_default();
     if path.is_empty() || !path.starts_with('/') {
         return Err(EndpointError::ProbeFailure {
@@ -1083,18 +1658,220 @@ fn session_askpass(askpass: Option<&AskpassListener>) -> Option<SshAskpass<'_>> 
 }
 
 #[cfg(unix)]
-fn shared_control_path(endpoint: &SshEndpoint) -> Option<PathBuf> {
-    match control_master_path(endpoint) {
-        Ok(path) => {
-            discard_dead_control_master(endpoint, &path);
-            Some(path)
-        }
+fn live_control(endpoint: &SshEndpoint) -> Option<(SshControl, bool)> {
+    let control = configured_control(endpoint)?;
+    let alive = control_master_alive(endpoint, &control.path);
+    if !alive && control.path.exists() {
+        let _ = fs::remove_file(&control.path);
+    }
+    Some((control, alive))
+}
+
+#[cfg(unix)]
+fn configured_control(endpoint: &SshEndpoint) -> Option<SshControl> {
+    ssh_config_command(endpoint)
+        .output_unmasked()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| user_control(&String::from_utf8_lossy(&output.stdout)))
+        .or_else(|| match control_master_path(endpoint) {
+            Ok(path) => Some(SshControl {
+                path,
+                user_persist: false,
+            }),
+            Err(error) => {
+                log::warn!(
+                    target: "zz_daemon::diagnostics",
+                    "ssh connection sharing is unavailable for {endpoint}: {error}",
+                );
+                None
+            }
+        })
+}
+
+#[cfg(unix)]
+fn ssh_config_command(endpoint: &SshEndpoint) -> Command {
+    let mut command = Command::new("ssh");
+    command.arg("-G");
+    if let Some(port) = endpoint.port {
+        command.arg("-p").arg(port.to_string());
+    }
+    if let Some(user) = &endpoint.user {
+        command.arg("-l").arg(user);
+    }
+    command
+        .arg("--")
+        .arg(&endpoint.host)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+#[cfg(unix)]
+fn user_control(config: &str) -> Option<SshControl> {
+    let value = |key: &str| {
+        config.lines().find_map(|line| {
+            let (name, value) = line.split_once(' ')?;
+            name.eq_ignore_ascii_case(key).then(|| value.trim())
+        })
+    };
+    if !matches!(value("controlmaster"), Some("auto" | "true" | "yes")) {
+        return None;
+    }
+    let path = value("controlpath")
+        .filter(|path| path.starts_with('/') && !path.contains(char::is_whitespace))?;
+    Some(SshControl {
+        path: PathBuf::from(path),
+        user_persist: !matches!(value("controlpersist"), None | Some("no" | "false")),
+    })
+}
+
+#[cfg(any(unix, windows))]
+pub fn run_remote_cli(
+    endpoint: &SshEndpoint,
+    arguments: &[String],
+) -> Result<std::process::ExitStatus, EndpointError> {
+    use std::io::IsTerminal as _;
+
+    #[cfg(unix)]
+    let (control, answered) = riding_control(endpoint);
+    #[cfg(not(unix))]
+    let answered = false;
+    let session = SshSession {
+        #[cfg(unix)]
+        control: control.as_ref(),
+        ..SshSession::default()
+    };
+    let identity = if answered {
+        None
+    } else {
+        sign_in(endpoint, session)?
+    };
+    let session = SshSession {
+        identity: identity.as_deref(),
+        ..session
+    };
+    let mut command = ssh_cli_command(endpoint, session, arguments);
+    if !io::stdin().is_terminal() {
+        command.stdin(Stdio::null());
+    }
+    command
+        .status_unmasked()
+        .map_err(|source| EndpointError::SshSpawn {
+            operation: "remote command",
+            source,
+        })
+}
+
+#[cfg(unix)]
+fn riding_control(endpoint: &SshEndpoint) -> (Option<SshControl>, bool) {
+    let Some((control, alive)) = live_control(endpoint) else {
+        return (None, false);
+    };
+    if !alive {
+        return (Some(control), false);
+    }
+    let step = SshStep {
+        endpoint: endpoint.clone(),
+        control: Some(control),
+        askpass: None,
+        identity: None,
+    };
+    let answered = match step.run(true, "remote command", master_answers) {
+        Ok(()) => true,
         Err(error) => {
-            log::warn!(
+            log::debug!(
                 target: "zz_daemon::diagnostics",
-                "ssh connection sharing is unavailable for {endpoint}: {error}",
+                "{error}; signing in again",
             );
-            None
+            false
+        }
+    };
+    (step.control, answered)
+}
+
+#[cfg(unix)]
+fn master_answers(step: &SshStep) -> Result<(), EndpointError> {
+    let mut command = Command::new("ssh");
+    command.arg("-T");
+    append_ssh_options(&mut command, &step.endpoint, step.session());
+    command
+        .arg("--")
+        .arg(&step.endpoint.host)
+        .arg("exit")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status_unmasked()
+        .map(drop)
+        .map_err(|source| EndpointError::SshSpawn {
+            operation: "remote command",
+            source,
+        })
+}
+
+#[cfg(any(unix, windows, test))]
+fn ssh_cli_command(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    arguments: &[String],
+) -> Command {
+    let mut script = format!("{}exec \"$zz_cli\"", remote_path_fallback());
+    for argument in arguments {
+        script.push(' ');
+        script.push_str(&shell_quote(argument));
+    }
+    let mut command = Command::new("ssh");
+    command.arg("-T");
+    append_ssh_options(&mut command, endpoint, session);
+    command
+        .arg("--")
+        .arg(&endpoint.host)
+        .arg("sh")
+        .arg("-lc")
+        .arg(shell_quote(&script));
+    command
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteInstall {
+    pub installed: RemoteInstalled,
+    pub restart: RemoteRestart,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteInstalled {
+    Current,
+    Headless,
+    Desktop,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RemoteRestart {
+    NotAsked,
+    Restarted,
+    NotRunning,
+    Failed(String),
+}
+
+impl RemoteInstall {
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let version = env!("CARGO_PKG_VERSION");
+        let installed = match self.installed {
+            RemoteInstalled::Current => format!("already {name} {version}"),
+            RemoteInstalled::Headless => format!("{name} {version} installed (headless)"),
+            RemoteInstalled::Desktop => format!("{name} {version} installed (desktop)"),
+        };
+        match &self.restart {
+            RemoteRestart::NotAsked => installed,
+            RemoteRestart::Restarted => format!("{installed}, daemon restarted"),
+            RemoteRestart::NotRunning => format!("{installed}, no daemon was running"),
+            RemoteRestart::Failed(reason) => {
+                format!("{installed}, but its daemon did not stop: {reason}")
+            }
         }
     }
 }
@@ -1104,7 +1881,25 @@ pub fn install_remote(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
     restart_daemon: bool,
-) -> Result<(), EndpointError> {
+) -> Result<RemoteInstall, EndpointError> {
+    install_remote_with(endpoint, prompts, restart_daemon, false)
+}
+
+#[cfg(any(unix, windows))]
+pub fn install_remote_batch(
+    endpoint: &SshEndpoint,
+    restart_daemon: bool,
+) -> Result<RemoteInstall, EndpointError> {
+    install_remote_with(endpoint, None, restart_daemon, true)
+}
+
+#[cfg(any(unix, windows))]
+fn install_remote_with(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    restart_daemon: bool,
+    batch: bool,
+) -> Result<RemoteInstall, EndpointError> {
     let target = endpoint.to_string();
     if zz_protocol::app_identity::DEVELOPMENT {
         return Err(EndpointError::RemoteInstallFailed {
@@ -1118,11 +1913,24 @@ pub fn install_remote(
     }
     let askpass = start_askpass(endpoint, prompts);
     #[cfg(unix)]
-    let control_path = shared_control_path(endpoint);
+    let (control, answered) = riding_control(endpoint);
+    #[cfg(not(unix))]
+    let answered = false;
     let session = SshSession {
         #[cfg(unix)]
-        control_path: control_path.as_deref(),
+        control: control.as_ref(),
         askpass: session_askpass(askpass.as_ref()),
+        identity: None,
+        batch,
+    };
+    let identity = if answered {
+        None
+    } else {
+        sign_in(endpoint, session)?
+    };
+    let session = SshSession {
+        identity: identity.as_deref(),
+        ..session
     };
     let spawn_failed = |source| EndpointError::SshSpawn {
         operation: "remote install",
@@ -1150,30 +1958,257 @@ pub fn install_remote(
 }
 
 #[cfg(unix)]
-fn forwarded_local_socket_path() -> PathBuf {
+fn forwarded_local_socket_path() -> io::Result<PathBuf> {
     let counter = FORWARD_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let file_name = format!("zz-fwd-{}-{counter}.sock", std::process::id());
-    let temporary_directory = std::env::var("TMPDIR")
-        .ok()
-        .filter(|path| !path.is_empty())
-        .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
-    let candidate = temporary_directory.join(&file_name);
-    if candidate.as_os_str().as_encoded_bytes().len() < MAX_FORWARD_SOCKET_PATH_BYTES {
-        candidate
-    } else {
-        PathBuf::from("/tmp").join(file_name)
+    Ok(ssh_runtime_dir()?.join(format!("fwd-{}-{counter}.sock", std::process::id())))
+}
+
+#[cfg(unix)]
+pub(crate) fn connect_kept<T>(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    resendable: bool,
+    mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
+) -> Result<(T, Option<SshForward>), DaemonError> {
+    let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
+        target: endpoint.to_string(),
+        action: "making a directory for",
+        path: ssh_runtime_root(),
+        source,
+    })?;
+    let mut dial = |socket: &Path| -> Result<T, DaemonError> {
+        let stream = LocalTransport::connect(socket)?;
+        let bound = stream.try_clone()?;
+        bound.set_timeout(Some(MASTER_STEP_TIMEOUT))?;
+        let connected = connect(socket, stream)?;
+        bound.set_timeout(None)?;
+        Ok(connected)
+    };
+    let stalled = match dial(&kept) {
+        Ok(connected) => return Ok((connected, None)),
+        Err(error) if !kept_forward_failed(&error) => return Err(error),
+        Err(error) if !resendable && link_stalled(&error) => {
+            return Err(give_up_on_stalled_link(endpoint).into());
+        }
+        Err(error) => {
+            log::debug!(
+                target: "zz_daemon::diagnostics",
+                "the kept forward to {endpoint} did not answer ({error}); making it again",
+            );
+            link_stalled(&error)
+        }
+    };
+    let lock = KeptForwardLock::acquire(&kept);
+    if lock.contended
+        && let Ok(connected) = dial(&kept)
+    {
+        return Ok((connected, None));
+    }
+    if stalled {
+        abandon_stalled_master(endpoint, &kept);
+    }
+    let forward = SshForward::keep(endpoint, prompts, &kept)?;
+    let connected = dial(forward.local_socket())?;
+    Ok((connected, (!forward.kept).then_some(forward)))
+}
+
+#[cfg(unix)]
+pub(crate) fn link_stalled(error: &DaemonError) -> bool {
+    match error {
+        DaemonError::Io(error) | DaemonError::Protocol(zz_protocol::ProtocolError::Io(error)) => {
+            matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            )
+        }
+        _ => false,
+    }
+}
+
+#[cfg(unix)]
+fn abandon_stalled_master(endpoint: &SshEndpoint, kept: &Path) {
+    log::debug!(
+        target: "zz_daemon::diagnostics",
+        "the ssh master for {endpoint} gave no answer within {} s; stopping it",
+        MASTER_STEP_TIMEOUT.as_secs(),
+    );
+    if let Some(control) = configured_control(endpoint) {
+        let _ = ssh_control_command(endpoint, &control.path, "stop", &[]).status_unmasked();
+    }
+    let _ = fs::remove_file(kept);
+}
+
+#[cfg(unix)]
+fn kept_forward_failed(error: &DaemonError) -> bool {
+    match error {
+        DaemonError::Io(_) | DaemonError::Protocol(_) | DaemonError::IncompatibleDaemon { .. } => {
+            true
+        }
+        DaemonError::Server(error) => {
+            matches!(error, zz_protocol::ServerError::ProtocolMismatch { .. })
+        }
+        _ => false,
+    }
+}
+
+#[cfg(unix)]
+pub(crate) fn give_up_on_stalled_link(endpoint: &SshEndpoint) -> EndpointError {
+    if let Ok(kept) = kept_forward_path(endpoint) {
+        let lock = KeptForwardLock::acquire(&kept);
+        if !lock.contended {
+            abandon_stalled_master(endpoint, &kept);
+        }
+    }
+    stopped_answering(endpoint)
+}
+
+#[cfg(unix)]
+pub(crate) fn stopped_answering(endpoint: &SshEndpoint) -> EndpointError {
+    EndpointError::StoppedAnswering {
+        target: endpoint.to_string(),
+        seconds: MASTER_STEP_TIMEOUT.as_secs(),
+    }
+}
+
+#[cfg(all(unix, not(target_os = "ios")))]
+pub(crate) fn remake_kept_forward(
+    endpoint: &SshEndpoint,
+    stalled: bool,
+    answers: impl FnOnce(&Path) -> bool,
+) -> Result<(PathBuf, Option<SshForward>), EndpointError> {
+    let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
+        target: endpoint.to_string(),
+        action: "making a directory for",
+        path: ssh_runtime_root(),
+        source,
+    })?;
+    let lock = KeptForwardLock::acquire(&kept);
+    if lock.contended && answers(&kept) {
+        return Ok((kept, None));
+    }
+    if stalled {
+        abandon_stalled_master(endpoint, &kept);
+    }
+    let forward = SshForward::keep(endpoint, None, &kept)?;
+    let socket = forward.local_socket.clone();
+    Ok((socket, (!forward.kept).then_some(forward)))
+}
+
+#[cfg(unix)]
+struct KeptForwardLock {
+    _file: Option<fs::File>,
+    contended: bool,
+}
+
+#[cfg(unix)]
+impl KeptForwardLock {
+    fn acquire(kept: &Path) -> Self {
+        use std::os::unix::fs::OpenOptionsExt as _;
+
+        let mut path = kept.as_os_str().to_owned();
+        path.push(".lock");
+        let Ok(file) = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .mode(0o600)
+            .open(PathBuf::from(path))
+        else {
+            return Self {
+                _file: None,
+                contended: false,
+            };
+        };
+        let contended = match file.try_lock() {
+            Err(fs::TryLockError::WouldBlock) => file.lock().is_ok(),
+            Ok(()) | Err(fs::TryLockError::Error(_)) => false,
+        };
+        Self {
+            _file: Some(file),
+            contended,
+        }
+    }
+}
+
+#[cfg(unix)]
+pub(crate) const MASTER_STEP_TIMEOUT: Duration = Duration::from_secs(15);
+
+#[cfg(unix)]
+#[derive(Clone)]
+struct SshStep {
+    endpoint: SshEndpoint,
+    control: Option<SshControl>,
+    askpass: Option<(PathBuf, PathBuf)>,
+    identity: Option<PathBuf>,
+}
+
+#[cfg(unix)]
+impl SshStep {
+    fn session(&self) -> SshSession<'_> {
+        SshSession {
+            control: self.control.as_ref(),
+            askpass: self
+                .askpass
+                .as_ref()
+                .map(|(helper, socket)| SshAskpass { helper, socket }),
+            identity: self.identity.as_deref(),
+            batch: false,
+        }
+    }
+
+    fn run<T: Send + 'static>(
+        &self,
+        riding: bool,
+        operation: &'static str,
+        step: impl FnOnce(&Self) -> Result<T, EndpointError> + Send + 'static,
+    ) -> Result<T, EndpointError> {
+        self.run_within(MASTER_STEP_TIMEOUT, riding, operation, step)
+    }
+
+    fn run_within<T: Send + 'static>(
+        &self,
+        timeout: Duration,
+        riding: bool,
+        operation: &'static str,
+        step: impl FnOnce(&Self) -> Result<T, EndpointError> + Send + 'static,
+    ) -> Result<T, EndpointError> {
+        let Some(control) = self.control.as_ref().filter(|_| riding) else {
+            return step(self);
+        };
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let owned = self.clone();
+        thread::Builder::new()
+            .name("zz-ssh-step".to_owned())
+            .spawn(move || {
+                let _ = sender.send(step(&owned));
+            })
+            .map_err(|source| EndpointError::SshSpawn { operation, source })?;
+        receiver.recv_timeout(timeout).unwrap_or_else(|_| {
+            let _ =
+                ssh_control_command(&self.endpoint, &control.path, "stop", &[]).status_unmasked();
+            Err(EndpointError::SshFailed {
+                target: self.endpoint.to_string(),
+                reason: format!(
+                    "the {operation} got no answer over the open ssh connection within {} s",
+                    timeout.as_secs()
+                ),
+            })
+        })
     }
 }
 
 #[cfg(unix)]
 pub(crate) struct SshForward {
-    child: Child,
+    child: Option<Child>,
     local_socket: PathBuf,
     endpoint: SshEndpoint,
-    control_path: Option<PathBuf>,
+    control: Option<SshControl>,
+    master: bool,
     forwarding: OsString,
     socks_port: Option<u16>,
     askpass: Option<AskpassListener>,
+    identity: Option<PathBuf>,
+    kept: bool,
 }
 
 #[cfg(unix)]
@@ -1182,39 +2217,79 @@ impl SshForward {
         endpoint: &SshEndpoint,
         prompts: Option<SshPrompts>,
     ) -> Result<Self, EndpointError> {
+        Self::open_new(endpoint, prompts, None)
+    }
+
+    fn keep(
+        endpoint: &SshEndpoint,
+        prompts: Option<SshPrompts>,
+        kept: &Path,
+    ) -> Result<Self, EndpointError> {
+        Self::open_new(endpoint, prompts, Some(kept))
+    }
+
+    fn open_new(
+        endpoint: &SshEndpoint,
+        prompts: Option<SshPrompts>,
+        kept: Option<&Path>,
+    ) -> Result<Self, EndpointError> {
         let askpass = start_askpass(endpoint, prompts);
-        let control_path = shared_control_path(endpoint);
-        let session = SshSession {
-            control_path: control_path.as_deref(),
-            askpass: session_askpass(askpass.as_ref()),
+        let (control, riding) =
+            live_control(endpoint).map_or((None, false), |(control, alive)| (Some(control), alive));
+        let mut step = SshStep {
+            endpoint: endpoint.clone(),
+            control,
+            askpass: askpass
+                .as_ref()
+                .map(|listener| (listener.helper().to_owned(), listener.socket().to_owned())),
+            identity: None,
         };
 
-        let probed_socket = probe_remote_socket(endpoint, session)?;
+        let (probed_socket, identity) = step.run(riding, "remote socket probe", |step| {
+            probe_remote_socket(&step.endpoint, step.session())
+        })?;
+        step.identity = identity;
         let remote_socket = endpoint.remote_socket.clone().unwrap_or(probed_socket);
         if !remote_socket.is_absolute() {
             return Err(EndpointError::InvalidRemoteSocket(remote_socket));
         }
-        ensure_remote_daemon(endpoint, session, &remote_socket)?;
+        let master = step
+            .control
+            .as_ref()
+            .is_some_and(|control| riding || control_master_alive(endpoint, &control.path));
+        let start_socket = remote_socket.clone();
+        step.run(master, "remote daemon start", move |step| {
+            ensure_remote_daemon(&step.endpoint, step.session(), &start_socket)
+        })?;
 
-        let local_socket = forwarded_local_socket_path();
-        let socks_port = available_socks_port();
-        let child =
-            ssh_forward_command(endpoint, session, &local_socket, &remote_socket, socks_port)
-                .spawn_unmasked()
-                .map_err(|source| EndpointError::SshSpawn {
-                    operation: "socket forward",
-                    source,
-                })?;
+        let socks = kept.is_none();
+        let kept = kept.filter(|_| master);
+        let local_socket = match kept {
+            Some(kept) => kept.to_owned(),
+            None => forwarded_local_socket_path().map_err(|source| EndpointError::ForwardIo {
+                target: endpoint.to_string(),
+                action: "making a directory for",
+                path: ssh_runtime_root(),
+                source,
+            })?,
+        };
         let mut forward = Self {
-            child,
+            child: None,
             forwarding: forwarding_spec(&local_socket, &remote_socket),
             local_socket,
             endpoint: endpoint.clone(),
-            control_path,
-            socks_port,
+            control: step.control,
+            master,
+            socks_port: socks.then(available_socks_port).flatten(),
             askpass,
+            identity: step.identity,
+            kept: kept.is_some(),
         };
-        if let Err(error) = forward.wait_for_socket(endpoint) {
+        if forward.kept {
+            forward.cancel_forwards();
+            let _ = fs::remove_file(&forward.local_socket);
+        }
+        if let Err(error) = forward.open(&remote_socket) {
             let Some(port) = forward.socks_port else {
                 return Err(error);
             };
@@ -1223,15 +2298,15 @@ impl SshForward {
                 "ssh forward to {endpoint} failed while binding -D {}; retrying on a fresh port: {error}",
                 socks_spec(port),
             );
-            forward.restart_with_fresh_socks_port(endpoint, &remote_socket)?;
+            forward.restart_with_fresh_socks_port(&remote_socket)?;
         }
 
         let mut permissions = fs::metadata(&forward.local_socket)
-            .map_err(|source| forward.io_error(endpoint, "reading permissions for", source))?
+            .map_err(|source| forward.io_error("reading permissions for", source))?
             .permissions();
         permissions.set_mode(0o600);
         fs::set_permissions(&forward.local_socket, permissions)
-            .map_err(|source| forward.io_error(endpoint, "setting permissions on", source))?;
+            .map_err(|source| forward.io_error("setting permissions on", source))?;
         Ok(forward)
     }
 
@@ -1243,44 +2318,88 @@ impl SshForward {
         self.socks_port
     }
 
-    fn restart_with_fresh_socks_port(
-        &mut self,
-        endpoint: &SshEndpoint,
-        remote_socket: &Path,
-    ) -> Result<(), EndpointError> {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        self.cancel_forwards();
-        let _ = fs::remove_file(&self.local_socket);
-        self.socks_port = available_socks_port();
-        let mut command = ssh_forward_command(
-            endpoint,
-            SshSession {
-                control_path: self.control_path.as_deref(),
+    fn open(&mut self, remote_socket: &Path) -> Result<(), EndpointError> {
+        let Some(control_path) = self
+            .control
+            .as_ref()
+            .filter(|_| self.master)
+            .map(|control| control.path.clone())
+        else {
+            let session = SshSession {
+                control: self.control.as_ref(),
                 askpass: session_askpass(self.askpass.as_ref()),
-            },
-            &self.local_socket,
-            remote_socket,
-            self.socks_port,
-        );
-        self.child = command
+                identity: self.identity.as_deref(),
+                batch: false,
+            };
+            let child = ssh_forward_command(
+                &self.endpoint,
+                session,
+                &self.local_socket,
+                remote_socket,
+                self.socks_port,
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
             .spawn_unmasked()
             .map_err(|source| EndpointError::SshSpawn {
                 operation: "socket forward",
                 source,
             })?;
-        self.wait_for_socket(endpoint)
+            self.child = Some(child);
+            return self.wait_for_socket();
+        };
+        let socks = self.socks_port.map(socks_spec);
+        let mut forwarding = vec![("-L", self.forwarding.as_os_str())];
+        if let Some(socks) = &socks {
+            forwarding.push(("-D", OsStr::new(socks)));
+        }
+        let output = ssh_control_command(&self.endpoint, &control_path, "forward", &forwarding)
+            .stderr(Stdio::piped())
+            .output_unmasked()
+            .map_err(|source| EndpointError::SshSpawn {
+                operation: "socket forward",
+                source,
+            })?;
+        if !output.status.success() {
+            log::debug!(
+                target: "zz_daemon::diagnostics",
+                "ssh -O forward to {} failed: {}",
+                self.endpoint,
+                String::from_utf8_lossy(&output.stderr).trim(),
+            );
+            return Err(EndpointError::ForwardExited {
+                target: self.endpoint.to_string(),
+                status: output.status.to_string(),
+                local_socket: self.local_socket.clone(),
+            });
+        }
+        self.wait_for_socket()
+    }
+
+    fn restart_with_fresh_socks_port(&mut self, remote_socket: &Path) -> Result<(), EndpointError> {
+        self.stop_child();
+        self.cancel_forwards();
+        let _ = fs::remove_file(&self.local_socket);
+        self.socks_port = available_socks_port();
+        self.open(remote_socket)
+    }
+
+    fn stop_child(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 
     fn cancel_forwards(&self) {
-        let Some(control_path) = &self.control_path else {
+        let Some(control_path) = self.control.as_ref().map(|control| &control.path) else {
             return;
         };
         if !control_path.exists() {
             return;
         }
         let cancel = |forwarding| {
-            let _ = ssh_control_command(&self.endpoint, control_path, "cancel", Some(forwarding))
+            let _ = ssh_control_command(&self.endpoint, control_path, "cancel", &[forwarding])
                 .status_unmasked();
         };
         cancel(("-L", self.forwarding.as_os_str()));
@@ -1290,52 +2409,49 @@ impl SshForward {
         }
     }
 
-    fn wait_for_socket(&mut self, endpoint: &SshEndpoint) -> Result<(), EndpointError> {
+    fn wait_for_socket(&mut self) -> Result<(), EndpointError> {
         for _ in 0..FORWARD_POLL_ATTEMPTS {
-            if self.socket_exists(endpoint)? {
+            if self.socket_exists()? {
                 return Ok(());
             }
-            if let Some(status) = self
-                .child
-                .try_wait()
-                .map_err(|source| self.io_error(endpoint, "checking ssh child for", source))?
-            {
-                if self.socket_exists(endpoint)? {
+            let exited = match &mut self.child {
+                Some(child) => child
+                    .try_wait()
+                    .map_err(|source| self.io_error("checking ssh child for", source))?,
+                None => None,
+            };
+            if let Some(status) = exited {
+                if self.socket_exists()? {
                     return Ok(());
                 }
                 return Err(EndpointError::ForwardExited {
-                    target: endpoint.to_string(),
+                    target: self.endpoint.to_string(),
                     status: status.to_string(),
                     local_socket: self.local_socket.clone(),
                 });
             }
             thread::sleep(FORWARD_POLL_INTERVAL);
         }
-        if self.socket_exists(endpoint)? {
+        if self.socket_exists()? {
             return Ok(());
         }
         Err(EndpointError::ForwardTimeout {
-            target: endpoint.to_string(),
+            target: self.endpoint.to_string(),
             local_socket: self.local_socket.clone(),
         })
     }
 
-    fn socket_exists(&self, endpoint: &SshEndpoint) -> Result<bool, EndpointError> {
+    fn socket_exists(&self) -> Result<bool, EndpointError> {
         match fs::metadata(&self.local_socket) {
             Ok(metadata) => Ok(metadata.file_type().is_socket()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-            Err(source) => Err(self.io_error(endpoint, "inspecting", source)),
+            Err(source) => Err(self.io_error("inspecting", source)),
         }
     }
 
-    fn io_error(
-        &self,
-        endpoint: &SshEndpoint,
-        action: &'static str,
-        source: io::Error,
-    ) -> EndpointError {
+    fn io_error(&self, action: &'static str, source: io::Error) -> EndpointError {
         EndpointError::ForwardIo {
-            target: endpoint.to_string(),
+            target: self.endpoint.to_string(),
             action,
             path: self.local_socket.clone(),
             source,
@@ -1346,11 +2462,26 @@ impl SshForward {
 #[cfg(unix)]
 impl Drop for SshForward {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if self.kept {
+            return;
+        }
+        self.stop_child();
         self.cancel_forwards();
         let _ = fs::remove_file(&self.local_socket);
     }
+}
+
+#[cfg(windows)]
+pub(crate) fn connect_kept<T>(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    _resendable: bool,
+    mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
+) -> Result<(T, Option<SshForward>), DaemonError> {
+    let forward = SshForward::start(endpoint, prompts)?;
+    let socket = forward.local_socket();
+    let connected = connect(socket, LocalTransport::connect(socket)?)?;
+    Ok((connected, Some(forward)))
 }
 
 #[cfg(windows)]
@@ -1482,9 +2613,14 @@ impl SshForward {
         let askpass = start_askpass(endpoint, prompts);
         let session = SshSession {
             askpass: session_askpass(askpass.as_ref()),
+            ..SshSession::default()
         };
 
-        let probed_socket = probe_remote_socket(endpoint, session)?;
+        let (probed_socket, identity) = probe_remote_socket(endpoint, session)?;
+        let session = SshSession {
+            identity: identity.as_deref(),
+            ..session
+        };
         let remote_socket = endpoint.remote_socket.clone().unwrap_or(probed_socket);
         if !remote_socket_is_absolute(&remote_socket) {
             return Err(EndpointError::InvalidRemoteSocket(remote_socket));
@@ -1787,6 +2923,7 @@ mod tests {
                 );
                 let mut expected = vec![
                     "-N",
+                    "-n",
                     "-o",
                     "ExitOnForwardFailure=yes",
                     "-o",
@@ -1817,21 +2954,43 @@ mod tests {
             ("-L", "/tmp/local.sock:/run/zz.sock"),
             ("-D", "127.0.0.1:41080"),
         ] {
-            let command = ssh_control_command(
-                &endpoint,
-                control_path,
-                "cancel",
-                Some((flag, OsStr::new(spec))),
-            );
-            let arguments = command_args(&command);
-            assert!(
-                arguments
-                    .windows(2)
-                    .any(|pair| pair == [flag.to_owned(), spec.to_owned()]),
-                "{arguments:?}",
-            );
+            for request in ["cancel", "forward"] {
+                let command = ssh_control_command(
+                    &endpoint,
+                    control_path,
+                    request,
+                    &[(flag, OsStr::new(spec))],
+                );
+                let arguments = command_args(&command);
+                assert!(
+                    arguments
+                        .windows(2)
+                        .any(|pair| pair == [flag.to_owned(), spec.to_owned()]),
+                    "{arguments:?}",
+                );
+                assert_eq!(arguments[..2], ["-O".to_owned(), request.to_owned()]);
+            }
         }
-        let check = command_args(&ssh_control_command(&endpoint, control_path, "check", None));
+        let both = command_args(&ssh_control_command(
+            &endpoint,
+            control_path,
+            "forward",
+            &[
+                ("-L", OsStr::new("/tmp/local.sock:/run/zz.sock")),
+                ("-D", OsStr::new("127.0.0.1:41080")),
+            ],
+        ));
+        assert!(
+            both.windows(4).any(|window| window
+                == [
+                    "-L",
+                    "/tmp/local.sock:/run/zz.sock",
+                    "-D",
+                    "127.0.0.1:41080"
+                ]),
+            "{both:?}",
+        );
+        let check = command_args(&ssh_control_command(&endpoint, control_path, "check", &[]));
         assert!(
             !check
                 .iter()
@@ -1845,11 +3004,11 @@ mod tests {
     fn builds_probe_ssh_argv_for_user_and_port_permutations() {
         for (user, port, options) in ssh_option_cases() {
             let endpoint = test_ssh_endpoint(user, port);
-            let command = ssh_probe_command(&endpoint, test_session());
+            let command = ssh_probe_command(&endpoint, test_session(), None);
             let mut expected = shared_ssh_options();
             expected.extend(options.into_iter().map(str::to_owned));
             expected.extend(
-                ["--", "host", "sh", "-lc", &remote_socket_probe()]
+                ["--", "host", "sh", "-lc", &remote_socket_probe(None)]
                     .into_iter()
                     .map(str::to_owned),
             );
@@ -1874,10 +3033,42 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn a_user_master_keeps_its_own_persistence() {
+        let endpoint = test_ssh_endpoint(None, None);
+        for (user_persist, persists) in [(true, false), (false, true)] {
+            let control = SshControl {
+                path: PathBuf::from("/home/ada/.ssh/cm-f5de03fd"),
+                user_persist,
+            };
+            let session = SshSession {
+                control: Some(&control),
+                ..SshSession::default()
+            };
+            let arguments = command_args(&ssh_probe_command(&endpoint, session, None));
+            assert!(
+                arguments.contains(&"ControlPath=/home/ada/.ssh/cm-f5de03fd".to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                arguments.contains(&"ControlMaster=auto".to_owned()),
+                "{arguments:?}"
+            );
+            assert_eq!(
+                arguments
+                    .iter()
+                    .any(|argument| argument.starts_with("ControlPersist=")),
+                persists,
+                "{arguments:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn every_ssh_child_shares_one_multiplexing_master() {
         let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
         let commands = [
-            command_args(&ssh_probe_command(&endpoint, test_session())),
+            command_args(&ssh_probe_command(&endpoint, test_session(), None)),
             command_args(&ssh_daemon_start_command(
                 &endpoint,
                 test_session(),
@@ -1901,7 +3092,7 @@ mod tests {
                 "{arguments:?}",
             );
             assert!(
-                arguments.contains(&format!("ControlPersist={CONTROL_PERSIST_SECONDS}")),
+                arguments.contains(&"ControlPersist=600".to_owned()),
                 "{arguments:?}",
             );
             assert!(
@@ -1916,7 +3107,7 @@ mod tests {
     #[test]
     fn a_session_without_a_master_uses_platform_safe_options() {
         let endpoint = test_ssh_endpoint(None, None);
-        let command = ssh_probe_command(&endpoint, SshSession::default());
+        let command = ssh_probe_command(&endpoint, SshSession::default(), None);
         let mut expected = [
             "-o",
             "ConnectTimeout=10",
@@ -1931,7 +3122,7 @@ mod tests {
         .to_vec();
         #[cfg(windows)]
         expected.extend(["-o", "ControlMaster=no", "-o", "ControlPath=none"].map(str::to_owned));
-        expected.extend(["--", "host", "sh", "-lc", &remote_socket_probe()].map(str::to_owned));
+        expected.extend(["--", "host", "sh", "-lc", &remote_socket_probe(None)].map(str::to_owned));
         assert_eq!(command_args(&command), expected);
         assert_eq!(
             command_envs(&command),
@@ -1946,7 +3137,9 @@ mod tests {
             zz_protocol::PROTOCOL_VERSION
         );
         assert_eq!(
-            parse_remote_probe_output("host", output.as_bytes()).unwrap(),
+            parse_remote_probe_output("host", output.as_bytes())
+                .socket
+                .unwrap(),
             Path::new("/run/user/1000/zz/default.sock")
         );
 
@@ -1954,7 +3147,8 @@ mod tests {
             parse_remote_probe_output(
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=48\n"
-            ),
+            )
+            .socket,
             Err(EndpointError::RemoteProtocolMismatch {
                 target,
                 daemon: 48,
@@ -1966,6 +3160,7 @@ mod tests {
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=unknown\n"
             )
+            .socket
             .unwrap_err()
             .to_string(),
             "zz on host predates protocol version reporting; update it, then reconnect"
@@ -1974,7 +3169,8 @@ mod tests {
             parse_remote_probe_output(
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=banana\n"
-            ),
+            )
+            .socket,
             Err(EndpointError::ProbeFailure { .. })
         ));
     }
@@ -1987,7 +3183,9 @@ mod tests {
             zz_protocol::PROTOCOL_VERSION
         );
         assert_eq!(
-            parse_remote_probe_output("host", noisy.as_bytes()).unwrap(),
+            parse_remote_probe_output("host", noisy.as_bytes())
+                .socket
+                .unwrap(),
             Path::new("/run/zz.sock")
         );
 
@@ -1997,17 +3195,288 @@ mod tests {
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=missing\n"
             )
+            .socket
             .unwrap(),
             Path::new("/run/zz.sock")
         );
 
         assert!(matches!(
-            parse_remote_probe_output("host", b"zz-probe-socket=/run/zz.sock\n"),
+            parse_remote_probe_output("host", b"zz-probe-socket=/run/zz.sock\n").socket,
             Err(EndpointError::ProbeFailure { .. })
         ));
         assert!(matches!(
-            parse_remote_probe_output("host", b"only noise, no sentinels\n"),
+            parse_remote_probe_output("host", b"only noise, no sentinels\n").socket,
             Err(EndpointError::ProbeFailure { .. })
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zz_key_phase_offers_only_the_zz_identity() {
+        let endpoint = test_ssh_endpoint(Some("user"), None);
+        let identity = Path::new("/Users/a/Library/Application Support/zz-100%/ssh/id_ed25519");
+        let line = "ssh-ed25519 AAAAzz zz@desk";
+        let mut expected = [
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            "IdentityFile=\"/Users/a/Library/Application Support/zz-100%%/ssh/id_ed25519\"",
+            "-o",
+            "PreferredAuthentications=publickey",
+            "-o",
+            "BatchMode=yes",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        expected.extend(shared_ssh_options());
+        expected.extend(["-l", "user", "--", "host", "sh", "-lc"].map(str::to_owned));
+        expected.push(remote_socket_probe(Some(line)));
+        assert_eq!(
+            command_args(&ssh_probe_command(
+                &endpoint,
+                SshSession {
+                    identity: Some(identity),
+                    ..test_session()
+                },
+                Some(line)
+            )),
+            expected
+        );
+
+        let fallback = command_args(&ssh_probe_command(&endpoint, test_session(), Some(line)));
+        assert_eq!(fallback[..shared_ssh_options().len()], shared_ssh_options());
+        for option in [
+            "IdentitiesOnly",
+            "IdentityFile",
+            "PreferredAuthentications",
+            "BatchMode",
+        ] {
+            assert!(
+                !fallback.iter().any(|argument| argument.starts_with(option)),
+                "the user's own login must keep OpenSSH's default identities: {fallback:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_login_the_zz_key_won_and_a_batch_login_reach_every_later_command() {
+        let endpoint = test_ssh_endpoint(None, None);
+        let identity = Path::new("/home/a/.local/share/zz/ssh/id_ed25519");
+        let signed_in = SshSession {
+            identity: Some(identity),
+            ..test_session()
+        };
+        let batch = SshSession {
+            batch: true,
+            ..test_session()
+        };
+        let socket = Path::new("/run/zz.sock");
+        let local = Path::new("/tmp/local.sock");
+        let commands = |session| {
+            [
+                ssh_daemon_start_command(&endpoint, session, socket),
+                ssh_forward_command(&endpoint, session, local, socket, None),
+                ssh_cli_command(&endpoint, session, &["protocol-version".to_owned()]),
+                ssh_install_command(&endpoint, session, false),
+            ]
+            .map(|command| command_args(&command))
+        };
+        for arguments in commands(signed_in) {
+            assert!(
+                arguments.contains(&format!("IdentityFile=\"{}\"", identity.display())),
+                "{arguments:?}"
+            );
+            assert!(
+                arguments.contains(&"BatchMode=yes".to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                !arguments.contains(&NO_SECURITY_KEYS.to_owned()),
+                "{arguments:?}"
+            );
+        }
+        for arguments in commands(batch) {
+            assert!(
+                arguments.contains(&"BatchMode=yes".to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                arguments.contains(&NO_SECURITY_KEYS.to_owned()),
+                "{arguments:?}"
+            );
+            assert!(
+                !arguments
+                    .iter()
+                    .any(|argument| argument.starts_with("IdentityFile")),
+                "{arguments:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_login_a_person_can_answer_is_retried_on_the_terminal() {
+        let failed = |stderr: &str| EndpointError::SshFailed {
+            target: "ssh://host".to_owned(),
+            reason: ssh_failure_reason(stderr, "exit status: 255"),
+        };
+        for stderr in [
+            "you@host: Permission denied (publickey).",
+            "Host key verification failed.",
+            "sign_and_send_pubkey: signing failed for ED25519-SK \"/k\": device not found",
+        ] {
+            assert!(failed(stderr).needs_sign_in(), "{stderr}");
+        }
+        for stderr in [
+            "ssh: connect to host host port 22: Operation timed out",
+            "ssh: Could not resolve hostname host: nodename nor servname",
+            "bash: line 1: zz: command not found",
+        ] {
+            assert!(!failed(stderr).needs_sign_in(), "{stderr}");
+        }
+        assert!(
+            !EndpointError::RemoteBinaryMissing {
+                target: "ssh://host".to_owned()
+            }
+            .needs_sign_in()
+        );
+    }
+
+    #[test]
+    fn only_a_refused_login_falls_back_to_the_users_own() {
+        for stderr in [
+            "user@host: Permission denied (publickey).",
+            "Host key verification failed.",
+            "sign_and_send_pubkey: signing failed for ED25519-SK \"/k\": device not found",
+        ] {
+            assert!(refused_login(Some(255), stderr.as_bytes()), "{stderr}");
+        }
+        for (code, stderr) in [
+            (
+                Some(255),
+                "ssh: connect to host desk port 22: Operation timed out",
+            ),
+            (
+                Some(255),
+                "ssh: Could not resolve hostname desk: nodename nor servname",
+            ),
+            (
+                Some(255),
+                "ssh: connect to host desk port 22: Connection refused",
+            ),
+            (Some(1), "mkdir: Permission denied"),
+            (None, "Permission denied"),
+        ] {
+            assert!(!refused_login(code, stderr.as_bytes()), "{code:?} {stderr}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_probe_enrolls_this_machine_once_and_reports_the_hosts_own_key() {
+        let line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGW3/OPNnD2l/h6LfRGUUDgkTB5X9f1CU1CuD1GC4d5u zz@hub";
+        let shells = ["/bin/sh", "/bin/tcsh"]
+            .into_iter()
+            .filter(|shell| Path::new(shell).exists());
+        for shell in shells {
+            let home = tempfile::tempdir().expect("temporary home");
+            let probe = || {
+                let output = Command::new(shell)
+                    .args(["-c", &format!("sh -c {}", remote_socket_probe(Some(line)))])
+                    .env("HOME", home.path())
+                    .env("PATH", "/usr/bin:/bin")
+                    .env_remove("XDG_DATA_HOME")
+                    .env_remove("XDG_RUNTIME_DIR")
+                    .output()
+                    .expect("run the probe");
+                assert!(output.status.success(), "{shell}: {output:?}");
+                parse_remote_probe_output("host", &output.stdout)
+            };
+
+            let first = probe();
+            assert!(first.socket.is_ok(), "{shell}: {:?}", first.socket);
+            assert_eq!(first.key, Some(KeyEnrollment::Added), "{shell}");
+            let host_key = first.pubkey.expect("the probe makes the host's own key");
+            assert!(host_key.starts_with("ssh-ed25519 "), "{host_key}");
+
+            let second = probe();
+            assert_eq!(second.key, Some(KeyEnrollment::Present), "{shell}");
+            assert_eq!(second.pubkey.as_deref(), Some(host_key.as_str()));
+
+            let ssh = home.path().join(".ssh");
+            let authorized = ssh.join("authorized_keys");
+            assert_eq!(
+                fs::read_to_string(&authorized).unwrap(),
+                format!("{line}\n")
+            );
+            assert_eq!(
+                fs::metadata(&ssh).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(
+                fs::metadata(&authorized).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            let data = if cfg!(target_os = "macos") {
+                home.path().join("Library/Application Support")
+            } else {
+                home.path().join(".local/share")
+            };
+            let key_directory = data.join(zz_protocol::app_identity::DIRECTORY).join("ssh");
+            assert_eq!(
+                fs::metadata(&key_directory).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(
+                fs::metadata(key_directory.join("id_ed25519"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_probe_without_a_key_line_writes_nothing() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let output = Command::new("/bin/sh")
+            .args(["-c", &format!("sh -c {}", remote_socket_probe(None))])
+            .env("HOME", home.path())
+            .env("PATH", "/usr/bin:/bin")
+            .env_remove("XDG_DATA_HOME")
+            .output()
+            .expect("run the probe");
+        let probe = parse_remote_probe_output("host", &output.stdout);
+        assert!(probe.socket.is_ok());
+        assert_eq!((probe.key, probe.pubkey), (None, None));
+        assert_eq!(fs::read_dir(home.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn the_probe_reports_enrollment_and_only_a_well_formed_host_key() {
+        let output = format!(
+            "zz-probe-key=added\nzz-probe-pubkey=ssh-ed25519 AAAAzz zz@xps\n\
+             zz-probe-socket=/run/zz.sock\nzz-probe-protocol={}\n",
+            zz_protocol::PROTOCOL_VERSION
+        );
+        let probe = parse_remote_probe_output("host", output.as_bytes());
+        assert_eq!(probe.key, Some(KeyEnrollment::Added));
+        assert_eq!(probe.pubkey.as_deref(), Some("ssh-ed25519 AAAAzz zz@xps"));
+        assert!(probe.socket.is_ok());
+
+        let probe = parse_remote_probe_output(
+            "host",
+            b"zz-probe-key=failed\nzz-probe-pubkey=command=\"id\" ssh-ed25519 AAAAzz zz@xps\n\
+              zz-probe-socket=/run/zz.sock\nzz-probe-protocol=48\n",
+        );
+        assert_eq!(probe.key, Some(KeyEnrollment::Failed));
+        assert_eq!(probe.pubkey, None);
+        assert!(matches!(
+            probe.socket,
+            Err(EndpointError::RemoteProtocolMismatch { daemon: 48, .. })
         ));
     }
 
@@ -2027,14 +3496,14 @@ mod tests {
         let helper = PathBuf::from("/opt/zz/bin/zz");
         let socket = PathBuf::from("/tmp/zz-ssh/a1");
         let session = SshSession {
-            control_path: None,
             askpass: Some(SshAskpass {
                 helper: &helper,
                 socket: &socket,
             }),
+            ..SshSession::default()
         };
         for command in [
-            ssh_probe_command(&endpoint, session),
+            ssh_probe_command(&endpoint, session, None),
             ssh_daemon_start_command(&endpoint, session, Path::new("/run/zz.sock")),
             ssh_forward_command(
                 &endpoint,
@@ -2063,12 +3532,53 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn remote_cli_runs_the_hosts_own_zz_with_quoted_arguments() {
+        let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
+        let arguments = ["fleet", "add", "box", "ssh://ada@box", "it's"].map(str::to_owned);
+        let command = ssh_cli_command(&endpoint, test_session(), &arguments);
+        let mut expected = vec!["-T".to_owned()];
+        expected.extend(shared_ssh_options());
+        expected.extend(["-p", "2222", "-l", "user", "--", "host", "sh", "-lc"].map(str::to_owned));
+        expected.push(shell_quote(&format!(
+            "{}exec \"$zz_cli\" 'fleet' 'add' 'box' 'ssh://ada@box' 'it'\\''s'",
+            remote_path_fallback()
+        )));
+        assert_eq!(command_args(&command), expected);
+
+        let directory = tempfile::tempdir().unwrap();
+        let bin = directory.path().join(".local/bin");
+        fs::create_dir_all(&bin).unwrap();
+        let cli = bin.join(zz_protocol::app_identity::DIRECTORY);
+        fs::write(
+            &cli,
+            "#!/bin/sh\nfor a in \"$@\"; do printf '[%s]' \"$a\"; done; exit 7\n",
+        )
+        .unwrap();
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o755)).unwrap();
+        let script = command_args(&command).pop().unwrap();
+        let output = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("sh -c {script}"))
+            .env("HOME", directory.path())
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "[fleet][add][box][ssh://ada@box][it's]"
+        );
+    }
+
     #[test]
     fn every_remote_script_looks_where_the_installer_puts_the_cli() {
         let scripts = [
-            remote_socket_probe(),
+            remote_socket_probe(None),
             remote_daemon_start_script(Path::new("/run/zz.sock")),
             remote_proxy_script(Path::new("/run/zz.sock")),
+            remote_install_script(Some(Path::new("/run/zz.sock")), true),
         ];
         for script in scripts {
             for dir in ["$HOME/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"] {
@@ -2088,10 +3598,14 @@ mod tests {
             fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))
                 .expect("executable permissions");
         }
+        let home = tempfile::tempdir().expect("temporary home");
         let path = format!("{}:/usr/bin:/bin", directory.path().display());
         let name = zz_protocol::app_identity::DIRECTORY;
         for (script, expected) in [
-            (remote_socket_probe(), format!("zz-probe-protocol={name}\n")),
+            (
+                remote_socket_probe(None),
+                format!("zz-probe-protocol={name}\n"),
+            ),
             (
                 shell_quote(&remote_proxy_script(Path::new("/tmp/explicit.sock"))),
                 format!("{name}\n"),
@@ -2100,6 +3614,7 @@ mod tests {
             let output = Command::new("/bin/sh")
                 .args(["-c", &format!("sh -c {script}")])
                 .env("PATH", &path)
+                .env("HOME", home.path())
                 .output()
                 .expect("run remote script");
             assert!(output.status.success());
@@ -2108,15 +3623,86 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn remote_scripts_prefer_the_managed_copy_over_an_earlier_path_zz() {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let home = tempfile::tempdir().expect("temporary home");
+        let package = tempfile::tempdir().expect("package prefix");
+        let managed = home.path().join(".local/bin");
+        fs::create_dir_all(&managed).expect("managed bin");
+        for (directory, label) in [(package.path(), "package"), (managed.as_path(), "managed")] {
+            let binary = directory.join(name);
+            fs::write(
+                &binary,
+                format!(
+                    "#!/bin/sh\nif [ \"$1\" = daemon ]; then : > \"$HOME/{label}-ran\"; fi\n\
+                     printf '%s\\n' '{label}'\n"
+                ),
+            )
+            .expect("write executable");
+            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))
+                .expect("executable permissions");
+        }
+        let socket_dir = tempfile::tempdir().expect("socket directory");
+        let socket = socket_dir.path().join("zz.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).expect("bind socket");
+        let path = format!("{}:/usr/bin:/bin", package.path().display());
+        let run = |script: String| {
+            let output = Command::new("/bin/sh")
+                .args(["-c", &format!("sh -c {script}")])
+                .env("PATH", &path)
+                .env("HOME", home.path())
+                .output()
+                .expect("run remote script");
+            assert!(output.status.success(), "{output:?}");
+            String::from_utf8_lossy(&output.stdout).into_owned()
+        };
+
+        assert!(run(remote_socket_probe(None)).ends_with("zz-probe-protocol=managed\n"));
+        assert!(run(shell_quote(&remote_proxy_script(&socket))).ends_with("managed\n"));
+        run(shell_quote(&remote_daemon_start_script(&socket)));
+        let started = home.path().join("managed-ran");
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !started.exists() && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(started.exists(), "the auto-start ran another zz");
+        assert!(!home.path().join("package-ran").exists());
+    }
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, body: &str) {
+        fs::create_dir_all(path.parent().expect("parent directory")).unwrap();
+        fs::write(path, body).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn fake_zz(protocol: &str, calls: &str) -> String {
+        format!(
+            "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol} ;; \
+             --version) echo \"zz 0.0.1\" ;; *) echo \"$*\" >> \"$HOME/{calls}\" ;; esac\n"
+        )
+    }
+
+    #[cfg(unix)]
     fn fake_installer(protocol: &str) -> String {
         format!(
-            "case \"$*\" in \"--headless --version {version}\") ;; \
-             *) echo \"error: unexpected arguments $*\" >&2; exit 1 ;; esac\n\
-             mkdir -p \"$HOME/.local/bin\"\n\
-             rm -f \"$HOME/.local/bin/{name}\"\n\
-             printf '#!/bin/sh\\nif [ \"$1\" = protocol-version ]; then echo {protocol}; \
-             else echo \"$*\" >> \"$HOME/calls\"; fi\\n' > \"$HOME/.local/bin/{name}\"\n\
-             chmod 755 \"$HOME/.local/bin/{name}\"\n",
+            "printf '%s\\n' \"$*\" > \"$HOME/installer-args\"\n\
+             zz_body='{body}'\n\
+             case \"$*\" in\n\
+             \"--headless --version {version}\")\n\
+             mkdir -p \"$HOME/.local/bin\"; rm -f \"$HOME/.local/bin/{name}\"\n\
+             printf '%s' \"$zz_body\" > \"$HOME/.local/bin/{name}\"\n\
+             chmod 755 \"$HOME/.local/bin/{name}\" ;;\n\
+             \"--prefix $HOME/.local --version {version}\")\n\
+             rm -rf \"$HOME/.local/lib/zz\"; mkdir -p \"$HOME/.local/lib/zz\" \"$HOME/.local/bin\"\n\
+             printf '%s' \"$zz_body\" > \"$HOME/.local/lib/zz/cli\"\n\
+             chmod 755 \"$HOME/.local/lib/zz/cli\"\n\
+             ln -sfn ../lib/zz/cli \"$HOME/.local/bin/{name}\" ;;\n\
+             *) echo \"error: unexpected arguments $*\" >&2; exit 1 ;;\n\
+             esac\n",
+            body = fake_zz(protocol, "calls"),
             version = env!("CARGO_PKG_VERSION"),
             name = zz_protocol::app_identity::DIRECTORY,
         )
@@ -2129,7 +3715,7 @@ mod tests {
         path: &str,
         installer: &str,
         restart: bool,
-    ) -> Result<(), EndpointError> {
+    ) -> Result<RemoteInstall, EndpointError> {
         let script = shell_quote(&remote_install_script(
             Some(Path::new("/run/zz.sock")),
             restart,
@@ -2159,23 +3745,46 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn install_shells() -> impl Iterator<Item = &'static str> {
+        ["/bin/sh", "/bin/tcsh"]
+            .into_iter()
+            .filter(|shell| Path::new(shell).exists())
+    }
+
+    #[cfg(unix)]
+    fn installer_args(home: &Path) -> String {
+        fs::read_to_string(home.join("installer-args")).unwrap_or_default()
+    }
+
+    #[cfg(unix)]
     #[test]
     fn remote_install_replaces_its_own_binary_and_restarts_the_daemon() {
-        let shells = ["/bin/sh", "/bin/tcsh"]
-            .into_iter()
-            .filter(|shell| Path::new(shell).exists());
-        for shell in shells {
+        for shell in install_shells() {
             let home = tempfile::tempdir().expect("temporary home");
             let bin = home.path().join(".local/bin");
-            fs::create_dir_all(&bin).unwrap();
-            let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
-            fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
-            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                "#!/bin/sh\necho 1\n",
+            );
             let path = format!("{}:/usr/bin:/bin", bin.display());
             let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
 
-            run_install_script(shell, home.path(), &path, &installer, true)
+            let outcome = run_install_script(shell, home.path(), &path, &installer, true)
                 .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(
+                outcome,
+                RemoteInstall {
+                    installed: RemoteInstalled::Headless,
+                    restart: RemoteRestart::Restarted,
+                    warnings: Vec::new(),
+                },
+                "{shell}",
+            );
+            assert_eq!(
+                installer_args(home.path()),
+                format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+                "{shell}",
+            );
             assert_eq!(
                 fs::read_to_string(home.path().join("calls")).unwrap(),
                 "--socket /run/zz.sock kill-server\n",
@@ -2183,41 +3792,270 @@ mod tests {
             );
 
             fs::remove_file(home.path().join("calls")).unwrap();
-            run_install_script(shell, home.path(), &path, &installer, false).unwrap();
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                "#!/bin/sh\necho 1\n",
+            );
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false).unwrap();
+            assert_eq!(outcome.restart, RemoteRestart::NotAsked, "{shell}");
             assert!(!home.path().join("calls").exists(), "{shell}");
         }
     }
 
     #[cfg(unix)]
     #[test]
-    fn remote_install_leaves_a_zz_it_did_not_install_alone() {
+    fn remote_install_puts_its_own_copy_beside_a_zz_it_did_not_install() {
         let home = tempfile::tempdir().expect("temporary home");
         let other = tempfile::tempdir().expect("other prefix");
         let name = zz_protocol::app_identity::DIRECTORY;
         let foreign = other.path().join(name);
-        fs::write(&foreign, "#!/bin/sh\necho 1\n").unwrap();
-        fs::set_permissions(&foreign, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&foreign, &fake_zz("1", "foreign-calls"));
         let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
 
         let path = format!("{}:/usr/bin:/bin", other.path().display());
-        let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
-            .expect_err("a zz elsewhere on PATH is not ours to replace");
-        let EndpointError::RemoteInstallElsewhere { path: found, .. } = error else {
-            panic!("unexpected error: {error}");
-        };
-        assert_eq!(found, foreign.display().to_string());
+        run_install_script("/bin/sh", home.path(), &path, &installer, true)
+            .expect("a zz elsewhere on PATH gets a managed copy beside it");
+        assert_eq!(
+            installer_args(home.path()),
+            format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+        );
+        let managed = home.path().join(".local/bin").join(name);
+        assert!(fs::symlink_metadata(&managed).unwrap().is_file());
+        assert_eq!(
+            fs::read_to_string(home.path().join("calls")).unwrap(),
+            "--socket /run/zz.sock kill-server\n",
+        );
+        assert!(!home.path().join("foreign-calls").exists());
+        assert_eq!(
+            fs::read_to_string(&foreign).unwrap(),
+            fake_zz("1", "foreign-calls")
+        );
+    }
 
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_refreshes_the_desktop_tarball_it_linked() {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        for shell in install_shells() {
+            for absolute in [false, true] {
+                let home = tempfile::tempdir().expect("temporary home");
+                let lib = home.path().join(".local/lib/zz");
+                write_executable(&lib.join("cli"), "#!/bin/sh\necho 1\n");
+                write_executable(&lib.join("zz"), "#!/bin/sh\nexit 0\n");
+                let bin = home.path().join(".local/bin");
+                fs::create_dir_all(&bin).unwrap();
+                let link = if absolute {
+                    lib.join("cli")
+                } else {
+                    PathBuf::from("../lib/zz/cli")
+                };
+                std::os::unix::fs::symlink(&link, bin.join(name)).unwrap();
+                let path = format!("{}:/usr/bin:/bin", bin.display());
+                let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
+                let outcome = run_install_script(shell, home.path(), &path, &installer, true)
+                    .unwrap_or_else(|error| panic!("{shell}: {error}"));
+                assert_eq!(outcome.installed, RemoteInstalled::Desktop, "{shell}");
+                assert_eq!(
+                    installer_args(home.path()),
+                    format!(
+                        "--prefix {}/.local --version {}\n",
+                        home.path().display(),
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                    "{shell}",
+                );
+                assert_eq!(
+                    fs::read_link(bin.join(name)).unwrap(),
+                    Path::new("../lib/zz/cli"),
+                    "{shell}",
+                );
+                assert_eq!(
+                    fs::read_to_string(home.path().join("calls")).unwrap(),
+                    "--socket /run/zz.sock kill-server\n",
+                    "{shell}",
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_refuses_a_link_it_did_not_make_and_names_its_target() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let other = tempfile::tempdir().expect("other prefix");
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let foreign = other.path().join(name);
+        write_executable(&foreign, &fake_zz("1", "foreign-calls"));
         let bin = home.path().join(".local/bin");
         fs::create_dir_all(&bin).unwrap();
         std::os::unix::fs::symlink(&foreign, bin.join(name)).unwrap();
+        let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
         let path = format!("{}:/usr/bin:/bin", bin.display());
         let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
             .expect_err("a link in ~/.local/bin points at someone else's install");
+        let EndpointError::RemoteInstallElsewhere {
+            path: found, link, ..
+        } = &error
+        else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(*found, bin.join(name).display().to_string());
+        assert_eq!(*link, foreign.display().to_string());
+        let reason = error.ssh_reason().unwrap();
         assert!(
-            matches!(error, EndpointError::RemoteInstallElsewhere { .. }),
-            "{error}"
+            reason.contains(&format!("links to {}", foreign.display())),
+            "{reason}"
         );
+        assert!(installer_args(home.path()).is_empty());
         assert!(!home.path().join("calls").exists());
+        assert!(!home.path().join("foreign-calls").exists());
+    }
+
+    #[cfg(unix)]
+    fn current_zz(protocol: u16, kill_server: &str) -> String {
+        format!(
+            "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol} ;; \
+             --version) echo 'zz {version}' ;; *) echo \"$*\" >> \"$HOME/calls\"; {kill_server} ;; esac\n",
+            version = env!("CARGO_PKG_VERSION"),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_skips_the_download_when_its_copy_is_current() {
+        for shell in install_shells() {
+            let home = tempfile::tempdir().expect("temporary home");
+            let bin = home.path().join(".local/bin");
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                &current_zz(zz_protocol::PROTOCOL_VERSION, "exit 0"),
+            );
+            let path = format!("{}:/usr/bin:/bin", bin.display());
+            let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(outcome.installed, RemoteInstalled::Current, "{shell}");
+            assert_eq!(outcome.restart, RemoteRestart::NotAsked, "{shell}");
+            assert!(installer_args(home.path()).is_empty(), "{shell}");
+            assert!(!home.path().join("calls").exists(), "{shell}");
+
+            let outcome = run_install_script(shell, home.path(), &path, &installer, true)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(outcome.installed, RemoteInstalled::Current, "{shell}");
+            assert_eq!(outcome.restart, RemoteRestart::Restarted, "{shell}");
+            assert!(installer_args(home.path()).is_empty(), "{shell}");
+            assert_eq!(
+                outcome.summary(),
+                format!(
+                    "already {} {}, daemon restarted",
+                    zz_protocol::app_identity::DIRECTORY,
+                    env!("CARGO_PKG_VERSION")
+                ),
+            );
+
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                &current_zz(zz_protocol::PROTOCOL_VERSION + 1, "exit 0"),
+            );
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(
+                outcome.installed,
+                RemoteInstalled::Headless,
+                "{shell}: the same version speaking another protocol is replaced"
+            );
+            assert_eq!(
+                installer_args(home.path()),
+                format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+                "{shell}",
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_reports_a_restart_that_failed_and_one_with_nothing_to_stop() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let bin = home.path().join(".local/bin");
+        let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
+        let path = format!("{}:/usr/bin:/bin", bin.display());
+        for (kill_server, expected) in [
+            (
+                "echo 'no server running on /run/zz.sock' >&2; exit 1",
+                RemoteRestart::NotRunning,
+            ),
+            (
+                "echo 'error connecting to /run/zz.sock (No such file or directory)' >&2; exit 1",
+                RemoteRestart::NotRunning,
+            ),
+            (
+                "echo 'error connecting to /run/zz.sock (Permission denied)' >&2; exit 1",
+                RemoteRestart::Failed(
+                    "error connecting to /run/zz.sock (Permission denied)".to_owned(),
+                ),
+            ),
+            (
+                "exit 2",
+                RemoteRestart::Failed("kill-server exited with 2".to_owned()),
+            ),
+            (
+                "echo 'zz: daemon I/O error; recovery failed: no daemon pid' >&2; exit 1",
+                RemoteRestart::Failed(
+                    "daemon I/O error; recovery failed: no daemon pid".to_owned(),
+                ),
+            ),
+            (
+                "echo 'stopping the daemon' >&2; echo 'zz: no daemon pid' >&2; exit 1",
+                RemoteRestart::Failed("no daemon pid".to_owned()),
+            ),
+        ] {
+            write_executable(
+                &binary,
+                &current_zz(zz_protocol::PROTOCOL_VERSION, kill_server),
+            );
+            let outcome = run_install_script("/bin/sh", home.path(), &path, "exit 1\n", true)
+                .expect("the binary is in place whatever the daemon did");
+            assert_eq!(outcome.restart, expected, "{kill_server}");
+        }
+
+        let stdout = format!(
+            "zz-install-current=1\nzz-install-restart=2\nzz-install-restart-error=\n\
+             zz-install-protocol={}\n",
+            zz_protocol::PROTOCOL_VERSION
+        );
+        let outcome = parse_remote_install_output(
+            "ssh://desk",
+            Some(0),
+            stdout.as_bytes(),
+            b"Last login banner from the profile\nwarning: zz is running from ~/.local\n",
+            "exit status: 0",
+        )
+        .expect("installed");
+        assert_eq!(
+            outcome.restart,
+            RemoteRestart::Failed("kill-server exited with 2".to_owned()),
+            "other stderr lines in the session are not kill-server's"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_passes_on_the_installers_warnings() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let installer = format!(
+            "echo 'warning: zz is running from ~/.local; restart it after the install' >&2\n{}",
+            fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string())
+        );
+        let outcome =
+            run_install_script("/bin/sh", home.path(), "/usr/bin:/bin", &installer, false)
+                .expect("install");
+        assert_eq!(
+            outcome.warnings,
+            ["zz is running from ~/.local; restart it after the install"]
+        );
     }
 
     #[cfg(unix)]
@@ -2225,10 +4063,8 @@ mod tests {
     fn remote_install_reports_why_it_failed() {
         let home = tempfile::tempdir().expect("temporary home");
         let bin = home.path().join(".local/bin");
-        fs::create_dir_all(&bin).unwrap();
         let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
-        fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
-        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&binary, "#!/bin/sh\necho 1\n");
         let path = format!("{}:/usr/bin:/bin", bin.display());
 
         let error = run_install_script(
@@ -2349,7 +4185,7 @@ mod tests {
         }
         for (script, expected) in [
             (
-                remote_socket_probe(),
+                remote_socket_probe(None),
                 "zz-probe-protocol=bundle protocol-version\n",
             ),
             (
@@ -2425,8 +4261,12 @@ mod tests {
 
     #[test]
     fn autostart_script_stays_on_one_line_for_csh_logins() {
-        let script = remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock"));
-        assert!(!script.contains('\n'), "{script}");
+        for script in [
+            remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock")),
+            remote_install_script(Some(Path::new("/run/user/1000/zz/default.sock")), true),
+        ] {
+            assert!(!script.contains('\n'), "{script}");
+        }
     }
 
     #[test]
@@ -2475,6 +4315,15 @@ mod tests {
             (
                 "ssh: connect to host desk port 22: No route to host",
                 "not reachable",
+            ),
+            (
+                "sign_and_send_pubkey: signing failed for ED25519-SK \"/Users/f/.ssh/id_ed25519_sk\": \
+                 device not found\nuser@host: Permission denied (publickey).",
+                "the security key was not touched",
+            ),
+            (
+                "sign_and_send_pubkey: signing failed for ECDSA-SK \"/k\" from agent: invalid format",
+                "the security key was not touched",
             ),
         ] {
             let reason = ssh_failure_reason(stderr, "exit status: 255");
@@ -2539,24 +4388,217 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn forwarded_socket_path_stays_short() {
-        let path = forwarded_local_socket_path();
-        assert!(path.as_os_str().as_encoded_bytes().len() < 100);
+        let path = forwarded_local_socket_path().expect("ssh runtime directory");
+        assert!(path.as_os_str().as_encoded_bytes().len() < 100, "{path:?}");
+        assert_eq!(path.parent(), Some(ssh_runtime_dir().unwrap()));
         assert!(
             path.file_name()
                 .unwrap()
                 .to_string_lossy()
-                .starts_with("zz-fwd-")
+                .starts_with("fwd-")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn each_host_keeps_one_short_forward_beside_its_master() {
+        let endpoint = test_ssh_endpoint(Some("ada"), Some(2222));
+        let kept = kept_forward_path(&endpoint).unwrap();
+        assert_eq!(kept, kept_forward_path(&endpoint.clone()).unwrap());
+        assert_eq!(kept.parent(), Some(ssh_runtime_dir().unwrap()));
+        assert!(kept.as_os_str().as_encoded_bytes().len() < 100, "{kept:?}");
+        let mut master = control_master_path(&endpoint).unwrap().into_os_string();
+        master.push(".sock");
+        assert_eq!(kept, PathBuf::from(master));
+
+        let mut elsewhere = endpoint.clone();
+        elsewhere.remote_socket = Some(PathBuf::from("/run/user/1000/zz/other.sock"));
+        assert_ne!(kept_forward_path(&elsewhere).unwrap(), kept);
+        assert_eq!(
+            control_master_path(&elsewhere).unwrap(),
+            control_master_path(&endpoint).unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_step_riding_a_master_gives_up_but_a_login_may_take_its_time() {
+        let directory = tempfile::tempdir().unwrap();
+        let step = SshStep {
+            endpoint: test_ssh_endpoint(None, None),
+            control: Some(SshControl {
+                path: directory.path().join("c0"),
+                user_persist: false,
+            }),
+            askpass: None,
+            identity: None,
+        };
+        let slow = |_: &SshStep| {
+            thread::sleep(Duration::from_millis(300));
+            Ok(())
+        };
+        let started = std::time::Instant::now();
+        let error = step
+            .run_within(Duration::from_millis(20), true, "remote socket probe", slow)
+            .unwrap_err();
+        assert!(started.elapsed() < Duration::from_millis(250));
+        assert!(
+            matches!(&error, EndpointError::SshFailed { reason, .. }
+                if reason.starts_with("the remote socket probe got no answer")),
+            "{error}"
+        );
+        step.run_within(
+            Duration::from_millis(20),
+            false,
+            "remote socket probe",
+            slow,
+        )
+        .expect("a step without a live master is not time-boxed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_a_dead_link_remakes_the_kept_forward() {
+        for kind in [
+            io::ErrorKind::NotFound,
+            io::ErrorKind::ConnectionRefused,
+            io::ErrorKind::UnexpectedEof,
+        ] {
+            assert!(
+                kept_forward_failed(&DaemonError::Io(kind.into())),
+                "{kind:?}"
+            );
+        }
+        assert!(kept_forward_failed(&DaemonError::Server(
+            zz_protocol::ServerError::ProtocolMismatch {
+                client: zz_protocol::PROTOCOL_VERSION,
+                server: 48,
+            }
+        )));
+        assert!(!kept_forward_failed(&DaemonError::Server(
+            zz_protocol::ServerError::InvalidCommand("can't find session".to_owned())
+        )));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_runtime_dir_is_stable_and_private() {
+        use std::os::unix::fs::MetadataExt as _;
+
+        let directory = ssh_runtime_dir().expect("ssh runtime directory");
+        assert_eq!(ssh_runtime_dir().unwrap(), directory);
+        assert_eq!(
+            directory == stable_ssh_runtime_dir(),
+            private_directory(&stable_ssh_runtime_dir()).is_ok()
+        );
+        let metadata = fs::symlink_metadata(directory).unwrap();
+        assert!(metadata.is_dir());
+        assert_eq!(metadata.mode() & 0o777, 0o700);
+
+        let root = tempfile::tempdir().unwrap();
+        let fresh = root.path().join("zz/ssh");
+        private_directory(&fresh).expect("a fresh directory is made private");
+        assert_eq!(fs::metadata(&fresh).unwrap().mode() & 0o777, 0o700);
+        private_directory(&fresh).expect("the same directory is accepted again");
+
+        let open = root.path().join("open");
+        fs::create_dir(&open).unwrap();
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(private_directory(&open).is_err());
+
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&fresh, &link).unwrap();
+        assert!(private_directory(&link).is_err());
+
+        let file = root.path().join("file");
+        fs::write(&file, b"").unwrap();
+        assert!(private_directory(&file).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_empty_settled_legacy_directories_are_removed() {
+        let root = tempfile::tempdir().unwrap();
+        let stale = root.path().join("zz-ssh-Ab12Cd");
+        let busy = root.path().join("zz-ssh-Ef34Gh");
+        let fresh = root.path().join("zz-ssh-Ij56Kl");
+        let live = [
+            "zz-ssh-501",
+            "zz-ssh-100000",
+            "zz-dev-ssh-501",
+            "zz-ssh-501-Mn78Op",
+            "zz-other",
+        ]
+        .map(|name| root.path().join(name));
+        for directory in [&stale, &busy, &fresh].into_iter().chain(&live) {
+            fs::create_dir(directory).unwrap();
+        }
+        fs::write(busy.join("a1"), b"").unwrap();
+        let old = std::time::SystemTime::now() - LEGACY_SSH_DIRECTORY_AGE * 2;
+        for directory in [&stale, &busy].into_iter().chain(&live) {
+            fs::File::open(directory)
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        }
+        remove_legacy_ssh_dirs(root.path());
+        assert!(!stale.exists());
+        for directory in [&busy, &fresh].into_iter().chain(&live) {
+            assert!(directory.exists(), "{directory:?}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn user_control_path_is_reused() {
+        let config = |master: &str, path: Option<&str>, persist: &str| {
+            let path = path.map_or_else(String::new, |path| format!("controlpath {path}\n"));
+            format!(
+                "user ada\ncontrolmaster {master}\n{path}controlpersist {persist}\nhostname box\n"
+            )
+        };
+        let user_path = "/home/ada/.ssh/cm-f5de03fd";
+        for (master, persist, user_persist) in [
+            ("auto", "14400", true),
+            ("true", "yes", true),
+            ("auto", "no", false),
+        ] {
+            assert_eq!(
+                user_control(&config(master, Some(user_path), persist)),
+                Some(SshControl {
+                    path: PathBuf::from(user_path),
+                    user_persist,
+                }),
+                "{master} {persist}",
+            );
+        }
+        for master in ["false", "ask", "autoask"] {
+            assert_eq!(user_control(&config(master, Some(user_path), "600")), None);
+        }
+        assert_eq!(user_control(&config("auto", None, "600")), None);
+        assert_eq!(user_control(&config("auto", Some("none"), "600")), None);
+        assert_eq!(
+            user_control(&config("auto", Some("/tmp/zz rv/cm-1"), "600")),
+            None
+        );
+        assert_eq!(user_control(""), None);
     }
 
     #[cfg(unix)]
     const TEST_CONTROL_PATH: &str = "/tmp/zz-ssh/c0";
 
     #[cfg(unix)]
+    static TEST_CONTROL: std::sync::LazyLock<SshControl> =
+        std::sync::LazyLock::new(|| SshControl {
+            path: PathBuf::from(TEST_CONTROL_PATH),
+            user_persist: false,
+        });
+
+    #[cfg(unix)]
     fn test_session() -> SshSession<'static> {
         SshSession {
-            control_path: Some(Path::new(TEST_CONTROL_PATH)),
-            askpass: None,
+            control: Some(&TEST_CONTROL),
+            ..SshSession::default()
         }
     }
 
@@ -2610,7 +4652,7 @@ mod tests {
         let mut command = Command::new("/bin/sh");
         command
             .arg("-c")
-            .arg(format!("sh -c {}", remote_socket_probe()));
+            .arg(format!("sh -c {}", remote_socket_probe(None)));
         for (key, value) in environment {
             if let Some(value) = value {
                 command.env(key, value);

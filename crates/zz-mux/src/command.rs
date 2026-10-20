@@ -19635,8 +19635,8 @@ fn validate_spawn_kind<'a>(
     positional: &[RawText],
 ) -> Result<&'a str, ServerError> {
     let kind = options.value("--kind").unwrap_or("terminal");
-    if !(matches!(kind, "terminal" | "browser")
-        || matches!(command, "split-window" | "new-pane") && matches!(kind, "picker" | "agent"))
+    if !(matches!(kind, "terminal" | "browser" | "agent")
+        || matches!(command, "split-window" | "new-pane") && kind == "picker")
     {
         return Err(ServerError::NativeCommandParse(format!(
             "{command}: invalid pane kind {kind:?}"
@@ -28314,7 +28314,13 @@ mod tests {
                 vec!["--kind", "agent", "--provider", "unknown"],
             ),
             ("new-window", vec!["--kind", "picker"]),
-            ("new-window", vec!["--kind", "agent"]),
+            ("new-window", vec!["--provider", "codex"]),
+            (
+                "new-window",
+                vec!["--kind", "agent", "--provider", "unknown"],
+            ),
+            ("new-window", vec!["--kind", "agent", "-e", "A=B"]),
+            ("new-window", vec!["--kind", "agent", "claude"]),
             ("new-window", vec!["--profile", "work"]),
             ("new-window", vec!["--kind", "browser", "-e", "A=B"]),
         ] {
@@ -28476,6 +28482,60 @@ mod tests {
             effect,
             MuxEffect::PaneFormatOutput { pane, format, .. }
                 if *pane == agent && format == "#{pane_id}"
+        )));
+        assert!(engine.state.validate().is_ok());
+    }
+
+    #[test]
+    fn agent_windows_open_one_agent_pane_with_provider_cwd_and_printed_id() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "work"]))
+            .expect("session");
+        let first_window = context.window.expect("first window");
+        let cwd = absolute_test_path("agent window");
+        let cwd_arg = cwd.to_string_lossy().into_owned();
+        let created = engine
+            .execute(
+                &mut context,
+                &command(
+                    "new-window",
+                    &[
+                        "--kind",
+                        "agent",
+                        "--provider",
+                        "codex",
+                        "-n",
+                        "review",
+                        "-c",
+                        &cwd_arg,
+                        "-P",
+                        "-F",
+                        "#{pane_id}",
+                    ],
+                ),
+            )
+            .expect("agent window");
+        let agent = context.pane.expect("agent");
+        let window = context.window.expect("agent window");
+        assert_ne!(window, first_window);
+        assert_eq!(engine.state.window_for_pane(agent), Some(window));
+        assert_eq!(engine.state.windows[&window].name, "review");
+        assert_eq!(created.output, format!("{agent}\n"));
+        assert!(matches!(
+            &engine.state.pane(agent).expect("agent pane").kind,
+            PaneKind::Agent(descriptor)
+                if descriptor.provider == AgentProvider::Codex
+                    && descriptor.cwd.as_ref() == Some(&cwd)
+        ));
+        assert!(created.effects.iter().any(|effect| matches!(
+            effect,
+            MuxEffect::PaneCreated {
+                pane,
+                kind: PaneKindSnapshot::Agent(descriptor),
+                ..
+            } if *pane == agent && descriptor.cwd.as_ref() == Some(&cwd)
         )));
         assert!(engine.state.validate().is_ok());
     }

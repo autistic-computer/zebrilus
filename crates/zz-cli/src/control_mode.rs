@@ -16,7 +16,7 @@ use std::sync::mpsc;
 #[cfg(any(not(unix), test))]
 use std::thread;
 
-use zz_daemon_client::InteractiveClient;
+use zz_daemon_client::{Endpoint, InteractiveClient};
 use zz_protocol::{
     CommandInvocation, CommandResponse, ControlSourceFileEvent, EventPayload, ExecOutcome,
     MuxSnapshot, ProtocolMessage, SessionId, WindowId,
@@ -516,19 +516,7 @@ pub(crate) fn run(
     level: u8,
     arguments: &[zz_protocol::RawText],
 ) -> ExitCode {
-    #[cfg(unix)]
-    let _signal = match ControlSignal::install() {
-        Ok(signal) => signal,
-        Err(error) => {
-            eprintln!("zz: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let commands = if arguments.is_empty() {
-        vec![CommandInvocation::new("new-session", [] as [&str; 0])]
-    } else {
-        super::split_command_chain(arguments)
-    };
+    let commands = control_commands(arguments);
     let start_server = !no_start_server
         && commands
             .first()
@@ -537,39 +525,84 @@ pub(crate) fn run(
         eprintln!("{}", error.message);
         return ExitCode::FAILURE;
     }
-    let client = if start_server {
-        connect_or_spawn_daemon(
-            socket_path,
-            None,
-            mux_config_files,
-            |startup_config_owner| {
-                InteractiveClient::connect_control_with_startup_owner(
-                    socket_path,
-                    startup_config_owner,
-                )
-            },
-            InteractiveClient::server_hello,
-        )
+    serve(level, commands, Some(socket_path), || {
+        if start_server {
+            connect_or_spawn_daemon(
+                socket_path,
+                None,
+                mux_config_files,
+                |startup_config_owner| {
+                    InteractiveClient::connect_control_with_startup_owner(
+                        socket_path,
+                        startup_config_owner,
+                    )
+                },
+                InteractiveClient::server_hello,
+            )
+        } else {
+            InteractiveClient::connect_control(socket_path)
+        }
+        .map_err(|error| format_local_command_error(socket_path, error))
+    })
+}
+
+pub(crate) fn run_host(
+    host: &str,
+    endpoint: &Endpoint,
+    level: u8,
+    arguments: &[zz_protocol::RawText],
+) -> ExitCode {
+    serve(level, control_commands(arguments), None, || {
+        InteractiveClient::connect_control_endpoint(endpoint)
+            .map_err(|error| super::host_command_error_message(host, &error))
+    })
+}
+
+fn control_commands(arguments: &[zz_protocol::RawText]) -> Vec<CommandInvocation> {
+    if arguments.is_empty() {
+        vec![CommandInvocation::new("new-session", [] as [&str; 0])]
     } else {
-        InteractiveClient::connect_control(socket_path)
+        super::split_command_chain(arguments)
+    }
+}
+
+fn serve(
+    level: u8,
+    commands: Vec<CommandInvocation>,
+    local_socket: Option<&Path>,
+    connect: impl FnOnce() -> Result<InteractiveClient, String>,
+) -> ExitCode {
+    #[cfg(unix)]
+    let _signal = match ControlSignal::install() {
+        Ok(signal) => signal,
+        Err(error) => {
+            eprintln!("zz: {error}");
+            return ExitCode::FAILURE;
+        }
     };
-    let client = match client {
+    let client = match connect() {
         Ok(client) => Arc::new(client),
         Err(error) => {
-            eprintln!("{}", format_local_command_error(socket_path, error));
+            eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     };
     #[cfg(unix)]
-    let (flags, stash) = match start_stdio(&client) {
-        Ok(started) => started,
-        Err(error) => {
-            eprintln!("{}", format_local_command_error(socket_path, error.into()));
-            return ExitCode::FAILURE;
-        }
+    let (flags, stash) = match local_socket {
+        Some(socket_path) => match start_stdio(&client) {
+            Ok(started) => started,
+            Err(error) => {
+                eprintln!("{}", format_local_command_error(socket_path, error.into()));
+                return ExitCode::FAILURE;
+            }
+        },
+        None => (None, VecDeque::new()),
     };
     #[cfg(not(unix))]
-    let (flags, stash) = (None::<()>, VecDeque::new());
+    let (flags, stash) = {
+        let _ = local_socket;
+        (None::<()>, VecDeque::new())
+    };
     let stdio = flags.is_some();
     let terminal = match ControlTerminal::enter(level >= 2) {
         Ok(terminal) => terminal,

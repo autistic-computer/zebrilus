@@ -37,7 +37,7 @@ pub enum HostState {
     Reconnecting { attempt: u32 },
     Connected,
     Unreachable { reason: String },
-    Incompatible { local: u16, remote: u16 },
+    Incompatible { local: u16, remote: Option<u16> },
     Missing,
     Installing,
 }
@@ -65,7 +65,11 @@ impl HostState {
     pub const fn install_offer(&self) -> Option<InstallOffer> {
         match self {
             Self::Missing => Some(InstallOffer::Install),
-            Self::Incompatible { local, remote } if *local > *remote => Some(InstallOffer::Update),
+            Self::Incompatible { remote: None, .. } => Some(InstallOffer::Update),
+            Self::Incompatible {
+                local,
+                remote: Some(remote),
+            } if *local >= *remote => Some(InstallOffer::Update),
             _ => None,
         }
     }
@@ -75,11 +79,22 @@ impl HostState {
     pub fn failure_detail(&self) -> Option<String> {
         match self {
             Self::Unreachable { reason } => Some(reason.clone()),
-            Self::Incompatible { local, remote } if local == remote => Some(format!(
+            Self::Incompatible { remote: None, .. } => Some(
+                "That machine runs a zz too old to report its protocol.\nUpdate zz there, then \
+                 reconnect."
+                    .to_owned(),
+            ),
+            Self::Incompatible {
+                local,
+                remote: Some(remote),
+            } if local == remote => Some(format!(
                 "That machine runs an older build of protocol v{remote}.\nUpgrade zz there, or \
                  restart its daemon, then reconnect."
             )),
-            Self::Incompatible { local, remote } => Some(format!(
+            Self::Incompatible {
+                local,
+                remote: Some(remote),
+            } => Some(format!(
                 "This zz speaks protocol v{local}; that machine speaks v{remote}.\nUpgrade \
                  whichever side is older, then reconnect."
             )),
@@ -269,22 +284,17 @@ mod tests {
             HostState::Missing.install_offer(),
             Some(InstallOffer::Install)
         );
-        assert_eq!(
-            HostState::Incompatible {
-                local: 108,
-                remote: 107,
-            }
-            .install_offer(),
-            Some(InstallOffer::Update)
-        );
+        for remote in [Some(107), Some(108), None] {
+            assert_eq!(
+                HostState::Incompatible { local: 108, remote }.install_offer(),
+                Some(InstallOffer::Update),
+                "{remote:?}"
+            );
+        }
         for state in [
             HostState::Incompatible {
                 local: 107,
-                remote: 108,
-            },
-            HostState::Incompatible {
-                local: 108,
-                remote: 108,
+                remote: Some(108),
             },
             HostState::Unreachable {
                 reason: "no route".to_owned(),
@@ -309,7 +319,7 @@ mod tests {
         assert_eq!(
             HostState::Incompatible {
                 local: 33,
-                remote: 31,
+                remote: Some(31),
             }
             .failure_detail()
             .as_deref(),
@@ -317,6 +327,14 @@ mod tests {
                 "This zz speaks protocol v33; that machine speaks v31.\nUpgrade whichever side is \
                  older, then reconnect."
             )
+        );
+        assert!(
+            HostState::Incompatible {
+                local: 33,
+                remote: None,
+            }
+            .failure_detail()
+            .is_some_and(|detail| detail.contains("too old to report its protocol"))
         );
         assert!(HostState::Disconnected.failure_detail().is_none());
         assert!(HostState::Connecting.failure_detail().is_none());

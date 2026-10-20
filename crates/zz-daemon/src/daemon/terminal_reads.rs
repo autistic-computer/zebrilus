@@ -27,6 +27,7 @@ impl Target {
             .unwrap_or_else(|| {
                 let observation = Arc::new(Observation {
                     generation: AtomicU64::new(0),
+                    run: AtomicBool::new(false),
                     notify: shared.terminal_requests.notifier(),
                 });
                 inner
@@ -81,7 +82,28 @@ impl Target {
 
 pub(super) struct Observation {
     generation: AtomicU64,
+    run: AtomicBool,
     notify: Arc<dyn Fn() + Send + Sync>,
+}
+
+struct RunTurn(Arc<Observation>);
+
+impl RunTurn {
+    fn claim(observation: &Arc<Observation>) -> Option<Self> {
+        observation
+            .run
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+            .then(|| Self(Arc::clone(observation)))
+    }
+}
+
+impl Drop for RunTurn {
+    fn drop(&mut self) {
+        self.0.run.store(false, Ordering::Release);
+        self.0.generation.fetch_add(1, Ordering::Release);
+        (self.0.notify)();
+    }
 }
 
 fn pane_last_output(shared: &Shared, pane: PaneId) -> Option<Instant> {
@@ -197,8 +219,22 @@ fn capture_screen(
 
 type PasteFinish = Box<dyn FnOnce(&Arc<Shared>, Arc<Target>, Result<(), DaemonError>) + Send>;
 
+struct Typed(Option<Arc<TerminalSession>>);
+
+impl Drop for Typed {
+    fn drop(&mut self) {
+        if let Some(terminal) = self.0.take()
+            && shell_owns_pane(&terminal)
+        {
+            send_tokens(
+                std::slice::from_ref(&terminal),
+                &[zz_protocol::KeyToken::Raw(0x15)],
+            );
+        }
+    }
+}
+
 struct Paste {
-    sinks: Vec<Arc<TerminalSession>>,
     bytes: Arc<[u8]>,
     tail: String,
     collapsed_before: usize,
@@ -206,7 +242,25 @@ struct Paste {
     started: Instant,
     timeout: Duration,
     enter: bool,
+    typed: Typed,
     finish: PasteFinish,
+}
+
+impl Paste {
+    fn end(self, shared: &Arc<Shared>, target: Arc<Target>, result: Result<(), DaemonError>) {
+        let Self { typed, finish, .. } = self;
+        drop(typed);
+        finish(shared, target, result);
+    }
+
+    fn not_echoed(self, shared: &Arc<Shared>, target: Arc<Target>) {
+        let error = ServerError::InvalidCommand(format!(
+            "{}: text not echoed within {} seconds; nothing submitted",
+            target.pane,
+            self.timeout.as_secs_f64()
+        ));
+        self.end(shared, target, Err(error.into()));
+    }
 }
 
 fn paste(
@@ -217,17 +271,7 @@ fn paste(
     enter: bool,
     finish: PasteFinish,
 ) -> Result<(), DaemonError> {
-    let sinks = {
-        let inner = shared.inner.lock();
-        resolve_input_sinks(&inner, target.pane)?
-            .into_iter()
-            .filter_map(|sink| match sink {
-                PaneSink::Terminal(terminal) => Some(terminal),
-                PaneSink::Browser(_) => None,
-            })
-            .collect::<Vec<_>>()
-    };
-    if sinks.is_empty() {
+    if shared.inner.lock().engine.pane_input_off(target.pane)? {
         return Err(
             ServerError::InvalidCommand(format!("{}: pane input is off", target.pane)).into(),
         );
@@ -235,7 +279,6 @@ fn paste(
     let bytes = prepare_paste_buffer(text.as_bytes(), b"\r", true)
         .map_err(|error| ServerError::InvalidCommand(format!("send-text: {error}")))?;
     let mut paste = Paste {
-        sinks,
         bytes: bytes.into(),
         tail: echo_tail(text),
         collapsed_before: 0,
@@ -243,6 +286,7 @@ fn paste(
         started: Instant::now(),
         timeout,
         enter,
+        typed: Typed(None),
         finish,
     };
     capture_screen(
@@ -256,14 +300,17 @@ fn paste(
             let screen = match result {
                 Ok(screen) => screen,
                 Err(error) => {
-                    (paste.finish)(shared, target, Err(error));
+                    paste.end(shared, target, Err(error));
                     return;
                 }
             };
             paste.collapsed_before = screen.matches(PASTE_COLLAPSE_MARKER).count();
             paste.generation = target.generation();
-            for sink in &paste.sinks {
-                sink.paste_prepared_bytes(None, Arc::clone(&paste.bytes), true);
+            target
+                .terminal
+                .paste_prepared_bytes(None, Arc::clone(&paste.bytes), true);
+            if paste.enter {
+                paste.typed.0 = Some(Arc::clone(&target.terminal));
             }
             paste.started = Instant::now();
             poll_paste(shared, target, paste);
@@ -272,7 +319,7 @@ fn paste(
     Ok(())
 }
 
-fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, paste: Paste) {
+fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, mut paste: Paste) {
     let generation = target.generation();
     capture_screen(
         shared,
@@ -285,7 +332,7 @@ fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, paste: Paste) {
             let screen = match result {
                 Ok(screen) => screen,
                 Err(error) => {
-                    (paste.finish)(shared, target, Err(error));
+                    paste.end(shared, target, Err(error));
                     return;
                 }
             };
@@ -293,31 +340,23 @@ fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, paste: Paste) {
                 && (collapse_whitespace(&screen).contains(&paste.tail)
                     || screen.matches(PASTE_COLLAPSE_MARKER).count() > paste.collapsed_before)
             {
-                let result = if paste.enter
-                    && !send_tokens(
-                        &paste.sinks,
+                let result = if !paste.enter
+                    || send_tokens(
+                        std::slice::from_ref(&target.terminal),
                         &[zz_protocol::KeyToken::Named("Enter".to_owned())],
                     ) {
+                    paste.typed.0 = None;
+                    Ok(())
+                } else {
                     Err(ServerError::InvalidCommand(format!(
                         "{}: input queue is full; text delivered but Enter not sent",
                         target.pane
                     ))
                     .into())
-                } else {
-                    Ok(())
                 };
-                (paste.finish)(shared, target, result);
+                paste.end(shared, target, result);
             } else if !paste.timeout.is_zero() && paste.started.elapsed() >= paste.timeout {
-                (paste.finish)(
-                    shared,
-                    Arc::clone(&target),
-                    Err(ServerError::InvalidCommand(format!(
-                        "{}: text not echoed within {} seconds; nothing submitted",
-                        target.pane,
-                        paste.timeout.as_secs_f64()
-                    ))
-                    .into()),
-                );
+                paste.not_echoed(shared, target);
             } else {
                 observe_output(
                     shared,
@@ -328,16 +367,7 @@ fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, paste: Paste) {
                         if target.generation() != generation {
                             poll_paste(shared, target, paste);
                         } else if target.check(shared) {
-                            (paste.finish)(
-                                shared,
-                                Arc::clone(&target),
-                                Err(ServerError::InvalidCommand(format!(
-                                    "{}: text not echoed within {} seconds; nothing submitted",
-                                    target.pane,
-                                    paste.timeout.as_secs_f64()
-                                ))
-                                .into()),
-                            );
+                            paste.not_echoed(shared, target);
                         }
                     },
                 );
@@ -401,11 +431,14 @@ pub(super) fn submit_agent_text(
     }
 }
 
+const WAIT_PROMPT_SETTLE: Duration = Duration::from_millis(200);
+
 struct Wait {
     parsed: ParsedWaitPane,
     started: Instant,
     scan_start: Option<usize>,
     park: Option<Arc<Shared>>,
+    settle: Option<Instant>,
 }
 
 pub(super) fn wait_pane(
@@ -430,6 +463,7 @@ pub(super) fn wait_pane(
             started: Instant::now(),
             scan_start,
             park: Some(Arc::clone(shared)),
+            settle: None,
         },
     );
     wait.finish(shared, Execution::default())
@@ -452,56 +486,69 @@ fn poll_wait(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait) {
                 finish_wait_poll(shared, target, wait, generation);
             }
         }
-        _ => capture_screen(
-            shared,
-            target,
-            CaptureOptions {
-                start: CaptureBoundary::HistoryStart,
-                join_wrapped: true,
-                preserve_trailing: true,
-                ..CaptureOptions::default()
-            },
-            move |shared, target, result| {
-                let screen = match result {
-                    Ok(screen) => screen,
-                    Err(error) => {
-                        target.state.resolve(Err(error));
-                        return;
-                    }
-                };
-                let scan_start = *wait.scan_start.get_or_insert_with(|| {
-                    screen
-                        .lines()
-                        .count()
-                        .saturating_sub(usize::from(target.terminal.size().1))
-                });
-                if let Some(line) = screen
-                    .lines()
-                    .rev()
-                    .take(
+        _ => {
+            let quiet = target.terminal.last_output();
+            let keep_idle_prompt =
+                quiet.is_none_or(|output| output.elapsed() >= WAIT_PROMPT_SETTLE);
+            capture_screen(
+                shared,
+                target,
+                CaptureOptions {
+                    start: CaptureBoundary::HistoryStart,
+                    join_wrapped: true,
+                    preserve_trailing: true,
+                    skip_input: true,
+                    keep_idle_prompt,
+                    ..CaptureOptions::default()
+                },
+                move |shared, target, result| {
+                    let screen = match result {
+                        Ok(screen) => screen,
+                        Err(error) => {
+                            target.state.resolve(Err(error));
+                            return;
+                        }
+                    };
+                    let latest = target.terminal.last_output();
+                    let settled = keep_idle_prompt && latest == quiet;
+                    wait.settle = latest
+                        .filter(|_| !settled)
+                        .map(|output| output + WAIT_PROMPT_SETTLE);
+                    let scan_start = *wait.scan_start.get_or_insert_with(|| {
                         screen
                             .lines()
                             .count()
-                            .saturating_sub(scan_start)
-                            .min(10_000),
-                    )
-                    .skip_while(|line| line.trim().is_empty())
-                    .take(wait.parsed.tail.unwrap_or(usize::MAX))
-                    .find(|line| match &wait.parsed.condition {
-                        PaneWaitCondition::Until(text) => line.contains(text),
-                        PaneWaitCondition::Regex(regex) => regex.is_match(line),
-                        _ => false,
-                    })
-                {
-                    target.state.resolve(Ok(Execution {
-                        output: format!("{line}\n").into(),
-                        effects: Vec::new(),
-                    }));
-                } else {
-                    finish_wait_poll(shared, target, wait, generation);
-                }
-            },
-        ),
+                            .saturating_sub(usize::from(target.terminal.size().1))
+                    });
+                    if (settled || !keep_idle_prompt)
+                        && let Some(line) = screen
+                            .lines()
+                            .rev()
+                            .take(
+                                screen
+                                    .lines()
+                                    .count()
+                                    .saturating_sub(scan_start)
+                                    .min(10_000),
+                            )
+                            .skip_while(|line| line.trim().is_empty())
+                            .take(wait.parsed.tail.unwrap_or(usize::MAX))
+                            .find(|line| match &wait.parsed.condition {
+                                PaneWaitCondition::Until(text) => line.contains(text),
+                                PaneWaitCondition::Regex(regex) => regex.is_match(line),
+                                _ => false,
+                            })
+                    {
+                        target.state.resolve(Ok(Execution {
+                            output: format!("{line}\n").into(),
+                            effects: Vec::new(),
+                        }));
+                    } else {
+                        finish_wait_poll(shared, target, wait, generation);
+                    }
+                },
+            );
+        }
     }
 }
 
@@ -538,6 +585,7 @@ fn finish_wait_poll(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait, g
         let deadline = timeout_deadline(wait.started, wait.parsed.timeout)
             .into_iter()
             .chain(idle)
+            .chain(wait.settle)
             .min();
         observe_output(
             shared,
@@ -546,6 +594,7 @@ fn finish_wait_poll(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait, g
             deadline,
             move |shared, target| {
                 if target.generation() != generation
+                    || wait.settle.is_some_and(|settle| settle <= Instant::now())
                     || matches!(
                         wait.parsed.condition,
                         PaneWaitCondition::Idle(_) | PaneWaitCondition::Exit
@@ -560,12 +609,104 @@ fn finish_wait_poll(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait, g
     }
 }
 
+const RUN_PANE_SHELLS: &[&str] = &[
+    "sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "yash", "busybox",
+];
+const RUN_PANE_START_GRACE: Duration = Duration::from_secs(2);
+const RUN_PANE_TYPE_FLOOR: Duration = Duration::from_millis(500);
+const RUN_PANE_LINE_LIMIT: usize = 1023;
+
 struct Run {
     parsed: ParsedRunPane,
     marker: String,
     started: Instant,
     output: String,
     collecting: bool,
+    queued: bool,
+    tail: String,
+    start_check: Option<Instant>,
+    _turn: Option<RunTurn>,
+}
+
+fn process_name(pid: u32) -> String {
+    path_listing::foreground_basename(
+        &zz_daemon_client::process_info::command_name(pid).unwrap_or_default(),
+    )
+}
+
+fn other_group_member(terminal: &TerminalSession, group: u32) -> Option<String> {
+    let shell = terminal.process_id()?;
+    zz_daemon_client::process_info::descendants(shell)
+        .into_iter()
+        .filter(|pid| {
+            *pid != group && zz_daemon_client::process_info::process_group(*pid) == Some(group)
+        })
+        .map(process_name)
+        .rfind(|name| !name.is_empty())
+}
+
+fn foreground_shell(terminal: &TerminalSession) -> Result<Option<String>, String> {
+    let Some(foreground) = terminal_foreground_process(terminal) else {
+        return Ok(None);
+    };
+    let name = process_name(foreground);
+    if name.is_empty() {
+        Err(other_group_member(terminal, foreground)
+            .unwrap_or_else(|| "a program that already exited".to_owned()))
+    } else if !RUN_PANE_SHELLS.contains(&name.as_str()) {
+        Err(name)
+    } else if Some(foreground) == terminal.process_id() {
+        Ok(Some(name))
+    } else if terminal.tty_canonical() != Some(false) {
+        Err(format!("a {name} script"))
+    } else if let Some(other) = other_group_member(terminal, foreground) {
+        Err(other)
+    } else {
+        Ok(Some(name))
+    }
+}
+
+fn shell_owns_pane(terminal: &TerminalSession) -> bool {
+    matches!(foreground_shell(terminal), Ok(Some(_)))
+}
+
+fn refuse_run(shared: &Shared, target: &Target, reason: &str) {
+    shared.record_command_stderr(target.client, &format!("run-pane: {reason}"));
+    target.state.resolve(Err(DaemonError::CommandExit {
+        output: RawText::default(),
+        exit_code: 3,
+    }));
+}
+
+fn send_byte(target: &Target, byte: u8) -> bool {
+    send_tokens(
+        std::slice::from_ref(&target.terminal),
+        &[zz_protocol::KeyToken::Raw(byte)],
+    )
+}
+
+fn shell_rejected(screen: &str, marker: &str) -> bool {
+    let typed = format!("'{marker}-BEGIN'");
+    screen.contains(&typed)
+        && screen
+            .lines()
+            .rev()
+            .take_while(|line| !line.contains(&typed))
+            .any(|line| {
+                let line = line.to_ascii_lowercase();
+                line.contains("syntax error") || line.contains("parse error")
+            })
+}
+
+fn echo_is_last(screen: &str, tail: &str) -> bool {
+    let mut last = screen
+        .lines()
+        .rev()
+        .filter(|line| !line.trim().is_empty())
+        .take(2)
+        .collect::<Vec<_>>();
+    last.reverse();
+    collapse_whitespace(&last.join(" ")).contains(tail)
 }
 
 pub(super) fn run_pane(
@@ -577,42 +718,159 @@ pub(super) fn run_pane(
 ) -> Result<Execution, DaemonError> {
     let mut nonce = [0_u8; 8];
     getrandom::fill(&mut nonce).map_err(std::io::Error::other)?;
-    let marker = format!("ZZRUN-{:016x}", u64::from_ne_bytes(nonce));
-    let line = format!(
-        "printf '\\n%s\\n' '{marker}-BEGIN'; {}; printf '\\n{marker}-RC=%d=END\\n' $?",
-        parsed.command
-    );
     let run = Run {
         parsed,
-        marker,
+        marker: format!("ZZRUN-{:016x}", u64::from_ne_bytes(nonce)),
         started: Instant::now(),
         output: String::new(),
         collecting: false,
+        queued: false,
+        tail: String::new(),
+        start_check: None,
+        _turn: None,
     };
     let wait = terminal_requests::CommandWait::new(shared);
     let target = Target::new(shared, client, pane, terminal, wait.start());
     shared.report_command_queue_park();
+    start_run(shared, target, run);
+    wait.finish(shared, Execution::default())
+}
+
+fn start_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
+    if !target.check(shared) {
+        return;
+    }
+    if shared
+        .inner
+        .lock()
+        .engine
+        .state
+        .pane(target.pane)
+        .is_some_and(|pane| pane.dead)
+    {
+        refuse_run(
+            shared,
+            &target,
+            &format!(
+                "{} is dead (its program exited); nothing was typed",
+                target.pane
+            ),
+        );
+        return;
+    }
+    let generation = target.generation();
+    let deadline = timeout_deadline(run.started, run.parsed.timeout);
+    let now = Instant::now();
+    let busy = format!(
+        "{} is busy with another run-pane; nothing was typed",
+        target.pane
+    );
+    if deadline.is_some_and(|deadline| now >= deadline) {
+        let reason = if target.observation.run.load(Ordering::Acquire) {
+            busy
+        } else {
+            format!(
+                "{} did not echo the command within {}s; nothing was submitted",
+                target.pane,
+                run.parsed.timeout.as_secs_f64()
+            )
+        };
+        refuse_run(shared, &target, &reason);
+        return;
+    }
+    let Some(turn) = RunTurn::claim(&target.observation) else {
+        observe_output(
+            shared,
+            target,
+            generation,
+            deadline,
+            move |shared, target| {
+                run.queued = true;
+                start_run(shared, target, run);
+            },
+        );
+        return;
+    };
+    if run.queued
+        && deadline
+            .is_some_and(|deadline| deadline.saturating_duration_since(now) < RUN_PANE_TYPE_FLOOR)
+    {
+        drop(turn);
+        refuse_run(shared, &target, &busy);
+        return;
+    }
+    run._turn = Some(turn);
+    let shell = match foreground_shell(&target.terminal) {
+        Ok(shell) => shell,
+        Err(program) => {
+            refuse_run(
+                shared,
+                &target,
+                &format!(
+                    "{} is running {program}, not a shell; nothing was typed",
+                    target.pane
+                ),
+            );
+            return;
+        }
+    };
+    let eval = if shell.as_deref().is_none_or(|shell| shell == "zsh") {
+        "eval"
+    } else {
+        "command eval"
+    };
+    let line = run_pane_line(&run.marker, eval, &run.parsed.command);
+    if line.len() > RUN_PANE_LINE_LIMIT
+        && (shell
+            .as_deref()
+            .is_some_and(|shell| !matches!(shell, "bash" | "zsh"))
+            || target.terminal.tty_canonical() == Some(true))
+    {
+        refuse_run(
+            shared,
+            &target,
+            &format!(
+                "the command is {} bytes once quoted, more than {}'s shell takes on one line; put \
+                 it in a script file",
+                line.len(),
+                target.pane
+            ),
+        );
+        return;
+    }
+    run.tail = echo_tail(&line);
+    let remaining = deadline.map_or(Duration::ZERO, |deadline| {
+        deadline.saturating_duration_since(now)
+    });
     if let Err(error) = paste(
         shared,
         Arc::clone(&target),
         &line,
-        run.parsed.timeout,
+        remaining,
         true,
-        Box::new(move |shared, target, result| {
-            if let Err(error) = result {
-                if !run.parsed.timeout.is_zero() && run.started.elapsed() >= run.parsed.timeout {
-                    timeout_run(shared, &target, run);
-                } else {
-                    target.state.resolve(Err(error));
-                }
-            } else {
+        Box::new(move |shared, target, result| match result {
+            Ok(()) => {
+                run.start_check = Some(Instant::now() + RUN_PANE_START_GRACE);
                 poll_run(shared, target, run);
             }
+            Err(_)
+                if !run.parsed.timeout.is_zero() && run.started.elapsed() >= run.parsed.timeout =>
+            {
+                refuse_run(
+                    shared,
+                    &target,
+                    &format!(
+                        "{} did not echo the command within {}s; nothing was submitted",
+                        target.pane,
+                        run.parsed.timeout.as_secs_f64()
+                    ),
+                );
+            }
+            Err(error) => target.state.resolve(Err(error)),
         }),
     ) {
         target.state.resolve(Err(error));
     }
-    wait.finish(shared, Execution::default())
 }
 
 fn timeout_run(shared: &Shared, target: &Target, run: Run) {
@@ -636,7 +894,9 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
         shared,
         target,
         CaptureOptions {
-            start: CaptureBoundary::HistoryStart,
+            start: CaptureBoundary::Relative(
+                -i64::try_from(RUN_PANE_CAPTURE_LINES).unwrap_or(i64::MAX),
+            ),
             join_wrapped: true,
             preserve_trailing: true,
             ..CaptureOptions::default()
@@ -649,12 +909,45 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
                     return;
                 }
             };
-            let (captured, exit_code) = run_pane_result(&screen, &run.marker, run.collecting);
+            let (captured, exit_code, begin) =
+                run_pane_result(&screen, &run.marker, run.collecting);
             if let Some(captured) = captured {
                 run.collecting = true;
+                run.start_check = None;
                 captured.clone_into(&mut run.output);
             }
             if let Some(exit_code) = exit_code {
+                if begin == RunStart::Dropped {
+                    let limit = shared
+                        .inner
+                        .lock()
+                        .engine
+                        .history_limit_for_pane(target.pane)
+                        .unwrap_or_default();
+                    let cut = if limit > RUN_PANE_CAPTURE_LINES {
+                        format!("run-pane keeps the last {RUN_PANE_CAPTURE_LINES} lines")
+                    } else {
+                        format!("{} history-limit {limit}", target.pane)
+                    };
+                    shared.record_command_stderr(
+                        target.client,
+                        &format!(
+                            "run-pane: output truncated to its last {} lines ({cut}); redirect to \
+                             a file for all of it",
+                            run.output.lines().count()
+                        ),
+                    );
+                } else if begin == RunStart::Joined {
+                    shared.record_command_stderr(
+                        target.client,
+                        &format!(
+                            "run-pane: {}'s shell joined the command to an unfinished line (one \
+                             ending in && or \\, for example); the output may include text from \
+                             that line",
+                            target.pane
+                        ),
+                    );
+                }
                 target.state.resolve(if exit_code == 0 {
                     Ok(Execution {
                         output: run.output.into(),
@@ -666,16 +959,63 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
                         exit_code,
                     })
                 });
-            } else if !run.parsed.timeout.is_zero() && run.started.elapsed() >= run.parsed.timeout {
+                return;
+            }
+            let timed_out =
+                !run.parsed.timeout.is_zero() && run.started.elapsed() >= run.parsed.timeout;
+            if run
+                .start_check
+                .is_some_and(|check| timed_out || Instant::now() >= check)
+            {
+                run.start_check = None;
+                if shell_rejected(&screen, &run.marker) && shell_owns_pane(&target.terminal) {
+                    refuse_run(
+                        shared,
+                        &target,
+                        &format!(
+                            "{}'s shell rejected the line (it was inside an unfinished construct, \
+                             such as case x in); nothing ran",
+                            target.pane
+                        ),
+                    );
+                    return;
+                }
+                if echo_is_last(&screen, &run.tail)
+                    && shell_owns_pane(&target.terminal)
+                    && send_byte(&target, 0x03)
+                {
+                    refuse_run(
+                        shared,
+                        &target,
+                        &format!(
+                            "{}'s shell did not start the command within {}s (it was waiting \
+                             for more input, such as an unclosed quote); sent C-c, nothing ran",
+                            target.pane,
+                            if run.parsed.timeout.is_zero() {
+                                RUN_PANE_START_GRACE
+                            } else {
+                                RUN_PANE_START_GRACE.min(run.parsed.timeout)
+                            }
+                            .as_secs_f64()
+                        ),
+                    );
+                    return;
+                }
+            }
+            if timed_out {
                 timeout_run(shared, &target, run);
             } else {
+                let deadline = timeout_deadline(run.started, run.parsed.timeout)
+                    .into_iter()
+                    .chain(run.start_check)
+                    .min();
                 observe_output(
                     shared,
                     target,
                     generation,
-                    timeout_deadline(run.started, run.parsed.timeout),
+                    deadline,
                     move |shared, target| {
-                        if target.generation() != generation {
+                        if target.generation() != generation || run.start_check.is_some() {
                             poll_run(shared, target, run);
                         } else if target.check(shared) {
                             timeout_run(shared, &target, run);
