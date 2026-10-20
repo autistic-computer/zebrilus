@@ -1,10 +1,10 @@
 ---
 type: Subsystem
 title: Input translation (GPUI → CEF)
-description: Browser-neutral pointer/wheel/keyboard/text/IME input, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, and history-backed omnibox interaction.
+description: Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, history-backed omnibox interaction, and why page drag and drop is off.
 resource: crates/zz-browser/src/input.rs
 tags: [browser, input, ime, keyboard, url, history, omnibox]
-timestamp: 2026-09-17T00:00:00Z
+timestamp: 2026-10-19T00:00:00Z
 ---
 
 # Overview
@@ -87,6 +87,45 @@ batch while the controller is borrowed, returns from that update, and only then
 calls CEF. CEF can synchronously re-enter the platform event loop, so moving the
 call beyond the GPUI app borrow is required for correctness. The sink is
 main-thread-only and keeps the browser identity captured at submission time.
+
+# IME candidate placement
+
+Chromium reports each composition character's box through
+`on_ime_composition_range_changed`, in view coordinates: physical pixels on the
+Wayland physical-OSR path, logical pixels elsewhere. The runtime divides them by
+`osr_raster_scale` into pane-local logical pixels (`ImeCharacterBounds`, the
+pointer's space) and emits `BrowserEvent::ImeCompositionChanged`. The view keeps
+the latest list and calls `Window::invalidate_character_coordinates`, so the
+platform asks again. `bounds_for_range` offsets the covered characters by the
+content origin (`ime_range_bounds` unions them; a range past the last character
+becomes a caret at its right edge), which puts the candidate window under the
+text being composed at any display scale or window zoom. With no reported boxes,
+or while the composition belongs to the command prompt, it falls back to a
+caret at the content's top-left. `ime_window_bounds` in `view.rs` and the
+`ime.rs` tests cover the conversion.
+
+# Drag and drop
+
+`start_dragging` returns 0, which cancels every drag that starts in a page: HTML5
+drag and drop inside the page, and dragging a link, image or selection out of
+it. It stays off because each half needs pieces that do not exist yet:
+
+- zz-gpui starts a drag only from an element's `on_drag` on mouse-down, and
+  `App::active_drag` is crate-private, so a drag that CEF starts from inside the
+  page cannot become a GPUI drag. Putting `on_drag` on the page would turn every
+  text selection into a drag.
+- Native drag-out (`ExternalDragPayload`) carries only files: the macOS
+  `beginDraggingSession` and Wayland `start_drag` paths offer path lists, with no
+  text or URL payload, so a link could not reach another app.
+- Terminal panes have no drop target.
+- Chromium must be told how the drag ended (`drag_source_ended_at`, then
+  `drag_source_system_drag_ended`), and a drop back into the page needs the
+  `drag_target_*` calls while the pointer is over it; a drag CEF thinks is still
+  running leaves the page ignoring the mouse.
+
+Turning it on takes a public way to begin a drag with a value and an external
+payload, text and URL payloads in the macOS and Wayland backends, those CEF
+source and target calls, and an `on_drop` on terminal panes that pastes the text.
 
 # Keyboard ownership
 
@@ -252,6 +291,7 @@ assert_eq!(
 | File | Role |
 | --- | --- |
 | `src/input.rs` | Browser-neutral `Viewport`/`Modifiers`/pointer/wheel/key types + `windows_key_code`. |
+| `src/ime.rs` | `ImeCharacterBounds` (view rect to pane pixels) and `ime_range_bounds`. |
 | `src/page_zoom.rs` | Chromium percentage ladder and factor-to-CEF-level conversion. |
 | `src/url_input.rs` | `resolve_address`, `SearchProvider`, `normalize_url`, `diagnostic_url`, `UrlInputError`. |
 | `src/cef_runtime.rs` | `BrowserSession`, main-thread `BrowserCommandSink`, CEF input/edit helpers, `event_flags`, coordinate scaling. |

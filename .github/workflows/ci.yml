@@ -39,7 +39,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes autoconf automake bison cmake curl desktop-file-utils dpkg-dev libevent-dev libfontconfig-dev libncurses-dev libwayland-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev ninja-build pkg-config
+          sudo apt-get install --yes autoconf automake bison cmake curl desktop-file-utils dpkg-dev libevent-dev libfontconfig-dev libncurses-dev libwayland-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev mesa-vulkan-drivers ninja-build pkg-config
 
       - name: Install macOS packaging smoke tools
         if: runner.os == 'macOS'
@@ -101,7 +101,15 @@ jobs:
         run: cargo ci-test ${{ runner.os == 'Windows' && '--no-fail-fast' || '' }}
 
       - name: Test the iOS input logic
+        if: runner.os != 'Linux'
         run: cargo test -p zz-gpui-platform --all-features --test ios
+
+      - name: Test zz-gpui-platform on lavapipe (software Vulkan)
+        if: runner.os == 'Linux'
+        timeout-minutes: 20
+        run: |
+          export VK_ICD_FILENAMES=$(echo /usr/share/vulkan/icd.d/lvp_icd.*.json)
+          cargo test -p zz-gpui-platform --all-features
 
       - name: Test zz-mux release profile
         if: runner.os == 'Linux'

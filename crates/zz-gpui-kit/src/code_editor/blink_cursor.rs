@@ -37,6 +37,8 @@ impl BlinkCursor {
 
     pub fn stop(&mut self, cx: &mut Context<Self>) {
         self.epoch = 0;
+        self.visible = false;
+        self.paused = false;
         cx.notify();
     }
 
@@ -92,5 +94,36 @@ impl BlinkCursor {
                 });
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zz_gpui::AppContext as _;
+
+    #[zz_gpui::test]
+    fn a_restarted_caret_shows_at_once(cx: &mut zz_gpui::TestAppContext) {
+        let blink = cx.new(|_| BlinkCursor::new());
+        let visible = |cx: &mut zz_gpui::TestAppContext| blink.read_with(cx, |b, _| b.visible());
+        blink.update(cx, BlinkCursor::start);
+        cx.run_until_parked();
+        assert!(visible(cx));
+
+        blink.update(cx, BlinkCursor::stop);
+        blink.update(cx, BlinkCursor::start);
+        cx.run_until_parked();
+        assert!(visible(cx), "a refocused caret stayed hidden");
+
+        blink.update(cx, BlinkCursor::pause);
+        blink.update(cx, BlinkCursor::stop);
+        blink.update(cx, BlinkCursor::start);
+        cx.run_until_parked();
+        assert!(visible(cx));
+        cx.executor().advance_clock(PAUSE_DELAY);
+        cx.run_until_parked();
+        cx.executor().advance_clock(INTERVAL);
+        cx.run_until_parked();
+        assert!(!visible(cx), "the restarted caret stopped blinking");
     }
 }

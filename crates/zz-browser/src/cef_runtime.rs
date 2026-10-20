@@ -57,8 +57,9 @@ use crate::{
     BrowserCookie, BrowserCookiePriority, BrowserCookieSameSite, BrowserCursor, BrowserEvent,
     BrowserGpuContext, BrowserKey, BrowserProfileError, BrowserProfilePaths, ContextMenuRequest,
     CookieImportBatch, CookieImportResult, DEFAULT_BROWSER_PROFILE, EditCommand, EditFlags,
-    FrameMailbox, KeyAction, KeyInput, Modifiers, OsrFrame, PointerButton, PointerEvent,
-    PointerPhase, RuntimePhase, SessionId, SessionPhase, SiteDataClearResult, Viewport, WheelEvent,
+    FrameMailbox, ImeCharacterBounds, KeyAction, KeyInput, Modifiers, OsrFrame, PointerButton,
+    PointerEvent, PointerPhase, RuntimePhase, SessionId, SessionPhase, SiteDataClearResult,
+    Viewport, WheelEvent,
     element_picker::{
         ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
     },
@@ -66,6 +67,7 @@ use crate::{
     page_zoom::{
         chromium_zoom_level, next_page_zoom_factor, page_zoom_percent, sanitized_page_zoom_factor,
     },
+    popup::{PopupRect, PopupState},
     resolve_profile_paths,
 };
 
@@ -1393,6 +1395,7 @@ impl SessionConfig {
             pending_capture: Arc::clone(&pending_capture),
             active_session: active_session.clone(),
             closing: Arc::new(AtomicBool::new(false)),
+            popup: Arc::default(),
         };
         PreparedSession {
             config: self.clone(),
@@ -1479,6 +1482,7 @@ impl PreparedSession {
             active_data_operations: self.config.active_data_operations,
             accelerated_paint: self.bridge.accelerated_paint,
             popups: self.popups,
+            popup: self.bridge.popup,
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             accelerated_frames: self.bridge.accelerated_frames,
             #[cfg(target_os = "macos")]
@@ -1509,6 +1513,7 @@ pub struct BrowserSession {
     mailbox: FrameMailbox,
     events: Receiver<BrowserEvent>,
     popups: PendingPopups,
+    popup: Arc<Mutex<PopupState>>,
     element_pick: ElementPickState,
     picker_available: bool,
     pending_capture: PendingCapture,
@@ -1935,14 +1940,35 @@ impl BrowserSession {
         }
     }
 
+    fn input_position(&self, x: i32, y: i32) -> (i32, i32) {
+        let viewport = *self.viewport.lock();
+        let scale = osr_raster_scale(viewport);
+        self.popup.lock().input_position(
+            scaled_osr_coordinate(x, scale),
+            scaled_osr_coordinate(y, scale),
+            scaled_osr_dimension(viewport.width, scale).cast_unsigned(),
+            scaled_osr_dimension(viewport.height, scale).cast_unsigned(),
+        )
+    }
+
     pub fn send_pointer(&self, event: PointerEvent) {
         let Some(host) = self.browser.host() else {
             return;
         };
-        let scale_factor = osr_raster_scale(*self.viewport.lock());
+        let viewport = *self.viewport.lock();
+        let scale = osr_raster_scale(viewport);
+        let Some((x, y)) = self.popup.lock().pointer_position(
+            event.phase,
+            scaled_osr_coordinate(event.x, scale),
+            scaled_osr_coordinate(event.y, scale),
+            scaled_osr_dimension(viewport.width, scale).cast_unsigned(),
+            scaled_osr_dimension(viewport.height, scale).cast_unsigned(),
+        ) else {
+            return;
+        };
         let mouse = MouseEvent {
-            x: scaled_osr_coordinate(event.x, scale_factor),
-            y: scaled_osr_coordinate(event.y, scale_factor),
+            x,
+            y,
             modifiers: event_flags(event.modifiers),
         };
         match event.phase {
@@ -1972,9 +1998,10 @@ impl BrowserSession {
             flags |=
                 cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA.0);
         }
+        let (x, y) = self.input_position(event.x, event.y);
         let mouse = MouseEvent {
-            x: scaled_osr_coordinate(event.x, scale_factor),
-            y: scaled_osr_coordinate(event.y, scale_factor),
+            x,
+            y,
             modifiers: flags,
         };
         let (delta_x, delta_y) = if event.precise {
@@ -3276,6 +3303,112 @@ struct AcceleratedFrameProducerState {
     pool: PoolGenerationBookkeeper,
     destination_generation: u64,
     destinations: Option<DestinationTexturePool>,
+    popup: Option<PopupTexture>,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct PopupTexture {
+    texture: wgpu::Texture,
+    blitter: wgpu::util::TextureBlitter,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl PopupTexture {
+    fn new(device: &wgpu::Device, width: u32, height: u32, format: wgpu::TextureFormat) -> Self {
+        Self {
+            texture: device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("zz browser accelerated OSR popup"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            }),
+            blitter: wgpu::util::TextureBlitter::new(device, format),
+        }
+    }
+
+    fn matches(&self, width: u32, height: u32, format: wgpu::TextureFormat) -> bool {
+        self.texture.width() == width
+            && self.texture.height() == height
+            && self.texture.format() == format
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn import_accelerated_texture(
+    gpu: &BrowserGpuContext,
+    info: &AcceleratedPaintInfo,
+    layout: &AcceleratedPoolLayout,
+) -> Result<wgpu::Texture, AcceleratedFrameError> {
+    let import_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    #[cfg(target_os = "linux")]
+    let imported = crate::linux_dmabuf::import_texture(info, &gpu.device)
+        .map_err(AcceleratedFrameError::Import);
+    #[cfg(not(target_os = "linux"))]
+    let imported = cef::osr_texture_import::SharedTextureHandle::new(info)
+        .import_texture(&gpu.device)
+        .map_err(AcceleratedFrameError::Import);
+    let import_validation = pollster::block_on(import_scope.pop());
+    if let Some(error) = import_validation {
+        return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
+    }
+    let imported = imported?;
+    // cef-rs's import helper returns a blank COPY_DST-only fallback; real imports never do.
+    if imported.usage().contains(wgpu::TextureUsages::COPY_DST)
+        && !imported.usage().contains(wgpu::TextureUsages::COPY_SRC)
+    {
+        return Err(AcceleratedFrameError::HelperFallback);
+    }
+
+    let width = layout.width.cast_unsigned();
+    let height = layout.height.cast_unsigned();
+    let format = layout.texture_format();
+    if imported.width() != width || imported.height() != height || imported.format() != format {
+        return Err(AcceleratedFrameError::InvalidMetadata(format!(
+            "imported texture is {}x{} {:?}, callback reports {}x{} {:?}",
+            imported.width(),
+            imported.height(),
+            imported.format(),
+            width,
+            height,
+            format
+        )));
+    }
+    Ok(imported)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn record_accelerated_copy(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    source: &wgpu::Texture,
+    destination: &wgpu::Texture,
+    blitter: &wgpu::util::TextureBlitter,
+) {
+    if source.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+        encoder.copy_texture_to_texture(
+            source.as_image_copy(),
+            destination.as_image_copy(),
+            wgpu::Extent3d {
+                width: source.width(),
+                height: source.height(),
+                depth_or_array_layers: 1,
+            },
+        );
+    } else {
+        let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
+        let destination_view = destination.create_view(&wgpu::TextureViewDescriptor::default());
+        blitter.copy(device, encoder, &source_view, &destination_view);
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -3329,6 +3462,7 @@ impl AcceleratedFrameProducer {
                 pool: PoolGenerationBookkeeper::new(viewport),
                 destination_generation: 0,
                 destinations: None,
+                popup: None,
             })),
         }
     }
@@ -3340,56 +3474,72 @@ impl AcceleratedFrameProducer {
         }
     }
 
-    fn produce(
-        &self,
-        info: &AcceleratedPaintInfo,
-        sequence: u64,
-    ) -> Result<AcceleratedFrameOutcome, AcceleratedFrameError> {
+    fn clear_popup(&self) {
+        self.state.lock().popup = None;
+    }
+
+    fn produce_popup(&self, info: &AcceleratedPaintInfo) -> Result<(), AcceleratedFrameError> {
         let layout = AcceleratedPoolLayout::from_info(info)?;
         let gpu = self
             .gpu
             .as_ref()
             .ok_or(AcceleratedFrameError::DeviceUnavailable)?;
         let mut state = self.state.lock();
+        let imported = import_accelerated_texture(gpu, info, &layout)?;
+        let width = imported.width();
+        let height = imported.height();
+        let format = imported.format();
+        if state
+            .popup
+            .as_ref()
+            .is_none_or(|popup| !popup.matches(width, height, format))
+        {
+            state.popup = Some(PopupTexture::new(&gpu.device, width, height, format));
+        }
+        let popup = state.popup.as_ref().expect("popup texture was initialized");
+        let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("zz browser accelerated OSR popup copy"),
+            });
+        record_accelerated_copy(
+            &gpu.device,
+            &mut encoder,
+            &imported,
+            &popup.texture,
+            &popup.blitter,
+        );
+        gpu.queue.submit([encoder.finish()]);
+        if let Some(error) = pollster::block_on(scope.pop()) {
+            state.popup = None;
+            return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
+        }
+        Ok(())
+    }
+
+    fn produce(
+        &self,
+        info: &AcceleratedPaintInfo,
+        sequence: u64,
+        popup: Option<PopupRect>,
+    ) -> Result<AcceleratedFrameOutcome, AcceleratedFrameError> {
+        let layout = AcceleratedPoolLayout::from_info(info)?;
+        let gpu = self
+            .gpu
+            .as_ref()
+            .ok_or(AcceleratedFrameError::DeviceUnavailable)?;
+        let mut guard = self.state.lock();
+        let state = &mut *guard;
         match state.pool.observe(&layout) {
             Ok(()) => {}
             Err(stale_frame) => return Ok(AcceleratedFrameOutcome::Stale(stale_frame)),
         }
 
-        let import_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        #[cfg(target_os = "linux")]
-        let imported = crate::linux_dmabuf::import_texture(info, &gpu.device)
-            .map_err(AcceleratedFrameError::Import);
-        #[cfg(not(target_os = "linux"))]
-        let imported = cef::osr_texture_import::SharedTextureHandle::new(info)
-            .import_texture(&gpu.device)
-            .map_err(AcceleratedFrameError::Import);
-        let import_validation = pollster::block_on(import_scope.pop());
-        if let Some(error) = import_validation {
-            return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
-        }
-        let imported = imported?;
-        // cef-rs's import helper returns a blank COPY_DST-only fallback; real imports never do.
-        if imported.usage().contains(wgpu::TextureUsages::COPY_DST)
-            && !imported.usage().contains(wgpu::TextureUsages::COPY_SRC)
-        {
-            return Err(AcceleratedFrameError::HelperFallback);
-        }
-
+        let imported = import_accelerated_texture(gpu, info, &layout)?;
         let width = layout.width.cast_unsigned();
         let height = layout.height.cast_unsigned();
         let format = layout.texture_format();
-        if imported.width() != width || imported.height() != height || imported.format() != format {
-            return Err(AcceleratedFrameError::InvalidMetadata(format!(
-                "imported texture is {}x{} {:?}, callback reports {}x{} {:?}",
-                imported.width(),
-                imported.height(),
-                imported.format(),
-                width,
-                height,
-                format
-            )));
-        }
 
         if state
             .destinations
@@ -3418,22 +3568,41 @@ impl AcceleratedFrameProducer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("zz browser accelerated OSR copy-on-receive"),
             });
-        if imported.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+        record_accelerated_copy(
+            &gpu.device,
+            &mut encoder,
+            &imported,
+            &destination,
+            &destinations.blitter,
+        );
+        if let (Some(rect), Some(popup)) = (popup, state.popup.as_ref())
+            && popup.texture.format() == format
+            && let Some(placement) = crate::popup::popup_placement(
+                rect,
+                popup.texture.width(),
+                popup.texture.height(),
+                width,
+                height,
+            )
+        {
             encoder.copy_texture_to_texture(
-                imported.as_image_copy(),
-                destination.as_image_copy(),
+                popup.texture.as_image_copy(),
+                wgpu::TexelCopyTextureInfo {
+                    texture: &destination,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: placement.x,
+                        y: placement.y,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
                 wgpu::Extent3d {
-                    width,
-                    height,
+                    width: placement.width,
+                    height: placement.height,
                     depth_or_array_layers: 1,
                 },
             );
-        } else {
-            let source_view = imported.create_view(&wgpu::TextureViewDescriptor::default());
-            let destination_view = destination.create_view(&wgpu::TextureViewDescriptor::default());
-            destinations
-                .blitter
-                .copy(&gpu.device, &mut encoder, &source_view, &destination_view);
         }
         gpu.queue.submit([encoder.finish()]);
         if let Some(error) = pollster::block_on(blit_scope.pop()) {
@@ -3475,13 +3644,45 @@ struct SessionBridge {
     pending_capture: PendingCapture,
     active_session: ActiveCountGuard,
     closing: Arc<AtomicBool>,
+    popup: Arc<Mutex<PopupState>>,
 }
 
 type PendingCapture = Arc<Mutex<Option<Registration>>>;
 
+fn invalidate_view(browser: Option<&mut Browser>) {
+    if let Some(host) = browser.and_then(|browser| browser.host()) {
+        host.invalidate(PaintElementType::VIEW);
+    }
+}
+
 impl SessionBridge {
     fn emit(&self, event: BrowserEvent) {
         let _ = self.events.try_send(event);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn produce_popup(&self, info: &AcceleratedPaintInfo, browser: Option<&mut Browser>) {
+        if self.popup.lock().rect().is_none() {
+            return;
+        }
+        #[cfg(not(target_os = "macos"))]
+        let result = self
+            .accelerated_frames
+            .produce_popup(info)
+            .map_err(|error| error.to_string());
+        #[cfg(target_os = "macos")]
+        let result = self
+            .metal_frames
+            .produce_popup(info)
+            .map_err(|error| error.to_string());
+        match result {
+            Ok(()) => invalidate_view(browser),
+            Err(error) => log::warn!(
+                target: "zz_browser::accelerated_paint",
+                "popup frame import failed session={}: {error}",
+                self.id.0,
+            ),
+        }
     }
 
     fn apply_page_zoom(&self, browser: &Browser) {
@@ -4429,9 +4630,31 @@ cef::wrap_render_handler! {
             1
         }
 
+        fn on_popup_show(&self, browser: Option<&mut Browser>, show: i32) {
+            self.bridge.popup.lock().set_visible(show != 0);
+            if show == 0 {
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                self.bridge.accelerated_frames.clear_popup();
+                #[cfg(target_os = "macos")]
+                self.bridge.metal_frames.clear_popup();
+                invalidate_view(browser);
+            }
+        }
+
+        fn on_popup_size(&self, _browser: Option<&mut Browser>, rect: Option<&Rect>) {
+            if let Some(rect) = rect {
+                self.bridge.popup.lock().set_rect(PopupRect {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                });
+            }
+        }
+
         fn on_paint(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             type_: PaintElementType,
             dirty_rects: Option<&[Rect]>,
             buffer: *const u8,
@@ -4439,7 +4662,26 @@ cef::wrap_render_handler! {
             height: i32,
         ) {
             let started = diagnostic_timer();
-            if type_ != PaintElementType::VIEW || buffer.is_null() {
+            if buffer.is_null() {
+                return;
+            }
+            if type_ == PaintElementType::POPUP {
+                let Ok(length) = frame_byte_len(width, height) else {
+                    return;
+                };
+                // SAFETY: CEF guarantees `buffer` holds `width * height * 4` BGRA bytes
+                // for the length of this callback, and the dimensions were checked above.
+                let pixels = unsafe { std::slice::from_raw_parts(buffer, length) };
+                if self.bridge.popup.lock().store_pixels(
+                    pixels,
+                    width.cast_unsigned(),
+                    height.cast_unsigned(),
+                ) {
+                    invalidate_view(browser);
+                }
+                return;
+            }
+            if type_ != PaintElementType::VIEW {
                 return;
             }
             let length = match frame_byte_len(width, height) {
@@ -4456,7 +4698,14 @@ cef::wrap_render_handler! {
             let mut bytes = self.bridge.mailbox.take_buffer(length);
             bytes.clear();
             bytes.extend_from_slice(source);
-            let damage = dirty_rect_damage(dirty_rects);
+            let mut damage = dirty_rect_damage(dirty_rects);
+            if let Some(popup) = self.bridge.popup.lock().composite(
+                &mut bytes,
+                width.cast_unsigned(),
+                height.cast_unsigned(),
+            ) {
+                damage = damage.map(|damage| damage.union(popup));
+            }
             let publish_result = self
                 .bridge
                 .mailbox
@@ -4490,7 +4739,7 @@ cef::wrap_render_handler! {
 
         fn on_accelerated_paint(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             type_: PaintElementType,
             dirty_rects: Option<&[Rect]>,
             info: Option<&AcceleratedPaintInfo>,
@@ -4541,14 +4790,22 @@ cef::wrap_render_handler! {
                     dirty_rects.map(|rects| rects.iter().map(|rect| (rect.x, rect.y, rect.width, rect.height)).collect::<Vec<_>>()),
                 );
             }
-            if type_ != PaintElementType::VIEW {
-                return;
-            }
             // The accelerated session lives on until CEF acknowledges close, so late
             // GPU frames must not replace the surface held for the readback swap.
             if self.bridge.shared_texture_fallback_requested() {
                 return;
             }
+            if type_ == PaintElementType::POPUP {
+                #[cfg(not(target_os = "windows"))]
+                self.bridge.produce_popup(info, browser);
+                #[cfg(target_os = "windows")]
+                let _ = browser;
+                return;
+            }
+            if type_ != PaintElementType::VIEW {
+                return;
+            }
+            let popup = self.bridge.popup.lock().rect();
 
             #[cfg(target_os = "macos")]
             {
@@ -4557,6 +4814,7 @@ cef::wrap_render_handler! {
                 match self.bridge.metal_frames.produce(
                     info,
                     recorded.callback,
+                    popup,
                     move |completion| bridge.handle_metal_frame_completion(completion),
                 ) {
                     Ok(MetalFrameOutcome::Submitted) => {}
@@ -4573,6 +4831,7 @@ cef::wrap_render_handler! {
 
             #[cfg(target_os = "windows")]
             {
+                let _ = popup;
                 self.bridge.accelerated_paint.record_gpu_import_attempt();
                 // CEF returns the shared texture to its pool once this callback
                 // returns, so both the import and the copy happen here.
@@ -4597,7 +4856,7 @@ cef::wrap_render_handler! {
             match self
                 .bridge
                 .accelerated_frames
-                .produce(info, recorded.callback)
+                .produce(info, recorded.callback, popup)
             {
                 Ok(AcceleratedFrameOutcome::Frame(frame)) => {
                     let pool_generation = frame.pool_generation;
@@ -4679,6 +4938,26 @@ cef::wrap_render_handler! {
                 }
             }
             }
+        }
+
+        fn on_ime_composition_range_changed(
+            &self,
+            _browser: Option<&mut Browser>,
+            _selected_range: Option<&Range>,
+            character_bounds: Option<&[Rect]>,
+        ) {
+            let scale = osr_raster_scale(*self.bridge.viewport.lock());
+            let bounds = character_bounds
+                .unwrap_or_default()
+                .iter()
+                .map(|rect| {
+                    ImeCharacterBounds::from_view(rect.x, rect.y, rect.width, rect.height, scale)
+                })
+                .collect();
+            self.bridge.emit(BrowserEvent::ImeCompositionChanged {
+                session: self.bridge.id,
+                bounds,
+            });
         }
 
         fn start_dragging(
@@ -5983,6 +6262,7 @@ mod tests {
             pending_capture: PendingCapture::default(),
             active_session: ActiveCountGuard::new(Arc::new(AtomicU64::new(0))),
             closing: Arc::new(AtomicBool::new(false)),
+            popup: Arc::default(),
         };
 
         assert!(!bridge.shared_texture_fallback_requested());

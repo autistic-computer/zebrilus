@@ -603,6 +603,34 @@ mod tests {
     }
 
     #[zz_gpui::test]
+    fn space_opens_a_focused_select(cx: &mut TestAppContext) {
+        use zz_gpui::Focusable as _;
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (preview, cx) = cx.add_window_view(|window, cx| Preview {
+            state: cx.new(|cx| {
+                SelectState::new(
+                    vec!["vi".into(), "emacs".into()],
+                    Some(IndexPath::new(1)),
+                    window,
+                    cx,
+                )
+            }),
+            disabled: false,
+        });
+        let state = preview.read_with(cx, |preview, _| preview.state.clone());
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            state.focus_handle(cx).focus(window, cx);
+        });
+        cx.simulate_keystrokes("space");
+        assert!(state.read_with(cx, |state, _| state.menu.is_some()));
+    }
+
+    #[zz_gpui::test]
     fn long_popup_picker_reopens_at_the_committed_value(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::init(cx);
