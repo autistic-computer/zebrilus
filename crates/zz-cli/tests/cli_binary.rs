@@ -79,6 +79,8 @@ fn catalog_help_is_available_without_a_daemon() {
         let help = String::from_utf8(output.stdout).expect("UTF-8 help");
         if arguments.len() == 1 {
             assert!(help.contains("agent-send"));
+            assert!(help.contains("\nglobal flags\n  --host NAME|DEST|all  "));
+            assert!(help.contains("\n  fleet  ") && help.contains("\n  list-hosts  "));
             for name in zz_protocol::INTERNAL_COMMAND_NAMES {
                 assert!(!help.contains(name), "advertised {name}");
             }
@@ -89,6 +91,33 @@ fn catalog_help_is_available_without_a_daemon() {
             assert!(help.contains("-F"));
             assert!(help.contains("--json"));
         }
+        assert!(!socket.exists());
+    }
+}
+
+#[test]
+fn host_verbs_have_help_without_a_daemon() {
+    for (name, expected) in [
+        (
+            "fleet",
+            "usage: zz fleet add NAME DEST | remove NAME | install",
+        ),
+        ("list-hosts", "usage: zz list-hosts [-F format] [--json]"),
+    ] {
+        let (home, mut zz) = isolated_zz();
+        let socket = home.path().join("absent.sock");
+        let output = zz
+            .arg("-S")
+            .arg(&socket)
+            .args([name, "--help"])
+            .output()
+            .expect("run host verb help");
+        assert_eq!(output.status.code(), Some(0), "{name}");
+        assert!(output.stderr.is_empty(), "{name}");
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(expected),
+            "{name}"
+        );
         assert!(!socket.exists());
     }
 }

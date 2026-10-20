@@ -4576,6 +4576,7 @@ enum DaemonCommandDispatch {
     Html,
     DebugMarker,
     Tools,
+    LocalCli,
     Buffer,
     ListClients,
     ShowMessages,
@@ -4612,6 +4613,8 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("html", DaemonCommandDispatch::Html),
     ("debug-marker", DaemonCommandDispatch::DebugMarker),
     ("tools", DaemonCommandDispatch::Tools),
+    ("fleet", DaemonCommandDispatch::LocalCli),
+    ("list-hosts", DaemonCommandDispatch::LocalCli),
     ("set-buffer", DaemonCommandDispatch::Buffer),
     ("setb", DaemonCommandDispatch::Buffer),
     ("show-buffer", DaemonCommandDispatch::Buffer),
@@ -8507,6 +8510,10 @@ impl Shared {
                     DaemonCommandDispatch::Tools => {
                         workspace_tools_catalog(&command.args).map_err(Into::into)
                     }
+                    DaemonCommandDispatch::LocalCli => Err(ServerError::InvalidCommand(format!(
+                        "{canonical} reads this machine's zz/config; run it from a shell as `zz {canonical}`"
+                    ))
+                    .into()),
                     DaemonCommandDispatch::Buffer => self.buffer_command_for_client(
                         Some(client),
                         kind,
@@ -84067,6 +84074,27 @@ set-option -g @alias-mixed-next yes
         let usage = error.to_string();
         for section in ["agent", "terminal", "browser", "advanced"] {
             assert!(usage.contains(section));
+        }
+    }
+
+    #[test]
+    fn host_verbs_point_a_prompt_user_at_the_shell() {
+        let shared = Arc::new(Shared::new(1));
+        for verb in ["fleet", "list-hosts"] {
+            let error = shared
+                .execute(
+                    ClientId(1),
+                    ClientKind::Interactive,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new(verb, Vec::<RawText>::new()),
+                )
+                .expect_err(verb);
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("run it from a shell as `zz {verb}`")),
+                "{verb}: {error}"
+            );
         }
     }
 
