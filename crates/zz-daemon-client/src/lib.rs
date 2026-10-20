@@ -32,6 +32,9 @@ mod fleet_hosts;
 #[cfg(any(unix, windows))]
 #[cfg_attr(target_os = "ios", allow(dead_code))]
 mod fleet_sync;
+#[cfg(any(unix, windows))]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod host_probe;
 #[cfg(target_os = "ios")]
 mod ios_keychain;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
@@ -78,6 +81,8 @@ pub use fleet_hosts::{
 };
 #[cfg(any(unix, windows))]
 pub use fleet_sync::{SyncLine, sync_fleet};
+#[cfg(any(unix, windows))]
+pub use host_probe::{HostProbe, HostStatus, probe_host};
 pub use lifecycle::{
     DaemonIdentityGuard, DaemonRecoveryError, RecoveredDaemon, daemon_identity_protocol_version,
     terminate_incompatible_daemon,

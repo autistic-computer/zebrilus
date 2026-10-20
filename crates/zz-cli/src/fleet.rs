@@ -4,11 +4,11 @@ use zz_daemon_client::{
     validate_fleet_host,
 };
 
-const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] <name>\n       zz fleet key\n       zz fleet list [-F <format>]\n       zz fleet remove <name>\n       zz fleet sync";
+const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] <name>\n       zz fleet key\n       zz fleet list [-F <format>] [--json]\n       zz fleet remove <name>\n       zz fleet sync";
 const FLEET_INSTALL_USAGE: &str = "usage: zz fleet install [--restart-daemon] <name>";
 const FLEET_ADD_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>";
 const FLEET_KEY_USAGE: &str = "usage: zz fleet key";
-const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format>]";
+const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format>] [--json]";
 const FLEET_REMOVE_USAGE: &str = "usage: zz fleet remove <name>";
 const FLEET_SYNC_USAGE: &str = "usage: zz fleet sync";
 
@@ -29,7 +29,12 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String,
             }
             ssh_public_key().map_err(|error| format!("could not make the zz key: {error}"))
         }
-        "list" => fleet_list(parse_fleet_list(arguments)?),
+        "list" => match crate::list_hosts::parse(arguments) {
+            Ok(None) => fleet_list(),
+            Ok(Some(listing)) => crate::list_hosts::output(listing),
+            Err(error) if error.starts_with("usage:") => Err(FLEET_LIST_USAGE.to_owned()),
+            Err(error) => Err(error),
+        },
         "remove" => {
             let [name] = arguments else {
                 return Err(FLEET_REMOVE_USAGE.to_owned());
@@ -90,36 +95,14 @@ pub(crate) fn forget_host(name: &str) -> Result<ForgetOutcome, String> {
     })
 }
 
-fn parse_fleet_list(arguments: &[String]) -> Result<Option<&str>, String> {
-    match arguments {
-        [] => Ok(None),
-        [option, format] if option == "-F" => Ok(Some(format)),
-        _ => Err(FLEET_LIST_USAGE.to_owned()),
-    }
-}
-
-fn fleet_list(format: Option<&str>) -> Result<String, String> {
+fn fleet_list() -> Result<String, String> {
     let (hosts, rejected) =
         configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
     let rows = hosts
         .into_iter()
         .map(|host| (host.name, host.endpoint.to_string()))
         .collect::<Vec<_>>();
-    if let Some(format) = format {
-        return Ok(format_fleet_rows_with_format(&rows, format));
-    }
     Ok(format_fleet_listing(&rows, &rejected))
-}
-
-fn format_fleet_rows_with_format(rows: &[(String, String)], format: &str) -> String {
-    rows.iter()
-        .map(|(name, endpoint)| {
-            format
-                .replace("#{host_name}", name)
-                .replace("#{host_endpoint}", endpoint)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn format_fleet_listing(rows: &[(String, String)], rejected: &[RejectedHost]) -> String {
@@ -285,23 +268,6 @@ mod tests {
     }
 
     #[test]
-    fn formatted_list_rows_use_literal_host_substitution() {
-        let rows = [
-            ("gpu".to_owned(), "ssh://gpu-box".to_owned()),
-            ("desktop".to_owned(), "ssh://desktop".to_owned()),
-        ];
-        assert_eq!(
-            format_fleet_rows_with_format(&rows, "#{host_name}=#{host_endpoint} #{unknown}",),
-            "gpu=ssh://gpu-box #{unknown}\ndesktop=ssh://desktop #{unknown}"
-        );
-        assert_eq!(
-            parse_fleet_list(&["-F".to_owned(), "#{host_name}".to_owned()]),
-            Ok(Some("#{host_name}"))
-        );
-        assert!(parse_fleet_list(&["-F".to_owned()]).is_err());
-    }
-
-    #[test]
     fn listing_names_the_lines_the_parser_dropped() {
         assert_eq!(
             format_fleet_listing(
@@ -415,6 +381,19 @@ mod tests {
         assert_eq!(
             run(["list".to_owned()]).unwrap(),
             "desktop  ssh://fabrico@arch-desktop"
+        );
+        assert_eq!(
+            run([
+                "list".to_owned(),
+                "-F".to_owned(),
+                "#{host_name}=#{host_endpoint}#{?host_name,!,}".to_owned()
+            ])
+            .unwrap(),
+            "desktop=ssh://fabrico@arch-desktop!"
+        );
+        assert_eq!(
+            run(["list".to_owned(), "-F".to_owned()]).unwrap_err(),
+            FLEET_LIST_USAGE
         );
         assert_eq!(
             run(["remove".to_owned(), "missing".to_owned()]).unwrap_err(),
