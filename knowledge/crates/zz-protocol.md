@@ -92,7 +92,9 @@ vectors deserialize through one bounded visitor: at most 64 entries of at most 2
 before the strings materialize. The top-level capability-name constant is
 `NEW_SESSION_ATTACH_CAPABILITY` (`new-session-attach-v1`). `ClientHello` exposes the terminal-fact
 names as associated constants: `CLIENT_TERMINAL_CAPABILITY` (`client-terminal-v1`),
-`CLIENT_NESTED_CAPABILITY` (`client-nested-v1`), and the v71 value-token prefixes
+`CLIENT_NESTED_CAPABILITY` (`client-nested-v1`), `CLIENT_REMOTE_CAPABILITY` (`client-remote-v1`,
+sent by a client that reached the daemon over ssh; its execs set `ExecFlags::REMOTE`, bit 7, and
+older daemons ignore both), and the v71 value-token prefixes
 `CLIENT_TTY_CAPABILITY_PREFIX` (`client-tty-v1:`) and `CLIENT_SIZE_CAPABILITY_PREFIX`
 (`client-size-v1:`). Every other advertised string is a literal in [the daemon](/crates/zz-daemon.md).
 None of them changes an encoding. `TERMINAL_ZSTD_CAPABILITY`

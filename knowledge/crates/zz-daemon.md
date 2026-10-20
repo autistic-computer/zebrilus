@@ -545,7 +545,13 @@ interactive clients as the user has devices. Per-client maps carry the rest:
   `update-environment` update. Attach refresh follows target and terminal preflight. A table-only
   `switch-client -T` returns before refresh, while `-E` preserves the destination session map.
   Existing terminal processes keep their spawn environment; later panes consume the updated map.
-  The UTF-8 wire omits unrepresentable Unix names or values instead of substituting them.
+  The UTF-8 wire omits unrepresentable Unix names or values instead of substituting them. A remote
+  client (`client-remote-v1` in its hello, `ExecFlags::REMOTE` on an exec) is no
+  `update-environment` source: new-session seeds nothing from it and attach and switch skip the
+  refresh, so its sessions keep the daemon's own `SSH_AUTH_SOCK`, `DISPLAY` and the rest, and its
+  `TMUX_PANE` or `ZZ_PANE` never names a client hook's origin. `Client::local_environment` and
+  `Client::seed_context_environment` hold that rule; the map itself still feeds terminal features
+  and UTF-8 detection.
 - **Client formats.** Protocol v83 adds the originating process ID to the retained connection facts.
   `client_format_facts` combines it with tty, environment, size, cell geometry, colour scheme,
   requested flags, focus, attachment history, key-table state, timestamps, and mailbox counters.

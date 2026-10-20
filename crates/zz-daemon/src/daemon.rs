@@ -587,7 +587,7 @@ fn client_lifecycle_event(
     let origin = registered
         .and_then(|c| c.origin)
         .or_else(|| {
-            let environment = registered.and_then(|c| c.environment.as_ref())?;
+            let environment = registered.and_then(Client::local_environment)?;
             ["TMUX_PANE", "ZZ_PANE"]
                 .into_iter()
                 .find_map(|name| environment.map().get(name)?.as_str().parse().ok())
@@ -9628,12 +9628,8 @@ impl Shared {
                     .and_then(|c| c.working_directory.as_ref())
                     .cloned(),
             );
-            if let Some(environment) = inner
-                .client(client)
-                .and_then(|c| c.environment.as_ref())
-                .cloned()
-            {
-                context.set_client_environment(Some(environment));
+            if let Some(registered) = inner.client(client) {
+                registered.seed_context_environment(context);
             }
             let previous_client_terminal = context_client_terminal(context);
             let previous_refuse_new_session_attach = context.refuses_new_session_attach();
@@ -11974,7 +11970,7 @@ impl Shared {
                 let mut inner = self.inner.lock();
                 if let Some(environment) = inner
                     .client(client)
-                    .and_then(|c| c.environment.as_ref())
+                    .and_then(Client::local_environment)
                     .cloned()
                 {
                     inner
@@ -18379,7 +18375,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             if let Some(environment) = inner
                 .client(target_client)
-                .and_then(|c| c.environment.as_ref())
+                .and_then(Client::local_environment)
                 .cloned()
             {
                 inner
@@ -20770,7 +20766,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             if let Some(environment) = inner
                 .client(client)
-                .and_then(|c| c.environment.as_ref())
+                .and_then(Client::local_environment)
                 .cloned()
             {
                 inner
@@ -25301,12 +25297,8 @@ impl Shared {
                     client_context_pane(&inner, target).map(|pane| {
                         let mut context = ExecutionContext::default();
                         retarget_context_to_attachment(&inner, target, &mut context);
-                        if let Some(environment) = inner
-                            .client(target)
-                            .and_then(|c| c.environment.as_ref())
-                            .cloned()
-                        {
-                            context.set_client_environment(Some(environment));
+                        if let Some(registered) = inner.client(target) {
+                            registered.seed_context_environment(&mut context);
                         }
                         let kind = inner
                             .client(target)
@@ -25431,12 +25423,8 @@ impl Shared {
                             .map(|binding| binding.commands.clone())
                             .zip(ExecutionContext::for_pane(&inner.engine.state, pane))
                             .map(|(commands, mut context)| {
-                                if let Some(environment) = inner
-                                    .client(*owner)
-                                    .and_then(|c| c.environment.as_ref())
-                                    .cloned()
-                                {
-                                    context.set_client_environment(Some(environment));
+                                if let Some(registered) = inner.client(*owner) {
+                                    registered.seed_context_environment(&mut context);
                                 }
                                 let kind = inner
                                     .client(*owner)
@@ -35582,6 +35570,7 @@ struct Client {
     features: Option<u32>,
     terminal_type: Option<String>,
     nested: bool,
+    remote: bool,
     utf8: bool,
     tty: Option<String>,
     size: Option<(u16, u16)>,
@@ -35640,6 +35629,20 @@ struct Client {
     ctrl_initializing: bool,
     clipboard_query: Option<Instant>,
     mouse_drag: Option<zz_mux::MouseDrag>,
+}
+
+impl Client {
+    fn local_environment(&self) -> Option<&Arc<ClientEnvironmentBlob>> {
+        self.environment.as_ref().filter(|_| !self.remote)
+    }
+
+    fn seed_context_environment(&self, context: &mut ExecutionContext) {
+        if self.remote {
+            context.set_client_environment(None);
+        } else if let Some(environment) = &self.environment {
+            context.set_client_environment(Some(Arc::clone(environment)));
+        }
+    }
 }
 
 #[derive(Default)]
@@ -40348,6 +40351,12 @@ fn client_nested_fact(capabilities: &[String]) -> bool {
     capabilities
         .iter()
         .any(|capability| capability == ClientHello::CLIENT_NESTED_CAPABILITY)
+}
+
+fn client_remote_fact(capabilities: &[String]) -> bool {
+    capabilities
+        .iter()
+        .any(|capability| capability == ClientHello::CLIENT_REMOTE_CAPABILITY)
 }
 
 fn client_utf8_fact(capabilities: &[String]) -> bool {
@@ -53222,6 +53231,7 @@ fn handle_connection_message<S: TransportStream>(
         let registered = inner.client_mut(client).expect("registered client");
         registered.origin = hello.origin;
         registered.nested = client_nested_fact(&hello.capabilities);
+        registered.remote = client_remote_fact(&hello.capabilities);
         registered.utf8 = client_utf8_fact(&hello.capabilities);
         registered.exits_on_detach = attach::client_exits_on_detach_fact(&hello.capabilities);
         let features = client_features_fact(&hello.capabilities);
@@ -83557,6 +83567,8 @@ set-option -g @alias-mixed-next yes
         assert_eq!(client_tty_fact(&["client-terminal-v1".to_owned()]), None);
         assert!(client_nested_fact(&["client-nested-v1".to_owned()]));
         assert!(!client_nested_fact(&["client-nested-v1:".to_owned()]));
+        assert!(client_remote_fact(&["client-remote-v1".to_owned()]));
+        assert!(!client_remote_fact(&["client-nested-v1".to_owned()]));
         assert_eq!(
             client_size_fact(&["client-size-v1:120x40".to_owned()]),
             Some((120, 40))
@@ -108192,6 +108204,138 @@ bind - split-window -v -c "#{pane_current_path}"
                 .find(|(name, _)| name == "SWITCH_ENV"),
             Some(("SWITCH_ENV".into(), Some("preserved".into())))
         );
+    }
+
+    #[test]
+    fn a_remote_client_leaves_session_environments_to_the_daemon() {
+        let shared = Arc::new(Shared::new(1));
+        let (session, _, _) = switch_test_session(&shared, "target");
+        let (other, _, _) = switch_test_session(&shared, "other");
+        let run = |client, kind, context: &mut ExecutionContext, args: &[&str]| {
+            shared.execute(
+                client,
+                kind,
+                context,
+                &CommandInvocation::new(args[0], args[1..].iter().copied()),
+            )
+        };
+        let mut setup = ExecutionContext::default();
+        for args in [
+            ["set-option", "-g", "update-environment", "REMOTE_ENV"].as_slice(),
+            &["set-environment", "-t", "target", "REMOTE_ENV", "host"],
+            &["set-environment", "-t", "other", "REMOTE_ENV", "host"],
+        ] {
+            run(ClientId(90), ClientKind::Command, &mut setup, args).expect("setup");
+        }
+        let value = |session| {
+            shared
+                .inner
+                .lock()
+                .engine
+                .environment_for_session(session)
+                .unwrap()
+                .into_iter()
+                .find(|(name, _)| name == "REMOTE_ENV")
+                .map(|(_, value)| value)
+        };
+        let host = Some(Some(RawText::from("host")));
+        let (remote, _) = shared.register_subscribed(
+            ClientKind::Control,
+            Some("remote-environment".to_owned()),
+            None,
+            OutboundMailbox::new(),
+        );
+        {
+            let mut inner = shared.inner.lock();
+            let entry = inner.client_entry(remote);
+            entry.remote = true;
+            entry
+                .environment
+                .replace(client_environment_fact(&["REMOTE_ENV=caller".into()]));
+        }
+        let mut remote_context = ExecutionContext::default();
+        run(
+            remote,
+            ClientKind::Control,
+            &mut remote_context,
+            &["attach-session", "-t", "target"],
+        )
+        .expect("remote attach");
+        assert_eq!(value(session), host);
+        shared
+            .attach_target(remote, ClientKind::Control, &mut remote_context, "target")
+            .expect("remote native attach");
+        assert_eq!(value(session), host);
+        run(
+            ClientId(90),
+            ClientKind::Command,
+            &mut setup,
+            &["switch-client", "-c", "remote-environment", "-t", "other"],
+        )
+        .expect("targeted switch of a remote client");
+        assert_eq!(
+            client_attached_session(&shared.inner.lock(), remote),
+            Some(other)
+        );
+        assert_eq!(value(other), host);
+        run(
+            remote,
+            ClientKind::Control,
+            &mut remote_context,
+            &["new-session", "-d", "-s", "fresh"],
+        )
+        .expect("remote new session");
+        let fresh = shared
+            .inner
+            .lock()
+            .engine
+            .resolve_session(Some("fresh"), None)
+            .expect("fresh session");
+        assert_eq!(value(fresh), None);
+
+        shared.inner.lock().client_entry(remote).remote = false;
+        run(
+            remote,
+            ClientKind::Control,
+            &mut remote_context,
+            &["attach-session", "-t", "target"],
+        )
+        .expect("local attach");
+        assert_eq!(value(session), Some(Some(RawText::from("caller"))));
+    }
+
+    #[test]
+    fn a_remote_clients_environment_never_names_its_hook_origin() {
+        let shared = Arc::new(Shared::new(1));
+        let (_, _, first) = switch_test_session(&shared, "first");
+        let (_, _, second) = switch_test_session(&shared, "second");
+        let (client, _) = shared.register_subscribed(
+            ClientKind::Interactive,
+            Some("origin".to_owned()),
+            None,
+            OutboundMailbox::new(),
+        );
+        let mut inner = shared.inner.lock();
+        let recent = inner
+            .engine
+            .state
+            .most_recent_context()
+            .map(|(_, _, pane)| pane)
+            .expect("recent pane");
+        let named = if recent == first { second } else { first };
+        inner
+            .client_entry(client)
+            .environment
+            .replace(client_environment_fact(&[RawText::from(format!(
+                "ZZ_PANE={named}"
+            ))]));
+        let origin = |inner: &ServerState| {
+            client_lifecycle_event(inner, "client-created", client)
+                .and_then(|event| event.context.pane)
+        };
+        assert_eq!(origin(&inner), Some(named));
+        inner.client_entry(client).remote = true;
+        assert_eq!(origin(&inner), Some(recent));
     }
 
     #[test]

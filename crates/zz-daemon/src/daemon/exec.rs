@@ -341,6 +341,7 @@ impl Shared {
         entry.focused = Some(true);
         entry.origin = request.origin;
         entry.nested = request.flags.contains(ExecFlags::NESTED);
+        entry.remote = request.flags.contains(ExecFlags::REMOTE);
         entry.utf8 = request.flags.contains(ExecFlags::UTF8);
         entry.features = (request.features != 0).then_some(request.features);
         entry.tty = request.tty.as_ref().filter(|tty| !tty.is_empty()).cloned();
