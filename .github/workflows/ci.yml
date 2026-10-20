@@ -1,12 +1,20 @@
 name: CI
 
 on:
+  # Branch pushes other than main run through their pull request, so a PR
+  # commit runs once. Tags run the release workflow instead.
   push:
-    # A tag push runs the release workflow; the CI matrix on the same commit
-    # would only compete with it for runners.
-    branches: ["**"]
-    tags-ignore: ["v*"]
+    branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+# A newer push to a PR cancels its running check. On main the running check
+# finishes and only the newest pending one waits behind it.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -17,10 +25,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
+        # Windows takes two hours and is second-class, so it runs nightly and
+        # on demand; the release workflow builds it again at tag time.
+        os: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["ubuntu-24.04","macos-15","windows-2025"]' || '["ubuntu-24.04","macos-15"]') }}
     runs-on: ${{ matrix.os }}
     env:
       CEF_PATH: ${{ github.workspace }}/.cef-cache
+      # Fat LTO with one codegen unit is most of a release build's time. Pushes
+      # build the bundle without it; the nightly run keeps the shipped profile.
+      CARGO_PROFILE_RELEASE_LTO: ${{ github.event_name == 'schedule' && 'fat' || 'false' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.event_name == 'schedule' && '1' || '16' }}
 
     steps:
       # Full history: the compat summary check verifies that the commit its
@@ -45,9 +59,21 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install tmux
 
+      # setup-zig's own cache saved a new 118 MB entry on every run and filled
+      # the repo's 10 GB cache. libghostty-vt-sys keeps its Zig caches in its
+      # OUT_DIR, so that cache never sped up our build.
       - uses: mlugg/setup-zig@v2.2.1
         with:
           version: 0.16.0
+          use-cache: false
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
 
       - name: Cache matching CEF distribution
         uses: actions/cache@v6.1.0
