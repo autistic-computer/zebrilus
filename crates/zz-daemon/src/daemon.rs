@@ -77915,7 +77915,7 @@ set-option -g @alias-mixed-next yes
     fn run_pane_allows_echo_to_take_longer_than_two_seconds() {
         let (shared, client, target) = send_text_fixture(
             "runechodelay",
-            r#"stty -echo -icanon min 1; exec python3 -c 'import os,time; os.write(1,b"zz-ready\r\n"); command=os.read(0,4096); time.sleep(2.2); os.write(1,command); os.read(0,1); os.system(command.decode()); time.sleep(5)'"#,
+            r#"stty -echo -icanon min 1; exec sh -c 'printf "zz-ready\r\n"; line=$(dd bs=4096 count=1 2>/dev/null); sleep 2.2; printf %s "$line"; dd bs=1 count=1 >/dev/null 2>&1; eval "$line"; sleep 5'"#,
         );
         let started = Instant::now();
         let result = shared
@@ -77976,6 +77976,167 @@ set-option -g @alias-mixed-next yes
                 .stderr,
             format!("run-pane: timed out after 1s on {target}; the command keeps running\n")
         );
+    }
+
+    #[cfg(unix)]
+    fn run_pane_stderr(shared: &Shared, client: ClientId) -> String {
+        shared
+            .inner
+            .lock()
+            .client_entry(client)
+            .command_streams
+            .replace(CommandStreams::default())
+            .map(|streams| streams.stderr)
+            .unwrap_or_default()
+    }
+
+    #[cfg(unix)]
+    fn run_pane_exit(
+        shared: &Arc<Shared>,
+        client: ClientId,
+        target: &str,
+        args: &[&str],
+    ) -> (Result<String, (String, u8)>, String, Duration) {
+        run_pane_stderr(shared, client);
+        let started = Instant::now();
+        let result = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(
+                    "run-pane",
+                    ["-t", target].into_iter().chain(args.iter().copied()),
+                ),
+            )
+            .map(|execution| execution.output.to_string())
+            .map_err(|error| match error {
+                DaemonError::CommandExit { output, exit_code } => (output.to_string(), exit_code),
+                error => panic!("{error:?}"),
+            });
+        let elapsed = started.elapsed();
+        (result, run_pane_stderr(shared, client), elapsed)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_refuses_a_pane_that_is_not_running_a_shell() {
+        let (shared, client, target) =
+            send_text_fixture("runcat", "printf 'zz-ready\\r\\n'; exec /bin/cat");
+        let (result, stderr, elapsed) = run_pane_exit(&shared, client, &target, &["true"]);
+        assert_eq!(result, Err((String::new(), 3)));
+        assert_eq!(
+            stderr,
+            format!("run-pane: {target} is running cat, not a shell; nothing was typed\n")
+        );
+        assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+        let screen = wait_for_capture(&shared, client, &target, |_| true);
+        assert!(!screen.contains("ZZRUN-"), "{screen:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_interrupts_a_shell_waiting_for_more_input() {
+        let (shared, client, target) =
+            send_text_fixture("runps2", "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh");
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("send-keys", ["-t", &target, "echo 'open", "Enter"]),
+            )
+            .expect("open a quote");
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.lines().any(|line| line.trim_end() == ">")
+        });
+        let (result, stderr, elapsed) =
+            run_pane_exit(&shared, client, &target, &["--", "echo never"]);
+        assert_eq!(result, Err((String::new(), 3)));
+        assert_eq!(
+            stderr,
+            format!(
+                "run-pane: {target}'s shell did not start the command within 2s (it was waiting \
+                 for more input, such as an unclosed quote); sent C-c, nothing ran\n"
+            )
+        );
+        assert!(elapsed < Duration::from_secs(8), "{elapsed:?}");
+        let (result, _, _) = run_pane_exit(&shared, client, &target, &["--", "echo ok"]);
+        assert_eq!(result, Ok("ok\n".to_owned()));
+        let (result, _, elapsed) =
+            run_pane_exit(&shared, client, &target, &["--", "echo 'unbalanced"]);
+        assert!(
+            matches!(&result, Err((_, code)) if ![0, 3, 124, 125].contains(code)),
+            "{result:?}"
+        );
+        assert!(elapsed < Duration::from_secs(8), "{elapsed:?}");
+        let (result, _, _) =
+            run_pane_exit(&shared, client, &target, &["--", "echo \"it's\" 'a b' hi!"]);
+        assert_eq!(result, Ok("it's a b hi!\n".to_owned()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_without_an_echo_submits_nothing() {
+        let (shared, client, target) = send_text_fixture(
+            "runnoecho",
+            "stty -echo; printf 'zz-ready\\r\\n'; exec sh -c 'sleep 30; :'",
+        );
+        let (result, stderr, _) = run_pane_exit(
+            &shared,
+            client,
+            &target,
+            &["--timeout", "0.5", "--", "true"],
+        );
+        assert_eq!(result, Err((String::new(), 3)));
+        assert_eq!(
+            stderr,
+            format!(
+                "run-pane: {target} did not echo the command within 0.5s; nothing was submitted\n"
+            )
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_takes_turns_on_one_pane() {
+        let (shared, client, target) =
+            send_text_fixture("runturns", "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh");
+        let other = ClientId(8);
+        let first = {
+            let shared = Arc::clone(&shared);
+            let target = target.clone();
+            thread::spawn(move || {
+                run_pane_exit(&shared, client, &target, &["--", "sleep 1; echo A-done"])
+            })
+        };
+        thread::sleep(Duration::from_millis(200));
+        let (result, _, elapsed) = run_pane_exit(&shared, other, &target, &["--", "echo B-done"]);
+        assert_eq!(result, Ok("B-done\n".to_owned()));
+        assert!(elapsed >= Duration::from_millis(600), "{elapsed:?}");
+        assert_eq!(first.join().unwrap().0, Ok("A-done\n".to_owned()));
+        let first = {
+            let shared = Arc::clone(&shared);
+            let target = target.clone();
+            thread::spawn(move || {
+                run_pane_exit(&shared, client, &target, &["--", "sleep 1; echo A-again"])
+            })
+        };
+        thread::sleep(Duration::from_millis(200));
+        let (result, stderr, _) = run_pane_exit(
+            &shared,
+            other,
+            &target,
+            &["--timeout", "0.3", "--", "echo B-never"],
+        );
+        assert_eq!(result, Err((String::new(), 3)));
+        assert_eq!(
+            stderr,
+            format!("run-pane: {target} is busy with another run-pane; nothing was typed\n")
+        );
+        assert_eq!(first.join().unwrap().0, Ok("A-again\n".to_owned()));
+        let screen = wait_for_capture(&shared, client, &target, |_| true);
+        assert!(!screen.contains("B-never"), "{screen:?}");
     }
 
     #[cfg(unix)]
@@ -78859,6 +79020,85 @@ set-option -g @alias-mixed-next yes
         assert!(execution.output.is_empty());
         wait_for_capture(&shared, client, &target, |screen| {
             screen.matches("hello there").count() == 2
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn send_text_and_run_pane_skip_synchronized_siblings() {
+        let (shared, client, target) =
+            send_text_fixture("sendsync", "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh");
+        let mut context = ExecutionContext::default();
+        for command in [
+            CommandInvocation::new(
+                "split-window",
+                [
+                    "-d",
+                    "-t",
+                    &target,
+                    "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh",
+                ],
+            ),
+            CommandInvocation::new(
+                "set-option",
+                ["-w", "-t", &target, "synchronize-panes", "on"],
+            ),
+        ] {
+            shared
+                .execute(client, ClientKind::Command, &mut context, &command)
+                .expect("synchronized sibling");
+        }
+        let sibling = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("list-panes", ["-t", &target, "-F", "#{pane_id}"]),
+            )
+            .expect("list panes")
+            .output
+            .lines()
+            .find(|pane| *pane != target)
+            .expect("sibling pane")
+            .to_owned();
+        wait_for_capture(&shared, client, &sibling, |screen| {
+            screen.contains("zz-ready")
+        });
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("send-text", ["-t", &target, "echo sent-once"]),
+            )
+            .expect("send-text");
+        let execution = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("run-pane", ["-t", &target, "--", "echo ran-once"]),
+            )
+            .expect("run-pane");
+        assert_eq!(execution.output, "ran-once\n");
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.matches("sent-once").count() == 2
+        });
+        let screen = wait_for_capture(&shared, client, &sibling, |_| true);
+        assert!(
+            !screen.contains("sent-once") && !screen.contains("ZZRUN-"),
+            "{screen:?}"
+        );
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("send-keys", ["-t", &target, "keys-both"]),
+            )
+            .expect("send-keys");
+        wait_for_capture(&shared, client, &sibling, |screen| {
+            screen.contains("keys-both")
         });
     }
 
