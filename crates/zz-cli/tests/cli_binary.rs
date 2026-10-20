@@ -123,6 +123,31 @@ fn host_verbs_have_help_without_a_daemon() {
 }
 
 #[test]
+fn help_after_a_bare_double_dash_belongs_to_the_command() {
+    for arguments in [
+        &["run-pane", "-t", "%1", "--", "ls", "--help"][..],
+        &["send-keys", "-t", "%1", "--", "--help"][..],
+    ] {
+        let (home, mut zz) = isolated_zz();
+        let socket = home.path().join("absent.sock");
+        let output = zz
+            .env_remove("TMUX")
+            .arg("-S")
+            .arg(&socket)
+            .args(arguments)
+            .output()
+            .expect("run a command whose payload says --help");
+        assert_eq!(output.status.code(), Some(1), "{arguments:?}");
+        assert!(output.stdout.is_empty(), "{arguments:?}");
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("usage:"),
+            "{arguments:?}"
+        );
+        assert!(!socket.exists());
+    }
+}
+
+#[test]
 fn tools_answers_from_the_cli_without_a_daemon() {
     for (arguments, start, status) in [
         (&["tools"][..], "# Workspace tools\n", 0),
@@ -204,6 +229,8 @@ fn host_connect_failures_over_openssh_name_the_host_and_the_fix() {
         ("", "missing", &["list-sessions"][..], missing.to_owned()),
         ("", "missing", &[][..], missing.to_owned()),
         ("", "missing", &["attach"][..], missing.to_owned()),
+        ("", "missing", &["-C", "list-sessions"][..], missing.to_owned()),
+        ("", "missing", &["events"][..], format!("events: {missing}")),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_zz_cli"))
             .env("HOME", home.path())
@@ -224,6 +251,49 @@ fn host_connect_failures_over_openssh_name_the_host_and_the_fix() {
             "{arguments:?} {error}"
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unknown_host_that_does_not_connect_lists_the_known_hosts() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (home, mut zz) = isolated_zz();
+    let bin = home.path().join("bin");
+    std::fs::create_dir_all(&bin).expect("fake ssh directory");
+    let ssh = bin.join("ssh");
+    std::fs::write(
+        &ssh,
+        "#!/bin/sh\n\
+         printf '%s\\n' 'ssh: Could not resolve hostname gpz: Name or service not known' >&2\n\
+         exit 255\n",
+    )
+    .expect("write fake ssh");
+    std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).expect("chmod ssh");
+    std::fs::create_dir_all(home.path().join("zz")).expect("config directory");
+    std::fs::write(
+        home.path().join("zz/config"),
+        "host-gpu = ssh://you@gpu-box\nhost-xps = ssh://you@xps\n",
+    )
+    .expect("write host config");
+    let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .expect("PATH");
+    let output = zz
+        .env("XDG_DATA_HOME", home.path())
+        .env("XDG_RUNTIME_DIR", home.path())
+        .env("TMPDIR", home.path())
+        .env("PATH", &path)
+        .env_remove("TMUX")
+        .env_remove("ZZ_SOCKET")
+        .args(["--host", "gpz", "list-sessions"])
+        .output()
+        .expect("run zz --host gpz");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.starts_with("zz: can't reach gpz: "), "{stderr}");
+    assert!(stderr.ends_with("; known hosts: gpu, xps\n"), "{stderr}");
 }
 
 #[test]

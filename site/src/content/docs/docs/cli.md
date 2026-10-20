@@ -33,9 +33,15 @@ zz --host all inspect -a --json          # read-only verbs, every host
 zz --host desktop                        # attach there
 ```
 
-Pane IDs belong to their host, so `send-keys`, `send-text`, `run-pane`,
-`paste-buffer` and `agent-send` need `-t` over `--host`. With `all`, text
-lines start with `NAME: ` and JSON lines carry `host_name`.
+Pane IDs belong to their host, so over `--host` every verb that acts on a
+pane, window or session (`send-keys`, `run-pane`, `kill-pane`, `split-window`
+and the rest) needs `-t`, and a move or swap (`join-pane`, `move-window`,
+`swap-window` and the like) needs `-s` too;
+`new-window -d -P -F '#{pane_id}'` makes one of your own. Panes there keep
+that host's environment. With `all`, text lines start with `NAME: ` and JSON
+lines carry `host_name`. A call that stalls for 15
+seconds is retried when it only reads; otherwise it exits 1, since it may have
+run there.
 
 | Command | What it does |
 | --- | --- |
