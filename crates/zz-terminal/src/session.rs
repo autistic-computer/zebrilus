@@ -8954,6 +8954,7 @@ trait CaptureGrid: GridRead {
     fn capture_rows(&self) -> Result<u16, libghostty_vt::Error>;
     fn capture_columns(&self) -> Result<u16, libghostty_vt::Error>;
     fn capture_history_rows(&self) -> Result<usize, libghostty_vt::Error>;
+    fn capture_cursor_y(&self) -> Result<u16, libghostty_vt::Error>;
     fn capture_screen(&self) -> Result<Screen, libghostty_vt::Error>;
     fn capture_format(
         &self,
@@ -8973,6 +8974,9 @@ impl CaptureGrid for Terminal<'_, '_> {
     }
     fn capture_history_rows(&self) -> Result<usize, libghostty_vt::Error> {
         self.scrollback_rows()
+    }
+    fn capture_cursor_y(&self) -> Result<u16, libghostty_vt::Error> {
+        self.cursor_y()
     }
     fn capture_screen(&self) -> Result<Screen, libghostty_vt::Error> {
         self.active_screen()
@@ -9012,6 +9016,9 @@ impl CaptureGrid for ScreenSnapshot {
     }
     fn capture_history_rows(&self) -> Result<usize, libghostty_vt::Error> {
         Ok(self.total_rows()?.saturating_sub(usize::from(self.rows()?)))
+    }
+    fn capture_cursor_y(&self) -> Result<u16, libghostty_vt::Error> {
+        self.cursor_y()
     }
     fn capture_screen(&self) -> Result<Screen, libghostty_vt::Error> {
         self.active_screen()
@@ -9444,7 +9451,24 @@ fn blank_prompt_lines(
             RowSemanticPrompt::None
         });
     }
-    let mut output_follows = false;
+    let cursor = terminal
+        .capture_total()
+        .and_then(|total| {
+            let rows = terminal.capture_rows()?;
+            let cursor = terminal.capture_cursor_y()?;
+            Ok((u64::try_from(total).unwrap_or(u64::MAX))
+                .saturating_sub(u64::from(rows))
+                .saturating_add(u64::from(cursor)))
+        })
+        .map_err(capture_failure)?;
+    let mut output_follows = cursor < row;
+    while !output_follows && row <= cursor {
+        match row_at(row)?.semantic_prompt().map_err(capture_failure)? {
+            RowSemanticPrompt::Continuation => row += 1,
+            RowSemanticPrompt::None => output_follows = true,
+            RowSemanticPrompt::Prompt => break,
+        }
+    }
     let mut input = vec![false; lines.len()];
     for (index, kind) in kinds.iter().enumerate().rev() {
         input[index] = match kind {
@@ -9452,10 +9476,7 @@ fn blank_prompt_lines(
                 output_follows = true;
                 false
             }
-            RowSemanticPrompt::Prompt => {
-                output_follows = false;
-                true
-            }
+            RowSemanticPrompt::Prompt => std::mem::take(&mut output_follows),
             RowSemanticPrompt::Continuation => output_follows,
         };
     }
@@ -22818,6 +22839,40 @@ mod tests {
               \x1b]133;A\x07$ \x1b]133;B\x07",
         );
         let skipped = capture_terminal(&terminal, None, skip).expect("capture");
+        assert_eq!(
+            skipped.lines().take(3).collect::<Vec<_>>(),
+            ["$ (echo DONE)", "DONE", ""]
+        );
+    }
+
+    #[test]
+    fn skip_input_keeps_output_that_lands_on_an_idle_prompt_row() {
+        let skip = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            skip_input: true,
+            ..CaptureOptions::default()
+        };
+        let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+        terminal.vt_write(b"\x1b]133;A\x07$ \x1b]133;B\x07READY\r\n");
+        let skipped = capture_terminal(&terminal, None, skip).expect("capture");
+        assert_eq!(skipped.lines().next(), Some("$ READY"), "{skipped:?}");
+        terminal.vt_write(b"L2\r\nL3\r\n");
+        let skipped = capture_terminal(&terminal, None, skip).expect("capture");
+        assert_eq!(
+            skipped.lines().take(3).collect::<Vec<_>>(),
+            ["$ READY", "L2", "L3"]
+        );
+        let mut submitted = new_terminal(24, 8, 64).expect("terminal");
+        submitted.vt_write(b"\x1b]133;A\x07$ \x1b]133;B\x07sleep 2; echo DONE");
+        let skipped = capture_terminal(&submitted, None, skip).expect("capture");
+        assert!(!skipped.contains("DONE"), "{skipped:?}");
+        submitted.vt_write(b"\r\n\x1b]133;C\x07");
+        let skipped = capture_terminal(&submitted, None, skip).expect("capture");
+        assert!(!skipped.contains("DONE"), "{skipped:?}");
+        submitted.vt_write(b"DONE\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ \x1b]133;B\x07");
+        let skipped = capture_terminal(&submitted, None, skip).expect("capture");
         assert_eq!(
             skipped.lines().take(3).collect::<Vec<_>>(),
             ["", "DONE", ""]
