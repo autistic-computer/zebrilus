@@ -349,6 +349,9 @@ takes the cold path. The command's own `Exec` went out behind the empty one, so 
 only a read-only chain (the CLI passes `!spec.mutates` to `CommandClient::connect_endpoint`) is
 sent again; any other fails with `EndpointError::StoppedAnswering`, which the CLI prints as
 `zz: xps stopped answering for 15 s; the command may have run there, check before retrying` (exit 1).
+An interactive hello carries its chain too (`zz --host xps new-session -A -s build \; send-keys …`
+in a terminal), so `connect_kept` makes the link again only when every command in it is
+`attach-session` or changes nothing (`attach_resendable`); otherwise it gives up the same way.
 `fleet`, `list-hosts`, `tools` and `protocol-version` over `--host` and `install_remote` first run
 a bounded `ssh … exit` on a live master, since the host's CLI itself may run for as long as it
 likes; with no master answering they sign in with the probe first (below). `run_remote_script`
@@ -364,7 +367,11 @@ the host key is refused, with the user's own login (config, agent, security key,
 host-key prompt). Every path that logs in without a live master goes through that probe first:
 connects, host-local verbs over `--host`, `fleet install` and the app's Install/Update. When the
 zz key won and no master carries the rest (Windows has none), the daemon start, proxy, forward,
-CLI and install logins offer the zz key too (`SshSession::identity`).
+CLI and install logins offer the zz key too (`SshSession::identity`). A host-local verb or install
+with no master to open (`sign_in` without a control path) tries only the zz key, in batch mode,
+and otherwise runs with the user's own login, so a password is typed once. On a terminal with no
+askpass and no batch mode, the sign-in's second login writes ssh's stderr there, so a security-key
+touch notice or a 2FA banner shows; zz then reports a failure by its exit status alone.
 
 The probe carries this machine's key line only for a destination listed in `zz/config` (same user,
 host and port): it appends the line to that host's `authorized_keys` once and makes the host's own

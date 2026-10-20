@@ -346,14 +346,13 @@ fn a_kept_link_that_stalls_under_a_mutating_chain_is_not_sent_again() {
         None,
     ));
     let error = command
-        .verify_kept_link_within(&request, std::time::Duration::from_millis(100))
+        .verify_kept_link_within(
+            &request,
+            std::time::Duration::from_millis(100),
+            crate::endpoint::stopped_answering,
+        )
         .unwrap_err();
     drop(command);
-    if let Ok(kept) = crate::endpoint::kept_forward_path(&endpoint) {
-        let mut lock = kept.into_os_string();
-        lock.push(".lock");
-        let _ = std::fs::remove_file(lock);
-    }
     assert!(
         matches!(
             crate::EndpointError::find(&error),
@@ -367,4 +366,48 @@ fn a_kept_link_that_stalls_under_a_mutating_chain_is_not_sent_again() {
          may have run there, check before retrying"
     );
     assert_eq!(reader.join().unwrap(), 2);
+}
+
+#[test]
+fn only_a_hello_that_changes_nothing_is_sent_again_after_a_stall() {
+    use zz_protocol::{AttachOperation, CommandInvocation, PreparedCommand, PreparedCommandResult};
+
+    let chain = |commands: &[(&str, &[&str])]| {
+        AttachOperation::Commands(
+            commands
+                .iter()
+                .map(|(name, args)| PreparedCommand {
+                    invocation: CommandInvocation::new(*name, args.iter().copied()),
+                    canonical_name: None,
+                    alias_matched: false,
+                    result: PreparedCommandResult::Ready,
+                })
+                .collect(),
+        )
+    };
+    assert!(super::attach_resendable(None));
+    assert!(super::attach_resendable(Some(&AttachOperation::Session(
+        "work".to_owned()
+    ))));
+    for resendable in [
+        chain(&[("attach-session", &["-d", "-t", "work"])]),
+        chain(&[("attach", &["-t", "work"]), ("list-windows", &[])]),
+        chain(&[("display-message", &["-p", "#S"])]),
+    ] {
+        assert!(
+            super::attach_resendable(Some(&resendable)),
+            "{resendable:?}"
+        );
+    }
+    for mutating in [
+        chain(&[("new-session", &["-A", "-s", "tui"])]),
+        chain(&[
+            ("attach-session", &["-t", "build"]),
+            ("send-keys", &["-t", "build", "make", "Enter"]),
+        ]),
+        chain(&[("new-window", &["-d", "-n", "dup"])]),
+        chain(&[("no-such-verb", &[])]),
+    ] {
+        assert!(!super::attach_resendable(Some(&mutating)), "{mutating:?}");
+    }
 }

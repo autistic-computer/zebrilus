@@ -1362,7 +1362,7 @@ fn probe_remote_socket(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
 ) -> Result<(PathBuf, Option<PathBuf>), EndpointError> {
-    let (output, identity) = probe_login(endpoint, session)?;
+    let (output, identity) = probe_login(endpoint, session, false)?;
     if !output.status.success() {
         return Err(probe_ssh_failure(endpoint, &output));
     }
@@ -1376,7 +1376,20 @@ fn sign_in(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
 ) -> Result<Option<PathBuf>, EndpointError> {
-    let (output, identity) = probe_login(endpoint, session)?;
+    use std::io::IsTerminal as _;
+
+    #[cfg(not(windows))]
+    let shared = session.control.is_some();
+    #[cfg(windows)]
+    let shared = false;
+    if !shared {
+        return zz_key_signs_in(endpoint, session);
+    }
+    let shows_login = session.askpass.is_none()
+        && !session.batch
+        && !batch_logins()
+        && io::stderr().is_terminal();
+    let (output, identity) = probe_login(endpoint, session, shows_login)?;
     if output.status.code() == Some(SSH_FAILURE_STATUS) {
         return Err(probe_ssh_failure(endpoint, &output));
     }
@@ -1386,9 +1399,40 @@ fn sign_in(
 }
 
 #[cfg(any(unix, windows))]
+fn zz_key_signs_in(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+) -> Result<Option<PathBuf>, EndpointError> {
+    let Some((path, _)) = zz_identity() else {
+        return Ok(None);
+    };
+    let output = ssh_probe_command(
+        endpoint,
+        SshSession {
+            identity: Some(&path),
+            ..session
+        },
+        None,
+    )
+    .output_unmasked()
+    .map_err(|source| EndpointError::SshSpawn {
+        operation: "remote socket probe",
+        source,
+    })?;
+    if refused_login(output.status.code(), &output.stderr) {
+        return Ok(None);
+    }
+    if output.status.code() == Some(SSH_FAILURE_STATUS) {
+        return Err(probe_ssh_failure(endpoint, &output));
+    }
+    Ok(Some(path))
+}
+
+#[cfg(any(unix, windows))]
 fn probe_login(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
+    shows_login: bool,
 ) -> Result<(std::process::Output, Option<PathBuf>), EndpointError> {
     let identity = zz_identity();
     let key_line = identity
@@ -1397,14 +1441,18 @@ fn probe_login(
         .map(|(_, line)| line.as_str());
     let path = identity.as_ref().map(|(path, _)| path.as_path());
     let (output, signed_in) = zz_key_first(path, |phase| {
-        ssh_probe_command(
+        let mut command = ssh_probe_command(
             endpoint,
             SshSession {
                 identity: phase,
                 ..session
             },
             key_line,
-        )
+        );
+        if shows_login && phase.is_none() {
+            command.stderr(Stdio::inherit());
+        }
+        command
     })
     .map_err(|source| EndpointError::SshSpawn {
         operation: "remote socket probe",
@@ -1919,6 +1967,7 @@ fn forwarded_local_socket_path() -> io::Result<PathBuf> {
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
+    resendable: bool,
     mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
     let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
@@ -1938,6 +1987,9 @@ pub(crate) fn connect_kept<T>(
     let stalled = match dial(&kept) {
         Ok(connected) => return Ok((connected, None)),
         Err(error) if !kept_forward_failed(&error) => return Err(error),
+        Err(error) if !resendable && link_stalled(&error) => {
+            return Err(give_up_on_stalled_link(endpoint).into());
+        }
         Err(error) => {
             log::debug!(
                 target: "zz_daemon::diagnostics",
@@ -1999,7 +2051,7 @@ fn kept_forward_failed(error: &DaemonError) -> bool {
     }
 }
 
-#[cfg(all(unix, not(target_os = "ios")))]
+#[cfg(unix)]
 pub(crate) fn give_up_on_stalled_link(endpoint: &SshEndpoint) -> EndpointError {
     if let Ok(kept) = kept_forward_path(endpoint) {
         let lock = KeptForwardLock::acquire(&kept);
@@ -2007,6 +2059,11 @@ pub(crate) fn give_up_on_stalled_link(endpoint: &SshEndpoint) -> EndpointError {
             abandon_stalled_master(endpoint, &kept);
         }
     }
+    stopped_answering(endpoint)
+}
+
+#[cfg(unix)]
+pub(crate) fn stopped_answering(endpoint: &SshEndpoint) -> EndpointError {
     EndpointError::StoppedAnswering {
         target: endpoint.to_string(),
         seconds: MASTER_STEP_TIMEOUT.as_secs(),
@@ -2418,6 +2475,7 @@ impl Drop for SshForward {
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
+    _resendable: bool,
     mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
     let forward = SshForward::start(endpoint, prompts)?;
