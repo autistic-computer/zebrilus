@@ -377,7 +377,22 @@ fn append_config_line(source: &str, key: &str, value: &str) -> String {
 }
 
 pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let path = &write_target(path);
+    let target = write_target(path);
+    match replace_file(&target, contents) {
+        Err(error)
+            if target != path
+                && matches!(
+                    error.kind(),
+                    ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem
+                ) =>
+        {
+            replace_file(path, contents)
+        }
+        result => result,
+    }
+}
+
+fn replace_file(path: &Path, contents: &[u8]) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| {
         io::Error::new(
             ErrorKind::InvalidInput,
@@ -741,6 +756,34 @@ mod tests {
             "tray = false\nhost-xps = ssh://me@xps\n"
         );
         assert_eq!(fs::read_dir(link.parent().unwrap()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_into_a_read_only_directory_is_replaced_by_the_written_file() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = directory.path().join("store");
+        fs::create_dir_all(&store).unwrap();
+        let target = store.join("zz-config");
+        fs::write(&target, "tray = false\n").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
+        fs::set_permissions(&store, fs::Permissions::from_mode(0o555)).unwrap();
+        let link = directory.path().join("zz").join(CONFIG_FILE_NAME);
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let written = write_fleet_host_at(&link, "xps", "ssh://me@xps");
+        fs::set_permissions(&store, fs::Permissions::from_mode(0o755)).unwrap();
+
+        written.unwrap();
+        assert!(fs::symlink_metadata(&link).unwrap().is_file());
+        assert_eq!(
+            fs::read_to_string(&link).unwrap(),
+            "tray = false\nhost-xps = ssh://me@xps\n"
+        );
+        assert_eq!(fs::read_to_string(&target).unwrap(), "tray = false\n");
     }
 
     #[test]

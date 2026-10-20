@@ -50,6 +50,8 @@ const TMUX_USAGE: &str = concat!(
 const NATIVE_ATTACH_USAGE: &str = "zz: usage: zz [--host <name>] attach [--restart-daemon] [-dEr] [-c working-directory] [-f flags] [session]";
 const NATIVE_APP_USAGE: &str = "zz: usage: zz app";
 const ALL_HOSTS: &str = "all";
+const SSH_LOGIN_REFUSED: &str = "ssh rejected the login";
+const SSH_HOST_KEY_UNTRUSTED: &str = "the host key does not match known_hosts";
 const HOST_INPUT_VERBS: [&str; 5] = [
     "send-keys",
     "send-text",
@@ -1283,7 +1285,7 @@ fn run_tui_chain(
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("{}", tui_failure_message(routing.host, &error));
             exit_code_for(CliFailure::Runtime)
         }
     }
@@ -1360,7 +1362,7 @@ fn run_native_attach(
             if default_attach && error.to_string() == "can't find session: current session" {
                 eprintln!("no sessions");
             } else {
-                eprintln!("{error}");
+                eprintln!("{}", tui_failure_message(routing.host, &error));
             }
             exit_code_for(CliFailure::Runtime)
         }
@@ -2299,6 +2301,22 @@ fn detach_daemon_session(command: &mut Command, ready_fd: std::os::fd::RawFd) {
     }
 }
 
+#[cfg(unix)]
+#[allow(
+    unsafe_code,
+    reason = "Command::pre_exec is the only way to take a child off the caller's terminal"
+)]
+fn without_controlling_terminal(command: &mut Command) {
+    use std::os::unix::process::CommandExt as _;
+
+    unsafe {
+        command.pre_exec(|| {
+            let _ = rustix::process::setsid();
+            Ok(())
+        });
+    }
+}
+
 #[cfg(target_os = "macos")]
 struct InheritedDescriptors(Vec<libc::proc_fdinfo>);
 
@@ -2538,9 +2556,37 @@ fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
 }
 
 fn host_connect_failure(name: &str, error: &DaemonError) -> String {
-    let configured = zz_daemon_client::configured_fleet_hosts()
-        .is_ok_and(|(hosts, _)| hosts.iter().any(|host| host.name == name));
-    host_failure_hint(name, configured, error)
+    let hosts = zz_daemon_client::configured_fleet_hosts()
+        .map(|(hosts, _)| hosts)
+        .unwrap_or_default();
+    let configured = hosts.iter().any(|host| host.name == name);
+    let destination = zz_daemon_client::resolve_fleet_host(&hosts, name)
+        .ok()
+        .and_then(|endpoint| ssh_destination(&endpoint))
+        .unwrap_or_else(|| name.to_owned());
+    host_failure_hint(name, configured, &destination, error)
+}
+
+fn ssh_destination(endpoint: &Endpoint) -> Option<String> {
+    let Endpoint::Ssh(endpoint) = endpoint else {
+        return None;
+    };
+    Some(match (&endpoint.user, endpoint.port) {
+        (_, Some(_)) => zz_daemon_client::SshEndpoint {
+            remote_socket: None,
+            ..endpoint.clone()
+        }
+        .to_string(),
+        (Some(user), None) => format!("{user}@{}", endpoint.host),
+        (None, None) => endpoint.host.clone(),
+    })
+}
+
+fn tui_failure_message(host: Option<&str>, error: &zz_tui::Error) -> String {
+    match (host, error.connect_error()) {
+        (Some(host), Some(connect)) => format!("zz: {}", host_connect_failure(host, connect)),
+        _ => error.to_string(),
+    }
 }
 
 fn untargeted_host_input(host: &str, command_chain: &[CommandInvocation]) -> Option<String> {
@@ -2563,16 +2609,53 @@ fn untargeted_host_input(host: &str, command_chain: &[CommandInvocation]) -> Opt
         })
 }
 
+fn fan_out_refusal(command_chain: &[CommandInvocation]) -> Option<(String, ExitCode)> {
+    let refuse = |error: ServerError| {
+        Some((
+            server_error_message(&error),
+            exit_code_for(CliFailure::Server(&error)),
+        ))
+    };
+    for invocation in command_chain
+        .iter()
+        .filter(|invocation| invocation.name != "protocol-version")
+    {
+        if let Err(error) = zz_mux::validate_static_command_chain(std::slice::from_ref(invocation))
+        {
+            return refuse(error);
+        }
+        let spec = match zz_protocol::resolve_command(&invocation.name) {
+            zz_protocol::CommandResolution::Unimplemented(name) => {
+                return refuse(ServerError::UnsupportedCommand(name.to_owned()));
+            }
+            zz_protocol::CommandResolution::Canonical(name) => {
+                catalog_command_spec(name).filter(|spec| !spec.mutates(&invocation.args))
+            }
+            _ => None,
+        };
+        let Some(spec) = spec else {
+            return Some((
+                format!(
+                    "zz: --host all runs read-only commands only, and `{}` can change state; name one host with --host NAME",
+                    invocation.name
+                ),
+                exit_code_for(CliFailure::Usage),
+            ));
+        };
+        if !spec.uses_tmux_option_grammar()
+            && let Err(error) = zz_protocol::parse_tmux_options(spec, &invocation.args)
+                .and_then(|parsed| spec.validate_positional_maximum(parsed.positionals.len()))
+        {
+            return refuse(error);
+        }
+    }
+    None
+}
+
 fn run_on_every_host(arguments: &[RawText], command_chain: &[CommandInvocation]) -> ExitCode {
-    if let Some(invocation) = command_chain.iter().find(|invocation| {
-        catalog_command_spec(canonical_command(&invocation.name))
-            .is_none_or(|spec| spec.mutates(&invocation.args))
-    }) {
-        eprintln!(
-            "zz: --host all runs read-only commands only, and `{}` can change state; name one host with --host NAME",
-            invocation.name
-        );
-        return exit_code_for(CliFailure::Usage);
+    if let Some((message, exit)) = fan_out_refusal(command_chain) {
+        eprintln!("{message}");
+        return exit;
     }
     let hosts = match zz_daemon_client::configured_fleet_hosts() {
         Ok((hosts, _)) if !hosts.is_empty() => hosts,
@@ -2604,11 +2687,14 @@ fn run_on_every_host(arguments: &[RawText], command_chain: &[CommandInvocation])
             .map(|host| {
                 let executable = &executable;
                 let run = scope.spawn(move || {
-                    Command::new(executable)
+                    let mut command = Command::new(executable);
+                    command
                         .arg("--host")
                         .arg(&host.name)
-                        .args(arguments.iter().map(RawText::to_os_string))
-                        .output_unmasked()
+                        .args(arguments.iter().map(RawText::to_os_string));
+                    #[cfg(unix)]
+                    without_controlling_terminal(&mut command);
+                    command.output_unmasked()
                 });
                 (host.name.as_str(), run)
             })
@@ -2644,7 +2730,13 @@ fn host_lines(name: &str, bytes: &[u8], json: bool, errors: bool) -> Vec<u8> {
     for line in bytes.split_inclusive(|byte| *byte == b'\n') {
         let line = line.strip_suffix(b"\n").unwrap_or(line);
         if let Some(object) = line.strip_prefix(b"{").filter(|_| json) {
-            output.extend_from_slice(b"{\"host_name\":");
+            let named = serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(line)
+                .is_ok_and(|row| row.contains_key("host_name"));
+            output.extend_from_slice(if named {
+                b"{\"from_host\":".as_slice()
+            } else {
+                b"{\"host_name\":".as_slice()
+            });
             output.extend_from_slice(quoted.as_bytes());
             if !object.starts_with(b"}") {
                 output.push(b',');
@@ -2668,7 +2760,12 @@ fn host_lines(name: &str, bytes: &[u8], json: bool, errors: bool) -> Vec<u8> {
     output
 }
 
-fn host_failure_hint(name: &str, configured: bool, error: &DaemonError) -> String {
+fn host_failure_hint(
+    name: &str,
+    configured: bool,
+    destination: &str,
+    error: &DaemonError,
+) -> String {
     use zz_daemon_client::EndpointError;
 
     let install = |restart: bool| {
@@ -2681,9 +2778,25 @@ fn host_failure_hint(name: &str, configured: bool, error: &DaemonError) -> Strin
         }
     };
     let protocol = |daemon: u16, client: u16| {
+        if daemon < client {
+            format!(
+                "{name} runs protocol v{daemon}, this zz speaks v{client}; {}",
+                install(true)
+            )
+        } else {
+            format!(
+                "{name} runs protocol v{daemon}, newer than this zz (v{client}); update zz on this machine"
+            )
+        }
+    };
+    let refused = || {
         format!(
-            "{name} runs protocol v{daemon}, this zz speaks v{client}; {}",
-            install(true)
+            "{name} refused every login zz tried; run ssh {destination} once, or zz fleet sync from a machine that reaches it"
+        )
+    };
+    let untrusted = || {
+        format!(
+            "{name}'s ssh host key is not trusted; run ssh {destination} once to check and accept it"
         )
     };
     match EndpointError::find(error) {
@@ -2698,13 +2811,15 @@ fn host_failure_hint(name: &str, configured: bool, error: &DaemonError) -> Strin
             install(true)
         ),
         Some(EndpointError::AuthenticationFailed { .. } | EndpointError::SignInExpired { .. }) => {
-            format!(
-                "{name} refused every login zz tried; run ssh {name} once, or zz fleet sync from a machine that reaches it"
-            )
+            refused()
         }
-        Some(EndpointError::HostKeyRejected { .. }) => {
-            format!("{name}'s ssh host key is not trusted; run ssh {name} once to accept it")
-        }
+        Some(EndpointError::HostKeyRejected { .. }) => untrusted(),
+        Some(
+            EndpointError::ProbeFailure { reason, .. } | EndpointError::SshFailed { reason, .. },
+        ) if reason.starts_with(SSH_LOGIN_REFUSED) => refused(),
+        Some(
+            EndpointError::ProbeFailure { reason, .. } | EndpointError::SshFailed { reason, .. },
+        ) if reason.starts_with(SSH_HOST_KEY_UNTRUSTED) => untrusted(),
         Some(
             EndpointError::ProbeFailure { reason, .. } | EndpointError::SshFailed { reason, .. },
         ) => {
@@ -4370,6 +4485,10 @@ mod tests {
             b"{\"host_name\":\"xps\",\"pane_id\":\"%0\"}\n{\"host_name\":\"xps\"}\n"
         );
         assert_eq!(
+            super::host_lines("xps", b"{\"host_name\":\"ubuntu\"}\n", true, false),
+            b"{\"from_host\":\"xps\",\"host_name\":\"ubuntu\"}\n"
+        );
+        assert_eq!(
             super::host_lines("xps", b"{literal}\n", false, false),
             b"xps: {literal}\n"
         );
@@ -4385,9 +4504,11 @@ mod tests {
         use zz_daemon_client::EndpointError;
 
         let target = || "ssh://me@xps".to_owned();
-        let hint = |configured, error: EndpointError| {
-            super::host_failure_hint("xps", configured, &DaemonError::from(error))
+        let failure = |configured, error: &DaemonError| {
+            super::host_failure_hint("xps", configured, "me@xps", error)
         };
+        let hint =
+            |configured, error: EndpointError| failure(configured, &DaemonError::from(error));
         assert_eq!(
             hint(
                 true,
@@ -4409,12 +4530,44 @@ mod tests {
         assert_eq!(
             hint(
                 true,
+                EndpointError::RemoteProtocolMismatch {
+                    target: target(),
+                    daemon: 111,
+                    client: 110,
+                }
+            ),
+            "xps runs protocol v111, newer than this zz (v110); update zz on this machine"
+        );
+        let refused = "xps refused every login zz tried; run ssh me@xps once, or zz fleet sync from a machine that reaches it";
+        assert_eq!(
+            hint(
+                true,
                 EndpointError::AuthenticationFailed {
                     target: target(),
                     reason: "Permission denied".to_owned(),
                 }
             ),
-            "xps refused every login zz tried; run ssh xps once, or zz fleet sync from a machine that reaches it"
+            refused
+        );
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::SshFailed {
+                    target: target(),
+                    reason: format!("{}: add your key", super::SSH_LOGIN_REFUSED),
+                }
+            ),
+            refused
+        );
+        assert_eq!(
+            hint(
+                true,
+                EndpointError::SshFailed {
+                    target: target(),
+                    reason: format!("{}: verify the host", super::SSH_HOST_KEY_UNTRUSTED),
+                }
+            ),
+            "xps's ssh host key is not trusted; run ssh me@xps once to check and accept it"
         );
         assert_eq!(
             hint(
@@ -4434,8 +4587,7 @@ mod tests {
             "xps has no zz; run: zz fleet add NAME xps, then zz fleet install NAME"
         );
         assert_eq!(
-            super::host_failure_hint(
-                "xps",
+            failure(
                 true,
                 &DaemonError::IncompatibleDaemon {
                     daemon: Some(107),
@@ -4445,13 +4597,23 @@ mod tests {
             "xps runs protocol v107, this zz speaks v110; run: zz fleet install --restart-daemon xps (ends its sessions)"
         );
         assert!(
-            super::host_failure_hint(
-                "xps",
+            failure(
                 true,
                 &DaemonError::Io(io::Error::from(io::ErrorKind::ConnectionRefused))
             )
             .starts_with("can't reach xps: ")
         );
+        for (destination, expected) in [
+            ("ssh://me@xps", "me@xps"),
+            ("ssh://gpu-box", "gpu-box"),
+            ("ssh://me@gpu-box:2222/tmp/zz.sock", "ssh://me@gpu-box:2222"),
+        ] {
+            assert_eq!(
+                super::ssh_destination(&super::Endpoint::parse(destination).unwrap()).as_deref(),
+                Some(expected),
+                "{destination}"
+            );
+        }
     }
 
     #[test]

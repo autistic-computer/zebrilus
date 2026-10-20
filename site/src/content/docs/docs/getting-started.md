@@ -326,7 +326,8 @@ zz --host all inspect -a --json          # read-only verbs on every host
 Pane IDs belong to their host, so input verbs over `--host` (`send-keys`,
 `send-text`, `run-pane`, `paste-buffer`, `agent-send`) need `-t`. With `all`,
 text lines start with `NAME: `, JSON lines carry `host_name`, and a host that
-fails says why on stderr while the others still answer. `zz --host NAME events`,
+fails says why on stderr while the others still answer. `all` never prompts:
+a host that wants a password or a host-key answer fails with the command to run. `zz --host NAME events`,
 `agent-send --wait --progress` and `zz -CC --host NAME` stream from the host.
 
 zz signs in with its own ssh key. The first login to a host uses your keys,
