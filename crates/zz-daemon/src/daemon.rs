@@ -52032,7 +52032,52 @@ fn fenced_block(header: &str, text: &str) -> String {
     format!("{header}\n{fence}\n{text}\n{fence}")
 }
 
+fn unwrap_run_pane(capture: &LastCommandCapture) -> Option<(LastCommandCapture, Option<u8>)> {
+    let start = capture.command.find("printf '\\n%s\\n' 'ZZRUN-")?;
+    let (marker, rest) =
+        capture.command[start + "printf '\\n%s\\n' '".len()..].split_once("-BEGIN'; ")?;
+    let command = rest
+        .strip_prefix("command ")
+        .unwrap_or(rest)
+        .strip_prefix("eval '")?
+        .strip_suffix(&format!("'; printf '\\n{marker}-RC=%d=END\\n' $?"))?
+        .replace(r"'\''", "'");
+    let output = capture
+        .output
+        .strip_prefix(&format!("{marker}-BEGIN"))
+        .unwrap_or(&capture.output);
+    let output = output.strip_prefix('\n').unwrap_or(output);
+    let rc = format!("{marker}-RC=");
+    let (output, code) = match output.rfind(&rc) {
+        Some(end) => {
+            let code = output[end + rc.len()..]
+                .lines()
+                .next()
+                .and_then(|line| line.strip_suffix("=END"))
+                .and_then(|code| code.parse::<u8>().ok());
+            let output = &output[..end];
+            let output = output.strip_suffix('\n').unwrap_or(output);
+            (output.strip_suffix('\n').unwrap_or(output), code)
+        }
+        None => (output, None),
+    };
+    Some((
+        LastCommandCapture {
+            command,
+            output: output.to_owned(),
+            truncated_rows: capture.truncated_rows,
+            running: capture.running && code.is_none(),
+        },
+        code,
+    ))
+}
+
 fn last_command_block(pane: PaneId, capture: &LastCommandCapture, status: Option<i32>) -> String {
+    let unwrapped = unwrap_run_pane(capture);
+    let (capture, status) = match &unwrapped {
+        Some((capture, code)) => (capture, code.map(i32::from).or(status)),
+        None => (capture, status),
+    };
     let mut body = String::new();
     if capture.truncated_rows > 0 {
         let _ = writeln!(
@@ -90684,6 +90729,106 @@ set-option -g @alias-mixed-next yes
                 .output,
             format!("{pane} $ sleep 9\nexit: running\n```\n\n```")
         );
+    }
+
+    #[test]
+    fn show_last_output_shows_the_command_run_pane_typed() {
+        let shared = Arc::new(Shared::new(1));
+        let terminal = Arc::new(TerminalSession::spawn_empty_with_appearance(
+            64,
+            Arc::new(TerminalAppearance::default()),
+        ));
+        let (session, window, pane) = {
+            let mut inner = shared.inner.lock();
+            let ids = inner
+                .engine
+                .state
+                .create_session("run-pane-block")
+                .expect("session");
+            inner.terminals_mut().insert(ids.2, Arc::clone(&terminal));
+            ids
+        };
+        let context = ExecutionContext::new(Some(session), Some(window), Some(pane));
+        let marker = "ZZRUN-0123456789abcdef";
+        let typed = format!(
+            " printf '\\n%s\\n' '{marker}-BEGIN'; command eval 'echo '\\''hi'\\''; false'; printf '\\n{marker}-RC=%d=END\\n' $?"
+        );
+        assert!(terminal.feed(Arc::from(
+            format!(
+                "\x1b]133;A\x07$ \x1b]133;B\x07{typed}\x1b]133;C\x07\r\n\r\n{marker}-BEGIN\r\nhi\r\npartial"
+            )
+            .into_bytes()
+        )));
+        let show = || {
+            shared
+                .show_last_output(ClientId(u64::MAX), &context, &[])
+                .expect("run-pane block")
+                .output
+        };
+        assert_eq!(
+            show(),
+            format!("{pane} $ echo 'hi'; false\nexit: running\n```\nhi\npartial\n```")
+        );
+        assert!(terminal.feed(Arc::from(
+            format!("\r\n{marker}-RC=1=END\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ ").into_bytes()
+        )));
+        assert_eq!(
+            show(),
+            format!("{pane} $ echo 'hi'; false\nexit: 1\n```\nhi\npartial\n```")
+        );
+    }
+
+    #[test]
+    fn run_pane_blocks_drop_their_markers() {
+        let marker = "ZZRUN-0123456789abcdef";
+        let capture = |output: &str| LastCommandCapture {
+            command: format!(
+                "host$  printf '\\n%s\\n' '{marker}-BEGIN'; eval 'true'; printf '\\n{marker}-RC=%d=END\\n' $?"
+            ),
+            output: output.to_owned(),
+            truncated_rows: 0,
+            running: false,
+        };
+        for (output, expected, code) in [
+            (
+                format!("{marker}-BEGIN\nhi\n\n{marker}-RC=0=END"),
+                "hi",
+                Some(0),
+            ),
+            (
+                format!("{marker}-BEGIN\nok\n{marker}-RC=3=END"),
+                "ok",
+                Some(3),
+            ),
+            (
+                format!("{marker}-BEGIN\na\n\n\n{marker}-RC=0=END"),
+                "a\n",
+                Some(0),
+            ),
+            (format!("{marker}-BEGIN\n\n{marker}-RC=0=END"), "", Some(0)),
+            (format!("tail\n\n{marker}-RC=0=END"), "tail", Some(0)),
+            (format!("{marker}-BEGIN\nstill"), "still", None),
+        ] {
+            let (unwrapped, status) = unwrap_run_pane(&capture(&output)).expect("wrapper");
+            assert_eq!(unwrapped.command, "true");
+            assert_eq!(
+                (unwrapped.output.as_str(), status),
+                (expected, code),
+                "{output:?}"
+            );
+        }
+        for command in [
+            "printf '\\n%s\\n' 'OTHER-BEGIN'; eval 'x'; printf '\\nOTHER-RC=%d=END\\n' $?",
+            "printf hi",
+        ] {
+            assert!(
+                unwrap_run_pane(&LastCommandCapture {
+                    command: command.to_owned(),
+                    ..LastCommandCapture::default()
+                })
+                .is_none()
+            );
+        }
     }
 
     #[test]
