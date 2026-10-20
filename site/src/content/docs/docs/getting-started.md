@@ -374,6 +374,7 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `font-family` | platform default | Terminal font stack. `font-size` is `13` |
 | `background-opacity` | `1.0` | Terminal background tint over an opaque pane |
 | `window-background-blur` | `false` | Blurred app chrome, where the compositor supports it |
+| `window-background-opacity` | `0` | How opaque the blurred chrome is, from 0 (most see-through) to 1 (opaque) |
 | `prefix` | `C-b` | The mux prefix |
 | `mode-keys` | `emacs` | `vi` or `emacs` in copy mode |
 | `history-limit` | `10000` | Scrollback lines, 0–1000000 |

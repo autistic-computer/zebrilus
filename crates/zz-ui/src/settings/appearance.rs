@@ -68,6 +68,7 @@ pub enum AppearancePageItem {
     AppIcon,
     Animations,
     WindowBackgroundBlur,
+    WindowBackgroundOpacity,
     #[cfg(target_os = "linux")]
     WindowCornerRadius,
     #[cfg(target_os = "linux")]
@@ -102,6 +103,10 @@ impl AppearancePageItem {
             Self::ChromeContrast => (
                 "Contrast",
                 "Raise surface, text, and edge contrast from 100% to 200%.",
+            ),
+            Self::WindowBackgroundOpacity => (
+                "Window blur opacity",
+                "How much of the blur shows through, from 0% (the most) to 100% (opaque).",
             ),
             _ => return None,
         })
@@ -143,7 +148,10 @@ pub fn appearance_page_items(
     }
     items.push(AppearancePageItem::Animations);
     if has_window_blur {
-        items.push(AppearancePageItem::WindowBackgroundBlur);
+        items.extend([
+            AppearancePageItem::WindowBackgroundBlur,
+            AppearancePageItem::WindowBackgroundOpacity,
+        ]);
     }
     #[cfg(target_os = "linux")]
     items.extend([
@@ -327,29 +335,24 @@ pub fn tint_hue_slider(
 ) -> zz_gpui::Div {
     let stops =
         (0..=HUE_STOPS).map(|stop| hue_swatch(f32::from(stop) * 360.0 / f32::from(HUE_STOPS)));
-    let coarse = crate::touch::CoarsePointer::get(cx);
-    div()
-        .flex()
-        .items_center()
-        .gap(px(10.0))
-        .child(
-            div()
-                .when(coarse, |this| this.flex_1().min_w_0())
-                .when(!coarse, |this| this.w(px(SLIDER_WIDTH)))
-                .child(
-                    Slider::new("settings-tint-hue", "Tint hue", hue, 0.0..=360.0, on_change)
-                        .step(1.0)
-                        .track(stops)
-                        .display(|hue| format!("{hue:.0}°").into()),
-                ),
-        )
-        .child(
-            div()
-                .flex_none()
-                .size(px(SWATCH))
-                .rounded_full()
-                .bg(hue_swatch(hue)),
-        )
+    let slider = Slider::new("settings-tint-hue", "Tint hue", hue, 0.0..=360.0, on_change)
+        .step(1.0)
+        .track(stops)
+        .display(|hue| format!("{hue:.0}°").into());
+    let dot = div()
+        .flex_none()
+        .size(px(SWATCH))
+        .rounded_full()
+        .bg(hue_swatch(hue));
+    if crate::touch::CoarsePointer::get(cx) {
+        return div()
+            .flex()
+            .items_center()
+            .gap(px(10.0))
+            .child(div().flex_1().min_w_0().child(slider))
+            .child(dot);
+    }
+    slider_row(slider, dot)
 }
 
 /// How strongly the tint applies, as a slider with its percentage.
@@ -362,6 +365,25 @@ pub fn tint_slider(
         Slider::new("settings-tint", "Tint strength", tint, 0.0..=1.0, on_change)
             .step(0.01)
             .display(|tint| format!("{:.0}%", tint * 100.0).into()),
+        cx,
+    )
+}
+
+pub fn window_opacity_slider(
+    opacity: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    value_slider(
+        Slider::new(
+            "settings-window-opacity",
+            "Window blur opacity",
+            opacity,
+            0.0..=1.0,
+            on_change,
+        )
+        .step(0.01)
+        .display(|opacity| format!("{:.0}%", opacity * 100.0).into()),
         cx,
     )
 }
@@ -426,20 +448,20 @@ fn value_slider(slider: Slider, cx: &App) -> zz_gpui::Div {
     if crate::touch::CoarsePointer::get(cx) {
         return div().w_full().child(slider);
     }
-    let shown = slider.shown();
+    let shown = div()
+        .text_size(crate::rems_from_px(12.0))
+        .text_color(cx.theme().foreground.muted())
+        .child(slider.shown());
+    slider_row(slider, shown)
+}
+
+fn slider_row(slider: Slider, trailing: impl IntoElement) -> zz_gpui::Div {
     div()
         .flex()
         .items_center()
         .gap(px(10.0))
         .child(div().w(px(SLIDER_WIDTH)).child(slider))
-        .child(
-            div()
-                .flex_none()
-                .w(px(SWATCH * 2.0))
-                .text_size(crate::rems_from_px(12.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(shown),
-        )
+        .child(div().flex_none().w(px(SWATCH * 2.0)).child(trailing))
 }
 
 #[allow(

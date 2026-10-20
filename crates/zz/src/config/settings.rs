@@ -52,7 +52,7 @@ use zz_ui::feedback::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::appearance::{
     SWATCH, ThemePicks, accent_swatches, contrast_slider, corner_radius_slider, picker_tile,
-    themes_strip, tint_hue_slider, tint_slider, ui_font_select,
+    themes_strip, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -880,6 +880,21 @@ impl SettingsView {
                 resolved.window_background_blur,
                 cx,
             ),
+            AppearancePageItem::WindowBackgroundOpacity => Self::slider_setting(
+                item,
+                ConfigKey::WindowBackgroundOpacity,
+                resolved.window_background_opacity.provenance,
+                window_opacity_slider(
+                    resolved.window_background_opacity.value,
+                    |opacity, _, cx| {
+                        let key = ConfigKey::WindowBackgroundOpacity;
+                        written(key, set_config_key(key, &format!("{opacity:.2}")), cx);
+                    },
+                    cx,
+                ),
+                cx,
+            )
+            .disabled(!resolved.window_background_blur.value),
             #[cfg(target_os = "linux")]
             AppearancePageItem::WindowCornerRadius => Self::numeric_setting(
                 ConfigKey::WindowCornerRadius,
@@ -2398,6 +2413,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::ChromeAccent
                 | ConfigKey::ChromeTint
                 | ConfigKey::ChromeTintHue
+                | ConfigKey::WindowBackgroundOpacity
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteHostPrefix
                 | ConfigKey::PaletteShowKeys
@@ -2495,6 +2511,7 @@ fn numeric_input_matches_value(key: ConfigKey, text: &str, value: f32) -> bool {
 fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> {
     match key {
         ConfigKey::PipBackgroundOpacity => config.pip_background_opacity,
+        ConfigKey::WindowBackgroundOpacity => config.window_background_opacity,
         ConfigKey::PaneGlowStrength => config.pane_glow_strength,
         ConfigKey::PaneInactiveOpacity => config.pane_inactive_opacity,
         ConfigKey::PaneMargin => config.pane_margin,

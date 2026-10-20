@@ -38,7 +38,11 @@ pub(crate) fn chrome_blur(cx: &App) -> bool {
 
 /// The chrome planes' fill: translucent while the blur is on, the base plane otherwise.
 pub fn chrome_background(cx: &App) -> Hsla {
-    zz_ui::shell::chrome_background(Theme::global(cx).background, chrome_blur(cx))
+    let opacity = config::resolved_config(cx).window_background_opacity.value;
+    zz_ui::shell::chrome_background(
+        Theme::global(cx).background,
+        chrome_blur(cx).then_some(opacity),
+    )
 }
 
 pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
@@ -263,6 +267,22 @@ mod tests {
             assert!(chrome_blur(cx));
             assert_alpha(Theme::global(cx).background, 1.0);
             assert_alpha(chrome_background(cx), 0.93);
+        });
+
+        cx.update(|cx| {
+            let mut config = config::AppConfig::default();
+            config.window_background_blur.value = true;
+            config.window_background_opacity.value = 0.5;
+            cx.set_global(config);
+            assert_alpha(chrome_background(cx), 0.965);
+
+            config.window_background_opacity.value = 1.0;
+            cx.set_global(config);
+            assert_alpha(chrome_background(cx), 1.0);
+
+            config.window_background_blur.value = false;
+            cx.set_global(config);
+            assert_alpha(chrome_background(cx), 1.0);
         });
     }
 
