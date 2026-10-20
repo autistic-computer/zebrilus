@@ -24,7 +24,7 @@ use zz_ui::{
         appearance::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, contrast_slider,
             corner_radius_slider, interface_theme_preview, picker_tile, theme_preview,
-            themes_strip, tint_hue_slider, tint_slider, ui_font_select,
+            themes_strip, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
         },
         panes_page,
         panes_preview::PanesPreview,
@@ -62,7 +62,7 @@ pub const STORY: Story = Story {
         Section {
             id: "appearance",
             name: "Appearance pickers",
-            summary: "The Interface page's Theme rows: the mode tiles, the Style strip drawn over the look on screen, the accent swatches with a custom picker (all following the corner radius), the tint sliders (they follow the tint knobs), the saved themes strip, the Advanced heading, and the corner radius and contrast sliders under it.",
+            summary: "The Interface page's Theme rows: the mode tiles, the Style strip drawn over the look on screen, the accent swatches with a custom picker (all following the corner radius), the tint sliders (they follow the tint knobs), the saved themes strip, the Advanced heading, and the corner radius, contrast and window blur opacity sliders under it.",
             build: |window, cx| stateful(window, cx, Controls::new, appearance),
         },
         Section {
@@ -457,6 +457,10 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         |_, _, _| {},
                         cx,
                     )),
+                )
+                .child(
+                    entry(AppearancePageItem::WindowBackgroundOpacity)
+                        .control(window_opacity_slider(0.0, |_, _, _| {}, cx)),
                 ),
         )
         .into_any_element()

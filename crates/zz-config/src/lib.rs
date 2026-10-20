@@ -52,6 +52,7 @@ pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
 pub const DEFAULT_CHROME_TINT: f32 = 0.0;
 pub const DEFAULT_USE_SYSTEM_TITLEBAR: bool = false;
 pub const DEFAULT_WINDOW_BACKGROUND_BLUR: bool = false;
+pub const DEFAULT_WINDOW_BACKGROUND_OPACITY: f32 = 0.0;
 pub const DEFAULT_ANIMATIONS: bool = true;
 pub const DEFAULT_TRAY: bool = true;
 pub const DEFAULT_NOTIFICATIONS: bool = true;
@@ -113,6 +114,7 @@ pub enum ConfigKey {
     UseSystemTitlebar,
     WindowCornerRadius,
     WindowBackgroundBlur,
+    WindowBackgroundOpacity,
     Animations,
     Tray,
     Notifications,
@@ -162,6 +164,7 @@ impl ConfigKey {
             Self::UseSystemTitlebar => "use-system-titlebar",
             Self::WindowCornerRadius => "window-corner-radius",
             Self::WindowBackgroundBlur => "window-background-blur",
+            Self::WindowBackgroundOpacity => "window-background-opacity",
             Self::Animations => "animations",
             Self::Tray => "tray",
             Self::Notifications => "notifications",
@@ -211,6 +214,7 @@ impl ConfigKey {
             "use-system-titlebar" => Some(Self::UseSystemTitlebar),
             "window-corner-radius" => Some(Self::WindowCornerRadius),
             "window-background-blur" => Some(Self::WindowBackgroundBlur),
+            "window-background-opacity" => Some(Self::WindowBackgroundOpacity),
             "animations" => Some(Self::Animations),
             "tray" => Some(Self::Tray),
             "notifications" => Some(Self::Notifications),
@@ -255,7 +259,9 @@ impl ConfigKey {
     /// is not numeric.
     pub const fn numeric_range(self) -> Option<(f32, f32)> {
         match self {
-            Self::PipBackgroundOpacity | Self::ChromeTint => Some((0.0, 1.0)),
+            Self::PipBackgroundOpacity | Self::WindowBackgroundOpacity | Self::ChromeTint => {
+                Some((0.0, 1.0))
+            }
             Self::PaneGlowStrength => Some((0.0, 2.0)),
             Self::PaneInactiveOpacity => {
                 Some((MIN_PANE_INACTIVE_OPACITY, MAX_PANE_INACTIVE_OPACITY))
@@ -427,6 +433,7 @@ pub struct AppConfig {
     pub use_system_titlebar: ConfigValue<bool>,
     pub window_corner_radius: ConfigValue<f32>,
     pub window_background_blur: ConfigValue<bool>,
+    pub window_background_opacity: ConfigValue<f32>,
     pub animations: ConfigValue<bool>,
     pub tray: ConfigValue<bool>,
     pub notifications: ConfigValue<bool>,
@@ -475,6 +482,7 @@ impl Default for AppConfig {
             use_system_titlebar: ConfigValue::from_default(DEFAULT_USE_SYSTEM_TITLEBAR),
             window_corner_radius: ConfigValue::from_default(DEFAULT_WINDOW_CORNER_RADIUS),
             window_background_blur: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_BLUR),
+            window_background_opacity: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_OPACITY),
             animations: ConfigValue::from_default(DEFAULT_ANIMATIONS),
             tray: ConfigValue::from_default(DEFAULT_TRAY),
             notifications: ConfigValue::from_default(DEFAULT_NOTIFICATIONS),
@@ -552,6 +560,7 @@ impl AppConfig {
             | ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteHostPrefix
             | ConfigKey::PipBackgroundOpacity
+            | ConfigKey::WindowBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
@@ -1144,6 +1153,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         let target = match key {
             ConfigKey::WindowCornerRadius => &mut parsed.config.window_corner_radius,
             ConfigKey::PipBackgroundOpacity => &mut parsed.config.pip_background_opacity,
+            ConfigKey::WindowBackgroundOpacity => &mut parsed.config.window_background_opacity,
             ConfigKey::PaneGlowStrength => &mut parsed.config.pane_glow_strength,
             ConfigKey::PaneInactiveOpacity => &mut parsed.config.pane_inactive_opacity,
             ConfigKey::PaneMargin => &mut parsed.config.pane_margin,
@@ -1353,6 +1363,7 @@ pub fn parse_numeric_value(
         key,
         ConfigKey::PaneInactiveOpacity
             | ConfigKey::PipBackgroundOpacity
+            | ConfigKey::WindowBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::ChromeContrast
             | ConfigKey::ChromeTint
