@@ -19,7 +19,7 @@ fn setup() -> (
             client,
             ClientKind::Interactive,
             &mut context,
-            &CommandInvocation::new("new-session", ["-d", "-s", "e10", "sleep 30"]),
+            &CommandInvocation::new("new-session", ["-d", "-s", "e10", "exec sleep 30"]),
         )
         .unwrap();
     (shared, watchers, client, context)
@@ -127,6 +127,7 @@ fn parked_marker_and_echo_scans_have_no_deadline_without_a_timeout() {
                     started: Instant::now(),
                     output: String::new(),
                     collecting: false,
+                    queued: false,
                     tail: String::new(),
                     start_check: None,
                     _turn: None,
@@ -145,6 +146,7 @@ fn parked_marker_and_echo_scans_have_no_deadline_without_a_timeout() {
                     started: Instant::now(),
                     timeout: Duration::ZERO,
                     enter: true,
+                    typed: Typed(None),
                     finish: Box::new(|_, target, result| {
                         target.state.resolve(result.map(|()| Execution::default()));
                     }),
@@ -200,6 +202,7 @@ fn old_echo_does_not_submit_a_new_paste_before_output_changes() {
             started: Instant::now(),
             timeout: Duration::ZERO,
             enter: false,
+            typed: Typed(None),
             finish: Box::new(|_, target, result| {
                 target.state.resolve(result.map(|()| Execution::default()));
             }),
@@ -253,6 +256,7 @@ fn a_run_claim_ends_with_its_client() {
             started: Instant::now(),
             output: String::new(),
             collecting: false,
+            queued: false,
             tail: String::new(),
             start_check: None,
             _turn: Some(turn),

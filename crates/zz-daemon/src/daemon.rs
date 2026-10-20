@@ -51887,6 +51887,17 @@ enum RunStart {
     Joined,
 }
 
+fn run_pane_code(text: &str, prefix: &str) -> Option<(usize, u8)> {
+    text.match_indices(prefix).find_map(|(index, _)| {
+        let rest = &text[index + prefix.len()..];
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if !rest[digits..].starts_with("=END") {
+            return None;
+        }
+        Some((index, rest[..digits].parse().ok()?))
+    })
+}
+
 fn run_pane_result<'a>(
     screen: &'a str,
     marker: &str,
@@ -51895,6 +51906,7 @@ fn run_pane_result<'a>(
     let begin = format!("{marker}-BEGIN");
     let typed = format!("'{begin}'");
     let prefix = format!("{marker}-RC=");
+    let echoed = format!("{prefix}%d=END\\n' $?");
     let lines = screen
         .split_inclusive('\n')
         .rev()
@@ -51903,22 +51915,40 @@ fn run_pane_result<'a>(
     let mut offset = screen.len() - lines.iter().map(|line| line.len()).sum::<usize>();
     let capture_start = offset;
     let mut start = collecting.then_some(offset);
+    let mut inline = false;
     let mut saw_begin = false;
     let mut echo_end = None;
     for line in lines.into_iter().rev() {
         let text = line.strip_suffix('\n').unwrap_or(line);
-        if text == begin {
-            start = Some(offset + line.len());
-            saw_begin = true;
-        } else if text.contains(&typed) {
-            echo_end = Some(offset + line.len());
-        } else if let Some(code) = text
-            .strip_prefix(&prefix)
-            .and_then(|code| code.strip_suffix("=END"))
-            && !code.is_empty()
-            && code.bytes().all(|byte| byte.is_ascii_digit())
-            && let Ok(code) = code.parse::<u8>()
+        let code = run_pane_code(text, &prefix);
+        let before = &text[..code.map_or(text.len(), |(index, _)| index)];
+        let boundary = |after: usize| {
+            if text[after..].trim().is_empty() {
+                (offset + line.len(), false)
+            } else {
+                (offset + after, true)
+            }
+        };
+        if let Some(index) = before
+            .match_indices(&begin)
+            .map(|(index, _)| index)
+            .filter(|index| !before[..*index].ends_with('\''))
+            .last()
         {
+            let (at, within) = boundary(index + begin.len());
+            start = Some(at);
+            inline = within;
+            saw_begin = true;
+        } else if before.contains(&typed) {
+            let (at, within) = boundary(
+                before
+                    .rfind(&echoed)
+                    .map_or(before.len(), |index| index + echoed.len()),
+            );
+            echo_end = Some(at);
+            inline = within;
+        }
+        if let Some((index, code)) = code {
             let begin = if saw_begin {
                 RunStart::Marked
             } else if start.is_none() && echo_end.is_some() {
@@ -51926,9 +51956,23 @@ fn run_pane_result<'a>(
             } else {
                 RunStart::Dropped
             };
-            let segment = &screen[start.or(echo_end).unwrap_or(capture_start)..offset];
+            let end = if text[..index].trim().is_empty() {
+                offset
+            } else {
+                offset + index
+            };
+            let segment = &screen[start.or(echo_end).unwrap_or(capture_start).min(end)..end];
+            let segment = if end > offset {
+                segment.trim_end()
+            } else {
+                segment.strip_suffix('\n').unwrap_or(segment)
+            };
             return (
-                Some(segment.strip_suffix('\n').unwrap_or(segment)),
+                Some(if inline {
+                    segment.trim_start()
+                } else {
+                    segment
+                }),
                 Some(code),
                 begin,
             );
@@ -51938,11 +51982,12 @@ fn run_pane_result<'a>(
     let partial = start.map(|start| {
         let rest = &screen[start..];
         let kept = rest.trim_end_matches('\n').len();
-        &rest[..if kept == 0 {
+        let rest = &rest[..if kept == 0 {
             0
         } else {
             (kept + 1).min(rest.len())
-        }]
+        }];
+        if inline { rest.trim_start() } else { rest }
     });
     (partial, None, RunStart::Marked)
 }
@@ -52124,11 +52169,16 @@ fn unwrap_run_pane(capture: &LastCommandCapture) -> Option<(LastCommandCapture, 
             .strip_prefix("eval \"$(printf '%b' '")?
             .strip_suffix(&format!("')\"; printf '\\n{marker}-RC=%d=END\\n' $?"))?,
     )?;
-    let output = capture
-        .output
-        .strip_prefix(&format!("{marker}-BEGIN"))
-        .unwrap_or(&capture.output);
-    let output = output.strip_prefix('\n').unwrap_or(output);
+    let begin = format!("{marker}-BEGIN");
+    let mut lines = capture.output.split_inclusive('\n').collect::<Vec<_>>();
+    if let Some(index) = lines.iter().position(|line| line.trim_end() == begin) {
+        lines.remove(index);
+        if index > 0 && lines[index - 1].trim().is_empty() {
+            lines.remove(index - 1);
+        }
+    }
+    let output = lines.concat();
+    let output = output.as_str();
     let rc = format!("{marker}-RC=");
     let (output, code) = match output.rfind(&rc) {
         Some(end) => {
@@ -78181,6 +78231,21 @@ set-option -g @alias-mixed-next yes
     }
 
     #[cfg(unix)]
+    fn send_keys(shared: &Arc<Shared>, client: ClientId, target: &str, keys: &[&str]) {
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(
+                    "send-keys",
+                    ["-t", target].into_iter().chain(keys.iter().copied()),
+                ),
+            )
+            .expect("send keys");
+    }
+
+    #[cfg(unix)]
     #[test]
     fn run_pane_refuses_a_pane_that_is_not_running_a_shell() {
         let (shared, client, target) =
@@ -78373,6 +78438,220 @@ set-option -g @alias-mixed-next yes
 
     #[cfg(unix)]
     #[test]
+    fn run_pane_tells_a_queued_call_with_no_time_left_the_pane_is_busy() {
+        let (shared, client, target) =
+            send_text_fixture("runfloor", "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh");
+        let first = {
+            let shared = Arc::clone(&shared);
+            let target = target.clone();
+            thread::spawn(move || {
+                run_pane_exit(&shared, client, &target, &["--", "sleep 0.8; echo A-done"])
+            })
+        };
+        thread::sleep(Duration::from_millis(200));
+        let (result, stderr, _) = run_pane_exit(
+            &shared,
+            ClientId(8),
+            &target,
+            &["--timeout", "1", "--", "echo B-never"],
+        );
+        assert_eq!(result, Err((String::new(), 3)));
+        assert_eq!(
+            stderr,
+            format!("run-pane: {target} is busy with another run-pane; nothing was typed\n")
+        );
+        assert_eq!(first.join().unwrap().0, Ok("A-done\n".to_owned()));
+        let screen = wait_for_capture(&shared, client, &target, |_| true);
+        assert!(!screen.contains("B-never"), "{screen:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_refuses_a_pipeline_or_a_shell_driving_a_raw_mode_program() {
+        let (shared, client, target) = send_text_fixture(
+            "runpipeline",
+            "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh",
+        );
+        for (command, ready) in [
+            ("true | sleep 30", None),
+            (
+                "sh -c 'stty raw -echo; (sleep 0.3; printf \"cat-up\\r\\n\") & cat; :'",
+                Some("cat-up"),
+            ),
+        ] {
+            shared
+                .execute(
+                    client,
+                    ClientKind::Command,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new("send-keys", ["-t", &target, command, "Enter"]),
+                )
+                .expect("start the foreground job");
+            match ready {
+                Some(ready) => {
+                    wait_for_capture(&shared, client, &target, |screen| {
+                        screen.lines().any(|line| line.trim() == ready)
+                    });
+                }
+                None => thread::sleep(Duration::from_millis(300)),
+            }
+            let (result, stderr, elapsed) =
+                run_pane_exit(&shared, client, &target, &["--", "echo typed"]);
+            assert_eq!(result, Err((String::new(), 3)), "{command}: {stderr}");
+            assert!(
+                stderr.starts_with(&format!("run-pane: {target} is running "))
+                    && stderr.ends_with(", not a shell; nothing was typed\n"),
+                "{command}: {stderr:?}"
+            );
+            assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+            let screen = wait_for_capture(&shared, client, &target, |_| true);
+            assert!(!screen.contains("ZZRUN-"), "{screen:?}");
+            send_keys(&shared, client, &target, &["C-c"]);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_refuses_a_dead_pane_at_once() {
+        let shared = Arc::new(Shared::new(1));
+        let client = ClientId(7);
+        let mut context = ExecutionContext::default();
+        for command in [
+            CommandInvocation::new("set-window-option", ["-g", "remain-on-exit", "on"]),
+            CommandInvocation::new("new-session", ["-d", "-s", "rundead", "exit 3"]),
+        ] {
+            shared
+                .execute(client, ClientKind::Command, &mut context, &command)
+                .expect("seed the dead pane");
+        }
+        let pane = context.pane.expect("dead pane");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .is_some_and(|pane| pane.dead)
+        {
+            assert!(Instant::now() < deadline, "the pane never died");
+            thread::sleep(Duration::from_millis(10));
+        }
+        let (result, stderr, elapsed) =
+            run_pane_exit(&shared, client, &pane.to_string(), &["--", "true"]);
+        assert_eq!(result, Err((String::new(), 3)));
+        assert_eq!(
+            stderr,
+            format!("run-pane: {pane} is dead (its program exited); nothing was typed\n")
+        );
+        assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_refuses_a_line_longer_than_the_shell_takes() {
+        let command = format!("echo {}", "\"(x)\"".repeat(60));
+        let bytes = run_pane_line("ZZRUN-0123456789abcdef", "command eval", &command).len();
+        let (shared, client, target) = send_text_fixture(
+            "runlong",
+            "printf 'zz-ready\\r\\n'; PS1='' exec /bin/bash --norc --noediting",
+        );
+        let (result, stderr, elapsed) = run_pane_exit(&shared, client, &target, &["--", &command]);
+        assert_eq!(result, Err((String::new(), 3)));
+        assert_eq!(
+            stderr,
+            format!(
+                "run-pane: the command is {bytes} bytes once quoted, more than {target}'s shell \
+                 takes on one line; put it in a script file\n"
+            )
+        );
+        assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+        let screen = wait_for_capture(&shared, client, &target, |_| true);
+        assert!(!screen.contains("ZZRUN-"), "{screen:?}");
+        let (result, _, _) = run_pane_exit(&shared, client, &target, &["--", "echo short"]);
+        assert_eq!(result, Ok("short\n".to_owned()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_says_nothing_ran_when_the_shell_rejects_the_line() {
+        let (shared, client, target) = send_text_fixture(
+            "runrejected",
+            "printf 'zz-ready\\r\\n'; PS1='$ ' exec /bin/sh",
+        );
+        send_keys(&shared, client, &target, &["case x in", "Enter"]);
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let flag = directory.path().join("flag");
+        let command = format!("touch {}; echo 'ran it'", flag.display());
+        let (result, stderr, elapsed) = run_pane_exit(&shared, client, &target, &["--", &command]);
+        assert_eq!(result, Err((String::new(), 3)), "{stderr}");
+        assert_eq!(
+            stderr,
+            format!(
+                "run-pane: {target}'s shell rejected the line (it was inside an unfinished \
+                 construct, such as case x in); nothing ran\n"
+            )
+        );
+        assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+        assert!(!flag.exists());
+        let (result, _, _) = run_pane_exit(&shared, client, &target, &["--", "echo after"]);
+        assert_eq!(result, Ok("after\n".to_owned()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_clears_a_line_its_client_left_without_enter() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let received = directory.path().join("received");
+        let (shared, _, target) = send_text_fixture(
+            "runabandoned",
+            &format!(
+                "stty raw -echo; printf 'zz-ready\\r\\n'; exec sh -c 'cat > {}; :'",
+                received.display()
+            ),
+        );
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());
+        let run = {
+            let shared = Arc::clone(&shared);
+            let target = target.clone();
+            thread::spawn(move || {
+                shared.execute(
+                    client,
+                    ClientKind::Command,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new("run-pane", ["-t", &target, "--", "touch abandoned"]),
+                )
+            })
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !std::fs::read(&received)
+            .unwrap_or_default()
+            .ends_with(b"$?")
+        {
+            assert!(Instant::now() < deadline, "the line never reached the pane");
+            thread::sleep(Duration::from_millis(10));
+        }
+        shared.unregister(client);
+        let _ = run.join().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let bytes = std::fs::read(&received).unwrap_or_default();
+            if bytes.ends_with(b"$?\x15") {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the abandoned line was not cleared: {:?}",
+                String::from_utf8_lossy(&bytes)
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!std::fs::read(&received).unwrap().contains(&b'\r'));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn run_pane_notes_output_the_scrollback_dropped() {
         let shared = Arc::new(Shared::new(1));
         let client = ClientId(7);
@@ -78427,6 +78706,45 @@ set-option -g @alias-mixed-next yes
             format!(
                 "run-pane: output truncated to its last {lines} lines ({target} history-limit \
                  200); redirect to a file for all of it\n"
+            )
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_names_its_own_line_cap_when_that_cut_the_output() {
+        let shared = Arc::new(Shared::new(1));
+        let client = ClientId(7);
+        let mut context = ExecutionContext::default();
+        for command in [
+            CommandInvocation::new("set-option", ["-g", "history-limit", "50000"]),
+            CommandInvocation::new(
+                "new-session",
+                [
+                    "-d",
+                    "-s",
+                    "runcapped",
+                    "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh",
+                ],
+            ),
+        ] {
+            shared
+                .execute(client, ClientKind::Command, &mut context, &command)
+                .expect("seed the run-pane terminal");
+        }
+        let target = context.pane.expect("run-pane pane").to_string();
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.contains("zz-ready")
+        });
+        let (result, stderr, _) = run_pane_exit(&shared, client, &target, &["--", "seq 1 12000"]);
+        let output = result.expect("seq exits zero");
+        assert!(output.ends_with("\n11999\n12000\n"), "{output:?}");
+        assert_eq!(
+            stderr,
+            format!(
+                "run-pane: output truncated to its last {} lines (run-pane keeps the last \
+                 {RUN_PANE_CAPTURE_LINES} lines); redirect to a file for all of it\n",
+                output.lines().count()
             )
         );
     }
@@ -79288,6 +79606,27 @@ set-option -g @alias-mixed-next yes
         assert_eq!(run_pane_result(&screen, marker, false).0, Some("50%"));
         let screen = format!("{marker}-BEGIN\n{}", "\n".repeat(5));
         assert_eq!(run_pane_result(&screen, marker, false).0, Some(""));
+        let echo = echo.trim_end();
+        let screen = format!("{echo}    {marker}-BEGIN    after1    {marker}-RC=0=END    $ ");
+        assert_eq!(
+            run_pane_result(&screen, marker, false),
+            (Some("after1"), Some(0), RunStart::Marked)
+        );
+        let screen = format!("{echo}    {marker}-BEGIN    one\ntwo\n\n{marker}-RC=4=END\n$ ");
+        assert_eq!(
+            run_pane_result(&screen, marker, false),
+            (Some("one\ntwo\n"), Some(4), RunStart::Marked)
+        );
+        let screen = format!("{echo}    {marker}-BEGIN    still");
+        assert_eq!(
+            run_pane_result(&screen, marker, false),
+            (Some("still"), None, RunStart::Marked)
+        );
+        let screen = format!("{echo}    after    {marker}-RC=0=END    $ ");
+        assert_eq!(
+            run_pane_result(&screen, marker, false),
+            (Some("after"), Some(0), RunStart::Joined)
+        );
     }
 
     #[cfg(unix)]
@@ -91270,6 +91609,11 @@ set-option -g @alias-mixed-next yes
                 Some(0),
             ),
             (format!("{marker}-BEGIN\n\n{marker}-RC=0=END"), "", Some(0)),
+            (
+                format!("[1]+  Done  sleep 2\n\n{marker}-BEGIN\nafter-job\n\n{marker}-RC=0=END"),
+                "[1]+  Done  sleep 2\nafter-job",
+                Some(0),
+            ),
             (format!("tail\n\n{marker}-RC=0=END"), "tail", Some(0)),
             (format!("{marker}-BEGIN\nstill"), "still", None),
         ] {
