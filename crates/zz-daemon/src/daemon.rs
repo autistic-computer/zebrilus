@@ -52608,7 +52608,7 @@ Use `list-panes --json` for the full tmux variable set.
 Use stable IDs: `%N` for a pane, `@N` for a window, `$N` for a session.
 Pass the bare ID: `-t %3` works; `-t work:%3` fails with `can't find window`.
 Run `zz <verb> --help` for options, or `zz list-commands [verb]` for usage.
-Running `zz` without a verb launches the desktop app, even with global flags such as `-T`.
+`zz` without a verb attaches the terminal UI (`new-session -A`); with `--host NAME`, on that host.
 Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 
 `#{pane_kind}` is `terminal`, `agent`, `browser`, `editor`, or `picker`.
@@ -52622,10 +52622,15 @@ when unknown; terminal and Agent panes report it from OSC 133 marks.
 `zz --host NAME VERB` runs a verb there (NAME may be an ssh destination), and
 `zz --host all VERB` runs a read-only verb on every host, prefixing text lines with
 `NAME: ` and adding `host_name` to JSON lines. Pane IDs are per host and none is
-yours there: always pass `-t %N`, from `list-panes -a` or your own
-`new-window -d -P -F '#{pane_id}'`. Paths resolve on that host; `events` and
-`agent-send --progress` stream from it. Logins use zz’s own key after the first; run
-`zz fleet sync` when a machine joins, `zz fleet install NAME` for a missing or old zz.
+yours there: pass `-t %N` from `list-panes -a` or your own
+`new-window -d -P -F '#{pane_id}'` (`new-session -d -P -F '#{pane_id}'` on a host
+with no session); a verb that acts on a pane, window or session exits 2 without
+`-t`, and a move or swap without `-s`. Paths and pane environments are that
+host's; `events` and `agent-send --progress` stream from it. Logins use zz’s own
+key after the first, and `--host all` never prompts. A call that changes state
+and stalls 15 s exits 1 and may have run there: check before retrying. When a
+machine joins, run `zz fleet add NAME DEST`, then `zz fleet sync`; run
+`zz fleet install NAME` for a missing or old zz.
 
 ## CLI contract
 
@@ -52753,6 +52758,7 @@ send big output to a file. One run-pane runs per pane; a second waits its turn.
 Exit 3 means nothing ran, so a retry is safe: the pane stayed busy past the timeout,
 its foreground program is not a POSIX shell (`run-pane: %N is running vim, not a shell`),
 the shell was waiting for more input such as an unclosed quote (run-pane sent C-c),
+the line is longer than that shell takes (put a long command in a script file),
 or the echo never appeared (`nothing was submitted`).
 The timeout covers waiting, echo and execution; it defaults to 120 seconds, accepts
 fractions, and 0 waits forever. When the command was typed and still runs at the
@@ -52861,11 +52867,11 @@ Show a page you wrote beside your pane: a file, a directory with `index.html`, o
 HTML from stdin. The pane reloads each time a file the page loaded changes, so rewrite the file
 and look again. A file serves only itself; a directory also serves the files under it, except
 names that start with `.`. Pages can load scripts from CDNs. `--float` opens a floating pane.
-`-t %N` shows the page in that pane if it is a browser, or opens it beside that pane. With
+`-t %N` reloads that pane if `zz html` opened it, otherwise opens the page beside it. With
 `--reply` the page can call `zz.reply(text)`, which sends the text to your pane. Print the page
 URL and the new pane. In an Agent pane, a small page can go in your reply instead, as a fenced
 block opened with ```html preview: the pane shows it rendered in place. Over `--host`, PATH
-is read on that host; send a local page with `zz --host NAME html - < page.html`.
+is read on that host; send a local page with `zz --host NAME html -t %N - < page.html`.
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
 

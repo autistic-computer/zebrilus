@@ -795,6 +795,7 @@ static READ_ONLY_COMMAND_NAMES: &[&str] = &[
     "show-buffer",
     "show-environment",
     "show-hooks",
+    "show-last-output",
     "show-messages",
     "show-options",
     "show-prompt-history",
@@ -1149,7 +1150,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "list-hosts",
         aliases: &[],
-        description: "List the machines in zz/config, with their state and zz version when asked",
+        description: "List the machines in zz/config with their state and zz version",
         usage: "[-F format] [--json]",
         options: &[
             CommandOptionSpec::value(
@@ -2961,6 +2962,7 @@ mod tests {
             ("capture-pane", &["-p", "-t", "%1"][..]),
             ("capture-pane", &["-pb", "named"][..]),
             ("inspect", &["-a", "--json"][..]),
+            ("show-last-output", &["-t", "%1"][..]),
         ] {
             assert!(!mutates(name, args), "{name} {args:?} is read-only");
         }
