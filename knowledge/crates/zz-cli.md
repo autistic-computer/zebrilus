@@ -64,9 +64,13 @@ there.
 Over `--host`, `untargeted_host_input` exits 2 for any command without `-t` whose spec mutates and
 whose `-t` names a pane, window or session (input verbs, `kill-*`, `respawn-*`, `split-window`,
 `pipe-pane`, `html`, `set-option -p`/`-w` and the rest), since nothing there is the caller's; the
-message asks for `-t %N`, `-t @N` or `-t NAME` by that kind. `new-window`, `attach`, `run-shell`,
-`if-shell`, `source-file` and `-g` forms stay allowed: their `-t` is a destination or only a format
-context.
+message asks for `-t %N`, `-t @N` or `-t NAME` by that kind. `join-pane`, `move-pane`, `break-pane`,
+`move-window` and `swap-window` also need `-s`, because their source defaults to the current pane or
+window. `new-window`, `attach`, `run-shell`, `if-shell`, `source-file` and `-g` forms stay allowed:
+their `-t` is a destination or only a format context. A chain stops being checked at `new-session`
+or at `new-window` without `-d`, since the commands after it land in what it made. The check reads
+`--name=value` as the daemon does, and when the arguments do not parse it refuses unless a `-t`
+comes before `--`.
 
 `host_connect_failure` turns endpoint errors into the fix, from the cold connect and from the first
 exec that verifies a kept forward alike (the chain, `--kill-server`, `events`, `-C`, `--progress`,

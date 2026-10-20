@@ -325,9 +325,10 @@ zz --host all inspect -a --json          # read-only verbs on every host
 
 Pane IDs belong to their host, so over `--host` every verb that acts on a
 pane, window or session (`send-keys`, `run-pane`, `kill-pane`, `split-window`
-and the rest) needs `-t`. With `all`, text lines start with `NAME: `, JSON
-lines carry `host_name`, and a host that fails says why on stderr while the
-others still answer. `all` never prompts: a host that wants a password or a
+and the rest) needs `-t`, and a move or swap (`join-pane`, `move-window`,
+`swap-window` and the like) needs `-s` too. With `all`, text lines start with
+`NAME: `, JSON lines carry `host_name`, and a host that fails says why on
+stderr while the others still answer. `all` never prompts: a host that wants a password or a
 host-key answer fails with the command to run. `zz --host NAME events`,
 `agent-send --wait --progress` and `zz -CC --host NAME` stream from the host.
 

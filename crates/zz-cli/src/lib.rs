@@ -60,6 +60,13 @@ const UNTARGETED_HOST_VERBS: [&str; 5] = [
     "run-shell",
     "source-file",
 ];
+const SOURCE_HOST_VERBS: [&str; 5] = [
+    "join-pane",
+    "move-pane",
+    "break-pane",
+    "move-window",
+    "swap-window",
+];
 const SINGLE_HOST_VERBS: [(&str, &str); 4] = [
     ("events", "streams"),
     ("wait-pane", "waits on one pane"),
@@ -1690,7 +1697,13 @@ fn run_tmux_shell_command(
     )) {
         Ok(shell) => shell.trim_end_matches('\n').to_owned(),
         Err(error) => {
-            eprintln!("{}", command_error_message(&error));
+            eprintln!(
+                "{}",
+                host.map_or_else(
+                    || command_error_message(&error),
+                    |host| host_command_error_message(host, &error)
+                )
+            );
             return exit_code_for(CliFailure::Daemon(&error));
         }
     };
@@ -2706,47 +2719,92 @@ fn tui_failure_message(host: Option<&str>, error: &zz_tui::Error) -> String {
 fn untargeted_host_input(host: &str, command_chain: &[CommandInvocation]) -> Option<String> {
     use zz_protocol::CommandValueKind;
 
-    let (noun, id, list) = match command_chain.iter().find_map(untargeted_kind)? {
+    let (flag, kind) = command_chain
+        .iter()
+        .take_while(|invocation| !starts_its_own_target(invocation))
+        .find_map(untargeted_kind)?;
+    let (noun, id, list) = match kind {
         CommandValueKind::Window => ("window", "@N", "list-windows -a"),
         CommandValueKind::Session => ("session", "NAME", "list-sessions"),
         _ => ("pane", "%N", "list-panes -a"),
     };
     Some(format!(
-        "zz --host {host}: name the {noun} with -t {id} (zz --host {host} {list})"
+        "zz --host {host}: name the {noun} with {flag} {id} (zz --host {host} {list})"
     ))
 }
 
-fn untargeted_kind(invocation: &CommandInvocation) -> Option<zz_protocol::CommandValueKind> {
+fn starts_its_own_target(invocation: &CommandInvocation) -> bool {
+    match canonical_command(&invocation.name) {
+        "new-session" => true,
+        "new-window" => catalog_command_spec("new-window")
+            .and_then(|spec| zz_protocol::parse_tmux_options(spec, &invocation.args).ok())
+            .is_some_and(|parsed| {
+                !parsed
+                    .options
+                    .contains(&zz_protocol::TmuxOption::Flag("-d"))
+            }),
+        _ => false,
+    }
+}
+
+fn untargeted_kind(
+    invocation: &CommandInvocation,
+) -> Option<(&'static str, zz_protocol::CommandValueKind)> {
     use zz_protocol::{CommandValueKind, TmuxOption};
 
     let spec = catalog_command_spec(canonical_command(&invocation.name)).filter(|spec| {
         !UNTARGETED_HOST_VERBS.contains(&spec.name) && spec.mutates(&invocation.args)
     })?;
-    let parsed = zz_protocol::parse_tmux_options(spec, &invocation.args).ok()?;
-    let flagged = |flag: &str| {
-        parsed
+    let args = split_attached_long_values(spec, &invocation.args);
+    let parsed = zz_protocol::parse_tmux_options(spec, &args);
+    let flagged =
+        |flag| matches!(&parsed, Ok(parsed) if parsed.options.contains(&TmuxOption::Flag(flag)));
+    let given = |flag: &str| match &parsed {
+        Ok(parsed) => parsed
             .options
             .iter()
-            .any(|option| matches!(option, TmuxOption::Flag(name) if *name == flag))
+            .any(|option| matches!(option, TmuxOption::Value(name, _) if *name == flag)),
+        Err(_) => args
+            .iter()
+            .take_while(|argument| argument.as_str() != "--")
+            .any(|argument| argument.starts_with(flag)),
     };
-    if flagged("-g")
-        || parsed
-            .options
-            .iter()
-            .any(|option| matches!(option, TmuxOption::Value("-t", _)))
-    {
+    if flagged("-g") {
         return None;
     }
-    let kind = match spec.name {
-        "set-option" if flagged("-p") => CommandValueKind::Pane,
-        "set-option" if flagged("-w") => CommandValueKind::Window,
-        _ => spec.option("-t")?.value?,
+    let flag = ["-t", "-s"]
+        .into_iter()
+        .find(|flag| (*flag == "-t" || SOURCE_HOST_VERBS.contains(&spec.name)) && !given(flag))?;
+    let kind = match (flag, spec.name) {
+        ("-t", "set-option") if flagged("-p") => CommandValueKind::Pane,
+        ("-t", "set-option") if flagged("-w") => CommandValueKind::Window,
+        _ => spec.option(flag)?.value?,
     };
     matches!(
         kind,
         CommandValueKind::Pane | CommandValueKind::Window | CommandValueKind::Session
     )
-    .then_some(kind)
+    .then_some((flag, kind))
+}
+
+fn split_attached_long_values(spec: &zz_protocol::CommandSpec, args: &[RawText]) -> Vec<RawText> {
+    let mut split = Vec::with_capacity(args.len());
+    let mut arguments = args.iter();
+    for argument in arguments.by_ref() {
+        if argument.as_str() == "--" {
+            split.push(argument.clone());
+            break;
+        }
+        match argument
+            .split_once('=')
+            .filter(|(name, _)| name.starts_with("--") && spec.option(name).is_some())
+        {
+            Some((name, value)) => split.extend([RawText::from(name), RawText::from(value)]),
+            None => split.push(argument.clone()),
+        }
+    }
+    split.extend(arguments.cloned());
+    split
 }
 
 fn fan_out_refusal(command_chain: &[CommandInvocation]) -> Option<(String, ExitCode)> {
@@ -4612,11 +4670,23 @@ mod tests {
         let pane = "zz --host xps: name the pane with -t %N (zz --host xps list-panes -a)";
         let window = "zz --host xps: name the window with -t @N (zz --host xps list-windows -a)";
         let session = "zz --host xps: name the session with -t NAME (zz --host xps list-sessions)";
+        let pane_source = "zz --host xps: name the pane with -s %N (zz --host xps list-panes -a)";
+        let window_source =
+            "zz --host xps: name the window with -s @N (zz --host xps list-windows -a)";
         for (words, refusal) in [
             (&["send-keys", "ls", "Enter"][..], pane),
             (&["send", "-l", "x"][..], pane),
             (&["send-text", "hi"][..], pane),
             (&["run-pane", "--", "make"][..], pane),
+            (&["run-pane", "--timeout=5", "--", "make"][..], pane),
+            (
+                &["run-pane", "--timeout=60", "docker", "run", "-t", "x"][..],
+                pane,
+            ),
+            (&["send-text", "--timeout=5", "hi"][..], pane),
+            (&["agent-send", "--on-block=deny", "hi"][..], pane),
+            (&["agent-respond", "--option=allow"][..], pane),
+            (&["run-pane", "--bogus=1", "--", "make"][..], pane),
             (&["pasteb", "-b", "x"][..], pane),
             (&["agent-send", "--wait", "hi"][..], pane),
             (&["list-panes", ";", "send-keys", "x"][..], pane),
@@ -4635,6 +4705,14 @@ mod tests {
             (&["set-option", "-w", "@name", "x"][..], window),
             (&["kill-session"][..], session),
             (&["rename-session", "work"][..], session),
+            (&["join-pane", "-d", "-t", "%1"][..], pane_source),
+            (&["movep", "-t", "%1"][..], pane_source),
+            (&["break-pane", "-d", "-t", "four:"][..], pane_source),
+            (&["move-window", "-d", "-t", "base:7"][..], window_source),
+            (&["swapw", "-d", "-t", "@0"][..], window_source),
+            (&["join-pane", "-s", "%3"][..], pane),
+            (&["new-window", "-d", ";", "split-window"][..], pane),
+            (&["kill-pane", ";", "new-session", "-d"][..], pane),
         ] {
             assert_eq!(
                 super::untargeted_host_input("xps", &chain(words)).as_deref(),
@@ -4646,6 +4724,15 @@ mod tests {
             &["send-keys", "-t", "%3", "ls"][..],
             &["send-text", "-t%3", "hi"][..],
             &["run-pane", "-t", "%1", "--", "make"][..],
+            &["run-pane", "--timeout=5", "-t", "%1", "--", "make"][..],
+            &["send-text", "--timeout=5", "-t", "%1", "hi"][..],
+            &["run-pane", "-t", "%1", "--bogus=1", "--", "make"][..],
+            &["agent-respond", "-t", "%2", "--option=allow"][..],
+            &["join-pane", "-s", "%3", "-t", "%1"][..],
+            &["break-pane", "-s", "%3", "-t", "four:"][..],
+            &["swap-window", "-s", "@1", "-t", "@0"][..],
+            &["new-session", "-d", "-s", "x", ";", "split-window", "-h"][..],
+            &["new-window", ";", "send-keys", "ls", "Enter"][..],
             &["agent-send", "-t", "%2", "--wait", "hi"][..],
             &["kill-pane", "-t", "%3"][..],
             &["kill-session", "-t", "agent"][..],
