@@ -323,18 +323,19 @@ zz --host you@other-box list-sessions
 zz --host all inspect -a --json          # read-only verbs on every host
 ```
 
-Pane IDs belong to their host, so input verbs over `--host` (`send-keys`,
-`send-text`, `run-pane`, `paste-buffer`, `agent-send`) need `-t`. With `all`,
-text lines start with `NAME: `, JSON lines carry `host_name`, and a host that
-fails says why on stderr while the others still answer. `all` never prompts:
-a host that wants a password or a host-key answer fails with the command to run. `zz --host NAME events`,
+Pane IDs belong to their host, so over `--host` every verb that acts on a
+pane, window or session (`send-keys`, `run-pane`, `kill-pane`, `split-window`
+and the rest) needs `-t`. With `all`, text lines start with `NAME: `, JSON
+lines carry `host_name`, and a host that fails says why on stderr while the
+others still answer. `all` never prompts: a host that wants a password or a
+host-key answer fails with the command to run. `zz --host NAME events`,
 `agent-send --wait --progress` and `zz -CC --host NAME` stream from the host.
 
-zz signs in with its own ssh key. The first login to a host uses your keys,
-agent, or password and adds zz's key to that host's `authorized_keys`, so later
-connections ask for nothing, security key included. `zz fleet sync` makes every
-listed machine trust every other and know each other's host lines, so an agent
-on any of them can reach the rest; run it after you add a machine.
+zz signs in with its own ssh key. The first login to a listed host uses your
+keys, agent, or password and adds zz's key to that host's `authorized_keys`, so
+later connections ask for nothing, security key included. `zz fleet sync` makes
+every listed machine trust every other and know each other's host lines, so an
+agent on any of them can reach the rest; run it after you add a machine.
 `zz fleet key` prints this machine's zz key.
 
 The other machine needs zz too. If it has none, the app installs it on the
@@ -348,10 +349,11 @@ zz fleet install --restart-daemon desktop
 zz fleet install -a
 ```
 
-Installing never needs root, skips a host that already runs this version, and
-leaves any packaged or Homebrew zz alone; zz's own scripts prefer
-`~/.local/bin/zz`. The remote needs `curl` and access to GitHub. Linux builds
-run on glibc 2.28 or newer.
+Several hosts install at once without prompting; one that wants a login is
+retried alone at the terminal. Installing never needs root, skips a host that
+already runs this version, and leaves any packaged or Homebrew zz alone; zz's
+own scripts prefer `~/.local/bin/zz`. The remote needs `curl` and access to
+GitHub. Linux builds run on glibc 2.28 or newer.
 
 The transport is plain OpenSSH. zz shells out to `ssh`, probes for the remote
 socket, starts a daemon over the same connection if none is running, and

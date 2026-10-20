@@ -40,7 +40,7 @@ Use `list-panes --json` for the full tmux variable set.
 Use stable IDs: `%N` for a pane, `@N` for a window, `$N` for a session.
 Pass the bare ID: `-t %3` works; `-t work:%3` fails with `can't find window`.
 Run `zz <verb> --help` for options, or `zz list-commands [verb]` for usage.
-Running `zz` without a verb launches the desktop app, even with global flags such as `-T`.
+`zz` without a verb attaches the terminal UI (`new-session -A`); with `--host NAME`, on that host.
 Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 
 `#{pane_kind}` is `terminal`, `agent`, `browser`, `editor`, or `picker`.
@@ -54,10 +54,15 @@ when unknown; terminal and Agent panes report it from OSC 133 marks.
 `zz --host NAME VERB` runs a verb there (NAME may be an ssh destination), and
 `zz --host all VERB` runs a read-only verb on every host, prefixing text lines with
 `NAME: ` and adding `host_name` to JSON lines. Pane IDs are per host and none is
-yours there: always pass `-t %N`, from `list-panes -a` or your own
-`new-window -d -P -F '#{pane_id}'`. Paths resolve on that host; `events` and
-`agent-send --progress` stream from it. Logins use zz’s own key after the first; run
-`zz fleet sync` when a machine joins, `zz fleet install NAME` for a missing or old zz.
+yours there: pass `-t %N` from `list-panes -a` or your own
+`new-window -d -P -F '#{pane_id}'` (`new-session -d -P -F '#{pane_id}'` on a host
+with no session); a verb that acts on a pane, window or session exits 2 without
+`-t`. Paths and pane environments are that host's; `events` and
+`agent-send --progress` stream from it. Logins use zz’s own key after the first,
+and `--host all` never prompts. A call that changes state and stalls 15 s exits 1
+and may have run there: check before retrying. When a machine joins, run
+`zz fleet add NAME DEST`, then `zz fleet sync`; run `zz fleet install NAME` for a
+missing or old zz.
 
 ## CLI contract
 

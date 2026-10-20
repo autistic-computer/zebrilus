@@ -4,7 +4,7 @@ title: zz-cli crate
 description: Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
 resource: crates/zz-cli/src/lib.rs
 tags: [crate, cli, daemon, tui, headless, packaging]
-timestamp: 2026-10-20T12:00:00-03:00
+timestamp: 2026-10-20T18:00:00-03:00
 ---
 
 # Overview
@@ -43,26 +43,38 @@ there, and `--socket` there or after `daemon`, `proxy` and `app` (the launcher a
 start scripts pass it in that spot). Nothing after `--` is a zz flag, so a nested
 `zz run-pane -t %3 -- zz --host xps inspect -a` or a `-- --host 0.0.0.0` payload stays intact;
 `diagnostics::application_args_from` and `verbose_requested` stop at that `--` too, so a
-`-- cargo test --verbose` payload keeps its word and leaves verbose logging off.
+`-- cargo test --verbose` payload keeps its word and leaves verbose logging off, and a verb's
+`--help` counts only before it, so `run-pane -t %3 -- ls --help` runs `ls --help`.
 `zz --help` lists the global flags and every catalogued verb; `zz -h` stays the pinned tmux banner.
 
 `configured_host_endpoint` resolves `--host` through `zz_daemon_client::resolve_fleet_host`, which
 the raw TUI shares: a `host-NAME` line wins, otherwise the value is an ssh destination, and a value
 starting with `-` is refused. `local` and `all` are reserved. `--host all` re-runs the CLI once per
 configured host in parallel for a chain whose every command passes `!spec.mutates` (`inspect`,
-`list-hosts` and `protocol-version` count as read-only). The parent checks the chain once first,
-so an unknown verb or a usage error prints a single time with its own exit status. Each child
-runs in its own session with no controlling terminal, so ssh can never prompt on the caller's
-tty; a host that needs a password or a host-key answer fails with the hint below. Text lines get
-a `NAME: ` prefix, JSON lines under `--json` get `host_name` first (`from_host` when the row has
-its own `host_name`, as `list-hosts` rows do), and the exit is 1 when any host failed. Bare
-`zz --host NAME` runs `new-session -A` there. Over `--host`, `send-keys`, `send-text`,
-`run-pane`, `paste-buffer` and `agent-send` without `-t` exit 2, since no remote pane is the
-caller's. `host_connect_failure` turns endpoint errors, including the raw TUI's, into the fix:
-`zz fleet install NAME` for a missing zz, `--restart-daemon` for a host on an older protocol,
-"update zz on this machine" for a newer one, `ssh DEST` once or `zz fleet sync` for a refused
-login, `ssh DEST` once for an untrusted host key, else `can't reach NAME: <reason>`. DEST is the
-login zz tried (`user@box`, or `ssh://user@box:PORT` with a port). OpenSSH folds every failure
+`list-hosts`, `show-last-output` and `protocol-version` count as read-only). The parent checks the
+chain once first, so an unknown verb or a usage error prints a single time with its own exit
+status, and `events`, `wait-pane`, `fleet` and `tools` are refused with what they do and
+`run it per host with --host NAME`. The children run with no controlling terminal and with ssh
+non-interactive, so a fan-out never prompts on any platform; a host that needs a password or a
+host-key answer fails with the hint below. Text lines get a `NAME: ` prefix, JSON lines under
+`--json` get `host_name` first (`from_host` when the row has its own `host_name`, as `list-hosts`
+rows do), and the exit is 1 when any host failed. Bare `zz --host NAME` runs `new-session -A`
+there.
+
+Over `--host`, `untargeted_host_input` exits 2 for any command without `-t` whose spec mutates and
+whose `-t` names a pane, window or session (input verbs, `kill-*`, `respawn-*`, `split-window`,
+`pipe-pane`, `html`, `set-option -p`/`-w` and the rest), since nothing there is the caller's; the
+message asks for `-t %N`, `-t @N` or `-t NAME` by that kind. `new-window`, `attach`, `run-shell`,
+`if-shell`, `source-file` and `-g` forms stay allowed: their `-t` is a destination or only a format
+context.
+
+`host_connect_failure` turns endpoint errors into the fix, from the cold connect and from the first
+exec that verifies a kept forward alike (the chain, `--kill-server`, `events`, `-C`, `--progress`,
+the host-local passthrough and the raw TUI): `zz fleet install NAME` for a missing zz,
+`--restart-daemon` for a host on an older protocol, "update zz on this machine" for a newer one,
+`ssh DEST` once or `zz fleet sync` for a refused login, `ssh DEST` once for an untrusted host key,
+else `can't reach NAME: <reason>`, with `; known hosts: a, b` when NAME has no host line. DEST is
+the login zz tried (`user@box`, or `ssh://user@box:PORT` with a port). OpenSSH folds every failure
 into exit 255, so login and host-key refusals are read from the reason the endpoint built from
 ssh's stderr.
 
