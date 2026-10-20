@@ -16,7 +16,7 @@ const HOOK_TIMEOUT_SECONDS: u64 = 5;
 const STUB_MARKER: &str = "zz-stub:";
 const SKILL_NAME: &str = "zz-workspace";
 
-pub(crate) fn run(flag: &str, remote: bool) -> Option<ExitCode> {
+pub(crate) fn run(flag: &str) -> Option<ExitCode> {
     let install = match flag {
         "--context" => {
             if let Some(text) = context(|name| std::env::var_os(name)) {
@@ -28,10 +28,6 @@ pub(crate) fn run(flag: &str, remote: bool) -> Option<ExitCode> {
         "--remove-hooks" => false,
         _ => return None,
     };
-    if remote {
-        eprintln!("tools {flag} is local only");
-        return Some(ExitCode::from(2));
-    }
     let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
         eprintln!("tools {flag}: HOME is not set");
         return Some(ExitCode::from(1));
