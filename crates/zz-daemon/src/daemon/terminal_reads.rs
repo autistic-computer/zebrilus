@@ -472,6 +472,7 @@ fn poll_wait(shared: &Arc<Shared>, target: Arc<Target>, mut wait: Wait) {
                 start: CaptureBoundary::HistoryStart,
                 join_wrapped: true,
                 preserve_trailing: true,
+                skip_input: true,
                 ..CaptureOptions::default()
             },
             move |shared, target, result| {
