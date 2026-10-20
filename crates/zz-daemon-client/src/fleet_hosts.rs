@@ -377,6 +377,7 @@ fn append_config_line(source: &str, key: &str, value: &str) -> String {
 }
 
 pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let path = &write_target(path);
     let parent = path.parent().ok_or_else(|| {
         io::Error::new(
             ErrorKind::InvalidInput,
@@ -403,6 +404,15 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
         return Err(error);
     }
     Ok(())
+}
+
+fn write_target(path: &Path) -> PathBuf {
+    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        && let Ok(target) = fs::canonicalize(path)
+    {
+        return target;
+    }
+    path.to_path_buf()
 }
 
 fn create_config_temp_file(path: &Path, parent: &Path) -> io::Result<(PathBuf, File)> {
@@ -705,6 +715,32 @@ mod tests {
         assert!(resolve("local").unwrap_err().contains("this machine"));
         assert!(resolve("all").unwrap_err().contains("read-only"));
         assert!(resolve("me@@box").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writes_through_a_symlinked_config_keep_the_link() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("dotfiles/zz-config");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "tray = false\n").unwrap();
+        let link = directory.path().join("zz").join(CONFIG_FILE_NAME);
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink("../dotfiles/zz-config", &link).unwrap();
+
+        write_fleet_host_at(&link, "xps", "ssh://me@xps").unwrap();
+
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "tray = false\nhost-xps = ssh://me@xps\n"
+        );
+        assert_eq!(fs::read_dir(link.parent().unwrap()).unwrap().count(), 1);
     }
 
     #[test]
