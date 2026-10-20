@@ -547,13 +547,14 @@ pub(crate) fn run(
 }
 
 pub(crate) fn run_host(
+    host: &str,
     endpoint: &Endpoint,
     level: u8,
     arguments: &[zz_protocol::RawText],
 ) -> ExitCode {
     serve(level, control_commands(arguments), None, || {
         InteractiveClient::connect_control_endpoint(endpoint)
-            .map_err(|error| super::command_error_message(&error))
+            .map_err(|error| super::host_command_error_message(host, &error))
     })
 }
 
