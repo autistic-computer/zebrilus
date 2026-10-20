@@ -636,7 +636,9 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
         shared,
         target,
         CaptureOptions {
-            start: CaptureBoundary::HistoryStart,
+            start: CaptureBoundary::Relative(
+                -i64::try_from(RUN_PANE_CAPTURE_LINES).unwrap_or(i64::MAX),
+            ),
             join_wrapped: true,
             preserve_trailing: true,
             ..CaptureOptions::default()
@@ -649,12 +651,30 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
                     return;
                 }
             };
-            let (captured, exit_code) = run_pane_result(&screen, &run.marker, run.collecting);
+            let (captured, exit_code, truncated) =
+                run_pane_result(&screen, &run.marker, run.collecting);
             if let Some(captured) = captured {
                 run.collecting = true;
                 captured.clone_into(&mut run.output);
             }
             if let Some(exit_code) = exit_code {
+                if truncated {
+                    let limit = shared
+                        .inner
+                        .lock()
+                        .engine
+                        .history_limit_for_pane(target.pane)
+                        .unwrap_or_default();
+                    shared.record_command_stderr(
+                        target.client,
+                        &format!(
+                            "run-pane: output truncated to its last {} lines ({} history-limit \
+                             {limit}); redirect to a file for all of it",
+                            run.output.lines().count(),
+                            target.pane
+                        ),
+                    );
+                }
                 target.state.resolve(if exit_code == 0 {
                     Ok(Execution {
                         output: run.output.into(),

@@ -1551,7 +1551,11 @@ impl PaneActor {
                 let _ = reply.send(result);
             }
             Command::SemanticCapture(request) => {
-                let _ = request.reply.send(capture_last_command(&self.terminal));
+                let running = self.engine_filter.output.command_running;
+                let _ = request.reply.send(
+                    capture_last_command(&self.terminal)
+                        .map(|capture| LastCommandCapture { running, ..capture }),
+                );
                 self.compression.rearm();
             }
             Command::History(request) => {

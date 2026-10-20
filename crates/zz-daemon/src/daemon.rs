@@ -225,6 +225,7 @@ const AGENT_STATE_START_GRACE: Duration = Duration::from_secs(15);
 const SEND_TEXT_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(test)]
 const SEND_TEXT_POLL_INTERVAL: Duration = Duration::from_millis(20);
+const RUN_PANE_CAPTURE_LINES: usize = 10_000;
 const SEND_TEXT_TAIL_CHARS: usize = 40;
 const PASTE_COLLAPSE_MARKER: &str = "[Pasted text";
 const CONTROL_COMMAND_FRAME_FLAGS_NONE: u8 = 0;
@@ -17563,7 +17564,7 @@ impl Shared {
             } else {
                 INSPECT_FIELDS
                     .iter()
-                    .map(|key| {
+                    .filter_map(|key| {
                         let value = &values[*key];
                         let text = if value.is_object() {
                             value.to_string()
@@ -17576,7 +17577,7 @@ impl Shared {
                         } else {
                             value.as_str().unwrap_or_default().to_owned()
                         };
-                        format!("{key}: {text}")
+                        (!text.is_empty()).then(|| format!("{key}: {text}"))
                     })
                     .collect::<Vec<_>>()
                     .join("\n")
@@ -51819,21 +51820,23 @@ fn run_pane_result<'a>(
     screen: &'a str,
     marker: &str,
     collecting: bool,
-) -> (Option<&'a str>, Option<u8>) {
+) -> (Option<&'a str>, Option<u8>, bool) {
     let begin = format!("{marker}-BEGIN");
     let prefix = format!("{marker}-RC=");
     let lines = screen
         .split_inclusive('\n')
         .rev()
-        .take(10_000)
+        .take(RUN_PANE_CAPTURE_LINES)
         .collect::<Vec<_>>();
     let mut offset = screen.len() - lines.iter().map(|line| line.len()).sum::<usize>();
     let capture_start = offset;
     let mut start = collecting.then_some(offset);
+    let mut saw_begin = false;
     for line in lines.into_iter().rev() {
         let text = line.strip_suffix('\n').unwrap_or(line);
         if text == begin {
             start = Some(offset + line.len());
+            saw_begin = true;
         } else if let Some(code) = text
             .strip_prefix(&prefix)
             .and_then(|code| code.strip_suffix("=END"))
@@ -51845,11 +51848,21 @@ fn run_pane_result<'a>(
             return (
                 Some(segment.strip_suffix('\n').unwrap_or(segment)),
                 Some(code),
+                !saw_begin,
             );
         }
         offset += line.len();
     }
-    (start.map(|start| &screen[start..]), None)
+    let partial = start.map(|start| {
+        let rest = &screen[start..];
+        let kept = rest.trim_end_matches('\n').len();
+        &rest[..if kept == 0 {
+            0
+        } else {
+            (kept + 1).min(rest.len())
+        }]
+    });
+    (partial, None, false)
 }
 
 fn parse_send_text_args(args: &[RawText]) -> Result<ParsedSendText, ServerError> {
@@ -52030,7 +52043,9 @@ fn last_command_block(pane: PaneId, capture: &LastCommandCapture, status: Option
     }
     body.push_str(&capture.output);
     let mut header = format!("{pane} $ {}", capture.command);
-    if let Some(status) = status {
+    if capture.running {
+        header.push_str("\nexit: running");
+    } else if let Some(status) = status {
         let _ = write!(header, "\nexit: {status}");
     }
     fenced_block(&header, &body)
@@ -77950,7 +77965,7 @@ set-option -g @alias-mixed-next yes
             .expect_err("child did not finish before timeout");
         assert!(started.elapsed() >= Duration::from_secs(1));
         assert!(
-            matches!(&error, DaemonError::CommandExit { output, exit_code: 125 } if output.starts_with("partial") && !output.contains("ZZRUN-")),
+            matches!(&error, DaemonError::CommandExit { output, exit_code: 125 } if output == "partial\n"),
             "{error:?}"
         );
         assert_eq!(
@@ -77960,6 +77975,66 @@ set-option -g @alias-mixed-next yes
                 .unwrap()
                 .stderr,
             format!("run-pane: timed out after 1s on {target}; the command keeps running\n")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_notes_output_the_scrollback_dropped() {
+        let shared = Arc::new(Shared::new(1));
+        let client = ClientId(7);
+        let mut context = ExecutionContext::default();
+        for command in [
+            CommandInvocation::new("set-option", ["-g", "history-limit", "200"]),
+            CommandInvocation::new(
+                "new-session",
+                [
+                    "-d",
+                    "-s",
+                    "runtruncated",
+                    "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh",
+                ],
+            ),
+        ] {
+            shared
+                .execute(client, ClientKind::Command, &mut context, &command)
+                .expect("seed the run-pane terminal");
+        }
+        let target = context.pane.expect("run-pane pane").to_string();
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.contains("zz-ready")
+        });
+        shared
+            .inner
+            .lock()
+            .client_entry(client)
+            .command_streams
+            .replace(CommandStreams::default());
+        let execution = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("run-pane", ["-t", &target, "--", "seq 1 2000"]),
+            )
+            .expect("seq exits zero");
+        assert!(
+            execution.output.ends_with("\n1999\n2000\n"),
+            "{:?}",
+            execution.output
+        );
+        let lines = execution.output.lines().count();
+        assert!(lines < 2000, "{lines}");
+        assert_eq!(
+            shared.inner.lock().clients[&client]
+                .command_streams
+                .as_ref()
+                .unwrap()
+                .stderr,
+            format!(
+                "run-pane: output truncated to its last {lines} lines ({target} history-limit \
+                 200); redirect to a file for all of it\n"
+            )
         );
     }
 
@@ -78732,22 +78807,40 @@ set-option -g @alias-mixed-next yes
         let echo = format!(
             "printf '\\n%s\\n' '{marker}-BEGIN'; echo hi; printf '\\n{marker}-RC=%d=END\\n' $?\n"
         );
-        assert_eq!(run_pane_result(&echo, marker, false), (None, None));
+        assert_eq!(run_pane_result(&echo, marker, false), (None, None, false));
         let screen = format!(
             "{echo}{marker}-BEGIN\nstale\n{marker}-BEGIN\nhi  \n\n{marker}-RC=7=END\nprompt"
         );
         assert_eq!(
             run_pane_result(&screen, marker, false),
-            (Some("hi  \n"), Some(7))
+            (Some("hi  \n"), Some(7), false)
         );
         for code in ["%d", "-1", "+1", "256", ""] {
             let screen = format!("{marker}-BEGIN\n{marker}-RC={code}=END\n");
             assert_eq!(run_pane_result(&screen, marker, false).1, None);
         }
         let screen = format!("{marker}-BEGIN\n{}", "line\n".repeat(10_001));
-        let (output, code) = run_pane_result(&screen, marker, true);
+        let (output, code, _) = run_pane_result(&screen, marker, true);
         assert_eq!(code, None);
         assert_eq!(output.expect("retained tail").lines().count(), 10_000);
+        let screen = format!("{}\n{marker}-RC=0=END\n$ ", "line\n".repeat(10_001));
+        let (output, code, truncated) = run_pane_result(&screen, marker, true);
+        assert_eq!((code, truncated), (Some(0), true));
+        assert_eq!(output.expect("retained tail").lines().count(), 9_997);
+        let screen = format!(
+            "{marker}-BEGIN\n{}\n{marker}-RC=0=END\n$ ",
+            "line\n".repeat(20)
+        );
+        assert!(!run_pane_result(&screen, marker, false).2);
+        let screen = format!("{marker}-BEGIN\npartial\n{}", "\n".repeat(30));
+        assert_eq!(
+            run_pane_result(&screen, marker, true),
+            (Some("partial\n"), None, false)
+        );
+        let screen = format!("{marker}-BEGIN\n50%");
+        assert_eq!(run_pane_result(&screen, marker, false).0, Some("50%"));
+        let screen = format!("{marker}-BEGIN\n{}", "\n".repeat(5));
+        assert_eq!(run_pane_result(&screen, marker, false).0, Some(""));
     }
 
     #[cfg(unix)]
@@ -83452,8 +83545,6 @@ set-option -g @alias-mixed-next yes
             .expect("inspect text")
             .output;
         assert!(output.lines().any(|line| line == "pane_kind: terminal"));
-        assert!(output.lines().any(|line| line == "agent_state: "));
-        assert!(output.lines().any(|line| line == "permission: "));
         assert!(
             output
                 .lines()
@@ -83461,12 +83552,42 @@ set-option -g @alias-mixed-next yes
         );
         let keys = output
             .lines()
-            .map(|line| line.split_once(": ").expect("field line").0)
+            .map(|line| {
+                let (key, value) = line.split_once(": ").expect("field line");
+                assert!(!value.is_empty(), "{line:?}");
+                key
+            })
             .collect::<Vec<_>>();
+        for empty in [
+            "agent_state",
+            "agent_pending_permission",
+            "permission",
+            "browser_url",
+        ] {
+            assert!(
+                !keys.contains(&empty),
+                "{empty} is empty on a terminal pane"
+            );
+        }
+        let json = shared
+            .execute(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("inspect", ["--json", "-t", "%0"]),
+            )
+            .expect("inspect json")
+            .output;
+        let row = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&json)
+            .expect("inspect JSON object");
+        assert_eq!(row["agent_state"], "");
+        assert!(row["permission"].is_null());
+        let mut ordered = INSPECT_FIELDS.iter().filter(|field| keys.contains(field));
+        assert!(keys.iter().all(|key| ordered.next() == Some(key)));
         assert_eq!(keys.first(), Some(&"session_id"));
         assert_eq!(keys.last(), Some(&"events"));
         assert_eq!(
-            keys,
+            row.keys().map(String::as_str).collect::<BTreeSet<_>>(),
             [
                 "session_id",
                 "session_name",
@@ -83508,6 +83629,8 @@ set-option -g @alias-mixed-next yes
                 "verbs",
                 "events",
             ]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
         );
     }
 
@@ -84813,7 +84936,7 @@ set-option -g @alias-mixed-next yes
                     ),
                 )
                 .expect("display state");
-            assert_eq!(display.output, format!("{expected}:0"));
+            assert_eq!(display.output, format!("{expected}:"));
             let panes = shared
                 .execute(
                     control,
@@ -90291,9 +90414,9 @@ set-option -g @alias-mixed-next yes
         assert_eq!(
             shared
                 .show_last_output(ClientId(u64::MAX), &context, &[])
-                .expect("unknown exit status")
+                .expect("running command")
                 .output,
-            format!("{pane} $ false\n```\nfailed\n```")
+            format!("{pane} $ false\nexit: running\n```\nfailed\n```")
         );
         assert!(terminal.feed(Arc::from(b"\x1b]133;D;1\x07\x1b]133;A\x07$ ".as_slice())));
         assert_eq!(
@@ -90310,6 +90433,16 @@ set-option -g @alias-mixed-next yes
                 .expect("cleared exit status")
                 .output,
             format!("{pane} $ false\n```\nfailed\n```")
+        );
+        assert!(terminal.feed(Arc::from(
+            b"\x1b]133;D;1\x07\x1b]133;A\x07$ \x1b]133;B\x07sleep 9\x1b]133;C\x07\r\n".as_slice()
+        )));
+        assert_eq!(
+            shared
+                .show_last_output(ClientId(u64::MAX), &context, &[])
+                .expect("running command after a failure")
+                .output,
+            format!("{pane} $ sleep 9\nexit: running\n```\n\n```")
         );
     }
 
@@ -123203,7 +123336,7 @@ bind - split-window -v -c "#{pane_current_path}"
             let text = run(&["inspect", "-t", &target])
                 .expect("no pending text")
                 .output;
-            assert!(text.lines().any(|line| line == "permission: "));
+            assert!(!text.lines().any(|line| line.starts_with("permission:")));
         }
 
         #[test]
