@@ -1,10 +1,9 @@
 use keymap::ChromeOverride;
 use std::{
     env, fmt,
-    fs::{self, File, OpenOptions},
-    io::{self, ErrorKind, Read as _, Write as _},
+    fs::{self, File},
+    io::{self, ErrorKind, Read as _},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
     time::SystemTime,
 };
 use zz_client::StatusBarSettings;
@@ -13,7 +12,9 @@ use zz_client::appearance::{
     MAX_CORNER_RADIUS, ThemeModeSetting, is_builtin_theme,
 };
 use zz_client::url_input::SearchProvider;
-pub use zz_daemon_client::{HostEntry, RejectedHost, configured_fleet_hosts, validate_fleet_host};
+pub use zz_daemon_client::{
+    HostEntry, RejectedHost, atomic_write, configured_fleet_hosts, validate_fleet_host,
+};
 use zz_protocol::{ConfigOverrideEntry, MAX_GUI_TEXT_BYTES, MuxOptionKey};
 use zz_terminal::{
     AppearanceColor, AppearanceConfigKey, CellHeightAdjustment, Color, CursorBlinkPolicy,
@@ -79,7 +80,6 @@ pub const DEFAULT_EDITOR_SOFT_WRAP: bool = true;
 pub const DEFAULT_EDITOR_VIM_MODE: bool = true;
 pub const DEFAULT_EXPERIMENTAL_AGENT_PANE: bool = true;
 pub const DEFAULT_EXPERIMENTAL_EDITOR_PANE: bool = false;
-static CONFIG_TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// The one agent key the client still owns: the adapter commands and the
 /// auto-approve flag are mux options now, because the daemon spawns the
@@ -1967,60 +1967,6 @@ pub fn append_config_line(source: &str, key: &str, value: &str) -> String {
     edited
 }
 
-pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let parent = path.parent().ok_or_else(|| {
-        io::Error::new(
-            ErrorKind::InvalidInput,
-            "configuration path has no parent directory",
-        )
-    })?;
-    fs::create_dir_all(parent)?;
-    let (temporary_path, mut temporary_file) = create_config_temp_file(path, parent)?;
-    let write_result = (|| {
-        if let Ok(metadata) = fs::metadata(path) {
-            temporary_file.set_permissions(metadata.permissions())?;
-        }
-        temporary_file.write_all(contents)?;
-        temporary_file.sync_all()
-    })();
-    drop(temporary_file);
-
-    if let Err(error) = write_result {
-        let _ = fs::remove_file(&temporary_path);
-        return Err(error);
-    }
-    if let Err(error) = fs::rename(&temporary_path, path) {
-        let _ = fs::remove_file(&temporary_path);
-        return Err(error);
-    }
-    Ok(())
-}
-
-pub fn create_config_temp_file(path: &Path, parent: &Path) -> io::Result<(PathBuf, File)> {
-    let file_name = path
-        .file_name()
-        .unwrap_or_else(|| std::ffi::OsStr::new(CONFIG_FILE_NAME))
-        .to_string_lossy();
-    for _ in 0..128 {
-        let nonce = CONFIG_TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let temporary_path =
-            parent.join(format!(".{file_name}.tmp-{}-{nonce}", std::process::id()));
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary_path)
-        {
-            Ok(file) => return Ok((temporary_path, file)),
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Err(io::Error::new(
-        ErrorKind::AlreadyExists,
-        "could not allocate a unique temporary configuration file",
-    ))
-}
-
 pub fn config_overrides_for_host(
     entries: Vec<ConfigOverrideEntry>,
     remote: bool,
@@ -2300,6 +2246,29 @@ mod tests {
                 },
                 ..AppConfig::default()
             }
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_edits_through_a_symlink_edit_its_target() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target = directory.path().join("dotfiles-config");
+        fs::write(&target, "# mine\ntray = true\n").expect("write target");
+        let link = directory.path().join(CONFIG_FILE_NAME);
+        std::os::unix::fs::symlink(&target, &link).expect("link config");
+
+        assert!(write_config_edit_at(&link, "tray", Some("false")).expect("edit"));
+
+        assert!(
+            fs::symlink_metadata(&link)
+                .expect("link")
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(&target).expect("read target"),
+            "# mine\ntray = false\n"
         );
     }
 

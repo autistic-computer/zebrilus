@@ -57,8 +57,8 @@ pub fn apply_fleet_host_entry(
         Some("host name must not be empty".to_owned())
     } else if name.chars().any(char::is_whitespace) {
         Some("host name must not contain whitespace".to_owned())
-    } else if name == "local" {
-        Some("host name `local` is reserved".to_owned())
+    } else if matches!(name, "local" | "all") {
+        Some(format!("host name `{name}` is reserved"))
     } else {
         None
     };
@@ -93,6 +93,26 @@ pub fn apply_fleet_host_entry(
     hosts.remove(index);
     hosts.push(entry);
     Some(format!("duplicate host `{name}`; last entry wins"))
+}
+
+pub fn resolve_fleet_host(hosts: &[HostEntry], name: &str) -> Result<Endpoint, String> {
+    if let Some(host) = hosts.iter().find(|host| host.name == name) {
+        return Ok(host.endpoint.clone());
+    }
+    match name {
+        "local" => return Err("`--host local` is this machine; drop --host".to_owned()),
+        "all" => {
+            return Err(
+                "`--host all` runs read-only commands on every host; name one host here".to_owned(),
+            );
+        }
+        _ => {}
+    }
+    let destination = name.strip_prefix("ssh://").unwrap_or(name);
+    if destination.starts_with('-') {
+        return Err("ssh destination must not start with `-`".to_owned());
+    }
+    Endpoint::parse(&format!("ssh://{destination}")).map_err(|error| error.to_string())
 }
 
 pub fn validate_fleet_host(name: &str, endpoint: &str) -> Result<(), String> {
@@ -357,6 +377,22 @@ fn append_config_line(source: &str, key: &str, value: &str) -> String {
 }
 
 pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let target = write_target(path);
+    match replace_file(&target, contents) {
+        Err(error)
+            if target != path
+                && matches!(
+                    error.kind(),
+                    ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem
+                ) =>
+        {
+            replace_file(path, contents)
+        }
+        result => result,
+    }
+}
+
+fn replace_file(path: &Path, contents: &[u8]) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| {
         io::Error::new(
             ErrorKind::InvalidInput,
@@ -383,6 +419,15 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
         return Err(error);
     }
     Ok(())
+}
+
+fn write_target(path: &Path) -> PathBuf {
+    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        && let Ok(target) = fs::canonicalize(path)
+    {
+        return target;
+    }
+    path.to_path_buf()
 }
 
 fn create_config_temp_file(path: &Path, parent: &Path) -> io::Result<(PathBuf, File)> {
@@ -650,6 +695,95 @@ mod tests {
             error.to_string(),
             format!("configuration edit exceeds the {MAX_CONFIG_BYTES}-byte limit")
         );
+    }
+
+    #[test]
+    fn host_values_resolve_to_a_configured_name_or_an_ssh_destination() {
+        let (hosts, rejected) =
+            parse_fleet_hosts("host-xps = ssh://demfabris@xps\nhost-all = ssh://every\n");
+        assert_eq!(rejected[0].reason, "host name `all` is reserved");
+        let resolve = |name| resolve_fleet_host(&hosts, name);
+        assert_eq!(
+            resolve("xps").ok(),
+            Endpoint::parse("ssh://demfabris@xps").ok()
+        );
+        for (value, expected) in [
+            ("me@box", "ssh://me@box"),
+            ("box:2222", "ssh://box:2222"),
+            ("ssh://me@box", "ssh://me@box"),
+            ("ubuntu", "ssh://ubuntu"),
+        ] {
+            assert_eq!(
+                resolve(value).ok(),
+                Endpoint::parse(expected).ok(),
+                "{value}"
+            );
+        }
+        assert_eq!(
+            resolve("-oProxyCommand=x"),
+            Err("ssh destination must not start with `-`".to_owned())
+        );
+        assert_eq!(
+            resolve("ssh://-oProxyCommand=x"),
+            Err("ssh destination must not start with `-`".to_owned())
+        );
+        assert!(resolve("local").unwrap_err().contains("this machine"));
+        assert!(resolve("all").unwrap_err().contains("read-only"));
+        assert!(resolve("me@@box").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writes_through_a_symlinked_config_keep_the_link() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("dotfiles/zz-config");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "tray = false\n").unwrap();
+        let link = directory.path().join("zz").join(CONFIG_FILE_NAME);
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink("../dotfiles/zz-config", &link).unwrap();
+
+        write_fleet_host_at(&link, "xps", "ssh://me@xps").unwrap();
+
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "tray = false\nhost-xps = ssh://me@xps\n"
+        );
+        assert_eq!(fs::read_dir(link.parent().unwrap()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_into_a_read_only_directory_is_replaced_by_the_written_file() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = directory.path().join("store");
+        fs::create_dir_all(&store).unwrap();
+        let target = store.join("zz-config");
+        fs::write(&target, "tray = false\n").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
+        fs::set_permissions(&store, fs::Permissions::from_mode(0o555)).unwrap();
+        let link = directory.path().join("zz").join(CONFIG_FILE_NAME);
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let written = write_fleet_host_at(&link, "xps", "ssh://me@xps");
+        fs::set_permissions(&store, fs::Permissions::from_mode(0o755)).unwrap();
+
+        written.unwrap();
+        assert!(fs::symlink_metadata(&link).unwrap().is_file());
+        assert_eq!(
+            fs::read_to_string(&link).unwrap(),
+            "tray = false\nhost-xps = ssh://me@xps\n"
+        );
+        assert_eq!(fs::read_to_string(&target).unwrap(), "tray = false\n");
     }
 
     #[test]

@@ -4,7 +4,7 @@ title: zz-cli crate
 description: Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
 resource: crates/zz-cli/src/lib.rs
 tags: [crate, cli, daemon, tui, headless, packaging]
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-20T12:00:00-03:00
 ---
 
 # Overview
@@ -35,3 +35,37 @@ GUI-free" step checks the normal dependencies with `cargo tree -p zz-cli`.
 Install it on Linux or macOS with `install.sh --headless`, or run
 `curl -fsSL https://zzmux.sh/install.sh | sh -s -- --headless`.
 The installer puts `zz` in `~/.local/bin`; `--prefix <dir>` selects another prefix.
+
+# Global flags and other machines
+
+`application_arguments` reads zz's own flags only before the verb: `--host NAME` / `--host=NAME`
+there, and `--socket` there or after `daemon`, `proxy` and `app` (the launcher and the remote
+start scripts pass it in that spot). Nothing after `--` is a zz flag, so a nested
+`zz run-pane -t %3 -- zz --host xps inspect -a` or a `-- --host 0.0.0.0` payload stays intact;
+`diagnostics::application_args_from` and `verbose_requested` stop at that `--` too, so a
+`-- cargo test --verbose` payload keeps its word and leaves verbose logging off.
+`zz --help` lists the global flags and every catalogued verb; `zz -h` stays the pinned tmux banner.
+
+`configured_host_endpoint` resolves `--host` through `zz_daemon_client::resolve_fleet_host`, which
+the raw TUI shares: a `host-NAME` line wins, otherwise the value is an ssh destination, and a value
+starting with `-` is refused. `local` and `all` are reserved. `--host all` re-runs the CLI once per
+configured host in parallel for a chain whose every command passes `!spec.mutates` (`inspect`,
+`list-hosts` and `protocol-version` count as read-only). The parent checks the chain once first,
+so an unknown verb or a usage error prints a single time with its own exit status. Each child
+runs in its own session with no controlling terminal, so ssh can never prompt on the caller's
+tty; a host that needs a password or a host-key answer fails with the hint below. Text lines get
+a `NAME: ` prefix, JSON lines under `--json` get `host_name` first (`from_host` when the row has
+its own `host_name`, as `list-hosts` rows do), and the exit is 1 when any host failed. Bare
+`zz --host NAME` runs `new-session -A` there. Over `--host`, `send-keys`, `send-text`,
+`run-pane`, `paste-buffer` and `agent-send` without `-t` exit 2, since no remote pane is the
+caller's. `host_connect_failure` turns endpoint errors, including the raw TUI's, into the fix:
+`zz fleet install NAME` for a missing zz, `--restart-daemon` for a host on an older protocol,
+"update zz on this machine" for a newer one, `ssh DEST` once or `zz fleet sync` for a refused
+login, `ssh DEST` once for an untrusted host key, else `can't reach NAME: <reason>`. DEST is the
+login zz tried (`user@box`, or `ssh://user@box:PORT` with a port). OpenSSH folds every failure
+into exit 255, so login and host-key refusals are read from the reason the endpoint built from
+ssh's stderr.
+
+`zz tools` in every form is answered by the CLI from the guide text in `zz-daemon`, so it needs no
+daemon and never prints an older daemon's guide. `just tools skill` writes
+`.agents/skills/zz-workspace/SKILL.md` from `zz_cli tools --skill`.

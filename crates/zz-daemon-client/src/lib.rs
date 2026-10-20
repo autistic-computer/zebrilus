@@ -72,7 +72,7 @@ pub use endpoint::{
 };
 pub use fleet_hosts::{
     HostEntry, RejectedHost, apply_fleet_host_entry, atomic_write, configured_fleet_hosts,
-    validate_fleet_host, write_fleet_host,
+    resolve_fleet_host, validate_fleet_host, write_fleet_host,
 };
 pub use lifecycle::{
     DaemonIdentityGuard, DaemonRecoveryError, RecoveredDaemon, daemon_identity_protocol_version,
