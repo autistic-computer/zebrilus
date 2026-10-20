@@ -1012,6 +1012,7 @@ pub(crate) enum SshFailure {
     Refused,
     Timeout,
     Unreachable,
+    WindowsShell,
 }
 
 #[cfg(any(unix, windows, test))]
@@ -1044,6 +1045,10 @@ impl SshFailure {
             Some(Self::Timeout)
         } else if contains("no route to host") || contains("network is unreachable") {
             Some(Self::Unreachable)
+        } else if contains("fullyqualifiederrorid")
+            || contains("is not recognized as an internal or external command")
+        {
+            Some(Self::WindowsShell)
         } else {
             None
         }
@@ -1067,6 +1072,9 @@ impl SshFailure {
             }
             Self::Timeout => "the ssh connection timed out",
             Self::Unreachable => "the host is not reachable from this network",
+            Self::WindowsShell => {
+                "the host's ssh shell is PowerShell or cmd, and zz needs a Linux or macOS shell there"
+            }
         }
     }
 }

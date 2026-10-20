@@ -312,18 +312,15 @@ fn daemon_executable_and_command_match(executable: Option<&Path>, command: &[OsS
 }
 
 fn daemon_executable_name_matches(name: &OsStr) -> bool {
-    if name == OsStr::new("zz") || name == OsStr::new("zz.exe") {
-        return true;
-    }
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    // Linux /proc names a replaced executable `cli (deleted)`.
     #[cfg(unix)]
-    {
-        // Linux /proc names a rebuilt-over executable `zz (deleted)`.
-        name == OsStr::new("zz (deleted)")
-    }
-    #[cfg(not(unix))]
-    {
-        false
-    }
+    let name = name.strip_suffix(" (deleted)").unwrap_or(name);
+    #[cfg(windows)]
+    let name = name.strip_suffix(".exe").unwrap_or(name);
+    ["zz", "cli", "zz_cli"].contains(&name)
 }
 
 fn wait_for_process_exit(pid: u32, start_time: u64) -> bool {
@@ -689,14 +686,23 @@ mod tests {
     #[test]
     fn deleted_executable_requires_the_exact_zz_basename() {
         let daemon = vec![OsString::from("/tmp/zz"), OsString::from("daemon")];
-        assert!(daemon_executable_and_command_match(
-            Some(Path::new("/tmp/zz (deleted)")),
-            &daemon
-        ));
+        for executable in [
+            "/tmp/zz (deleted)",
+            "/home/a/.local/lib/zz/cli",
+            "/home/a/.local/lib/zz/cli (deleted)",
+            "/Applications/zz.app/Contents/MacOS/cli",
+            "/repo/target/debug/zz_cli",
+        ] {
+            assert!(
+                daemon_executable_and_command_match(Some(Path::new(executable)), &daemon),
+                "{executable}"
+            );
+        }
         for executable in [
             "/tmp/not-zz (deleted)",
             "/tmp/zz.exe (deleted)",
             "/tmp/zz (deleted) backup",
+            "/tmp/client",
         ] {
             assert!(!daemon_executable_and_command_match(
                 Some(Path::new(executable)),
