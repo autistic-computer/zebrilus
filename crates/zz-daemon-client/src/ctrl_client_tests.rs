@@ -294,6 +294,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
         },
         server_id: Some(37),
         _ssh_forward: None,
+        unverified: None,
     };
     let result = command.into_interactive(attach);
     worker.join().unwrap();

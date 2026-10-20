@@ -69,7 +69,7 @@ use zz_terminal::TerminalColorScheme;
 
 // iOS cannot run ssh, so it tunnels in-process instead of forwarding a socket.
 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
-use crate::endpoint::SshForward;
+use crate::endpoint::{SshForward, connect_kept};
 #[cfg(target_os = "ios")]
 use crate::russh_client::{RusshForward, RusshStream};
 use crate::{
@@ -213,6 +213,8 @@ pub struct CommandClient {
     server_id: Option<u64>,
     #[cfg(all(any(unix, windows), not(target_os = "ios")))]
     _ssh_forward: Option<SshForward>,
+    #[cfg(all(unix, not(target_os = "ios")))]
+    unverified: Option<crate::endpoint::SshEndpoint>,
 }
 
 enum CommandLink {
@@ -493,6 +495,8 @@ impl CommandClient {
             server_id,
             #[cfg(all(any(unix, windows), not(target_os = "ios")))]
             _ssh_forward: None,
+            #[cfg(all(unix, not(target_os = "ios")))]
+            unverified: None,
         })
     }
 
@@ -513,14 +517,19 @@ impl CommandClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let ssh_forward = SshForward::start(endpoint, None)?;
-                    let mut client = Self::connect_route(CommandRoute {
-                        socket: ssh_forward.local_socket().to_path_buf(),
-                        display: endpoint.to_string(),
-                        facts: EndpointFactsScope::PortableTerminalSize,
-                        send_origin: false,
+                    let (mut client, ssh_forward) = connect_kept(endpoint, None, |socket| {
+                        Self::connect_route(CommandRoute {
+                            socket: socket.to_path_buf(),
+                            display: endpoint.to_string(),
+                            facts: EndpointFactsScope::PortableTerminalSize,
+                            send_origin: false,
+                        })
                     })?;
-                    client._ssh_forward = Some(ssh_forward);
+                    #[cfg(unix)]
+                    {
+                        client.unverified = ssh_forward.is_none().then(|| endpoint.clone());
+                    }
+                    client._ssh_forward = ssh_forward;
                     Ok(client)
                 }
                 #[cfg(not(any(unix, windows)))]
@@ -657,6 +666,10 @@ impl CommandClient {
             spawned_server_id,
             expect_server_id,
         ));
+        #[cfg(all(unix, not(target_os = "ios")))]
+        let verified = self.verify_kept_link(&request)?;
+        #[cfg(not(all(unix, not(target_os = "ios"))))]
+        let verified = false;
         let CommandLink::Exec {
             reader,
             writer,
@@ -667,7 +680,11 @@ impl CommandClient {
             unreachable!("legacy links returned above");
         };
         *spent = last;
-        let sent = writer.send(&request);
+        let sent = if verified {
+            Ok(())
+        } else {
+            writer.send(&request)
+        };
         let first = match sent {
             Ok(()) => reader.recv(),
             Err(error) => Err(error),
@@ -814,6 +831,54 @@ impl CommandClient {
                 _ => {}
             }
         }
+    }
+
+    /// A kept forward can outlive the daemon behind it, and the first exec cannot tell a refused
+    /// channel from a command that ended the connection. An empty exec sent ahead of `request`
+    /// can: the daemon answers it before reading the next one, so a link that gives no answer
+    /// ran nothing, and the forward is made again before `request` goes out.
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn verify_kept_link(&mut self, request: &ProtocolMessage) -> Result<bool, DaemonError> {
+        let Some(endpoint) = self.unverified.take() else {
+            return Ok(false);
+        };
+        let probe = ProtocolMessage::Exec(self.route.exec_request(
+            Vec::new(),
+            ExecFlags::default(),
+            None,
+            None,
+        ));
+        let CommandLink::Exec {
+            reader,
+            writer,
+            answered,
+            ..
+        } = &mut self.link
+        else {
+            return Ok(false);
+        };
+        let reason = match writer
+            .send(&probe)
+            .and_then(|()| writer.send(request))
+            .and_then(|()| reader.recv())
+        {
+            Ok(ProtocolMessage::ExecExit(exit)) => {
+                self.server_id = Some(exit.server_id);
+                *answered = true;
+                return Ok(true);
+            }
+            Ok(_) => "an unexpected reply".to_owned(),
+            Err(error) => error.to_string(),
+        };
+        log::debug!(
+            target: "zz_daemon::diagnostics::client",
+            "the kept forward to {endpoint} gave {reason}; making it again",
+        );
+        let (socket, forward) = crate::endpoint::remake_kept_forward(&endpoint)?;
+        self.route.socket = socket;
+        self._ssh_forward = forward;
+        self.link = self.route.connect()?;
+        Ok(false)
     }
 
     fn legacy_exec_chain(
@@ -1160,25 +1225,25 @@ impl InteractiveClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let forward = SshForward::start(endpoint, prompts)?;
-                    let stream = LocalTransport::connect(forward.local_socket())?;
-                    let connected = connect_stream_hello(
-                        ClientStream::Local(stream),
-                        endpoint,
-                        ClientKind::Interactive,
-                        short_device_name(),
-                        color_scheme,
-                        client_has_terminal,
-                        false,
-                        false,
-                        capabilities,
-                        if terminal_surface {
-                            EndpointFactsScope::PortableTerminalSize
-                        } else {
-                            EndpointFactsScope::None
-                        },
-                        attach,
-                    )?;
+                    let (connected, forward) = connect_kept(endpoint, prompts, |socket| {
+                        connect_stream_hello(
+                            ClientStream::Local(LocalTransport::connect(socket)?),
+                            endpoint,
+                            ClientKind::Interactive,
+                            short_device_name(),
+                            color_scheme,
+                            client_has_terminal,
+                            false,
+                            false,
+                            capabilities,
+                            if terminal_surface {
+                                EndpointFactsScope::PortableTerminalSize
+                            } else {
+                                EndpointFactsScope::None
+                            },
+                            attach.clone(),
+                        )
+                    })?;
                     Ok(Self::from_connected_with_ssh(connected, forward))
                 }
                 #[cfg(not(any(unix, windows)))]
@@ -1344,6 +1409,7 @@ impl InteractiveClient {
             true,
             false,
             &[],
+            false,
         )
     }
 
@@ -1359,6 +1425,7 @@ impl InteractiveClient {
             client_has_terminal,
             false,
             &[],
+            false,
         )
     }
 
@@ -1375,6 +1442,7 @@ impl InteractiveClient {
             client_has_terminal,
             false,
             capabilities,
+            false,
         )
     }
 
@@ -1413,6 +1481,7 @@ impl InteractiveClient {
             client_has_terminal,
             true,
             &[],
+            false,
         )
     }
 
@@ -1427,6 +1496,7 @@ impl InteractiveClient {
             true,
             true,
             &[],
+            false,
         )
     }
 
@@ -1442,6 +1512,7 @@ impl InteractiveClient {
             client_has_terminal,
             true,
             &[],
+            false,
         )
     }
 
@@ -1460,6 +1531,7 @@ impl InteractiveClient {
             true,
             false,
             &[],
+            true,
         )
     }
 
@@ -1476,6 +1548,7 @@ impl InteractiveClient {
             true,
             false,
             capabilities,
+            true,
         )
     }
 
@@ -1491,6 +1564,7 @@ impl InteractiveClient {
             true,
             true,
             &[],
+            true,
         )
     }
 
@@ -1509,6 +1583,7 @@ impl InteractiveClient {
             client_has_terminal,
             true,
             &[],
+            false,
         )
     }
 
@@ -1519,6 +1594,8 @@ impl InteractiveClient {
         Self::connect_endpoint_without_theme(&Endpoint::Local(path.to_owned()), client_has_terminal)
     }
 
+    /// `socks` is the desktop app's: its browser panes egress through the host on a SOCKS port
+    /// the connection's own forward opens. Everyone else rides the host's kept forward.
     fn connect_endpoint_with_prompts_and_terminal(
         endpoint: &Endpoint,
         color_scheme: Option<TerminalColorScheme>,
@@ -1526,6 +1603,7 @@ impl InteractiveClient {
         client_has_terminal: bool,
         terminal_surface: bool,
         extra_capabilities: &[&str],
+        socks: bool,
     ) -> Result<Self, DaemonError> {
         let device_name = short_device_name();
         match endpoint {
@@ -1552,6 +1630,7 @@ impl InteractiveClient {
             Endpoint::Ssh(endpoint) => {
                 #[cfg(target_os = "ios")]
                 {
+                    let _ = socks;
                     let (russh_forward, stream) = RusshForward::start(endpoint, prompts)?;
                     let connected = connect_stream_with_startup_owner(
                         ClientStream::Ssh(stream),
@@ -1575,29 +1654,35 @@ impl InteractiveClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let ssh_forward = SshForward::start(endpoint, prompts)?;
-                    let stream = LocalTransport::connect(ssh_forward.local_socket())?;
-                    let connected = connect_stream_with_startup_owner(
-                        ClientStream::Local(stream),
-                        endpoint,
-                        ClientKind::Interactive,
-                        device_name,
-                        color_scheme,
-                        client_has_terminal,
-                        false,
-                        false,
-                        extra_capabilities,
-                        if terminal_surface {
-                            EndpointFactsScope::PortableTerminalSize
-                        } else {
-                            EndpointFactsScope::None
-                        },
-                    )?;
+                    let connect = |socket: &Path| {
+                        connect_stream_with_startup_owner(
+                            ClientStream::Local(LocalTransport::connect(socket)?),
+                            endpoint,
+                            ClientKind::Interactive,
+                            device_name.clone(),
+                            color_scheme,
+                            client_has_terminal,
+                            false,
+                            false,
+                            extra_capabilities,
+                            if terminal_surface {
+                                EndpointFactsScope::PortableTerminalSize
+                            } else {
+                                EndpointFactsScope::None
+                            },
+                        )
+                    };
+                    let (connected, ssh_forward) = if socks {
+                        let ssh_forward = SshForward::start(endpoint, prompts)?;
+                        (connect(ssh_forward.local_socket())?, Some(ssh_forward))
+                    } else {
+                        connect_kept(endpoint, prompts, connect)?
+                    };
                     Ok(Self::from_connected_with_ssh(connected, ssh_forward))
                 }
                 #[cfg(not(any(unix, windows)))]
                 {
-                    let _ = (endpoint, prompts);
+                    let _ = (endpoint, prompts, socks);
                     Err(crate::EndpointError::UnsupportedPlatform.into())
                 }
             }
@@ -1621,10 +1706,10 @@ impl InteractiveClient {
     #[cfg(all(any(unix, windows), not(target_os = "ios")))]
     fn from_connected_with_ssh(
         connected: Connected<ClientStream>,
-        ssh_forward: SshForward,
+        ssh_forward: Option<SshForward>,
     ) -> Self {
         let mut client = Self::from_connected(connected);
-        client.ssh_forward = Some(ssh_forward);
+        client.ssh_forward = ssh_forward;
         client
     }
 

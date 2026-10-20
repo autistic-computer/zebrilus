@@ -286,9 +286,24 @@ directory never collide on a name. Builds before 2026-10-20 made a `zz-ssh-XXXXX
 process and never removed it; the first process that needs the directory `rmdir`s the empty ones
 older than ten minutes.
 
-**Remaining cost:** a cold connect still runs three ssh children, now over one handshake. Folding the
-probe into the auto-start exec would make it two (the start script already re-checks the socket, so
-it only needs to print the path it resolved).
+### Kept forwards
+
+The CLI does not make a forward per call. `CommandClient`, the TUI and control clients
+(`zz events`, `zz -C`, `agent-send --progress`) go through `connect_kept`, which dials
+`<ssh dir>/c<hash>.sock`, a forward the host's master keeps between calls, and runs probe, start
+and `-O forward` only when that fails: the socket is missing or refused, or the handshake ends early
+or reports another protocol. An exec link has no handshake of its own, so the command client sends
+an empty `Exec` ahead of its first real one; the daemon answers it before reading the next, so a
+link that gives no answer ran nothing, and the forward is made again before the command goes out.
+Parallel calls to a host whose forward is gone take turns on `c<hash>.sock.lock`, so one logs in
+and the rest ride it. A warm `zz --host xps list-sessions` takes about 40 ms from the Mac, 0.45 s
+when the forward has to be made again, and repeated calls leave the one master they found.
+
+Only the desktop app's connection opens `-D` (SOCKS for browser egress) and a forward of its own,
+cancelled when it drops. Probe and start that ride a live master are time-boxed at 15 s: a master
+whose network died answers nothing until its keepalive gives up (minutes for a user's
+`ServerAliveInterval 60`), so past that the master gets `ssh -O stop` and the next call logs in
+afresh. A cold connect still runs probe, start and forward as three ssh steps over one login.
 
 ## Password and host-key prompts
 
