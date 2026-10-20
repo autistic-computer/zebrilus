@@ -1896,6 +1896,17 @@ impl ForegroundSource {
     fn shell_process_id(&self) -> Option<u32> {
         self.shell.filter(|process_id| *process_id != 0)
     }
+
+    fn canonical(&self) -> Option<bool> {
+        #[cfg(unix)]
+        {
+            self.master.canonical()
+        }
+        #[cfg(not(unix))]
+        {
+            None
+        }
+    }
 }
 
 static OUTPUT_CLOCK: LazyLock<Instant> = LazyLock::new(Instant::now);
@@ -2727,6 +2738,11 @@ impl TerminalSession {
             .read()
             .as_ref()?
             .shell_process_id()
+    }
+
+    #[must_use]
+    pub fn tty_canonical(&self) -> Option<bool> {
+        self.events.state.foreground.read().as_ref()?.canonical()
     }
 
     pub fn wait_for_identity(&self, timeout: Duration) -> bool {
@@ -9411,28 +9427,45 @@ fn blank_prompt_lines(
             .map_err(capture_failure)
     };
     let mut row = start;
-    let mut lines = output.split('\n').peekable();
-    let mut blanked = String::with_capacity(output.len());
-    while let Some(line) = lines.next() {
-        let prompt = if row <= end {
+    let lines = output.split('\n').collect::<Vec<_>>();
+    let mut kinds = Vec::with_capacity(lines.len());
+    for _ in &lines {
+        kinds.push(if row <= end {
             let first = row_at(row)?;
-            let prompt =
-                first.semantic_prompt().map_err(capture_failure)? != RowSemanticPrompt::None;
+            let kind = first.semantic_prompt().map_err(capture_failure)?;
             let mut wrapped = first.is_wrapped().map_err(capture_failure)?;
             row += 1;
             while joined && wrapped && row <= end {
                 wrapped = row_at(row)?.is_wrapped().map_err(capture_failure)?;
                 row += 1;
             }
-            prompt
+            kind
         } else {
-            false
+            RowSemanticPrompt::None
+        });
+    }
+    let mut output_follows = false;
+    let mut input = vec![false; lines.len()];
+    for (index, kind) in kinds.iter().enumerate().rev() {
+        input[index] = match kind {
+            RowSemanticPrompt::None => {
+                output_follows = true;
+                false
+            }
+            RowSemanticPrompt::Prompt => {
+                output_follows = false;
+                true
+            }
+            RowSemanticPrompt::Continuation => output_follows,
         };
-        if !prompt {
-            blanked.push_str(line);
-        }
-        if lines.peek().is_some() {
+    }
+    let mut blanked = String::with_capacity(output.len());
+    for (index, line) in lines.iter().enumerate() {
+        if index > 0 {
             blanked.push('\n');
+        }
+        if !input[index] {
+            blanked.push_str(line);
         }
     }
     Ok(blanked)
@@ -22767,6 +22800,27 @@ mod tests {
         assert_eq!(
             capture_terminal(&bare, None, skip),
             capture_terminal(&bare, None, options)
+        );
+    }
+
+    #[test]
+    fn skip_input_keeps_output_printed_without_a_command_mark() {
+        let skip = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            skip_input: true,
+            ..CaptureOptions::default()
+        };
+        let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+        terminal.vt_write(
+            b"\x1b]133;A\x07$ \x1b]133;B\x07(echo DONE)\r\nDONE\r\n\
+              \x1b]133;A\x07$ \x1b]133;B\x07",
+        );
+        let skipped = capture_terminal(&terminal, None, skip).expect("capture");
+        assert_eq!(
+            skipped.lines().take(3).collect::<Vec<_>>(),
+            ["", "DONE", ""]
         );
     }
 

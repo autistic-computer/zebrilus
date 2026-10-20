@@ -30289,7 +30289,7 @@ impl Shared {
                 .window_for_pane(pane)
                 .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
             let session = inner.engine.state.windows[&window].session;
-            let client = gui_client(&inner, session).ok_or_else(|| {
+            gui_client(&inner, session).ok_or_else(|| {
                 let name = inner
                     .engine
                     .state
@@ -30300,13 +30300,7 @@ impl Shared {
                     "no zz window shows session {name} on {}",
                     inner.engine.format_host_short()
                 )))
-            })?;
-            let subscriber = inner
-                .client(client)
-                .and_then(|c| c.subscriber.as_ref())
-                .cloned()
-                .ok_or(ServerError::PaneNotAttached(pane))?;
-            (client, subscriber)
+            })?
         };
         let (wait, reply) = agent_waits::reply::<Result<String, String>>(
             self,
@@ -51846,12 +51840,53 @@ fn parse_pane_timeout(verb: &str, value: &str) -> Result<Duration, ServerError> 
     Duration::try_from_secs_f64(value.parse().map_err(|_| invalid())?).map_err(|_| invalid())
 }
 
+const RUN_PANE_LITERAL: &str = " _./,:=+@%~-";
+
+fn run_pane_line(marker: &str, eval: &str, command: &str) -> String {
+    let mut escaped = String::with_capacity(command.len());
+    for character in command.chars() {
+        if character.is_ascii_alphanumeric()
+            || !character.is_ascii()
+            || RUN_PANE_LITERAL.contains(character)
+        {
+            escaped.push(character);
+        } else {
+            let _ = write!(escaped, "\\0{:03o}", u32::from(character));
+        }
+    }
+    format!(
+        " printf '\\n%s\\n' '{marker}-BEGIN'; {eval} \"$(printf '%b' '{escaped}')\"; printf \
+         '\\n{marker}-RC=%d=END\\n' $?"
+    )
+}
+
+fn run_pane_command(escaped: &str) -> Option<String> {
+    let mut command = String::with_capacity(escaped.len());
+    let mut rest = escaped;
+    while let Some(index) = rest.find("\\0") {
+        command.push_str(&rest[..index]);
+        let digits = rest.get(index + 2..index + 5)?;
+        command.push(char::from(u8::from_str_radix(digits, 8).ok()?));
+        rest = &rest[index + 5..];
+    }
+    command.push_str(rest);
+    Some(command)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RunStart {
+    Marked,
+    Dropped,
+    Joined,
+}
+
 fn run_pane_result<'a>(
     screen: &'a str,
     marker: &str,
     collecting: bool,
-) -> (Option<&'a str>, Option<u8>, bool) {
+) -> (Option<&'a str>, Option<u8>, RunStart) {
     let begin = format!("{marker}-BEGIN");
+    let typed = format!("'{begin}'");
     let prefix = format!("{marker}-RC=");
     let lines = screen
         .split_inclusive('\n')
@@ -51862,11 +51897,14 @@ fn run_pane_result<'a>(
     let capture_start = offset;
     let mut start = collecting.then_some(offset);
     let mut saw_begin = false;
+    let mut echo_end = None;
     for line in lines.into_iter().rev() {
         let text = line.strip_suffix('\n').unwrap_or(line);
         if text == begin {
             start = Some(offset + line.len());
             saw_begin = true;
+        } else if text.contains(&typed) {
+            echo_end = Some(offset + line.len());
         } else if let Some(code) = text
             .strip_prefix(&prefix)
             .and_then(|code| code.strip_suffix("=END"))
@@ -51874,11 +51912,18 @@ fn run_pane_result<'a>(
             && code.bytes().all(|byte| byte.is_ascii_digit())
             && let Ok(code) = code.parse::<u8>()
         {
-            let segment = &screen[start.unwrap_or(capture_start)..offset];
+            let begin = if saw_begin {
+                RunStart::Marked
+            } else if start.is_none() && echo_end.is_some() {
+                RunStart::Joined
+            } else {
+                RunStart::Dropped
+            };
+            let segment = &screen[start.or(echo_end).unwrap_or(capture_start)..offset];
             return (
                 Some(segment.strip_suffix('\n').unwrap_or(segment)),
                 Some(code),
-                !saw_begin,
+                begin,
             );
         }
         offset += line.len();
@@ -51892,7 +51937,7 @@ fn run_pane_result<'a>(
             (kept + 1).min(rest.len())
         }]
     });
-    (partial, None, false)
+    (partial, None, RunStart::Marked)
 }
 
 fn parse_send_text_args(args: &[RawText]) -> Result<ParsedSendText, ServerError> {
@@ -52066,12 +52111,12 @@ fn unwrap_run_pane(capture: &LastCommandCapture) -> Option<(LastCommandCapture, 
     let start = capture.command.find("printf '\\n%s\\n' 'ZZRUN-")?;
     let (marker, rest) =
         capture.command[start + "printf '\\n%s\\n' '".len()..].split_once("-BEGIN'; ")?;
-    let command = rest
-        .strip_prefix("command ")
-        .unwrap_or(rest)
-        .strip_prefix("eval '")?
-        .strip_suffix(&format!("'; printf '\\n{marker}-RC=%d=END\\n' $?"))?
-        .replace(r"'\''", "'");
+    let command = run_pane_command(
+        rest.strip_prefix("command ")
+            .unwrap_or(rest)
+            .strip_prefix("eval \"$(printf '%b' '")?
+            .strip_suffix(&format!("')\"; printf '\\n{marker}-RC=%d=END\\n' $?"))?,
+    )?;
     let output = capture
         .output
         .strip_prefix(&format!("{marker}-BEGIN"))
@@ -52949,15 +52994,14 @@ Print nothing on success.
 ";
 }
 
-fn gui_client(inner: &ServerState, session: SessionId) -> Option<ClientId> {
+fn gui_client(inner: &ServerState, session: SessionId) -> Option<(ClientId, Arc<OutboundMailbox>)> {
     let clients = inner.attached.get(&session)?;
     let find = |desktop: bool| {
-        clients.iter().copied().find(|client| {
-            inner.client(*client).is_some_and(|client| {
-                client.kind == Some(ClientKind::Interactive)
-                    && client.subscriber.is_some()
-                    && (client.path_picker || !desktop)
-            })
+        clients.iter().find_map(|id| {
+            let client = inner.client(*id)?;
+            let subscriber = client.subscriber.as_ref()?;
+            (client.kind == Some(ClientKind::Interactive) && (client.path_picker || !desktop))
+                .then(|| (*id, Arc::clone(subscriber)))
         })
     };
     find(true).or_else(|| find(false))
@@ -78133,9 +78177,16 @@ set-option -g @alias-mixed-next yes
         wait_for_capture(&shared, client, &target, |screen| {
             screen.lines().any(|line| line.trim_end() == ">")
         });
-        let (result, stderr, elapsed) =
-            run_pane_exit(&shared, client, &target, &["--", "echo never"]);
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let kept = directory.path().join("kept.txt");
+        std::fs::write(&kept, "kept").expect("write the kept file");
+        let command = format!(
+            "cd {} && rm -f kept.txt && grep -c 'x' /dev/null",
+            directory.path().display()
+        );
+        let (result, stderr, elapsed) = run_pane_exit(&shared, client, &target, &["--", &command]);
         assert_eq!(result, Err((String::new(), 3)));
+        assert!(kept.exists(), "the typed command ran inside the open quote");
         assert_eq!(
             stderr,
             format!(
@@ -78156,6 +78207,69 @@ set-option -g @alias-mixed-next yes
         let (result, _, _) =
             run_pane_exit(&shared, client, &target, &["--", "echo \"it's\" 'a b' hi!"]);
         assert_eq!(result, Ok("it's a b hi!\n".to_owned()));
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("send-keys", ["-t", &target, "false &&", "Enter"]),
+            )
+            .expect("leave an unfinished line");
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen
+                .lines()
+                .rev()
+                .find(|line| !line.trim().is_empty())
+                .is_some_and(|line| line.trim_end() == ">")
+        });
+        let (result, stderr, _) = run_pane_exit(&shared, client, &target, &["--", "echo joined"]);
+        assert_eq!(result, Ok("joined\n".to_owned()));
+        assert_eq!(
+            stderr,
+            format!(
+                "run-pane: {target}'s shell joined the command to an unfinished line (one ending \
+                 in && or \\, for example); the output may include text from that line\n"
+            )
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_pane_refuses_a_shell_script_running_in_the_foreground() {
+        let (shared, client, target) =
+            send_text_fixture("runscript", "printf 'zz-ready\\r\\n'; PS1='' exec /bin/sh");
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(
+                    "send-keys",
+                    [
+                        "-t",
+                        &target,
+                        "sh -c 'echo started; sleep 1.5; echo slept'",
+                        "Enter",
+                    ],
+                ),
+            )
+            .expect("start a script");
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.lines().any(|line| line.trim_end() == "started")
+        });
+        let (result, stderr, elapsed) =
+            run_pane_exit(&shared, client, &target, &["--", "echo typed"]);
+        assert_eq!(result, Err((String::new(), 3)));
+        assert!(
+            stderr.starts_with(&format!("run-pane: {target} is running a "))
+                && stderr.ends_with(" script, not a shell; nothing was typed\n"),
+            "{stderr:?}"
+        );
+        assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+        let screen = wait_for_capture(&shared, client, &target, |screen| {
+            screen.lines().any(|line| line.trim_end() == "slept")
+        });
+        assert!(!screen.contains("ZZRUN-"), "{screen:?}");
     }
 
     #[cfg(unix)]
@@ -79097,13 +79211,21 @@ set-option -g @alias-mixed-next yes
         let echo = format!(
             "printf '\\n%s\\n' '{marker}-BEGIN'; echo hi; printf '\\n{marker}-RC=%d=END\\n' $?\n"
         );
-        assert_eq!(run_pane_result(&echo, marker, false), (None, None, false));
+        assert_eq!(
+            run_pane_result(&echo, marker, false),
+            (None, None, RunStart::Marked)
+        );
         let screen = format!(
             "{echo}{marker}-BEGIN\nstale\n{marker}-BEGIN\nhi  \n\n{marker}-RC=7=END\nprompt"
         );
         assert_eq!(
             run_pane_result(&screen, marker, false),
-            (Some("hi  \n"), Some(7), false)
+            (Some("hi  \n"), Some(7), RunStart::Marked)
+        );
+        let screen = format!("before\n{echo}hi\n\n{marker}-RC=0=END\n$ ");
+        assert_eq!(
+            run_pane_result(&screen, marker, false),
+            (Some("hi\n"), Some(0), RunStart::Joined)
         );
         for code in ["%d", "-1", "+1", "256", ""] {
             let screen = format!("{marker}-BEGIN\n{marker}-RC={code}=END\n");
@@ -79114,18 +79236,18 @@ set-option -g @alias-mixed-next yes
         assert_eq!(code, None);
         assert_eq!(output.expect("retained tail").lines().count(), 10_000);
         let screen = format!("{}\n{marker}-RC=0=END\n$ ", "line\n".repeat(10_001));
-        let (output, code, truncated) = run_pane_result(&screen, marker, true);
-        assert_eq!((code, truncated), (Some(0), true));
+        let (output, code, begin) = run_pane_result(&screen, marker, true);
+        assert_eq!((code, begin), (Some(0), RunStart::Dropped));
         assert_eq!(output.expect("retained tail").lines().count(), 9_997);
         let screen = format!(
             "{marker}-BEGIN\n{}\n{marker}-RC=0=END\n$ ",
             "line\n".repeat(20)
         );
-        assert!(!run_pane_result(&screen, marker, false).2);
+        assert_eq!(run_pane_result(&screen, marker, false).2, RunStart::Marked);
         let screen = format!("{marker}-BEGIN\npartial\n{}", "\n".repeat(30));
         assert_eq!(
             run_pane_result(&screen, marker, true),
-            (Some("partial\n"), None, false)
+            (Some("partial\n"), None, RunStart::Marked)
         );
         let screen = format!("{marker}-BEGIN\n50%");
         assert_eq!(run_pane_result(&screen, marker, false).0, Some("50%"));
@@ -91034,9 +91156,7 @@ set-option -g @alias-mixed-next yes
         };
         let context = ExecutionContext::new(Some(session), Some(window), Some(pane));
         let marker = "ZZRUN-0123456789abcdef";
-        let typed = format!(
-            " printf '\\n%s\\n' '{marker}-BEGIN'; command eval 'echo '\\''hi'\\''; false'; printf '\\n{marker}-RC=%d=END\\n' $?"
-        );
+        let typed = run_pane_line(marker, "command eval", "echo 'hi'; false");
         assert!(terminal.feed(Arc::from(
             format!(
                 "\x1b]133;A\x07$ \x1b]133;B\x07{typed}\x1b]133;C\x07\r\n\r\n{marker}-BEGIN\r\nhi\r\npartial"
@@ -91066,9 +91186,7 @@ set-option -g @alias-mixed-next yes
     fn run_pane_blocks_drop_their_markers() {
         let marker = "ZZRUN-0123456789abcdef";
         let capture = |output: &str| LastCommandCapture {
-            command: format!(
-                "host$  printf '\\n%s\\n' '{marker}-BEGIN'; eval 'true'; printf '\\n{marker}-RC=%d=END\\n' $?"
-            ),
+            command: format!("host$ {}", run_pane_line(marker, "eval", "true")),
             output: output.to_owned(),
             truncated_rows: 0,
             running: false,
@@ -91112,6 +91230,43 @@ set-option -g @alias-mixed-next yes
                 })
                 .is_none()
             );
+        }
+    }
+
+    #[test]
+    fn run_pane_lines_type_only_plain_words_of_the_command() {
+        let marker = "ZZRUN-0123456789abcdef";
+        assert_eq!(
+            run_pane_line(marker, "eval", "cargo test -p zz-daemon run_pane"),
+            format!(
+                " printf '\\n%s\\n' '{marker}-BEGIN'; eval \"$(printf '%b' 'cargo test -p \
+                 zz-daemon run_pane')\"; printf '\\n{marker}-RC=%d=END\\n' $?"
+            )
+        );
+        for command in [
+            "grep -c 'x' /dev/null",
+            "echo \"it's\" 'a b' hi! \\back $((1)) `x` ${HOME} é # c\nnext\tline",
+        ] {
+            let line = run_pane_line(marker, "command eval", command);
+            let escaped = line
+                .split_once("'%b' '")
+                .and_then(|(_, rest)| rest.split_once('\''))
+                .expect("escaped command")
+                .0;
+            assert!(
+                escaped
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric()
+                        || !character.is_ascii()
+                        || " _./,:=+@%~-\\".contains(character)),
+                "{escaped}"
+            );
+            let (unwrapped, _) = unwrap_run_pane(&LastCommandCapture {
+                command: line,
+                ..LastCommandCapture::default()
+            })
+            .expect("wrapper");
+            assert_eq!(unwrapped.command, command);
         }
     }
 

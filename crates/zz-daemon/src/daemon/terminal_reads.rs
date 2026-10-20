@@ -220,7 +220,6 @@ fn capture_screen(
 type PasteFinish = Box<dyn FnOnce(&Arc<Shared>, Arc<Target>, Result<(), DaemonError>) + Send>;
 
 struct Paste {
-    sinks: Vec<Arc<TerminalSession>>,
     bytes: Arc<[u8]>,
     tail: String,
     collapsed_before: usize,
@@ -244,11 +243,9 @@ fn paste(
             ServerError::InvalidCommand(format!("{}: pane input is off", target.pane)).into(),
         );
     }
-    let sinks = vec![Arc::clone(&target.terminal)];
     let bytes = prepare_paste_buffer(text.as_bytes(), b"\r", true)
         .map_err(|error| ServerError::InvalidCommand(format!("send-text: {error}")))?;
     let mut paste = Paste {
-        sinks,
         bytes: bytes.into(),
         tail: echo_tail(text),
         collapsed_before: 0,
@@ -275,9 +272,9 @@ fn paste(
             };
             paste.collapsed_before = screen.matches(PASTE_COLLAPSE_MARKER).count();
             paste.generation = target.generation();
-            for sink in &paste.sinks {
-                sink.paste_prepared_bytes(None, Arc::clone(&paste.bytes), true);
-            }
+            target
+                .terminal
+                .paste_prepared_bytes(None, Arc::clone(&paste.bytes), true);
             paste.started = Instant::now();
             poll_paste(shared, target, paste);
         },
@@ -308,7 +305,7 @@ fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, paste: Paste) {
             {
                 let result = if paste.enter
                     && !send_tokens(
-                        &paste.sinks,
+                        std::slice::from_ref(&target.terminal),
                         &[zz_protocol::KeyToken::Named("Enter".to_owned())],
                     ) {
                     Err(ServerError::InvalidCommand(format!(
@@ -596,10 +593,14 @@ fn foreground_shell(terminal: &TerminalSession) -> Result<Option<String>, String
     let name = name.rsplit('/').next().unwrap_or(name);
     if name.is_empty() {
         Ok(None)
-    } else if RUN_PANE_SHELLS.contains(&name) {
+    } else if !RUN_PANE_SHELLS.contains(&name) {
+        Err(name.to_owned())
+    } else if terminal_foreground_process(terminal) == terminal.process_id()
+        || terminal.tty_canonical() == Some(false)
+    {
         Ok(Some(name.to_owned()))
     } else {
-        Err(name.to_owned())
+        Err(format!("a {name} script"))
     }
 }
 
@@ -617,7 +618,7 @@ fn refuse_run(shared: &Shared, target: &Target, reason: &str) {
 
 fn send_byte(target: &Target, byte: u8) -> bool {
     send_tokens(
-        &[Arc::clone(&target.terminal)],
+        std::slice::from_ref(&target.terminal),
         &[zz_protocol::KeyToken::Raw(byte)],
     )
 }
@@ -666,28 +667,32 @@ fn start_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
     let generation = target.generation();
     let deadline = timeout_deadline(run.started, run.parsed.timeout);
     let now = Instant::now();
-    let expired = deadline.is_some_and(|deadline| now >= deadline);
-    let Some(turn) = RunTurn::claim(&target.observation).filter(|_| !expired) else {
-        if expired {
-            refuse_run(
-                shared,
-                &target,
-                &format!(
-                    "{} is busy with another run-pane; nothing was typed",
-                    target.pane
-                ),
-            );
+    if deadline.is_some_and(|deadline| now >= deadline) {
+        let reason = if target.observation.run.load(Ordering::Acquire) {
+            format!(
+                "{} is busy with another run-pane; nothing was typed",
+                target.pane
+            )
         } else {
-            observe_output(
-                shared,
-                target,
-                generation,
-                deadline,
-                move |shared, target| {
-                    start_run(shared, target, run);
-                },
-            );
-        }
+            format!(
+                "{} did not echo the command within {}s; nothing was submitted",
+                target.pane,
+                run.parsed.timeout.as_secs_f64()
+            )
+        };
+        refuse_run(shared, &target, &reason);
+        return;
+    }
+    let Some(turn) = RunTurn::claim(&target.observation) else {
+        observe_output(
+            shared,
+            target,
+            generation,
+            deadline,
+            move |shared, target| {
+                start_run(shared, target, run);
+            },
+        );
         return;
     };
     run._turn = Some(turn);
@@ -710,11 +715,7 @@ fn start_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
     } else {
         "command eval"
     };
-    let line = format!(
-        " printf '\\n%s\\n' '{marker}-BEGIN'; {eval} '{}'; printf '\\n{marker}-RC=%d=END\\n' $?",
-        run.parsed.command.replace('\'', r"'\''"),
-        marker = run.marker,
-    );
+    let line = run_pane_line(&run.marker, eval, &run.parsed.command);
     run.tail = echo_tail(&line);
     let remaining = deadline.map_or(Duration::ZERO, |deadline| {
         deadline.saturating_duration_since(now)
@@ -789,7 +790,7 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
                     return;
                 }
             };
-            let (captured, exit_code, truncated) =
+            let (captured, exit_code, begin) =
                 run_pane_result(&screen, &run.marker, run.collecting);
             if let Some(captured) = captured {
                 run.collecting = true;
@@ -797,7 +798,7 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
                 captured.clone_into(&mut run.output);
             }
             if let Some(exit_code) = exit_code {
-                if truncated {
+                if begin == RunStart::Dropped {
                     let limit = shared
                         .inner
                         .lock()
@@ -810,6 +811,16 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
                             "run-pane: output truncated to its last {} lines ({} history-limit \
                              {limit}); redirect to a file for all of it",
                             run.output.lines().count(),
+                            target.pane
+                        ),
+                    );
+                } else if begin == RunStart::Joined {
+                    shared.record_command_stderr(
+                        target.client,
+                        &format!(
+                            "run-pane: {}'s shell joined the command to an unfinished line (one \
+                             ending in && or \\, for example); the output may include text from \
+                             that line",
                             target.pane
                         ),
                     );
@@ -845,7 +856,12 @@ fn poll_run(shared: &Arc<Shared>, target: Arc<Target>, mut run: Run) {
                             "{}'s shell did not start the command within {}s (it was waiting \
                              for more input, such as an unclosed quote); sent C-c, nothing ran",
                             target.pane,
-                            RUN_PANE_START_GRACE.as_secs()
+                            if run.parsed.timeout.is_zero() {
+                                RUN_PANE_START_GRACE
+                            } else {
+                                RUN_PANE_START_GRACE.min(run.parsed.timeout)
+                            }
+                            .as_secs_f64()
                         ),
                     );
                     return;
