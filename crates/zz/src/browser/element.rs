@@ -159,7 +159,7 @@ impl<V: BrowserSurfaceHost> Element for BrowserElement<V> {
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             #[cfg(target_os = "macos")]
             if let Some(underlay) = state.underlay.take()
-                && underlay::place(window, &underlay, bounds)
+                && underlay::place(window, &underlay, bounds, self.corner_radii)
                 && let Some(surface) = state.surface.take()
             {
                 window.paint_underlay(bounds, self.corner_radii, surface);

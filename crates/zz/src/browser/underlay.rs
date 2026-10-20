@@ -1,21 +1,27 @@
 use std::{
     cell::RefCell,
     collections::{HashMap, hash_map::Entry},
-    sync::{Arc, Weak},
+    f64::consts::FRAC_PI_2,
+    sync::{Arc, Mutex, PoisonError, Weak},
 };
 
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindowOrderingMode};
-use objc2_core_foundation::{CGPoint, CGRect, CGSize};
-use objc2_quartz_core::{CALayer, CATransaction, kCAGravityResize};
+use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
+use objc2_core_graphics::CGMutablePath;
+use objc2_quartz_core::{CALayer, CAShapeLayer, CATransaction, kCAGravityResize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use zz_browser::{MacFramePresenter, MacIoSurface};
 use zz_gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-    Pixels, Position, Style, Window,
+    App, Bounds, Corners, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Position, Style, Window,
 };
 
-struct Layer(Retained<CALayer>);
+const CORNER_SEGMENTS: u32 = 16;
+
+type MaskShape = (f64, f64, [f64; 4]);
+
+struct Layer(Retained<CALayer>, Mutex<Option<MaskShape>>);
 
 // SAFETY: Core Animation accepts layer property changes from any thread inside
 // an explicit transaction, and this wrapper only exposes such changes.
@@ -44,6 +50,96 @@ impl Layer {
         unsafe { self.0.setContents(Some(contents)) };
         CATransaction::commit();
     }
+
+    #[allow(
+        unsafe_code,
+        reason = "CALayer.mask is marked unsafe in objc2-quartz-core"
+    )]
+    fn round(&self, size: CGSize, radii: [f64; 4]) {
+        let shape = (size.width, size.height, radii);
+        let mut current = self.1.lock().unwrap_or_else(PoisonError::into_inner);
+        if *current == Some(shape) {
+            return;
+        }
+        *current = Some(shape);
+        if radii.iter().all(|radius| *radius <= 0.0) {
+            // SAFETY: clearing the mask is always valid.
+            unsafe { self.0.setMask(None) };
+            return;
+        }
+        let mask = CAShapeLayer::new();
+        mask.setFrame(CGRect::new(CGPoint::new(0.0, 0.0), size));
+        mask.setPath(Some(&corner_path(
+            size.width,
+            size.height,
+            radii,
+            f64::from(zz_ui::CORNER_SMOOTHING),
+        )));
+        // SAFETY: the mask is a new layer with no superlayer of its own.
+        unsafe { self.0.setMask(Some(&mask)) };
+    }
+}
+
+#[allow(
+    unsafe_code,
+    reason = "CGPath construction takes a raw transform pointer, null here"
+)]
+fn corner_path(
+    width: f64,
+    height: f64,
+    [top_left, top_right, bottom_right, bottom_left]: [f64; 4],
+    smoothing: f64,
+) -> CFRetained<CGMutablePath> {
+    let path = CGMutablePath::new();
+    let half_minor = width.min(height) / 2.0;
+    let corners = [
+        (top_left, 0.0, 0.0, -1.0, -1.0, false),
+        (top_right, width, 0.0, 1.0, -1.0, true),
+        (bottom_right, width, height, 1.0, 1.0, false),
+        (bottom_left, 0.0, height, -1.0, 1.0, true),
+    ];
+    let mut first = true;
+    let mut point = |x: f64, y: f64| {
+        let y = height - y;
+        // SAFETY: a null transform pointer means no transform.
+        unsafe {
+            if first {
+                CGMutablePath::move_to_point(Some(&path), std::ptr::null(), x, y);
+            } else {
+                CGMutablePath::add_line_to_point(Some(&path), std::ptr::null(), x, y);
+            }
+        }
+        first = false;
+    };
+    for (radius, corner_x, corner_y, out_x, out_y, reversed) in corners {
+        let radius = radius.clamp(0.0, half_minor);
+        if radius <= 0.0 {
+            point(corner_x, corner_y);
+            continue;
+        }
+        let exponent = if radius >= half_minor - 0.01 {
+            2.0
+        } else {
+            smoothing
+        };
+        let center_x = corner_x - out_x * radius;
+        let center_y = corner_y - out_y * radius;
+        for step in 0..=CORNER_SEGMENTS {
+            let step = if reversed {
+                CORNER_SEGMENTS - step
+            } else {
+                step
+            };
+            let angle = FRAC_PI_2 * f64::from(step) / f64::from(CORNER_SEGMENTS);
+            let reach = |value: f64| radius * value.max(0.0).powf(2.0 / exponent);
+            point(
+                center_x + out_x * reach(angle.cos()),
+                center_y + out_y * reach(angle.sin()),
+            );
+        }
+    }
+    CGMutablePath::close_subpath(Some(&path));
+    path
 }
 
 pub(crate) struct PaneUnderlay(Arc<Layer>);
@@ -59,7 +155,7 @@ impl PaneUnderlay {
         layer.setContentsGravity(unsafe { kCAGravityResize });
         layer.setMasksToBounds(true);
         layer.setHidden(true);
-        let layer = Arc::new(Layer(layer));
+        let layer = Arc::new(Layer(layer, Mutex::new(None)));
         layer.show(first_frame);
         Self(layer)
     }
@@ -149,7 +245,12 @@ fn gpui_view(window: &Window) -> Option<Retained<NSView>> {
     unsafe { Retained::retain(handle.ns_view.as_ptr().cast()) }
 }
 
-pub(crate) fn place(window: &Window, underlay: &UnderlayHandle, bounds: Bounds<Pixels>) -> bool {
+pub(crate) fn place(
+    window: &Window,
+    underlay: &UnderlayHandle,
+    bounds: Bounds<Pixels>,
+    radii: Corners<Pixels>,
+) -> bool {
     let Some(mtm) = MainThreadMarker::new() else {
         return false;
     };
@@ -184,10 +285,17 @@ pub(crate) fn place(window: &Window, underlay: &UnderlayHandle, bounds: Bounds<P
         layer.setContentsScale(f64::from(window.scale_factor()) / zoom);
         let height = point(bounds.size.height);
         let y = host.view.bounds().size.height - point(bounds.origin.y) - height;
-        layer.setFrame(CGRect::new(
-            CGPoint::new(point(bounds.origin.x), y),
-            CGSize::new(point(bounds.size.width), height),
-        ));
+        let size = CGSize::new(point(bounds.size.width), height);
+        layer.setFrame(CGRect::new(CGPoint::new(point(bounds.origin.x), y), size));
+        underlay.0.round(
+            size,
+            [
+                point(radii.top_left),
+                point(radii.top_right),
+                point(radii.bottom_right),
+                point(radii.bottom_left),
+            ],
+        );
         layer.setHidden(false);
         CATransaction::commit();
         match host

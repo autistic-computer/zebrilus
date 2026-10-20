@@ -537,6 +537,7 @@ struct PaneContent {
     view: AnyView,
     cached: bool,
     inactive_style: PaneInactiveStyle,
+    covers_frame: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3429,12 +3430,14 @@ impl AppView {
                 view: AnyView::from(output.clone()),
                 cached: true,
                 inactive_style: PaneInactiveStyle::Content,
+                covers_frame: false,
             })
         } else if let Some(picker) = self.pickers.get(&pane) {
             Some(PaneContent {
                 view: AnyView::from(picker.clone()),
                 cached: false,
                 inactive_style: PaneInactiveStyle::Surface,
+                covers_frame: false,
             })
         } else if let Some(terminal) = self.terminals.get(&pane) {
             terminal.update(cx, |terminal, cx| {
@@ -3444,6 +3447,7 @@ impl AppView {
                 view: AnyView::from(terminal.clone()),
                 cached: true,
                 inactive_style: PaneInactiveStyle::Content,
+                covers_frame: false,
             })
         } else if let Some(browser) = self.browsers.get(&pane) {
             browser.update(cx, |browser, cx| {
@@ -3453,18 +3457,21 @@ impl AppView {
                 view: AnyView::from(browser.clone()),
                 cached: false,
                 inactive_style: PaneInactiveStyle::Content,
+                covers_frame: true,
             })
         } else if let Some(editor) = self.editors.get(&pane) {
             Some(PaneContent {
                 view: AnyView::from(editor.clone()),
                 cached: false,
                 inactive_style: PaneInactiveStyle::Surface,
+                covers_frame: false,
             })
         } else {
             self.agents.get(&pane).map(|agent| PaneContent {
                 view: AnyView::from(agent.clone()),
                 cached: false,
                 inactive_style: PaneInactiveStyle::Surface,
+                covers_frame: false,
             })
         }
     }
@@ -3608,6 +3615,9 @@ impl AppView {
                     && pane_content
                         .as_ref()
                         .is_none_or(|content| content.inactive_style == PaneInactiveStyle::Surface);
+                let covers_frame = pane_content
+                    .as_ref()
+                    .is_some_and(|content| content.covers_frame);
                 let gaps = config::pane_gaps(cx);
                 let follows_pointer = inactive && self.mux.read(cx).focus_follows_mouse();
                 let hovered_pane = *pane;
@@ -3624,6 +3634,7 @@ impl AppView {
                     PaneChrome::new(radii, gaps)
                         .active(active)
                         .dimmed(surface_dimmed, inactive_opacity)
+                        .rim_over_content(covers_frame)
                         .frame(gaps.then(|| {
                             cx.theme()
                                 .pane_frame(crate::theme::chrome_background(cx), active)

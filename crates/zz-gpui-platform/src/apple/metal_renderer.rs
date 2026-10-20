@@ -2345,6 +2345,15 @@ mod tests {
     }
 
     #[test]
+    fn rim_glass_lights_only_the_edge() -> Result<()> {
+        let mut renderer =
+            MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
+        zz_gpui::check_rim_glass_lights_only_the_edge(|scene| {
+            renderer.render_scene_to_image(scene, size(64.into(), 64.into()))
+        })
+    }
+
+    #[test]
     fn glass_keeps_a_translucent_frame() -> Result<()> {
         let mut renderer =
             MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));

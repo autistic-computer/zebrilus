@@ -95,6 +95,11 @@ pub struct GlassMaterial {
     /// Unset, they paint a translucent fill derived from the tint.
     #[serde(default)]
     pub fallback: Option<Hsla>,
+    /// Draws only the light along the rim, its glint and fresnel glow, over
+    /// whatever lies under it: no face, no contour, nothing read back. See
+    /// [`Self::rim`].
+    #[serde(skip)]
+    pub rim_only: bool,
 }
 
 impl Default for GlassMaterial {
@@ -147,6 +152,7 @@ impl GlassMaterial {
             merge: px(20.),
             opacity: 1.0,
             fallback: None,
+            rim_only: false,
         }
     }
 
@@ -242,6 +248,25 @@ impl GlassMaterial {
             edge_width: px(0.5),
             merge: px(0.),
             ..Self::regular()
+        }
+    }
+
+    /// Only the light this material casts along its rim, to paint over
+    /// opaque content that covers the rim of the same glass painted under
+    /// it. It reads nothing under it and draws nothing past the rim, so it
+    /// stays cheap and leaves the content as it was.
+    pub fn rim(&self) -> Self {
+        Self {
+            blur: px(0.),
+            refraction: px(0.),
+            dispersion: 0.,
+            tint: Hsla { a: 1., ..self.tint },
+            edge_shadow: 0.,
+            noise: 0.,
+            glow: 0.,
+            fallback: None,
+            rim_only: true,
+            ..*self
         }
     }
 
@@ -406,13 +431,20 @@ impl GlassMaterial {
     /// Whether the glass shows any of what lies under it. A fully opaque tint
     /// covers the backdrop, so renderers need not copy it out of the frame.
     pub fn reads_backdrop(&self) -> bool {
-        self.tint.a < 1.
+        !self.rim_only && self.tint.a < 1.
+    }
+
+    /// Whether the material lights nothing: rim-only glass with neither a
+    /// glint nor a glow.
+    pub fn draws_nothing(&self) -> bool {
+        self.rim_only && self.specular <= 0. && self.fresnel <= 0.
     }
 
     /// Whether the tint hides the backdrop and nothing draws over it, so the
     /// surface looks exactly like a fill of the tint and is painted as one.
     pub fn is_opaque_fill(&self) -> bool {
-        !self.reads_backdrop()
+        !self.rim_only
+            && !self.reads_backdrop()
             && self.specular == 0.
             && self.fresnel == 0.
             && (self.edge_shadow == 0. || self.edge_width <= px(0.))
@@ -502,6 +534,11 @@ impl Interpolate for GlassMaterial {
                         to
                     }
                 }
+            },
+            rim_only: if phase < 0.5 {
+                from.rim_only
+            } else {
+                to.rim_only
             },
         }
     }
@@ -623,7 +660,7 @@ pub struct GlassUniform {
     /// padding.
     pub light_color: [f32; 4],
     /// The contour's color, its alpha already in the edge shadow strength,
-    /// then padding.
+    /// then 1 when the glass draws only its rim.
     pub edge_color: [f32; 4],
 }
 
@@ -887,7 +924,12 @@ impl Glass {
                 light.b * light.a,
                 light.a,
             ],
-            edge_color: [edge.r, edge.g, edge.b, 0.],
+            edge_color: [
+                edge.r,
+                edge.g,
+                edge.b,
+                if material.rim_only { 1. } else { 0. },
+            ],
         }
     }
 
@@ -1632,6 +1674,73 @@ pub fn check_glass_hides_the_frame_under_it(
     anyhow::ensure!(
         under_line[0].abs_diff(under_plain[0]) < 48,
         "the line showed through the glass: {under_plain:?} became {under_line:?}"
+    );
+    Ok(())
+}
+
+/// Rim-only glass over opaque content lights the content along the rim and
+/// leaves its face and everything past the edge as they were. `render`
+/// draws a scene at 64 by 64 device pixels.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+pub fn check_rim_glass_lights_only_the_edge(
+    mut render: impl FnMut(&crate::Scene) -> anyhow::Result<image::RgbaImage>,
+) -> anyhow::Result<()> {
+    use crate::{ContentMask, Quad, Scene};
+    let rect = |x: f32, y: f32, width: f32, height: f32| Bounds {
+        origin: point(ScaledPixels(x), ScaledPixels(y)),
+        size: size(ScaledPixels(width), ScaledPixels(height)),
+    };
+    let material = GlassMaterial::regular()
+        .bezel(px(6.))
+        .specular(1.)
+        .glint_width(px(1.5))
+        .fresnel(0.3)
+        .rim();
+    anyhow::ensure!(
+        !material.reads_backdrop() && !material.is_opaque_fill(),
+        "rim-only glass should read nothing and still draw"
+    );
+    let scene = |rim: bool| {
+        let mut scene = Scene::default();
+        let page = rect(0., 0., 64., 64.);
+        scene.insert_primitive(Quad {
+            bounds: page,
+            content_mask: ContentMask { bounds: page },
+            background: hsla(0., 1., 0.5, 1.).into(),
+            ..Default::default()
+        });
+        if rim {
+            let shape = rect(8., 8., 48., 48.);
+            let mut shapes: [(Bounds<ScaledPixels>, Corners<ScaledPixels>); GLASS_MAX_SHAPES] =
+                Default::default();
+            shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
+            scene.insert_primitive(Glass {
+                order: 0,
+                bounds: shape.dilate(ScaledPixels(2.)),
+                backdrop_bounds: shape.dilate(ScaledPixels(2.)),
+                content_mask: ContentMask { bounds: page },
+                shapes,
+                shape_count: 1,
+                corner_smoothing: 2.,
+                material,
+            });
+        }
+        scene.finish();
+        scene
+    };
+    let plain = render(&scene(false))?;
+    let lit = render(&scene(true))?;
+    for (x, y) in [(32, 32), (20, 40), (2, 2), (62, 32)] {
+        let (before, after) = (plain.get_pixel(x, y).0, lit.get_pixel(x, y).0);
+        anyhow::ensure!(
+            before.iter().zip(after).all(|(a, b)| a.abs_diff(b) <= 1),
+            "rim-only glass changed ({x}, {y}) off its rim: {before:?} became {after:?}"
+        );
+    }
+    let edge = lit.get_pixel(8, 32).0;
+    anyhow::ensure!(
+        edge[0] > 240 && edge[1] > 30 && edge[2] > 30,
+        "the rim should light the red under it, got {edge:?}"
     );
     Ok(())
 }

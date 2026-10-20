@@ -296,6 +296,13 @@ so over a translucent window bright content under a dark face showed through sha
 blends, and draws in the scene's own pass, and a material with no light either (`is_opaque_fill`)
 is painted as a plain quad.
 
+`GlassMaterial::rim()` (2026-10-20) is the same material drawing only its light: the glint and the
+fresnel glow, premultiplied so they blend over whatever was painted under it, with no face, no
+contour and nothing read back. Its flat face returns clear, so it costs little more than the rim's
+pixels, and since it reads nothing a browser page's underlay hole under it stays a hole. Renderers
+that cannot sample the backdrop skip it. `check_rim_glass_lights_only_the_edge` covers Metal and
+wgpu.
+
 Past the rim nothing lenses, glints or casts the contour, so `fs_glass` skips the signed distance
 field there (2026-10-12). `Glass::uniform` puts the depth where the face goes flat in `shape.w`:
 the bezel or four glint widths, whichever is larger, plus a pixel. A pixel at least that deep inside

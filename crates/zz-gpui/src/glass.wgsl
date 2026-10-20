@@ -44,7 +44,8 @@ struct Glass {
     mask: vec4<f32>,
     // color of the glint and the fresnel glow, premultiplied by its alpha in w
     light_color: vec4<f32>,
-    // color of the contour; its alpha is in the edge shadow strength
+    // color of the contour; its alpha is in the edge shadow strength, then 1
+    // when the glass draws only the light along its rim
     edge_color: vec4<f32>,
 }
 
@@ -305,9 +306,13 @@ fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, 
 @fragment
 fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let position = frag.xy;
+    let rim_only = glass.edge_color.w > 0.5;
     // Past the rim nothing lenses, glints or casts the contour, so the face
     // skips the field: most of a large surface draws like a fill.
     if (on_face(position)) {
+        if (rim_only) {
+            return vec4<f32>(0.0);
+        }
         var color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         if (glass.tint.a < 1.0) {
             color = backdrop(position);
@@ -368,18 +373,28 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
-    var rgb = toned(color);
-
     // The glint: a thin bright line along the edge where it faces the light
     // axis, with a faint bleed inward, and a glow that fills the bezel.
+    var glint = 0.0;
+    var glow = 0.0;
     if (edge > 0.0) {
         let glint_width = max(glass.light.w, 1e-3);
         let line = saturate(1.0 - depth / glint_width) + 0.2 * saturate(1.0 - depth / (glint_width * 4.0));
         let lobe = facing * facing;
-        rgb = rgb + glass.light_color.rgb * (glass.light.z * line * mix(0.15, 1.0, lobe));
-        let glow = glass.rim.x * edge * edge * edge;
-        rgb = rgb * (1.0 - glow * glass.light_color.a) + glass.light_color.rgb * glow;
+        glint = glass.light.z * line * mix(0.15, 1.0, lobe);
+        glow = glass.rim.x * edge * edge * edge;
     }
+
+    // Rim-only glass lights what is already there: the glint adds to it and
+    // the glow lays the light color over it, premultiplied for blending.
+    if (rim_only) {
+        let veil = glow * glass.light_color.a;
+        let light = glass.light_color.rgb * (glint * (1.0 - veil) + glow);
+        return vec4<f32>(light, veil) * (coverage * glass.rim.w);
+    }
+
+    var rgb = toned(color) + glass.light_color.rgb * glint;
+    rgb = rgb * (1.0 - glow * glass.light_color.a) + glass.light_color.rgb * glow;
 
     return finish(position, color, rgb, coverage, contour);
 }
