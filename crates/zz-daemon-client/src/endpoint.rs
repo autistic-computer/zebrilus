@@ -181,8 +181,12 @@ pub enum EndpointError {
     },
     #[error("zz on {target} predates protocol version reporting; update it, then reconnect")]
     RemoteProtocolUnknown { target: String },
-    #[error("zz on {target} is {path}, which installing over ssh does not manage")]
-    RemoteInstallElsewhere { target: String, path: String },
+    #[error("zz on {target} is {path}, a link to {link} that zz did not install")]
+    RemoteInstallElsewhere {
+        target: String,
+        path: String,
+        link: String,
+    },
     #[error("installing zz on {target} failed: {reason}")]
     RemoteInstallFailed { target: String, reason: String },
     #[error("the zz installed on {target} speaks protocol v{remote}; this zz speaks v{client}")]
@@ -290,9 +294,9 @@ impl EndpointError {
                     zz_protocol::app_identity::DIRECTORY,
                 )
             }
-            Self::RemoteInstallElsewhere { target, path } => format!(
-                "{name} on {target} is {path}, which installing over ssh does not manage.\nUpdate \
-                 it the way it was installed, then reconnect.",
+            Self::RemoteInstallElsewhere { target, path, link } => format!(
+                "{path} on {target} links to {link}, which {name} did not install.\nRemove the \
+                 link or update that install, then reconnect.",
                 name = zz_protocol::app_identity::DIRECTORY,
             ),
             Self::RemoteInstallFailed { target, reason } => format!(
@@ -630,10 +634,12 @@ pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon
         String::new()
     };
     format!(
-        "{fallback}zz_found=$(command -v \"$zz_cli\" 2>/dev/null); \
-         if [ -n \"$zz_found\" ] && {{ [ \"$zz_found\" != \"$zz_managed\" ] || [ -L \"$zz_found\" ]; }}; \
-         then printf 'zz-install-elsewhere=%s\\n' \"$zz_found\"; exit {REMOTE_INSTALL_ELSEWHERE_STATUS}; fi; \
-         sh -s -- --headless --version {version} || exit {REMOTE_INSTALL_FAILED_STATUS}; \
+        "{fallback}zz_link=$(readlink \"$zz_managed\" 2>/dev/null); case \"$zz_link\" in \
+         \"\") sh -s -- --headless --version {version} ;; \
+         ../lib/zz/cli|\"$HOME/.local/lib/zz/cli\") \
+         sh -s -- --prefix \"$HOME/.local\" --version {version} ;; \
+         *) printf 'zz-install-elsewhere=%s\\nzz-install-link=%s\\n' \"$zz_managed\" \"$zz_link\"; \
+         exit {REMOTE_INSTALL_ELSEWHERE_STATUS} ;; esac || exit {REMOTE_INSTALL_FAILED_STATUS}; \
          zz_protocol=$(\"$zz_managed\" protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
          {restart}printf 'zz-install-protocol=%s\\n' \"$zz_protocol\"",
         fallback = remote_path_fallback(),
@@ -692,9 +698,10 @@ pub(crate) fn parse_remote_install_output(
             }),
         },
         Some(REMOTE_INSTALL_ELSEWHERE_STATUS)
-            if let Some(path) = value("zz-install-elsewhere=") =>
+            if let Some(path) = value("zz-install-elsewhere=")
+                && let Some(link) = value("zz-install-link=") =>
         {
-            Err(EndpointError::RemoteInstallElsewhere { target, path })
+            Err(EndpointError::RemoteInstallElsewhere { target, path, link })
         }
         Some(REMOTE_INSTALL_FAILED_STATUS) => {
             let reason = ssh_failure_reason(&stderr, status);
@@ -2160,15 +2167,38 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn write_executable(path: &Path, body: &str) {
+        fs::create_dir_all(path.parent().expect("parent directory")).unwrap();
+        fs::write(path, body).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn fake_zz(protocol: &str, calls: &str) -> String {
+        format!(
+            "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol} ;; \
+             --version) echo \"zz 0.0.1\" ;; *) echo \"$*\" >> \"$HOME/{calls}\" ;; esac\n"
+        )
+    }
+
+    #[cfg(unix)]
     fn fake_installer(protocol: &str) -> String {
         format!(
-            "case \"$*\" in \"--headless --version {version}\") ;; \
-             *) echo \"error: unexpected arguments $*\" >&2; exit 1 ;; esac\n\
-             mkdir -p \"$HOME/.local/bin\"\n\
-             rm -f \"$HOME/.local/bin/{name}\"\n\
-             printf '#!/bin/sh\\nif [ \"$1\" = protocol-version ]; then echo {protocol}; \
-             else echo \"$*\" >> \"$HOME/calls\"; fi\\n' > \"$HOME/.local/bin/{name}\"\n\
-             chmod 755 \"$HOME/.local/bin/{name}\"\n",
+            "printf '%s\\n' \"$*\" > \"$HOME/installer-args\"\n\
+             zz_body='{body}'\n\
+             case \"$*\" in\n\
+             \"--headless --version {version}\")\n\
+             mkdir -p \"$HOME/.local/bin\"; rm -f \"$HOME/.local/bin/{name}\"\n\
+             printf '%s' \"$zz_body\" > \"$HOME/.local/bin/{name}\"\n\
+             chmod 755 \"$HOME/.local/bin/{name}\" ;;\n\
+             \"--prefix $HOME/.local --version {version}\")\n\
+             rm -rf \"$HOME/.local/lib/zz\"; mkdir -p \"$HOME/.local/lib/zz\" \"$HOME/.local/bin\"\n\
+             printf '%s' \"$zz_body\" > \"$HOME/.local/lib/zz/cli\"\n\
+             chmod 755 \"$HOME/.local/lib/zz/cli\"\n\
+             ln -sfn ../lib/zz/cli \"$HOME/.local/bin/{name}\" ;;\n\
+             *) echo \"error: unexpected arguments $*\" >&2; exit 1 ;;\n\
+             esac\n",
+            body = fake_zz(protocol, "calls"),
             version = env!("CARGO_PKG_VERSION"),
             name = zz_protocol::app_identity::DIRECTORY,
         )
@@ -2211,23 +2241,37 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn install_shells() -> impl Iterator<Item = &'static str> {
+        ["/bin/sh", "/bin/tcsh"]
+            .into_iter()
+            .filter(|shell| Path::new(shell).exists())
+    }
+
+    #[cfg(unix)]
+    fn installer_args(home: &Path) -> String {
+        fs::read_to_string(home.join("installer-args")).unwrap_or_default()
+    }
+
+    #[cfg(unix)]
     #[test]
     fn remote_install_replaces_its_own_binary_and_restarts_the_daemon() {
-        let shells = ["/bin/sh", "/bin/tcsh"]
-            .into_iter()
-            .filter(|shell| Path::new(shell).exists());
-        for shell in shells {
+        for shell in install_shells() {
             let home = tempfile::tempdir().expect("temporary home");
             let bin = home.path().join(".local/bin");
-            fs::create_dir_all(&bin).unwrap();
-            let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
-            fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
-            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                "#!/bin/sh\necho 1\n",
+            );
             let path = format!("{}:/usr/bin:/bin", bin.display());
             let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
 
             run_install_script(shell, home.path(), &path, &installer, true)
                 .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(
+                installer_args(home.path()),
+                format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+                "{shell}",
+            );
             assert_eq!(
                 fs::read_to_string(home.path().join("calls")).unwrap(),
                 "--socket /run/zz.sock kill-server\n",
@@ -2242,34 +2286,111 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn remote_install_leaves_a_zz_it_did_not_install_alone() {
+    fn remote_install_puts_its_own_copy_beside_a_zz_it_did_not_install() {
         let home = tempfile::tempdir().expect("temporary home");
         let other = tempfile::tempdir().expect("other prefix");
         let name = zz_protocol::app_identity::DIRECTORY;
         let foreign = other.path().join(name);
-        fs::write(&foreign, "#!/bin/sh\necho 1\n").unwrap();
-        fs::set_permissions(&foreign, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&foreign, &fake_zz("1", "foreign-calls"));
         let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
 
         let path = format!("{}:/usr/bin:/bin", other.path().display());
-        let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
-            .expect_err("a zz elsewhere on PATH is not ours to replace");
-        let EndpointError::RemoteInstallElsewhere { path: found, .. } = error else {
-            panic!("unexpected error: {error}");
-        };
-        assert_eq!(found, foreign.display().to_string());
+        run_install_script("/bin/sh", home.path(), &path, &installer, true)
+            .expect("a zz elsewhere on PATH gets a managed copy beside it");
+        assert_eq!(
+            installer_args(home.path()),
+            format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+        );
+        let managed = home.path().join(".local/bin").join(name);
+        assert!(fs::symlink_metadata(&managed).unwrap().is_file());
+        assert_eq!(
+            fs::read_to_string(home.path().join("calls")).unwrap(),
+            "--socket /run/zz.sock kill-server\n",
+        );
+        assert!(!home.path().join("foreign-calls").exists());
+        assert_eq!(fs::read_to_string(&foreign).unwrap(), fake_zz("1", "foreign-calls"));
+    }
 
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_refreshes_the_desktop_tarball_it_linked() {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        for shell in install_shells() {
+            for absolute in [false, true] {
+                let home = tempfile::tempdir().expect("temporary home");
+                let lib = home.path().join(".local/lib/zz");
+                write_executable(&lib.join("cli"), "#!/bin/sh\necho 1\n");
+                write_executable(&lib.join("zz"), "#!/bin/sh\nexit 0\n");
+                let bin = home.path().join(".local/bin");
+                fs::create_dir_all(&bin).unwrap();
+                let link = if absolute {
+                    lib.join("cli")
+                } else {
+                    PathBuf::from("../lib/zz/cli")
+                };
+                std::os::unix::fs::symlink(&link, bin.join(name)).unwrap();
+                let path = format!("{}:/usr/bin:/bin", bin.display());
+                let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
+                run_install_script(shell, home.path(), &path, &installer, true)
+                    .unwrap_or_else(|error| panic!("{shell}: {error}"));
+                assert_eq!(
+                    installer_args(home.path()),
+                    format!(
+                        "--prefix {}/.local --version {}\n",
+                        home.path().display(),
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                    "{shell}",
+                );
+                assert_eq!(
+                    fs::read_link(bin.join(name)).unwrap(),
+                    Path::new("../lib/zz/cli"),
+                    "{shell}",
+                );
+                assert_eq!(
+                    fs::read_to_string(home.path().join("calls")).unwrap(),
+                    "--socket /run/zz.sock kill-server\n",
+                    "{shell}",
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_install_refuses_a_link_it_did_not_make_and_names_its_target() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let other = tempfile::tempdir().expect("other prefix");
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let foreign = other.path().join(name);
+        write_executable(&foreign, &fake_zz("1", "foreign-calls"));
         let bin = home.path().join(".local/bin");
         fs::create_dir_all(&bin).unwrap();
         std::os::unix::fs::symlink(&foreign, bin.join(name)).unwrap();
+        let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
+
         let path = format!("{}:/usr/bin:/bin", bin.display());
         let error = run_install_script("/bin/sh", home.path(), &path, &installer, true)
             .expect_err("a link in ~/.local/bin points at someone else's install");
+        let EndpointError::RemoteInstallElsewhere {
+            path: found,
+            link,
+            ..
+        } = &error
+        else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(*found, bin.join(name).display().to_string());
+        assert_eq!(*link, foreign.display().to_string());
+        let reason = error.ssh_reason().unwrap();
         assert!(
-            matches!(error, EndpointError::RemoteInstallElsewhere { .. }),
-            "{error}"
+            reason.contains(&format!("links to {}", foreign.display())),
+            "{reason}"
         );
+        assert!(installer_args(home.path()).is_empty());
         assert!(!home.path().join("calls").exists());
+        assert!(!home.path().join("foreign-calls").exists());
     }
 
     #[cfg(unix)]
@@ -2277,10 +2398,8 @@ mod tests {
     fn remote_install_reports_why_it_failed() {
         let home = tempfile::tempdir().expect("temporary home");
         let bin = home.path().join(".local/bin");
-        fs::create_dir_all(&bin).unwrap();
         let binary = bin.join(zz_protocol::app_identity::DIRECTORY);
-        fs::write(&binary, "#!/bin/sh\necho 1\n").unwrap();
-        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&binary, "#!/bin/sh\necho 1\n");
         let path = format!("{}:/usr/bin:/bin", bin.display());
 
         let error = run_install_script(
