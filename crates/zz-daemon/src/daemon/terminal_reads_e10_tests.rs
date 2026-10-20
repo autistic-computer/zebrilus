@@ -138,7 +138,6 @@ fn parked_marker_and_echo_scans_have_no_deadline_without_a_timeout() {
                 &item,
                 target,
                 Paste {
-                    sinks: vec![Arc::clone(&terminal)],
                     bytes: Arc::from([]),
                     tail: "e10-unseen-echo".to_owned(),
                     collapsed_before: 0,
@@ -194,7 +193,6 @@ fn old_echo_does_not_submit_a_new_paste_before_output_changes() {
         &item,
         target,
         Paste {
-            sinks: Vec::new(),
             bytes: Arc::from([]),
             tail: "repeated payload".to_owned(),
             collapsed_before: 0,
