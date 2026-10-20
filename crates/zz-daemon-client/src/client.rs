@@ -3275,6 +3275,8 @@ mod tests {
         terminal_facts_capabilities_with,
     };
 
+    static SIGTERM_DISPOSITION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn traced_answers_keep_the_question_and_drop_what_was_typed() {
         let message = zz_protocol::ProtocolMessage::AgentAnswerQuestion {
@@ -3352,6 +3354,9 @@ mod tests {
                 Err(std::io::Error::other("read failed"))
             }
         }
+        let _disposition = SIGTERM_DISPOSITION
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let previous = disposition();
         let command = super::StdinReadSignal::install().expect("command signal");
         let pending = disposition();
@@ -3389,6 +3394,9 @@ mod tests {
                 Err(std::io::Error::other("is a directory"))
             }
         }
+        let _disposition = SIGTERM_DISPOSITION
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         assert_eq!(
             super::read_command_stdin_chunk_from(OneRead(Some(b"\x1b[31"))),
             Ok(b"\x1b[31".to_vec())
