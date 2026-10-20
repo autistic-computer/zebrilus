@@ -626,15 +626,18 @@ pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon
             format!("--socket {} ", shell_quote(&socket.to_string_lossy()))
         });
         format!(
-            "if [ \"$zz_protocol\" = {protocol} ]; then \"$zz_managed\" {socket}kill-server \
-             >/dev/null; printf 'zz-install-restart=%s\\n' \"$?\"; fi; ",
+            "if [ \"$zz_protocol\" = {protocol} ]; then \
+             zz_restart=$(\"$zz_managed\" {socket}kill-server 2>&1 >/dev/null); \
+             printf 'zz-install-restart=%s\\n' \"$?\"; \
+             printf '%s\\n' \"$zz_restart\" | sed 's/^/zz-install-restart-error=/'; fi; ",
             protocol = zz_protocol::PROTOCOL_VERSION,
         )
     } else {
         String::new()
     };
     format!(
-        "{fallback}if [ \"$(\"$zz_managed\" --version 2>/dev/null </dev/null)\" = 'zz {version}' ]; \
+        "{fallback}if [ \"$(\"$zz_managed\" --version 2>/dev/null </dev/null)\" = 'zz {version}' ] \
+         && [ \"$(\"$zz_managed\" protocol-version 2>/dev/null </dev/null)\" = {protocol} ]; \
          then printf 'zz-install-current=1\\n'; \
          else zz_link=$(readlink \"$zz_managed\" 2>/dev/null); case \"$zz_link\" in \
          \"\") printf 'zz-install-mode=headless\\n'; sh -s -- --headless --version {version} ;; \
@@ -646,6 +649,7 @@ pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon
          {restart}printf 'zz-install-protocol=%s\\n' \"$zz_protocol\"",
         fallback = remote_path_fallback(),
         version = env!("CARGO_PKG_VERSION"),
+        protocol = zz_protocol::PROTOCOL_VERSION,
     )
 }
 
@@ -699,19 +703,18 @@ pub(crate) fn parse_remote_install_output(
                 restart: match value("zz-install-restart=").as_deref() {
                     None => RemoteRestart::NotAsked,
                     Some("0") => RemoteRestart::Restarted,
-                    Some(code) => {
-                        match stderr.lines().map(str::trim).rfind(|line| !line.is_empty()) {
-                            Some(reason) if daemon_was_not_running(reason) => {
-                                RemoteRestart::NotRunning
-                            }
-                            Some(reason) => RemoteRestart::Failed(
-                                reason.strip_prefix("zz: ").unwrap_or(reason).to_owned(),
-                            ),
-                            None => {
-                                RemoteRestart::Failed(format!("kill-server exited with {code}"))
-                            }
-                        }
-                    }
+                    Some(code) => match stdout
+                        .lines()
+                        .filter_map(|line| line.strip_prefix("zz-install-restart-error="))
+                        .map(str::trim)
+                        .rfind(|line| !line.is_empty())
+                    {
+                        Some(reason) if daemon_was_not_running(reason) => RemoteRestart::NotRunning,
+                        Some(reason) => RemoteRestart::Failed(
+                            reason.strip_prefix("zz: ").unwrap_or(reason).to_owned(),
+                        ),
+                        None => RemoteRestart::Failed(format!("kill-server exited with {code}")),
+                    },
                 },
                 warnings: stderr
                     .lines()
@@ -2492,11 +2495,10 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn current_zz(kill_server: &str) -> String {
+    fn current_zz(protocol: u16, kill_server: &str) -> String {
         format!(
             "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol} ;; \
              --version) echo 'zz {version}' ;; *) echo \"$*\" >> \"$HOME/calls\"; {kill_server} ;; esac\n",
-            protocol = zz_protocol::PROTOCOL_VERSION,
             version = env!("CARGO_PKG_VERSION"),
         )
     }
@@ -2509,7 +2511,7 @@ mod tests {
             let bin = home.path().join(".local/bin");
             write_executable(
                 &bin.join(zz_protocol::app_identity::DIRECTORY),
-                &current_zz("exit 0"),
+                &current_zz(zz_protocol::PROTOCOL_VERSION, "exit 0"),
             );
             let path = format!("{}:/usr/bin:/bin", bin.display());
             let installer = fake_installer(&zz_protocol::PROTOCOL_VERSION.to_string());
@@ -2533,6 +2535,23 @@ mod tests {
                     zz_protocol::app_identity::DIRECTORY,
                     env!("CARGO_PKG_VERSION")
                 ),
+            );
+
+            write_executable(
+                &bin.join(zz_protocol::app_identity::DIRECTORY),
+                &current_zz(zz_protocol::PROTOCOL_VERSION + 1, "exit 0"),
+            );
+            let outcome = run_install_script(shell, home.path(), &path, &installer, false)
+                .unwrap_or_else(|error| panic!("{shell}: {error}"));
+            assert_eq!(
+                outcome.installed,
+                RemoteInstalled::Headless,
+                "{shell}: the same version speaking another protocol is replaced"
+            );
+            assert_eq!(
+                installer_args(home.path()),
+                format!("--headless --version {}\n", env!("CARGO_PKG_VERSION")),
+                "{shell}",
             );
         }
     }
@@ -2569,12 +2588,38 @@ mod tests {
                     "daemon I/O error; recovery failed: no daemon pid".to_owned(),
                 ),
             ),
+            (
+                "echo 'stopping the daemon' >&2; echo 'zz: no daemon pid' >&2; exit 1",
+                RemoteRestart::Failed("no daemon pid".to_owned()),
+            ),
         ] {
-            write_executable(&binary, &current_zz(kill_server));
+            write_executable(
+                &binary,
+                &current_zz(zz_protocol::PROTOCOL_VERSION, kill_server),
+            );
             let outcome = run_install_script("/bin/sh", home.path(), &path, "exit 1\n", true)
                 .expect("the binary is in place whatever the daemon did");
             assert_eq!(outcome.restart, expected, "{kill_server}");
         }
+
+        let stdout = format!(
+            "zz-install-current=1\nzz-install-restart=2\nzz-install-restart-error=\n\
+             zz-install-protocol={}\n",
+            zz_protocol::PROTOCOL_VERSION
+        );
+        let outcome = parse_remote_install_output(
+            "ssh://desk",
+            Some(0),
+            stdout.as_bytes(),
+            b"Last login banner from the profile\nwarning: zz is running from ~/.local\n",
+            "exit status: 0",
+        )
+        .expect("installed");
+        assert_eq!(
+            outcome.restart,
+            RemoteRestart::Failed("kill-server exited with 2".to_owned()),
+            "other stderr lines in the session are not kill-server's"
+        );
     }
 
     #[cfg(unix)]

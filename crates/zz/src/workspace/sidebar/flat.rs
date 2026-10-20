@@ -226,7 +226,7 @@ impl WorkspaceSidebar {
             }
             FlatEvent::Connect(host) | FlatEvent::Upgrade(host) => {
                 self.mux
-                    .update(cx, |mux, cx| mux.retry_host_now(host.into(), cx));
+                    .update(cx, |mux, cx| mux.install_or_retry_host(host.into(), cx));
             }
             FlatEvent::Hover(target, hovered) => {
                 if self.flat_view.state.hover(target, hovered) {
