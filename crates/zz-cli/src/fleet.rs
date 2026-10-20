@@ -194,12 +194,9 @@ fn fleet_install(name: &str, restart_daemon: bool) -> Result<String, String> {
     let Endpoint::Ssh(endpoint) = &host.endpoint else {
         return Err(format!("host-{name} is not an ssh host"));
     };
-    install_remote(endpoint, None, restart_daemon)
+    let outcome = install_remote(endpoint, None, restart_daemon)
         .map_err(|error| error.ssh_reason().unwrap_or_else(|| error.to_string()))?;
-    Ok(format!(
-        "installed zz {} on {name}",
-        env!("CARGO_PKG_VERSION")
-    ))
+    Ok(format!("{name}: {}", outcome.summary()))
 }
 
 fn fleet_add(arguments: &FleetAddArguments) -> Result<String, String> {

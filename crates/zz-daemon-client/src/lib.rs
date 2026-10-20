@@ -66,7 +66,10 @@ pub use client::{
 };
 #[cfg(any(unix, windows))]
 pub use endpoint::install_remote;
-pub use endpoint::{Endpoint, EndpointError, SshEndpoint, run_socket_proxy, shell_quote};
+pub use endpoint::{
+    Endpoint, EndpointError, RemoteInstall, RemoteInstalled, RemoteRestart, SshEndpoint,
+    run_socket_proxy, shell_quote,
+};
 pub use fleet_hosts::{
     HostEntry, RejectedHost, apply_fleet_host_entry, atomic_write, configured_fleet_hosts,
     validate_fleet_host, write_fleet_host,

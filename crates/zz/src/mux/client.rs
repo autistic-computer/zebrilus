@@ -23,7 +23,7 @@ use zz_client::{
 };
 use zz_daemon_client::{
     AskpassPrompt, AskpassReply, DaemonError, Endpoint, EndpointError, InteractiveClient,
-    terminate_incompatible_daemon,
+    RemoteInstall, RemoteRestart, terminate_incompatible_daemon,
 };
 use zz_gpui::{ClipboardItem, Context, EventEmitter, Image, RenderImage, Task};
 #[cfg(test)]
@@ -243,6 +243,23 @@ fn connect_result_state<T>(result: &Result<T, DaemonError>) -> HostState {
     match result {
         Ok(_) => HostState::Connected,
         Err(error) => connect_error_state(error),
+    }
+}
+
+fn install_notification(name: &str, outcome: &RemoteInstall) -> (ClientMessageKind, String) {
+    let summary = format!("{name}: {}", outcome.summary());
+    if matches!(outcome.restart, RemoteRestart::Failed(_)) {
+        (ClientMessageKind::Error, summary)
+    } else if outcome.warnings.is_empty() {
+        (ClientMessageKind::Success, summary)
+    } else {
+        (
+            ClientMessageKind::Warning,
+            std::iter::once(summary)
+                .chain(outcome.warnings.iter().cloned())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     }
 }
 
@@ -1991,7 +2008,7 @@ impl MuxClient {
         host: HostId,
         previous: HostState,
         name: &str,
-        result: Result<(), String>,
+        result: Result<RemoteInstall, String>,
         cx: &mut Context<Self>,
     ) {
         let Some(connection) = self.connections.get_mut(&host) else {
@@ -2001,13 +2018,10 @@ impl MuxClient {
             return;
         }
         match result {
-            Ok(()) => {
+            Ok(outcome) => {
                 connection.state = HostState::Disconnected;
-                Self::emit_notification(
-                    ClientMessageKind::Success,
-                    format!("Installed zz on {name}"),
-                    cx,
-                );
+                let (kind, text) = install_notification(name, &outcome);
+                Self::emit_notification(kind, text, cx);
                 self.ensure_connected(host, cx);
             }
             Err(reason) => {
