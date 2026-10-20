@@ -995,7 +995,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             ),
             CommandOptionSpec::flag(
                 "--progress",
-                "print local progress to stderr; requires --wait and -t %N",
+                "print progress to stderr; requires --wait and -t %N",
             ),
             CommandOptionSpec::value(
                 "--timeout",

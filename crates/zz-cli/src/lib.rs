@@ -224,9 +224,14 @@ pub fn run_startup(socket_path: &Path, options: StartupOptions) -> Startup {
         return Startup::Exit(ExitCode::SUCCESS);
     }
     if control_mode != 0 && shell_command.is_none() {
-        if host.is_some() {
-            eprintln!("zz: --host is not supported with control mode");
-            return Startup::Exit(exit_code_for(CliFailure::Usage));
+        if let Some(host) = host.as_deref() {
+            return Startup::Exit(match configured_host_endpoint(host) {
+                Ok(endpoint) => control_mode::run_host(&endpoint, control_mode, &remaining),
+                Err(error) => {
+                    eprintln!("zz: {error}");
+                    exit_code_for(CliFailure::Runtime)
+                }
+            });
         }
         if implicit_tmux_conflict {
             eprintln!("{FOREIGN_TMUX_ERROR}");
@@ -756,13 +761,19 @@ fn run_command_mode(
     } else {
         None
     };
-    if progress_target.is_some() && host.is_some() {
-        eprintln!("agent-send: --progress is local only");
-    }
     if command == "events" {
-        if host.is_some() || command_chain.len() != 1 {
-            eprintln!("events: use a single local command: zz events [-t target]");
+        if command_chain.len() != 1 {
+            eprintln!("events: use a single command: zz events [-t target]");
             return Some(exit_code_for(CliFailure::Usage));
+        }
+        if let Some(host) = host {
+            return Some(match configured_host_endpoint(host) {
+                Ok(endpoint) => events::run_host(host, &endpoint, &invocation.args),
+                Err(error) => {
+                    eprintln!("zz: {error}");
+                    exit_code_for(CliFailure::Runtime)
+                }
+            });
         }
         if implicit_tmux_conflict {
             eprintln!("{FOREIGN_TMUX_ERROR}");
@@ -910,6 +921,7 @@ fn run_command_mode(
             host,
             socket_source,
             command_chain,
+            progress_target.as_deref(),
         ));
     }
 
@@ -1087,7 +1099,10 @@ fn run_local_command_chain(
     let _progress = if command_chain.len() == 1
         && let Some(pane) = progress_target
     {
-        match events::Progress::start(routing.socket_path, pane.to_owned()) {
+        match InteractiveClient::connect_control(routing.socket_path)
+            .map_err(|error| format_local_command_error(routing.socket_path, error))
+            .and_then(|client| events::Progress::start(client, pane.to_owned()))
+        {
             Ok(progress) => Some(progress),
             Err(error) => {
                 eprintln!("agent-send: --progress: {error}");
@@ -1144,6 +1159,7 @@ fn run_host_command_chain(
     host: &str,
     socket_source: SocketSelectionSource,
     command_chain: Vec<CommandInvocation>,
+    progress_target: Option<&str>,
 ) -> ExitCode {
     if command_chain_uses_tui(&command_chain) || attach_prefix_uses_tui(routing.command) {
         return run_tui_chain(routing, None, command_chain, None);
@@ -1169,6 +1185,25 @@ fn run_host_command_chain(
             eprintln!("zz: {error}");
             return exit_code_for(CliFailure::Runtime);
         }
+    };
+    let _progress = if command_chain.len() == 1
+        && let Some(pane) = progress_target
+    {
+        match configured_host_endpoint(host)
+            .and_then(|endpoint| {
+                InteractiveClient::connect_control_endpoint(&endpoint)
+                    .map_err(|error| error.to_string())
+            })
+            .and_then(|client| events::Progress::start(client, pane.to_owned()))
+        {
+            Ok(progress) => Some(progress),
+            Err(error) => {
+                eprintln!("agent-send: --progress: {error}");
+                return exit_code_for(CliFailure::Runtime);
+            }
+        }
+    } else {
+        None
     };
     prepare_command_client(&mut client);
     match client.exec_chain(ExecChain::new(command_chain), emit_chain_outcome) {

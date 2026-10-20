@@ -12,12 +12,12 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use zz_daemon_client::InteractiveClient;
+use zz_daemon_client::{Endpoint, InteractiveClient};
 use zz_protocol::{CommandInvocation, CommandResponse, EventPayload, ProtocolMessage, RawText};
 
 use super::{
-    SocketSelectionSource, connect_or_spawn_daemon, format_local_command_error,
-    tmux_command_starts_server, tmux_label_creation_error,
+    SocketSelectionSource, command_error_message, connect_or_spawn_daemon,
+    format_local_command_error, tmux_command_starts_server, tmux_label_creation_error,
 };
 
 pub(crate) fn run(
@@ -27,35 +27,17 @@ pub(crate) fn run(
     no_start_server: bool,
     arguments: &[RawText],
 ) -> ExitCode {
-    let spec = zz_protocol::catalog_command_spec("events").expect("events catalog");
-    let parsed = match zz_protocol::parse_tmux_options(spec, arguments).and_then(|parsed| {
-        spec.validate_positional_maximum(parsed.positionals.len())?;
-        Ok(parsed)
-    }) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            eprintln!("events: {}", error.tmux_message());
-            return ExitCode::from(2);
-        }
+    let target = match events_target(arguments) {
+        Ok(target) => target,
+        Err(exit) => return exit,
     };
-    let target = parsed.options.iter().rev().find_map(|option| match option {
-        zz_protocol::TmuxOption::Value("-t", value) => Some((*value).to_owned()),
-        _ => None,
-    });
     let start_server = !no_start_server && tmux_command_starts_server("attach-session");
     if let Some(error) = tmux_label_creation_error(socket_path, socket_source, start_server) {
         eprintln!("events: {}", error.message);
         return ExitCode::FAILURE;
     }
-    let stdout = io::stdout();
-    let mut output = EventWriter {
-        output: stdout.lock(),
-        next_seq: 0,
-        target,
-    };
-    let mut startup_gaps = 0;
-    loop {
-        let client = if start_server {
+    stream(target, None, || {
+        if start_server {
             connect_or_spawn_daemon(
                 socket_path,
                 None,
@@ -70,11 +52,60 @@ pub(crate) fn run(
             )
         } else {
             InteractiveClient::connect_control(socket_path)
-        };
-        let client = match client {
+        }
+        .map_err(|error| format_local_command_error(socket_path, error))
+    })
+}
+
+/// The same stream from `host`'s daemon, through its kept ssh forward; each line names the host so
+/// an orchestrator can merge several.
+pub(crate) fn run_host(host: &str, endpoint: &Endpoint, arguments: &[RawText]) -> ExitCode {
+    let target = match events_target(arguments) {
+        Ok(target) => target,
+        Err(exit) => return exit,
+    };
+    stream(target, Some(host), || {
+        InteractiveClient::connect_control_endpoint(endpoint)
+            .map_err(|error| command_error_message(&error))
+    })
+}
+
+fn events_target(arguments: &[RawText]) -> Result<Option<String>, ExitCode> {
+    let spec = zz_protocol::catalog_command_spec("events").expect("events catalog");
+    let parsed = match zz_protocol::parse_tmux_options(spec, arguments).and_then(|parsed| {
+        spec.validate_positional_maximum(parsed.positionals.len())?;
+        Ok(parsed)
+    }) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("events: {}", error.tmux_message());
+            return Err(ExitCode::from(2));
+        }
+    };
+    Ok(parsed.options.iter().rev().find_map(|option| match option {
+        zz_protocol::TmuxOption::Value("-t", value) => Some((*value).to_owned()),
+        _ => None,
+    }))
+}
+
+fn stream(
+    target: Option<String>,
+    host: Option<&str>,
+    connect: impl Fn() -> Result<InteractiveClient, String>,
+) -> ExitCode {
+    let stdout = io::stdout();
+    let mut output = EventWriter {
+        output: stdout.lock(),
+        next_seq: 0,
+        target,
+        host: host.map(str::to_owned),
+    };
+    let mut startup_gaps = 0;
+    loop {
+        let client = match connect() {
             Ok(client) => Arc::new(client),
             Err(error) => {
-                eprintln!("events: {}", format_local_command_error(socket_path, error));
+                eprintln!("events: {error}");
                 return ExitCode::FAILURE;
             }
         };
@@ -246,6 +277,7 @@ struct EventWriter<W> {
     output: W,
     next_seq: u64,
     target: Option<String>,
+    host: Option<String>,
 }
 
 impl<W: Write> EventWriter<W> {
@@ -253,6 +285,9 @@ impl<W: Write> EventWriter<W> {
         let mut line = serde_json::Map::new();
         for (key, value) in variables {
             line.insert(key.clone(), serde_json::Value::String(value.clone()));
+        }
+        if let Some(host) = &self.host {
+            line.insert("host".to_owned(), host.as_str().into());
         }
         line.insert("seq".to_owned(), self.next_seq.into());
         line.insert("event".to_owned(), name.into());
@@ -355,11 +390,8 @@ pub(crate) struct Progress {
 }
 
 impl Progress {
-    pub(crate) fn start(socket_path: &Path, pane: String) -> Result<Self, String> {
-        let client = Arc::new(
-            InteractiveClient::connect_control(socket_path)
-                .map_err(|error| format_local_command_error(socket_path, error))?,
-        );
+    pub(crate) fn start(client: InteractiveClient, pane: String) -> Result<Self, String> {
+        let client = Arc::new(client);
         let mut progress = Self {
             stop: Arc::new(AtomicBool::new(false)),
             client,
@@ -711,6 +743,7 @@ mod tests {
             output: Vec::new(),
             next_seq: 0,
             target: None,
+            host: None,
         };
         writer.line("ready", &BTreeMap::new()).unwrap();
         writer.hook(hook()).unwrap();
@@ -735,12 +768,32 @@ mod tests {
     }
 
     #[test]
+    fn host_streams_name_their_host_on_every_line() {
+        let mut writer = EventWriter {
+            output: Vec::new(),
+            next_seq: 0,
+            target: None,
+            host: Some("xps".to_owned()),
+        };
+        writer.line("ready", &BTreeMap::new()).unwrap();
+        writer.hook(hook()).unwrap();
+        writer.line("gap", &BTreeMap::new()).unwrap();
+        let rows = lines(&writer.output);
+        assert_eq!(rows.len(), 3);
+        for row in &rows {
+            assert_eq!(row["host"], "xps");
+        }
+        assert_eq!(rows[0].as_object().unwrap().len(), 4);
+    }
+
+    #[test]
     fn filters_match_exact_target_fields_and_keep_ready_and_gap() {
         for target in ["%2", "@3", "$4", "work", "%20", "@30", "$40", "wor"] {
             let mut writer = EventWriter {
                 output: Vec::new(),
                 next_seq: 0,
                 target: Some(target.to_owned()),
+                host: None,
             };
             writer.line("ready", &BTreeMap::new()).unwrap();
             writer.hook(hook()).unwrap();
@@ -789,6 +842,7 @@ mod tests {
                 output: Vec::new(),
                 next_seq: 0,
                 target: Some(target.to_owned()),
+                host: None,
             };
             writer.hook(event()).unwrap();
             let rows = lines(&writer.output);
