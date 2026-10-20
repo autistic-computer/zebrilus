@@ -234,9 +234,14 @@ pub fn run_startup(socket_path: &Path, options: StartupOptions) -> Startup {
         return Startup::Exit(ExitCode::SUCCESS);
     }
     if control_mode != 0 && shell_command.is_none() {
-        if host.is_some() {
-            eprintln!("zz: --host is not supported with control mode");
-            return Startup::Exit(exit_code_for(CliFailure::Usage));
+        if let Some(host) = host.as_deref() {
+            return Startup::Exit(match configured_host_endpoint(host) {
+                Ok(endpoint) => control_mode::run_host(&endpoint, control_mode, &remaining),
+                Err(error) => {
+                    eprintln!("zz: {error}");
+                    exit_code_for(CliFailure::Runtime)
+                }
+            });
         }
         if implicit_tmux_conflict {
             eprintln!("{FOREIGN_TMUX_ERROR}");
@@ -759,6 +764,15 @@ fn run_command_mode(
         print!("{}", top_level_help());
         return Some(ExitCode::SUCCESS);
     }
+    if let Some(host) = host
+        && host != ALL_HOSTS
+        && matches!(
+            canonical_command(&command),
+            "fleet" | "list-hosts" | "tools" | "protocol-version"
+        )
+    {
+        return Some(run_host_cli(host, arguments));
+    }
     if invocation.args.iter().any(|argument| argument == "--help") {
         return Some(match command_help(&command) {
             Ok(help) => {
@@ -794,13 +808,19 @@ fn run_command_mode(
     } else {
         None
     };
-    if progress_target.is_some() && host.is_some() {
-        eprintln!("agent-send: --progress is local only");
-    }
     if command == "events" {
-        if host.is_some() || command_chain.len() != 1 {
-            eprintln!("events: use a single local command: zz events [-t target]");
+        if command_chain.len() != 1 {
+            eprintln!("events: use a single command: zz events [-t target]");
             return Some(exit_code_for(CliFailure::Usage));
+        }
+        if let Some(host) = host {
+            return Some(match configured_host_endpoint(host) {
+                Ok(endpoint) => events::run_host(host, &endpoint, &invocation.args),
+                Err(error) => {
+                    eprintln!("zz: {error}");
+                    exit_code_for(CliFailure::Runtime)
+                }
+            });
         }
         if implicit_tmux_conflict {
             eprintln!("{FOREIGN_TMUX_ERROR}");
@@ -829,7 +849,6 @@ fn run_command_mode(
         return Some(
             match protocol_version_output(
                 invocation.args.iter().map(ToString::to_string),
-                host,
                 socket_source.is_overridden(),
             ) {
                 Ok(version) => {
@@ -844,7 +863,7 @@ fn run_command_mode(
         );
     }
 
-    if host.is_some() && matches!(command.as_str(), "daemon" | "proxy" | "fleet") {
+    if host.is_some() && matches!(command.as_str(), "daemon" | "proxy") {
         eprintln!("zz: --host is not supported for `{command}`");
         return Some(exit_code_for(CliFailure::Usage));
     }
@@ -950,6 +969,7 @@ fn run_command_mode(
             host,
             socket_source,
             command_chain,
+            progress_target.as_deref(),
         ));
     }
 
@@ -1127,7 +1147,10 @@ fn run_local_command_chain(
     let _progress = if command_chain.len() == 1
         && let Some(pane) = progress_target
     {
-        match events::Progress::start(routing.socket_path, pane.to_owned()) {
+        match InteractiveClient::connect_control(routing.socket_path)
+            .map_err(|error| format_local_command_error(routing.socket_path, error))
+            .and_then(|client| events::Progress::start(client, pane.to_owned()))
+        {
             Ok(progress) => Some(progress),
             Err(error) => {
                 eprintln!("agent-send: --progress: {error}");
@@ -1184,6 +1207,7 @@ fn run_host_command_chain(
     host: &str,
     socket_source: SocketSelectionSource,
     command_chain: Vec<CommandInvocation>,
+    progress_target: Option<&str>,
 ) -> ExitCode {
     if command_chain_uses_tui(&command_chain) || attach_prefix_uses_tui(routing.command) {
         return run_tui_chain(routing, None, command_chain, None);
@@ -1209,6 +1233,25 @@ fn run_host_command_chain(
             eprintln!("zz: {error}");
             return exit_code_for(CliFailure::Runtime);
         }
+    };
+    let _progress = if command_chain.len() == 1
+        && let Some(pane) = progress_target
+    {
+        match configured_host_endpoint(host)
+            .and_then(|endpoint| {
+                InteractiveClient::connect_control_endpoint(&endpoint)
+                    .map_err(|error| error.to_string())
+            })
+            .and_then(|client| events::Progress::start(client, pane.to_owned()))
+        {
+            Ok(progress) => Some(progress),
+            Err(error) => {
+                eprintln!("agent-send: --progress: {error}");
+                return exit_code_for(CliFailure::Runtime);
+            }
+        }
+    } else {
+        None
     };
     prepare_command_client(&mut client);
     match client.exec_chain(ExecChain::new(command_chain), emit_chain_outcome) {
@@ -1864,10 +1907,9 @@ fn os_error_text(error: &io::Error) -> String {
 
 fn protocol_version_output(
     mut args: impl Iterator<Item = String>,
-    host: Option<&str>,
     socket_overridden: bool,
 ) -> Result<String, &'static str> {
-    if host.is_some() || socket_overridden || args.next().is_some() {
+    if socket_overridden || args.next().is_some() {
         return Err("usage: zz protocol-version");
     }
     Ok(PROTOCOL_VERSION.to_string())
@@ -2544,6 +2586,37 @@ fn stored_default_client_command(
         ))
         .ok()?;
     Some(output.trim_end_matches('\n').to_owned())
+}
+
+fn run_host_cli(host: &str, arguments: &[RawText]) -> ExitCode {
+    let endpoint = match configured_host_endpoint(host) {
+        Ok(Endpoint::Ssh(endpoint)) => endpoint,
+        Ok(Endpoint::Local(path)) => {
+            eprintln!(
+                "zz: {host} is the local socket {}; run the command without --host",
+                path.display()
+            );
+            return exit_code_for(CliFailure::Usage);
+        }
+        Err(error) => {
+            eprintln!("zz: {error}");
+            return exit_code_for(CliFailure::Runtime);
+        }
+    };
+    let arguments = arguments
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    match zz_daemon_client::run_remote_cli(&endpoint, &arguments) {
+        Ok(status) => status
+            .code()
+            .and_then(|code| u8::try_from(code).ok())
+            .map_or_else(|| exit_code_for(CliFailure::Runtime), ExitCode::from),
+        Err(error) => {
+            eprintln!("zz: {error}");
+            exit_code_for(CliFailure::Runtime)
+        }
+    }
 }
 
 fn connect_host_command_client(name: &str) -> Result<CommandClient, String> {
@@ -4069,19 +4142,15 @@ mod tests {
     #[test]
     fn protocol_version_command_prints_only_the_wire_version() {
         assert_eq!(
-            protocol_version_output(std::iter::empty(), None, false).unwrap(),
+            protocol_version_output(std::iter::empty(), false).unwrap(),
             zz_protocol::PROTOCOL_VERSION.to_string()
         );
         assert_eq!(
-            protocol_version_output(["extra".to_owned()].into_iter(), None, false),
+            protocol_version_output(["extra".to_owned()].into_iter(), false),
             Err("usage: zz protocol-version")
         );
         assert_eq!(
-            protocol_version_output(std::iter::empty(), Some("remote"), false),
-            Err("usage: zz protocol-version")
-        );
-        assert_eq!(
-            protocol_version_output(std::iter::empty(), None, true),
+            protocol_version_output(std::iter::empty(), true),
             Err("usage: zz protocol-version")
         );
     }

@@ -277,32 +277,75 @@ the terminal; a failing host prints its reason on stderr and the exit status is 
 
 ## Connection sharing
 
-Every step also carries `ControlMaster=auto`, `ControlPath=<private dir>/c<hash of user+host+port>`
-and `ControlPersist=60`, so the probe authenticates and the other two ride its connection. This is
-not an optimisation: without it a password-protected host is asked for the same password three times
-for one connect, and each rung of the reconnect ladder asks again.
+Every step also carries `ControlMaster=auto` and a `ControlPath`, so the probe authenticates and
+the other children ride its connection. This is not an optimisation: without it a
+password-protected host is asked for the same password three times for one connect, and each rung
+of the reconnect ladder asks again.
+
+`shared_control` picks the path with `ssh -G [-p] [-l] -- host`. When the user's config has
+`ControlMaster auto` or `yes` and a `ControlPath`, zz rides that path, so a live `~/.ssh/cm-%C`
+master means no login at all, and their `ControlPersist` stays theirs (zz adds
+`ControlPersist=600` only when theirs is `no`). `ask`, `autoask`, `no` or no path get zz's own
+`<ssh dir>/c<hash of user+host+port>` with `ControlPersist=600`, so the GUI, every CLI call and the
+next app launch all meet the same master for ten minutes after its last channel closes.
 
 Two consequences of multiplexing that the code has to know about, both measured against
 OpenSSH 10.3p1:
 
-- Against a live master, `ssh -N -L …` becomes a *forward request*: the master binds the socket,
-  answers, and the requesting child **exits 0 in about 16 ms**. `wait_for_socket` therefore treats a
-  finished child as success whenever the socket is there, and `Drop` runs `ssh -O cancel -L <spec>`
-  as well as killing the child, because the listener belongs to the master rather than to the child
-  that asked for it. Forwarded traffic is an open channel, so it keeps the master alive well past
-  `ControlPersist`.
+- Against a live master, `ssh -N -L …` is not a forward request. OpenSSH's mux client sends the
+  forward and then always asks the master for a session (`mux_client_request_session`), handing it
+  the child's stdin, stdout and stderr; with no command that session is a login shell, which runs
+  whatever the caller's stdin holds. `printf 'echo PWNED\n' | zz --host xps list-sessions` printed
+  PWNED from xps, and a `while read` loop around `zz --host` lost the rest of its input. The GUI got
+  away with it only because launchd gives it `/dev/null`, so that shell hit EOF at once: the child
+  that "exits 0 in about 16 ms" was the shell ending, not a forward being granted. Forwards now go
+  through `ssh -O forward -L <spec> [-D <port>]` on the live master, with stdin and stdout null and
+  stderr kept for the error. Only when no master answers `ssh -O check` does a child
+  `ssh -N -n -L …` hold the forward, with null stdin and stdout. `Drop` still runs
+  `ssh -O cancel` for each forward and removes the socket file, which cancel leaves behind.
+  Forwarded traffic is an open channel, so it keeps the master alive past `ControlPersist`.
 - A master that died leaves its socket behind, and ssh then only warns and gives every child its own
-  handshake. `discard_dead_control_master` runs `ssh -O check` first . a local round trip that costs
+  handshake. `live_control` runs `ssh -O check` first (`control_master_alive`) . a local round trip that costs
   about 5 ms and never touches the network . and unlinks the path when it fails.
 
-The control socket and the askpass socket both live in one 0700 directory created per process by
-`tempfile` under `$TMPDIR` (or `/tmp` when that path is too long for `sun_path`). Both are
-capabilities: whoever reaches the control socket owns the ssh session, and whoever reaches the
-askpass socket can phish a password out of the dialog.
+Control sockets, forwarded sockets and askpass sockets live in one stable 0700 directory per user,
+`ssh_runtime_dir`: `$XDG_RUNTIME_DIR/zz/ssh` on Linux, else `$TMPDIR/zz-ssh-<uid>` (or `/tmp/…`
+when `$TMPDIR` is too long for `sun_path`). All are capabilities: whoever reaches a control socket
+owns the ssh session, a forwarded socket reaches the remote daemon, and the askpass socket can
+phish a password out of the dialog. So zz refuses a symlink, a directory another user owns, or one
+with group or other bits, and falls back to a per-process `tempfile` directory,
+`zz-ssh-<uid>-XXXXXX`. Each
+`AskpassListener` binds in its own subdirectory, removed when it drops, so processes sharing the
+directory never collide on a name. Builds before 2026-10-20 made a `zz-ssh-XXXXXX` directory per
+process and never removed it; the first process that needs the directory `rmdir`s the empty ones
+older than ten minutes. Only that shape counts (six random characters, not all digits), so a
+release build's `zz-ssh-<uid>`, a dev build's `zz-dev-ssh-<uid>` and another process's fallback
+are never touched.
 
-**Remaining cost:** a cold connect still runs three ssh children, now over one handshake. Folding the
-probe into the auto-start exec would make it two (the start script already re-checks the socket, so
-it only needs to print the path it resolved).
+### Kept forwards
+
+The CLI does not make a forward per call. `CommandClient`, the TUI and control clients
+(`zz events`, `zz -C`, `agent-send --progress`) go through `connect_kept`, which dials
+`<ssh dir>/c<hash>.sock`, a forward the host's master keeps between calls, and runs probe, start
+and `-O forward` only when that fails: the socket is missing or refused, or the handshake ends early
+or reports another protocol. An exec link has no handshake of its own, so the command client sends
+an empty `Exec` ahead of its first real one; the daemon answers it before reading the next, so a
+link that gives no answer ran nothing, and the forward is made again before the command goes out.
+Parallel calls to a host whose forward is gone take turns on `c<hash>.sock.lock`, so one logs in
+and the rest ride it: a call that waited on the lock first sends an empty `Exec` down the forward
+the holder made, and makes it again only when that gets no answer. A warm `zz --host xps list-sessions` takes about 40 ms from the Mac, 0.45 s
+when the forward has to be made again, and repeated calls leave the one master they found.
+
+Only the desktop app's connection opens `-D` (SOCKS for browser egress) and a forward of its own,
+cancelled when it drops. Probe and start that ride a live master are time-boxed at 15 s: a master
+whose network died answers nothing until its keepalive gives up (minutes for a user's
+`ServerAliveInterval 60`), so past that the master gets `ssh -O stop` and the next call logs in
+afresh. The first answer on a kept link (the command client's empty `Exec`, or a control or
+interactive hello) has the same 15 s bound, set as the socket's read timeout and cleared once the
+answer arrives; past it the master gets `ssh -O stop`, `c<hash>.sock` is removed, and the call
+takes the cold path. `fleet`, `list-hosts`, `tools` and `protocol-version` over `--host` first run
+a bounded `ssh … exit` on a live master, since the host's CLI itself may run for as long as it
+likes. A cold connect still runs probe, start and forward as three ssh steps over one login.
 
 ## Password and host-key prompts
 

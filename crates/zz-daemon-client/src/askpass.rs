@@ -14,7 +14,7 @@ use std::{
     },
     path::Path,
     process::ExitCode,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::Ordering,
     thread,
     time::Duration,
 };
@@ -239,8 +239,6 @@ fn reply_line(answer: &Zeroizing<String>) -> Zeroizing<Vec<u8>> {
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(unix)]
 const MAX_PROMPT_BYTES: u64 = 64 * 1024;
-#[cfg(unix)]
-static ASKPASS_COUNTER: AtomicU64 = AtomicU64::new(1);
 #[cfg(windows)]
 const MAX_PROMPT_BYTES: usize = 64 * 1024;
 #[cfg(windows)]
@@ -287,16 +285,17 @@ pub(crate) struct AskpassListener {
     helper: PathBuf,
     socket: PathBuf,
     stopped: Arc<std::sync::atomic::AtomicBool>,
+    _directory: tempfile::TempDir,
 }
 
 #[cfg(unix)]
 impl AskpassListener {
     pub(crate) fn start(prompts: SshPrompts) -> io::Result<Self> {
-        let socket = crate::endpoint::ssh_runtime_dir()?.join(format!(
-            "a{}",
-            ASKPASS_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_file(&socket);
+        let directory = tempfile::Builder::new()
+            .prefix("a")
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir_in(crate::endpoint::ssh_runtime_dir()?)?;
+        let socket = directory.path().join("s");
         let listener = UnixListener::bind(&socket)?;
         fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
 
@@ -310,6 +309,7 @@ impl AskpassListener {
             helper: prompts.helper,
             socket,
             stopped,
+            _directory: directory,
         })
     }
 
@@ -327,7 +327,6 @@ impl Drop for AskpassListener {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::SeqCst);
         let _ = UnixStream::connect(&self.socket);
-        let _ = fs::remove_file(&self.socket);
     }
 }
 
@@ -884,6 +883,10 @@ mod tests {
 
         drop(listener);
         assert!(!socket.exists(), "the socket outlived its listener");
+        assert!(
+            !socket.parent().unwrap().exists(),
+            "the directory outlived its listener"
+        );
     }
 
     #[cfg(unix)]
