@@ -4,7 +4,7 @@ title: Agent peer bus
 description: How the daemon exchanges prompts between Agent panes and local Claude Code sessions through Claude Code's peer registry and Unix inbox sockets.
 resource: crates/zz-daemon/src/agent/claude_peers.rs
 tags: [architecture, agent, messaging, claude-code, acp]
-timestamp: 2026-09-10T00:00:00Z
+timestamp: 2026-10-20T12:00:00-03:00
 ---
 
 The daemon joins Claude Code's local peer protocol in two directions. You can target a terminal
@@ -15,6 +15,13 @@ pane running Claude Code with `agent-send`, and Claude Code can discover and mes
 The [agent messaging survey](/research/2026-09-10-agent-messaging-survey.md) records live probes
 with Claude Code 2.1.267 on 2026-09-10. The implementation uses `peerProtocol: 1`; Claude Code has
 not published the registry shape as a stable contract.
+
+Peers are per machine. A record names a live local pid, delivery goes to a local Unix socket, and
+replies go to a `uds:` address that must exist on the replier's machine, so `ListAgents` shows only
+the panes of this machine's daemon and no daemon mirrors another host's panes. For an agent on
+another host, the caller uses `zz --host NAME agent-send -t %N --wait "..."`, which prints the reply
+and exits the same way as a local wait, and finds the panes with
+`zz --host NAME list-panes -a -F '#{pane_id} #{pane_kind} #{@name} #{agent_state}'`.
 
 ## Target selection
 
@@ -252,7 +259,11 @@ For a registered sending Agent or terminal pane, `from-name` uses its peer name 
 socket. Otherwise the sender omits both the JSON `from` field and the wrapper's `from` attribute;
 `from-name` is `zz %N` when the caller pane is known, or `zz`. Claude Code validates reply
 addresses against its registry. The daemon sends no auth line and reads no reply from the outbound
-connection.
+connection. Claude Code 2.1.304 also writes a `<pid>.<sha256>.key` file beside each record carrying
+a `peerToken`, and its inbox requires the matching `{"type":"auth","token":...}` line only on
+Windows (`requireAuth ?? platform==="windows"`). If it becomes required on macOS or Linux, local
+delivery to Claude Code breaks until the sender reads the target's key file and sends that line
+first.
 
 One listener thread serves each registered peer. It tolerates empty liveness connections,
 ignores `type: auth` lines and unrecognized messages, and accepts `type: user` lines with a string
