@@ -1634,10 +1634,11 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-window",
         aliases: &["neww"],
         description: "Create a window",
-        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser] [--profile NAME] [shell-command [argument ...]]",
+        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|agent] [--profile NAME] [--provider codex|claude-code] [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
+            CommandOptionSpec::value("--provider", FreeForm, "agent provider").native(),
             CommandOptionSpec::value("-t", Window, "destination session or window index"),
             CommandOptionSpec::value("-n", FreeForm, "window name"),
             CommandOptionSpec::value("-c", FreeForm, "start in the current pane path"),
@@ -4517,7 +4518,7 @@ mod tests {
         assert!(!command_spec("split-window").unwrap().is_internal());
         for name in ["split-window", "new-window"] {
             let spec = command_spec(name).unwrap();
-            for option in ["--kind", "--profile"] {
+            for option in ["--kind", "--profile", "--provider"] {
                 assert!(spec.option(option).unwrap().native);
                 assert!(matches!(
                     parse_tmux_options(spec, &[option.into()]),
