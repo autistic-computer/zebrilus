@@ -19,13 +19,24 @@ fn isolated_zz() -> (tempfile::TempDir, Command) {
         .tempdir_in(root)
         .expect("temporary CLI home");
     let mut command = Command::new(env!("CARGO_BIN_EXE_zz_cli"));
-    command
-        .env("HOME", directory.path())
-        .env("XDG_CONFIG_HOME", directory.path())
+    scratch_env(&mut command, directory.path())
         .env("APPDATA", directory.path())
         .env("LOCALAPPDATA", directory.path())
         .env("USERPROFILE", directory.path());
     (directory, command)
+}
+
+fn scratch_env<'a>(command: &'a mut Command, root: &std::path::Path) -> &'a mut Command {
+    let [data, runtime, temporary] = ["share", "run", "tmp"].map(|name| root.join(name));
+    for directory in [&data, &runtime, &temporary] {
+        std::fs::create_dir_all(directory).expect("scratch directory");
+    }
+    command
+        .env("HOME", root)
+        .env("XDG_CONFIG_HOME", root)
+        .env("XDG_DATA_HOME", data)
+        .env("XDG_RUNTIME_DIR", runtime)
+        .env("TMPDIR", temporary)
 }
 
 const TMUX_USAGE: &str = concat!(
@@ -205,9 +216,7 @@ fn host_connect_failures_over_openssh_name_the_host_and_the_fix() {
         ("", "missing", &[][..], missing.to_owned()),
         ("", "missing", &["attach"][..], missing.to_owned()),
     ] {
-        let output = Command::new(env!("CARGO_BIN_EXE_zz_cli"))
-            .env("HOME", home.path())
-            .env("XDG_CONFIG_HOME", home.path())
+        let output = scratch_env(&mut Command::new(env!("CARGO_BIN_EXE_zz_cli")), home.path())
             .env("PATH", &path)
             .env("FAKE_SSH_ERROR", error)
             .env("FAKE_SSH_PROTOCOL", protocol)
@@ -290,9 +299,7 @@ fn list_hosts_reads_zz_config_without_a_daemon_or_ssh() {
     )
     .unwrap();
     let run = |arguments: &[&str]| {
-        let (_, mut zz) = isolated_zz();
-        zz.env("HOME", home.path())
-            .env("XDG_CONFIG_HOME", home.path())
+        scratch_env(&mut Command::new(env!("CARGO_BIN_EXE_zz_cli")), home.path())
             .env_remove("TMUX")
             .arg("-S")
             .arg(home.path().join("absent.sock"))
@@ -434,9 +441,7 @@ mod daemon_autostart {
             )
             .expect("host config");
             let mut command = Command::new(env!("CARGO_BIN_EXE_zz_cli"));
-            command
-                .env("HOME", &self.home)
-                .env("XDG_CONFIG_HOME", &self.home)
+            super::scratch_env(&mut command, &self.home)
                 .arg("-f")
                 .arg(&self.config)
                 .arg("--host")
@@ -1053,14 +1058,15 @@ mod daemon_autostart {
         )
         .expect("write host config");
         let zz = |arguments: &[&str]| {
-            Command::new(env!("CARGO_BIN_EXE_zz_cli"))
-                .env("HOME", &fixture.home)
-                .env("XDG_CONFIG_HOME", &fixture.home)
-                .env_remove("TMUX")
-                .env_remove("ZZ_SOCKET")
-                .args(arguments)
-                .output()
-                .expect("run zz --host")
+            super::scratch_env(
+                &mut Command::new(env!("CARGO_BIN_EXE_zz_cli")),
+                &fixture.home,
+            )
+            .env_remove("TMUX")
+            .env_remove("ZZ_SOCKET")
+            .args(arguments)
+            .output()
+            .expect("run zz --host")
         };
 
         let untargeted = zz(&["--host", "peer", "send-keys", "x"]);

@@ -48,13 +48,10 @@ use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
 #[cfg(any(unix, windows, test))]
 use crate::unmasked::SpawnUnmasked as _;
 
-/// `$zz_managed` is the copy installing over ssh puts in place and can update, so it wins over any
-/// other zz on the login PATH; otherwise a package or cargo copy earlier on PATH would keep
-/// answering after every update. `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported
-/// from `~/.bash_profile` or `~/.zshrc` never reaches it, which hides the CLI that install.sh
-/// linked into one of these. Appending leaves whatever the profile did contribute ahead of the
-/// fallbacks, for the daemon these scripts start. A Mac app dragged out of the disk image has no
-/// CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
+/// `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported from `~/.bash_profile` or
+/// `~/.zshrc` never reaches it, which hides the CLI that install.sh linked into one of these.
+/// Appending leaves whatever the profile did contribute ahead of the fallbacks. A Mac app dragged
+/// out of the disk image has no CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
 pub(crate) fn remote_path_fallback() -> String {
     format!(
@@ -1106,8 +1103,6 @@ fn control_path_option(control_path: &Path) -> String {
     )
 }
 
-/// A 0700 per-user directory for the ssh control, forwarded and askpass sockets, all of which are
-/// capabilities: one owns an ssh session, one reaches a daemon, one can phish a password.
 #[cfg(unix)]
 pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
     static DIRECTORY: OnceLock<Result<SshRuntimeDir, String>> = OnceLock::new();
