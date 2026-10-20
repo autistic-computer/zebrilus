@@ -111,3 +111,75 @@ fn a_restored_session_projects_its_prompts_and_keeps_messages_apart() {
     );
     assert_eq!(text.matches("\x1b]133;D;0\x07").count(), 2, "{text:?}");
 }
+
+#[test]
+fn tool_calls_project_one_line_when_they_start_and_when_they_fail() {
+    let mut lane = PaneLane::new(1, AgentProvider::ClaudeCode, None);
+    let mut bytes = Vec::new();
+    for payload in [
+        AgentStreamPayload::TurnStarted { turn_id: 1 },
+        AgentStreamPayload::Update {
+            update: serde_json::json!({
+                "sessionUpdate": "agent_message_chunk",
+                "messageId": "a1",
+                "content": { "type": "text", "text": "running tests" },
+            }),
+        },
+        AgentStreamPayload::Update {
+            update: serde_json::json!({
+                "sessionUpdate": "tool_call",
+                "toolCallId": "t1",
+                "title": "cargo  test",
+                "kind": "execute",
+                "status": "in_progress",
+            }),
+        },
+        AgentStreamPayload::Update {
+            update: serde_json::json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "t1",
+                "status": "failed",
+            }),
+        },
+        AgentStreamPayload::Update {
+            update: serde_json::json!({
+                "sessionUpdate": "tool_call",
+                "toolCallId": "t2",
+                "title": format!("ls {}", "x".repeat(200)),
+                "status": "pending",
+            }),
+        },
+        AgentStreamPayload::Update {
+            update: serde_json::json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "t2",
+                "status": "completed",
+            }),
+        },
+        AgentStreamPayload::Update {
+            update: serde_json::json!({
+                "sessionUpdate": "agent_message_chunk",
+                "messageId": "a2",
+                "content": { "type": "text", "text": "done" },
+            }),
+        },
+    ] {
+        let mut projection = lane.project(&payload);
+        if let Some(call) = lane.tool_call(&payload) {
+            lane.project_tool_call(&payload, &call, &mut projection);
+        }
+        bytes.extend(projection);
+    }
+    let text = String::from_utf8(bytes).expect("projection");
+    let reply = text
+        .split("\x1b]133;C\x07")
+        .nth(1)
+        .expect("reply after the prompt");
+    assert_eq!(
+        reply,
+        format!(
+            "\r\nrunning tests\r\n[tool] cargo test\r\n[tool failed] cargo test\r\n[tool] ls {}\r\ndone",
+            "x".repeat(117)
+        )
+    );
+}

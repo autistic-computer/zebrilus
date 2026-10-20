@@ -39,6 +39,14 @@ impl UnixMaster {
         (group > 0).then_some(group)
     }
 
+    pub(super) fn canonical(&self) -> Option<bool> {
+        rustix::termios::tcgetattr(&self.0).ok().map(|termios| {
+            termios
+                .local_modes
+                .contains(rustix::termios::LocalModes::ICANON)
+        })
+    }
+
     pub(super) fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
     }

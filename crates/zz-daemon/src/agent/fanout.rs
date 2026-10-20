@@ -389,6 +389,7 @@ struct PaneLane {
     external_turn: bool,
     status: Option<PaneStatus>,
     tool_calls: BTreeMap<String, AgentToolCall>,
+    tool_line: bool,
     /// Bumped whenever a blob the pane state carries is replaced, so the
     /// per-item comparison never copies a quarter-megabyte of JSON.
     blobs: u64,
@@ -494,7 +495,9 @@ impl PaneLane {
                         self.prompt_message = message;
                     }
                     (Some("agent_message_chunk"), Some(text)) => {
-                        if self.reply_message.is_some()
+                        if std::mem::take(&mut self.tool_line) {
+                            bytes.extend_from_slice(b"\r\n");
+                        } else if self.reply_message.is_some()
                             && message.is_some()
                             && message != self.reply_message
                         {
@@ -553,7 +556,33 @@ impl PaneLane {
             }
             _ => {}
         }
+        if !bytes.is_empty() {
+            self.tool_line = false;
+        }
         bytes
+    }
+
+    fn project_tool_call(
+        &mut self,
+        payload: &AgentStreamPayload,
+        call: &AgentToolCall,
+        bytes: &mut Vec<u8>,
+    ) {
+        let started = matches!(payload, AgentStreamPayload::Update { update }
+            if update.get("sessionUpdate").and_then(Value::as_str) == Some("tool_call"));
+        let label = match call.status.as_str() {
+            "failed" => "[tool failed]",
+            _ if started => "[tool]",
+            _ => return,
+        };
+        let title = call
+            .title
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(120)
+            .collect::<String>();
+        bytes.extend_from_slice(format!("\r\n{label} {title}").trim_end().as_bytes());
+        self.tool_line = true;
     }
 
     fn tool_call(&mut self, payload: &AgentStreamPayload) -> Option<AgentToolCall> {
@@ -639,6 +668,7 @@ impl PaneLane {
             external_turn: false,
             status: None,
             tool_calls: BTreeMap::new(),
+            tool_line: false,
             blobs: 0,
             fingerprint: None,
             state: None,
@@ -692,6 +722,7 @@ impl PaneLane {
         self.prompt_message = None;
         self.reply_message = None;
         self.reply_head.clear();
+        self.tool_line = false;
         self.turn_end = None;
         self.external_turn = false;
         self.status = None;
@@ -922,6 +953,9 @@ impl AgentFanout {
         if let Some(item) = item {
             projection = lane.project(&item.payload);
             tool_call = lane.tool_call(&item.payload);
+            if let Some(call) = &tool_call {
+                lane.project_tool_call(&item.payload, call, &mut projection);
+            }
             match &item.payload {
                 AgentStreamPayload::Ready { .. } => {
                     lane.ready = Some(item.payload.clone());

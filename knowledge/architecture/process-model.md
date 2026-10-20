@@ -44,7 +44,9 @@ reaches the executable through the installed `zz` symlink or directly. Two launc
 without the verb because they cannot pass one: LaunchServices on macOS (Finder, the Dock, `open`),
 which the executable recognizes by its launchd parent, and the Windows bundle, which ships no CLI
 entrypoint. The headless binary's `zz app` passes `--args app` through `open` as well, so a hidden running
-instance is reopened rather than duplicated.
+instance is reopened rather than duplicated. On Linux `zz app` runs the first desktop binary among the
+`zz` beside the launcher, `/usr/lib/zz/zz` and `~/.local/lib/zz/zz` that is not the launcher itself,
+so a headless `~/.local/bin/zz` opens a package or tarball GUI instead of spawning itself forever.
 On Unix the spawned daemon gets its own session, so Ctrl+C or a closing tty in the launching
 terminal never signals the daemon and its sessions. The daemon initially has no session unless
 config created one; the GUI's actual empty-target Interactive attach lazily creates numeric session

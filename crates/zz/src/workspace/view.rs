@@ -1038,8 +1038,8 @@ impl AppView {
         cx.subscribe_in(
             &mux,
             window,
-            |_, mux, event: &RemoteInstallOffer, window, cx| {
-                super::remote_install::open(mux, event.host, &event.name, event.offer, window, cx);
+            |_, mux, _: &RemoteInstallOffer, window, cx| {
+                super::remote_install::open(mux, window, cx);
             },
         )
         .detach();

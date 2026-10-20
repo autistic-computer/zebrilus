@@ -11,7 +11,8 @@ timestamp: 2026-10-15T00:00:00Z
 
 `zz` (package and binary name `zz`) is the **long-lived GPUI desktop client**. It links
 [`zz-cli`](/crates/zz-cli.md) for CLI dispatch, daemon spawning, and terminal attach.
-The GUI uses `daemon_executable` to spawn the sibling `cli`; the headless binary spawns itself.
+The GUI uses `daemon_executable` to spawn the sibling `cli`; the headless binary spawns itself, and
+never a `cli` it finds in a `bin` directory.
 It never owns mux state itself: it holds a socket/named-pipe connection to the daemon
 (`zz_daemon_client::InteractiveClient`, wrapped by `mux::client::MuxClient`), a set of local Chromium
 sessions (`zz_browser::BrowserRuntime`, wrapped by `browser::controller::BrowserController`), and
@@ -220,7 +221,8 @@ Browser, Terminal, Hosts, System, About:
 A **Devices** pairing page sat in this list until 2026-08-01 and was deleted with QUIC pairing.
 Fleet hosts are plain `host-<name>` config lines, added from Settings › Hosts, the sidebar's final
 **Add host** row, or `zz fleet add`, and removed by **Close host** or `zz fleet remove`.
-A host without zz offers to install it over ssh, and one with an older zz offers to update it; see
+A host without zz gets it installed over ssh on its own (never in dev builds), and hosts with an
+older zz share one dialog offering to update them and restart their daemons; see
 [installing zz on a remote](/crates/zz-daemon.md#installing-zz-on-a-remote).
 
 The ordinary controls, including Terminal, retain the typed comment-preserving writer.

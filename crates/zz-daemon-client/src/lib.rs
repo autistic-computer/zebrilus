@@ -20,6 +20,7 @@ pub const STARTUP_REENTRY_CAPABILITY_PREFIX: &str = "zz-startup-reentry=";
 pub const CLIENT_EXITS_ON_DETACH_CAPABILITY: &str = "client-exits-on-detach-v1";
 pub const STARTUP_REENTRY_ENVIRONMENT_VARIABLE: &str = "ZZ_STARTUP_REENTRY";
 pub const FLOW_WINDOW_ENVIRONMENT_VARIABLE: &str = "ZZ_FLOW_WINDOW";
+pub const SSH_BATCH_ENVIRONMENT_VARIABLE: &str = "ZZ_SSH_BATCH";
 pub const COLD_START_PREPARE_ABORT_COMMAND: &str = "__zz-cold-start-prepare-abort";
 
 // iOS uses the in-process russh tunnel, leaving the spawned-ssh and askpass halves unreachable.
@@ -29,6 +30,12 @@ mod client;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
 mod endpoint;
 mod fleet_hosts;
+#[cfg(any(unix, windows))]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod fleet_sync;
+#[cfg(any(unix, windows))]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod host_probe;
 #[cfg(target_os = "ios")]
 mod ios_keychain;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
@@ -44,6 +51,8 @@ mod russh_prompt;
 mod russh_socks;
 #[cfg(test)]
 mod solo_tests;
+#[cfg_attr(target_os = "ios", allow(dead_code))]
+mod ssh_key;
 #[cfg_attr(target_os = "ios", allow(dead_code))]
 mod terminal_features;
 pub mod transport;
@@ -64,13 +73,20 @@ pub use client::{
     CommandClient, CommandOutcome, ExecChain, ExecChainEnd, ExecClassifier, InteractiveClient,
     short_device_name,
 };
+pub use endpoint::{
+    Endpoint, EndpointError, RemoteInstall, RemoteInstalled, RemoteRestart, SshEndpoint,
+    run_socket_proxy, shell_quote,
+};
 #[cfg(any(unix, windows))]
-pub use endpoint::install_remote;
-pub use endpoint::{Endpoint, EndpointError, SshEndpoint, run_socket_proxy, shell_quote};
+pub use endpoint::{install_remote, install_remote_batch, run_remote_cli};
 pub use fleet_hosts::{
     HostEntry, RejectedHost, apply_fleet_host_entry, atomic_write, configured_fleet_hosts,
-    validate_fleet_host, write_fleet_host,
+    resolve_fleet_host, validate_fleet_host, write_fleet_host,
 };
+#[cfg(any(unix, windows))]
+pub use fleet_sync::{SyncLine, sync_fleet};
+#[cfg(any(unix, windows))]
+pub use host_probe::{HostProbe, HostStatus, probe_host};
 pub use lifecycle::{
     DaemonIdentityGuard, DaemonRecoveryError, RecoveredDaemon, daemon_identity_protocol_version,
     terminate_incompatible_daemon,
@@ -81,6 +97,7 @@ pub use paths::{
 };
 #[cfg(target_os = "ios")]
 pub use russh_client::ios_ssh_public_key;
+pub use ssh_key::{ssh_key_path, ssh_public_key};
 pub use terminal_features::{
     TERMINAL_FEATURES, terminal_colour_count, terminal_default_features, terminal_feature_mask,
     terminal_features_list,

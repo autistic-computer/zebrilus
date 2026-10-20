@@ -657,7 +657,7 @@ async fn probe_remote_socket(
     target: &str,
 ) -> Result<PathBuf, EndpointError> {
     let (status, stdout, stderr) =
-        exec_capture(session, format!("sh -lc {}", remote_socket_probe()))
+        exec_capture(session, format!("sh -lc {}", remote_socket_probe(None)))
             .await
             .map_err(|error| EndpointError::ProbeFailure {
                 target: target.to_owned(),
@@ -672,7 +672,7 @@ async fn probe_remote_socket(
             ),
         });
     }
-    parse_remote_probe_output(target, &stdout)
+    parse_remote_probe_output(target, &stdout).socket
 }
 
 async fn ensure_remote_daemon(

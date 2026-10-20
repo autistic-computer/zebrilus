@@ -23,7 +23,7 @@ use zz_client::{
 };
 use zz_daemon_client::{
     AskpassPrompt, AskpassReply, DaemonError, Endpoint, EndpointError, InteractiveClient,
-    terminate_incompatible_daemon,
+    RemoteInstall, RemoteRestart, terminate_incompatible_daemon,
 };
 use zz_gpui::{ClipboardItem, Context, EventEmitter, Image, RenderImage, Task};
 #[cfg(test)]
@@ -188,7 +188,7 @@ fn connect_error_state(error: &DaemonError) -> HostState {
             },
             |daemon| HostState::Incompatible {
                 local: *client,
-                remote: daemon,
+                remote: Some(daemon),
             },
         );
     }
@@ -201,7 +201,13 @@ fn connect_error_state(error: &DaemonError) -> HostState {
             if let EndpointError::RemoteProtocolMismatch { daemon, client, .. } = endpoint_error {
                 return HostState::Incompatible {
                     local: *client,
-                    remote: *daemon,
+                    remote: Some(*daemon),
+                };
+            }
+            if matches!(endpoint_error, EndpointError::RemoteProtocolUnknown { .. }) {
+                return HostState::Incompatible {
+                    local: PROTOCOL_VERSION,
+                    remote: None,
                 };
             }
             if matches!(endpoint_error, EndpointError::RemoteBinaryMissing { .. }) {
@@ -214,7 +220,7 @@ fn connect_error_state(error: &DaemonError) -> HostState {
         {
             return HostState::Incompatible {
                 local: PROTOCOL_VERSION,
-                remote: *received,
+                remote: Some(*received),
             };
         }
         if let Some(ServerError::ProtocolMismatch { server, .. }) =
@@ -222,7 +228,7 @@ fn connect_error_state(error: &DaemonError) -> HostState {
         {
             return HostState::Incompatible {
                 local: PROTOCOL_VERSION,
-                remote: *server,
+                remote: Some(*server),
             };
         }
         if let Some(error) = current.downcast_ref::<io::Error>()
@@ -244,6 +250,21 @@ fn connect_result_state<T>(result: &Result<T, DaemonError>) -> HostState {
         Ok(_) => HostState::Connected,
         Err(error) => connect_error_state(error),
     }
+}
+
+fn install_notification(name: &str, outcome: &RemoteInstall) -> (ClientMessageKind, String) {
+    let kind = if matches!(outcome.restart, RemoteRestart::Failed(_)) {
+        ClientMessageKind::Error
+    } else if outcome.warnings.is_empty() {
+        ClientMessageKind::Success
+    } else {
+        ClientMessageKind::Warning
+    };
+    let text = std::iter::once(format!("{name}: {}", outcome.summary()))
+        .chain(outcome.warnings.iter().cloned())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (kind, text)
 }
 
 fn reconnect_timer_is_current(connection: &HostConnection, generation: u64, attempt: u32) -> bool {
@@ -327,11 +348,7 @@ pub(crate) struct SshPromptRequest {
     pub(crate) reply: async_channel::Sender<AskpassReply>,
 }
 
-pub(crate) struct RemoteInstallOffer {
-    pub(crate) host: HostId,
-    pub(crate) name: String,
-    pub(crate) offer: InstallOffer,
-}
+pub(crate) struct RemoteInstallOffer;
 
 const AUTH_DECLINED_REASON: &str = "Authentication was cancelled.\nPick Reconnect when you are \
                                     ready to sign in again.";
@@ -1026,6 +1043,9 @@ pub struct MuxClient {
     error: Option<Arc<str>>,
     stale_daemon: Option<StaleDaemonInfo>,
     install_offered: BTreeSet<HostId>,
+    update_offers: BTreeSet<HostId>,
+    #[cfg(test)]
+    install_requests: Option<Vec<(HostId, bool)>>,
     error_after_next_attach: Option<Arc<str>>,
     shutting_down: bool,
     next_row_revision: u64,
@@ -1175,6 +1195,9 @@ impl MuxClient {
             error: None,
             stale_daemon: None,
             install_offered: BTreeSet::new(),
+            update_offers: BTreeSet::new(),
+            #[cfg(test)]
+            install_requests: Some(Vec::new()),
             error_after_next_attach: None,
             shutting_down: false,
             next_row_revision: 1,
@@ -1688,6 +1711,18 @@ impl MuxClient {
         self.ensure_connected(host, cx);
     }
 
+    pub(crate) fn install_or_retry_host(&mut self, host: HostId, cx: &mut Context<Self>) {
+        if self
+            .connections
+            .get(&host)
+            .is_some_and(|connection| connection.state == HostState::Missing)
+        {
+            self.install_zz_on_host(host, cx);
+        } else {
+            self.retry_host_now(host, cx);
+        }
+    }
+
     pub(crate) fn note_ssh_auth_declined(&mut self, host: HostId, cx: &mut Context<Self>) {
         let Some(connection) = self.connections.get_mut(&host) else {
             return;
@@ -1736,7 +1771,9 @@ impl MuxClient {
             helper,
             move |prompt: &AskpassPrompt| {
                 let (reply, answers) = async_channel::bounded(1);
-                if requests.send_blocking((prompt.clone(), reply)).is_err() {
+                if requests.send_blocking((prompt.clone(), reply)).is_err()
+                    || prompt.kind().is_notice()
+                {
                     return AskpassReply::Cancel;
                 }
                 answers.recv_blocking().unwrap_or(AskpassReply::Cancel)
@@ -1922,16 +1959,47 @@ impl MuxClient {
             self.arm_reconnect(host, attempt, cx);
         }
         if let Some(offer) = offer
+            && self
+                .registry
+                .get(host)
+                .is_some_and(|entry| matches!(entry.endpoint, Endpoint::Ssh(_)))
             && self.install_offered.insert(host)
-            && let Some(entry) = self.registry.get(host)
         {
-            cx.emit(RemoteInstallOffer {
-                host,
-                name: entry.name.clone(),
-                offer,
-            });
+            match offer {
+                InstallOffer::Install if !zz_protocol::app_identity::DEVELOPMENT => {
+                    self.install_zz_on_host(host, cx);
+                }
+                InstallOffer::Install => {}
+                InstallOffer::Update => self.offer_update(host, cx),
+            }
         }
         cx.notify();
+    }
+
+    pub(crate) fn offer_update(&mut self, host: HostId, cx: &mut Context<Self>) {
+        let first = self.update_offers.is_empty();
+        if self.update_offers.insert(host) && first {
+            cx.emit(RemoteInstallOffer);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn update_offer_names(&self) -> Vec<String> {
+        self.update_offers
+            .iter()
+            .filter_map(|host| self.registry.get(*host))
+            .map(|entry| entry.name.clone())
+            .collect()
+    }
+
+    pub(crate) fn accept_update_offers(&mut self, cx: &mut Context<Self>) {
+        for host in std::mem::take(&mut self.update_offers) {
+            self.install_zz_on_host(host, cx);
+        }
+    }
+
+    pub(crate) fn clear_update_offers(&mut self) {
+        self.update_offers.clear();
     }
 
     pub(crate) fn install_zz_on_host(&mut self, host: HostId, cx: &mut Context<Self>) {
@@ -1952,6 +2020,11 @@ impl MuxClient {
         let previous = std::mem::replace(&mut connection.state, HostState::Installing);
         let route = Arc::clone(&connection.route);
         cx.notify();
+        #[cfg(test)]
+        if let Some(requests) = self.install_requests.as_mut() {
+            requests.push((host, offer == InstallOffer::Update));
+            return;
+        }
 
         let prompts = self.ssh_prompts(host, &endpoint, cx);
         let (results, incoming) = async_channel::bounded(1);
@@ -1991,7 +2064,7 @@ impl MuxClient {
         host: HostId,
         previous: HostState,
         name: &str,
-        result: Result<(), String>,
+        result: Result<RemoteInstall, String>,
         cx: &mut Context<Self>,
     ) {
         let Some(connection) = self.connections.get_mut(&host) else {
@@ -2001,13 +2074,10 @@ impl MuxClient {
             return;
         }
         match result {
-            Ok(()) => {
+            Ok(outcome) => {
                 connection.state = HostState::Disconnected;
-                Self::emit_notification(
-                    ClientMessageKind::Success,
-                    format!("Installed zz on {name}"),
-                    cx,
-                );
+                let (kind, text) = install_notification(name, &outcome);
+                Self::emit_notification(kind, text, cx);
                 self.ensure_connected(host, cx);
             }
             Err(reason) => {
@@ -5414,7 +5484,7 @@ mod tests {
                 mux.read(cx).attached_connection().state,
                 HostState::Incompatible {
                     local: PROTOCOL_VERSION,
-                    remote: 41
+                    remote: Some(41)
                 }
             );
             assert!(
@@ -5523,7 +5593,7 @@ mod tests {
             })),
             HostState::Incompatible {
                 local: PROTOCOL_VERSION,
-                remote: 41,
+                remote: Some(41),
             }
         );
         let state = connect_result_state(&Err::<(), _>(DaemonError::IncompatibleDaemon {
@@ -5546,7 +5616,7 @@ mod tests {
             ))),
             HostState::Incompatible {
                 local: PROTOCOL_VERSION,
-                remote: 40,
+                remote: Some(40),
             }
         );
 
@@ -5557,11 +5627,12 @@ mod tests {
         )));
         assert_eq!(
             state,
-            HostState::Unreachable {
-                reason: "zz on host predates protocol version reporting; update it, then reconnect"
-                    .to_owned(),
+            HostState::Incompatible {
+                local: PROTOCOL_VERSION,
+                remote: None,
             }
         );
+        assert_eq!(state.install_offer(), Some(InstallOffer::Update));
     }
 
     #[zz_gpui::test]
@@ -5774,62 +5845,80 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn a_host_without_zz_offers_one_install_and_a_failed_install_keeps_the_offer(
-        cx: &mut TestAppContext,
-    ) {
-        let offers = Rc::new(RefCell::new(Vec::new()));
-        let (mux, desk, _offer_sink, (_notification_sink, notifications)) = cx.update(|cx| {
-            crate::config::set_fleet_hosts_for_test(vec![test_host("desk", "ssh://desk")], cx);
-            let mux = cx.new(|cx| {
-                MuxClient::new(
-                    Err(DaemonError::Thread("test client".to_owned())),
-                    zz_daemon_client::default_socket_path(),
-                    cx,
-                )
-            });
-            let observed = Rc::clone(&offers);
-            let offer_mux = mux.clone();
-            let offer_sink = cx.new(|cx| {
-                cx.subscribe(&offer_mux, move |(), _, event: &RemoteInstallOffer, _| {
-                    observed
-                        .borrow_mut()
-                        .push((event.host, event.name.clone(), event.offer));
-                })
-                .detach();
-            });
-            let notifications = record_notifications(&mux, cx);
-            let desk = mux
-                .read(cx)
-                .registry
-                .get_by_name("desk")
-                .expect("desk host")
-                .0;
-            (mux, desk, offer_sink, notifications)
+    fn subscribe_install_offers(
+        mux: &zz_gpui::Entity<MuxClient>,
+        cx: &mut zz_gpui::App,
+    ) -> (zz_gpui::Entity<()>, Rc<RefCell<usize>>) {
+        let offers = Rc::new(RefCell::new(0));
+        let observed = Rc::clone(&offers);
+        let offer_mux = mux.clone();
+        let sink = cx.new(|cx| {
+            cx.subscribe(&offer_mux, move |(), _, _: &RemoteInstallOffer, _| {
+                *observed.borrow_mut() += 1;
+            })
+            .detach();
         });
+        (sink, offers)
+    }
 
-        for _ in 0..2 {
+    fn fail_connect(
+        mux: &mut MuxClient,
+        host: HostId,
+        error: DaemonError,
+        cx: &mut Context<MuxClient>,
+    ) {
+        mux.connections.get_mut(&host).unwrap().state = HostState::Connecting;
+        mux.handle_connect_result(host, Err(error), cx);
+    }
+
+    #[zz_gpui::test]
+    fn a_host_without_zz_installs_once_and_a_failed_install_keeps_the_row(cx: &mut TestAppContext) {
+        let (mux, desk, _offer_sink, offers, (_notification_sink, notifications)) =
             cx.update(|cx| {
-                mux.update(cx, |mux, cx| {
-                    mux.connections.get_mut(&desk).unwrap().state = HostState::Connecting;
-                    mux.handle_connect_result(
-                        desk,
-                        Err(DaemonError::from(EndpointError::RemoteBinaryMissing {
-                            target: "ssh://desk".to_owned(),
-                        })),
+                crate::config::set_fleet_hosts_for_test(vec![test_host("desk", "ssh://desk")], cx);
+                let mux = cx.new(|cx| {
+                    MuxClient::new(
+                        Err(DaemonError::Thread("test client".to_owned())),
+                        zz_daemon_client::default_socket_path(),
                         cx,
-                    );
+                    )
                 });
+                let (offer_sink, offers) = subscribe_install_offers(&mux, cx);
+                let notifications = record_notifications(&mux, cx);
+                let desk = mux
+                    .read(cx)
+                    .registry
+                    .get_by_name("desk")
+                    .expect("desk host")
+                    .0;
+                (mux, desk, offer_sink, offers, notifications)
             });
-            assert_eq!(
-                cx.read(|cx| mux.read(cx).connections.get(&desk).unwrap().state.clone()),
-                HostState::Missing
-            );
-        }
+        let missing = || {
+            DaemonError::from(EndpointError::RemoteBinaryMissing {
+                target: "ssh://desk".to_owned(),
+            })
+        };
+        let state = |cx: &TestAppContext| {
+            cx.read(|cx| mux.read(cx).connections.get(&desk).unwrap().state.clone())
+        };
+        let requests =
+            |cx: &TestAppContext| cx.read(|cx| mux.read(cx).install_requests.clone().unwrap());
+        let auto = !zz_protocol::app_identity::DEVELOPMENT;
+
+        cx.update(|cx| mux.update(cx, |mux, cx| fail_connect(mux, desk, missing(), cx)));
         assert_eq!(
-            *offers.borrow(),
-            [(desk, "desk".to_owned(), InstallOffer::Install)]
+            requests(cx),
+            if auto { vec![(desk, false)] } else { vec![] }
         );
+        assert_eq!(
+            state(cx),
+            if auto {
+                HostState::Installing
+            } else {
+                HostState::Missing
+            }
+        );
+        assert_eq!(*offers.borrow(), 0, "a missing zz installs without asking");
 
         cx.update(|cx| {
             mux.update(cx, |mux, cx| {
@@ -5843,16 +5932,155 @@ mod tests {
                 );
             });
         });
-        assert_eq!(
-            cx.read(|cx| mux.read(cx).connections.get(&desk).unwrap().state.clone()),
-            HostState::Missing
-        );
+        assert_eq!(state(cx), HostState::Missing);
         assert_eq!(
             *notifications.borrow(),
             [(
                 ClientMessageKind::Error,
                 "Could not install zz on ssh://desk: curl is missing".to_owned()
             )]
+        );
+
+        cx.update(|cx| mux.update(cx, |mux, cx| fail_connect(mux, desk, missing(), cx)));
+        assert_eq!(state(cx), HostState::Missing);
+        assert_eq!(
+            requests(cx).len(),
+            usize::from(auto),
+            "a host still missing after its install gets no second attempt this run"
+        );
+
+        cx.update(|cx| mux.update(cx, |mux, cx| mux.install_or_retry_host(desk, cx)));
+        assert_eq!(
+            requests(cx).last(),
+            Some(&(desk, false)),
+            "asking for the missing host installs at once, in dev builds too"
+        );
+        assert_eq!(state(cx), HostState::Installing);
+    }
+
+    #[zz_gpui::test]
+    fn older_remotes_share_one_update_dialog(cx: &mut TestAppContext) {
+        let (mux, hosts, _offer_sink, offers) = cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(
+                vec![
+                    test_host("xps", "ssh://xps"),
+                    test_host("ubuntu", "ssh://ubuntu"),
+                    test_host("alienware", "ssh://alienware"),
+                ],
+                cx,
+            );
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("test client".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            let (offer_sink, offers) = subscribe_install_offers(&mux, cx);
+            let hosts = ["xps", "ubuntu", "alienware"]
+                .map(|name| mux.read(cx).registry.get_by_name(name).expect("host").0);
+            (mux, hosts, offer_sink, offers)
+        });
+        let [xps, ubuntu, alienware] = hosts;
+
+        cx.update(|cx| {
+            mux.update(cx, |mux, cx| {
+                fail_connect(
+                    mux,
+                    ubuntu,
+                    DaemonError::from(EndpointError::RemoteProtocolMismatch {
+                        target: "ssh://ubuntu".to_owned(),
+                        daemon: PROTOCOL_VERSION - 1,
+                        client: PROTOCOL_VERSION,
+                    }),
+                    cx,
+                );
+                fail_connect(
+                    mux,
+                    xps,
+                    DaemonError::from(EndpointError::RemoteProtocolUnknown {
+                        target: "ssh://xps".to_owned(),
+                    }),
+                    cx,
+                );
+                fail_connect(
+                    mux,
+                    alienware,
+                    DaemonError::Server(ServerError::ProtocolMismatch {
+                        server: PROTOCOL_VERSION,
+                        client: PROTOCOL_VERSION,
+                    }),
+                    cx,
+                );
+            });
+        });
+        assert_eq!(*offers.borrow(), 1);
+        assert_eq!(
+            cx.read(|cx| mux.read(cx).update_offer_names()),
+            ["xps", "ubuntu", "alienware"]
+        );
+
+        cx.update(|cx| mux.update(cx, MuxClient::accept_update_offers));
+        assert_eq!(
+            cx.read(|cx| mux.read(cx).install_requests.clone().unwrap()),
+            [(xps, true), (ubuntu, true), (alienware, true)]
+        );
+        assert!(cx.read(|cx| mux.read(cx).update_offer_names()).is_empty());
+
+        cx.update(|cx| {
+            mux.update(cx, |mux, cx| {
+                mux.offer_update(xps, cx);
+                mux.clear_update_offers();
+                mux.offer_update(ubuntu, cx);
+            });
+        });
+        assert_eq!(
+            *offers.borrow(),
+            3,
+            "a dialog closed with Not now does not hide the next offer"
+        );
+    }
+
+    #[test]
+    fn an_install_toast_says_what_happened_on_the_host() {
+        let version = env!("CARGO_PKG_VERSION");
+        let outcome = |restart, warnings: &[&str]| RemoteInstall {
+            installed: zz_daemon_client::RemoteInstalled::Headless,
+            restart,
+            warnings: warnings
+                .iter()
+                .map(|warning| (*warning).to_owned())
+                .collect(),
+        };
+        assert_eq!(
+            install_notification("xps", &outcome(RemoteRestart::Restarted, &[])),
+            (
+                ClientMessageKind::Success,
+                format!("xps: zz {version} installed (headless), daemon restarted")
+            )
+        );
+        assert_eq!(
+            install_notification("xps", &outcome(RemoteRestart::NotAsked, &["restart it"])),
+            (
+                ClientMessageKind::Warning,
+                format!("xps: zz {version} installed (headless)\nrestart it")
+            )
+        );
+        assert_eq!(
+            install_notification(
+                "xps",
+                &outcome(
+                    RemoteRestart::Failed("recovery failed".to_owned()),
+                    &["restart it"]
+                )
+            ),
+            (
+                ClientMessageKind::Error,
+                format!(
+                    "xps: zz {version} installed (headless), but its daemon did not stop: \
+                     recovery failed\nrestart it"
+                )
+            )
         );
     }
 
@@ -5929,7 +6157,7 @@ mod tests {
                     mux.connections.get(&remote).unwrap().state,
                     HostState::Incompatible {
                         local: PROTOCOL_VERSION,
-                        remote: 41,
+                        remote: Some(41),
                     }
                 );
 
@@ -5948,7 +6176,7 @@ mod tests {
                     mux.connections.get(&remote).unwrap().state,
                     HostState::Incompatible {
                         local: PROTOCOL_VERSION,
-                        remote: 42,
+                        remote: Some(42),
                     }
                 );
             });

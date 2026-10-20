@@ -69,7 +69,7 @@ use zz_terminal::TerminalColorScheme;
 
 // iOS cannot run ssh, so it tunnels in-process instead of forwarding a socket.
 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
-use crate::endpoint::SshForward;
+use crate::endpoint::{SshForward, connect_kept};
 #[cfg(target_os = "ios")]
 use crate::russh_client::{RusshForward, RusshStream};
 use crate::{
@@ -213,6 +213,10 @@ pub struct CommandClient {
     server_id: Option<u64>,
     #[cfg(all(any(unix, windows), not(target_os = "ios")))]
     _ssh_forward: Option<SshForward>,
+    #[cfg(all(unix, not(target_os = "ios")))]
+    unverified: Option<crate::endpoint::SshEndpoint>,
+    #[cfg(all(unix, not(target_os = "ios")))]
+    read_only: bool,
 }
 
 enum CommandLink {
@@ -291,8 +295,20 @@ fn command_failure(error: ServerError, output: RawText) -> DaemonError {
     }
 }
 
-fn exec_environment() -> ClientEnvironmentBlob {
-    exec_environment_with(std::env::vars_os())
+fn exec_environment(facts: EndpointFactsScope) -> ClientEnvironmentBlob {
+    exec_environment_with(scoped_environment(facts, std::env::vars_os()))
+}
+
+const REMOTE_ENVIRONMENT: [&str; 5] = ["TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"];
+
+fn scoped_environment(
+    facts: EndpointFactsScope,
+    environment: impl IntoIterator<Item = (OsString, OsString)>,
+) -> impl Iterator<Item = (OsString, OsString)> {
+    let remote = facts.is_remote();
+    environment
+        .into_iter()
+        .filter(move |(name, _)| !remote || REMOTE_ENVIRONMENT.iter().any(|keep| name == keep))
 }
 
 fn exec_environment_with<I, K, V>(environment: I) -> ClientEnvironmentBlob
@@ -355,6 +371,7 @@ impl CommandRoute {
             self.facts.includes_tty()
                 && std::env::var_os("TMUX").is_some_and(|value| !value.is_empty()),
         );
+        flags.set(ExecFlags::REMOTE, self.facts.is_remote());
         ExecRequest {
             protocol_version: PROTOCOL_VERSION,
             flags,
@@ -383,7 +400,7 @@ impl CommandRoute {
             spawned_server_id,
             expect_server_id,
             process_id: std::process::id(),
-            environment: exec_environment(),
+            environment: exec_environment(self.facts),
             commands,
             raw_control_line: None,
         }
@@ -416,8 +433,36 @@ impl CommandRoute {
     }
 
     fn connect(&self) -> Result<CommandLink, DaemonError> {
-        let stream = LocalTransport::connect(&self.socket)?;
-        Ok(CommandLink::Exec {
+        CommandLink::exec(LocalTransport::connect(&self.socket)?)
+    }
+
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn probe(&self) -> ProtocolMessage {
+        ProtocolMessage::Exec(self.exec_request(Vec::new(), ExecFlags::default(), None, None))
+    }
+
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn answers_at(&self, socket: &Path) -> bool {
+        let Ok(stream) = LocalTransport::connect(socket) else {
+            return false;
+        };
+        let Ok(reader) = stream.try_clone() else {
+            return false;
+        };
+        stream
+            .set_timeout(Some(crate::endpoint::MASTER_STEP_TIMEOUT))
+            .is_ok()
+            && ProtocolSender::new(stream).send(&self.probe()).is_ok()
+            && matches!(
+                ProtocolReceiver::new(reader).recv(),
+                Ok(ProtocolMessage::ExecExit(_))
+            )
+    }
+}
+
+impl CommandLink {
+    fn exec(stream: LocalStream) -> Result<Self, DaemonError> {
+        Ok(Self::Exec {
             reader: ProtocolReceiver::new(stream.try_clone()?),
             writer: ProtocolSender::new(stream),
             answered: false,
@@ -479,11 +524,15 @@ impl CommandClient {
 
     fn connect_route(route: CommandRoute) -> Result<Self, DaemonError> {
         let link = route.connect()?;
+        Ok(Self::with_link(route, link))
+    }
+
+    fn with_link(route: CommandRoute, link: CommandLink) -> Self {
         let server_id = match &link {
             CommandLink::Legacy { server_id, .. } => Some(*server_id),
             CommandLink::Exec { .. } => None,
         };
-        Ok(Self {
+        Self {
             stdin_enabled: false,
             stdin_spent: false,
             stderr_handler: None,
@@ -493,11 +542,17 @@ impl CommandClient {
             server_id,
             #[cfg(all(any(unix, windows), not(target_os = "ios")))]
             _ssh_forward: None,
-        })
+            #[cfg(all(unix, not(target_os = "ios")))]
+            unverified: None,
+            #[cfg(all(unix, not(target_os = "ios")))]
+            read_only: false,
+        }
     }
 
     /// Connect a short-lived command client to a configured fleet endpoint.
-    pub fn connect_endpoint(endpoint: &Endpoint) -> Result<Self, DaemonError> {
+    pub fn connect_endpoint(endpoint: &Endpoint, read_only: bool) -> Result<Self, DaemonError> {
+        #[cfg(not(all(unix, not(target_os = "ios"))))]
+        let _ = read_only;
         match endpoint {
             Endpoint::Local(path) => Self::connect_route(CommandRoute {
                 socket: path.clone(),
@@ -513,14 +568,24 @@ impl CommandClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let ssh_forward = SshForward::start(endpoint, None)?;
-                    let mut client = Self::connect_route(CommandRoute {
-                        socket: ssh_forward.local_socket().to_path_buf(),
-                        display: endpoint.to_string(),
-                        facts: EndpointFactsScope::PortableTerminalSize,
-                        send_origin: false,
-                    })?;
-                    client._ssh_forward = Some(ssh_forward);
+                    let (mut client, ssh_forward) =
+                        connect_kept(endpoint, None, true, |socket, stream| {
+                            Ok(Self::with_link(
+                                CommandRoute {
+                                    socket: socket.to_path_buf(),
+                                    display: endpoint.to_string(),
+                                    facts: EndpointFactsScope::PortableTerminalSize,
+                                    send_origin: false,
+                                },
+                                CommandLink::exec(stream)?,
+                            ))
+                        })?;
+                    #[cfg(unix)]
+                    {
+                        client.unverified = ssh_forward.is_none().then(|| endpoint.clone());
+                        client.read_only = read_only;
+                    }
+                    client._ssh_forward = ssh_forward;
                     Ok(client)
                 }
                 #[cfg(not(any(unix, windows)))]
@@ -657,6 +722,10 @@ impl CommandClient {
             spawned_server_id,
             expect_server_id,
         ));
+        #[cfg(all(unix, not(target_os = "ios")))]
+        let verified = self.verify_kept_link(&request)?;
+        #[cfg(not(all(unix, not(target_os = "ios"))))]
+        let verified = false;
         let CommandLink::Exec {
             reader,
             writer,
@@ -667,7 +736,11 @@ impl CommandClient {
             unreachable!("legacy links returned above");
         };
         *spent = last;
-        let sent = writer.send(&request);
+        let sent = if verified {
+            Ok(())
+        } else {
+            writer.send(&request)
+        };
         let first = match sent {
             Ok(()) => reader.recv(),
             Err(error) => Err(error),
@@ -814,6 +887,70 @@ impl CommandClient {
                 _ => {}
             }
         }
+    }
+
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn verify_kept_link(&mut self, request: &ProtocolMessage) -> Result<bool, DaemonError> {
+        self.verify_kept_link_within(
+            request,
+            crate::endpoint::MASTER_STEP_TIMEOUT,
+            crate::endpoint::give_up_on_stalled_link,
+        )
+    }
+
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn verify_kept_link_within(
+        &mut self,
+        request: &ProtocolMessage,
+        timeout: std::time::Duration,
+        give_up: impl FnOnce(&crate::endpoint::SshEndpoint) -> crate::EndpointError,
+    ) -> Result<bool, DaemonError> {
+        let Some(endpoint) = self.unverified.take() else {
+            return Ok(false);
+        };
+        let probe = self.route.probe();
+        let CommandLink::Exec {
+            reader,
+            writer,
+            answered,
+            ..
+        } = &mut self.link
+        else {
+            return Ok(false);
+        };
+        let reply = writer
+            .stream
+            .set_timeout(Some(timeout))
+            .map_err(DaemonError::from)
+            .and_then(|()| writer.send(&probe))
+            .and_then(|()| writer.send(request))
+            .and_then(|()| reader.recv());
+        let (reason, stalled) = match reply {
+            Ok(ProtocolMessage::ExecExit(exit)) => {
+                let _ = writer.stream.set_timeout(None);
+                self.server_id = Some(exit.server_id);
+                *answered = true;
+                return Ok(true);
+            }
+            Ok(_) => ("an unexpected reply".to_owned(), false),
+            Err(error) => (error.to_string(), crate::endpoint::link_stalled(&error)),
+        };
+        if stalled && !self.read_only {
+            return Err(give_up(&endpoint).into());
+        }
+        log::debug!(
+            target: "zz_daemon::diagnostics::client",
+            "the kept forward to {endpoint} gave {reason}; making it again",
+        );
+        let route = &self.route;
+        let (socket, forward) =
+            crate::endpoint::remake_kept_forward(&endpoint, stalled, |socket| {
+                route.answers_at(socket)
+            })?;
+        self.route.socket = socket;
+        self._ssh_forward = forward;
+        self.link = self.route.connect()?;
+        Ok(false)
     }
 
     fn legacy_exec_chain(
@@ -1160,25 +1297,27 @@ impl InteractiveClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let forward = SshForward::start(endpoint, prompts)?;
-                    let stream = LocalTransport::connect(forward.local_socket())?;
-                    let connected = connect_stream_hello(
-                        ClientStream::Local(stream),
-                        endpoint,
-                        ClientKind::Interactive,
-                        short_device_name(),
-                        color_scheme,
-                        client_has_terminal,
-                        false,
-                        false,
-                        capabilities,
-                        if terminal_surface {
-                            EndpointFactsScope::PortableTerminalSize
-                        } else {
-                            EndpointFactsScope::None
-                        },
-                        attach,
-                    )?;
+                    let resendable = attach_resendable(attach.as_ref());
+                    let (connected, forward) =
+                        connect_kept(endpoint, prompts, resendable, |_, stream| {
+                            connect_stream_hello(
+                                ClientStream::Local(stream),
+                                endpoint,
+                                ClientKind::Interactive,
+                                short_device_name(),
+                                color_scheme,
+                                client_has_terminal,
+                                false,
+                                false,
+                                capabilities,
+                                if terminal_surface {
+                                    EndpointFactsScope::PortableTerminalSize
+                                } else {
+                                    EndpointFactsScope::None
+                                },
+                                attach.clone(),
+                            )
+                        })?;
                     Ok(Self::from_connected_with_ssh(connected, forward))
                 }
                 #[cfg(not(any(unix, windows)))]
@@ -1313,6 +1452,37 @@ impl InteractiveClient {
         Self::connect_control_with_startup_owner(path, false)
     }
 
+    pub fn connect_control_endpoint(endpoint: &Endpoint) -> Result<Self, DaemonError> {
+        match endpoint {
+            Endpoint::Local(path) => Self::connect_control(path),
+            Endpoint::Ssh(endpoint) => {
+                #[cfg(all(any(unix, windows), not(target_os = "ios")))]
+                {
+                    let (connected, forward) = connect_kept(endpoint, None, true, |_, stream| {
+                        connect_stream_with_startup_owner(
+                            ClientStream::Local(stream),
+                            endpoint,
+                            ClientKind::Control,
+                            None,
+                            None,
+                            false,
+                            false,
+                            false,
+                            &[],
+                            EndpointFactsScope::None,
+                        )
+                    })?;
+                    Ok(Self::from_connected_with_ssh(connected, forward))
+                }
+                #[cfg(not(all(any(unix, windows), not(target_os = "ios"))))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
+        }
+    }
+
     pub fn connect_control_with_startup_owner(
         path: &Path,
         startup_config_owner: bool,
@@ -1344,6 +1514,7 @@ impl InteractiveClient {
             true,
             false,
             &[],
+            false,
         )
     }
 
@@ -1359,6 +1530,7 @@ impl InteractiveClient {
             client_has_terminal,
             false,
             &[],
+            false,
         )
     }
 
@@ -1375,6 +1547,7 @@ impl InteractiveClient {
             client_has_terminal,
             false,
             capabilities,
+            false,
         )
     }
 
@@ -1413,6 +1586,7 @@ impl InteractiveClient {
             client_has_terminal,
             true,
             &[],
+            false,
         )
     }
 
@@ -1427,6 +1601,7 @@ impl InteractiveClient {
             true,
             true,
             &[],
+            false,
         )
     }
 
@@ -1442,6 +1617,7 @@ impl InteractiveClient {
             client_has_terminal,
             true,
             &[],
+            false,
         )
     }
 
@@ -1460,6 +1636,7 @@ impl InteractiveClient {
             true,
             false,
             &[],
+            true,
         )
     }
 
@@ -1476,6 +1653,7 @@ impl InteractiveClient {
             true,
             false,
             capabilities,
+            true,
         )
     }
 
@@ -1491,6 +1669,7 @@ impl InteractiveClient {
             true,
             true,
             &[],
+            true,
         )
     }
 
@@ -1509,6 +1688,7 @@ impl InteractiveClient {
             client_has_terminal,
             true,
             &[],
+            false,
         )
     }
 
@@ -1526,6 +1706,7 @@ impl InteractiveClient {
         client_has_terminal: bool,
         terminal_surface: bool,
         extra_capabilities: &[&str],
+        socks: bool,
     ) -> Result<Self, DaemonError> {
         let device_name = short_device_name();
         match endpoint {
@@ -1552,6 +1733,7 @@ impl InteractiveClient {
             Endpoint::Ssh(endpoint) => {
                 #[cfg(target_os = "ios")]
                 {
+                    let _ = socks;
                     let (russh_forward, stream) = RusshForward::start(endpoint, prompts)?;
                     let connected = connect_stream_with_startup_owner(
                         ClientStream::Ssh(stream),
@@ -1575,29 +1757,36 @@ impl InteractiveClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let ssh_forward = SshForward::start(endpoint, prompts)?;
-                    let stream = LocalTransport::connect(ssh_forward.local_socket())?;
-                    let connected = connect_stream_with_startup_owner(
-                        ClientStream::Local(stream),
-                        endpoint,
-                        ClientKind::Interactive,
-                        device_name,
-                        color_scheme,
-                        client_has_terminal,
-                        false,
-                        false,
-                        extra_capabilities,
-                        if terminal_surface {
-                            EndpointFactsScope::PortableTerminalSize
-                        } else {
-                            EndpointFactsScope::None
-                        },
-                    )?;
+                    let connect = |stream: LocalStream| {
+                        connect_stream_with_startup_owner(
+                            ClientStream::Local(stream),
+                            endpoint,
+                            ClientKind::Interactive,
+                            device_name.clone(),
+                            color_scheme,
+                            client_has_terminal,
+                            false,
+                            false,
+                            extra_capabilities,
+                            if terminal_surface {
+                                EndpointFactsScope::PortableTerminalSize
+                            } else {
+                                EndpointFactsScope::None
+                            },
+                        )
+                    };
+                    let (connected, ssh_forward) = if socks {
+                        let ssh_forward = SshForward::start(endpoint, prompts)?;
+                        let stream = LocalTransport::connect(ssh_forward.local_socket())?;
+                        (connect(stream)?, Some(ssh_forward))
+                    } else {
+                        connect_kept(endpoint, prompts, true, |_, stream| connect(stream))?
+                    };
                     Ok(Self::from_connected_with_ssh(connected, ssh_forward))
                 }
                 #[cfg(not(any(unix, windows)))]
                 {
-                    let _ = (endpoint, prompts);
+                    let _ = (endpoint, prompts, socks);
                     Err(crate::EndpointError::UnsupportedPlatform.into())
                 }
             }
@@ -1621,10 +1810,10 @@ impl InteractiveClient {
     #[cfg(all(any(unix, windows), not(target_os = "ios")))]
     fn from_connected_with_ssh(
         connected: Connected<ClientStream>,
-        ssh_forward: SshForward,
+        ssh_forward: Option<SshForward>,
     ) -> Self {
         let mut client = Self::from_connected(connected);
-        client.ssh_forward = Some(ssh_forward);
+        client.ssh_forward = ssh_forward;
         client
     }
 
@@ -2186,7 +2375,7 @@ struct ProtocolReceiver<S> {
     skipped_decode: bool,
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, unix, not(target_os = "ios")))]
 #[path = "ctrl_client_tests.rs"]
 mod ctrl_client_tests;
 
@@ -2776,8 +2965,8 @@ fn logical_current_dir() -> Option<PathBuf> {
     }
 }
 
-fn client_environment() -> Vec<RawText> {
-    client_environment_with(std::env::vars_os())
+fn client_environment(facts: EndpointFactsScope) -> Vec<RawText> {
+    client_environment_with(scoped_environment(facts, std::env::vars_os()))
 }
 
 /// The caller's environment as the bytes the OS gave it. A Unix name and value
@@ -2919,6 +3108,19 @@ fn connect_stream<S: TransportStream>(
     )
 }
 
+#[cfg(all(any(unix, windows), not(target_os = "ios")))]
+fn attach_resendable(attach: Option<&zz_protocol::AttachOperation>) -> bool {
+    let Some(zz_protocol::AttachOperation::Commands(commands)) = attach else {
+        return true;
+    };
+    commands.iter().all(|command| {
+        let name = zz_protocol::canonical_command(&command.invocation.name);
+        name == "attach-session"
+            || zz_protocol::catalog_command_spec(name)
+                .is_some_and(|spec| !spec.mutates(&command.invocation.args))
+    })
+}
+
 #[expect(clippy::too_many_arguments)]
 fn connect_stream_with_startup_owner<S: TransportStream>(
     stream: S,
@@ -2983,6 +3185,9 @@ fn connect_stream_hello<S: TransportStream>(
     client_utf8_capability(&mut capabilities);
     client_features_capabilities(&client_terminal_flags().features, &mut capabilities);
     client_learned_features_capability(&mut capabilities);
+    if client_facts.is_remote() {
+        capabilities.push(ClientHello::CLIENT_REMOTE_CAPABILITY.to_owned());
+    }
     if kind == ClientKind::Interactive && flow_window_wanted(client_facts.is_remote()) {
         capabilities.push(zz_protocol::FLOW_WINDOW_CAPABILITY.to_owned());
     }
@@ -3018,7 +3223,7 @@ fn connect_stream_hello<S: TransportStream>(
             .flatten()
             .and_then(|pane| pane.parse().ok()),
         working_directory: client_working_directory(client_facts, logical_current_dir),
-        environment: client_environment(),
+        environment: client_environment(client_facts),
         process_id: std::process::id(),
     };
     if kind == ClientKind::Command {
@@ -3263,15 +3468,16 @@ mod tests {
     use std::{ffi::OsString, path::PathBuf};
 
     use zz_protocol::{
-        ClientHello, ClientKind, ClientPath, MAX_CLIENT_ENVIRONMENT_BYTES,
+        ClientHello, ClientKind, ClientPath, ExecFlags, MAX_CLIENT_ENVIRONMENT_BYTES,
         MAX_CLIENT_ENVIRONMENT_ENTRIES, MAX_CLIENT_ENVIRONMENT_ENTRY_BYTES,
         MAX_CLIENT_WORKING_DIRECTORY_BYTES, RawText,
     };
 
     use super::{
-        CallerTtyScope, EndpointFactsScope, MAX_CLIENT_FEATURE_SPECS, attach_session_command,
-        client_environment_with, client_features_capabilities, client_takes_utf8,
-        client_working_directory, startup_config_owner_capability, terminal_facts_capabilities,
+        CallerTtyScope, CommandRoute, EndpointFactsScope, MAX_CLIENT_FEATURE_SPECS,
+        attach_session_command, client_environment_with, client_features_capabilities,
+        client_takes_utf8, client_working_directory, scoped_environment,
+        startup_config_owner_capability, terminal_facts_capabilities,
         terminal_facts_capabilities_with,
     };
 
@@ -3452,6 +3658,43 @@ mod tests {
                 client_working_directory(scope, || Some(fixture.clone())),
                 ClientPath::from_path(&fixture)
             );
+        }
+    }
+
+    #[test]
+    fn remote_scopes_send_only_terminal_and_locale_names() {
+        let environment = [
+            ("TERM", "xterm-ghostty"),
+            ("COLORTERM", "truecolor"),
+            ("LANG", "en_US.UTF-8"),
+            ("LC_ALL", "C.UTF-8"),
+            ("LC_CTYPE", "UTF-8"),
+            ("SSH_AUTH_SOCK", "/var/run/com.apple.launchd.x/Listeners"),
+            ("DISPLAY", ":0"),
+            ("ZZ_PANE", "%3"),
+            ("TERMINFO", "/Applications/zz.app/terminfo"),
+        ]
+        .map(|(name, value)| (OsString::from(name), OsString::from(value)));
+        let names = |facts| {
+            scoped_environment(facts, environment.clone())
+                .map(|(name, _)| name.into_string().unwrap())
+                .collect::<Vec<_>>()
+        };
+        for facts in [
+            EndpointFactsScope::None,
+            EndpointFactsScope::PortableTerminalSize,
+        ] {
+            assert_eq!(
+                names(facts),
+                ["TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"]
+            );
+        }
+        for facts in [
+            EndpointFactsScope::LocalHostWorkingDirectory,
+            EndpointFactsScope::LocalControlTerminalIdentity,
+            EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal,
+        ] {
+            assert_eq!(names(facts).len(), environment.len());
         }
     }
 
@@ -3819,6 +4062,33 @@ mod tests {
                     .any(|capability| capability == ClientHello::CLIENT_PATH_PICKER_CAPABILITY),
                 desktop,
             );
+            assert_eq!(
+                hello
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "client-remote-v1"),
+                scope.is_remote(),
+            );
+        }
+    }
+
+    #[test]
+    fn only_remote_routes_mark_their_execs_remote() {
+        for facts in [
+            EndpointFactsScope::None,
+            EndpointFactsScope::PortableTerminalSize,
+            EndpointFactsScope::LocalHostWorkingDirectory,
+            EndpointFactsScope::LocalControlTerminalIdentity,
+            EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal,
+        ] {
+            let route = CommandRoute {
+                socket: PathBuf::new(),
+                display: String::new(),
+                facts,
+                send_origin: false,
+            };
+            let request = route.exec_request(Vec::new(), ExecFlags::default(), None, None);
+            assert_eq!(request.flags.contains(ExecFlags::REMOTE), facts.is_remote());
         }
     }
 

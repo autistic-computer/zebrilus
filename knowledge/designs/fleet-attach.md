@@ -10,7 +10,7 @@ tags:
 - ssh
 - choose-tree
 - design-plan
-timestamp: 2026-07-29T18:28:47Z
+timestamp: 2026-10-20T12:00:00-03:00
 ---
 
 # Overview
@@ -77,7 +77,7 @@ Settled up front; not to be re-litigated without new information.
 
 | Decision | Choice | Why |
 |----------|--------|-----|
-| Aggregation actor | GUI only (v1) | CLI/agents keep talking to their local daemon; cross-machine programmatic targeting is future work with two candidate shapes (below) |
+| Aggregation actor | GUI, plus the CLI's `--host` | v1 was GUI-only; the CLI later learned to dial hosts itself (shape (a) below, shipped), so agents reach other machines without a GUI and still without daemon relaying |
 | Mixing granularity | Per-session | Closest to today's one-session attach; the attach flow grows a host dimension instead of the pane/tab model growing one |
 | Transport | Transport-agnostic endpoint seam; unix + ssh arms implemented, `quic://` reserved | ssh already owns auth/encryption/identity; M0 proved the protocol is location-transparent over a forwarded socket; QUIC slots in behind the same seam at M1 |
 | Remote pane kinds | Terminal + browser | PTY-on-remote is the point; browser panes are already client-local by design. Agent/editor panes are behind the experimental flags for the zz v1 launch, and the GUI never pushes those two config keys to remote hosts, so remote daemons keep them off . the daemon-side hard gate enforces it with no new code |
@@ -202,13 +202,16 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
   as attach + detach-others.
 - **Auto-reconnect**: subsumed by M3 (QUIC migration + session resumption); do not build a
   bespoke backoff loop before then.
-- **Cross-machine CLI/agents** . the deferred half of "machines operate each other": a script or
-  agent on the desktop addressing a server pane (`zz -t server:dev.1 send-keys`) with no GUI
-  involved. Two candidate shapes, deliberately undecided: (a) the CLI learns the `host` config
-  and dials remote endpoints directly . no daemon changes, mirrors the GUI; (b) daemons relay for
-  their local clients . heavier, but keeps agents' environment untouched. Known gotcha either
-  way: the GUI injects the *client-local* `ZZ_SOCKET` into agent children, so an agent's
-  `zz send-keys` today always targets the client's own daemon.
+- **Cross-machine CLI/agents** . shipped as shape (a): the CLI reads the `host-NAME` lines and
+  dials the host itself over the same ssh endpoint code as the GUI, with no daemon changes.
+  `zz --host NAME VERB` goes before the verb; NAME may also be a raw ssh destination, and
+  `--host all` runs a read-only chain on every host in parallel (`NAME: ` text prefixes,
+  `host_name` in JSON). Pane IDs are per host and no remote pane is the caller's, so input verbs
+  over `--host` require `-t`. `zz list-hosts` names and probes the hosts, `zz fleet sync` meshes
+  zz's own ssh keys and host lines across every listed machine, and `zz fleet install` puts a
+  headless zz in `~/.local/bin` on a host that lacks one. Shape (b), daemons relaying for their
+  local clients, stays rejected with the daemon-to-daemon non-goal below. `ZZ_SOCKET` and
+  `ZZ_PANE` in an agent's environment still name its own machine.
 - **Mobile thin clients**: scene streaming makes a phone client a rasterizer, not a port . the
   protocol crate is renderer-neutral and postcard is embedded-friendly, so a client is QUIC dial
   + terminal-codec decoder + Metal/Skia rasterizer + a keyboard. Daemon holds all state; a client
@@ -229,10 +232,14 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
 
 # Non-goals
 
-- **Daemon↔daemon protocol** of any kind . no federation, discovery, or relay.
-- **Inventing auth**: ssh owns identity until M1's pinned keys; no password/anonymous mode ever.
+- **Daemon↔daemon protocol** of any kind . no federation, discovery, or relay. Cross-machine
+  agents go through the CLI's `--host`; the Claude Code peer bus stays per machine
+  ([agent peer bus](/architecture/agent-peer-bus.md)).
+- **Inventing auth**: ssh owns identity; zz only adds its own ed25519 key to `authorized_keys`
+  through ssh logins the user already has. No password/anonymous mode ever.
 - **Version-compat negotiation**: exact match, presented gracefully.
-- **Fixing cross-machine path quirks**: `browser screenshot <path>` writes to the GUI's disk,
+- **Fixing cross-machine path quirks**: `capture-browser -o <path>` writes to the disk of the
+  app window that shows the session, `--host` paths resolve on the host,
   clipboard/`copy-pipe` split across machines, `#()` status commands expand daemon-side
   ([status line](/tmux/status-line.md)) . documented semantics, not v1 bugs.
 

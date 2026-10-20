@@ -17,6 +17,40 @@ zz detach-client
 Targets use tmux syntax: `$session`, `@window`, `%pane`, all stable for a
 pane's lifetime, visible in `choose-tree` and `display-panes`.
 
+`zz --help` lists every command and the global flags; `zz <verb> --help`
+shows one command. Neither needs a daemon.
+
+## Other machines
+
+`--host` goes before the verb and runs it on another machine over ssh:
+
+```sh
+zz list-hosts                            # the hosts in zz/config
+zz --host desktop list-panes -a
+zz --host desktop send-keys -t %3 'make test' Enter
+zz --host you@box:2222 list-sessions     # any ssh destination
+zz --host all inspect -a --json          # read-only verbs, every host
+zz --host desktop                        # attach there
+```
+
+Pane IDs belong to their host, so over `--host` every verb that acts on a
+pane, window or session (`send-keys`, `run-pane`, `kill-pane`, `split-window`
+and the rest) needs `-t`, and a move or swap (`join-pane`, `move-window`,
+`swap-window` and the like) needs `-s` too;
+`new-window -d -P -F '#{pane_id}'` makes one of your own. Panes there keep
+that host's environment. With `all`, text lines start with `NAME: ` and JSON
+lines carry `host_name`. A call that stalls for 15
+seconds is retried when it only reads; otherwise it exits 1, since it may have
+run there.
+
+| Command | What it does |
+| --- | --- |
+| `zz list-hosts [-F FORMAT] [--json]` | list hosts with their state and version; a `-F` without `host_state`, `host_version`, `host_protocol` or `host_error` skips the ssh probe |
+| `zz fleet add NAME DEST` / `fleet remove NAME` | write or delete a `host-NAME` line |
+| `zz fleet install [--restart-daemon] (-a \| NAME...)` | install or update zz there, in `~/.local/bin` |
+| `zz fleet sync` | make every listed machine trust the others' zz keys and know their host lines |
+| `zz fleet key` | print this machine's zz ssh key |
+
 ## Beyond tmux
 
 | Command | What it does |
@@ -26,6 +60,7 @@ pane's lifetime, visible in `choose-tree` and `display-panes`.
 | `zz set-browser-url -t %N URL` | navigate a browser pane |
 | `zz capture-browser -t %N -o /tmp/out.png` | screenshot a browser pane (absolute path) |
 | `zz split-window --kind picker [-h\|-v]` | split into an empty pane and pick its type |
+| `zz new-window --kind agent [--provider codex\|claude-code]` | new window with an agent pane |
 | `zz tools` | the command catalog written for agents |
 
 Two more verbs, `zz agent-send` and `zz send-last-output`, talk to an Agent
