@@ -1015,18 +1015,28 @@ fn ssh_runtime_root() -> PathBuf {
 
 #[cfg(unix)]
 fn control_master_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
+    Ok(ssh_runtime_dir()?.join(format!("c{:016x}", endpoint_hash(endpoint, None))))
+}
+
+/// The socket a host's master keeps forwarded to its daemon between calls.
+#[cfg(unix)]
+fn kept_forward_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
+    Ok(ssh_runtime_dir()?.join(format!(
+        "c{:016x}.sock",
+        endpoint_hash(endpoint, endpoint.remote_socket.as_deref())
+    )))
+}
+
+#[cfg(unix)]
+fn endpoint_hash(endpoint: &SshEndpoint, remote_socket: Option<&Path>) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     endpoint.user.hash(&mut hasher);
     endpoint.host.hash(&mut hasher);
     endpoint.port.hash(&mut hasher);
-    Ok(ssh_runtime_dir()?.join(format!("c{:016x}", hasher.finish())))
-}
-
-#[cfg(unix)]
-fn discard_dead_control_master(endpoint: &SshEndpoint, control_path: &Path) {
-    if control_path.exists() && !control_master_alive(endpoint, control_path) {
-        let _ = fs::remove_file(control_path);
+    if let Some(remote_socket) = remote_socket {
+        remote_socket.hash(&mut hasher);
     }
+    hasher.finish()
 }
 
 #[cfg(unix)]
@@ -1208,6 +1218,13 @@ fn session_askpass(askpass: Option<&AskpassListener>) -> Option<SshAskpass<'_>> 
 /// prompt per child, so those, like `no` or no path, get zz's own path.
 #[cfg(unix)]
 fn shared_control(endpoint: &SshEndpoint) -> Option<SshControl> {
+    live_control(endpoint).map(|(control, _)| control)
+}
+
+/// The control socket to use, and whether a master answers on it. A master that died leaves its
+/// socket behind, which would make ssh warn and give every child its own login.
+#[cfg(unix)]
+fn live_control(endpoint: &SshEndpoint) -> Option<(SshControl, bool)> {
     let control = ssh_config_command(endpoint)
         .output_unmasked()
         .ok()
@@ -1226,8 +1243,11 @@ fn shared_control(endpoint: &SshEndpoint) -> Option<SshControl> {
                 None
             }
         })?;
-    discard_dead_control_master(endpoint, &control.path);
-    Some(control)
+    let alive = control_master_alive(endpoint, &control.path);
+    if !alive && control.path.exists() {
+        let _ = fs::remove_file(&control.path);
+    }
+    Some((control, alive))
 }
 
 #[cfg(unix)]
@@ -1322,53 +1342,268 @@ fn forwarded_local_socket_path() -> io::Result<PathBuf> {
     Ok(ssh_runtime_dir()?.join(format!("fwd-{}-{counter}.sock", std::process::id())))
 }
 
+/// Connects through the forward the host's master keeps between calls, making it again only when
+/// `connect` fails there: the socket is missing or refused, or the handshake `connect` runs ends
+/// early. The forward comes back only when this process has to hold it, which happens when no
+/// master is up.
+#[cfg(unix)]
+pub(crate) fn connect_kept<T>(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    mut connect: impl FnMut(&Path) -> Result<T, DaemonError>,
+) -> Result<(T, Option<SshForward>), DaemonError> {
+    let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
+        target: endpoint.to_string(),
+        action: "making a directory for",
+        path: ssh_runtime_root(),
+        source,
+    })?;
+    match connect(&kept) {
+        Ok(connected) => return Ok((connected, None)),
+        Err(error) if !kept_forward_failed(&error) => return Err(error),
+        Err(error) => log::debug!(
+            target: "zz_daemon::diagnostics",
+            "the kept forward to {endpoint} did not answer ({error}); making it again",
+        ),
+    }
+    let lock = KeptForwardLock::acquire(&kept);
+    if lock.contended
+        && let Ok(connected) = connect(&kept)
+    {
+        return Ok((connected, None));
+    }
+    let forward = SshForward::keep(endpoint, prompts, &kept)?;
+    let connected = connect(forward.local_socket())?;
+    Ok((connected, (!forward.kept).then_some(forward)))
+}
+
+/// What a dead forward, a restarted daemon or one of another protocol looks like from this end; a
+/// daemon that answered and refused is not one of them.
+#[cfg(unix)]
+fn kept_forward_failed(error: &DaemonError) -> bool {
+    match error {
+        DaemonError::Io(_) | DaemonError::Protocol(_) | DaemonError::IncompatibleDaemon { .. } => {
+            true
+        }
+        DaemonError::Server(error) => {
+            matches!(error, zz_protocol::ServerError::ProtocolMismatch { .. })
+        }
+        _ => false,
+    }
+}
+
+/// Makes the kept forward again after it failed past `connect_kept`, and says where to dial.
+#[cfg(all(unix, not(target_os = "ios")))]
+pub(crate) fn remake_kept_forward(
+    endpoint: &SshEndpoint,
+) -> Result<(PathBuf, Option<SshForward>), EndpointError> {
+    let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
+        target: endpoint.to_string(),
+        action: "making a directory for",
+        path: ssh_runtime_root(),
+        source,
+    })?;
+    let _lock = KeptForwardLock::acquire(&kept);
+    let forward = SshForward::keep(endpoint, None, &kept)?;
+    let socket = forward.local_socket.clone();
+    Ok((socket, (!forward.kept).then_some(forward)))
+}
+
+/// Parallel calls to a host whose forward is gone take turns, so one logs in and the rest ride it.
+#[cfg(unix)]
+struct KeptForwardLock {
+    _file: Option<fs::File>,
+    contended: bool,
+}
+
+#[cfg(unix)]
+impl KeptForwardLock {
+    fn acquire(kept: &Path) -> Self {
+        use std::os::unix::fs::OpenOptionsExt as _;
+
+        let mut path = kept.as_os_str().to_owned();
+        path.push(".lock");
+        let Ok(file) = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .mode(0o600)
+            .open(PathBuf::from(path))
+        else {
+            return Self {
+                _file: None,
+                contended: false,
+            };
+        };
+        let contended = match file.try_lock() {
+            Err(fs::TryLockError::WouldBlock) => file.lock().is_ok(),
+            Ok(()) | Err(fs::TryLockError::Error(_)) => false,
+        };
+        Self {
+            _file: Some(file),
+            contended,
+        }
+    }
+}
+
+/// A master that is up but whose network died answers nothing until its keepalive gives up, which
+/// is minutes for a user's `ServerAliveInterval 60`; past this, the step fails and the master is
+/// told to stop taking new sessions so the next call logs in afresh.
+#[cfg(unix)]
+const MASTER_STEP_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// What an ssh step needs, owned, so it can run on a thread the caller stops waiting for.
+#[cfg(unix)]
+#[derive(Clone)]
+struct SshStep {
+    endpoint: SshEndpoint,
+    control: Option<SshControl>,
+    askpass: Option<(PathBuf, PathBuf)>,
+}
+
+#[cfg(unix)]
+impl SshStep {
+    fn session(&self) -> SshSession<'_> {
+        SshSession {
+            control: self.control.as_ref(),
+            askpass: self
+                .askpass
+                .as_ref()
+                .map(|(helper, socket)| SshAskpass { helper, socket }),
+        }
+    }
+
+    fn run<T: Send + 'static>(
+        &self,
+        riding: bool,
+        operation: &'static str,
+        step: impl FnOnce(&Self) -> Result<T, EndpointError> + Send + 'static,
+    ) -> Result<T, EndpointError> {
+        self.run_within(MASTER_STEP_TIMEOUT, riding, operation, step)
+    }
+
+    fn run_within<T: Send + 'static>(
+        &self,
+        timeout: Duration,
+        riding: bool,
+        operation: &'static str,
+        step: impl FnOnce(&Self) -> Result<T, EndpointError> + Send + 'static,
+    ) -> Result<T, EndpointError> {
+        let Some(control) = self.control.as_ref().filter(|_| riding) else {
+            return step(self);
+        };
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let owned = self.clone();
+        thread::Builder::new()
+            .name("zz-ssh-step".to_owned())
+            .spawn(move || {
+                let _ = sender.send(step(&owned));
+            })
+            .map_err(|source| EndpointError::SshSpawn { operation, source })?;
+        receiver.recv_timeout(timeout).unwrap_or_else(|_| {
+            let _ =
+                ssh_control_command(&self.endpoint, &control.path, "stop", &[]).status_unmasked();
+            Err(EndpointError::SshFailed {
+                target: self.endpoint.to_string(),
+                reason: format!(
+                    "the {operation} got no answer over the open ssh connection within {} s",
+                    timeout.as_secs()
+                ),
+            })
+        })
+    }
+}
+
 #[cfg(unix)]
 pub(crate) struct SshForward {
     child: Option<Child>,
     local_socket: PathBuf,
     endpoint: SshEndpoint,
     control: Option<SshControl>,
+    master: bool,
     forwarding: OsString,
     socks_port: Option<u16>,
     askpass: Option<AskpassListener>,
+    kept: bool,
 }
 
 #[cfg(unix)]
 impl SshForward {
+    /// A forward of this connection's own, with a SOCKS port for the browser panes that egress
+    /// through the host. The desktop app is its only user.
     pub(crate) fn start(
         endpoint: &SshEndpoint,
         prompts: Option<SshPrompts>,
     ) -> Result<Self, EndpointError> {
+        Self::open_new(endpoint, prompts, None)
+    }
+
+    fn keep(
+        endpoint: &SshEndpoint,
+        prompts: Option<SshPrompts>,
+        kept: &Path,
+    ) -> Result<Self, EndpointError> {
+        Self::open_new(endpoint, prompts, Some(kept))
+    }
+
+    fn open_new(
+        endpoint: &SshEndpoint,
+        prompts: Option<SshPrompts>,
+        kept: Option<&Path>,
+    ) -> Result<Self, EndpointError> {
         let askpass = start_askpass(endpoint, prompts);
-        let control = shared_control(endpoint);
-        let session = SshSession {
-            control: control.as_ref(),
-            askpass: session_askpass(askpass.as_ref()),
+        let (control, riding) =
+            live_control(endpoint).map_or((None, false), |(control, alive)| (Some(control), alive));
+        let step = SshStep {
+            endpoint: endpoint.clone(),
+            control,
+            askpass: askpass
+                .as_ref()
+                .map(|listener| (listener.helper().to_owned(), listener.socket().to_owned())),
         };
 
-        let probed_socket = probe_remote_socket(endpoint, session)?;
+        let probed_socket = step.run(riding, "remote socket probe", |step| {
+            probe_remote_socket(&step.endpoint, step.session())
+        })?;
         let remote_socket = endpoint.remote_socket.clone().unwrap_or(probed_socket);
         if !remote_socket.is_absolute() {
             return Err(EndpointError::InvalidRemoteSocket(remote_socket));
         }
-        ensure_remote_daemon(endpoint, session, &remote_socket)?;
+        let master = step
+            .control
+            .as_ref()
+            .is_some_and(|control| riding || control_master_alive(endpoint, &control.path));
+        let start_socket = remote_socket.clone();
+        step.run(master, "remote daemon start", move |step| {
+            ensure_remote_daemon(&step.endpoint, step.session(), &start_socket)
+        })?;
 
-        let local_socket =
-            forwarded_local_socket_path().map_err(|source| EndpointError::ForwardIo {
+        let socks = kept.is_none();
+        let kept = kept.filter(|_| master);
+        let local_socket = match kept {
+            Some(kept) => kept.to_owned(),
+            None => forwarded_local_socket_path().map_err(|source| EndpointError::ForwardIo {
                 target: endpoint.to_string(),
                 action: "making a directory for",
                 path: ssh_runtime_root(),
                 source,
-            })?;
+            })?,
+        };
         let mut forward = Self {
             child: None,
             forwarding: forwarding_spec(&local_socket, &remote_socket),
             local_socket,
             endpoint: endpoint.clone(),
-            control,
-            socks_port: available_socks_port(),
+            control: step.control,
+            master,
+            socks_port: socks.then(available_socks_port).flatten(),
             askpass,
+            kept: kept.is_some(),
         };
+        if forward.kept {
+            forward.cancel_forwards();
+            let _ = fs::remove_file(&forward.local_socket);
+        }
         if let Err(error) = forward.open(&remote_socket) {
             let Some(port) = forward.socks_port else {
                 return Err(error);
@@ -1402,12 +1637,12 @@ impl SshForward {
     /// ssh hold it, and that child must not read the caller's stdin: against a master, OpenSSH
     /// turns a `-N` mux client into a login shell fed by whatever stdin it was given.
     fn open(&mut self, remote_socket: &Path) -> Result<(), EndpointError> {
-        let master = self
+        let Some(control_path) = self
             .control
             .as_ref()
+            .filter(|_| self.master)
             .map(|control| control.path.clone())
-            .filter(|control_path| control_master_alive(&self.endpoint, control_path));
-        let Some(control_path) = master else {
+        else {
             let session = SshSession {
                 control: self.control.as_ref(),
                 askpass: session_askpass(self.askpass.as_ref()),
@@ -1543,10 +1778,25 @@ impl SshForward {
 #[cfg(unix)]
 impl Drop for SshForward {
     fn drop(&mut self) {
+        if self.kept {
+            return;
+        }
         self.stop_child();
         self.cancel_forwards();
         let _ = fs::remove_file(&self.local_socket);
     }
+}
+
+/// Windows ssh has no connection sharing to keep a forward in, so every connect makes its own.
+#[cfg(windows)]
+pub(crate) fn connect_kept<T>(
+    endpoint: &SshEndpoint,
+    prompts: Option<SshPrompts>,
+    mut connect: impl FnMut(&Path) -> Result<T, DaemonError>,
+) -> Result<(T, Option<SshForward>), DaemonError> {
+    let forward = SshForward::start(endpoint, prompts)?;
+    let connected = connect(forward.local_socket())?;
+    Ok((connected, Some(forward)))
 }
 
 #[cfg(windows)]
@@ -2799,6 +3049,86 @@ mod tests {
                 .to_string_lossy()
                 .starts_with("fwd-")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn each_host_keeps_one_short_forward_beside_its_master() {
+        let endpoint = test_ssh_endpoint(Some("ada"), Some(2222));
+        let kept = kept_forward_path(&endpoint).unwrap();
+        assert_eq!(kept, kept_forward_path(&endpoint.clone()).unwrap());
+        assert_eq!(kept.parent(), Some(ssh_runtime_dir().unwrap()));
+        assert!(kept.as_os_str().as_encoded_bytes().len() < 100, "{kept:?}");
+        let mut master = control_master_path(&endpoint).unwrap().into_os_string();
+        master.push(".sock");
+        assert_eq!(kept, PathBuf::from(master));
+
+        let mut elsewhere = endpoint.clone();
+        elsewhere.remote_socket = Some(PathBuf::from("/run/user/1000/zz/other.sock"));
+        assert_ne!(kept_forward_path(&elsewhere).unwrap(), kept);
+        assert_eq!(
+            control_master_path(&elsewhere).unwrap(),
+            control_master_path(&endpoint).unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_step_riding_a_master_gives_up_but_a_login_may_take_its_time() {
+        let directory = tempfile::tempdir().unwrap();
+        let step = SshStep {
+            endpoint: test_ssh_endpoint(None, None),
+            control: Some(SshControl {
+                path: directory.path().join("c0"),
+                user_persist: false,
+            }),
+            askpass: None,
+        };
+        let slow = |_: &SshStep| {
+            thread::sleep(Duration::from_millis(300));
+            Ok(())
+        };
+        let started = std::time::Instant::now();
+        let error = step
+            .run_within(Duration::from_millis(20), true, "remote socket probe", slow)
+            .unwrap_err();
+        assert!(started.elapsed() < Duration::from_millis(250));
+        assert!(
+            matches!(&error, EndpointError::SshFailed { reason, .. }
+                if reason.starts_with("the remote socket probe got no answer")),
+            "{error}"
+        );
+        step.run_within(
+            Duration::from_millis(20),
+            false,
+            "remote socket probe",
+            slow,
+        )
+        .expect("a step without a live master is not time-boxed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_a_dead_link_remakes_the_kept_forward() {
+        for kind in [
+            io::ErrorKind::NotFound,
+            io::ErrorKind::ConnectionRefused,
+            io::ErrorKind::UnexpectedEof,
+        ] {
+            assert!(
+                kept_forward_failed(&DaemonError::Io(kind.into())),
+                "{kind:?}"
+            );
+        }
+        assert!(kept_forward_failed(&DaemonError::Server(
+            zz_protocol::ServerError::ProtocolMismatch {
+                client: zz_protocol::PROTOCOL_VERSION,
+                server: 48,
+            }
+        )));
+        assert!(!kept_forward_failed(&DaemonError::Server(
+            zz_protocol::ServerError::InvalidCommand("can't find session".to_owned())
+        )));
     }
 
     #[cfg(unix)]
