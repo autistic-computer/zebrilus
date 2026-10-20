@@ -369,6 +369,25 @@ mod daemon_autostart {
             self.command_from(Path::new(env!("CARGO_BIN_EXE_zz_cli")))
         }
 
+        fn host_command(&self) -> Command {
+            let config = self.home.join("zz");
+            std::fs::create_dir_all(&config).expect("scratch zz config directory");
+            std::fs::write(
+                config.join("config"),
+                format!("host-peer = unix://{}\n", self.socket.display()),
+            )
+            .expect("host config");
+            let mut command = Command::new(env!("CARGO_BIN_EXE_zz_cli"));
+            command
+                .env("HOME", &self.home)
+                .env("XDG_CONFIG_HOME", &self.home)
+                .arg("-f")
+                .arg(&self.config)
+                .arg("--host")
+                .arg("peer");
+            command
+        }
+
         fn run(&self, arguments: &[&str]) -> Output {
             self.command()
                 .args(arguments)
@@ -652,19 +671,12 @@ mod daemon_autostart {
         }
     }
 
-    #[test]
-    fn events_stream_ready_then_window_hook() {
+    fn ready_then_window_hook(fixture: &Fixture, mut events: Command) -> Vec<serde_json::Value> {
         use std::io::BufRead as _;
 
-        let fixture = Fixture::new();
-        if !local_socket_bind_available(&fixture.socket) {
-            eprintln!("SKIPPED: Unix socket binding is unavailable");
-            return;
-        }
         let created = fixture.run(&["new-session", "-d", "-s", "events"]);
         assert_eq!(created.status.code(), Some(0));
-        let mut child = fixture
-            .command()
+        let mut child = events
             .arg("events")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -680,7 +692,7 @@ mod daemon_autostart {
                 }
             }
         });
-        let result = (|| -> Result<(), String> {
+        let result = (|| -> Result<Vec<serde_json::Value>, String> {
             let deadline = Instant::now() + Duration::from_secs(10);
             let next = || -> Result<serde_json::Value, String> {
                 let remaining = deadline
@@ -700,13 +712,16 @@ mod daemon_autostart {
             if !created.status.success() {
                 return Err(format!("new-window failed: {:?}", created.stderr));
             }
+            let mut lines = vec![ready];
             for _ in 0..20 {
                 let event = next()?;
-                if matches!(
+                let window = matches!(
                     event["event"].as_str(),
                     Some("window-linked" | "session-window-changed")
-                ) {
-                    return Ok(());
+                );
+                lines.push(event);
+                if window {
+                    return Ok(lines);
                 }
             }
             Err("no window hook in 20 lines".to_owned())
@@ -715,7 +730,139 @@ mod daemon_autostart {
         let _ = child.wait();
         drop(receiver);
         reader.join().expect("event reader");
-        result.expect("ready then window hook within 10 seconds");
+        result.expect("ready then window hook within 10 seconds")
+    }
+
+    #[test]
+    fn events_stream_ready_then_window_hook() {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            eprintln!("SKIPPED: Unix socket binding is unavailable");
+            return;
+        }
+        let lines = ready_then_window_hook(&fixture, fixture.command());
+        assert!(
+            lines.iter().all(|line| line.get("host").is_none()),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn events_over_a_host_name_it_on_every_line() {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            eprintln!("SKIPPED: Unix socket binding is unavailable");
+            return;
+        }
+        let lines = ready_then_window_hook(&fixture, fixture.host_command());
+        assert!(lines.iter().all(|line| line["host"] == "peer"), "{lines:?}");
+    }
+
+    #[test]
+    fn agent_send_progress_streams_over_a_host() {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            eprintln!("SKIPPED: Unix socket binding is unavailable");
+            return;
+        }
+        assert!(
+            fixture
+                .run(&["new-session", "-d", "-s", "agent"])
+                .status
+                .success()
+        );
+        let state = |value: &str| {
+            assert!(
+                fixture
+                    .run(&["set-option", "-p", "-t", "%0", "@agent_state", value])
+                    .status
+                    .success()
+            );
+        };
+        state("idle");
+        let child = fixture
+            .host_command()
+            .args([
+                "agent-send",
+                "-t",
+                "%0",
+                "--wait",
+                "--progress",
+                "--timeout",
+                "10",
+                "hi",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("agent-send over the host");
+        thread::sleep(Duration::from_millis(500));
+        state("working");
+        thread::sleep(Duration::from_millis(1200));
+        state("idle");
+        let output = child.wait_with_output().expect("agent-send result");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(0), "{stderr}");
+        assert!(stderr.contains("[zz %0 +00:0"), "{stderr}");
+        assert!(stderr.contains("] working"), "{stderr}");
+        assert!(!stderr.contains("local only"), "{stderr}");
+    }
+
+    #[test]
+    fn host_local_verbs_refuse_a_local_socket_host() {
+        let fixture = Fixture::new();
+        for verb in [
+            &["fleet", "list"][..],
+            &["list-hosts"],
+            &["tools", "--context"],
+            &["tool", "--install-hooks"],
+            &["tool", "--remove-hooks"],
+            &["protocol-version"],
+        ] {
+            let output = fixture
+                .host_command()
+                .args(verb)
+                .env_remove("CLAUDE_CONFIG_DIR")
+                .env_remove("CODEX_HOME")
+                .stdin(Stdio::null())
+                .output()
+                .expect("host-local verb");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.code(), Some(2), "{verb:?}: {stderr}");
+            assert!(
+                stderr.starts_with("zz: peer is the local socket "),
+                "{verb:?}: {stderr}"
+            );
+        }
+        for written in [".claude", ".codex", ".agents"] {
+            assert!(!fixture.home.join(written).exists(), "{written}");
+        }
+    }
+
+    #[test]
+    fn control_mode_runs_over_a_host() {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            eprintln!("SKIPPED: Unix socket binding is unavailable");
+            return;
+        }
+        assert!(
+            fixture
+                .run(&["new-session", "-d", "-s", "remote"])
+                .status
+                .success()
+        );
+        let output = fixture
+            .host_command()
+            .args(["-C", "list-sessions", "-F", "#{session_name}"])
+            .stdin(Stdio::null())
+            .output()
+            .expect("control mode over the host");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(output.status.code(), Some(0), "{stdout}");
+        assert!(stdout.contains("%begin "), "{stdout}");
+        assert!(stdout.contains("\nremote\n%end "), "{stdout}");
     }
 
     #[test]
