@@ -1636,6 +1636,80 @@ fn bounded_reliable_children(mailbox: &OutboundMailbox, bound: usize) -> Vec<Pro
 
 #[cfg(unix)]
 #[test]
+fn a_remote_hello_attaches_without_rewriting_the_session_environment() {
+    use std::os::unix::net::UnixStream;
+
+    for (remote, expected) in [(false, "/caller/agent"), (true, "/host/agent")] {
+        let shared = Arc::new(Shared::new(72));
+        let mut context = ExecutionContext::default();
+        for (name, args) in [
+            ("new-session", ["-d", "-s", "remote-env"].as_slice()),
+            (
+                "set-environment",
+                &["-t", "remote-env", "SSH_AUTH_SOCK", "/host/agent"],
+            ),
+        ] {
+            shared
+                .inner
+                .lock()
+                .engine
+                .execute(
+                    &mut context,
+                    &CommandInvocation::new(name, args.iter().copied()),
+                )
+                .expect("model session");
+        }
+        let (mut client, server) = UnixStream::pair().expect("socket pair");
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("read deadline");
+        let server_shared = Arc::clone(&shared);
+        let worker = thread::spawn(move || handle_connection(server, &server_shared));
+        let mut hello = compact_hello(ClientKind::Interactive);
+        if remote {
+            hello
+                .client
+                .capabilities
+                .push(ClientHello::CLIENT_REMOTE_CAPABILITY.to_owned());
+        }
+        hello.environment =
+            ClientEnvironmentBlob::from_bytes(b"SSH_AUTH_SOCK=/caller/agent\0".to_vec());
+        hello.subscriptions = zz_protocol::Subscriptions::terminal();
+        hello.attach = Some(zz_protocol::AttachOperation::Session(
+            "remote-env".to_owned(),
+        ));
+        zz_protocol::write_protocol_message(&mut client, &ProtocolMessage::Hello(hello))
+            .expect("compact hello");
+        assert!(matches!(
+            zz_protocol::read_protocol_message(&mut client).expect("welcome"),
+            ProtocolMessage::Welcome(_)
+        ));
+        zz_protocol::read_protocol_message(&mut client).expect("initial batch");
+        drop(client);
+        worker
+            .join()
+            .expect("connection thread")
+            .expect("connection cleanup");
+        let inner = shared.inner.lock();
+        let session = inner
+            .engine
+            .resolve_session(Some("remote-env"), None)
+            .expect("session");
+        assert_eq!(
+            inner
+                .engine
+                .environment_for_session(session)
+                .expect("session environment")
+                .into_iter()
+                .find(|(name, _)| name == "SSH_AUTH_SOCK"),
+            Some(("SSH_AUTH_SOCK".into(), Some(expected.into()))),
+            "remote={remote}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn compact_startup_actor_follows_attachment_in_its_initial_batch() {
     use std::os::unix::net::UnixStream;
 

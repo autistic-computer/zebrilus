@@ -369,6 +369,7 @@ impl CommandRoute {
             self.facts.includes_tty()
                 && std::env::var_os("TMUX").is_some_and(|value| !value.is_empty()),
         );
+        flags.set(ExecFlags::REMOTE, self.facts.is_remote());
         ExecRequest {
             protocol_version: PROTOCOL_VERSION,
             flags,
@@ -3145,6 +3146,9 @@ fn connect_stream_hello<S: TransportStream>(
     client_utf8_capability(&mut capabilities);
     client_features_capabilities(&client_terminal_flags().features, &mut capabilities);
     client_learned_features_capability(&mut capabilities);
+    if client_facts.is_remote() {
+        capabilities.push(ClientHello::CLIENT_REMOTE_CAPABILITY.to_owned());
+    }
     if kind == ClientKind::Interactive && flow_window_wanted(client_facts.is_remote()) {
         capabilities.push(zz_protocol::FLOW_WINDOW_CAPABILITY.to_owned());
     }
@@ -3425,16 +3429,17 @@ mod tests {
     use std::{ffi::OsString, path::PathBuf};
 
     use zz_protocol::{
-        ClientHello, ClientKind, ClientPath, MAX_CLIENT_ENVIRONMENT_BYTES,
+        ClientHello, ClientKind, ClientPath, ExecFlags, MAX_CLIENT_ENVIRONMENT_BYTES,
         MAX_CLIENT_ENVIRONMENT_ENTRIES, MAX_CLIENT_ENVIRONMENT_ENTRY_BYTES,
         MAX_CLIENT_WORKING_DIRECTORY_BYTES, RawText,
     };
 
     use super::{
-        CallerTtyScope, EndpointFactsScope, MAX_CLIENT_FEATURE_SPECS, attach_session_command,
-        client_environment_with, client_features_capabilities, client_takes_utf8,
-        client_working_directory, scoped_environment, startup_config_owner_capability,
-        terminal_facts_capabilities, terminal_facts_capabilities_with,
+        CallerTtyScope, CommandRoute, EndpointFactsScope, MAX_CLIENT_FEATURE_SPECS,
+        attach_session_command, client_environment_with, client_features_capabilities,
+        client_takes_utf8, client_working_directory, scoped_environment,
+        startup_config_owner_capability, terminal_facts_capabilities,
+        terminal_facts_capabilities_with,
     };
 
     static SIGTERM_DISPOSITION: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -4018,6 +4023,33 @@ mod tests {
                     .any(|capability| capability == ClientHello::CLIENT_PATH_PICKER_CAPABILITY),
                 desktop,
             );
+            assert_eq!(
+                hello
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "client-remote-v1"),
+                scope.is_remote(),
+            );
+        }
+    }
+
+    #[test]
+    fn only_remote_routes_mark_their_execs_remote() {
+        for facts in [
+            EndpointFactsScope::None,
+            EndpointFactsScope::PortableTerminalSize,
+            EndpointFactsScope::LocalHostWorkingDirectory,
+            EndpointFactsScope::LocalControlTerminalIdentity,
+            EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal,
+        ] {
+            let route = CommandRoute {
+                socket: PathBuf::new(),
+                display: String::new(),
+                facts,
+                send_origin: false,
+            };
+            let request = route.exec_request(Vec::new(), ExecFlags::default(), None, None);
+            assert_eq!(request.flags.contains(ExecFlags::REMOTE), facts.is_remote());
         }
     }
 
