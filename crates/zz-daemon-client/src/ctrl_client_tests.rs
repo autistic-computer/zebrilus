@@ -295,6 +295,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
         server_id: Some(37),
         _ssh_forward: None,
         unverified: None,
+        read_only: false,
     };
     let result = command.into_interactive(attach);
     worker.join().unwrap();
@@ -304,4 +305,66 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
         interactive.server_hello().client_id,
         zz_protocol::ClientId(19)
     );
+}
+
+#[test]
+fn a_kept_link_that_stalls_under_a_mutating_chain_is_not_sent_again() {
+    let (_directory, daemon, client) = readiness_pair();
+    let reader = std::thread::spawn(move || {
+        let mut daemon = super::ProtocolReceiver::new(daemon);
+        let mut execs = 0;
+        while let Ok(message) = daemon.recv() {
+            if matches!(message, zz_protocol::ProtocolMessage::Exec(_)) {
+                execs += 1;
+            }
+        }
+        execs
+    });
+    let endpoint = crate::endpoint::SshEndpoint {
+        user: None,
+        host: "zz-stall-test.invalid".to_owned(),
+        port: None,
+        remote_socket: None,
+    };
+    let mut command = super::CommandClient::with_link(
+        super::CommandRoute {
+            socket: std::path::PathBuf::from("/nonexistent/zz-stall.sock"),
+            display: endpoint.to_string(),
+            facts: super::EndpointFactsScope::PortableTerminalSize,
+            send_origin: false,
+        },
+        super::CommandLink::exec(client).unwrap(),
+    );
+    command.unverified = Some(endpoint.clone());
+    let request = zz_protocol::ProtocolMessage::Exec(command.route.exec_request(
+        vec![zz_protocol::CommandInvocation::new(
+            "kill-window",
+            ["-t", "work"],
+        )],
+        zz_protocol::ExecFlags::default(),
+        None,
+        None,
+    ));
+    let error = command
+        .verify_kept_link_within(&request, std::time::Duration::from_millis(100))
+        .unwrap_err();
+    drop(command);
+    if let Ok(kept) = crate::endpoint::kept_forward_path(&endpoint) {
+        let mut lock = kept.into_os_string();
+        lock.push(".lock");
+        let _ = std::fs::remove_file(lock);
+    }
+    assert!(
+        matches!(
+            crate::EndpointError::find(&error),
+            Some(crate::EndpointError::StoppedAnswering { seconds: 15, .. })
+        ),
+        "{error}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "daemon I/O error: ssh://zz-stall-test.invalid stopped answering for 15 s; the command \
+         may have run there, check before retrying"
+    );
+    assert_eq!(reader.join().unwrap(), 2);
 }

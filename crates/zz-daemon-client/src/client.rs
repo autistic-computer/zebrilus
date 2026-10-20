@@ -215,6 +215,8 @@ pub struct CommandClient {
     _ssh_forward: Option<SshForward>,
     #[cfg(all(unix, not(target_os = "ios")))]
     unverified: Option<crate::endpoint::SshEndpoint>,
+    #[cfg(all(unix, not(target_os = "ios")))]
+    read_only: bool,
 }
 
 enum CommandLink {
@@ -541,11 +543,15 @@ impl CommandClient {
             _ssh_forward: None,
             #[cfg(all(unix, not(target_os = "ios")))]
             unverified: None,
+            #[cfg(all(unix, not(target_os = "ios")))]
+            read_only: false,
         }
     }
 
     /// Connect a short-lived command client to a configured fleet endpoint.
-    pub fn connect_endpoint(endpoint: &Endpoint) -> Result<Self, DaemonError> {
+    pub fn connect_endpoint(endpoint: &Endpoint, read_only: bool) -> Result<Self, DaemonError> {
+        #[cfg(not(all(unix, not(target_os = "ios"))))]
+        let _ = read_only;
         match endpoint {
             Endpoint::Local(path) => Self::connect_route(CommandRoute {
                 socket: path.clone(),
@@ -576,6 +582,7 @@ impl CommandClient {
                     #[cfg(unix)]
                     {
                         client.unverified = ssh_forward.is_none().then(|| endpoint.clone());
+                        client.read_only = read_only;
                     }
                     client._ssh_forward = ssh_forward;
                     Ok(client)
@@ -883,6 +890,15 @@ impl CommandClient {
 
     #[cfg(all(unix, not(target_os = "ios")))]
     fn verify_kept_link(&mut self, request: &ProtocolMessage) -> Result<bool, DaemonError> {
+        self.verify_kept_link_within(request, crate::endpoint::MASTER_STEP_TIMEOUT)
+    }
+
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn verify_kept_link_within(
+        &mut self,
+        request: &ProtocolMessage,
+        timeout: std::time::Duration,
+    ) -> Result<bool, DaemonError> {
         let Some(endpoint) = self.unverified.take() else {
             return Ok(false);
         };
@@ -898,7 +914,7 @@ impl CommandClient {
         };
         let reply = writer
             .stream
-            .set_timeout(Some(crate::endpoint::MASTER_STEP_TIMEOUT))
+            .set_timeout(Some(timeout))
             .map_err(DaemonError::from)
             .and_then(|()| writer.send(&probe))
             .and_then(|()| writer.send(request))
@@ -913,6 +929,9 @@ impl CommandClient {
             Ok(_) => ("an unexpected reply".to_owned(), false),
             Err(error) => (error.to_string(), crate::endpoint::link_stalled(&error)),
         };
+        if stalled && !self.read_only {
+            return Err(crate::endpoint::give_up_on_stalled_link(&endpoint).into());
+        }
         log::debug!(
             target: "zz_daemon::diagnostics::client",
             "the kept forward to {endpoint} gave {reason}; making it again",
@@ -2348,7 +2367,7 @@ struct ProtocolReceiver<S> {
     skipped_decode: bool,
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, unix, not(target_os = "ios")))]
 #[path = "ctrl_client_tests.rs"]
 mod ctrl_client_tests;
 
