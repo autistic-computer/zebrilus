@@ -684,7 +684,7 @@ pub fn activate_nav(mux: &Entity<MuxClient>, activation: NavActivation, cx: &mut
                 }
             }
         }
-        NavActivation::Reconnect(host) => mux.retry_host_now(host, cx),
+        NavActivation::Reconnect(host) => mux.install_or_retry_host(host, cx),
     });
 }
 

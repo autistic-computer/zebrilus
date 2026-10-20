@@ -48,9 +48,14 @@ fn connection(state: &HostState, loaded: bool) -> HostConnection {
         HostState::Disconnected => HostConnection::Disconnected,
         HostState::Unreachable { reason } => HostConnection::Unreachable(reason.clone().into()),
         HostState::Missing => HostConnection::Unreachable("zz is not installed".into()),
-        HostState::Incompatible { remote, .. } => {
-            HostConnection::Incompatible(format!("protocol v{remote}").into())
-        }
+        HostState::Incompatible { remote, .. } => HostConnection::Incompatible(
+            remote
+                .map_or_else(
+                    || "an older protocol".to_owned(),
+                    |remote| format!("protocol v{remote}"),
+                )
+                .into(),
+        ),
     }
 }
 
@@ -221,7 +226,7 @@ impl WorkspaceSidebar {
             }
             FlatEvent::Connect(host) | FlatEvent::Upgrade(host) => {
                 self.mux
-                    .update(cx, |mux, cx| mux.retry_host_now(host.into(), cx));
+                    .update(cx, |mux, cx| mux.install_or_retry_host(host.into(), cx));
             }
             FlatEvent::Hover(target, hovered) => {
                 if self.flat_view.state.hover(target, hovered) {

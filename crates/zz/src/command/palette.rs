@@ -167,7 +167,7 @@ impl PaletteBackend for MuxPalette {
 
     fn connect_host(&self, host: PaletteHostId, cx: &mut App) {
         self.0
-            .update(cx, |mux, cx| mux.retry_host_now(host.into(), cx));
+            .update(cx, |mux, cx| mux.install_or_retry_host(host.into(), cx));
     }
 
     fn activate(&self, host: PaletteHostId, target: PaletteTarget, cx: &mut App) -> bool {
