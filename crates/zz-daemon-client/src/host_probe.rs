@@ -7,6 +7,7 @@ use crate::{
 };
 
 const PROBE_CONNECT_TIMEOUT_SECONDS: u32 = 3;
+const LOGIN_REFUSED: &str = "refused every login zz tried";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostStatus {
@@ -80,12 +81,15 @@ fn host_probe_script() -> String {
 fn host_probe_from(code: Option<i32>, stdout: &[u8], stderr: &[u8], status: &str) -> HostProbe {
     let stderr = String::from_utf8_lossy(stderr);
     if code == Some(SSH_FAILURE_STATUS) {
-        let status_of_host = if SshFailure::classify(&stderr).is_some_and(SshFailure::is_login) {
-            HostStatus::Auth
-        } else {
-            HostStatus::Unreachable
+        return match SshFailure::classify(&stderr) {
+            Some(SshFailure::Login | SshFailure::SecurityKey) => {
+                HostProbe::failed(HostStatus::Auth, LOGIN_REFUSED)
+            }
+            Some(SshFailure::HostKey) => {
+                HostProbe::failed(HostStatus::Auth, ssh_failure_reason(&stderr, status))
+            }
+            _ => HostProbe::failed(HostStatus::Unreachable, ssh_failure_reason(&stderr, status)),
         };
-        return HostProbe::failed(status_of_host, ssh_failure_reason(&stderr, status));
     }
     let stdout = String::from_utf8_lossy(stdout);
     let version = probe_value(&stdout, "zz-probe-version=")
@@ -191,11 +195,16 @@ mod tests {
             (HostStatus::Missing, "")
         );
 
+        let refused = probe(
+            255,
+            "",
+            "demfabris@alienware: Permission denied (publickey,password).",
+        );
+        assert_eq!(
+            (refused.status, refused.error.as_str()),
+            (HostStatus::Auth, LOGIN_REFUSED)
+        );
         for (stderr, status) in [
-            (
-                "demfabris@alienware: Permission denied (publickey,password).",
-                HostStatus::Auth,
-            ),
             ("Host key verification failed.", HostStatus::Auth),
             (
                 "ssh: connect to host ubuntu port 22: Operation timed out",

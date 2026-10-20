@@ -272,8 +272,10 @@ stays an unreachable row with its own message. Offers collect in `MuxClient::upd
 frame, so hosts that report later join it. **Update and restart** installs on all of them with a
 restart; closing the dialog clears the list. The host row's menu keeps **Install zz** (runs at once)
 and **Update zz** (joins the list). `zz fleet install [--restart-daemon] (-a | NAME...)` runs the
-same function from a shell on every named host in parallel, one line per host, with ssh prompting on
-the terminal; a failing host prints its reason on stderr and the exit status is 1.
+same function from a shell on every named host in parallel without prompts
+(`install_remote_batch`), then retries one at a time, on the terminal, each host that needs a typed
+login ([zz's own key](#zzs-own-key)); one line per host, a failing host prints its reason on stderr
+and the exit status is 1.
 
 ## Connection sharing
 
@@ -343,9 +345,53 @@ whose network died answers nothing until its keepalive gives up (minutes for a u
 afresh. The first answer on a kept link (the command client's empty `Exec`, or a control or
 interactive hello) has the same 15 s bound, set as the socket's read timeout and cleared once the
 answer arrives; past it the master gets `ssh -O stop`, `c<hash>.sock` is removed, and the call
-takes the cold path. `fleet`, `list-hosts`, `tools` and `protocol-version` over `--host` first run
+takes the cold path. The command's own `Exec` went out behind the empty one, so it may have run:
+only a read-only chain (the CLI passes `!spec.mutates` to `CommandClient::connect_endpoint`) is
+sent again; any other fails with `EndpointError::StoppedAnswering`, which the CLI prints as
+`zz: xps stopped answering for 15 s; the command may have run there, check before retrying` (exit 1).
+An interactive hello carries its chain too (`zz --host xps new-session -A -s build \; send-keys …`
+in a terminal), so `connect_kept` makes the link again only when every command in it is
+`attach-session` or changes nothing (`attach_resendable`); otherwise it gives up the same way.
+`fleet`, `list-hosts`, `tools` and `protocol-version` over `--host` and `install_remote` first run
 a bounded `ssh … exit` on a live master, since the host's CLI itself may run for as long as it
-likes. A cold connect still runs probe, start and forward as three ssh steps over one login.
+likes; with no master answering they sign in with the probe first (below). `run_remote_script`
+(list-hosts, fleet sync) is bounded the same way when it rides a live master. A cold connect still
+runs probe, start and forward as three ssh steps over one login.
+
+### zz's own key
+
+Each machine has one ed25519 key, `<data dir>/zz/ssh/id_ed25519` (`zz fleet key` prints it). The
+probe signs in twice at most (`zz_key_first`): first with only that key (`IdentitiesOnly=yes`,
+`IdentityFile`, `PreferredAuthentications=publickey`, `BatchMode=yes`), then, only when the key or
+the host key is refused, with the user's own login (config, agent, security key, password,
+host-key prompt). Every path that logs in without a live master goes through that probe first:
+connects, host-local verbs over `--host`, `fleet install` and the app's Install/Update. When the
+zz key won and no master carries the rest (Windows has none), the daemon start, proxy, forward,
+CLI and install logins offer the zz key too (`SshSession::identity`). A host-local verb or install
+with no master to open (`sign_in` without a control path) tries only the zz key, in batch mode,
+and otherwise runs with the user's own login, so a password is typed once. On a terminal with no
+askpass and no batch mode, the sign-in's second login writes ssh's stderr there, so a security-key
+touch notice or a 2FA banner shows; zz then reports a failure by its exit status alone.
+
+The probe carries this machine's key line only for a destination listed in `zz/config` (same user,
+host and port): it appends the line to that host's `authorized_keys` once and makes the host's own
+zz key. A raw `--host user@box` writes nothing there. Enrollment is logged at debug; the app
+toasts it.
+
+Parallel work never prompts. `ZZ_SSH_BATCH=1`, which the `--host all` fan-out sets in each child,
+and `SshSession::batch` (list-hosts, fleet sync, the first pass of `zz fleet install`) add
+`BatchMode=yes` and `PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*` to every login, since BatchMode
+alone still waits for a security-key touch. A `--host all` host that needs a typed login reports
+the hint to sign in once; `zz fleet install` retries those hosts one at a time on the terminal
+(`EndpointError::needs_sign_in`).
+
+`zz fleet sync` copies each host's own zz key to every other machine after checking only its shape
+(`ssh-ed25519 <base64> zz@<name>`). A key collected from a host is trusted as much as that host:
+a compromised fleet host can report a key it does not own and sync plants it fleet-wide, where it
+outlives the cleanup of that host. Nothing ties a key's comment to the host that reported it, so a
+planted key can carry any `zz@` name. After a compromise, remove every `zz@` line that host could
+have reported (or all of them) from each `~/.ssh/authorized_keys`, then run `zz fleet sync` again
+from a clean machine.
 
 ## Password and host-key prompts
 
