@@ -75,7 +75,7 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
 | `third_party/rust/cef-dll-sys/` | Adapter patched over `cef-dll-sys`: cef-rs `rev`, generated symbol table, `UPSTREAM.md` |
 | `Cargo.lock` | Exact resolved `cef`/`cef-dll-sys` version (`<rust-pkg>+<cef-version>`) |
 | `third_party/cef/ARTIFACTS.md` | Reviewable mirror of the official per-target archive name + SHA-1 table |
-| `.github/workflows/ci.yml`, `release.yml`, `nightly-corpus.yml` | `CEF_PATH` cache keyed on the CEF version, matrix across all three OSes |
+| `.github/workflows/ci.yml`, `release.yml`, `nightly-corpus.yml` | `CEF_PATH` cache keyed on the CEF version, matrix across all three OSes (CI runs Windows nightly) |
 | `crates/zz-xtask/src/main.rs` | Where the download/verify/build/bundle flow is invoked from |
 
 # Related

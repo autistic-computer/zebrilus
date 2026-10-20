@@ -135,6 +135,11 @@ CI runs release bundles on every OS in the matrix (`.github/workflows/ci.yml`):
 cargo xtask bundle-cef --release --output target/cef-bundle
 ```
 
+Pull requests and pushes to main run Linux and macOS and build that bundle without fat LTO
+(`CARGO_PROFILE_RELEASE_LTO=false`, 16 codegen units). The nightly schedule, and a manual
+dispatch, add Windows; the nightly run builds with the shipped profile. Tags build every OS
+again in `release.yml`.
+
 The Linux and macOS jobs each publish two directly downloadable artifacts: the compiled release
 executable(s), and a platform distribution package containing the complete runnable CEF bundle.
 Windows publishes its complete runnable bundle as a ZIP. The workflow uploads each prebuilt
@@ -273,7 +278,7 @@ What `bundle-cef` does, in order:
 | `third_party/cef/LICENSE.txt` | Installed into every bundle as `CEF_LICENSE.txt` |
 | `Cargo.toml` | `cef = "=154.0.0"` workspace pin that `download-cef` resolves |
 | `crates/zz-cli/src/lib.rs` | The macOS and Linux `PATH` launcher; maps bare launch to `new-session -A` and reserves `zz app` for the GUI |
-| `.github/workflows/ci.yml` | Exercises `bundle-cef` on `ubuntu-24.04`, `macos-15`, `windows-2025` |
+| `.github/workflows/ci.yml` | Exercises `bundle-cef` on `ubuntu-24.04` and `macos-15`, plus `windows-2025` nightly |
 | `.github/workflows/release.yml` | Tag-driven macOS, Linux, and Windows publication; prerelease channel gating |
 | `release.toml` + `scripts/release.sh` | Dry-run-first workspace SemVer bump, one release commit, annotated tag, and push |
 | `install.sh` (+ `site/public/install.sh` symlink) | The `curl | sh` installer served at zzmux.sh/install.sh: DMG to `/Applications` on macOS, `.deb` via apt or tarball under `~/.local` on Linux, sha256-verified, `--beta`/`--version`/`--prefix` |
