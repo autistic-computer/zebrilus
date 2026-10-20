@@ -235,6 +235,186 @@ fn host_connect_failures_over_openssh_name_the_host_and_the_fix() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn every_login_offers_the_zz_key_and_parallel_work_never_prompts() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (home, _) = isolated_zz();
+    let bin = home.path().join("bin");
+    std::fs::create_dir_all(&bin).expect("fake ssh directory");
+    let ssh = bin.join("ssh");
+    std::fs::write(
+        &ssh,
+        "#!/bin/sh\n\
+         printf '%s\\n' \"$*\" >> \"$FAKE_SSH_LOG\"\n\
+         case \" $* \" in *\" -G \"*) printf 'user you\\nhostname fakebox\\n'; exit 0 ;; *\" -O \"*) exit 255 ;; esac\n\
+         refuse() { printf 'you@fakebox: Permission denied (publickey).\\n' >&2; exit 255; }\n\
+         case \"$*\" in\n\
+         *IdentityFile=*) [ \"$FAKE_ZZ_KEY\" = refuse ] && refuse ;;\n\
+         *BatchMode=yes*) refuse ;;\n\
+         *) [ \"$FAKE_USER_LOGIN\" = ok ] || refuse ;;\n\
+         esac\n\
+         for script; do :; done\n\
+         case \"$script\" in *authorized_keys*) printf 'zz-probe-key=added\\n' ;; esac\n\
+         case \"$script\" in\n\
+         *zz-probe-socket=*) printf 'zz-probe-socket=/tmp/zz-fake.sock\\nzz-probe-protocol=%s\\n' \"$FAKE_PROTOCOL\" ;;\n\
+         *zz-install-protocol*) printf 'zz-install-current=1\\nzz-install-protocol=%s\\n' \"$FAKE_PROTOCOL\" ;;\n\
+         *) printf 'remote cli ran\\n' ;;\n\
+         esac\n",
+    )
+    .expect("write fake ssh");
+    std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).expect("chmod ssh");
+    let config = home.path().join(zz_protocol::app_identity::DIRECTORY);
+    std::fs::create_dir_all(&config).expect("config directory");
+    std::fs::write(config.join("config"), "host-fake = ssh://you@fakebox\n")
+        .expect("write host config");
+    let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .expect("PATH");
+    let log = home.path().join("ssh.log");
+    let run = |arguments: &[&str], zz_key: &str, user_login: &str| {
+        let _ = std::fs::remove_file(&log);
+        let output = scratch_env(&mut Command::new(env!("CARGO_BIN_EXE_zz_cli")), home.path())
+            .env("PATH", &path)
+            .env("FAKE_SSH_LOG", &log)
+            .env("FAKE_ZZ_KEY", zz_key)
+            .env("FAKE_USER_LOGIN", user_login)
+            .env("FAKE_PROTOCOL", zz_protocol::PROTOCOL_VERSION.to_string())
+            .env_remove("TMUX")
+            .env_remove("ZZ_SOCKET")
+            .env_remove("ZZ_SSH_BATCH")
+            .env_remove("RUST_LOG")
+            .args(arguments)
+            .output()
+            .expect("run zz");
+        let logins = std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| !line.starts_with("-G ") && !line.starts_with("-O "))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        (output, logins)
+    };
+
+    let (output, logins) = run(&["--host", "fake", "protocol-version"], "ok", "refuse");
+    assert_eq!(output.status.code(), Some(0), "{output:?} {logins:#?}");
+    assert_eq!(output.stdout, b"remote cli ran\n");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    assert!(logins[0].contains("authorized_keys"), "{logins:#?}");
+    assert!(
+        logins.iter().all(|line| line.contains("IdentityFile=")),
+        "{logins:#?}"
+    );
+
+    let (output, logins) = run(
+        &["--host", "you@elsewhere", "protocol-version"],
+        "ok",
+        "refuse",
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?} {logins:#?}");
+    assert!(
+        logins.iter().all(|line| !line.contains("authorized_keys")),
+        "{logins:#?}"
+    );
+
+    let (output, logins) = run(&["--host", "all", "protocol-version"], "refuse", "ok");
+    assert_eq!(output.status.code(), Some(1), "{output:?} {logins:#?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    assert!(!logins.is_empty());
+    assert!(
+        logins.iter().all(|line| line.contains("BatchMode=yes")
+            && (line.contains("IdentityFile=")
+                || line.contains("PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*"))),
+        "{logins:#?}"
+    );
+
+    if zz_protocol::app_identity::DEVELOPMENT {
+        return;
+    }
+    let installed = format!("fake: already zz {}\n", env!("CARGO_PKG_VERSION"));
+    let (output, logins) = run(&["fleet", "install", "fake"], "refuse", "ok");
+    assert_eq!(output.status.code(), Some(0), "{output:?} {logins:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), installed);
+    let first_user_login = logins
+        .iter()
+        .position(|line| !line.contains("IdentityFile="))
+        .expect("a login without the zz key");
+    assert!(
+        logins[first_user_login].contains("BatchMode=yes"),
+        "{logins:#?}"
+    );
+    assert!(
+        logins[first_user_login + 1..]
+            .iter()
+            .any(|line| !line.contains("BatchMode")),
+        "{logins:#?}"
+    );
+
+    let (output, logins) = run(&["fleet", "install", "fake"], "ok", "refuse");
+    assert_eq!(output.status.code(), Some(0), "{output:?} {logins:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), installed);
+    assert!(
+        logins.iter().all(|line| line.contains("IdentityFile=")),
+        "{logins:#?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_host_probe_riding_a_master_that_stopped_answering_gives_up() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (home, _) = isolated_zz();
+    let bin = home.path().join("bin");
+    std::fs::create_dir_all(&bin).expect("fake ssh directory");
+    let master = home.path().join("cm");
+    std::fs::write(&master, b"").expect("fake master socket");
+    let ssh = bin.join("ssh");
+    std::fs::write(
+        &ssh,
+        "#!/bin/sh\n\
+         case \" $* \" in\n\
+         *\" -G \"*) printf 'controlmaster auto\\ncontrolpath %s\\n' \"$FAKE_MASTER\"; exit 0 ;;\n\
+         *\" -O stop \"*) kill \"$(cat \"$FAKE_MASTER.pid\")\"; exit 0 ;;\n\
+         *\" -O \"*) exit 0 ;;\n\
+         esac\n\
+         echo $$ > \"$FAKE_MASTER.pid\"\n\
+         exec sleep 60\n",
+    )
+    .expect("write fake ssh");
+    std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).expect("chmod ssh");
+    let config = home.path().join(zz_protocol::app_identity::DIRECTORY);
+    std::fs::create_dir_all(&config).expect("config directory");
+    std::fs::write(config.join("config"), "host-fake = ssh://you@fakebox\n")
+        .expect("write host config");
+    let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .expect("PATH");
+    let started = std::time::Instant::now();
+    let output = scratch_env(&mut Command::new(env!("CARGO_BIN_EXE_zz_cli")), home.path())
+        .env("PATH", &path)
+        .env("FAKE_MASTER", &master)
+        .env_remove("ZZ_SSH_BATCH")
+        .args([
+            "list-hosts",
+            "-F",
+            "#{host_name} #{host_state} #{host_error}",
+        ])
+        .output()
+        .expect("run zz list-hosts");
+    let elapsed = started.elapsed();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "fake unreachable could not run ssh: the remote script got no answer over the open ssh \
+         connection within 15 s\n"
+    );
+    assert!((14..30).contains(&elapsed.as_secs()), "{elapsed:?}");
+}
+
 #[test]
 fn internal_command_help_remains_available_without_a_daemon() {
     for name in zz_protocol::INTERNAL_COMMAND_NAMES {
