@@ -280,8 +280,6 @@ impl fmt::Debug for SshPrompts {
     }
 }
 
-/// Each listener owns its directory, so no two processes sharing the ssh directory can collide on
-/// a socket name, and dropping the listener removes both.
 #[cfg(unix)]
 pub(crate) struct AskpassListener {
     helper: PathBuf,

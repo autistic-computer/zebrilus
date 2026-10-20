@@ -40,8 +40,10 @@ use thiserror::Error;
 use crate::DaemonError;
 #[cfg(any(unix, windows))]
 use crate::askpass::{AskpassListener, SshPrompts};
+#[cfg(any(unix, windows))]
+use crate::transport::LocalStream;
 #[cfg(windows)]
-use crate::transport::{LocalListener, LocalStream, TransportListener as _};
+use crate::transport::{LocalListener, TransportListener as _};
 use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
 #[cfg(any(unix, windows, test))]
 use crate::unmasked::SpawnUnmasked as _;
@@ -111,7 +113,6 @@ const FORWARD_POLL_ATTEMPTS: usize = 250;
 const FORWARD_POLL_INTERVAL: Duration = Duration::from_millis(20);
 #[cfg(unix)]
 const CONTROL_PERSIST_SECONDS: u32 = 600;
-/// Empty `zz-ssh-*` directories older than this are what per-process builds left behind.
 #[cfg(unix)]
 const LEGACY_SSH_DIRECTORY_AGE: Duration = Duration::from_mins(10);
 /// Leaves room inside `sun_path` for the private directory and the socket names under it.
@@ -506,8 +507,6 @@ struct SshSession<'a> {
     askpass: Option<SshAskpass<'a>>,
 }
 
-/// The control socket every ssh child for one host meets on, and whether the user's own config
-/// already keeps that master alive.
 #[cfg(not(windows))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SshControl {
@@ -872,17 +871,14 @@ fn control_path_option(control_path: &Path) -> String {
     )
 }
 
-/// A 0700 per-user directory for the ssh control sockets, forwarded sockets and askpass
-/// directories, all of which are capabilities: one owns an ssh session, another reaches a remote
-/// daemon, and the last can phish a password out of the dialog. It is stable so that every zz
-/// process for this user meets the same masters; when it cannot be made safe, a per-process
-/// directory takes its place.
+/// A 0700 per-user directory for the ssh control, forwarded and askpass sockets, all of which are
+/// capabilities: one owns an ssh session, one reaches a daemon, one can phish a password.
 #[cfg(unix)]
 pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
     static DIRECTORY: OnceLock<Result<SshRuntimeDir, String>> = OnceLock::new();
     match DIRECTORY.get_or_init(|| {
         let stable = stable_ssh_runtime_dir();
-        remove_legacy_ssh_dirs(&ssh_runtime_root(), &stable);
+        remove_legacy_ssh_dirs(&ssh_runtime_root());
         match private_directory(&stable) {
             Ok(()) => return Ok(SshRuntimeDir::Stable(stable)),
             Err(error) => log::warn!(
@@ -892,7 +888,7 @@ pub(crate) fn ssh_runtime_dir() -> io::Result<&'static Path> {
             ),
         }
         let directory = tempfile::Builder::new()
-            .prefix("zz-ssh-")
+            .prefix(&format!("{}-", user_ssh_dir_name()))
             .tempdir_in(ssh_runtime_root())
             .map_err(|error| error.to_string())?;
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
@@ -928,22 +924,27 @@ impl SshRuntimeDir {
 
 #[cfg(unix)]
 fn stable_ssh_runtime_dir() -> PathBuf {
-    let name = zz_protocol::app_identity::DIRECTORY;
     #[cfg(target_os = "linux")]
     if let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .filter(|runtime| runtime.is_absolute())
     {
-        return runtime.join(name).join("ssh");
+        return runtime
+            .join(zz_protocol::app_identity::DIRECTORY)
+            .join("ssh");
     }
-    ssh_runtime_root().join(format!(
-        "{name}-ssh-{}",
-        rustix::process::geteuid().as_raw()
-    ))
+    ssh_runtime_root().join(user_ssh_dir_name())
 }
 
-/// Only a real directory this user owns and nobody else can enter will do: anyone who can reach a
-/// control socket in it rides that ssh login.
+#[cfg(unix)]
+fn user_ssh_dir_name() -> String {
+    format!(
+        "{}-ssh-{}",
+        zz_protocol::app_identity::DIRECTORY,
+        rustix::process::geteuid().as_raw()
+    )
+}
+
 #[cfg(unix)]
 fn private_directory(path: &Path) -> io::Result<()> {
     use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _};
@@ -975,18 +976,13 @@ fn private_directory(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Builds that made a directory per process never removed it; the empty ones are litter.
 #[cfg(unix)]
-fn remove_legacy_ssh_dirs(root: &Path, keep: &Path) {
+fn remove_legacy_ssh_dirs(root: &Path) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
-        if !entry
-            .file_name()
-            .to_str()
-            .is_some_and(|name| name.starts_with("zz-ssh-"))
-        {
+        if !entry.file_name().to_str().is_some_and(legacy_ssh_dir_name) {
             continue;
         }
         let path = entry.path();
@@ -996,10 +992,19 @@ fn remove_legacy_ssh_dirs(root: &Path, keep: &Path) {
             .ok()
             .and_then(|modified| modified.elapsed().ok())
             .is_some_and(|age| age >= LEGACY_SSH_DIRECTORY_AGE);
-        if settled && path != keep {
+        if settled {
             let _ = fs::remove_dir(&path);
         }
     }
+}
+
+#[cfg(unix)]
+fn legacy_ssh_dir_name(name: &str) -> bool {
+    name.strip_prefix("zz-ssh-").is_some_and(|suffix| {
+        suffix.len() == 6
+            && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            && !suffix.bytes().all(|byte| byte.is_ascii_digit())
+    })
 }
 
 #[cfg(unix)]
@@ -1018,7 +1023,6 @@ fn control_master_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
     Ok(ssh_runtime_dir()?.join(format!("c{:016x}", endpoint_hash(endpoint, None))))
 }
 
-/// The socket a host's master keeps forwarded to its daemon between calls.
 #[cfg(unix)]
 fn kept_forward_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
     Ok(ssh_runtime_dir()?.join(format!(
@@ -1213,19 +1217,24 @@ fn session_askpass(askpass: Option<&AskpassListener>) -> Option<SshAskpass<'_>> 
     })
 }
 
-/// The user's own multiplexing wins when their config has one: riding `~/.ssh/cm-%C` reuses the
-/// login they already made, and their `ControlPersist` stays theirs. `ask` and `autoask` would
-/// prompt per child, so those, like `no` or no path, get zz's own path.
 #[cfg(unix)]
 fn shared_control(endpoint: &SshEndpoint) -> Option<SshControl> {
     live_control(endpoint).map(|(control, _)| control)
 }
 
-/// The control socket to use, and whether a master answers on it. A master that died leaves its
-/// socket behind, which would make ssh warn and give every child its own login.
 #[cfg(unix)]
 fn live_control(endpoint: &SshEndpoint) -> Option<(SshControl, bool)> {
-    let control = ssh_config_command(endpoint)
+    let control = configured_control(endpoint)?;
+    let alive = control_master_alive(endpoint, &control.path);
+    if !alive && control.path.exists() {
+        let _ = fs::remove_file(&control.path);
+    }
+    Some((control, alive))
+}
+
+#[cfg(unix)]
+fn configured_control(endpoint: &SshEndpoint) -> Option<SshControl> {
+    ssh_config_command(endpoint)
         .output_unmasked()
         .ok()
         .filter(|output| output.status.success())
@@ -1242,12 +1251,7 @@ fn live_control(endpoint: &SshEndpoint) -> Option<(SshControl, bool)> {
                 );
                 None
             }
-        })?;
-    let alive = control_master_alive(endpoint, &control.path);
-    if !alive && control.path.exists() {
-        let _ = fs::remove_file(&control.path);
-    }
-    Some((control, alive))
+        })
 }
 
 #[cfg(unix)]
@@ -1268,7 +1272,7 @@ fn ssh_config_command(endpoint: &SshEndpoint) -> Command {
     command
 }
 
-#[cfg(any(unix, test))]
+#[cfg(unix)]
 fn user_control(config: &str) -> Option<SshControl> {
     let value = |key: &str| {
         config.lines().find_map(|line| {
@@ -1279,17 +1283,14 @@ fn user_control(config: &str) -> Option<SshControl> {
     if !matches!(value("controlmaster"), Some("auto" | "true" | "yes")) {
         return None;
     }
-    let path = value("controlpath").filter(|path| path.starts_with('/'))?;
+    let path = value("controlpath")
+        .filter(|path| path.starts_with('/') && !path.contains(char::is_whitespace))?;
     Some(SshControl {
         path: PathBuf::from(path),
         user_persist: !matches!(value("controlpersist"), None | Some("no" | "false")),
     })
 }
 
-/// Runs the zz CLI that lives on `endpoint` with `arguments`, over the host's master, for the verbs
-/// that answer from a machine's own config rather than its daemon. Its output and exit status are
-/// the remote CLI's. A terminal's input is passed through; a pipe is not, so a `while read` loop
-/// around the call keeps its lines.
 #[cfg(any(unix, windows))]
 pub fn run_remote_cli(
     endpoint: &SshEndpoint,
@@ -1298,7 +1299,22 @@ pub fn run_remote_cli(
     use std::io::IsTerminal as _;
 
     #[cfg(unix)]
-    let control = shared_control(endpoint);
+    let control = live_control(endpoint).map(|(control, alive)| {
+        if alive {
+            let step = SshStep {
+                endpoint: endpoint.clone(),
+                control: Some(control.clone()),
+                askpass: None,
+            };
+            if let Err(error) = step.run(true, "remote command", master_answers) {
+                log::debug!(
+                    target: "zz_daemon::diagnostics",
+                    "{error}; running the command on a fresh login",
+                );
+            }
+        }
+        control
+    });
     let session = SshSession {
         #[cfg(unix)]
         control: control.as_ref(),
@@ -1310,6 +1326,26 @@ pub fn run_remote_cli(
     }
     command
         .status_unmasked()
+        .map_err(|source| EndpointError::SshSpawn {
+            operation: "remote command",
+            source,
+        })
+}
+
+#[cfg(unix)]
+fn master_answers(step: &SshStep) -> Result<(), EndpointError> {
+    let mut command = Command::new("ssh");
+    command.arg("-T");
+    append_ssh_options(&mut command, &step.endpoint, step.session());
+    command
+        .arg("--")
+        .arg(&step.endpoint.host)
+        .arg("exit")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status_unmasked()
+        .map(drop)
         .map_err(|source| EndpointError::SshSpawn {
             operation: "remote command",
             source,
@@ -1395,15 +1431,11 @@ fn forwarded_local_socket_path() -> io::Result<PathBuf> {
     Ok(ssh_runtime_dir()?.join(format!("fwd-{}-{counter}.sock", std::process::id())))
 }
 
-/// Connects through the forward the host's master keeps between calls, making it again only when
-/// `connect` fails there: the socket is missing or refused, or the handshake `connect` runs ends
-/// early. The forward comes back only when this process has to hold it, which happens when no
-/// master is up.
 #[cfg(unix)]
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
-    mut connect: impl FnMut(&Path) -> Result<T, DaemonError>,
+    mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
     let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
         target: endpoint.to_string(),
@@ -1411,27 +1443,65 @@ pub(crate) fn connect_kept<T>(
         path: ssh_runtime_root(),
         source,
     })?;
-    match connect(&kept) {
+    let mut dial = |socket: &Path| -> Result<T, DaemonError> {
+        let stream = LocalTransport::connect(socket)?;
+        let bound = stream.try_clone()?;
+        bound.set_timeout(Some(MASTER_STEP_TIMEOUT))?;
+        let connected = connect(socket, stream)?;
+        bound.set_timeout(None)?;
+        Ok(connected)
+    };
+    let stalled = match dial(&kept) {
         Ok(connected) => return Ok((connected, None)),
         Err(error) if !kept_forward_failed(&error) => return Err(error),
-        Err(error) => log::debug!(
-            target: "zz_daemon::diagnostics",
-            "the kept forward to {endpoint} did not answer ({error}); making it again",
-        ),
-    }
+        Err(error) => {
+            log::debug!(
+                target: "zz_daemon::diagnostics",
+                "the kept forward to {endpoint} did not answer ({error}); making it again",
+            );
+            link_stalled(&error)
+        }
+    };
     let lock = KeptForwardLock::acquire(&kept);
     if lock.contended
-        && let Ok(connected) = connect(&kept)
+        && let Ok(connected) = dial(&kept)
     {
         return Ok((connected, None));
     }
+    if stalled {
+        abandon_stalled_master(endpoint, &kept);
+    }
     let forward = SshForward::keep(endpoint, prompts, &kept)?;
-    let connected = connect(forward.local_socket())?;
+    let connected = dial(forward.local_socket())?;
     Ok((connected, (!forward.kept).then_some(forward)))
 }
 
-/// What a dead forward, a restarted daemon or one of another protocol looks like from this end; a
-/// daemon that answered and refused is not one of them.
+#[cfg(unix)]
+pub(crate) fn link_stalled(error: &DaemonError) -> bool {
+    match error {
+        DaemonError::Io(error) | DaemonError::Protocol(zz_protocol::ProtocolError::Io(error)) => {
+            matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            )
+        }
+        _ => false,
+    }
+}
+
+#[cfg(unix)]
+fn abandon_stalled_master(endpoint: &SshEndpoint, kept: &Path) {
+    log::debug!(
+        target: "zz_daemon::diagnostics",
+        "the ssh master for {endpoint} gave no answer within {} s; stopping it",
+        MASTER_STEP_TIMEOUT.as_secs(),
+    );
+    if let Some(control) = configured_control(endpoint) {
+        let _ = ssh_control_command(endpoint, &control.path, "stop", &[]).status_unmasked();
+    }
+    let _ = fs::remove_file(kept);
+}
+
 #[cfg(unix)]
 fn kept_forward_failed(error: &DaemonError) -> bool {
     match error {
@@ -1445,10 +1515,11 @@ fn kept_forward_failed(error: &DaemonError) -> bool {
     }
 }
 
-/// Makes the kept forward again after it failed past `connect_kept`, and says where to dial.
 #[cfg(all(unix, not(target_os = "ios")))]
 pub(crate) fn remake_kept_forward(
     endpoint: &SshEndpoint,
+    stalled: bool,
+    answers: impl FnOnce(&Path) -> bool,
 ) -> Result<(PathBuf, Option<SshForward>), EndpointError> {
     let kept = kept_forward_path(endpoint).map_err(|source| EndpointError::ForwardIo {
         target: endpoint.to_string(),
@@ -1456,13 +1527,18 @@ pub(crate) fn remake_kept_forward(
         path: ssh_runtime_root(),
         source,
     })?;
-    let _lock = KeptForwardLock::acquire(&kept);
+    let lock = KeptForwardLock::acquire(&kept);
+    if lock.contended && answers(&kept) {
+        return Ok((kept, None));
+    }
+    if stalled {
+        abandon_stalled_master(endpoint, &kept);
+    }
     let forward = SshForward::keep(endpoint, None, &kept)?;
     let socket = forward.local_socket.clone();
     Ok((socket, (!forward.kept).then_some(forward)))
 }
 
-/// Parallel calls to a host whose forward is gone take turns, so one logs in and the rest ride it.
 #[cfg(unix)]
 struct KeptForwardLock {
     _file: Option<fs::File>,
@@ -1499,13 +1575,9 @@ impl KeptForwardLock {
     }
 }
 
-/// A master that is up but whose network died answers nothing until its keepalive gives up, which
-/// is minutes for a user's `ServerAliveInterval 60`; past this, the step fails and the master is
-/// told to stop taking new sessions so the next call logs in afresh.
 #[cfg(unix)]
-const MASTER_STEP_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const MASTER_STEP_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// What an ssh step needs, owned, so it can run on a thread the caller stops waiting for.
 #[cfg(unix)]
 #[derive(Clone)]
 struct SshStep {
@@ -1582,8 +1654,6 @@ pub(crate) struct SshForward {
 
 #[cfg(unix)]
 impl SshForward {
-    /// A forward of this connection's own, with a SOCKS port for the browser panes that egress
-    /// through the host. The desktop app is its only user.
     pub(crate) fn start(
         endpoint: &SshEndpoint,
         prompts: Option<SshPrompts>,
@@ -1686,9 +1756,6 @@ impl SshForward {
         self.socks_port
     }
 
-    /// A live master takes the forward over its control socket; only without one does a child
-    /// ssh hold it, and that child must not read the caller's stdin: against a master, OpenSSH
-    /// turns a `-N` mux client into a login shell fed by whatever stdin it was given.
     fn open(&mut self, remote_socket: &Path) -> Result<(), EndpointError> {
         let Some(control_path) = self
             .control
@@ -1840,15 +1907,15 @@ impl Drop for SshForward {
     }
 }
 
-/// Windows ssh has no connection sharing to keep a forward in, so every connect makes its own.
 #[cfg(windows)]
 pub(crate) fn connect_kept<T>(
     endpoint: &SshEndpoint,
     prompts: Option<SshPrompts>,
-    mut connect: impl FnMut(&Path) -> Result<T, DaemonError>,
+    mut connect: impl FnMut(&Path, LocalStream) -> Result<T, DaemonError>,
 ) -> Result<(T, Option<SshForward>), DaemonError> {
     let forward = SshForward::start(endpoint, prompts)?;
-    let connected = connect(forward.local_socket())?;
+    let socket = forward.local_socket();
+    let connected = connect(socket, LocalTransport::connect(socket)?)?;
     Ok((connected, Some(forward)))
 }
 
@@ -3263,29 +3330,36 @@ mod tests {
     #[test]
     fn only_empty_settled_legacy_directories_are_removed() {
         let root = tempfile::tempdir().unwrap();
-        let keep = root.path().join("zz-ssh-501");
         let stale = root.path().join("zz-ssh-Ab12Cd");
         let busy = root.path().join("zz-ssh-Ef34Gh");
         let fresh = root.path().join("zz-ssh-Ij56Kl");
-        let other = root.path().join("zz-other");
-        for directory in [&keep, &stale, &busy, &fresh, &other] {
+        let live = [
+            "zz-ssh-501",
+            "zz-ssh-100000",
+            "zz-dev-ssh-501",
+            "zz-ssh-501-Mn78Op",
+            "zz-other",
+        ]
+        .map(|name| root.path().join(name));
+        for directory in [&stale, &busy, &fresh].into_iter().chain(&live) {
             fs::create_dir(directory).unwrap();
         }
         fs::write(busy.join("a1"), b"").unwrap();
         let old = std::time::SystemTime::now() - LEGACY_SSH_DIRECTORY_AGE * 2;
-        for directory in [&keep, &stale, &busy, &other] {
+        for directory in [&stale, &busy].into_iter().chain(&live) {
             fs::File::open(directory)
                 .unwrap()
                 .set_modified(old)
                 .unwrap();
         }
-        remove_legacy_ssh_dirs(root.path(), &keep);
+        remove_legacy_ssh_dirs(root.path());
         assert!(!stale.exists());
-        for directory in [&keep, &busy, &fresh, &other] {
+        for directory in [&busy, &fresh].into_iter().chain(&live) {
             assert!(directory.exists(), "{directory:?}");
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn user_control_path_is_reused() {
         let config = |master: &str, path: Option<&str>, persist: &str| {
@@ -3314,6 +3388,10 @@ mod tests {
         }
         assert_eq!(user_control(&config("auto", None, "600")), None);
         assert_eq!(user_control(&config("auto", Some("none"), "600")), None);
+        assert_eq!(
+            user_control(&config("auto", Some("/tmp/zz rv/cm-1"), "600")),
+            None
+        );
         assert_eq!(user_control(""), None);
     }
 

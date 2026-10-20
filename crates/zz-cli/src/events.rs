@@ -57,8 +57,6 @@ pub(crate) fn run(
     })
 }
 
-/// The same stream from `host`'s daemon, through its kept ssh forward; each line names the host so
-/// an orchestrator can merge several.
 pub(crate) fn run_host(host: &str, endpoint: &Endpoint, arguments: &[RawText]) -> ExitCode {
     let target = match events_target(arguments) {
         Ok(target) => target,
@@ -144,7 +142,7 @@ fn drive<W: Write>(
     output: &mut EventWriter<W>,
     startup_gaps: &mut u64,
 ) -> Result<(), StreamError> {
-    let (receiver, pending) = subscribe(client, output.target.as_deref())?;
+    let (subscription, pending) = subscribe(client, output.target.as_deref())?;
     if output.next_seq == 0 {
         output.line("ready", &BTreeMap::new())?;
         for _ in 0..std::mem::take(startup_gaps) {
@@ -155,8 +153,42 @@ fn drive<W: Write>(
         output.hook(payload)?;
     }
     loop {
-        if let ProtocolMessage::Event(event) = receive(&receiver)? {
+        if let ProtocolMessage::Event(event) = subscription.receive()? {
             output.hook(event.payload)?;
+        }
+    }
+}
+
+type Messages = mpsc::Receiver<Result<ProtocolMessage, String>>;
+
+struct Subscription {
+    client: Arc<InteractiveClient>,
+    receiver: Option<Messages>,
+    reader: Option<thread::JoinHandle<()>>,
+}
+
+impl Subscription {
+    fn receive(&self) -> Result<ProtocolMessage, StreamError> {
+        self.receiver.as_ref().map_or_else(
+            || Err(StreamError::Disconnected("disconnected".to_owned())),
+            receive,
+        )
+    }
+
+    fn shutdown(&self) {
+        #[cfg(unix)]
+        let _ = self.client.shutdown();
+        #[cfg(not(unix))]
+        let _ = self.client.detach();
+    }
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        drop(self.receiver.take());
+        self.shutdown();
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
         }
     }
 }
@@ -164,16 +196,10 @@ fn drive<W: Write>(
 fn subscribe(
     client: &Arc<InteractiveClient>,
     target: Option<&str>,
-) -> Result<
-    (
-        mpsc::Receiver<Result<ProtocolMessage, String>>,
-        Vec<EventPayload>,
-    ),
-    StreamError,
-> {
+) -> Result<(Subscription, Vec<EventPayload>), StreamError> {
     let (sender, receiver) = mpsc::sync_channel(32);
     let reader = Arc::clone(client);
-    thread::Builder::new()
+    let reader = thread::Builder::new()
         .name("zz-events-protocol".to_owned())
         .spawn(move || {
             loop {
@@ -193,7 +219,12 @@ fn subscribe(
                 }
             }
         })?;
-    let mut arguments = Vec::<RawText>::new();
+    let subscription = Subscription {
+        client: Arc::clone(client),
+        receiver: Some(receiver),
+        reader: Some(reader),
+    };
+    let mut arguments = vec![RawText::from("-E")];
     if let Some(target) = target {
         arguments.extend(["-t".into(), target.into()]);
     }
@@ -206,7 +237,7 @@ fn subscribe(
             .execute(command)
             .map_err(|error| StreamError::Disconnected(error.to_string()))?;
         loop {
-            match receive(&receiver)? {
+            match subscription.receive()? {
                 ProtocolMessage::CommandResponse(CommandResponse::Success {
                     request_id: response_id,
                     exit_code,
@@ -234,12 +265,10 @@ fn subscribe(
             }
         }
     }
-    Ok((receiver, pending))
+    Ok((subscription, pending))
 }
 
-fn receive(
-    receiver: &mpsc::Receiver<Result<ProtocolMessage, String>>,
-) -> Result<ProtocolMessage, StreamError> {
+fn receive(receiver: &Messages) -> Result<ProtocolMessage, StreamError> {
     check_message(
         receiver
             .recv()
@@ -385,23 +414,26 @@ pub(crate) fn progress_target(arguments: &[RawText]) -> Result<Option<String>, &
 
 pub(crate) struct Progress {
     stop: Arc<AtomicBool>,
-    client: Arc<InteractiveClient>,
+    subscription: Subscription,
     worker: Option<thread::JoinHandle<()>>,
 }
 
 impl Progress {
     pub(crate) fn start(client: InteractiveClient, pane: String) -> Result<Self, String> {
-        let client = Arc::new(client);
-        let mut progress = Self {
-            stop: Arc::new(AtomicBool::new(false)),
-            client,
-            worker: None,
-        };
-        let (receiver, pending) =
-            subscribe(&progress.client, Some(&pane)).map_err(|error| match error {
+        let (mut subscription, pending) =
+            subscribe(&Arc::new(client), Some(&pane)).map_err(|error| match error {
                 StreamError::Gap => "event stream overflowed during attach".to_owned(),
                 StreamError::Disconnected(reason) => reason,
             })?;
+        let receiver = subscription
+            .receiver
+            .take()
+            .ok_or_else(|| "disconnected".to_owned())?;
+        let mut progress = Self {
+            stop: Arc::new(AtomicBool::new(false)),
+            subscription,
+            worker: None,
+        };
         let stop = Arc::clone(&progress.stop);
         progress.worker = Some(
             thread::Builder::new()
@@ -461,10 +493,7 @@ impl Progress {
 impl Drop for Progress {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
-        #[cfg(unix)]
-        let _ = self.client.shutdown();
-        #[cfg(not(unix))]
-        let _ = self.client.detach();
+        self.subscription.shutdown();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }

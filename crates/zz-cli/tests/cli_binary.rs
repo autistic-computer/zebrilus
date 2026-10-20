@@ -236,7 +236,6 @@ mod daemon_autostart {
             self.command_from(Path::new(env!("CARGO_BIN_EXE_zz_cli")))
         }
 
-        /// Reaches this fixture's daemon as `--host peer`, a `unix://` host in `zz/config`.
         fn host_command(&self) -> Command {
             let config = self.home.join("zz");
             std::fs::create_dir_all(&config).expect("scratch zz config directory");
@@ -678,17 +677,21 @@ mod daemon_autostart {
     }
 
     #[test]
-    fn host_local_verbs_run_the_hosts_own_cli() {
+    fn host_local_verbs_refuse_a_local_socket_host() {
         let fixture = Fixture::new();
         for verb in [
             &["fleet", "list"][..],
             &["list-hosts"],
             &["tools", "--context"],
+            &["tool", "--install-hooks"],
+            &["tool", "--remove-hooks"],
             &["protocol-version"],
         ] {
             let output = fixture
                 .host_command()
                 .args(verb)
+                .env_remove("CLAUDE_CONFIG_DIR")
+                .env_remove("CODEX_HOME")
                 .stdin(Stdio::null())
                 .output()
                 .expect("host-local verb");
@@ -698,6 +701,9 @@ mod daemon_autostart {
                 stderr.starts_with("zz: peer is the local socket "),
                 "{verb:?}: {stderr}"
             );
+        }
+        for written in [".claude", ".codex", ".agents"] {
+            assert!(!fixture.home.join(written).exists(), "{written}");
         }
     }
 
