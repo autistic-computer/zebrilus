@@ -22,3 +22,16 @@ serve:
 # Screenshot one story or section of a running storybook: just storybook shot agent/composer?theme=dark out.png
 shot route out *args:
     @scripts/storybook-shot.mjs "{{ route }}" "{{ out }}" {{ args }}
+
+# Compare the macOS theme in zz-ui with native AppKit glass on the same backdrop (macOS 27 SDK).
+macos:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p target/macos-glass-reference
+    xcrun swiftc -parse-as-library \
+      "$PWD/clients/storybook/examples/macos_reference.swift" \
+      -framework AppKit -o target/macos-glass-reference/native
+    target/macos-glass-reference/native &
+    reference_pid=$!
+    trap 'kill "$reference_pid" 2>/dev/null || true' EXIT
+    cargo run --manifest-path clients/storybook/Cargo.toml --example macos

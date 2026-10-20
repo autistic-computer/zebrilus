@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-17T12:00:00-03:00
+timestamp: 2026-10-20T00:00:00-03:00
 ---
 
 # Overview
@@ -119,7 +119,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
-| `interface-theme` | `default` | `default`, `liquid-glass`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
+| `interface-theme` | `default` | `default`, `liquid-glass`, `macos`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
 | `widget-corner-radius` | from the theme (`24` in Default, `25` in Liquid Glass) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
 | `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active floating pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
 | `chrome-tint` | `0` | `0..=1` | How far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
@@ -268,17 +268,30 @@ import show the same message. `look`, the nine-key format from earlier on 2026-1
 the same way, so a theme file written for it loads only once it is rewritten as `materials` and
 `roles`.
 
-Two themes are compiled in from `crates/zz-ui/themes/`. `default` (`default.json`): 10px corners,
-0.5px outlines, both shadows at their built-in geometry, no glass (a surface whose role takes
-glass fills solid), foreground primary, a 4px row inset and every role as built in, on neutral
-planes (`#fcfcfc` / `#18181a`), near-black and near-white ink, a blue accent (`#3d6df2` /
-`#6b8cff`) and status colors that read on both. `liquid-glass` (`liquid-glass.json`, Liquid Glass): 25px
-corners so capsule roles are pills, no outlines, a 5px row inset, foreground primary, glass and no
-shadows, glass on the agent composer, the address bar and the selected tabs and sidebar row, in
-macOS 27's colors (`#ffffff` / `#1e1e1e`, `#262626` / `#dddddd` ink, accent `#007aff`, and the
-system green, orange and red, darkened in light to pass the floors below). A config naming a theme that is no longer built
-in, such as `macos`, `tahoe`, `linear` or `glass` before 2026-10-14, shows Default and logs a
-warning.
+Three themes ship from `crates/zz-ui/themes/`: Default (`default.json`), Liquid Glass
+(`liquid-glass.json`), and macOS (`macos.json`). macOS uses the existing material settings
+for macOS-style chrome buttons and selected tabs, with directional glass lighting, contact
+shadows, and light and dark palettes. Content cards, sidebar selections, code blocks, and
+ordinary buttons use plain fills. Liquid Glass keeps its separate hand-tuned definition. The JSON
+files hold each theme's current colors, material values, and role overrides.
+
+Run `just storybook macos` on macOS 27 with its SDK to compare the macOS theme in zz-ui against native
+AppKit glass buttons and tabs on the same backdrop. The zz-ui preview's Reload theme button
+reads `macos.json` again; both previews have a light/dark switch and show their window activity.
+In the native reference, Cmd+Shift+A deactivates the app and Cmd+Shift+R activates it.
+Click a circular toolbar button in the zz-ui preview to activate that window.
+
+Glass materials accept `light_directionality` and `inactive_flattening`, each from 0 to 1.
+Directionality moves the glint toward the light and the contour shadow away from it; 0 keeps
+the original symmetric lighting. Inactive flattening reduces the rim, refraction, and color
+boost when a native window loses focus, keeping the tint, blur, and contour. Neutral glass buttons
+also quiet their labels while inactive; selected tabs retain their labels. Both fields default
+to 0, so existing theme files keep their behavior. The theme creator exposes both controls
+and preserves them on import, export, and reset. Its browser canvases stay visually active
+when focus moves to the editor controls. All glass roles still share one material.
+
+A config naming a theme that is no longer built in, such as `tahoe`, `linear`, or `glass`,
+shows Default and logs a warning.
 
 The built-in ids are `zz_client::appearance::BUILTIN_THEMES`, and a test holds them to the
 compiled-in list. There are no material or color presets (both were removed on 2026-10-15, before
@@ -317,7 +330,7 @@ applies as usual. A broken file that is not selected keeps its last good version
 only logs a warning. When zz starts with a broken selected file there is nothing to keep, so it
 draws `default` and says so in the same toast once the window opens.
 
-Settings > Interface > Themes shows the built-in Default and Liquid Glass and then the saved themes as tiles.
+Settings > Interface > Themes shows the built-in Default, Liquid Glass, and macOS and then the saved themes as tiles.
 Save writes the look on screen (`config::shown_theme`: the theme with its radius,
 accent and tint keys) and an explicit UI font to the first free `themes/theme-N.json` and selects
 it, so nothing on screen changes and the theme can be edited further in that file. Before it
@@ -709,7 +722,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Theme** (`theme-mode` as Mode, three drawn window previews, `interface-theme` as Themes, a strip of Default, Liquid Glass and the saved themes with Save and Import, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Theme** (`theme-mode` as Mode, three drawn window previews, `interface-theme` as Themes, a strip of built-in and saved themes with Save and Import, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-agents`, `status-host`, `status-update`; `status-show-session` was removed with the session menu and is reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
