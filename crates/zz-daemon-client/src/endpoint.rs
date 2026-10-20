@@ -671,6 +671,9 @@ fn refused_login(code: Option<i32>, stderr: &[u8]) -> bool {
 }
 
 #[cfg(any(unix, windows))]
+const NO_SECURITY_KEYS: &str = "PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*";
+
+#[cfg(any(unix, windows))]
 pub(crate) fn run_remote_script(
     endpoint: &SshEndpoint,
     connect_timeout_seconds: u32,
@@ -691,7 +694,7 @@ pub(crate) fn run_remote_script(
             endpoint,
             session,
             phase,
-            &["BatchMode=yes", &connect_timeout],
+            &["BatchMode=yes", NO_SECURITY_KEYS, &connect_timeout],
             &script,
         )
     })

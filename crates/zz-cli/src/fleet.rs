@@ -4,11 +4,11 @@ use zz_daemon_client::{
     validate_fleet_host,
 };
 
-const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] <name>\n       zz fleet key\n       zz fleet list [-F <format>] [--json]\n       zz fleet remove <name>\n       zz fleet sync";
+const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] <name>\n       zz fleet key\n       zz fleet list [-F <format> | --json]\n       zz fleet remove <name>\n       zz fleet sync";
 const FLEET_INSTALL_USAGE: &str = "usage: zz fleet install [--restart-daemon] <name>";
 const FLEET_ADD_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>";
 const FLEET_KEY_USAGE: &str = "usage: zz fleet key";
-const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format>] [--json]";
+const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format> | --json]";
 const FLEET_REMOVE_USAGE: &str = "usage: zz fleet remove <name>";
 const FLEET_SYNC_USAGE: &str = "usage: zz fleet sync";
 
@@ -32,8 +32,7 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String,
         "list" => match crate::list_hosts::parse(arguments) {
             Ok(None) => fleet_list(),
             Ok(Some(listing)) => crate::list_hosts::output(listing),
-            Err(error) if error.starts_with("usage:") => Err(FLEET_LIST_USAGE.to_owned()),
-            Err(error) => Err(error),
+            Err(_) => Err(FLEET_LIST_USAGE.to_owned()),
         },
         "remove" => {
             let [name] = arguments else {
