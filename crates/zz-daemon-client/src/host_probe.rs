@@ -225,6 +225,19 @@ mod tests {
             (broken.status, broken.error.as_str()),
             (HostStatus::Unreachable, "sh: syntax error")
         );
+
+        let powershell = probe(
+            1,
+            "",
+            "Missing '(' after 'if' in if statement.\r\n    + CategoryInfo          : \
+             ParserError: (:) [], ParentContainsErrorRecordException\r\n    + \
+             FullyQualifiedErrorId : MissingOpenParenthesisInIfStatement\r\n",
+        );
+        assert!(
+            powershell.error.contains("PowerShell"),
+            "{}",
+            powershell.error
+        );
     }
 
     #[cfg(unix)]
