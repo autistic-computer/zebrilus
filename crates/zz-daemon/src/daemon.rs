@@ -16840,6 +16840,13 @@ impl Shared {
     ) -> Result<Execution, DaemonError> {
         let parsed = parse_agent_send_args(args)?;
         let payload = parsed.payload()?;
+        #[cfg(feature = "agent")]
+        let caller = self
+            .inner
+            .lock()
+            .client(context.replay_client().unwrap_or(client))
+            .and_then(|client| client.origin)
+            .or(context.pane.filter(|_| kind == ClientKind::Interactive));
         if parsed.final_only
             || matches!(
                 parsed.on_block,
@@ -16906,14 +16913,12 @@ impl Shared {
                 {
                     let (name, socket) = {
                         let peers = self.agent_peers.lock();
-                        match context.pane.and_then(|pane| peers.get(&pane)) {
+                        match caller.and_then(|pane| peers.get(&pane)) {
                             Some(peer) => {
                                 (peer.name().to_owned(), Some(peer.socket_path().to_owned()))
                             }
                             None => (
-                                context
-                                    .pane
-                                    .map_or_else(|| "zz".to_owned(), |pane| format!("zz {pane}")),
+                                caller.map_or_else(|| "zz".to_owned(), |pane| format!("zz {pane}")),
                                 None,
                             ),
                         }
@@ -16985,7 +16990,7 @@ impl Shared {
         let pane = self.resolve_agent_pane(context, parsed.target.as_deref())?;
         if parsed.notify {
             #[cfg(feature = "agent")]
-            return self.submit_agent_prompt_and_notify(context, pane, payload, kind);
+            return self.submit_agent_prompt_and_notify(caller, pane, payload, kind);
             #[cfg(not(feature = "agent"))]
             return Err(ServerError::PaneExited(pane).into());
         }
@@ -17001,7 +17006,12 @@ impl Shared {
             #[cfg(not(feature = "agent"))]
             return Err(ServerError::PaneExited(pane).into());
         }
-        let mut execution = self.deliver_to_agent(pane, payload, parsed.submit)?;
+        let mut execution = self.deliver_to_agent(pane, payload, parsed.submit, |missing| {
+            format!(
+                "agent-send: {missing}, so {pane} has no composer to draft into. Use --submit or \
+                 --wait."
+            )
+        })?;
         if parsed.submit && kind != ClientKind::Interactive {
             execution.output = pane.to_string().into();
         }
@@ -17678,6 +17688,12 @@ impl Shared {
                     agent,
                     last_command_block(pane, &capture, status),
                     false,
+                    |missing| {
+                        format!(
+                            "send-last-output: {missing}, so {agent} has no composer to draft \
+                             into. Open that session in the zz app, then retry."
+                        )
+                    },
                 )?;
                 Ok(Execution {
                     output: format!("sent the last command from {pane} to {agent}").into(),
@@ -18007,10 +18023,19 @@ impl Shared {
             }
             pane
         };
-        self.request_from_gui(pane, |request_id| EventPayload::BrowserCommand {
+        self.request_from_gui(
             pane,
-            command: BrowserCommand::Screenshot { request_id, path },
-        })
+            |missing| {
+                format!(
+                    "capture-browser: {missing}, so {pane} is not rendering. Open that session in \
+                     the zz app, then retry."
+                )
+            },
+            |request_id| EventPayload::BrowserCommand {
+                pane,
+                command: BrowserCommand::Screenshot { request_id, path },
+            },
+        )
     }
 
     fn resolve_agent_pane(
@@ -18037,6 +18062,7 @@ impl Shared {
         pane: PaneId,
         text: String,
         submit: bool,
+        unavailable: impl FnOnce(&str) -> String,
     ) -> Result<Execution, DaemonError> {
         // A submitted prompt is the daemon's own business now; only the
         // composer draft still belongs to whichever GUI owns the pane.
@@ -18052,10 +18078,12 @@ impl Shared {
         } else {
             AgentCommand::ComposerAppend { text }
         };
-        self.request_from_gui(pane, move |request_id| EventPayload::AgentCommand {
-            pane,
-            request_id,
-            command,
+        self.request_from_gui(pane, unavailable, move |request_id| {
+            EventPayload::AgentCommand {
+                pane,
+                request_id,
+                command,
+            }
         })
     }
 
@@ -30249,6 +30277,7 @@ impl Shared {
     fn request_from_gui(
         self: &Arc<Self>,
         pane: PaneId,
+        unavailable: impl FnOnce(&str) -> String,
         payload: impl FnOnce(u64) -> EventPayload,
     ) -> Result<Execution, DaemonError> {
         let request_id = Self::next_gui_request_id();
@@ -30260,16 +30289,18 @@ impl Shared {
                 .window_for_pane(pane)
                 .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
             let session = inner.engine.state.windows[&window].session;
-            let client = inner
-                .attached
-                .get(&session)
-                .and_then(|clients| {
-                    clients.iter().find(|client| {
-                        inner.client(**client).and_then(|c| c.kind) == Some(ClientKind::Interactive)
-                    })
-                })
-                .copied()
-                .ok_or(ServerError::PaneNotAttached(pane))?;
+            let client = gui_client(&inner, session).ok_or_else(|| {
+                let name = inner
+                    .engine
+                    .state
+                    .sessions
+                    .get(&session)
+                    .map_or_else(|| session.to_string(), |session| session.name.clone());
+                ServerError::InvalidCommand(unavailable(&format!(
+                    "no zz window shows session {name} on {}",
+                    inner.engine.format_host_short()
+                )))
+            })?;
             let subscriber = inner
                 .client(client)
                 .and_then(|c| c.subscriber.as_ref())
@@ -33863,13 +33894,12 @@ impl Shared {
     #[cfg(feature = "agent")]
     fn submit_agent_prompt_and_notify(
         self: &Arc<Self>,
-        context: &ExecutionContext,
+        caller: Option<PaneId>,
         pane: PaneId,
         text: String,
         kind: ClientKind,
     ) -> Result<Execution, DaemonError> {
-        let caller = context
-            .pane
+        let caller = caller
             .filter(|caller| *caller != pane)
             .filter(|caller| {
                 matches!(
@@ -52919,6 +52949,20 @@ Print nothing on success.
 ";
 }
 
+fn gui_client(inner: &ServerState, session: SessionId) -> Option<ClientId> {
+    let clients = inner.attached.get(&session)?;
+    let find = |desktop: bool| {
+        clients.iter().copied().find(|client| {
+            inner.client(*client).is_some_and(|client| {
+                client.kind == Some(ClientKind::Interactive)
+                    && client.subscriber.is_some()
+                    && (client.path_picker || !desktop)
+            })
+        })
+    };
+    find(true).or_else(|| find(false))
+}
+
 fn ensure_browser_attached(inner: &ServerState, pane: PaneId) -> Result<(), ServerError> {
     let window = inner
         .engine
@@ -52926,15 +52970,9 @@ fn ensure_browser_attached(inner: &ServerState, pane: PaneId) -> Result<(), Serv
         .window_for_pane(pane)
         .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
     let session = inner.engine.state.windows[&window].session;
-    if inner
-        .attached
-        .get(&session)
-        .is_some_and(|clients| !clients.is_empty())
-    {
-        Ok(())
-    } else {
-        Err(ServerError::PaneNotAttached(pane))
-    }
+    gui_client(inner, session)
+        .map(|_| ())
+        .ok_or(ServerError::PaneNotAttached(pane))
 }
 
 #[derive(Default)]
@@ -90312,6 +90350,7 @@ set-option -g @alias-mixed-next yes
             serde_json::to_vec(&record).expect("record JSON"),
         )
         .expect("peer record");
+        shared.inner.lock().client_entry(client).origin = Some(pane);
         for submit in [false, true] {
             let mut args = vec!["-t".to_owned(), pane.to_string()];
             if submit {
@@ -90538,6 +90577,205 @@ set-option -g @alias-mixed-next yes
         let execution = caller.join().expect("caller thread").expect("agent-send");
         assert_eq!(execution.output, "appended");
         assert!(shared.inner.lock().pending_gui_requests.is_empty());
+    }
+
+    #[test]
+    fn gui_requests_prefer_the_desktop_app_and_name_the_missing_window() {
+        let shared = Arc::new(Shared::new(1));
+        let terminal_ui = OutboundMailbox::new();
+        let desktop = OutboundMailbox::new();
+        let (tui, _) = shared.register_subscribed(
+            ClientKind::Interactive,
+            None,
+            None,
+            Arc::clone(&terminal_ui),
+        );
+        let (app, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&desktop));
+        shared.inner.lock().client_entry(app).path_picker = true;
+        let (control, _) =
+            shared.register_subscribed(ClientKind::Control, None, None, OutboundMailbox::new());
+        let mut context = ExecutionContext::default();
+        let run = |context: &mut ExecutionContext, args: &[&str]| {
+            shared
+                .execute(
+                    ClientId(7),
+                    ClientKind::Command,
+                    context,
+                    &CommandInvocation::new(args[0], args[1..].iter().copied()),
+                )
+                .expect("fixture command");
+        };
+        run(&mut context, &["new-session", "-d", "-s", "gui"]);
+        run(
+            &mut context,
+            &["set-option", "-g", "experimental-agent-pane", "on"],
+        );
+        run(
+            &mut context,
+            &["split-window", "--kind", "browser", "about:blank"],
+        );
+        let browser = context.pane.expect("browser pane").to_string();
+        let session = context.session.expect("session");
+        run(&mut context, &["split-window", "--kind", "picker"]);
+        let agent = context.pane.expect("agent pane").to_string();
+        run(&mut context, &["select-pane-kind", "-t", &agent, "agent"]);
+        let host = shared.inner.lock().engine.format_host_short().to_owned();
+        let output = std::env::temp_dir()
+            .join("zz-gui-shot.png")
+            .to_string_lossy()
+            .into_owned();
+        let failure = |args: &[&str]| match shared
+            .execute(
+                ClientId(7),
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(args[0], args[1..].iter().copied()),
+            )
+            .expect_err("no zz window")
+        {
+            DaemonError::Server(ServerError::InvalidCommand(message)) => message,
+            error => panic!("{error:?}"),
+        };
+        let shot = ["capture-browser", "-t", &browser, "-o", &output];
+        let not_rendering = format!(
+            "capture-browser: no zz window shows session gui on {host}, so {browser} is not \
+             rendering. Open that session in the zz app, then retry."
+        );
+        assert_eq!(failure(&shot), not_rendering);
+        assert_eq!(
+            failure(&["agent-send", "-t", &agent, "hi"]),
+            format!(
+                "agent-send: no zz window shows session gui on {host}, so {agent} has no composer \
+                 to draft into. Use --submit or --wait."
+            )
+        );
+        shared.attach(control, session).expect("attach control");
+        assert_eq!(failure(&shot), not_rendering);
+        assert!(matches!(
+            shared.execute(
+                ClientId(7),
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("send-keys", ["-t", &browser, "x"]),
+            ),
+            Err(DaemonError::Server(ServerError::PaneNotAttached(_)))
+        ));
+        shared
+            .attach(tui, session)
+            .expect("attach the terminal client");
+        shared.attach(app, session).expect("attach the desktop app");
+        take_reliable_messages(&terminal_ui);
+        take_reliable_messages(&desktop);
+        let sender = Arc::clone(&shared);
+        let request = shot.map(str::to_owned);
+        let caller = thread::spawn(move || {
+            sender.execute(
+                ClientId(7),
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(&request[0], request[1..].iter().map(String::as_str)),
+            )
+        });
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let request_id = loop {
+            let found = take_reliable_messages(&desktop)
+                .into_iter()
+                .find_map(|message| match message {
+                    ProtocolMessage::Event(Event {
+                        payload:
+                            EventPayload::BrowserCommand {
+                                command: BrowserCommand::Screenshot { request_id, .. },
+                                ..
+                            },
+                        ..
+                    }) => Some(request_id),
+                    _ => None,
+                });
+            if let Some(request_id) = found {
+                break request_id;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the desktop app got no screenshot request"
+            );
+            thread::sleep(Duration::from_millis(10));
+        };
+        shared.complete_gui_request(
+            app,
+            GuiResponse::Success {
+                request_id,
+                output: String::new(),
+            },
+        );
+        caller
+            .join()
+            .expect("caller thread")
+            .expect("capture-browser");
+        assert!(
+            !take_reliable_messages(&terminal_ui)
+                .iter()
+                .any(|message| matches!(
+                    message,
+                    ProtocolMessage::Event(Event {
+                        payload: EventPayload::BrowserCommand { .. },
+                        ..
+                    })
+                ))
+        );
+    }
+
+    #[cfg(feature = "agent")]
+    #[test]
+    fn agent_send_notify_takes_the_caller_from_the_client_not_the_active_pane() {
+        let shared = Arc::new(Shared::new(1));
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());
+        let mut context = ExecutionContext::default();
+        let run = |context: &mut ExecutionContext, args: &[&str]| {
+            shared
+                .execute(
+                    client,
+                    ClientKind::Command,
+                    context,
+                    &CommandInvocation::new(args[0], args[1..].iter().copied()),
+                )
+                .expect("fixture command");
+        };
+        run(&mut context, &["new-session", "-d", "-s", "notify"]);
+        run(
+            &mut context,
+            &["set-option", "-g", "experimental-agent-pane", "on"],
+        );
+        let mut agents = Vec::new();
+        for _ in 0..2 {
+            run(&mut context, &["split-window", "--kind", "picker"]);
+            let pane = context.pane.expect("agent pane");
+            run(
+                &mut context,
+                &["select-pane-kind", "-t", &pane.to_string(), "agent"],
+            );
+            agents.push(pane);
+        }
+        let (active, target) = (agents[0], agents[1]);
+        run(&mut context, &["select-pane", "-t", &active.to_string()]);
+        let mut context = ExecutionContext::for_pane(&shared.inner.lock().engine.state, active)
+            .expect("last active pane");
+        let error = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut context,
+                &CommandInvocation::new(
+                    "agent-send",
+                    ["--notify", "-t", &target.to_string(), "hi"],
+                ),
+            )
+            .expect_err("a client outside any pane has no caller");
+        assert!(
+            matches!(&error, DaemonError::Server(ServerError::InvalidCommand(message)) if message == "agent-send --notify runs from inside another agent pane"),
+            "{error:?}"
+        );
     }
 
     #[test]
