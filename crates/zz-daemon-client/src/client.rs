@@ -568,7 +568,7 @@ impl CommandClient {
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
                     let (mut client, ssh_forward) =
-                        connect_kept(endpoint, None, |socket, stream| {
+                        connect_kept(endpoint, None, true, |socket, stream| {
                             Ok(Self::with_link(
                                 CommandRoute {
                                     socket: socket.to_path_buf(),
@@ -890,7 +890,11 @@ impl CommandClient {
 
     #[cfg(all(unix, not(target_os = "ios")))]
     fn verify_kept_link(&mut self, request: &ProtocolMessage) -> Result<bool, DaemonError> {
-        self.verify_kept_link_within(request, crate::endpoint::MASTER_STEP_TIMEOUT)
+        self.verify_kept_link_within(
+            request,
+            crate::endpoint::MASTER_STEP_TIMEOUT,
+            crate::endpoint::give_up_on_stalled_link,
+        )
     }
 
     #[cfg(all(unix, not(target_os = "ios")))]
@@ -898,6 +902,7 @@ impl CommandClient {
         &mut self,
         request: &ProtocolMessage,
         timeout: std::time::Duration,
+        give_up: impl FnOnce(&crate::endpoint::SshEndpoint) -> crate::EndpointError,
     ) -> Result<bool, DaemonError> {
         let Some(endpoint) = self.unverified.take() else {
             return Ok(false);
@@ -930,7 +935,7 @@ impl CommandClient {
             Err(error) => (error.to_string(), crate::endpoint::link_stalled(&error)),
         };
         if stalled && !self.read_only {
-            return Err(crate::endpoint::give_up_on_stalled_link(&endpoint).into());
+            return Err(give_up(&endpoint).into());
         }
         log::debug!(
             target: "zz_daemon::diagnostics::client",
@@ -1291,25 +1296,27 @@ impl InteractiveClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let (connected, forward) = connect_kept(endpoint, prompts, |_, stream| {
-                        connect_stream_hello(
-                            ClientStream::Local(stream),
-                            endpoint,
-                            ClientKind::Interactive,
-                            short_device_name(),
-                            color_scheme,
-                            client_has_terminal,
-                            false,
-                            false,
-                            capabilities,
-                            if terminal_surface {
-                                EndpointFactsScope::PortableTerminalSize
-                            } else {
-                                EndpointFactsScope::None
-                            },
-                            attach.clone(),
-                        )
-                    })?;
+                    let resendable = attach_resendable(attach.as_ref());
+                    let (connected, forward) =
+                        connect_kept(endpoint, prompts, resendable, |_, stream| {
+                            connect_stream_hello(
+                                ClientStream::Local(stream),
+                                endpoint,
+                                ClientKind::Interactive,
+                                short_device_name(),
+                                color_scheme,
+                                client_has_terminal,
+                                false,
+                                false,
+                                capabilities,
+                                if terminal_surface {
+                                    EndpointFactsScope::PortableTerminalSize
+                                } else {
+                                    EndpointFactsScope::None
+                                },
+                                attach.clone(),
+                            )
+                        })?;
                     Ok(Self::from_connected_with_ssh(connected, forward))
                 }
                 #[cfg(not(any(unix, windows)))]
@@ -1450,7 +1457,7 @@ impl InteractiveClient {
             Endpoint::Ssh(endpoint) => {
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let (connected, forward) = connect_kept(endpoint, None, |_, stream| {
+                    let (connected, forward) = connect_kept(endpoint, None, true, |_, stream| {
                         connect_stream_with_startup_owner(
                             ClientStream::Local(stream),
                             endpoint,
@@ -1772,7 +1779,7 @@ impl InteractiveClient {
                         let stream = LocalTransport::connect(ssh_forward.local_socket())?;
                         (connect(stream)?, Some(ssh_forward))
                     } else {
-                        connect_kept(endpoint, prompts, |_, stream| connect(stream))?
+                        connect_kept(endpoint, prompts, true, |_, stream| connect(stream))?
                     };
                     Ok(Self::from_connected_with_ssh(connected, ssh_forward))
                 }
@@ -3098,6 +3105,19 @@ fn connect_stream<S: TransportStream>(
         &[],
         client_facts,
     )
+}
+
+#[cfg(all(any(unix, windows), not(target_os = "ios")))]
+fn attach_resendable(attach: Option<&zz_protocol::AttachOperation>) -> bool {
+    let Some(zz_protocol::AttachOperation::Commands(commands)) = attach else {
+        return true;
+    };
+    commands.iter().all(|command| {
+        let name = zz_protocol::canonical_command(&command.invocation.name);
+        name == "attach-session"
+            || zz_protocol::catalog_command_spec(name)
+                .is_some_and(|spec| !spec.mutates(&command.invocation.args))
+    })
 }
 
 #[expect(clippy::too_many_arguments)]
