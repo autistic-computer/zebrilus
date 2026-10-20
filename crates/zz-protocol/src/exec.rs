@@ -24,6 +24,7 @@ impl ExecFlags {
     pub const PREPARED: Self = Self(1 << 4);
     pub const LAST: Self = Self(1 << 5);
     pub const CONTROL: Self = Self(1 << 6);
+    pub const REMOTE: Self = Self(1 << 7);
 
     #[must_use]
     pub const fn contains(self, other: Self) -> bool {

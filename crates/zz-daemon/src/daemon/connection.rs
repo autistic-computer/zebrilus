@@ -152,6 +152,7 @@ impl Session {
             let registered = inner.client_mut(client).expect("registered client");
             registered.origin = hello.origin;
             registered.nested = client_nested_fact(&hello.capabilities);
+            registered.remote = client_remote_fact(&hello.capabilities);
             registered.utf8 = client_utf8_fact(&hello.capabilities);
             registered.exits_on_detach = attach::client_exits_on_detach_fact(&hello.capabilities);
             let features = client_features_fact(&hello.capabilities);

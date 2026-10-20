@@ -612,6 +612,42 @@ mod raw {
     }
 
     #[test]
+    fn a_remote_exec_creates_a_session_without_the_callers_update_environment() {
+        let daemon = RunningDaemon::start("exec-remote-env");
+        let show = |remote: bool, name: &str| {
+            let mut client = UnixStream::connect(&daemon.socket).expect("connect");
+            client
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .expect("read timeout");
+            let mut exec = request(vec![
+                CommandInvocation::new("new-session", ["-d", "-s", name]),
+                CommandInvocation::new("show-environment", ["-t", name]),
+            ]);
+            exec.flags.set(ExecFlags::REMOTE, remote);
+            exec.flags.set(ExecFlags::LAST, true);
+            exec.environment = ClientEnvironmentBlob::from_bytes(
+                b"TERM=xterm\0SSH_AUTH_SOCK=/caller/agent\0".to_vec(),
+            );
+            write_protocol_message(&mut client, &ProtocolMessage::Exec(exec)).expect("exec");
+            let (frames, exit) = read_exit(&mut client);
+            assert_eq!(exit.outcome, ExecOutcome::Ran);
+            match frames.as_slice() {
+                [
+                    _,
+                    ProtocolMessage::CommandResponse(CommandResponse::Success { output, .. }),
+                ] => output.to_string(),
+                _ => panic!("{frames:?}"),
+            }
+        };
+        let local = show(false, "local");
+        assert!(local.contains("SSH_AUTH_SOCK=/caller/agent\n"), "{local:?}");
+        assert!(local.contains("-DISPLAY\n"), "{local:?}");
+        let remote = show(true, "remote");
+        assert!(!remote.contains("SSH_AUTH_SOCK"), "{remote:?}");
+        assert!(!remote.contains("DISPLAY"), "{remote:?}");
+    }
+
+    #[test]
     fn an_exec_before_startup_parks_without_holding_its_thread() {
         let shared = Arc::new(Shared::new(32));
         shared.begin_startup();
