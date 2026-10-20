@@ -188,15 +188,18 @@ and proxy scripts. Production builds use `zz`. Desktop dev recipes link the deve
 into `~/.local/bin/zz-dev`; remote dev clients never fall back to the installed `zz` command.
 Explicit socket paths still use the build-selected executable for protocol checks and proxying.
 
-All three remote scripts open with `remote_path_fallback()`, which appends `$HOME/.local/bin`,
-`/opt/homebrew/bin`, and `/usr/local/bin` to `PATH`. Those are the three directories `install.sh`
-links the CLI into, and `sh -l` cannot see them on its own: it reads `/etc/profile` and `~/.profile`
-only, never the `~/.bash_profile` or `~/.zshrc` where a bash or zsh user actually exports PATH.
-Before the fallback, a correctly installed remote answered the probe with `missing` and its host row
-read "zz is not installed". Appending rather than prepending keeps a deliberately chosen `zz` ahead
-of the guesses. When the command is still missing, the prefix points `$zz_cli` at the bundled `cli`
-in `/Applications` or `~/Applications` (`zz.app`, or `zz Dev.app` for dev builds), because a Mac app
-dragged out of the release DMG never gets a PATH link; every script runs `"$zz_cli"`.
+Every remote script (probe, auto-start, proxy, install, and the iOS client's copies) opens with
+`remote_path_fallback()`. It sets `$zz_managed` to `~/.local/bin/zz` (`zz-dev` for dev builds), the
+copy installing over ssh puts in place, and points `$zz_cli` at it whenever it is executable;
+otherwise at `zz` on the login PATH, and when that is missing too, at the bundled `cli` in
+`/Applications` or `~/Applications` (`zz.app`, or `zz Dev.app` for dev builds), because a Mac app
+dragged out of the release DMG never gets a PATH link. Every script runs `"$zz_cli"`. The managed
+copy wins because it is the only one zz can update: until 2026-10-20 the prologue ran the first `zz`
+on PATH, so a package `/usr/bin/zz` or a cargo copy earlier on PATH kept answering after every
+update. The prologue still appends `$HOME/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin` to
+`PATH`, the three directories `install.sh` links the CLI into, because `sh -l` reads `/etc/profile`
+and `~/.profile` only, never the `~/.bash_profile` or `~/.zshrc` where a bash or zsh user actually
+exports PATH, and the daemon the auto-start launches keeps that PATH.
 
 The start is unconditional rather than guarded on the socket file, because a socket outlives a
 daemon that was killed and `[ -S ]` reports those corpses as healthy . the state the auto-start
@@ -217,30 +220,53 @@ typed `EndpointError` variants (`RemoteBinaryMissing`, `RemoteDaemonUnavailable`
 
 `install_remote` handles the host the probe calls `missing`, and one whose zz is older. It runs one
 more ssh child, `ssh … <host> sh -lc '<remote_install_script()>'`, on the same control master, and
-writes this build's own `install.sh` (embedded with `include_str!`) to its stdin. The script:
+writes this build's own `install.sh` (embedded with `include_str!`) to its stdin. It never needs
+root: zz owns `~/.local/bin/zz` (`$zz_managed`), plus `~/.local/lib/zz` when install.sh's desktop
+tarball put the app there, and leaves every other install alone. The script:
 
-1. Resolves `$zz_cli` with the usual fallback. A `zz` that is anything but a regular file at
-   `~/.local/bin/zz` prints `zz-install-elsewhere=<path>` and exits 4: a deb, Homebrew, or app
-   bundle install is left to whatever installed it.
-2. Runs `sh -s -- --headless --version <this build's version>`. install.sh picks the tarball from
-   the remote's own `uname`, so a Mac adding a Linux host gets the Linux build. A failure exits 5,
-   and install.sh's `error:` line becomes the reason.
-3. Runs the new binary's `protocol-version`. A binary that cannot start there (an older glibc, say)
-   exits 6 with its stderr.
-4. With `restart_daemon`, runs `zz kill-server` only when that protocol matches this build, then
-   prints `zz-install-protocol=<n>`.
+1. Prints `zz-install-current=1` and downloads nothing when `"$zz_managed" --version` already
+   reports this build's version, so agents can run it any time.
+2. Otherwise looks at the managed path. Missing or a regular file: `sh -s -- --headless --version
+   <this build's version>` (`zz-install-mode=headless`), whatever else is on PATH. A deb or pacman
+   `/usr/bin/zz`, a Homebrew or `/Applications` app, a cargo copy all stay, and the managed copy wins
+   in every script. A link to `../lib/zz/cli`, install.sh's Linux desktop tarball: `sh -s --
+   --prefix ~/.local --version <v>` (`zz-install-mode=desktop`), so the GUI, the CLI and the
+   desktop entry update together; replacing that link with the headless binary would break the
+   entry's `~/.local/bin/zz app`. A link anywhere else is the only refusal: it prints
+   `zz-install-elsewhere=<path>` and `zz-install-link=<target>` and exits 4. install.sh picks the
+   build from the remote's own `uname`, so a Mac adding a Linux host gets the Linux build. A failure
+   exits 5, and install.sh's `error:` line becomes the reason.
+3. Runs the managed copy's `protocol-version`. A binary that cannot start there (an older glibc,
+   say) exits 6 with its stderr.
+4. With `restart_daemon`, runs the managed copy's `kill-server` only when that protocol matches this
+   build and prints its status as `zz-install-restart=<n>`; the daemon starts again on the next
+   connection. kill-server saying there was no server reads as nothing to restart, and any other
+   failure is reported instead of swallowed. Last comes `zz-install-protocol=<n>`.
+
+`install_remote` returns a `RemoteInstall`: what it did (`Current`, `Headless`, `Desktop`), the
+restart (`NotAsked`, `Restarted`, `NotRunning`, `Failed`), and install.sh's `warning:` lines, which
+used to be dropped on success. `summary()` gives the one line the CLI prints and the app toasts,
+such as `zz 0.20.0 installed (headless), daemon restarted` or `already zz 0.20.0`. install.sh
+replaces the headless binary by copying it to a temp name in the same directory and renaming it, so
+a probe during an install never finds zz missing.
 
 A different protocol after a clean install is `RemoteInstallMismatch`: this build has no published
 release, which is normal for builds from main. Dev builds refuse before dialing, because their
 remote scripts look for `zz-dev` and no release ships it. The remote needs `sh`, `curl`, and access to
 GitHub releases. The Linux headless build targets glibc 2.28 (see [zz-cli](/crates/zz-cli.md)).
 
-The GUI maps `RemoteBinaryMissing` to `HostState::Missing`. The first time a host lands in `Missing`,
-or in `Incompatible` with an older remote, `MuxClient` emits `RemoteInstallOffer` and the workspace
-opens a dialog. The host row's menu keeps **Install zz** / **Update zz** for later, and Reconnect
-arms the dialog again. Update always confirms, because restarting the remote daemon ends the
-sessions on that host. `zz fleet install [--restart-daemon] <name>` runs the same function from a
-shell, with ssh prompting on the terminal.
+The GUI maps `RemoteBinaryMissing` to `HostState::Missing` and installs right away, without a
+restart, once per host per run (Reconnect allows another try), never in dev builds; the row reads
+installing and a toast reports the summary. Replacing a binary ends nothing; restarting a daemon
+ends its sessions, so only that is asked. `Incompatible` carries an optional remote protocol: an
+older one, the same protocol from an older build, `RemoteProtocolUnknown` and a daemon of unknown
+version all offer **Update**. Offers collect in `MuxClient::update_offers`; the first emits
+`RemoteInstallOffer`, and the workspace opens one dialog whose title and text read the list every
+frame, so hosts that report later join it. **Update and restart** installs on all of them with a
+restart; closing the dialog clears the list. The host row's menu keeps **Install zz** (runs at once)
+and **Update zz** (joins the list). `zz fleet install [--restart-daemon] (-a | NAME...)` runs the
+same function from a shell on every named host in parallel, one line per host, with ssh prompting on
+the terminal; a failing host prints its reason on stderr and the exit status is 1.
 
 ## Connection sharing
 
