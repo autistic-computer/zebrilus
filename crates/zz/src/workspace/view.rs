@@ -2140,8 +2140,18 @@ impl AppView {
                                 let mux = self.mux.clone();
                                 let pane = *pane;
                                 let descriptor = browser.clone();
+                                let resize_held = Rc::clone(&self.terminal_resize_suppressed);
                                 let view = cx.new(|cx| {
-                                    BrowserView::new(pane, &descriptor, controller, mux, window, cx)
+                                    let mut view = BrowserView::new(
+                                        pane,
+                                        &descriptor,
+                                        controller,
+                                        mux,
+                                        window,
+                                        cx,
+                                    );
+                                    view.share_resize_hold(resize_held);
+                                    view
                                 });
                                 cx.subscribe(&view, |view, _, drag: &PaneDrag, cx| {
                                     view.on_pane_drag_start(*drag, cx);

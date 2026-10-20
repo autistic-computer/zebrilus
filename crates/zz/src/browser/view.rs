@@ -1,10 +1,13 @@
 use std::{
+    cell::Cell,
     collections::{HashMap, HashSet},
     fs::File,
     io::Read as _,
     ops::Range,
     path::Path,
+    rc::Rc,
     sync::Arc,
+    time::Duration,
 };
 
 #[cfg(target_os = "macos")]
@@ -86,6 +89,14 @@ const TAB_ID: TabId = TabId(0);
 const EMPTY_STATE_RECENT_LIMIT: usize = 8;
 const OMNIBOX_SUGGESTION_LIMIT: usize = 8;
 const BROWSER_KEY_CONTEXT: &str = "Browser";
+const RESIZE_COVER_TIMEOUT: Duration = Duration::from_millis(250);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ResizeCover {
+    None,
+    Held,
+    Awaiting(u64),
+}
 const OMNIBOX_INPUT_KEY_CONTEXT: &str = "BrowserOmnibox > ZzInput";
 #[cfg(target_os = "macos")]
 const FULL_DISK_ACCESS_SETTINGS_URL: &str =
@@ -418,6 +429,10 @@ pub(crate) struct BrowserView {
     content_bounds: Option<Bounds<Pixels>>,
     page_buttons_down: u8,
     viewport: Viewport,
+    resize_held: Rc<Cell<bool>>,
+    resize_cover: ResizeCover,
+    resize_covers: u64,
+    frame_size: (u32, u32),
     visible: bool,
     window_visible: bool,
     image: Option<Arc<RenderImage>>,
@@ -771,6 +786,10 @@ impl BrowserView {
             content_bounds: None,
             page_buttons_down: 0,
             viewport,
+            resize_held: Rc::new(Cell::new(false)),
+            resize_cover: ResizeCover::None,
+            resize_covers: 0,
+            frame_size: (0, 0),
             visible: false,
             window_visible: window.is_visible(),
             image: None,
@@ -1097,11 +1116,23 @@ impl BrowserView {
             visible: self.visible && self.window_visible,
         }
         .sanitized();
+        let resized = (next.width, next.height) != (self.viewport.width, self.viewport.height);
+        if resized && self.resize_held.get() {
+            self.resize_cover = ResizeCover::Held;
+            return;
+        }
         if next != self.viewport {
             self.viewport = next;
             self.controller.update(cx, |controller, cx| {
                 controller.set_viewport(self.pane, next, cx);
             });
+        }
+        if self.resize_cover == ResizeCover::Held {
+            if resized {
+                self.await_resized_frame(cx);
+            } else {
+                self.resize_cover = ResizeCover::None;
+            }
         }
         log::trace!(
             target: "zz::diagnostics::browser_render",
@@ -1110,6 +1141,31 @@ impl BrowserView {
             previous != next,
             diagnostics::elapsed_us(started),
         );
+    }
+
+    pub(crate) fn share_resize_hold(&mut self, held: Rc<Cell<bool>>) {
+        self.resize_held = held;
+    }
+
+    pub(crate) fn resize_covered(&self) -> bool {
+        self.resize_cover != ResizeCover::None
+    }
+
+    fn await_resized_frame(&mut self, cx: &mut Context<Self>) {
+        self.resize_covers += 1;
+        let epoch = self.resize_covers;
+        self.resize_cover = ResizeCover::Awaiting(epoch);
+        cx.spawn(async move |view, cx| {
+            cx.background_executor().timer(RESIZE_COVER_TIMEOUT).await;
+            view.update(cx, |view, cx| {
+                if view.resize_cover == ResizeCover::Awaiting(epoch) {
+                    view.resize_cover = ResizeCover::None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn update_omnibox(&mut self, value: &str, cx: &mut Context<Self>) -> Option<String> {
@@ -1360,6 +1416,13 @@ impl BrowserView {
                     #[cfg(target_os = "macos")]
                     let presented = (self.frame_session, self.mac_surface.is_some());
                     if !self.consume_frame(controller, cx) {
+                        return;
+                    }
+                    if matches!(self.resize_cover, ResizeCover::Awaiting(_))
+                        && self.frame_size == (self.viewport.width, self.viewport.height)
+                    {
+                        self.resize_cover = ResizeCover::None;
+                        cx.notify();
                         return;
                     }
                     #[cfg(target_os = "macos")]
@@ -1734,6 +1797,7 @@ impl BrowserView {
         };
         self.frame_session = Some(frame.session);
         self.image_generation = frame.generation;
+        self.frame_size = (frame.logical_width, frame.logical_height);
         log::trace!(
             target: "zz::diagnostics::browser_render",
             "consume_frame pane={} session={} generation={} delivery_generation={} tier={tier} logical={}x{} device={}x{} pool_generation={:?} sequence={:?} image_strong_count={image_strong_count:?} retired_images_len={} retired_images_capacity={} total_elapsed_us={}",
@@ -4992,6 +5056,77 @@ mod tests {
         let (viewport, expected) = screen_origin(cx);
         assert_eq!(viewport, expected);
         assert_ne!(viewport, (12, 40));
+    }
+
+    #[zz_gpui::test]
+    fn held_resizes_cover_the_page_and_reach_the_browser_once(cx: &mut TestAppContext) {
+        cx.update(zz_ui::init);
+        let view_slot = Rc::new(RefCell::new(None));
+        let captured_view = Rc::clone(&view_slot);
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let controller =
+                cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx));
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("test client".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            let view = cx.new(|cx| {
+                BrowserView::new(
+                    PaneId(7),
+                    &BrowserDescriptor::single(
+                        "https://example.com/".to_owned(),
+                        zz_browser::DEFAULT_BROWSER_PROFILE.to_owned(),
+                    ),
+                    controller,
+                    mux,
+                    window,
+                    cx,
+                )
+            });
+            captured_view.replace(Some(view.clone()));
+            Root::new(view, window, cx)
+        });
+        let view = view_slot.borrow().clone().expect("captured browser view");
+        let held = Rc::new(Cell::new(false));
+        cx.update(|_, cx| {
+            view.update(cx, |view, _| view.share_resize_hold(Rc::clone(&held)));
+        });
+        let resize = |width: f32, height: f32, cx: &mut zz_gpui::VisualTestContext| {
+            cx.update(|window, cx| {
+                view.update(cx, |view, cx| {
+                    view.update_content_bounds(
+                        Bounds::new(point(px(0.), px(40.)), zz_gpui::size(px(width), px(height))),
+                        window,
+                        cx,
+                    );
+                    (view.viewport.width, view.resize_covered())
+                })
+            })
+        };
+
+        assert_eq!(resize(400., 300., cx), (400, false));
+        held.set(true);
+        assert_eq!(resize(600., 300., cx), (400, true));
+        assert_eq!(resize(700., 300., cx), (400, true));
+        held.set(false);
+        assert_eq!(resize(700., 300., cx), (700, true));
+        cx.executor().advance_clock(RESIZE_COVER_TIMEOUT);
+        cx.run_until_parked();
+        assert!(!cx.update(|_, cx| view.read(cx).resize_covered()));
+
+        let (width, height) = cx.update(|_, cx| {
+            let viewport = view.read(cx).viewport;
+            (viewport.width, viewport.height)
+        });
+        #[allow(clippy::cast_precision_loss, reason = "test pane sizes")]
+        let (shown_width, shown_height) = (width as f32, height as f32);
+        held.set(true);
+        assert_eq!(resize(shown_width + 100., shown_height, cx), (width, true));
+        held.set(false);
+        assert_eq!(resize(shown_width, shown_height, cx), (width, false));
     }
 
     #[zz_gpui::test]

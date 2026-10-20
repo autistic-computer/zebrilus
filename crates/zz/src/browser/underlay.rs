@@ -272,7 +272,6 @@ pub(crate) fn place(
             }
         };
         let layer = &underlay.0.0;
-        CATransaction::begin();
         CATransaction::setDisableActions(true);
         if layer
             .superlayer()
@@ -297,7 +296,6 @@ pub(crate) fn place(
             ],
         );
         layer.setHidden(false);
-        CATransaction::commit();
         match host
             .placed
             .iter_mut()
@@ -318,7 +316,6 @@ fn finish_frame(window: &Window) {
     let any_painted = HOSTS.with_borrow_mut(|hosts| {
         let host = hosts.get_mut(&key)?;
         let mut any_painted = false;
-        CATransaction::begin();
         CATransaction::setDisableActions(true);
         host.placed.retain_mut(|(layer, painted)| {
             let Some(layer) = layer.upgrade() else {
@@ -332,7 +329,6 @@ fn finish_frame(window: &Window) {
             *painted = false;
             true
         });
-        CATransaction::commit();
         Some(any_painted)
     });
     if let Some(any_painted) = any_painted {
