@@ -58,6 +58,7 @@ pub enum AskpassMode {
     Notification,
     /// Never from ssh: zz offering, after a password sign-in, to add its key to the host.
     SaveKey,
+    KeyAdded,
 }
 
 impl AskpassMode {
@@ -75,6 +76,7 @@ impl AskpassMode {
             Self::AgentConfirm => b'c',
             Self::Notification => b'n',
             Self::SaveKey => b's',
+            Self::KeyAdded => b'k',
         }
     }
 
@@ -84,6 +86,7 @@ impl AskpassMode {
             b'c' => Some(Self::AgentConfirm),
             b'n' => Some(Self::Notification),
             b's' => Some(Self::SaveKey),
+            b'k' => Some(Self::KeyAdded),
             _ => None,
         }
     }
@@ -104,6 +107,15 @@ pub enum AskpassPromptKind {
     /// zz's offer to add its key to the host's `authorized_keys`. Any answer accepts; cancelling
     /// declines.
     SaveKey,
+    Notification,
+    KeyAdded,
+}
+
+impl AskpassPromptKind {
+    #[must_use]
+    pub const fn is_notice(self) -> bool {
+        matches!(self, Self::Notification | Self::KeyAdded)
+    }
 }
 
 /// One question from ssh.
@@ -151,7 +163,9 @@ impl AskpassPrompt {
         match self.mode {
             AskpassMode::AgentConfirm => AskpassPromptKind::AgentConfirm,
             AskpassMode::SaveKey => AskpassPromptKind::SaveKey,
-            AskpassMode::Answer | AskpassMode::Notification => {
+            AskpassMode::Notification => AskpassPromptKind::Notification,
+            AskpassMode::KeyAdded => AskpassPromptKind::KeyAdded,
+            AskpassMode::Answer => {
                 if is_host_key_prompt(&self.text) {
                     AskpassPromptKind::HostKey
                 } else {
@@ -199,6 +213,10 @@ pub(crate) struct HelperOutcome {
 
 pub(crate) fn helper_outcome(kind: AskpassPromptKind, reply: &AskpassReply) -> HelperOutcome {
     match (kind, reply) {
+        (AskpassPromptKind::Notification | AskpassPromptKind::KeyAdded, _) => HelperOutcome {
+            stdout: None,
+            success: true,
+        },
         (_, AskpassReply::Answer(answer)) => HelperOutcome {
             stdout: Some(reply_line(answer)),
             success: true,
@@ -364,13 +382,19 @@ fn answer_one(
     host_key_context: &mut Option<String>,
     stopped: &std::sync::atomic::AtomicBool,
 ) -> io::Result<()> {
-    stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT))?;
+    if let Err(error) = stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT)) {
+        log::debug!(target: "zz_daemon::askpass", "askpass read timeout not set: {error}");
+    }
     let mut raw = Vec::new();
     (&mut stream).take(MAX_PROMPT_BYTES).read_to_end(&mut raw)?;
     let Some(prompt) = decode_request(&raw) else {
         return Ok(());
     };
     if stopped.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    if prompt.kind().is_notice() {
+        drop(responder(&prompt));
         return Ok(());
     }
 
@@ -469,6 +493,10 @@ fn answer_one(
         return Ok(());
     };
     if stopped.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    if prompt.kind().is_notice() {
+        drop(responder(&prompt));
         return Ok(());
     }
 
@@ -572,11 +600,14 @@ fn decode_reply(raw: &[u8]) -> AskpassReply {
 #[must_use]
 pub fn run_helper(socket: &Path, prompt: &str) -> ExitCode {
     let mode = AskpassMode::from_env_value(std::env::var(SSH_ASKPASS_PROMPT_ENV).ok().as_deref());
-    if mode == AskpassMode::Notification {
+    let prompt = AskpassPrompt::new(mode, prompt);
+    if prompt.kind().is_notice() {
+        if let Err(error) = notify(socket, &prompt) {
+            log::debug!(target: "zz_daemon::askpass", "could not pass a notice to the zz window: {error}");
+        }
         return ExitCode::SUCCESS;
     }
 
-    let prompt = AskpassPrompt::new(mode, prompt);
     let reply = match exchange(socket, &prompt) {
         Ok(reply) => reply,
         Err(error) => {
@@ -602,27 +633,36 @@ pub fn run_helper(socket: &Path, prompt: &str) -> ExitCode {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
+pub(crate) fn notify(socket: &Path, prompt: &AskpassPrompt) -> io::Result<()> {
+    send_request(socket, prompt).map(drop)
+}
+
+#[cfg(any(unix, windows))]
 fn exchange(socket: &Path, prompt: &AskpassPrompt) -> io::Result<AskpassReply> {
-    let mut stream = UnixStream::connect(socket)?;
-    stream.write_all(&encode_request(prompt))?;
-    stream.shutdown(std::net::Shutdown::Write)?;
+    let mut stream = send_request(socket, prompt)?;
     let mut raw = Zeroizing::new(Vec::new());
     stream.read_to_end(&mut raw)?;
     Ok(decode_reply(&raw))
 }
 
+#[cfg(unix)]
+fn send_request(socket: &Path, prompt: &AskpassPrompt) -> io::Result<UnixStream> {
+    let mut stream = UnixStream::connect(socket)?;
+    stream.write_all(&encode_request(prompt))?;
+    stream.shutdown(std::net::Shutdown::Write)?;
+    Ok(stream)
+}
+
 #[cfg(windows)]
-fn exchange(socket: &Path, prompt: &AskpassPrompt) -> io::Result<AskpassReply> {
+fn send_request(socket: &Path, prompt: &AskpassPrompt) -> io::Result<LocalStream> {
     let mut stream = LocalTransport::connect(socket)?;
     let request = encode_request(prompt);
     let length = u32::try_from(request.len()).map_err(io::Error::other)?;
     stream.write_all(&length.to_le_bytes())?;
     stream.write_all(&request)?;
     stream.flush()?;
-    let mut raw = Zeroizing::new(Vec::new());
-    stream.read_to_end(&mut raw)?;
-    Ok(decode_reply(&raw))
+    Ok(stream)
 }
 
 #[cfg(test)]
@@ -698,6 +738,19 @@ mod tests {
         assert_eq!(
             AskpassPrompt::new(AskpassMode::AgentConfirm, "Allow use of key?").kind(),
             AskpassPromptKind::AgentConfirm
+        );
+        let touch = AskpassPrompt::new(
+            AskpassMode::Notification,
+            "Confirm user presence for key ED25519-SK SHA256:abc",
+        );
+        assert_eq!(touch.kind(), AskpassPromptKind::Notification);
+        assert!(touch.kind().is_notice());
+        assert!(AskpassPromptKind::KeyAdded.is_notice());
+        assert!(!AskpassPromptKind::Secret.is_notice());
+        assert_eq!(
+            outcome(AskpassPromptKind::Notification, &AskpassReply::Cancel),
+            (None, true),
+            "ssh reads nothing from a notice and must not see it fail",
         );
     }
 
@@ -776,6 +829,8 @@ mod tests {
             AskpassMode::Answer,
             AskpassMode::AgentConfirm,
             AskpassMode::Notification,
+            AskpassMode::SaveKey,
+            AskpassMode::KeyAdded,
         ] {
             let prompt = AskpassPrompt::new(mode, HOST_KEY_PROMPT);
             assert_eq!(decode_request(&encode_request(&prompt)), Some(prompt));
@@ -909,6 +964,54 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn a_touch_notice_reaches_the_window_without_blocking() {
+        let (seen, kinds) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released = std::sync::Mutex::new(released);
+        let listener = AskpassListener::start(SshPrompts::new(
+            PathBuf::from("/nonexistent/zz"),
+            move |prompt: &AskpassPrompt| {
+                let _ = seen.send(prompt.kind());
+                if prompt.kind().is_notice() {
+                    let _ = released.lock().unwrap().recv();
+                    return AskpassReply::Cancel;
+                }
+                AskpassReply::answer("hunter2")
+            },
+        ))
+        .expect("askpass listener");
+
+        let touch = AskpassPrompt::new(
+            AskpassMode::Notification,
+            "Confirm user presence for key ED25519-SK SHA256:abc",
+        );
+        notify(listener.socket(), &touch).expect("a notice is sent without waiting");
+        assert_eq!(
+            kinds.recv_timeout(Duration::from_secs(5)),
+            Ok(AskpassPromptKind::Notification)
+        );
+        let added = AskpassPrompt::new(AskpassMode::KeyAdded, "ssh://desk");
+        notify(listener.socket(), &added).expect("a second notice queues behind the first");
+        release.send(()).unwrap();
+        assert_eq!(
+            kinds.recv_timeout(Duration::from_secs(5)),
+            Ok(AskpassPromptKind::KeyAdded),
+            "a notice whose sender hung up before it was read still arrives"
+        );
+        release.send(()).unwrap();
+
+        assert!(
+            matches!(ask(listener.socket(), PASSWORD_PROMPT), AskpassReply::Answer(answer) if *answer == "hunter2"),
+            "a notice the window did not answer must not cancel the sign-in",
+        );
+        assert_eq!(
+            kinds.recv_timeout(Duration::from_secs(5)),
+            Ok(AskpassPromptKind::Secret)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_host_key_answer_crosses_the_socket_verbatim() {
         let listener = AskpassListener::start(SshPrompts::new(
             PathBuf::from("/nonexistent/zz"),
@@ -916,7 +1019,9 @@ mod tests {
                 AskpassPromptKind::HostKey => AskpassReply::answer("yes"),
                 AskpassPromptKind::Secret
                 | AskpassPromptKind::AgentConfirm
-                | AskpassPromptKind::SaveKey => AskpassReply::Cancel,
+                | AskpassPromptKind::SaveKey
+                | AskpassPromptKind::Notification
+                | AskpassPromptKind::KeyAdded => AskpassReply::Cancel,
             },
         ))
         .expect("askpass listener");

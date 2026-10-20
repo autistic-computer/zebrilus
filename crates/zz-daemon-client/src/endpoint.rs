@@ -39,7 +39,7 @@ use thiserror::Error;
 
 use crate::DaemonError;
 #[cfg(any(unix, windows))]
-use crate::askpass::{AskpassListener, SshPrompts};
+use crate::askpass::{AskpassListener, AskpassMode, AskpassPrompt, SshPrompts};
 #[cfg(windows)]
 use crate::transport::{LocalListener, LocalStream, TransportListener as _};
 use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
@@ -1128,18 +1128,29 @@ fn probe_remote_socket(
     }
 
     let probe = parse_remote_probe_output(&target, &output.stdout);
-    note_key_enrollment(endpoint, &probe);
+    note_key_enrollment(endpoint, session, &probe);
     probe.socket
 }
 
 #[cfg(any(unix, windows))]
-fn note_key_enrollment(endpoint: &SshEndpoint, probe: &RemoteProbe) {
+fn note_key_enrollment(endpoint: &SshEndpoint, session: SshSession<'_>, probe: &RemoteProbe) {
     match probe.key {
-        Some(KeyEnrollment::Added) => log::info!(
-            target: "zz_daemon::diagnostics",
-            "added this machine's zz key to {endpoint}'s authorized_keys; its own zz key is {}",
-            probe.pubkey.as_deref().unwrap_or("unknown"),
-        ),
+        Some(KeyEnrollment::Added) => {
+            log::info!(
+                target: "zz_daemon::diagnostics",
+                "added this machine's zz key to {endpoint}'s authorized_keys; its own zz key is {}",
+                probe.pubkey.as_deref().unwrap_or("unknown"),
+            );
+            if let Some(askpass) = session.askpass {
+                let notice = AskpassPrompt::new(AskpassMode::KeyAdded, endpoint.to_string());
+                if let Err(error) = crate::askpass::notify(askpass.socket, &notice) {
+                    log::debug!(
+                        target: "zz_daemon::askpass",
+                        "could not tell the window about {endpoint}'s new key: {error}",
+                    );
+                }
+            }
+        }
         Some(KeyEnrollment::Failed) => log::warn!(
             target: "zz_daemon::diagnostics",
             "could not add this machine's zz key to {endpoint}'s authorized_keys",
