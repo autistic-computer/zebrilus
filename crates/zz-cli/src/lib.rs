@@ -734,7 +734,7 @@ fn run_command_mode(
     }
     if let Some(host) = host
         && matches!(
-            command.as_str(),
+            canonical_command(&command),
             "fleet" | "list-hosts" | "tools" | "protocol-version"
         )
     {
@@ -2525,8 +2525,6 @@ fn stored_default_client_command(
     Some(output.trim_end_matches('\n').to_owned())
 }
 
-/// `fleet`, `list-hosts`, `tools` and `protocol-version` answer from a machine's own config and
-/// build, so over `--host` they run that host's CLI, not this one's.
 fn run_host_cli(host: &str, arguments: &[RawText]) -> ExitCode {
     let endpoint = match configured_host_endpoint(host) {
         Ok(Endpoint::Ssh(endpoint)) => endpoint,

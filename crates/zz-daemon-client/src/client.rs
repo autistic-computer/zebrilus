@@ -297,9 +297,6 @@ fn exec_environment(facts: EndpointFactsScope) -> ClientEnvironmentBlob {
     exec_environment_with(scoped_environment(facts, std::env::vars_os()))
 }
 
-/// What a remote daemon gets of this machine's environment: enough to pick terminal features and
-/// a locale. `SSH_AUTH_SOCK`, `DISPLAY` and the rest name things only this machine has, and the
-/// daemon's `update-environment` would put them into that host's panes.
 const REMOTE_ENVIRONMENT: [&str; 5] = ["TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"];
 
 fn scoped_environment(
@@ -433,8 +430,36 @@ impl CommandRoute {
     }
 
     fn connect(&self) -> Result<CommandLink, DaemonError> {
-        let stream = LocalTransport::connect(&self.socket)?;
-        Ok(CommandLink::Exec {
+        CommandLink::exec(LocalTransport::connect(&self.socket)?)
+    }
+
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn probe(&self) -> ProtocolMessage {
+        ProtocolMessage::Exec(self.exec_request(Vec::new(), ExecFlags::default(), None, None))
+    }
+
+    #[cfg(all(unix, not(target_os = "ios")))]
+    fn answers_at(&self, socket: &Path) -> bool {
+        let Ok(stream) = LocalTransport::connect(socket) else {
+            return false;
+        };
+        let Ok(reader) = stream.try_clone() else {
+            return false;
+        };
+        stream
+            .set_timeout(Some(crate::endpoint::MASTER_STEP_TIMEOUT))
+            .is_ok()
+            && ProtocolSender::new(stream).send(&self.probe()).is_ok()
+            && matches!(
+                ProtocolReceiver::new(reader).recv(),
+                Ok(ProtocolMessage::ExecExit(_))
+            )
+    }
+}
+
+impl CommandLink {
+    fn exec(stream: LocalStream) -> Result<Self, DaemonError> {
+        Ok(Self::Exec {
             reader: ProtocolReceiver::new(stream.try_clone()?),
             writer: ProtocolSender::new(stream),
             answered: false,
@@ -496,11 +521,15 @@ impl CommandClient {
 
     fn connect_route(route: CommandRoute) -> Result<Self, DaemonError> {
         let link = route.connect()?;
+        Ok(Self::with_link(route, link))
+    }
+
+    fn with_link(route: CommandRoute, link: CommandLink) -> Self {
         let server_id = match &link {
             CommandLink::Legacy { server_id, .. } => Some(*server_id),
             CommandLink::Exec { .. } => None,
         };
-        Ok(Self {
+        Self {
             stdin_enabled: false,
             stdin_spent: false,
             stderr_handler: None,
@@ -512,7 +541,7 @@ impl CommandClient {
             _ssh_forward: None,
             #[cfg(all(unix, not(target_os = "ios")))]
             unverified: None,
-        })
+        }
     }
 
     /// Connect a short-lived command client to a configured fleet endpoint.
@@ -532,14 +561,18 @@ impl CommandClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let (mut client, ssh_forward) = connect_kept(endpoint, None, |socket| {
-                        Self::connect_route(CommandRoute {
-                            socket: socket.to_path_buf(),
-                            display: endpoint.to_string(),
-                            facts: EndpointFactsScope::PortableTerminalSize,
-                            send_origin: false,
-                        })
-                    })?;
+                    let (mut client, ssh_forward) =
+                        connect_kept(endpoint, None, |socket, stream| {
+                            Ok(Self::with_link(
+                                CommandRoute {
+                                    socket: socket.to_path_buf(),
+                                    display: endpoint.to_string(),
+                                    facts: EndpointFactsScope::PortableTerminalSize,
+                                    send_origin: false,
+                                },
+                                CommandLink::exec(stream)?,
+                            ))
+                        })?;
                     #[cfg(unix)]
                     {
                         client.unverified = ssh_forward.is_none().then(|| endpoint.clone());
@@ -848,21 +881,12 @@ impl CommandClient {
         }
     }
 
-    /// A kept forward can outlive the daemon behind it, and the first exec cannot tell a refused
-    /// channel from a command that ended the connection. An empty exec sent ahead of `request`
-    /// can: the daemon answers it before reading the next one, so a link that gives no answer
-    /// ran nothing, and the forward is made again before `request` goes out.
     #[cfg(all(unix, not(target_os = "ios")))]
     fn verify_kept_link(&mut self, request: &ProtocolMessage) -> Result<bool, DaemonError> {
         let Some(endpoint) = self.unverified.take() else {
             return Ok(false);
         };
-        let probe = ProtocolMessage::Exec(self.route.exec_request(
-            Vec::new(),
-            ExecFlags::default(),
-            None,
-            None,
-        ));
+        let probe = self.route.probe();
         let CommandLink::Exec {
             reader,
             writer,
@@ -872,24 +896,32 @@ impl CommandClient {
         else {
             return Ok(false);
         };
-        let reason = match writer
-            .send(&probe)
+        let reply = writer
+            .stream
+            .set_timeout(Some(crate::endpoint::MASTER_STEP_TIMEOUT))
+            .map_err(DaemonError::from)
+            .and_then(|()| writer.send(&probe))
             .and_then(|()| writer.send(request))
-            .and_then(|()| reader.recv())
-        {
+            .and_then(|()| reader.recv());
+        let (reason, stalled) = match reply {
             Ok(ProtocolMessage::ExecExit(exit)) => {
+                let _ = writer.stream.set_timeout(None);
                 self.server_id = Some(exit.server_id);
                 *answered = true;
                 return Ok(true);
             }
-            Ok(_) => "an unexpected reply".to_owned(),
-            Err(error) => error.to_string(),
+            Ok(_) => ("an unexpected reply".to_owned(), false),
+            Err(error) => (error.to_string(), crate::endpoint::link_stalled(&error)),
         };
         log::debug!(
             target: "zz_daemon::diagnostics::client",
             "the kept forward to {endpoint} gave {reason}; making it again",
         );
-        let (socket, forward) = crate::endpoint::remake_kept_forward(&endpoint)?;
+        let route = &self.route;
+        let (socket, forward) =
+            crate::endpoint::remake_kept_forward(&endpoint, stalled, |socket| {
+                route.answers_at(socket)
+            })?;
         self.route.socket = socket;
         self._ssh_forward = forward;
         self.link = self.route.connect()?;
@@ -1240,9 +1272,9 @@ impl InteractiveClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let (connected, forward) = connect_kept(endpoint, prompts, |socket| {
+                    let (connected, forward) = connect_kept(endpoint, prompts, |_, stream| {
                         connect_stream_hello(
-                            ClientStream::Local(LocalTransport::connect(socket)?),
+                            ClientStream::Local(stream),
                             endpoint,
                             ClientKind::Interactive,
                             short_device_name(),
@@ -1393,17 +1425,15 @@ impl InteractiveClient {
         Self::connect_control_with_startup_owner(path, false)
     }
 
-    /// A control client for `zz events`, `agent-send --progress` and `zz -C`, on this machine or
-    /// through a host's kept ssh forward.
     pub fn connect_control_endpoint(endpoint: &Endpoint) -> Result<Self, DaemonError> {
         match endpoint {
             Endpoint::Local(path) => Self::connect_control(path),
             Endpoint::Ssh(endpoint) => {
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let (connected, forward) = connect_kept(endpoint, None, |socket| {
+                    let (connected, forward) = connect_kept(endpoint, None, |_, stream| {
                         connect_stream_with_startup_owner(
-                            ClientStream::Local(LocalTransport::connect(socket)?),
+                            ClientStream::Local(stream),
                             endpoint,
                             ClientKind::Control,
                             None,
@@ -1642,8 +1672,6 @@ impl InteractiveClient {
         Self::connect_endpoint_without_theme(&Endpoint::Local(path.to_owned()), client_has_terminal)
     }
 
-    /// `socks` is the desktop app's: its browser panes egress through the host on a SOCKS port
-    /// the connection's own forward opens. Everyone else rides the host's kept forward.
     fn connect_endpoint_with_prompts_and_terminal(
         endpoint: &Endpoint,
         color_scheme: Option<TerminalColorScheme>,
@@ -1702,9 +1730,9 @@ impl InteractiveClient {
                 }
                 #[cfg(all(any(unix, windows), not(target_os = "ios")))]
                 {
-                    let connect = |socket: &Path| {
+                    let connect = |stream: LocalStream| {
                         connect_stream_with_startup_owner(
-                            ClientStream::Local(LocalTransport::connect(socket)?),
+                            ClientStream::Local(stream),
                             endpoint,
                             ClientKind::Interactive,
                             device_name.clone(),
@@ -1722,9 +1750,10 @@ impl InteractiveClient {
                     };
                     let (connected, ssh_forward) = if socks {
                         let ssh_forward = SshForward::start(endpoint, prompts)?;
-                        (connect(ssh_forward.local_socket())?, Some(ssh_forward))
+                        let stream = LocalTransport::connect(ssh_forward.local_socket())?;
+                        (connect(stream)?, Some(ssh_forward))
                     } else {
-                        connect_kept(endpoint, prompts, connect)?
+                        connect_kept(endpoint, prompts, |_, stream| connect(stream))?
                     };
                     Ok(Self::from_connected_with_ssh(connected, ssh_forward))
                 }

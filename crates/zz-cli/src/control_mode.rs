@@ -546,8 +546,6 @@ pub(crate) fn run(
     })
 }
 
-/// Control mode on `endpoint`'s daemon. Over ssh nothing can carry this terminal's descriptors
-/// to the daemon, so the client relays the stream itself.
 pub(crate) fn run_host(
     endpoint: &Endpoint,
     level: u8,
