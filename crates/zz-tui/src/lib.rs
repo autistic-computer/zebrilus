@@ -401,21 +401,7 @@ fn resolve_endpoint(
     let Some(name) = options.host.as_deref() else {
         return Ok(Endpoint::Local(options.socket_path.clone()));
     };
-    if let Some(host) = hosts.iter().find(|host| host.name == name) {
-        return Ok(host.endpoint.clone());
-    }
-    let known = if hosts.is_empty() {
-        "(none)".to_owned()
-    } else {
-        hosts
-            .iter()
-            .map(|host| host.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    Err(Error::message(format!(
-        "unknown fleet host `{name}`; known hosts: {known}"
-    )))
+    zz_daemon_client::resolve_fleet_host(hosts, name).map_err(Error::message)
 }
 
 #[cfg(test)]

@@ -697,6 +697,85 @@ mod daemon_autostart {
     }
 
     #[test]
+    fn host_flag_guards_input_and_fans_read_only_chains_out_to_every_host() {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            eprintln!("SKIPPED: Unix socket binding is unavailable");
+            return;
+        }
+        let created = fixture.run(&["new-session", "-d", "-s", "fleet"]);
+        assert_eq!(created.status.code(), Some(0));
+        let config = fixture.home.join("zz/config");
+        std::fs::create_dir_all(config.parent().unwrap()).expect("config directory");
+        std::fs::write(
+            &config,
+            format!(
+                "host-peer = unix://{}\nhost-gone = unix://{}/gone.sock\n",
+                fixture.socket.display(),
+                fixture.home.display()
+            ),
+        )
+        .expect("write host config");
+        let zz = |arguments: &[&str]| {
+            Command::new(env!("CARGO_BIN_EXE_zz_cli"))
+                .env("HOME", &fixture.home)
+                .env("XDG_CONFIG_HOME", &fixture.home)
+                .env_remove("TMUX")
+                .env_remove("ZZ_SOCKET")
+                .args(arguments)
+                .output()
+                .expect("run zz --host")
+        };
+
+        let untargeted = zz(&["--host", "peer", "send-keys", "x"]);
+        assert_eq!(untargeted.status.code(), Some(2));
+        assert_eq!(
+            String::from_utf8_lossy(&untargeted.stderr),
+            "zz --host peer: name the pane with -t %N (zz --host peer list-panes -a)\n"
+        );
+        let targeted = zz(&["--host", "peer", "send-keys", "-t", "%0", "x"]);
+        assert_eq!(targeted.status.code(), Some(0), "{targeted:?}");
+        let payload = zz(&["--host", "peer", "display-message", "-p", "--", "--host"]);
+        assert_eq!(payload.stdout, b"--host\n", "{payload:?}");
+        let bare = zz(&["--host", "peer"]);
+        assert_eq!(bare.status.code(), Some(1));
+        assert_eq!(
+            String::from_utf8_lossy(&bare.stderr),
+            "open terminal failed: not a terminal\n"
+        );
+
+        let text = zz(&["--host", "all", "list-sessions", "-F", "#{session_name}"]);
+        assert_eq!(text.status.code(), Some(1));
+        assert_eq!(String::from_utf8_lossy(&text.stdout), "peer: fleet\n");
+        let errors = String::from_utf8_lossy(&text.stderr);
+        assert!(errors.starts_with("gone: can't reach gone: "), "{errors}");
+        assert_eq!(errors.lines().count(), 1, "{errors}");
+
+        let json = zz(&["--host", "all", "inspect", "-a", "--json"]);
+        let rows = String::from_utf8(json.stdout).expect("UTF-8 JSON rows");
+        let row: serde_json::Value =
+            serde_json::from_str(rows.lines().next().expect("one pane row")).expect("JSON row");
+        assert_eq!(row["host_name"], "peer");
+        assert_eq!(row["pane_id"], "%0");
+
+        for mutating in [
+            &["--host", "all", "send-keys", "-t", "%0", "x"][..],
+            &["--host", "all", "list-panes", ";", "kill-server"][..],
+            &["--host", "all"][..],
+        ] {
+            let refused = zz(mutating);
+            assert_eq!(refused.status.code(), Some(2), "{mutating:?}");
+            assert!(refused.stdout.is_empty(), "{mutating:?}");
+            assert!(
+                String::from_utf8_lossy(&refused.stderr).contains("read-only"),
+                "{mutating:?}"
+            );
+        }
+        let sessions = fixture.run(&["list-sessions", "-F", "#{session_name}"]);
+        assert_eq!(sessions.stdout, b"fleet\n");
+    }
+
+    #[test]
     fn pane_mode_syntax_errors_keep_the_pinned_exit_status_with_a_daemon() {
         let fixture = Fixture::new();
         if !local_socket_bind_available(&fixture.socket) {
