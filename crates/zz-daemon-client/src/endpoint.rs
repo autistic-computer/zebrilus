@@ -4433,15 +4433,24 @@ mod tests {
             askpass: None,
             identity: None,
         };
+        let stalled = |_: &SshStep| {
+            thread::sleep(Duration::from_secs(30));
+            Ok(())
+        };
         let slow = |_: &SshStep| {
             thread::sleep(Duration::from_millis(300));
             Ok(())
         };
         let started = std::time::Instant::now();
         let error = step
-            .run_within(Duration::from_millis(20), true, "remote socket probe", slow)
+            .run_within(
+                Duration::from_millis(20),
+                true,
+                "remote socket probe",
+                stalled,
+            )
             .unwrap_err();
-        assert!(started.elapsed() < Duration::from_millis(250));
+        assert!(started.elapsed() < Duration::from_secs(10));
         assert!(
             matches!(&error, EndpointError::SshFailed { reason, .. }
                 if reason.starts_with("the remote socket probe got no answer")),
