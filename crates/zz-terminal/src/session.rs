@@ -1675,6 +1675,7 @@ pub struct CaptureOptions {
     pub line_flags: bool,
     pub hyperlinks: bool,
     pub skip_input: bool,
+    pub keep_idle_prompt: bool,
 }
 
 impl Default for CaptureOptions {
@@ -1693,6 +1694,7 @@ impl Default for CaptureOptions {
             line_flags: false,
             hyperlinks: false,
             skip_input: false,
+            keep_idle_prompt: false,
         }
     }
 }
@@ -9055,6 +9057,7 @@ struct CaptureWork {
 struct CaptureCarry {
     style: libghostty_vt::style::Style,
     link: Option<Vec<u8>>,
+    idle_prompt: Option<u64>,
 }
 
 impl CaptureWork {
@@ -9118,10 +9121,11 @@ impl CaptureWork {
                 }
                 CaptureSource::Screen(terminal.clone_screen().map_err(capture_failure)?)
             };
-            Ok(Ok((source, start, end, visible_start)))
+            let idle_prompt = idle_prompt_row(terminal, options)?;
+            Ok(Ok((source, start, end, visible_start, idle_prompt)))
         });
         match result {
-            Ok(Ok((source, next, end, visible_start))) => Some(Self {
+            Ok(Ok((source, next, end, visible_start, idle_prompt))) => Some(Self {
                 source,
                 options,
                 output_rows,
@@ -9130,7 +9134,10 @@ impl CaptureWork {
                 visible_start,
                 output: String::new(),
                 separator: false,
-                previous: CaptureCarry::default(),
+                previous: CaptureCarry {
+                    idle_prompt,
+                    ..CaptureCarry::default()
+                },
                 reply,
             }),
             result => {
@@ -9276,9 +9283,52 @@ fn capture_terminal_marked(
             mode: false,
             ..options
         },
-        &mut CaptureCarry::default(),
+        &mut CaptureCarry {
+            idle_prompt: idle_prompt_row(terminal, options)?,
+            ..CaptureCarry::default()
+        },
         output_rows,
     )
+}
+
+fn idle_prompt_row(
+    terminal: &Terminal<'_, '_>,
+    options: CaptureOptions,
+) -> Result<Option<u64>, TerminalCaptureError> {
+    let find = || -> Result<Option<u64>, libghostty_vt::Error> {
+        let mut row = u32::try_from(terminal.scrollback_rows()?)
+            .unwrap_or(u32::MAX)
+            .saturating_add(u32::from(terminal.cursor_y()?));
+        let cursor = terminal.grid_row(Point::Screen(PointCoordinate { x: 0, y: row }))?;
+        if cursor.row()?.semantic_prompt()? != RowSemanticPrompt::Continuation {
+            return Ok(None);
+        }
+        for column in 0..terminal.cols()? {
+            if let Some(cell) = cursor.cell(column)
+                && cell.cell()?.has_text()?
+            {
+                return Ok(None);
+            }
+        }
+        while let Some(above) = row.checked_sub(1) {
+            row = above;
+            match terminal
+                .grid_ref(Point::Screen(PointCoordinate { x: 0, y: row }))?
+                .row()?
+                .semantic_prompt()?
+            {
+                RowSemanticPrompt::Continuation => {}
+                RowSemanticPrompt::Prompt => return Ok(Some(u64::from(row))),
+                RowSemanticPrompt::None => return Ok(None),
+            }
+        }
+        Ok(None)
+    };
+    if options.skip_input && options.keep_idle_prompt {
+        find().map_err(capture_failure)
+    } else {
+        Ok(None)
+    }
 }
 
 fn capture_grid(
@@ -9361,6 +9411,7 @@ fn capture_grid(
             &output,
             (start, end),
             options.join_wrapped && !per_row,
+            previous.idle_prompt,
         )?
     } else {
         output
@@ -9416,6 +9467,7 @@ fn blank_prompt_lines(
     output: &str,
     (start, end): (u64, u64),
     joined: bool,
+    idle_prompt: Option<u64>,
 ) -> Result<String, TerminalCaptureError> {
     let row_at = |row: u64| {
         terminal
@@ -9432,7 +9484,12 @@ fn blank_prompt_lines(
     for _ in &lines {
         kinds.push(if row <= end {
             let first = row_at(row)?;
-            let kind = first.semantic_prompt().map_err(capture_failure)?;
+            let kind = match first.semantic_prompt().map_err(capture_failure)? {
+                RowSemanticPrompt::Prompt if idle_prompt == Some(row) => {
+                    RowSemanticPrompt::Continuation
+                }
+                kind => kind,
+            };
             let mut wrapped = first.is_wrapped().map_err(capture_failure)?;
             row += 1;
             while joined && wrapped && row <= end {
@@ -22825,6 +22882,54 @@ mod tests {
     }
 
     #[test]
+    fn keep_idle_prompt_keeps_only_output_below_the_newest_prompt() {
+        let strict = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            skip_input: true,
+            ..CaptureOptions::default()
+        };
+        let idle = CaptureOptions {
+            keep_idle_prompt: true,
+            ..strict
+        };
+        let first = |bytes: &[u8], options| {
+            let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+            terminal.vt_write(b"\x1b]133;A\x07$ \x1b]133;B\x07");
+            terminal.vt_write(bytes);
+            capture_terminal(&terminal, None, options)
+                .expect("capture")
+                .lines()
+                .take(3)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(first(b"READY\r\n", strict), ["", "", ""]);
+        assert_eq!(first(b"READY\r\n", idle), ["$ READY", "", ""]);
+        assert_eq!(
+            first(b"READY\r\nL2\r\nL3\r\n", idle),
+            ["$ READY", "L2", "L3"]
+        );
+        assert_eq!(first(b"READY\r\nL2\r\nL3\r\n", strict), ["", "L2", "L3"]);
+        assert_eq!(first(b"cmd DONE\r\n", strict), ["", "", ""]);
+        assert_eq!(first(b"cmd DONE\r\n", idle), ["$ cmd DONE", "", ""]);
+        for typed in [
+            b"cmd DONE".as_slice(),
+            b"cmd DONE\r\n\x1b]133;C\x07",
+            b"cmd DONE\r\n\x1b]133;C\x07\x1b]133;D;0\x07\x1b]133;A\x07$ \x1b]133;B\x07",
+            b"cmd DONE^C\r\n\x1b]133;A\x07$ \x1b]133;B\x07",
+            b"echo 'DONE\r\n> ",
+        ] {
+            let lines = first(typed, idle);
+            assert!(
+                lines.iter().all(|line| !line.contains("DONE")),
+                "{typed:?}: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
     fn skip_input_blanks_a_wrapped_prompt_split_across_capture_steps() {
         let session = TerminalSession::spawn_empty_with_appearance(
             4096,
@@ -22856,6 +22961,37 @@ mod tests {
         assert!(!skipped.contains('y'), "{skipped:?}");
         assert!(skipped.contains("after"));
         assert_eq!(skipped.lines().count(), plain.lines().count());
+    }
+
+    #[test]
+    fn keep_idle_prompt_reaches_a_prompt_past_the_first_capture_step() {
+        let session = TerminalSession::spawn_empty_with_appearance(
+            4096,
+            Arc::new(TerminalAppearance::default()),
+        );
+        session.resize(40, 10, 8, 16);
+        let mut bytes = "x\r\n"
+            .repeat(usize::try_from(CAPTURE_ROWS_PER_STEP).unwrap() + 8)
+            .into_bytes();
+        bytes.extend(b"\x1b]133;A\x07$ \x1b]133;B\x07READY\r\n");
+        assert!(session.feed(Arc::from(bytes)));
+        let strict = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            skip_input: true,
+            ..CaptureOptions::default()
+        };
+        let skipped = session.capture(strict).expect("capture");
+        assert!(!skipped.contains("READY"), "{skipped:?}");
+        let kept = session
+            .capture(CaptureOptions {
+                keep_idle_prompt: true,
+                ..strict
+            })
+            .expect("capture");
+        assert!(kept.contains("$ READY"), "{kept:?}");
+        assert_eq!(kept.lines().count(), skipped.lines().count());
     }
 
     #[test]
