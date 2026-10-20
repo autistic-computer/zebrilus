@@ -781,6 +781,7 @@ static UNIMPLEMENTED_TMUX_COMMAND_SPECS: &[CommandSpec] = &[
 
 static READ_ONLY_COMMAND_NAMES: &[&str] = &[
     "has-session",
+    "inspect",
     "list-buffers",
     "list-clients",
     "list-commands",
@@ -2925,6 +2926,7 @@ mod tests {
             ("display-message", &["-c", "client", "hello"][..]),
             ("capture-pane", &["-p", "-t", "%1"][..]),
             ("capture-pane", &["-pb", "named"][..]),
+            ("inspect", &["-a", "--json"][..]),
         ] {
             assert!(!mutates(name, args), "{name} {args:?} is read-only");
         }

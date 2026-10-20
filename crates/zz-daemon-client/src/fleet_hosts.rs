@@ -57,8 +57,8 @@ pub fn apply_fleet_host_entry(
         Some("host name must not be empty".to_owned())
     } else if name.chars().any(char::is_whitespace) {
         Some("host name must not contain whitespace".to_owned())
-    } else if name == "local" {
-        Some("host name `local` is reserved".to_owned())
+    } else if matches!(name, "local" | "all") {
+        Some(format!("host name `{name}` is reserved"))
     } else {
         None
     };
@@ -93,6 +93,26 @@ pub fn apply_fleet_host_entry(
     hosts.remove(index);
     hosts.push(entry);
     Some(format!("duplicate host `{name}`; last entry wins"))
+}
+
+pub fn resolve_fleet_host(hosts: &[HostEntry], name: &str) -> Result<Endpoint, String> {
+    if let Some(host) = hosts.iter().find(|host| host.name == name) {
+        return Ok(host.endpoint.clone());
+    }
+    match name {
+        "local" => return Err("`--host local` is this machine; drop --host".to_owned()),
+        "all" => {
+            return Err(
+                "`--host all` runs read-only commands on every host; name one host here".to_owned(),
+            );
+        }
+        _ => {}
+    }
+    let destination = name.strip_prefix("ssh://").unwrap_or(name);
+    if destination.starts_with('-') {
+        return Err("ssh destination must not start with `-`".to_owned());
+    }
+    Endpoint::parse(&format!("ssh://{destination}")).map_err(|error| error.to_string())
 }
 
 pub fn validate_fleet_host(name: &str, endpoint: &str) -> Result<(), String> {
@@ -650,6 +670,41 @@ mod tests {
             error.to_string(),
             format!("configuration edit exceeds the {MAX_CONFIG_BYTES}-byte limit")
         );
+    }
+
+    #[test]
+    fn host_values_resolve_to_a_configured_name_or_an_ssh_destination() {
+        let (hosts, rejected) =
+            parse_fleet_hosts("host-xps = ssh://demfabris@xps\nhost-all = ssh://every\n");
+        assert_eq!(rejected[0].reason, "host name `all` is reserved");
+        let resolve = |name| resolve_fleet_host(&hosts, name);
+        assert_eq!(
+            resolve("xps").ok(),
+            Endpoint::parse("ssh://demfabris@xps").ok()
+        );
+        for (value, expected) in [
+            ("me@box", "ssh://me@box"),
+            ("box:2222", "ssh://box:2222"),
+            ("ssh://me@box", "ssh://me@box"),
+            ("ubuntu", "ssh://ubuntu"),
+        ] {
+            assert_eq!(
+                resolve(value).ok(),
+                Endpoint::parse(expected).ok(),
+                "{value}"
+            );
+        }
+        assert_eq!(
+            resolve("-oProxyCommand=x"),
+            Err("ssh destination must not start with `-`".to_owned())
+        );
+        assert_eq!(
+            resolve("ssh://-oProxyCommand=x"),
+            Err("ssh destination must not start with `-`".to_owned())
+        );
+        assert!(resolve("local").unwrap_err().contains("this machine"));
+        assert!(resolve("all").unwrap_err().contains("read-only"));
+        assert!(resolve("me@@box").is_err());
     }
 
     #[test]
