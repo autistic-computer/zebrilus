@@ -300,10 +300,6 @@ impl ScreenSnapshot {
         self.terminal.total_rows()
     }
 
-    pub fn cursor_y(&self) -> Result<u16> {
-        self.terminal.cursor_y()
-    }
-
     pub fn active_screen(&self) -> Result<Screen> {
         Ok(self.source_screen)
     }

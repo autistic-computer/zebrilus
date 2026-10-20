@@ -78873,6 +78873,80 @@ set-option -g @alias-mixed-next yes
 
     #[cfg(unix)]
     #[test]
+    fn wait_pane_until_matches_an_idle_prompt_row_only_once_the_pane_settles() {
+        let (shared, client, target) = send_text_fixture(
+            "waitidleprompt",
+            "stty raw -echo; printf 'zz-ready\\r\\n'; exec /bin/cat",
+        );
+        let pane = target.parse::<PaneId>().unwrap();
+        let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+        assert!(terminal.send_raw_input(Arc::from(
+            b"\x1b]133;A\x07$ \x1b]133;B\x07echo DONE-T\r\n".as_slice()
+        )));
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.contains("$ echo DONE-T")
+        });
+        let mailbox = OutboundMailbox::new();
+        shared
+            .client_writers
+            .lock()
+            .insert(client, Arc::clone(&mailbox));
+        let waiting = Arc::clone(&shared);
+        let wait_target = target.clone();
+        let waiter = thread::spawn(move || {
+            let waiting = waiting.command_item(Some((client, 1)));
+            waiting.execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(
+                    "wait-pane",
+                    ["-t", &wait_target, "--until", "DONE-T", "--timeout", "5"],
+                ),
+            )
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !waiter.is_finished()
+            && !take_reliable_messages(&mailbox).iter().any(|message| {
+                matches!(
+                    message,
+                    ProtocolMessage::CommandQueueParked { request_id: 1 }
+                )
+            })
+        {
+            assert!(Instant::now() < deadline, "wait did not park");
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            terminal.send_raw_input(Arc::from(
+                b"\x1b]133;C\x07DONE-T-OUT\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ \x1b]133;B\x07"
+                    .as_slice()
+            ))
+        );
+        let execution = waiter
+            .join()
+            .unwrap()
+            .expect("the output matches, not the submitted line");
+        assert_eq!(execution.output, "DONE-T-OUT\n");
+        assert!(terminal.send_raw_input(Arc::from(b"READY-BG\r\n".as_slice())));
+        let started = Instant::now();
+        let execution = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(
+                    "wait-pane",
+                    ["-t", &target, "--until", "READY-BG", "--timeout", "5"],
+                ),
+            )
+            .expect("background output on the idle prompt row matches");
+        assert_eq!(execution.output, "$ READY-BG\n");
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn wait_pane_scans_new_scrollback_but_ignores_old_history() {
         let (shared, client, target) = send_text_fixture(
             "waitscrollback",
