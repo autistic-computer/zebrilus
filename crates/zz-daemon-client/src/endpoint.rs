@@ -699,12 +699,19 @@ pub(crate) fn parse_remote_install_output(
                 restart: match value("zz-install-restart=").as_deref() {
                     None => RemoteRestart::NotAsked,
                     Some("0") => RemoteRestart::Restarted,
-                    Some(_) => match ssh_failure_reason(&stderr, status) {
-                        reason if daemon_was_not_running(&reason) => RemoteRestart::NotRunning,
-                        reason => RemoteRestart::Failed(
-                            reason.strip_prefix("zz: ").unwrap_or(&reason).to_owned(),
-                        ),
-                    },
+                    Some(code) => {
+                        match stderr.lines().map(str::trim).rfind(|line| !line.is_empty()) {
+                            Some(reason) if daemon_was_not_running(reason) => {
+                                RemoteRestart::NotRunning
+                            }
+                            Some(reason) => RemoteRestart::Failed(
+                                reason.strip_prefix("zz: ").unwrap_or(reason).to_owned(),
+                            ),
+                            None => {
+                                RemoteRestart::Failed(format!("kill-server exited with {code}"))
+                            }
+                        }
+                    }
                 },
                 warnings: stderr
                     .lines()
@@ -2545,6 +2552,16 @@ mod tests {
             (
                 "echo 'error connecting to /run/zz.sock (No such file or directory)' >&2; exit 1",
                 RemoteRestart::NotRunning,
+            ),
+            (
+                "echo 'error connecting to /run/zz.sock (Permission denied)' >&2; exit 1",
+                RemoteRestart::Failed(
+                    "error connecting to /run/zz.sock (Permission denied)".to_owned(),
+                ),
+            ),
+            (
+                "exit 2",
+                RemoteRestart::Failed("kill-server exited with 2".to_owned()),
             ),
             (
                 "echo 'zz: daemon I/O error; recovery failed: no daemon pid' >&2; exit 1",
