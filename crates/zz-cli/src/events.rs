@@ -97,6 +97,7 @@ fn stream(
         next_seq: 0,
         target,
         host: host.map(str::to_owned),
+        closed: false,
     };
     let mut startup_gaps = 0;
     loop {
@@ -107,12 +108,19 @@ fn stream(
                 return ExitCode::FAILURE;
             }
         };
-        match drive(&client, &mut output, &mut startup_gaps) {
+        let driven = drive(&client, &mut output, &mut startup_gaps);
+        if output.closed {
+            return ExitCode::SUCCESS;
+        }
+        match driven {
             Err(StreamError::Gap) if output.next_seq == 0 => {
                 startup_gaps += 1;
             }
             Err(StreamError::Gap) => {
                 if let Err(error) = output.line("gap", &BTreeMap::new()) {
+                    if output.closed {
+                        return ExitCode::SUCCESS;
+                    }
                     eprintln!("events: {error}");
                     return ExitCode::FAILURE;
                 }
@@ -307,6 +315,7 @@ struct EventWriter<W> {
     next_seq: u64,
     target: Option<String>,
     host: Option<String>,
+    closed: bool,
 }
 
 impl<W: Write> EventWriter<W> {
@@ -325,9 +334,16 @@ impl<W: Write> EventWriter<W> {
             .unwrap_or_default()
             .as_millis() as u64;
         line.insert("time".to_owned(), time.into());
-        serde_json::to_writer(&mut self.output, &line)?;
-        self.output.write_all(b"\n")?;
-        self.output.flush()?;
+        let written = serde_json::to_writer(&mut self.output, &line)
+            .map_err(io::Error::from)
+            .and_then(|()| self.output.write_all(b"\n"))
+            .and_then(|()| self.output.flush());
+        if let Err(error) = &written
+            && error.kind() == io::ErrorKind::BrokenPipe
+        {
+            self.closed = true;
+        }
+        written?;
         self.next_seq += 1;
         Ok(())
     }
@@ -767,12 +783,36 @@ mod tests {
     }
 
     #[test]
+    fn a_reader_that_goes_away_closes_the_stream_instead_of_failing_it() {
+        struct Gone;
+        impl Write for Gone {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut writer = EventWriter {
+            output: Gone,
+            next_seq: 0,
+            target: None,
+            host: None,
+            closed: false,
+        };
+        assert!(writer.line("ready", &BTreeMap::new()).is_err());
+        assert!(writer.closed);
+        assert_eq!(writer.next_seq, 0);
+    }
+
+    #[test]
     fn ready_hooks_and_gap_use_connection_sequence_and_copy_variables() {
         let mut writer = EventWriter {
             output: Vec::new(),
             next_seq: 0,
             target: None,
             host: None,
+            closed: false,
         };
         writer.line("ready", &BTreeMap::new()).unwrap();
         writer.hook(hook()).unwrap();
@@ -803,6 +843,7 @@ mod tests {
             next_seq: 0,
             target: None,
             host: Some("xps".to_owned()),
+            closed: false,
         };
         writer.line("ready", &BTreeMap::new()).unwrap();
         writer.hook(hook()).unwrap();
@@ -823,6 +864,7 @@ mod tests {
                 next_seq: 0,
                 target: Some(target.to_owned()),
                 host: None,
+                closed: false,
             };
             writer.line("ready", &BTreeMap::new()).unwrap();
             writer.hook(hook()).unwrap();
@@ -872,6 +914,7 @@ mod tests {
                 next_seq: 0,
                 target: Some(target.to_owned()),
                 host: None,
+                closed: false,
             };
             writer.hook(event()).unwrap();
             let rows = lines(&writer.output);
