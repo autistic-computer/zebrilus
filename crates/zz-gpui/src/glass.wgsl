@@ -47,6 +47,10 @@ struct Glass {
     // color of the contour; its alpha is in the edge shadow strength, then 1
     // when the glass draws only the light along its rim
     edge_color: vec4<f32>,
+    shadow_bounds: vec4<f32>,
+    shadow_radii: vec4<f32>,
+    shadow_color: vec4<f32>,
+    shadow: vec4<f32>,
 }
 
 struct Blur {
@@ -201,6 +205,83 @@ fn glass_field(point: vec2<f32>) -> vec4<f32> {
     return field;
 }
 
+fn shadow_gaussian(x: f32, sigma: f32) -> f32 {
+    return exp(-(x * x) / (2.0 * sigma * sigma)) / (sqrt(6.283185307179586) * sigma);
+}
+
+fn shadow_erf(v: vec2<f32>) -> vec2<f32> {
+    let s = sign(v);
+    let a = abs(v);
+    let r1 = 1.0 + (0.278393 + (0.230389 + (0.000972 + 0.078108 * a) * a) * a) * a;
+    let r2 = r1 * r1;
+    return s - s / (r2 * r2);
+}
+
+fn shadow_erf4(v: vec4<f32>) -> vec4<f32> {
+    let s = sign(v);
+    let a = abs(v);
+    let r1 = 1.0 + (0.278393 + (0.230389 + (0.000972 + 0.078108 * a) * a) * a) * a;
+    let r2 = r1 * r1;
+    return s - s / (r2 * r2);
+}
+
+fn shadow_blur_along_x(x: f32, y: f32, sigma: f32, corner: f32, half_size: vec2<f32>, smoothing: f32) -> f32 {
+    let delta = min(half_size.y - corner - abs(y), 0.0);
+    var reach = sqrt(max(0.0, corner * corner - delta * delta));
+    if (corner > 0.0 && smoothing > 2.001 && delta < 0.0) {
+        reach = corner * pow(max(0.0, 1.0 - pow(abs(delta) / corner, smoothing)), 1.0 / smoothing);
+    }
+    let curved = half_size.x - corner + reach;
+    let integral = 0.5 + 0.5 * shadow_erf((x + vec2<f32>(-curved, curved)) * (sqrt(0.5) / sigma));
+    return integral.y - integral.x;
+}
+
+fn glass_shadow(position: vec2<f32>) -> vec4<f32> {
+    if (any(glass.shadow_bounds.zw <= vec2<f32>(0.0))) {
+        return vec4<f32>(0.0);
+    }
+    let caster = GlassShape(glass.shadow_bounds, glass.shadow_radii);
+    let sigma = glass.shadow.x;
+    let smoothing = glass.shadow.y;
+    let half_size = caster.rect.zw * 0.5;
+    let point = position - (caster.rect.xy + half_size);
+    var radius: f32;
+    if (point.x < 0.0) {
+        radius = select(caster.radii.w, caster.radii.x, point.y < 0.0);
+    } else {
+        radius = select(caster.radii.z, caster.radii.y, point.y < 0.0);
+    }
+    let largest_corner = max(max(caster.radii.x, caster.radii.y), max(caster.radii.z, caster.radii.w));
+    var alpha: f32;
+    if (sigma == 0.0) {
+        alpha = saturate(0.5 - rounded_rect(position, caster, smoothing, 0.0).x);
+    } else if (largest_corner <= 0.25 * sigma) {
+        let edges = (vec4<f32>(point, point) + vec4<f32>(half_size, -half_size)) * (sqrt(0.5) / sigma);
+        let integral = shadow_erf4(edges);
+        alpha = 0.25 * (integral.x - integral.z) * (integral.y - integral.w);
+    } else {
+        let exponent = select(smoothing, 2.0, radius >= min(half_size.x, half_size.y) - 0.01);
+        let low = point.y - half_size.y;
+        let high = point.y + half_size.y;
+        let start = clamp(-3.0 * sigma, low, high);
+        let end = clamp(3.0 * sigma, low, high);
+        let step = (end - start) / 4.0;
+        var y = start + step * 0.5;
+        alpha = 0.0;
+        for (var i = 0; i < 4; i += 1) {
+            let blur = shadow_blur_along_x(point.x, point.y - y, sigma, radius, half_size, exponent);
+            alpha += blur * shadow_gaussian(y, sigma) * step;
+            y += step;
+        }
+    }
+    alpha = saturate(alpha) * saturate(0.5 + glass_field(position).x) * saturate(glass.shadow_color.a);
+    if (glass.mask.y > 0.5) {
+        let window = GlassShape(glass.mask_rect, glass.mask_radii);
+        alpha *= saturate(0.5 - rounded_rect(position, window, glass.mask.x, 0.0).x);
+    }
+    return vec4<f32>(glass.shadow_color.rgb * alpha, alpha);
+}
+
 // What the frame already holds at this pixel, under the glass.
 fn under(frame_position: vec2<f32>) -> vec4<f32> {
     let position = frame_position - glass.viewport.zw;
@@ -306,6 +387,9 @@ fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, 
 @fragment
 fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let position = frag.xy;
+    if (glass.shadow.z > 0.5) {
+        return glass_shadow(position);
+    }
     let rim_only = glass.edge_color.w > 0.5;
     // Past the rim nothing lenses, glints or casts the contour, so the face
     // skips the field: most of a large surface draws like a fill.

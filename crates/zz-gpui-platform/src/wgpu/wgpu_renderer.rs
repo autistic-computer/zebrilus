@@ -4256,6 +4256,22 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
+    fn glass_shadows_leave_their_own_faces_unchanged() -> anyhow::Result<()> {
+        use zz_gpui::PlatformHeadlessRenderer;
+        let mut renderer = WgpuHeadlessRenderer::new()?;
+        zz_gpui::check_glass_shadow_rendering(|scene| {
+            renderer.render_scene_to_image(
+                scene,
+                Size {
+                    width: DevicePixels(64),
+                    height: DevicePixels(64),
+                },
+            )
+        })
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
     #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_glass -- --ignored --nocapture"]
     fn bench_glass() -> anyhow::Result<()> {
         use zz_gpui::PlatformHeadlessRenderer;
