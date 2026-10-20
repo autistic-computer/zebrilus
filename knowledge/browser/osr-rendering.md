@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Off-screen rendering & the frame mailbox
-description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, and how zz paces visible sessions.
+description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, and how zz paces visible sessions.
 resource: crates/zz-browser/src/frame.rs
 tags: [browser, osr, frame, gpu, iosurface, hidpi, wayland, pacing]
-timestamp: 2026-10-16T00:00:00Z
+timestamp: 2026-10-19T00:00:00Z
 ---
 
 # Overview
@@ -202,6 +202,27 @@ fixed-capacity state on the frame callback. It formats identity strings and
 materializes the public diagnostic shape only when the trace target is enabled
 or a diagnostics snapshot is requested; the 64-handle bound remains unchanged.
 
+# Popup widgets
+
+Chromium draws `<select>` dropdowns, date pickers and other popup widgets as a
+separate `POPUP` paint, announced by `on_popup_show` and placed by
+`on_popup_size` in view coordinates. zz composites the popup into the view frame
+before it enters the mailbox, so the mailbox, the GPUI paint paths, the macOS
+underlay layer and the TUI all see one frame:
+
+| Tier | Popup paint | View paint |
+| --- | --- | --- |
+| Readback | copies the BGRA buffer into `PopupState` | copies the stored rows over the owned buffer and adds the popup to the damage |
+| Linux wgpu | imports and copies into a zz-owned popup texture | `copy_texture_to_texture` from it into the destination after the view copy |
+| macOS Metal | blits CEF's IOSurface into a zz-owned popup IOSurface | a second blit into the destination, in the same encoder |
+
+`popup_placement` scales the view rect by the popup's own pixel size over its
+view size, then keeps it inside the frame the way cefclient does. A popup paint
+and hiding the popup both call `invalidate(VIEW)`: the popup may repaint while
+the page does not (arrow keys through options), and hiding must repaint the
+rows it covered. With no popup open the only added work is one uncontended
+mutex lock per view paint. The Windows D3D11 tier still ignores `POPUP`.
+
 # Mailbox and frame schema
 
 Every variant carries:
@@ -318,6 +339,7 @@ suppressed by equality checks.
 | --- | --- |
 | `crates/zz-browser/src/frame.rs` | Frame variants, delivery state, mailbox, recycling, and diagnostics. |
 | `crates/zz-browser/src/cef_runtime.rs` | CEF readback/accelerated callbacks, pool generation, fallback, scale, and external BeginFrame host calls. |
+| `crates/zz-browser/src/popup.rs` | Popup state, placement inside the frame, and CPU compositing. |
 | `crates/zz-browser/src/metal_osr.rs` | macOS Metal source import, synchronized blit, and destination `IOSurface` pool. |
 | `crates/zz-browser/src/d3d11_osr.rs` | Windows shared-NT-handle import, in-callback `CopyResource`, and destination D3D11 texture pool. |
 | `crates/zz/src/browser/controller.rs` | Tier decoding, frame-rate policy, fallback recreation, and external BeginFrame activity state. |

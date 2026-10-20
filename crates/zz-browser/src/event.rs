@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::ImeCharacterBounds;
+
 /// Identifies one immutable CEF browser generation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub u64);
@@ -96,6 +98,10 @@ pub enum BrowserEvent {
         session: SessionId,
         cursor: BrowserCursor,
     },
+    ImeCompositionChanged {
+        session: SessionId,
+        bounds: Arc<[ImeCharacterBounds]>,
+    },
     ElementPicked {
         session: SessionId,
         text: Arc<str>,
@@ -147,6 +153,7 @@ impl BrowserEvent {
             | Self::SharedTextureFailed { session, .. }
             | Self::LoadFailed { session, .. }
             | Self::CursorChanged { session, .. }
+            | Self::ImeCompositionChanged { session, .. }
             | Self::ElementPicked { session, .. }
             | Self::ElementPickCancelled { session }
             | Self::ElementPickFailed { session }

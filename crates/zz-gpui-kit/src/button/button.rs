@@ -632,16 +632,20 @@ impl RenderOnce for Button {
             .when(variant.is_link() && !self.disabled, |this| {
                 this.text_decoration_1()
             })
-            .when(!self.disabled && !self.selected && !coarse, |this| {
-                this.hover(move |style| match hover_bg {
-                    Some(bg) => style
+            .hover({
+                let hoverable = !self.disabled && !self.selected && !coarse;
+                move |style| match (hoverable, hover_bg) {
+                    (false, _) => style,
+                    (true, Some(bg)) => style
                         .border_color(hover.border)
                         .shadow(hover.shadow.clone())
                         .text_color(hover.text)
                         .bg(bg),
-                    None => crate::foundation::restyle(style, &hover),
-                })
-                .active(move |style| crate::foundation::restyle(style, &active))
+                    (true, None) => crate::foundation::restyle(style, &hover),
+                }
+            })
+            .when(!self.disabled && !self.selected && !coarse, |this| {
+                this.active(move |style| crate::foundation::restyle(style, &active))
             })
             .refine_style(&self.style)
             .when(pressed > 0.0, |this| {
@@ -729,6 +733,60 @@ impl RenderOnce for Button {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[zz_gpui::test]
+    fn a_selected_button_keeps_tracking_hover(cx: &mut zz_gpui::TestAppContext) {
+        use zz_gpui::{
+            Context, IntoElement, Modifiers, ParentElement as _, Render, Styled as _, point, px,
+        };
+
+        struct Host {
+            selected: bool,
+        }
+
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().p(px(10.)).child(
+                    Button::new("trigger")
+                        .label("Trigger")
+                        .selected(self.selected),
+                )
+            }
+        }
+
+        cx.update(crate::init);
+        let (host, cx) = cx.add_window_view(|_, _| Host { selected: false });
+        let draw = |cx: &mut zz_gpui::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        };
+        draw(cx);
+        cx.simulate_mouse_move(point(px(16.), px(16.)), None, Modifiers::default());
+        draw(cx);
+        host.update(cx, |host, cx| {
+            host.selected = true;
+            cx.notify();
+        });
+        draw(cx);
+        cx.simulate_mouse_move(point(px(400.), px(400.)), None, Modifiers::default());
+        draw(cx);
+        host.update(cx, |host, cx| {
+            host.selected = false;
+            cx.notify();
+        });
+        draw(cx);
+
+        let notified = Rc::new(std::cell::Cell::new(false));
+        let _subscription = cx.update(|_, cx| {
+            let notified = notified.clone();
+            cx.observe(&host, move |_, _| notified.set(true))
+        });
+        cx.simulate_mouse_move(point(px(410.), px(410.)), None, Modifiers::default());
+        assert!(
+            !notified.get(),
+            "the button came out of its selected state still thinking it was hovered"
+        );
+    }
 
     #[zz_gpui::test]
     fn test_button_clickable_logic(_cx: &mut zz_gpui::TestAppContext) {

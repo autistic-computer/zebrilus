@@ -92,8 +92,14 @@ impl View for AnyView {
         Some(self.entity.entity_id())
     }
 
+    #[cfg(not(all(feature = "hot-reload", debug_assertions, not(target_family = "wasm"))))]
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         (self.render)(&self, window, cx)
+    }
+
+    #[cfg(all(feature = "hot-reload", debug_assertions, not(target_family = "wasm")))]
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        subsecond::HotFn::current(self.render).call((&self, window, cx))
     }
 }
 
@@ -307,6 +313,22 @@ struct ViewElementCacheKey {
     text_style: TextStyle,
 }
 
+#[cfg(not(all(feature = "hot-reload", debug_assertions, not(target_family = "wasm"))))]
+#[inline]
+fn render_view<V: View>(view: V, window: &mut Window, cx: &mut App) -> AnyElement {
+    view.render(window, cx).into_any_element()
+}
+
+#[cfg(all(feature = "hot-reload", debug_assertions, not(target_family = "wasm")))]
+fn render_view<V: View>(view: V, window: &mut Window, cx: &mut App) -> AnyElement {
+    #[inline(never)]
+    fn render_view_impl<V: View>(view: V, window: &mut Window, cx: &mut App) -> AnyElement {
+        view.render(window, cx).into_any_element()
+    }
+
+    subsecond::HotFn::current(render_view_impl::<V>).call((view, window, cx))
+}
+
 impl<V: View> Element for ViewElement<V> {
     type RequestLayoutState = Option<AnyElement>;
     type PrepaintState = Option<AnyElement>;
@@ -338,16 +360,12 @@ impl<V: View> Element for ViewElement<V> {
                 self.cached_style.as_ref(),
                 window,
                 cx,
-                &mut |window, cx| view.take().unwrap().render(window, cx).into_any_element(),
+                &mut |window, cx| render_view(view.take().unwrap(), window, cx),
             )
         } else {
             // Stateless path: isolate subtree via type name (no entity identity).
             request_layout_component(type_name::<V>(), window, cx, &mut |window, cx| {
-                self.view
-                    .take()
-                    .unwrap()
-                    .render(window, cx)
-                    .into_any_element()
+                render_view(self.view.take().unwrap(), window, cx)
             })
         }
     }
@@ -370,13 +388,7 @@ impl<V: View> Element for ViewElement<V> {
                 element,
                 window,
                 cx,
-                &mut |window, cx| {
-                    self.view
-                        .take()
-                        .unwrap()
-                        .render(window, cx)
-                        .into_any_element()
-                },
+                &mut |window, cx| render_view(self.view.take().unwrap(), window, cx),
             )
         } else {
             // Stateless path: just prepaint the element.

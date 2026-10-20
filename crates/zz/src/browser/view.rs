@@ -13,10 +13,10 @@ use core_video::pixel_buffer::CVPixelBuffer;
 use zz_browser::WinGpuTexture;
 use zz_browser::{
     BrowserCursor, BrowserEvent, BrowserGpuContext, BrowserKey, ContextMenuRequest,
-    CookieImportBatch, EditCommand, ElementPickerAppearance, KeyInput, MAX_COOKIE_IMPORT_BYTES,
-    Modifiers, PointerButton, PointerEvent, PointerPhase, RuntimePhase, SessionId, Viewport,
-    WheelEvent, diagnostic_url, normalize_browser_profile_name, normalize_url, parse_cookie_import,
-    resolve_address,
+    CookieImportBatch, EditCommand, ElementPickerAppearance, ImeCharacterBounds, KeyInput,
+    MAX_COOKIE_IMPORT_BYTES, Modifiers, PointerButton, PointerEvent, PointerPhase, RuntimePhase,
+    SessionId, Viewport, WheelEvent, diagnostic_url, ime_range_bounds,
+    normalize_browser_profile_name, normalize_url, parse_cookie_import, resolve_address,
 };
 use zz_client::{BROWSER_TABLE, ChromeAction};
 #[cfg(target_os = "macos")]
@@ -460,6 +460,7 @@ pub(crate) struct BrowserView {
     cursor: CursorStyle,
     marked_text: Option<String>,
     prompt_composition: bool,
+    ime_bounds: Arc<[ImeCharacterBounds]>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -812,6 +813,7 @@ impl BrowserView {
             cursor: CursorStyle::Arrow,
             marked_text: None,
             prompt_composition: false,
+            ime_bounds: Arc::default(),
             _subscriptions: vec![
                 address_subscription,
                 controller_subscription,
@@ -1383,6 +1385,11 @@ impl BrowserView {
                 BrowserEvent::CursorChanged { cursor, .. } => {
                     self.cursor = cursor_style(*cursor);
                 }
+                BrowserEvent::ImeCompositionChanged { bounds, .. } => {
+                    self.ime_bounds = Arc::clone(bounds);
+                    window.invalidate_character_coordinates();
+                    return;
+                }
                 BrowserEvent::RenderProcessTerminated { status, .. } => {
                     self.pending_history_uses.remove(&self.active_tab);
                     self.element_pick_active = false;
@@ -1842,6 +1849,7 @@ impl BrowserView {
         self.omnibox.reset();
         self.save_active_tab_state();
         self.active_tab = tab;
+        self.ime_bounds = Arc::default();
         let entry = &self.tabs[index];
         self.current_url = entry.url.clone();
         self.title = entry.title.clone();
@@ -3245,17 +3253,18 @@ impl EntityInputHandler for BrowserView {
 
     fn bounds_for_range(
         &mut self,
-        _: Range<usize>,
+        range_utf16: Range<usize>,
         _: Bounds<Pixels>,
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
-        self.content_bounds.map(|bounds| {
-            Bounds::new(
-                bounds.origin,
-                zz_gpui::size(px(1.0), px(18.0).min(bounds.size.height)),
-            )
-        })
+        let characters: &[ImeCharacterBounds] = if self.prompt_composition {
+            &[]
+        } else {
+            &self.ime_bounds
+        };
+        self.content_bounds
+            .map(|content| ime_window_bounds(content, characters, range_utf16))
     }
 
     fn character_index_for_point(
@@ -3269,6 +3278,23 @@ impl EntityInputHandler for BrowserView {
 }
 
 impl zz_gpui::EventEmitter<PaneDrag> for BrowserView {}
+
+fn ime_window_bounds(
+    content: Bounds<Pixels>,
+    characters: &[ImeCharacterBounds],
+    range_utf16: Range<usize>,
+) -> Bounds<Pixels> {
+    match ime_range_bounds(characters, range_utf16) {
+        Some(character) => Bounds::new(
+            content.origin + point(px(character.x), px(character.y)),
+            zz_gpui::size(px(character.width.max(1.0)), px(character.height)),
+        ),
+        None => Bounds::new(
+            content.origin,
+            zz_gpui::size(px(1.0), px(18.0).min(content.size.height)),
+        ),
+    }
+}
 
 impl Render for BrowserChromeView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -5210,6 +5236,38 @@ mod tests {
         assert_eq!(
             cx.update(|_, cx| view.read(cx).address.read(cx).value().to_string()),
             "https://settled.example"
+        );
+    }
+
+    #[test]
+    fn ime_bounds_map_cef_view_rects_into_window_coordinates() {
+        let content = Bounds::new(
+            point(px(120.0), px(64.0)),
+            zz_gpui::size(px(800.0), px(600.0)),
+        );
+        let hidpi_zoomed = [
+            ImeCharacterBounds::from_view(60, 30, 30, 45, 1.5 * 2.0),
+            ImeCharacterBounds::from_view(90, 30, 30, 45, 1.5 * 2.0),
+        ];
+        assert_eq!(
+            ime_window_bounds(content, &hidpi_zoomed, 0..2),
+            Bounds::new(
+                point(px(140.0), px(74.0)),
+                zz_gpui::size(px(20.0), px(15.0))
+            )
+        );
+        assert_eq!(
+            ime_window_bounds(content, &hidpi_zoomed, 2..2),
+            Bounds::new(point(px(160.0), px(74.0)), zz_gpui::size(px(1.0), px(15.0)))
+        );
+        let logical = [ImeCharacterBounds::from_view(5, 7, 9, 18, 1.0)];
+        assert_eq!(
+            ime_window_bounds(content, &logical, 0..1),
+            Bounds::new(point(px(125.0), px(71.0)), zz_gpui::size(px(9.0), px(18.0)))
+        );
+        assert_eq!(
+            ime_window_bounds(content, &[], 0..0),
+            Bounds::new(content.origin, zz_gpui::size(px(1.0), px(18.0)))
         );
     }
 

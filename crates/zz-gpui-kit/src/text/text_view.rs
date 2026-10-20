@@ -374,6 +374,53 @@ mod tests {
     }
 
     #[zz_gpui::test]
+    fn hovering_plain_glyphs_does_not_redraw(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|cx| {
+                InlineImageTextViewTestRoot::new(
+                    "plain words then [a link](https://example.com) end",
+                    cx,
+                )
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let state = root.read_with(cx, |root, cx| {
+            root.view()
+                .clone()
+                .downcast::<InlineImageTextViewTestRoot>()
+                .unwrap()
+                .read(cx)
+                .text_view
+                .clone()
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let notified = std::rc::Rc::new(std::cell::Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            let notified = notified.clone();
+            cx.observe(&state, move |_, _| notified.set(notified.get() + 1))
+        });
+        for step in 0..12 {
+            cx.simulate_mouse_move(
+                point(px(2. + step as f32 * 8.), px(8.)),
+                None,
+                Modifiers::default(),
+            );
+        }
+        assert_eq!(
+            notified.get(),
+            0,
+            "moving over plain glyphs redrew the view"
+        );
+
+        cx.simulate_mouse_move(point(px(190.), px(8.)), None, Modifiers::default());
+        assert_eq!(notified.get(), 1, "entering a link redraws for its cursor");
+    }
+
+    #[zz_gpui::test]
     fn inline_image_after_hard_break_starts_the_next_line(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|window, cx| {
@@ -488,6 +535,64 @@ mod tests {
         assert!(
             selected_text.is_empty(),
             "unexpected selection: {selected_text:?}"
+        );
+    }
+
+    struct ClippedTallTextViewTestRoot {
+        text_view: Entity<TextViewState>,
+    }
+
+    impl Render for ClippedTallTextViewTestRoot {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .w(px(200.))
+                .child(
+                    div()
+                        .h(px(40.))
+                        .overflow_hidden()
+                        .child(TextView::new(&self.text_view).selectable(true)),
+                )
+                .child(div().h(px(160.)))
+        }
+    }
+
+    #[zz_gpui::test]
+    fn selection_band_beyond_clip_copies_offscreen_text(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|cx| ClippedTallTextViewTestRoot {
+                text_view: cx
+                    .new(|cx| TextViewState::markdown("alpha\n\nbravo\n\ncharlie\n\ndelta", cx)),
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let content = root.read_with(cx, |root, _| {
+            root.view()
+                .clone()
+                .downcast::<ClippedTallTextViewTestRoot>()
+                .unwrap()
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let end = point(px(180.), px(150.));
+        cx.simulate_mouse_down(
+            point(px(2.), px(8.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::default());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let selected_text =
+            content.read_with(cx, |root, cx| root.text_view.read(cx).selected_text());
+        assert!(
+            selected_text.contains("charlie") && selected_text.contains("delta"),
+            "clipped-out text was not copied: {selected_text:?}"
         );
     }
 
