@@ -48,9 +48,14 @@ fn connection(state: &HostState, loaded: bool) -> HostConnection {
         HostState::Disconnected => HostConnection::Disconnected,
         HostState::Unreachable { reason } => HostConnection::Unreachable(reason.clone().into()),
         HostState::Missing => HostConnection::Unreachable("zz is not installed".into()),
-        HostState::Incompatible { remote, .. } => {
-            HostConnection::Incompatible(format!("protocol v{remote}").into())
-        }
+        HostState::Incompatible { remote, .. } => HostConnection::Incompatible(
+            remote
+                .map_or_else(
+                    || "an older protocol".to_owned(),
+                    |remote| format!("protocol v{remote}"),
+                )
+                .into(),
+        ),
     }
 }
 

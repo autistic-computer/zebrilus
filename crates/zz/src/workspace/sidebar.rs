@@ -1513,21 +1513,13 @@ fn render_tree_row_context_menu(
             .and_then(|tree_host| tree_host.state.install_offer())
         {
             let install_mux = runtime.mux.clone();
-            let install_name = name.clone();
             items.push(TreeRowMenuItem::new(
                 crate::workspace::remote_install::menu_label(offer),
-                move |window, cx| match offer {
-                    InstallOffer::Install => {
-                        install_mux.update(cx, |mux, cx| mux.install_zz_on_host(host, cx));
-                    }
-                    InstallOffer::Update => crate::workspace::remote_install::open(
-                        &install_mux,
-                        host,
-                        &install_name,
-                        offer,
-                        window,
-                        cx,
-                    ),
+                move |_, cx| {
+                    install_mux.update(cx, |mux, cx| match offer {
+                        InstallOffer::Install => mux.install_zz_on_host(host, cx),
+                        InstallOffer::Update => mux.offer_update(host, cx),
+                    });
                 },
             ));
         }
@@ -2839,7 +2831,7 @@ mod tests {
         };
         let incompatible = HostState::Incompatible {
             local: 33,
-            remote: 31,
+            remote: Some(31),
         };
         let disconnected = HostState::Disconnected;
         let loaded_snapshot = MuxSnapshot::default();
@@ -2893,7 +2885,7 @@ mod tests {
         };
         let incompatible = HostState::Incompatible {
             local: 33,
-            remote: 31,
+            remote: Some(31),
         };
         let remote_snapshot = MuxSnapshot {
             generation: 2,
