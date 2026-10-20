@@ -1674,6 +1674,7 @@ pub struct CaptureOptions {
     pub number_lines: bool,
     pub line_flags: bool,
     pub hyperlinks: bool,
+    pub skip_input: bool,
 }
 
 impl Default for CaptureOptions {
@@ -1691,6 +1692,7 @@ impl Default for CaptureOptions {
             number_lines: false,
             line_flags: false,
             hyperlinks: false,
+            skip_input: false,
         }
     }
 }
@@ -9337,6 +9339,16 @@ fn capture_grid(
     };
     let per_row = options.number_lines || options.line_flags;
     let output = format_range(options.join_wrapped && !per_row)?;
+    let output = if options.skip_input {
+        blank_prompt_lines(
+            terminal,
+            &output,
+            (start, end),
+            options.join_wrapped && !per_row,
+        )?
+    } else {
+        output
+    };
     let rows = if per_row && options.join_wrapped {
         Some(
             (start..=end)
@@ -9381,6 +9393,49 @@ fn capture_grid(
         visible_start,
         flags.as_deref(),
     ))
+}
+
+fn blank_prompt_lines(
+    terminal: &impl CaptureGrid,
+    output: &str,
+    (start, end): (u64, u64),
+    joined: bool,
+) -> Result<String, TerminalCaptureError> {
+    let row_at = |row: u64| {
+        terminal
+            .grid_ref(Point::Screen(PointCoordinate {
+                x: 0,
+                y: u32::try_from(row).unwrap_or(u32::MAX),
+            }))
+            .and_then(|grid| grid.row())
+            .map_err(capture_failure)
+    };
+    let mut row = start;
+    let mut lines = output.split('\n').peekable();
+    let mut blanked = String::with_capacity(output.len());
+    while let Some(line) = lines.next() {
+        let prompt = if row <= end {
+            let first = row_at(row)?;
+            let prompt =
+                first.semantic_prompt().map_err(capture_failure)? != RowSemanticPrompt::None;
+            let mut wrapped = first.is_wrapped().map_err(capture_failure)?;
+            row += 1;
+            while joined && wrapped && row <= end {
+                wrapped = row_at(row)?.is_wrapped().map_err(capture_failure)?;
+                row += 1;
+            }
+            prompt
+        } else {
+            false
+        };
+        if !prompt {
+            blanked.push_str(line);
+        }
+        if lines.peek().is_some() {
+            blanked.push('\n');
+        }
+    }
+    Ok(blanked)
 }
 
 const LINE_FLAG_HYPERLINK: u8 = 1 << 0;
@@ -22677,6 +22732,76 @@ mod tests {
             (capture.command.as_str(), capture.running),
             ("sleep 9", true)
         );
+    }
+
+    #[test]
+    fn skip_input_blanks_prompt_and_typed_input_lines() {
+        let options = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            ..CaptureOptions::default()
+        };
+        let skip = CaptureOptions {
+            skip_input: true,
+            ..options
+        };
+        let mut terminal = new_terminal(24, 8, 64).expect("terminal");
+        terminal.vt_write(
+            b"\x1b]133;A\x07$ \x1b]133;B\x07echo DONE\x1b]133;C\x07\r\nDONE\r\n\
+              \x1b]133;D;0\x07\x1b]133;A\x07$ \x1b]133;B\x07echo 'a\r\n> b'\x1b]133;C\x07\r\nout\r\n",
+        );
+        let plain = capture_terminal(&terminal, None, options).expect("capture");
+        let skipped = capture_terminal(&terminal, None, skip).expect("capture");
+        assert_eq!(
+            plain.lines().take(5).collect::<Vec<_>>(),
+            ["$ echo DONE", "DONE", "$ echo 'a", "> b'", "out"]
+        );
+        assert_eq!(
+            skipped.lines().take(5).collect::<Vec<_>>(),
+            ["", "DONE", "", "", "out"]
+        );
+        assert_eq!(skipped.lines().count(), plain.lines().count());
+        let mut bare = new_terminal(24, 8, 64).expect("terminal");
+        bare.vt_write(b"$ echo DONE\r\nDONE\r\n");
+        assert_eq!(
+            capture_terminal(&bare, None, skip),
+            capture_terminal(&bare, None, options)
+        );
+    }
+
+    #[test]
+    fn skip_input_blanks_a_wrapped_prompt_split_across_capture_steps() {
+        let session = TerminalSession::spawn_empty_with_appearance(
+            4096,
+            Arc::new(TerminalAppearance::default()),
+        );
+        session.resize(40, 10, 8, 16);
+        let mut bytes = "x\r\n"
+            .repeat(usize::try_from(CAPTURE_ROWS_PER_STEP).unwrap() - 1)
+            .into_bytes();
+        let command = format!("echo {}", "y".repeat(40));
+        bytes.extend(
+            format!("\x1b]133;A\x07\x1b]133;B\x07{command}\x1b]133;C\x07\r\nafter\r\n").bytes(),
+        );
+        assert!(session.feed(Arc::from(bytes)));
+        let options = CaptureOptions {
+            start: CaptureBoundary::HistoryStart,
+            join_wrapped: true,
+            preserve_trailing: true,
+            ..CaptureOptions::default()
+        };
+        let plain = session.capture(options).expect("capture");
+        assert!(plain.contains(&command), "{plain:?}");
+        let skipped = session
+            .capture(CaptureOptions {
+                skip_input: true,
+                ..options
+            })
+            .expect("capture");
+        assert!(!skipped.contains('y'), "{skipped:?}");
+        assert!(skipped.contains("after"));
+        assert_eq!(skipped.lines().count(), plain.lines().count());
     }
 
     #[test]

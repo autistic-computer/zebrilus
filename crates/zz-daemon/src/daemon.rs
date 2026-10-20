@@ -78322,6 +78322,52 @@ set-option -g @alias-mixed-next yes
 
     #[cfg(unix)]
     #[test]
+    fn wait_pane_until_skips_the_prompt_and_typed_command() {
+        let (shared, client, target) = send_text_fixture(
+            "waitprompt",
+            r"printf 'zz-ready\r\n\033]133;A\007$ \033]133;B\007echo DONE\033]133;C\007\r\n'; exec /bin/cat",
+        );
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.contains("$ echo DONE")
+        });
+        for condition in ["--until", "--regex"] {
+            let error = shared
+                .execute(
+                    client,
+                    ClientKind::Command,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new(
+                        "wait-pane",
+                        ["-t", &target, condition, "DONE", "--timeout", "0.5"],
+                    ),
+                )
+                .expect_err("the typed command is not output");
+            assert!(matches!(
+                error,
+                DaemonError::CommandExit { exit_code: 124, .. }
+            ));
+        }
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("send-text", ["-t", &target, "DONE"]),
+            )
+            .expect("print a DONE line");
+        let execution = shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("wait-pane", ["-t", &target, "--until", "DONE"]),
+            )
+            .expect("an output line matches");
+        assert_eq!(execution.output, "DONE\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn wait_pane_scans_new_scrollback_but_ignores_old_history() {
         let (shared, client, target) = send_text_fixture(
             "waitscrollback",
