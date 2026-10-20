@@ -46,15 +46,20 @@ use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
 #[cfg(any(unix, windows, test))]
 use crate::unmasked::SpawnUnmasked as _;
 
-/// `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported from `~/.bash_profile` or
-/// `~/.zshrc` never reaches it, which hides the CLI that install.sh linked into one of these.
-/// Appending leaves whatever the profile did contribute ahead of the fallbacks. A Mac app dragged
-/// out of the disk image has no CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
+/// `$zz_managed` is the copy installing over ssh puts in place and can update, so it wins over any
+/// other zz on the login PATH; otherwise a package or cargo copy earlier on PATH would keep
+/// answering after every update. `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported
+/// from `~/.bash_profile` or `~/.zshrc` never reaches it, which hides the CLI that install.sh
+/// linked into one of these. Appending leaves whatever the profile did contribute ahead of the
+/// fallbacks, for the daemon these scripts start. A Mac app dragged out of the disk image has no
+/// CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
 fn remote_path_fallback() -> String {
     format!(
         "PATH=\"$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; export PATH; \
-         zz_cli={name}; if ! command -v {name} >/dev/null 2>&1; then \
+         zz_managed=\"$HOME/.local/bin/{name}\"; zz_cli={name}; \
+         if [ -x \"$zz_managed\" ]; then zz_cli=\"$zz_managed\"; \
+         elif ! command -v {name} >/dev/null 2>&1; then \
          for zz_apps in /Applications \"$HOME/Applications\"; do \
          if [ -x \"$zz_apps/{app}.app/Contents/MacOS/cli\" ]; \
          then zz_cli=\"$zz_apps/{app}.app/Contents/MacOS/cli\"; break; fi; done; fi; ",
@@ -612,16 +617,12 @@ pub(crate) fn remote_daemon_start_script(remote_socket: &Path) -> String {
 
 #[cfg(any(unix, windows, test))]
 pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon: bool) -> String {
-    let installed = format!(
-        "\"$HOME/.local/bin/{}\"",
-        zz_protocol::app_identity::DIRECTORY
-    );
     let restart = if restart_daemon {
         let socket = remote_socket.map_or_else(String::new, |socket| {
             format!("--socket {} ", shell_quote(&socket.to_string_lossy()))
         });
         format!(
-            "if [ \"$zz_protocol\" = {protocol} ]; then {installed} {socket}kill-server \
+            "if [ \"$zz_protocol\" = {protocol} ]; then \"$zz_managed\" {socket}kill-server \
              >/dev/null 2>&1; fi; ",
             protocol = zz_protocol::PROTOCOL_VERSION,
         )
@@ -630,10 +631,10 @@ pub(crate) fn remote_install_script(remote_socket: Option<&Path>, restart_daemon
     };
     format!(
         "{fallback}zz_found=$(command -v \"$zz_cli\" 2>/dev/null); \
-         if [ -n \"$zz_found\" ] && {{ [ \"$zz_found\" != {installed} ] || [ -L \"$zz_found\" ]; }}; \
+         if [ -n \"$zz_found\" ] && {{ [ \"$zz_found\" != \"$zz_managed\" ] || [ -L \"$zz_found\" ]; }}; \
          then printf 'zz-install-elsewhere=%s\\n' \"$zz_found\"; exit {REMOTE_INSTALL_ELSEWHERE_STATUS}; fi; \
          sh -s -- --headless --version {version} || exit {REMOTE_INSTALL_FAILED_STATUS}; \
-         zz_protocol=$({installed} protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
+         zz_protocol=$(\"$zz_managed\" protocol-version) || exit {REMOTE_INSTALL_BROKEN_STATUS}; \
          {restart}printf 'zz-install-protocol=%s\\n' \"$zz_protocol\"",
         fallback = remote_path_fallback(),
         version = env!("CARGO_PKG_VERSION"),
@@ -2069,6 +2070,7 @@ mod tests {
             remote_socket_probe(),
             remote_daemon_start_script(Path::new("/run/zz.sock")),
             remote_proxy_script(Path::new("/run/zz.sock")),
+            remote_install_script(Some(Path::new("/run/zz.sock")), true),
         ];
         for script in scripts {
             for dir in ["$HOME/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"] {
@@ -2088,6 +2090,7 @@ mod tests {
             fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))
                 .expect("executable permissions");
         }
+        let home = tempfile::tempdir().expect("temporary home");
         let path = format!("{}:/usr/bin:/bin", directory.path().display());
         let name = zz_protocol::app_identity::DIRECTORY;
         for (script, expected) in [
@@ -2100,11 +2103,60 @@ mod tests {
             let output = Command::new("/bin/sh")
                 .args(["-c", &format!("sh -c {script}")])
                 .env("PATH", &path)
+                .env("HOME", home.path())
                 .output()
                 .expect("run remote script");
             assert!(output.status.success());
             assert!(String::from_utf8_lossy(&output.stdout).ends_with(&expected));
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_scripts_prefer_the_managed_copy_over_an_earlier_path_zz() {
+        let name = zz_protocol::app_identity::DIRECTORY;
+        let home = tempfile::tempdir().expect("temporary home");
+        let package = tempfile::tempdir().expect("package prefix");
+        let managed = home.path().join(".local/bin");
+        fs::create_dir_all(&managed).expect("managed bin");
+        for (directory, label) in [(package.path(), "package"), (managed.as_path(), "managed")] {
+            let binary = directory.join(name);
+            fs::write(
+                &binary,
+                format!(
+                    "#!/bin/sh\nif [ \"$1\" = daemon ]; then : > \"$HOME/{label}-ran\"; fi\n\
+                     printf '%s\\n' '{label}'\n"
+                ),
+            )
+            .expect("write executable");
+            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))
+                .expect("executable permissions");
+        }
+        let socket_dir = tempfile::tempdir().expect("socket directory");
+        let socket = socket_dir.path().join("zz.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).expect("bind socket");
+        let path = format!("{}:/usr/bin:/bin", package.path().display());
+        let run = |script: String| {
+            let output = Command::new("/bin/sh")
+                .args(["-c", &format!("sh -c {script}")])
+                .env("PATH", &path)
+                .env("HOME", home.path())
+                .output()
+                .expect("run remote script");
+            assert!(output.status.success(), "{output:?}");
+            String::from_utf8_lossy(&output.stdout).into_owned()
+        };
+
+        assert!(run(remote_socket_probe()).ends_with("zz-probe-protocol=managed\n"));
+        assert!(run(shell_quote(&remote_proxy_script(&socket))).ends_with("managed\n"));
+        run(shell_quote(&remote_daemon_start_script(&socket)));
+        let started = home.path().join("managed-ran");
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !started.exists() && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(started.exists(), "the auto-start ran another zz");
+        assert!(!home.path().join("package-ran").exists());
     }
 
     #[cfg(unix)]
@@ -2425,8 +2477,12 @@ mod tests {
 
     #[test]
     fn autostart_script_stays_on_one_line_for_csh_logins() {
-        let script = remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock"));
-        assert!(!script.contains('\n'), "{script}");
+        for script in [
+            remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock")),
+            remote_install_script(Some(Path::new("/run/user/1000/zz/default.sock")), true),
+        ] {
+            assert!(!script.contains('\n'), "{script}");
+        }
     }
 
     #[test]
