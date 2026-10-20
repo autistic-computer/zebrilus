@@ -1373,7 +1373,13 @@ fn run_native_attach(
 fn top_level_help() -> String {
     use std::fmt::Write as _;
 
-    let mut help = String::from("usage: zz [global flags] <command> [flags]\n\nzz verbs\n");
+    let mut help = String::from(concat!(
+        "usage: zz [global flags] <command> [flags]\n\n",
+        "global flags\n",
+        "  --host NAME|DEST|all  run on a host from zz list-hosts, an ssh destination, or every host (read-only verbs)\n",
+        "  -L NAME, -S PATH, -f FILE  tmux socket and config flags; zz -h lists the rest\n",
+        "\nzz verbs\n",
+    ));
     for name in zz_protocol::NATIVE_COMMAND_NAMES {
         if let Some(spec) = catalog_command_spec(name)
             && !spec.is_internal()
