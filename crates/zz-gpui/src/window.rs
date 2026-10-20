@@ -13,9 +13,9 @@ use crate::{
     AsyncWindowContext, AtlasTile, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow,
     Capslock, Context, Corners, CursorHideMode, CursorStyle, CustomShader, Decorations,
     DevicePixels, DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect,
-    Entity, EntityId, EventEmitter, FileDropEvent, FontId, Glass, GlassMaterial, GlassShape,
-    Global, GlobalElementId, GlyphId, GlyphRenderOptions, GpuSpecs, Hsla, InputHandler, IsZero,
-    KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke, KeystrokeEvent, LayoutId,
+    Entity, EntityId, EventEmitter, FileDropEvent, FontId, Glass, GlassMaterial, GlassShadow,
+    GlassShape, Global, GlobalElementId, GlyphId, GlyphRenderOptions, GpuSpecs, Hsla, InputHandler,
+    IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke, KeystrokeEvent, LayoutId,
     LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite, MouseButton, MouseEvent,
     MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
     PlatformInputHandler, PlatformWindow, Point, PolychromeSprite, Priority, PromptButton,
@@ -4938,7 +4938,6 @@ impl Window {
             return;
         }
 
-        let opacity = self.element_opacity();
         let fill = if material.is_opaque_fill() && (shapes.len() == 1 || material.merge <= px(0.)) {
             Some(material.tint.alpha(material.opacity))
         } else if !self.platform_window.supports_backdrop_sampling() {
@@ -4962,10 +4961,20 @@ impl Window {
             return;
         }
 
+        let glass = self.glass_primitive(shapes, &material, corner_smoothing);
+        self.next_frame.scene.insert_primitive(glass);
+    }
+
+    pub(crate) fn glass_primitive(
+        &self,
+        shapes: &[GlassShape],
+        material: &GlassMaterial,
+        corner_smoothing: Option<f32>,
+    ) -> Glass {
         let scale_factor = self.scale_factor();
         let (slots, shape_count, shape_bounds) = glass_shape_slots(shapes, scale_factor);
         let mut material = material.scale(scale_factor);
-        material.opacity *= opacity;
+        material.opacity *= self.element_opacity();
         let bounds = shape_bounds.dilate(ScaledPixels(material.edge_width.as_f32().max(0.) + 1.5));
         // The backdrop takes in what the glass draws too, its contour
         // included, so the glass orders after everything under any of it.
@@ -4975,7 +4984,7 @@ impl Window {
         } else {
             bounds
         };
-        self.next_frame.scene.insert_primitive(Glass {
+        Glass {
             order: 0,
             bounds,
             backdrop_bounds,
@@ -4984,7 +4993,57 @@ impl Window {
             shape_count,
             corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             material,
-        });
+            shadow: None,
+        }
+    }
+
+    pub(crate) fn paint_glass_with_shadows(
+        &mut self,
+        shape: GlassShape,
+        material: &GlassMaterial,
+        corner_smoothing: Option<f32>,
+        shadows: &[BoxShadow],
+    ) {
+        if !self.supports_backdrop_sampling() {
+            self.paint_drop_shadows_with_smoothing(
+                shape.bounds,
+                shape.corner_radii,
+                shadows,
+                corner_smoothing,
+            );
+        }
+        self.paint_glass_shapes_with_smoothing(&[shape], material, corner_smoothing);
+        if self.supports_backdrop_sampling() && shadows.iter().any(|shadow| !shadow.inset) {
+            let glass = self.glass_primitive(&[shape], material, corner_smoothing);
+            self.paint_glass_shadows(&glass, shape, shadows, corner_smoothing);
+        }
+    }
+
+    pub(crate) fn paint_glass_shadows(
+        &mut self,
+        glass: &Glass,
+        shape: GlassShape,
+        shadows: &[BoxShadow],
+        corner_smoothing: Option<f32>,
+    ) {
+        self.invalidator.debug_assert_paint();
+        let scale = self.scale_factor();
+        for shadow in shadows.iter().filter(|shadow| !shadow.inset) {
+            let radii = shape
+                .corner_radii
+                .map(|radius| (*radius + shadow.spread_radius).max(Pixels::ZERO));
+            let caster = GlassShadow {
+                bounds: self
+                    .cover_bounds((shape.bounds + shadow.offset).dilate(shadow.spread_radius)),
+                corner_radii: radii.scale(scale),
+                blur_radius: shadow.blur_radius.scale(scale),
+                color: shadow.color.opacity(self.element_opacity()),
+                corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
+            };
+            self.next_frame
+                .scene
+                .insert_primitive(glass.with_shadow(caster));
+        }
     }
 
     /// Paint the drop (non-inset) shadows from `shadows` into the scene at the current

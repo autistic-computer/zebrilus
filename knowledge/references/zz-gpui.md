@@ -334,6 +334,17 @@ activation callback refreshes the window, so cached views paint the new material
 always count as active. The kit's neutral glass buttons dim their labels by the same fraction.
 `check_glass_rendering` covers both fields.
 
+Glass casts its own drop shadows (2026-10-20). A plain `Shadow` primitive is not clipped to its
+element, so under translucent glass it showed through the face and greyed it in light themes.
+Where the platform samples backdrops, `Window::paint_glass_with_shadows` (used by `Style::glass`,
+`LiquidGlass` and `GlassGroup`) paints the body first and then one `Glass::with_shadow` draw per
+non-inset shadow: the same shapes and merge, with `fs_glass` returning only the gaussian shadow
+masked to outside the body's field, so it follows melted groups and swelling glass. These draws read
+nothing, so `plan_glass` now starts a new run only when the next glass reads its backdrop and
+overlaps the run. Platforms without backdrop sampling keep the old drop shadows under their
+fallback fill. `check_glass_shadow_rendering` (Metal and wgpu) holds the face unchanged at any
+shadow strength.
+
 `check_glass_rendering`, which both renderers' `glass_lenses_its_backdrop` run, compares the flat
 face against the full field within 1/255 for square, round, smoothed, circular and uneven corners,
 two melting and two overlapping shapes, five materials (lit opaque, edge, glowing and grainy, a

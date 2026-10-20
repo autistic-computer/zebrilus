@@ -690,7 +690,8 @@ pub struct GlassUniform {
     pub mask_rect: [f32; 4],
     /// Its corner radii.
     pub mask_radii: [f32; 4],
-    /// Its corner smoothing, then 1 when there is a clip.
+    /// Its corner smoothing, 1 when there is a clip, then how directional
+    /// the light is.
     pub mask: [f32; 4],
     /// The glint and fresnel glow's color, scaled by its alpha, then
     /// padding.
@@ -698,13 +699,22 @@ pub struct GlassUniform {
     /// The contour's color, its alpha already in the edge shadow strength,
     /// then 1 when the glass draws only its rim.
     pub edge_color: [f32; 4],
+    /// The rectangle casting the shadow: `[x, y, width, height]`.
+    pub shadow_bounds: [f32; 4],
+    /// Its corner radii.
+    pub shadow_radii: [f32; 4],
+    /// Straight RGBA shadow color.
+    pub shadow_color: [f32; 4],
+    /// Blur radius, corner smoothing, then 1 when the draw is only the
+    /// shadow, then padding.
+    pub shadow: [f32; 4],
 }
 
 impl GlassUniform {
     /// Whether the draw reads its backdrop, and so writes its pixels with
     /// blending off: the pipeline it needs.
     pub fn reads_backdrop(&self) -> bool {
-        self.tint[3] < 1.
+        self.shadow[2] == 0. && self.tint[3] < 1.
     }
 
     /// The block's bytes, as the shader lays them out.
@@ -769,6 +779,22 @@ impl GlassBlurUniform {
     }
 }
 
+/// A drop shadow cast by glass, drawn after it and only outside its body,
+/// so translucent glass never shows its own shadow through its face.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GlassShadow {
+    /// The rectangle casting the shadow, offset and spread applied.
+    pub bounds: Bounds<ScaledPixels>,
+    /// Its corner radii, spread applied.
+    pub corner_radii: Corners<ScaledPixels>,
+    /// Standard deviation of the shadow's blur.
+    pub blur_radius: ScaledPixels,
+    /// The shadow's color; its alpha is how dark it is.
+    pub color: Hsla,
+    /// Superellipse exponent for its corners.
+    pub corner_smoothing: f32,
+}
+
 /// Glass painted into a scene, sized in device pixels.
 #[derive(Clone, Debug)]
 #[expect(missing_docs)]
@@ -784,12 +810,29 @@ pub struct Glass {
     pub corner_smoothing: f32,
     /// The material with its lengths in device pixels.
     pub material: GlassMaterial,
+    /// Set when this draw is only a shadow the glass casts; see
+    /// [`Self::with_shadow`].
+    pub shadow: Option<GlassShadow>,
 }
 
 impl Glass {
     /// Whether drawing this glass reads the frame under it.
     pub fn reads_backdrop(&self) -> bool {
-        self.material.reads_backdrop()
+        self.shadow.is_none() && self.material.reads_backdrop()
+    }
+
+    /// A draw of only `shadow`, masked by this glass's body. It reads
+    /// nothing, so it shares a pass with the glass it follows.
+    pub fn with_shadow(&self, shadow: GlassShadow) -> Self {
+        let bounds = shadow
+            .bounds
+            .dilate(ScaledPixels(3. * shadow.blur_radius.0.max(0.)));
+        Self {
+            bounds,
+            backdrop_bounds: bounds,
+            shadow: Some(shadow),
+            ..self.clone()
+        }
     }
 
     /// The blur this glass asks for, given how deep the chain may go. Glass
@@ -971,6 +1014,34 @@ impl Glass {
                 edge.b,
                 if material.rim_only { 1. } else { 0. },
             ],
+            shadow_bounds: self.shadow.map_or([0.; 4], |shadow| {
+                [
+                    shadow.bounds.origin.x.0,
+                    shadow.bounds.origin.y.0,
+                    shadow.bounds.size.width.0,
+                    shadow.bounds.size.height.0,
+                ]
+            }),
+            shadow_radii: self.shadow.map_or([0.; 4], |shadow| {
+                [
+                    shadow.corner_radii.top_left.0,
+                    shadow.corner_radii.top_right.0,
+                    shadow.corner_radii.bottom_right.0,
+                    shadow.corner_radii.bottom_left.0,
+                ]
+            }),
+            shadow_color: self.shadow.map_or([0.; 4], |shadow| {
+                let color = shadow.color.to_rgb();
+                [color.r, color.g, color.b, color.a]
+            }),
+            shadow: self.shadow.map_or([0.; 4], |shadow| {
+                [
+                    shadow.blur_radius.0.max(0.),
+                    shadow.corner_smoothing,
+                    1.,
+                    0.,
+                ]
+            }),
         }
     }
 
@@ -1096,6 +1167,7 @@ pub fn plan_glass(
     let mut start = 0;
     for end in 1..=planned.len() {
         let overlaps = end < planned.len()
+            && planned[end].glass.reads_backdrop()
             && planned[start..end]
                 .iter()
                 .any(|other| overlap(other, &planned[end]));
@@ -1409,6 +1481,7 @@ fn glass_scene_over(alpha: f32, material: Option<GlassMaterial>) -> crate::Scene
         shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
         scene.insert_primitive(Glass {
             order: 0,
+            shadow: None,
             bounds: shape.dilate(ScaledPixels(2.)),
             backdrop_bounds: shape.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
             content_mask: ContentMask {
@@ -1494,6 +1567,7 @@ pub fn bench_glass_rendering(
             let dilated = bounds.dilate(ScaledPixels(3.));
             scene.insert_primitive(Glass {
                 order: 0,
+                shadow: None,
                 bounds: dilated,
                 backdrop_bounds: if material.reads_backdrop() {
                     bounds.dilate(ScaledPixels(material.backdrop_reach().as_f32()))
@@ -1691,6 +1765,7 @@ pub fn check_glass_hides_the_frame_under_it(
         shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
         scene.insert_primitive(Glass {
             order: 0,
+            shadow: None,
             bounds: shape.dilate(ScaledPixels(2.)),
             backdrop_bounds: shape.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
             content_mask: ContentMask {
@@ -1757,6 +1832,7 @@ pub fn check_rim_glass_lights_only_the_edge(
             shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
             scene.insert_primitive(Glass {
                 order: 0,
+                shadow: None,
                 bounds: shape.dilate(ScaledPixels(2.)),
                 backdrop_bounds: shape.dilate(ScaledPixels(2.)),
                 content_mask: ContentMask { bounds: page },
@@ -1969,6 +2045,7 @@ pub fn check_glass_rendering(
     let clear = GlassMaterial::regular().vanished();
     stacked.insert_primitive(Glass {
         order: 0,
+        shadow: None,
         bounds: shape.dilate(ScaledPixels(2.)),
         backdrop_bounds: shape.dilate(ScaledPixels(clear.backdrop_reach().as_f32())),
         content_mask: crate::ContentMask {
@@ -2149,6 +2226,7 @@ fn glass_body_scene(
     let bounds = union.dilate(ScaledPixels(material.edge_width.as_f32().max(0.) + 1.5));
     scene.insert_primitive(Glass {
         order: 0,
+        shadow: None,
         bounds,
         backdrop_bounds: if material.reads_backdrop() {
             union
@@ -2286,7 +2364,7 @@ mod tests {
 
     #[test]
     fn uniform_blocks_match_the_shader_layout() {
-        assert_eq!(std::mem::size_of::<GlassUniform>(), 496);
+        assert_eq!(std::mem::size_of::<GlassUniform>(), 560);
         assert_eq!(std::mem::size_of::<GlassBlurUniform>(), 32);
     }
 
@@ -2315,6 +2393,7 @@ mod tests {
         let material = GlassMaterial::regular().blur(px(blur));
         Glass {
             order: 0,
+            shadow: None,
             bounds,
             backdrop_bounds: bounds.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
             content_mask: crate::ContentMask {
@@ -2327,6 +2406,54 @@ mod tests {
             shape_count: 1,
             corner_smoothing: 2.,
             material,
+        }
+    }
+
+    #[test]
+    fn glass_shadows_keep_the_body_mask_without_reading_a_backdrop() {
+        for material in [
+            GlassMaterial::regular().opacity(0.),
+            GlassMaterial::regular().rim(),
+        ] {
+            let mut body = test_glass(100., 12.);
+            body.material = material;
+            body.corner_smoothing = 4.;
+            let caster = GlassShadow {
+                bounds: Bounds::new(
+                    point(ScaledPixels(106.), ScaledPixels(107.)),
+                    size(ScaledPixels(40.), ScaledPixels(40.)),
+                ),
+                corner_radii: Corners::all(ScaledPixels(8.)),
+                blur_radius: ScaledPixels(3.),
+                color: hsla(0.1, 0.5, 0.2, 0.6),
+                corner_smoothing: 2.,
+            };
+            let shadow = body.with_shadow(caster);
+            assert_eq!(shadow.shapes, body.shapes);
+            assert_eq!(shadow.shape_count, body.shape_count);
+            assert_eq!(shadow.corner_smoothing, 4.);
+            assert_eq!(shadow.material, body.material);
+            assert_eq!(
+                shadow.bounds,
+                Bounds::new(
+                    point(ScaledPixels(97.), ScaledPixels(98.)),
+                    size(ScaledPixels(58.), ScaledPixels(58.)),
+                )
+            );
+            assert_eq!(shadow.backdrop_bounds, shadow.bounds);
+            assert!(!shadow.reads_backdrop());
+            let plans = plan_glass(&[shadow], size(256, 256), None);
+            assert_eq!(plans.len(), 1);
+            assert!(plans[0].copies.is_empty());
+            assert!(plans[0].passes.is_empty());
+            assert_eq!(plans[0].draws.len(), 1);
+            let uniform = &plans[0].draws[0].0;
+            assert!(!uniform.reads_backdrop());
+            assert_eq!(uniform.shadow, [3., 2., 1., 0.]);
+            assert_eq!(uniform.shadow_color[3], 0.6);
+            assert_eq!(uniform.shadow_bounds, [106., 107., 40., 40.]);
+            assert_eq!(uniform.shadow_radii, [8.; 4]);
+            assert_eq!(uniform.shape[1], 4.);
         }
     }
 
@@ -2354,6 +2481,52 @@ mod tests {
             None,
         );
         assert_eq!(stacked.len(), 2);
+    }
+
+    #[test]
+    fn glass_shadows_share_the_face_pass_until_a_later_glass_reads_them() {
+        let viewport = size(1000, 1000);
+        let body = test_glass(100., 4.);
+        let later = test_glass(400., 4.);
+        assert_eq!(
+            plan_glass(&[body.clone(), later.clone()], viewport, None).len(),
+            1
+        );
+        let caster = |x| GlassShadow {
+            bounds: Bounds::new(
+                point(ScaledPixels(x), ScaledPixels(103.)),
+                size(ScaledPixels(40.), ScaledPixels(40.)),
+            ),
+            corner_radii: Corners::all(ScaledPixels(8.)),
+            blur_radius: ScaledPixels(4.),
+            color: black(),
+            corner_smoothing: 2.,
+        };
+        let mut draws = vec![
+            body.clone(),
+            body.with_shadow(caster(102.)),
+            body.with_shadow(caster(400.)),
+        ];
+        let together = plan_glass(&draws, viewport, None);
+        assert_eq!(together.len(), 1);
+        assert_eq!(together[0].copies.len(), 1);
+        assert_eq!(together[0].draws.len(), 3);
+        assert_eq!(
+            together[0]
+                .draws
+                .iter()
+                .map(|(uniform, _)| uniform.reads_backdrop())
+                .collect::<Vec<_>>(),
+            [true, false, false]
+        );
+        draws.push(later);
+        let dependent = plan_glass(&draws, viewport, None);
+        assert_eq!(dependent.len(), 2);
+        assert_eq!(dependent[0].draws.len(), 3);
+        assert_eq!(dependent[1].draws.len(), 1);
+        assert_eq!(dependent[0].copies.len(), 1);
+        assert_eq!(dependent[1].copies.len(), 1);
+        assert!(dependent[1].draws[0].0.reads_backdrop());
     }
 
     #[test]
