@@ -221,6 +221,10 @@
                                 <input type="range" name="glass-light" min="-180" max="180" step="5" />
                             </label>
                             <label class="row slider">
+                                <span>Directional light</span><output name="glass-light-directionality-value"></output>
+                                <input type="range" name="glass-light-directionality" min="0" max="1" step="0.01" />
+                            </label>
+                            <label class="row slider">
                                 <span>Rim glow</span><output name="glass-fresnel-value"></output>
                                 <input type="range" name="glass-fresnel" min="0" max="0.5" step="0.01" />
                             </label>
@@ -236,6 +240,13 @@
                                 <span>Grain</span><output name="glass-noise-value"></output>
                                 <input type="range" name="glass-noise" min="0" max="0.1" step="0.005" />
                             </label>
+                            <label class="row slider">
+                                <span>Inactive flattening</span><output name="glass-inactive-flattening-value"></output>
+                                <input type="range" name="glass-inactive-flattening" min="0" max="1" step="0.01" />
+                            </label>
+                            <p class="knob-note">
+                                Flattens glass when a native app window is inactive. This browser preview stays active.
+                            </p>
                         </fieldset>
                     </section>
 

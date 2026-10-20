@@ -66,6 +66,16 @@ pub struct GlassMaterial {
     /// The axis light falls along, in radians clockwise from the right edge;
     /// `-3π/4` lights the top left and bottom right edges.
     pub light_angle: f32,
+    /// How far the light favors the edge facing it, from 0 to 1: 0 lights
+    /// both edges along the axis alike, 1 puts the glint on the facing edge
+    /// and the contour on the far one.
+    #[serde(default)]
+    pub light_directionality: f32,
+    /// How much of the rim's light, the lensing and the color boost fade
+    /// while the window is inactive, from 0 to 1. The tint, blur and contour
+    /// stay.
+    #[serde(default)]
+    pub inactive_flattening: f32,
     /// Color of the glint and the fresnel glow; its alpha scales both.
     #[serde(default = "white")]
     pub light_color: Hsla,
@@ -95,6 +105,11 @@ pub struct GlassMaterial {
     /// Unset, they paint a translucent fill derived from the tint.
     #[serde(default)]
     pub fallback: Option<Hsla>,
+    /// Draws only the light along the rim, its glint and fresnel glow, over
+    /// whatever lies under it: no face, no contour, nothing read back. See
+    /// [`Self::rim`].
+    #[serde(skip)]
+    pub rim_only: bool,
 }
 
 impl Default for GlassMaterial {
@@ -135,6 +150,8 @@ impl GlassMaterial {
             specular: 0.6,
             glint_width: px(1.2),
             light_angle: -std::f32::consts::FRAC_PI_4 * 3.,
+            light_directionality: 0.,
+            inactive_flattening: 0.,
             light_color: white(),
             fresnel: 0.08,
             edge_shadow: 0.25,
@@ -147,6 +164,7 @@ impl GlassMaterial {
             merge: px(20.),
             opacity: 1.0,
             fallback: None,
+            rim_only: false,
         }
     }
 
@@ -245,6 +263,25 @@ impl GlassMaterial {
         }
     }
 
+    /// Only the light this material casts along its rim, to paint over
+    /// opaque content that covers the rim of the same glass painted under
+    /// it. It reads nothing under it and draws nothing past the rim, so it
+    /// stays cheap and leaves the content as it was.
+    pub fn rim(&self) -> Self {
+        Self {
+            blur: px(0.),
+            refraction: px(0.),
+            dispersion: 0.,
+            tint: Hsla { a: 1., ..self.tint },
+            edge_shadow: 0.,
+            noise: 0.,
+            glow: 0.,
+            fallback: None,
+            rim_only: true,
+            ..*self
+        }
+    }
+
     /// This material with every effect off: it draws the backdrop unchanged.
     /// Interpolate from here to make glass appear by lensing in.
     pub fn vanished(&self) -> Self {
@@ -261,6 +298,28 @@ impl GlassMaterial {
             edge_shadow: 0.,
             noise: 0.,
             glow: 0.,
+            inactive_flattening: 0.,
+            ..*self
+        }
+    }
+
+    pub(crate) fn for_window(&self, active: bool) -> Self {
+        if active || self.inactive_flattening <= 0. {
+            return *self;
+        }
+        let flattening = self.inactive_flattening.clamp(0., 1.);
+        let retained = 1. - flattening;
+        Self {
+            refraction: self.refraction * retained,
+            dispersion: self.dispersion * retained,
+            saturation: 1. + (self.saturation - 1.) * retained,
+            brightness: self.brightness * retained,
+            contrast: 1. + (self.contrast - 1.) * retained,
+            specular: self.specular * retained,
+            fresnel: self.fresnel * retained,
+            light_directionality: self.light_directionality * retained,
+            noise: self.noise * retained,
+            glow: self.glow * retained,
             ..*self
         }
     }
@@ -406,13 +465,20 @@ impl GlassMaterial {
     /// Whether the glass shows any of what lies under it. A fully opaque tint
     /// covers the backdrop, so renderers need not copy it out of the frame.
     pub fn reads_backdrop(&self) -> bool {
-        self.tint.a < 1.
+        !self.rim_only && self.tint.a < 1.
+    }
+
+    /// Whether the material lights nothing: rim-only glass with neither a
+    /// glint nor a glow.
+    pub fn draws_nothing(&self) -> bool {
+        self.rim_only && self.specular <= 0. && self.fresnel <= 0.
     }
 
     /// Whether the tint hides the backdrop and nothing draws over it, so the
     /// surface looks exactly like a fill of the tint and is painted as one.
     pub fn is_opaque_fill(&self) -> bool {
-        !self.reads_backdrop()
+        !self.rim_only
+            && !self.reads_backdrop()
             && self.specular == 0.
             && self.fresnel == 0.
             && (self.edge_shadow == 0. || self.edge_width <= px(0.))
@@ -479,6 +545,8 @@ impl Interpolate for GlassMaterial {
             specular: lerp(from.specular, to.specular),
             glint_width: length(from.glint_width, to.glint_width),
             light_angle: lerp(from.light_angle, to.light_angle),
+            light_directionality: lerp(from.light_directionality, to.light_directionality),
+            inactive_flattening: lerp(from.inactive_flattening, to.inactive_flattening),
             light_color: Hsla::interpolate(from.light_color, to.light_color, phase),
             fresnel: lerp(from.fresnel, to.fresnel),
             edge_shadow: lerp(from.edge_shadow, to.edge_shadow),
@@ -502,6 +570,11 @@ impl Interpolate for GlassMaterial {
                         to
                     }
                 }
+            },
+            rim_only: if phase < 0.5 {
+                from.rim_only
+            } else {
+                to.rim_only
             },
         }
     }
@@ -617,21 +690,31 @@ pub struct GlassUniform {
     pub mask_rect: [f32; 4],
     /// Its corner radii.
     pub mask_radii: [f32; 4],
-    /// Its corner smoothing, then 1 when there is a clip.
+    /// Its corner smoothing, 1 when there is a clip, then how directional
+    /// the light is.
     pub mask: [f32; 4],
     /// The glint and fresnel glow's color, scaled by its alpha, then
     /// padding.
     pub light_color: [f32; 4],
     /// The contour's color, its alpha already in the edge shadow strength,
-    /// then padding.
+    /// then 1 when the glass draws only its rim.
     pub edge_color: [f32; 4],
+    /// The rectangle casting the shadow: `[x, y, width, height]`.
+    pub shadow_bounds: [f32; 4],
+    /// Its corner radii.
+    pub shadow_radii: [f32; 4],
+    /// Straight RGBA shadow color.
+    pub shadow_color: [f32; 4],
+    /// Blur radius, corner smoothing, then 1 when the draw is only the
+    /// shadow, then padding.
+    pub shadow: [f32; 4],
 }
 
 impl GlassUniform {
     /// Whether the draw reads its backdrop, and so writes its pixels with
     /// blending off: the pipeline it needs.
     pub fn reads_backdrop(&self) -> bool {
-        self.tint[3] < 1.
+        self.shadow[2] == 0. && self.tint[3] < 1.
     }
 
     /// The block's bytes, as the shader lays them out.
@@ -696,6 +779,22 @@ impl GlassBlurUniform {
     }
 }
 
+/// A drop shadow cast by glass, drawn after it and only outside its body,
+/// so translucent glass never shows its own shadow through its face.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GlassShadow {
+    /// The rectangle casting the shadow, offset and spread applied.
+    pub bounds: Bounds<ScaledPixels>,
+    /// Its corner radii, spread applied.
+    pub corner_radii: Corners<ScaledPixels>,
+    /// Standard deviation of the shadow's blur.
+    pub blur_radius: ScaledPixels,
+    /// The shadow's color; its alpha is how dark it is.
+    pub color: Hsla,
+    /// Superellipse exponent for its corners.
+    pub corner_smoothing: f32,
+}
+
 /// Glass painted into a scene, sized in device pixels.
 #[derive(Clone, Debug)]
 #[expect(missing_docs)]
@@ -711,12 +810,29 @@ pub struct Glass {
     pub corner_smoothing: f32,
     /// The material with its lengths in device pixels.
     pub material: GlassMaterial,
+    /// Set when this draw is only a shadow the glass casts; see
+    /// [`Self::with_shadow`].
+    pub shadow: Option<GlassShadow>,
 }
 
 impl Glass {
     /// Whether drawing this glass reads the frame under it.
     pub fn reads_backdrop(&self) -> bool {
-        self.material.reads_backdrop()
+        self.shadow.is_none() && self.material.reads_backdrop()
+    }
+
+    /// A draw of only `shadow`, masked by this glass's body. It reads
+    /// nothing, so it shares a pass with the glass it follows.
+    pub fn with_shadow(&self, shadow: GlassShadow) -> Self {
+        let bounds = shadow
+            .bounds
+            .dilate(ScaledPixels(3. * shadow.blur_radius.0.max(0.)));
+        Self {
+            bounds,
+            backdrop_bounds: bounds,
+            shadow: Some(shadow),
+            ..self.clone()
+        }
     }
 
     /// The blur this glass asks for, given how deep the chain may go. Glass
@@ -880,14 +996,52 @@ impl Glass {
                     mask.corner_radii.bottom_left.0,
                 ]
             }),
-            mask: mask.map_or([0.; 4], |mask| [mask.corner_smoothing, 1., 0., 0.]),
+            mask: [
+                mask.map_or(0., |mask| mask.corner_smoothing),
+                if mask.is_some() { 1. } else { 0. },
+                material.light_directionality.clamp(0., 1.),
+                0.,
+            ],
             light_color: [
                 light.r * light.a,
                 light.g * light.a,
                 light.b * light.a,
                 light.a,
             ],
-            edge_color: [edge.r, edge.g, edge.b, 0.],
+            edge_color: [
+                edge.r,
+                edge.g,
+                edge.b,
+                if material.rim_only { 1. } else { 0. },
+            ],
+            shadow_bounds: self.shadow.map_or([0.; 4], |shadow| {
+                [
+                    shadow.bounds.origin.x.0,
+                    shadow.bounds.origin.y.0,
+                    shadow.bounds.size.width.0,
+                    shadow.bounds.size.height.0,
+                ]
+            }),
+            shadow_radii: self.shadow.map_or([0.; 4], |shadow| {
+                [
+                    shadow.corner_radii.top_left.0,
+                    shadow.corner_radii.top_right.0,
+                    shadow.corner_radii.bottom_right.0,
+                    shadow.corner_radii.bottom_left.0,
+                ]
+            }),
+            shadow_color: self.shadow.map_or([0.; 4], |shadow| {
+                let color = shadow.color.to_rgb();
+                [color.r, color.g, color.b, color.a]
+            }),
+            shadow: self.shadow.map_or([0.; 4], |shadow| {
+                [
+                    shadow.blur_radius.0.max(0.),
+                    shadow.corner_smoothing,
+                    1.,
+                    0.,
+                ]
+            }),
         }
     }
 
@@ -1013,6 +1167,7 @@ pub fn plan_glass(
     let mut start = 0;
     for end in 1..=planned.len() {
         let overlaps = end < planned.len()
+            && planned[end].glass.reads_backdrop()
             && planned[start..end]
                 .iter()
                 .any(|other| overlap(other, &planned[end]));
@@ -1326,6 +1481,7 @@ fn glass_scene_over(alpha: f32, material: Option<GlassMaterial>) -> crate::Scene
         shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
         scene.insert_primitive(Glass {
             order: 0,
+            shadow: None,
             bounds: shape.dilate(ScaledPixels(2.)),
             backdrop_bounds: shape.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
             content_mask: ContentMask {
@@ -1411,6 +1567,7 @@ pub fn bench_glass_rendering(
             let dilated = bounds.dilate(ScaledPixels(3.));
             scene.insert_primitive(Glass {
                 order: 0,
+                shadow: None,
                 bounds: dilated,
                 backdrop_bounds: if material.reads_backdrop() {
                     bounds.dilate(ScaledPixels(material.backdrop_reach().as_f32()))
@@ -1608,6 +1765,7 @@ pub fn check_glass_hides_the_frame_under_it(
         shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
         scene.insert_primitive(Glass {
             order: 0,
+            shadow: None,
             bounds: shape.dilate(ScaledPixels(2.)),
             backdrop_bounds: shape.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
             content_mask: ContentMask {
@@ -1632,6 +1790,74 @@ pub fn check_glass_hides_the_frame_under_it(
     anyhow::ensure!(
         under_line[0].abs_diff(under_plain[0]) < 48,
         "the line showed through the glass: {under_plain:?} became {under_line:?}"
+    );
+    Ok(())
+}
+
+/// Rim-only glass over opaque content lights the content along the rim and
+/// leaves its face and everything past the edge as they were. `render`
+/// draws a scene at 64 by 64 device pixels.
+#[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+pub fn check_rim_glass_lights_only_the_edge(
+    mut render: impl FnMut(&crate::Scene) -> anyhow::Result<image::RgbaImage>,
+) -> anyhow::Result<()> {
+    use crate::{ContentMask, Quad, Scene};
+    let rect = |x: f32, y: f32, width: f32, height: f32| Bounds {
+        origin: point(ScaledPixels(x), ScaledPixels(y)),
+        size: size(ScaledPixels(width), ScaledPixels(height)),
+    };
+    let material = GlassMaterial::regular()
+        .bezel(px(6.))
+        .specular(1.)
+        .glint_width(px(1.5))
+        .fresnel(0.3)
+        .rim();
+    anyhow::ensure!(
+        !material.reads_backdrop() && !material.is_opaque_fill(),
+        "rim-only glass should read nothing and still draw"
+    );
+    let scene = |rim: bool| {
+        let mut scene = Scene::default();
+        let page = rect(0., 0., 64., 64.);
+        scene.insert_primitive(Quad {
+            bounds: page,
+            content_mask: ContentMask { bounds: page },
+            background: hsla(0., 1., 0.5, 1.).into(),
+            ..Default::default()
+        });
+        if rim {
+            let shape = rect(8., 8., 48., 48.);
+            let mut shapes: [(Bounds<ScaledPixels>, Corners<ScaledPixels>); GLASS_MAX_SHAPES] =
+                Default::default();
+            shapes[0] = (shape, Corners::all(ScaledPixels(8.)));
+            scene.insert_primitive(Glass {
+                order: 0,
+                shadow: None,
+                bounds: shape.dilate(ScaledPixels(2.)),
+                backdrop_bounds: shape.dilate(ScaledPixels(2.)),
+                content_mask: ContentMask { bounds: page },
+                shapes,
+                shape_count: 1,
+                corner_smoothing: 2.,
+                material,
+            });
+        }
+        scene.finish();
+        scene
+    };
+    let plain = render(&scene(false))?;
+    let lit = render(&scene(true))?;
+    for (x, y) in [(32, 32), (20, 40), (2, 2), (62, 32)] {
+        let (before, after) = (plain.get_pixel(x, y).0, lit.get_pixel(x, y).0);
+        anyhow::ensure!(
+            before.iter().zip(after).all(|(a, b)| a.abs_diff(b) <= 1),
+            "rim-only glass changed ({x}, {y}) off its rim: {before:?} became {after:?}"
+        );
+    }
+    let edge = lit.get_pixel(8, 32).0;
+    anyhow::ensure!(
+        edge[0] > 240 && edge[1] > 30 && edge[2] > 30,
+        "the rim should light the red under it, got {edge:?}"
     );
     Ok(())
 }
@@ -1819,6 +2045,7 @@ pub fn check_glass_rendering(
     let clear = GlassMaterial::regular().vanished();
     stacked.insert_primitive(Glass {
         order: 0,
+        shadow: None,
         bounds: shape.dilate(ScaledPixels(2.)),
         backdrop_bounds: shape.dilate(ScaledPixels(clear.backdrop_reach().as_f32())),
         content_mask: crate::ContentMask {
@@ -1903,6 +2130,62 @@ pub fn check_glass_rendering(
         ))?,
         "a transparent contour should draw nothing",
     )?;
+    let directional = GlassMaterial {
+        light_directionality: 1.,
+        inactive_flattening: 1.,
+        ..lit
+            .tint(hsla(0., 0., 0.2, 1.))
+            .light_angle(-std::f32::consts::FRAC_PI_2)
+    };
+    let top_lit = render(&glass_body_scene(&body, 2., directional, None))?;
+    let bottom_lit = render(&glass_body_scene(
+        &body,
+        2.,
+        directional.light_angle(std::f32::consts::FRAC_PI_2),
+        None,
+    ))?;
+    let top = top_lit.get_pixel(32, 8).0[0];
+    let bottom = top_lit.get_pixel(32, 55).0[0];
+    anyhow::ensure!(
+        top > bottom + 30,
+        "directional light should favor its facing edge: top {top}, bottom {bottom}"
+    );
+    anyhow::ensure!(
+        top.abs_diff(bottom_lit.get_pixel(32, 55).0[0]) <= 1
+            && bottom.abs_diff(bottom_lit.get_pixel(32, 8).0[0]) <= 1,
+        "rotating the light should swap its lit and unlit edges"
+    );
+    let symmetric = render(&glass_body_scene(
+        &body,
+        2.,
+        GlassMaterial {
+            light_directionality: 0.,
+            ..directional
+        },
+        None,
+    ))?;
+    anyhow::ensure!(
+        symmetric.get_pixel(32, 8).0[0].abs_diff(symmetric.get_pixel(32, 55).0[0]) <= 1,
+        "zero directionality should preserve equal lighting on opposite edges"
+    );
+    close(
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            directional.for_window(false),
+            None,
+        ))?,
+        &render(&glass_body_scene(
+            &body,
+            2.,
+            GlassMaterial {
+                light_directionality: 0.,
+                ..directional.specular(0.).fresnel(0.)
+            },
+            None,
+        ))?,
+        "fully inactive glass should flatten its rim without changing its fill",
+    )?;
     Ok(())
 }
 
@@ -1943,6 +2226,7 @@ fn glass_body_scene(
     let bounds = union.dilate(ScaledPixels(material.edge_width.as_f32().max(0.) + 1.5));
     scene.insert_primitive(Glass {
         order: 0,
+        shadow: None,
         bounds,
         backdrop_bounds: if material.reads_backdrop() {
             union
@@ -2080,7 +2364,7 @@ mod tests {
 
     #[test]
     fn uniform_blocks_match_the_shader_layout() {
-        assert_eq!(std::mem::size_of::<GlassUniform>(), 496);
+        assert_eq!(std::mem::size_of::<GlassUniform>(), 560);
         assert_eq!(std::mem::size_of::<GlassBlurUniform>(), 32);
     }
 
@@ -2109,6 +2393,7 @@ mod tests {
         let material = GlassMaterial::regular().blur(px(blur));
         Glass {
             order: 0,
+            shadow: None,
             bounds,
             backdrop_bounds: bounds.dilate(ScaledPixels(material.backdrop_reach().as_f32())),
             content_mask: crate::ContentMask {
@@ -2121,6 +2406,54 @@ mod tests {
             shape_count: 1,
             corner_smoothing: 2.,
             material,
+        }
+    }
+
+    #[test]
+    fn glass_shadows_keep_the_body_mask_without_reading_a_backdrop() {
+        for material in [
+            GlassMaterial::regular().opacity(0.),
+            GlassMaterial::regular().rim(),
+        ] {
+            let mut body = test_glass(100., 12.);
+            body.material = material;
+            body.corner_smoothing = 4.;
+            let caster = GlassShadow {
+                bounds: Bounds::new(
+                    point(ScaledPixels(106.), ScaledPixels(107.)),
+                    size(ScaledPixels(40.), ScaledPixels(40.)),
+                ),
+                corner_radii: Corners::all(ScaledPixels(8.)),
+                blur_radius: ScaledPixels(3.),
+                color: hsla(0.1, 0.5, 0.2, 0.6),
+                corner_smoothing: 2.,
+            };
+            let shadow = body.with_shadow(caster);
+            assert_eq!(shadow.shapes, body.shapes);
+            assert_eq!(shadow.shape_count, body.shape_count);
+            assert_eq!(shadow.corner_smoothing, 4.);
+            assert_eq!(shadow.material, body.material);
+            assert_eq!(
+                shadow.bounds,
+                Bounds::new(
+                    point(ScaledPixels(97.), ScaledPixels(98.)),
+                    size(ScaledPixels(58.), ScaledPixels(58.)),
+                )
+            );
+            assert_eq!(shadow.backdrop_bounds, shadow.bounds);
+            assert!(!shadow.reads_backdrop());
+            let plans = plan_glass(&[shadow], size(256, 256), None);
+            assert_eq!(plans.len(), 1);
+            assert!(plans[0].copies.is_empty());
+            assert!(plans[0].passes.is_empty());
+            assert_eq!(plans[0].draws.len(), 1);
+            let uniform = &plans[0].draws[0].0;
+            assert!(!uniform.reads_backdrop());
+            assert_eq!(uniform.shadow, [3., 2., 1., 0.]);
+            assert_eq!(uniform.shadow_color[3], 0.6);
+            assert_eq!(uniform.shadow_bounds, [106., 107., 40., 40.]);
+            assert_eq!(uniform.shadow_radii, [8.; 4]);
+            assert_eq!(uniform.shape[1], 4.);
         }
     }
 
@@ -2148,6 +2481,52 @@ mod tests {
             None,
         );
         assert_eq!(stacked.len(), 2);
+    }
+
+    #[test]
+    fn glass_shadows_share_the_face_pass_until_a_later_glass_reads_them() {
+        let viewport = size(1000, 1000);
+        let body = test_glass(100., 4.);
+        let later = test_glass(400., 4.);
+        assert_eq!(
+            plan_glass(&[body.clone(), later.clone()], viewport, None).len(),
+            1
+        );
+        let caster = |x| GlassShadow {
+            bounds: Bounds::new(
+                point(ScaledPixels(x), ScaledPixels(103.)),
+                size(ScaledPixels(40.), ScaledPixels(40.)),
+            ),
+            corner_radii: Corners::all(ScaledPixels(8.)),
+            blur_radius: ScaledPixels(4.),
+            color: black(),
+            corner_smoothing: 2.,
+        };
+        let mut draws = vec![
+            body.clone(),
+            body.with_shadow(caster(102.)),
+            body.with_shadow(caster(400.)),
+        ];
+        let together = plan_glass(&draws, viewport, None);
+        assert_eq!(together.len(), 1);
+        assert_eq!(together[0].copies.len(), 1);
+        assert_eq!(together[0].draws.len(), 3);
+        assert_eq!(
+            together[0]
+                .draws
+                .iter()
+                .map(|(uniform, _)| uniform.reads_backdrop())
+                .collect::<Vec<_>>(),
+            [true, false, false]
+        );
+        draws.push(later);
+        let dependent = plan_glass(&draws, viewport, None);
+        assert_eq!(dependent.len(), 2);
+        assert_eq!(dependent[0].draws.len(), 3);
+        assert_eq!(dependent[1].draws.len(), 1);
+        assert_eq!(dependent[0].copies.len(), 1);
+        assert_eq!(dependent[1].copies.len(), 1);
+        assert!(dependent[1].draws[0].0.reads_backdrop());
     }
 
     #[test]
@@ -2190,6 +2569,53 @@ mod tests {
                 .size_full()
                 .child(crate::div().size(px(120.)).rounded(px(12.)).glass(self.0))
         }
+    }
+
+    #[crate::test]
+    fn glass_repaints_when_window_activation_changes(cx: &mut crate::TestAppContext) {
+        let material = GlassMaterial {
+            inactive_flattening: 0.8,
+            ..GlassMaterial::regular()
+        };
+        let (_view, visual) = cx.add_window_view(move |_, _| Surface(material));
+        let window = crate::VisualContext::window_handle(visual);
+        visual
+            .test_window(window)
+            .simulate_active_status_change(true);
+        visual.run_until_parked();
+        let active = visual.update(|window, _| window.painted_glasses()[0].material);
+        visual
+            .test_window(window)
+            .simulate_active_status_change(false);
+        visual.run_until_parked();
+        let inactive = visual.update(|window, _| window.painted_glasses()[0].material);
+        assert!(inactive.specular < active.specular);
+        assert_eq!(inactive.tint.a, active.tint.a);
+        assert_eq!(inactive.opacity, active.opacity);
+        visual
+            .test_window(window)
+            .simulate_active_status_change(true);
+        visual.run_until_parked();
+        assert_eq!(
+            visual.update(|window, _| window.painted_glasses()[0].material),
+            active
+        );
+    }
+
+    #[test]
+    fn existing_materials_and_vanished_glass_keep_their_window_behavior() {
+        let material = GlassMaterial::regular();
+        assert_eq!(material.for_window(false), material);
+        let configured = GlassMaterial {
+            inactive_flattening: 1.,
+            ..material
+        };
+        assert_eq!(configured.for_window(true), configured);
+        assert_eq!(
+            configured.vanished().for_window(false),
+            configured.vanished()
+        );
+        assert!(configured.rim().for_window(false).draws_nothing());
     }
 
     #[crate::test]

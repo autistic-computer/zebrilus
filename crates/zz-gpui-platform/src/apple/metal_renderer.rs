@@ -2335,11 +2335,29 @@ mod tests {
     }
 
     #[test]
+    fn glass_shadows_leave_their_own_faces_unchanged() -> Result<()> {
+        let mut renderer =
+            MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
+        zz_gpui::check_glass_shadow_rendering(|scene| {
+            renderer.render_scene_to_image(scene, size(64.into(), 64.into()))
+        })
+    }
+
+    #[test]
     fn glass_hides_the_frame_under_it() -> Result<()> {
         let mut renderer =
             MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
         renderer.update_transparency(true);
         zz_gpui::check_glass_hides_the_frame_under_it(|scene| {
+            renderer.render_scene_to_image(scene, size(64.into(), 64.into()))
+        })
+    }
+
+    #[test]
+    fn rim_glass_lights_only_the_edge() -> Result<()> {
+        let mut renderer =
+            MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
+        zz_gpui::check_rim_glass_lights_only_the_edge(|scene| {
             renderer.render_scene_to_image(scene, size(64.into(), 64.into()))
         })
     }

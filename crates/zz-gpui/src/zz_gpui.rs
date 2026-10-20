@@ -29,6 +29,8 @@ mod frame_stats;
 mod geometry;
 mod gestures;
 mod glass;
+#[cfg(any(test, feature = "test-support"))]
+mod glass_shadow_tests;
 mod global;
 #[allow(missing_docs)]
 pub mod http_client;
@@ -120,6 +122,8 @@ pub use executor::*;
 pub use geometry::*;
 pub use gestures::*;
 pub use glass::*;
+#[cfg(any(test, feature = "test-support"))]
+pub use glass_shadow_tests::check_glass_shadow_rendering;
 pub use global::*;
 pub use spring::*;
 pub use zz_gpui_macros::{

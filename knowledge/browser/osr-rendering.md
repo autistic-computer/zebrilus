@@ -26,6 +26,18 @@ tier remains the fallback everywhere. GPU import, format, or wrapping failures
 atomically recreate only the affected session with shared textures disabled
 while the view retains its last valid surface.
 
+While the workspace holds resizes (a split divider drag, the sidebar slide; the
+same `Rc<Cell<bool>>` terminals read), a browser pane whose size changes keeps
+its committed `Viewport` and stops painting the page, so the pane's opaque fill
+covers it and CEF sees no resize per frame (`ResizeCover::Held`). On macOS the
+page layer stays placed at the pane's bounds under that fill, with no hole cut
+for it: hiding it would end the underlay, flip GPUI's layer back to opaque
+untransacted presents, and show the desktop through the hole still on screen
+(fabrico saw that flash, 2026-10-20). On release
+it sends the one new size and stays covered until a frame of that logical size
+arrives, or `RESIZE_COVER_TIMEOUT` (250 ms) passes; released at the old size it
+uncovers at once.
+
 # Tier pipelines
 
 ## Universal readback
@@ -131,10 +143,21 @@ stop going through GPUI:
   scene instead, over the layer. While that lasts (`Window::underlay_covered`)
   the view keeps redrawing on `FrameReady`, so the blurred page stays live.
   Glass beside the page whose blur merely reaches in does not count;
+- the page fills the pane below its header and is opaque, so it would hide
+  the rim of the glass pane frame drawn under it. Browser panes set
+  `PaneChrome::rim_over_content`: the frame drawn under the content loses its
+  glint and fresnel, and `GlassMaterial::rim()` draws them over the page
+  instead, which reads nothing and keeps the hole. The layer carries a
+  `CAShapeLayer` mask on the same superellipse as the hole
+  (`zz_ui::CORNER_SMOOTHING`), so its corners never show square through a
+  translucent frame;
 - `UnderlayFlush`, painted last by `AppShell`, hides layers that were not
   placed this frame and calls `Window::set_underlay_active`, which makes GPUI's
   Metal layer non-opaque and presents with the Core Animation transaction only
-  while some pane uses a layer;
+  while some pane uses a layer. Placement and the flush change layers in the
+  main thread's implicit transaction, not an explicit one: an explicit
+  transaction commits at once, before the frame that moves the hole presents,
+  so for a frame the old hole showed the desktop where the layer had left;
 - the view stops notifying on `FrameReady` once its layer presents, so a
   browser frame no longer redraws the window.
 
