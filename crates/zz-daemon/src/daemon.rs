@@ -84924,7 +84924,7 @@ set-option -g @alias-mixed-next yes
         }
         assert_eq!(spellings, 166);
         assert_eq!(diagnostic_cases, 664);
-        assert_eq!(required_cases, 482);
+        assert_eq!(required_cases, 484);
 
         let mut prefix_cases = 0;
         for spec in &specs {
