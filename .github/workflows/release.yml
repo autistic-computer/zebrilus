@@ -87,6 +87,7 @@ jobs:
       - uses: mlugg/setup-zig@v2.2.1
         with:
           version: 0.16.0
+          use-cache: false
 
       - name: Cache matching CEF distribution
         uses: actions/cache@v6.1.0
@@ -221,6 +222,7 @@ jobs:
       - uses: mlugg/setup-zig@v2.2.1
         with:
           version: 0.16.0
+          use-cache: false
 
       - name: Cache matching CEF distribution
         uses: actions/cache@v6.1.0
@@ -314,6 +316,7 @@ jobs:
       - uses: mlugg/setup-zig@v2.2.1
         with:
           version: 0.16.0
+          use-cache: false
 
       - name: Cache matching CEF distribution
         uses: actions/cache@v6.1.0
