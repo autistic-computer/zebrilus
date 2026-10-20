@@ -1,0 +1,207 @@
+{
+  "name": "macOS",
+  "materials": {
+    "radius": 24.0,
+    "outline": 0.5,
+    "picked-outlines": true,
+    "row-inset": 5.0,
+    "primary": "accent",
+    "flat-highlights": true,
+    "font": null,
+    "glass": {
+      "blur": 20.0,
+      "bezel": 3.0,
+      "refraction": 4.0,
+      "dispersion": 0.015,
+      "tint": "#ffffff8c",
+      "saturation": 1.2,
+      "brightness": 0.07,
+      "contrast": 1.12,
+      "specular": 0.26,
+      "glint_width": 0.85,
+      "light_angle": -1.5707964,
+      "light_color": "#ffffffff",
+      "fresnel": 0.045,
+      "edge_shadow": 0.4,
+      "edge_width": 0.65,
+      "edge_color": "#000000ff",
+      "noise": 0.0,
+      "glow": 0.0,
+      "glow_radius": 90.0,
+      "glow_center": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "merge": 20.0,
+      "opacity": 1.0,
+      "fallback": null,
+      "light_directionality": 0.85,
+      "inactive_flattening": 0.85
+    },
+    "picked-shadows": true,
+    "contact": {
+      "y": 1.0,
+      "blur": 4.0,
+      "spread": 0.0,
+      "strength": 0.2
+    },
+    "float": {
+      "y": 8.0,
+      "blur": 24.0,
+      "spread": -4.0,
+      "strength": 0.4
+    },
+    "smoothing": 2.0,
+    "highlight-strength": 0.7
+  },
+  "roles": {
+    "agent.attachment": {
+      "fill": "tint"
+    },
+    "agent.bubble": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none"
+    },
+    "agent.composer": {
+      "fill": "solid",
+      "outline": false,
+      "hover": "none"
+    },
+    "agent.jump": {
+      "fill": "solid"
+    },
+    "agent.status": {
+      "fill": "tint",
+      "outline": true,
+      "shape": "pill",
+      "smoothing": 2.0
+    },
+    "badge": {
+      "fill": "none"
+    },
+    "browser.address": {
+      "selected": "glass"
+    },
+    "browser.tab": {
+      "selected": "glass"
+    },
+    "chrome.button": {
+      "hover": "tint",
+      "selected": "none",
+      "fill": "glass"
+    },
+    "code": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none"
+    },
+    "pane-stack": {
+      "outline": true,
+      "smoothing": 2.0
+    },
+    "pane.chip": {
+      "fill": "solid",
+      "outline": true,
+      "shadow": "none"
+    },
+    "pane.drag-chip": {
+      "fill": "tint",
+      "outline": true,
+      "shadow": "contact"
+    },
+    "pane.drop-zone": {
+      "fill": "tint"
+    },
+    "pane.header.button": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "pane.picker": {
+      "fill": "solid",
+      "selected": "tint"
+    },
+    "phone.add": {
+      "fill": "solid"
+    },
+    "phone.pill": {
+      "fill": "glass"
+    },
+    "settings.card": {
+      "outline": true,
+      "shadow": "none"
+    },
+    "sidebar.entry": {
+      "smoothing": 2.0,
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "sidebar.row": {
+      "selected": "tint"
+    },
+    "titlebar.status-chip": {
+      "hover": "lift",
+      "selected": "lift"
+    },
+    "titlebar.window-tab": {
+      "shape": "pill",
+      "selected": "glass"
+    },
+    "tooltip": {
+      "fill": "solid",
+      "outline": true,
+      "shadow": "float"
+    },
+    "floating": {
+      "fill": "solid",
+      "outline": false,
+      "shadow": "float"
+    },
+    "button": {
+      "fill": "solid",
+      "shape": "pill",
+      "outline": false,
+      "shadow": "contact"
+    },
+    "field": {
+      "shape": "round"
+    },
+    "row": {
+      "selected": "tint"
+    },
+    "pane": {
+      "shadow": "contact"
+    },
+    "button.quiet": {
+      "fill": "none",
+      "shadow": "none"
+    },
+    "icon-button": {
+      "fill": "none",
+      "shadow": "none"
+    },
+    "menu-item": {
+      "fill": "none",
+      "shape": "round"
+    },
+    "field.multiline": {
+      "shape": "round"
+    }
+  },
+  "light": {
+    "background": "#f5f5f7ff",
+    "foreground": "#1d1d1fff",
+    "accent": "#006fe8ff",
+    "success": "#008832ff",
+    "warning": "#b85f00ff",
+    "danger": "#e5222bff"
+  },
+  "dark": {
+    "background": "#242424ff",
+    "foreground": "#f5f5f7ff",
+    "accent": "#0a84ffff",
+    "success": "#30d158ff",
+    "warning": "#ff9230ff",
+    "danger": "#ff4245ff"
+  }
+}
