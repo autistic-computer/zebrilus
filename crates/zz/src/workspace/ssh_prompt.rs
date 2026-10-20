@@ -1,6 +1,6 @@
 //! The dialog ssh's password and host-key questions appear in.
 
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, rc::Rc, thread, time::Duration};
 
 use zz_daemon_client::{AskpassPromptKind, AskpassReply};
 use zz_gpui::{App, AppContext as _, Entity, Focusable as _, Window};
@@ -8,12 +8,15 @@ use zz_ui::{
     WindowExt as _,
     feedback::{ssh_confirm_prompt_dialog, ssh_secret_prompt_dialog},
     input::InputState,
+    notification::Notification,
 };
 
 use crate::mux::{
     client::{MuxClient, SshPromptRequest},
     hosts::HostId,
 };
+
+const TOUCH_NOTICE_SECONDS: u64 = 15;
 
 pub(crate) fn open(
     mux: &Entity<MuxClient>,
@@ -28,6 +31,44 @@ pub(crate) fn open(
         | AskpassPromptKind::SaveKey => {
             open_confirmation(mux, request, window, cx);
         }
+        AskpassPromptKind::Notification => window.push_notification(
+            Notification::info(format!(
+                "Touch your security key to sign in to {}",
+                request.label
+            ))
+            .key(format!("ssh-touch-{}", request.label))
+            .autohide_after(Duration::from_secs(TOUCH_NOTICE_SECONDS)),
+            cx,
+        ),
+        AskpassPromptKind::KeyAdded => {
+            window.push_notification(
+                Notification::success(format!(
+                    "Added zz's key to {}; it won't ask to sign in again",
+                    request.label
+                )),
+                cx,
+            );
+            sync_fleet_in_background();
+        }
+    }
+}
+
+fn sync_fleet_in_background() {
+    let spawned = thread::Builder::new()
+        .name("zz-fleet-sync".to_owned())
+        .spawn(|| match zz_daemon_client::sync_fleet() {
+            Ok(lines) => {
+                for line in lines {
+                    match line.outcome {
+                        Ok(text) => log::info!("fleet sync: {}: {text}", line.name),
+                        Err(reason) => log::warn!("fleet sync: {}: {reason}", line.name),
+                    }
+                }
+            }
+            Err(error) => log::warn!("fleet sync: {error}"),
+        });
+    if let Err(error) = spawned {
+        log::warn!("fleet sync: could not start: {error}");
     }
 }
 

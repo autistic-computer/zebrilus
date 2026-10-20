@@ -39,7 +39,7 @@ use thiserror::Error;
 
 use crate::DaemonError;
 #[cfg(any(unix, windows))]
-use crate::askpass::{AskpassListener, SshPrompts};
+use crate::askpass::{AskpassListener, AskpassMode, AskpassPrompt, SshPrompts};
 #[cfg(any(unix, windows))]
 use crate::transport::LocalStream;
 #[cfg(windows)]
@@ -56,7 +56,7 @@ use crate::unmasked::SpawnUnmasked as _;
 /// fallbacks, for the daemon these scripts start. A Mac app dragged out of the disk image has no
 /// CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
-fn remote_path_fallback() -> String {
+pub(crate) fn remote_path_fallback() -> String {
     format!(
         "PATH=\"$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; export PATH; \
          zz_managed=\"$HOME/.local/bin/{name}\"; zz_cli={name}; \
@@ -73,14 +73,26 @@ fn remote_path_fallback() -> String {
 #[cfg(any(unix, windows, test))]
 // Runs under `sh -lc` so `zz` resolves through the login shell's PATH; the sentinel prefixes
 // let the parser skip whatever a login profile prints around the probe's own output.
-pub(crate) fn remote_socket_probe() -> String {
+pub(crate) fn remote_socket_probe(key_line: Option<&str>) -> String {
+    shell_quote(&remote_socket_probe_script(key_line))
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn remote_socket_probe_script(key_line: Option<&str>) -> String {
     let desktop_socket = format!(
         "elif [ \"$(uname -s)\" = Darwin ] && [ -S \"/tmp/{name}-$USER/default.sock\" ]; \
          then zz_dir=\"/tmp/{name}-$USER\"; ",
         name = zz_protocol::app_identity::DIRECTORY,
     );
-    shell_quote(&format!(
-        "{fallback}if [ -n \"$XDG_RUNTIME_DIR\" ]; then zz_dir=\"$XDG_RUNTIME_DIR/{name}\"; \
+    let enrollment = key_line.map_or_else(String::new, |line| {
+        format!(
+            "( {} ) || printf 'zz-probe-key=failed\\n'; {}",
+            authorized_key_script(crate::ssh_key::key_body(line), line),
+            remote_zz_key_script(),
+        )
+    });
+    format!(
+        "{fallback}{enrollment}if [ -n \"$XDG_RUNTIME_DIR\" ]; then zz_dir=\"$XDG_RUNTIME_DIR/{name}\"; \
          {desktop_socket}else zz_tmp=\"$TMPDIR\"; \
          if [ -z \"$zz_tmp\" ]; then zz_tmp=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null); fi; \
          case \"$zz_tmp\" in /*) ;; *) zz_tmp=/tmp ;; esac; \
@@ -90,7 +102,23 @@ pub(crate) fn remote_socket_probe() -> String {
          else printf \"zz-probe-protocol=missing\\n\"; fi",
         fallback = remote_path_fallback(),
         name = zz_protocol::app_identity::DIRECTORY,
-    ))
+    )
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn remote_zz_key_script() -> String {
+    format!(
+        "if [ \"$(uname -s)\" = Darwin ]; then zz_ssh=\"$HOME/Library/Application Support/{name}/ssh\"; \
+         else case \"$XDG_DATA_HOME\" in /*) zz_ssh=\"$XDG_DATA_HOME/{name}/ssh\" ;; \
+         *) zz_ssh=\"$HOME/.local/share/{name}/ssh\" ;; esac; fi; \
+         if [ ! -f \"$zz_ssh/id_ed25519\" ] && command -v ssh-keygen >/dev/null 2>&1; then \
+         zz_host=$(uname -n | cut -d. -f1 | tr -cd 'A-Za-z0-9_-'); \
+         ( umask 077; mkdir -p \"$zz_ssh\" && chmod 700 \"$zz_ssh\" && ssh-keygen -q -t ed25519 -N '' \
+         -C \"zz@${{zz_host:-host}}\" -f \"$zz_ssh/id_ed25519\" </dev/null >/dev/null 2>&1 ); fi; \
+         if [ -f \"$zz_ssh/id_ed25519.pub\" ]; \
+         then printf 'zz-probe-pubkey=%s\\n' \"$(cat \"$zz_ssh/id_ed25519.pub\")\"; fi; ",
+        name = zz_protocol::app_identity::DIRECTORY,
+    )
 }
 /// Exit codes the auto-start script picks for itself; ssh reports its own failures as 255.
 #[cfg(any(unix, windows, test))]
@@ -580,16 +608,128 @@ fn available_socks_port() -> Option<u16> {
 }
 
 #[cfg(any(unix, windows, test))]
-fn ssh_probe_command(endpoint: &SshEndpoint, session: SshSession<'_>) -> Command {
+fn ssh_probe_command(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    identity: Option<&Path>,
+    key_line: Option<&str>,
+) -> Command {
+    ssh_script_command(
+        endpoint,
+        session,
+        identity,
+        &[],
+        &remote_socket_probe(key_line),
+    )
+}
+
+#[cfg(any(unix, windows, test))]
+fn ssh_script_command(
+    endpoint: &SshEndpoint,
+    session: SshSession<'_>,
+    identity: Option<&Path>,
+    options: &[&str],
+    script: &str,
+) -> Command {
     let mut command = Command::new("ssh");
+    if let Some(identity) = identity {
+        zz_key_login_options(&mut command, identity);
+    }
+    for option in options {
+        command.arg("-o").arg(option);
+    }
     append_ssh_options(&mut command, endpoint, session);
     command
         .arg("--")
         .arg(&endpoint.host)
         .arg("sh")
         .arg("-lc")
-        .arg(remote_socket_probe());
+        .arg(script);
     command
+}
+
+#[cfg(any(unix, windows, test))]
+fn zz_key_login_options(command: &mut Command, identity: &Path) {
+    command
+        .arg("-o")
+        .arg("IdentitiesOnly=yes")
+        .arg("-o")
+        .arg(format!(
+            "IdentityFile=\"{}\"",
+            identity.to_string_lossy().replace('%', "%%")
+        ))
+        .arg("-o")
+        .arg("PreferredAuthentications=publickey")
+        .arg("-o")
+        .arg("BatchMode=yes");
+}
+
+#[cfg(any(unix, windows))]
+fn zz_key_first(
+    identity: Option<&Path>,
+    command: impl Fn(Option<&Path>) -> Command,
+) -> io::Result<std::process::Output> {
+    if let Some(identity) = identity {
+        let output = command(Some(identity)).output_unmasked()?;
+        if !refused_login(output.status.code(), &output.stderr) {
+            return Ok(output);
+        }
+        log::debug!(
+            target: "zz_daemon::diagnostics",
+            "the zz key did not sign in: {}",
+            String::from_utf8_lossy(&output.stderr).trim(),
+        );
+    }
+    command(None).output_unmasked()
+}
+
+#[cfg(any(unix, windows, test))]
+fn refused_login(code: Option<i32>, stderr: &[u8]) -> bool {
+    code == Some(SSH_FAILURE_STATUS)
+        && SshFailure::classify(&String::from_utf8_lossy(stderr)).is_some_and(SshFailure::is_login)
+}
+
+#[cfg(any(unix, windows))]
+const NO_SECURITY_KEYS: &str = "PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*";
+
+#[cfg(any(unix, windows))]
+pub(crate) fn run_remote_script(
+    endpoint: &SshEndpoint,
+    connect_timeout_seconds: u32,
+    script: &str,
+) -> io::Result<std::process::Output> {
+    #[cfg(unix)]
+    let control = shared_control(endpoint);
+    let session = SshSession {
+        #[cfg(unix)]
+        control: control.as_ref(),
+        askpass: None,
+    };
+    let connect_timeout = format!("ConnectTimeout={connect_timeout_seconds}");
+    let script = shell_quote(script);
+    let identity = zz_identity();
+    zz_key_first(identity.as_ref().map(|(path, _)| path.as_path()), |phase| {
+        ssh_script_command(
+            endpoint,
+            session,
+            phase,
+            &["BatchMode=yes", NO_SECURITY_KEYS, &connect_timeout],
+            &script,
+        )
+    })
+}
+
+#[cfg(any(unix, windows))]
+fn zz_identity() -> Option<(PathBuf, String)> {
+    let identity = crate::ssh_key::ssh_key_path()
+        .and_then(|path| crate::ssh_key::ssh_public_key().map(|line| (path, line)));
+    match identity {
+        Ok(identity) => Some(identity),
+        Err(error) => {
+            log::debug!(target: "zz_daemon::diagnostics", "no zz ssh key: {error}");
+            None
+        }
+    }
 }
 
 #[cfg(any(unix, windows, test))]
@@ -789,14 +929,14 @@ pub(crate) fn remote_proxy_script(remote_socket: &Path) -> String {
 /// Appends `line` to the remote `~/.ssh/authorized_keys` unless `key` is already there, creating
 /// the directory and file private as sshd's `StrictModes` wants, and never gluing onto a last line
 /// that lacks its newline.
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(unix, windows, test))]
 pub(crate) fn authorized_key_script(key: &str, line: &str) -> String {
     let file = "\"$HOME/.ssh/authorized_keys\"";
     format!(
         "umask 077; mkdir -p \"$HOME/.ssh\" && touch {file} || exit 1; \
-         grep -qF {key} {file} && exit 0; \
+         if grep -qF {key} {file}; then printf 'zz-probe-key=present\\n'; exit 0; fi; \
          if [ -s {file} ] && [ -n \"$(tail -c 1 {file})\" ]; then echo >> {file}; fi; \
-         printf '%s\\n' {line} >> {file}",
+         printf '%s\\n' {line} >> {file} || exit 1; printf 'zz-probe-key=added\\n'",
         key = shell_quote(key),
         line = shell_quote(line),
     )
@@ -818,41 +958,86 @@ pub fn shell_quote(value: &str) -> String {
     quoted
 }
 
-/// ssh collapses every failure of its own into exit 255, so stderr is all there is to go on.
 #[cfg(any(unix, windows, test))]
-pub(crate) fn ssh_failure_hint(stderr: &str) -> Option<&'static str> {
-    let stderr = stderr.to_ascii_lowercase();
-    let contains = |needle: &str| stderr.contains(needle);
-    if contains("permission denied")
-        || contains("too many authentication failures")
-        || contains("no supported authentication methods")
-    {
-        Some("ssh rejected the login: add your key to the host or start an ssh agent")
-    } else if contains("host key verification failed")
-        || contains("remote host identification has changed")
-    {
-        Some("the host key does not match known_hosts: verify the host before connecting")
-    } else if contains("could not resolve hostname")
-        || contains("name or service not known")
-        || contains("nodename nor servname")
-    {
-        Some("the host name did not resolve")
-    } else if contains("connection refused") {
-        Some(
-            "nothing accepted the ssh connection: start sshd there, or on a Mac turn on Remote \
-             Login in System Settings › General › Sharing",
-        )
-    } else if contains("timed out") {
-        Some("the ssh connection timed out")
-    } else if contains("no route to host") || contains("network is unreachable") {
-        Some("the host is not reachable from this network")
-    } else {
-        None
-    }
+pub(crate) const SSH_FAILURE_STATUS: i32 = 255;
+
+#[cfg(any(unix, windows, test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SshFailure {
+    SecurityKey,
+    Login,
+    HostKey,
+    Resolve,
+    Refused,
+    Timeout,
+    Unreachable,
 }
 
 #[cfg(any(unix, windows, test))]
-fn ssh_failure_reason(stderr: &str, status: &str) -> String {
+impl SshFailure {
+    pub(crate) fn classify(stderr: &str) -> Option<Self> {
+        let stderr = stderr.to_ascii_lowercase();
+        let contains = |needle: &str| stderr.contains(needle);
+        if (contains("signing failed for") && contains("-sk"))
+            || contains("device not found")
+            || contains("user presence")
+        {
+            Some(Self::SecurityKey)
+        } else if contains("permission denied")
+            || contains("too many authentication failures")
+            || contains("no supported authentication methods")
+        {
+            Some(Self::Login)
+        } else if contains("host key verification failed")
+            || contains("remote host identification has changed")
+        {
+            Some(Self::HostKey)
+        } else if contains("could not resolve hostname")
+            || contains("name or service not known")
+            || contains("nodename nor servname")
+        {
+            Some(Self::Resolve)
+        } else if contains("connection refused") {
+            Some(Self::Refused)
+        } else if contains("timed out") {
+            Some(Self::Timeout)
+        } else if contains("no route to host") || contains("network is unreachable") {
+            Some(Self::Unreachable)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) const fn is_login(self) -> bool {
+        matches!(self, Self::SecurityKey | Self::Login | Self::HostKey)
+    }
+
+    const fn hint(self) -> &'static str {
+        match self {
+            Self::SecurityKey => "the security key was not touched",
+            Self::Login => "ssh rejected the login: add your key to the host or start an ssh agent",
+            Self::HostKey => {
+                "the host key does not match known_hosts: verify the host before connecting"
+            }
+            Self::Resolve => "the host name did not resolve",
+            Self::Refused => {
+                "nothing accepted the ssh connection: start sshd there, or on a Mac turn on Remote \
+                 Login in System Settings › General › Sharing"
+            }
+            Self::Timeout => "the ssh connection timed out",
+            Self::Unreachable => "the host is not reachable from this network",
+        }
+    }
+}
+
+/// ssh collapses every failure of its own into exit 255, so stderr is all there is to go on.
+#[cfg(any(unix, windows, test))]
+pub(crate) fn ssh_failure_hint(stderr: &str) -> Option<&'static str> {
+    SshFailure::classify(stderr).map(SshFailure::hint)
+}
+
+#[cfg(any(unix, windows, test))]
+pub(crate) fn ssh_failure_reason(stderr: &str, status: &str) -> String {
     if let Some(hint) = ssh_failure_hint(stderr) {
         return hint.to_owned();
     }
@@ -1138,12 +1323,15 @@ fn probe_remote_socket(
     session: SshSession<'_>,
 ) -> Result<PathBuf, EndpointError> {
     let target = endpoint.to_string();
-    let output = ssh_probe_command(endpoint, session)
-        .output_unmasked()
-        .map_err(|source| EndpointError::SshSpawn {
-            operation: "remote socket probe",
-            source,
-        })?;
+    let identity = zz_identity();
+    let key_line = identity.as_ref().map(|(_, line)| line.as_str());
+    let output = zz_key_first(identity.as_ref().map(|(path, _)| path.as_path()), |phase| {
+        ssh_probe_command(endpoint, session, phase, key_line)
+    })
+    .map_err(|source| EndpointError::SshSpawn {
+        operation: "remote socket probe",
+        source,
+    })?;
     if !output.status.success() {
         return Err(EndpointError::SshFailed {
             target,
@@ -1154,25 +1342,90 @@ fn probe_remote_socket(
         });
     }
 
-    parse_remote_probe_output(&target, &output.stdout)
+    let probe = parse_remote_probe_output(&target, &output.stdout);
+    note_key_enrollment(endpoint, session, &probe);
+    probe.socket
 }
 
-pub(crate) fn parse_remote_probe_output(
-    target: &str,
-    output: &[u8],
-) -> Result<PathBuf, EndpointError> {
-    let stdout = std::str::from_utf8(output).map_err(|_| EndpointError::ProbeFailure {
-        target: target.to_owned(),
-        reason: "probe output was not valid UTF-8".to_owned(),
-    })?;
-    // Login profiles may print arbitrary noise around the probe's output; only the
-    // sentinel-prefixed lines are ours.
-    let probe_value = |prefix: &str| {
-        stdout
-            .lines()
-            .find_map(|line| line.strip_prefix(prefix))
-            .map(str::trim)
+#[cfg(any(unix, windows))]
+fn note_key_enrollment(endpoint: &SshEndpoint, session: SshSession<'_>, probe: &RemoteProbe) {
+    match probe.key {
+        Some(KeyEnrollment::Added) => {
+            log::info!(
+                target: "zz_daemon::diagnostics",
+                "added this machine's zz key to {endpoint}'s authorized_keys; its own zz key is {}",
+                probe.pubkey.as_deref().unwrap_or("unknown"),
+            );
+            if let Some(askpass) = session.askpass {
+                let notice = AskpassPrompt::new(AskpassMode::KeyAdded, endpoint.to_string());
+                if let Err(error) = crate::askpass::notify(askpass.socket, &notice) {
+                    log::debug!(
+                        target: "zz_daemon::askpass",
+                        "could not tell the window about {endpoint}'s new key: {error}",
+                    );
+                }
+            }
+        }
+        Some(KeyEnrollment::Failed) => log::warn!(
+            target: "zz_daemon::diagnostics",
+            "could not add this machine's zz key to {endpoint}'s authorized_keys",
+        ),
+        Some(KeyEnrollment::Present) | None => {}
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RemoteProbe {
+    pub(crate) socket: Result<PathBuf, EndpointError>,
+    pub(crate) key: Option<KeyEnrollment>,
+    pub(crate) pubkey: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KeyEnrollment {
+    Added,
+    Present,
+    Failed,
+}
+
+// Login profiles may print arbitrary noise around the probe's output; only the
+// sentinel-prefixed lines are ours.
+pub(crate) fn probe_value<'a>(stdout: &'a str, prefix: &str) -> Option<&'a str> {
+    stdout
+        .lines()
+        .find_map(|line| line.strip_prefix(prefix))
+        .map(str::trim)
+}
+
+pub(crate) fn parse_remote_probe_output(target: &str, output: &[u8]) -> RemoteProbe {
+    let Ok(stdout) = std::str::from_utf8(output) else {
+        return RemoteProbe {
+            socket: Err(EndpointError::ProbeFailure {
+                target: target.to_owned(),
+                reason: "probe output was not valid UTF-8".to_owned(),
+            }),
+            key: None,
+            pubkey: None,
+        };
     };
+    let key = match probe_value(stdout, "zz-probe-key=") {
+        Some("added") => Some(KeyEnrollment::Added),
+        Some("present") => Some(KeyEnrollment::Present),
+        Some(_) => Some(KeyEnrollment::Failed),
+        None => None,
+    };
+    let pubkey = probe_value(stdout, "zz-probe-pubkey=")
+        .filter(|line| crate::ssh_key::is_zz_key_line(line))
+        .map(str::to_owned);
+    RemoteProbe {
+        socket: remote_probe_socket(target, stdout),
+        key,
+        pubkey,
+    }
+}
+
+fn remote_probe_socket(target: &str, stdout: &str) -> Result<PathBuf, EndpointError> {
+    let probe_value = |prefix: &str| probe_value(stdout, prefix);
     let path = probe_value("zz-probe-socket=").unwrap_or_default();
     if path.is_empty() || !path.starts_with('/') {
         return Err(EndpointError::ProbeFailure {
@@ -2527,11 +2780,11 @@ mod tests {
     fn builds_probe_ssh_argv_for_user_and_port_permutations() {
         for (user, port, options) in ssh_option_cases() {
             let endpoint = test_ssh_endpoint(user, port);
-            let command = ssh_probe_command(&endpoint, test_session());
+            let command = ssh_probe_command(&endpoint, test_session(), None, None);
             let mut expected = shared_ssh_options();
             expected.extend(options.into_iter().map(str::to_owned));
             expected.extend(
-                ["--", "host", "sh", "-lc", &remote_socket_probe()]
+                ["--", "host", "sh", "-lc", &remote_socket_probe(None)]
                     .into_iter()
                     .map(str::to_owned),
             );
@@ -2567,7 +2820,7 @@ mod tests {
                 control: Some(&control),
                 askpass: None,
             };
-            let arguments = command_args(&ssh_probe_command(&endpoint, session));
+            let arguments = command_args(&ssh_probe_command(&endpoint, session, None, None));
             assert!(
                 arguments.contains(&"ControlPath=/home/ada/.ssh/cm-f5de03fd".to_owned()),
                 "{arguments:?}"
@@ -2591,7 +2844,7 @@ mod tests {
     fn every_ssh_child_shares_one_multiplexing_master() {
         let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
         let commands = [
-            command_args(&ssh_probe_command(&endpoint, test_session())),
+            command_args(&ssh_probe_command(&endpoint, test_session(), None, None)),
             command_args(&ssh_daemon_start_command(
                 &endpoint,
                 test_session(),
@@ -2630,7 +2883,7 @@ mod tests {
     #[test]
     fn a_session_without_a_master_uses_platform_safe_options() {
         let endpoint = test_ssh_endpoint(None, None);
-        let command = ssh_probe_command(&endpoint, SshSession::default());
+        let command = ssh_probe_command(&endpoint, SshSession::default(), None, None);
         let mut expected = [
             "-o",
             "ConnectTimeout=10",
@@ -2645,7 +2898,7 @@ mod tests {
         .to_vec();
         #[cfg(windows)]
         expected.extend(["-o", "ControlMaster=no", "-o", "ControlPath=none"].map(str::to_owned));
-        expected.extend(["--", "host", "sh", "-lc", &remote_socket_probe()].map(str::to_owned));
+        expected.extend(["--", "host", "sh", "-lc", &remote_socket_probe(None)].map(str::to_owned));
         assert_eq!(command_args(&command), expected);
         assert_eq!(
             command_envs(&command),
@@ -2660,7 +2913,9 @@ mod tests {
             zz_protocol::PROTOCOL_VERSION
         );
         assert_eq!(
-            parse_remote_probe_output("host", output.as_bytes()).unwrap(),
+            parse_remote_probe_output("host", output.as_bytes())
+                .socket
+                .unwrap(),
             Path::new("/run/user/1000/zz/default.sock")
         );
 
@@ -2668,7 +2923,8 @@ mod tests {
             parse_remote_probe_output(
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=48\n"
-            ),
+            )
+            .socket,
             Err(EndpointError::RemoteProtocolMismatch {
                 target,
                 daemon: 48,
@@ -2680,6 +2936,7 @@ mod tests {
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=unknown\n"
             )
+            .socket
             .unwrap_err()
             .to_string(),
             "zz on host predates protocol version reporting; update it, then reconnect"
@@ -2688,7 +2945,8 @@ mod tests {
             parse_remote_probe_output(
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=banana\n"
-            ),
+            )
+            .socket,
             Err(EndpointError::ProbeFailure { .. })
         ));
     }
@@ -2701,7 +2959,9 @@ mod tests {
             zz_protocol::PROTOCOL_VERSION
         );
         assert_eq!(
-            parse_remote_probe_output("host", noisy.as_bytes()).unwrap(),
+            parse_remote_probe_output("host", noisy.as_bytes())
+                .socket
+                .unwrap(),
             Path::new("/run/zz.sock")
         );
 
@@ -2711,17 +2971,207 @@ mod tests {
                 "host",
                 b"zz-probe-socket=/run/zz.sock\nzz-probe-protocol=missing\n"
             )
+            .socket
             .unwrap(),
             Path::new("/run/zz.sock")
         );
 
         assert!(matches!(
-            parse_remote_probe_output("host", b"zz-probe-socket=/run/zz.sock\n"),
+            parse_remote_probe_output("host", b"zz-probe-socket=/run/zz.sock\n").socket,
             Err(EndpointError::ProbeFailure { .. })
         ));
         assert!(matches!(
-            parse_remote_probe_output("host", b"only noise, no sentinels\n"),
+            parse_remote_probe_output("host", b"only noise, no sentinels\n").socket,
             Err(EndpointError::ProbeFailure { .. })
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zz_key_phase_offers_only_the_zz_identity() {
+        let endpoint = test_ssh_endpoint(Some("user"), None);
+        let identity = Path::new("/Users/a/Library/Application Support/zz-100%/ssh/id_ed25519");
+        let line = "ssh-ed25519 AAAAzz zz@desk";
+        let mut expected = [
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            "IdentityFile=\"/Users/a/Library/Application Support/zz-100%%/ssh/id_ed25519\"",
+            "-o",
+            "PreferredAuthentications=publickey",
+            "-o",
+            "BatchMode=yes",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        expected.extend(shared_ssh_options());
+        expected.extend(["-l", "user", "--", "host", "sh", "-lc"].map(str::to_owned));
+        expected.push(remote_socket_probe(Some(line)));
+        assert_eq!(
+            command_args(&ssh_probe_command(
+                &endpoint,
+                test_session(),
+                Some(identity),
+                Some(line)
+            )),
+            expected
+        );
+
+        let fallback = command_args(&ssh_probe_command(
+            &endpoint,
+            test_session(),
+            None,
+            Some(line),
+        ));
+        assert_eq!(fallback[..shared_ssh_options().len()], shared_ssh_options());
+        for option in [
+            "IdentitiesOnly",
+            "IdentityFile",
+            "PreferredAuthentications",
+            "BatchMode",
+        ] {
+            assert!(
+                !fallback.iter().any(|argument| argument.starts_with(option)),
+                "the user's own login must keep OpenSSH's default identities: {fallback:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_refused_login_falls_back_to_the_users_own() {
+        for stderr in [
+            "user@host: Permission denied (publickey).",
+            "Host key verification failed.",
+            "sign_and_send_pubkey: signing failed for ED25519-SK \"/k\": device not found",
+        ] {
+            assert!(refused_login(Some(255), stderr.as_bytes()), "{stderr}");
+        }
+        for (code, stderr) in [
+            (
+                Some(255),
+                "ssh: connect to host desk port 22: Operation timed out",
+            ),
+            (
+                Some(255),
+                "ssh: Could not resolve hostname desk: nodename nor servname",
+            ),
+            (
+                Some(255),
+                "ssh: connect to host desk port 22: Connection refused",
+            ),
+            (Some(1), "mkdir: Permission denied"),
+            (None, "Permission denied"),
+        ] {
+            assert!(!refused_login(code, stderr.as_bytes()), "{code:?} {stderr}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_probe_enrolls_this_machine_once_and_reports_the_hosts_own_key() {
+        let line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGW3/OPNnD2l/h6LfRGUUDgkTB5X9f1CU1CuD1GC4d5u zz@hub";
+        let shells = ["/bin/sh", "/bin/tcsh"]
+            .into_iter()
+            .filter(|shell| Path::new(shell).exists());
+        for shell in shells {
+            let home = tempfile::tempdir().expect("temporary home");
+            let probe = || {
+                let output = Command::new(shell)
+                    .args(["-c", &format!("sh -c {}", remote_socket_probe(Some(line)))])
+                    .env("HOME", home.path())
+                    .env("PATH", "/usr/bin:/bin")
+                    .env_remove("XDG_DATA_HOME")
+                    .env_remove("XDG_RUNTIME_DIR")
+                    .output()
+                    .expect("run the probe");
+                assert!(output.status.success(), "{shell}: {output:?}");
+                parse_remote_probe_output("host", &output.stdout)
+            };
+
+            let first = probe();
+            assert!(first.socket.is_ok(), "{shell}: {:?}", first.socket);
+            assert_eq!(first.key, Some(KeyEnrollment::Added), "{shell}");
+            let host_key = first.pubkey.expect("the probe makes the host's own key");
+            assert!(host_key.starts_with("ssh-ed25519 "), "{host_key}");
+
+            let second = probe();
+            assert_eq!(second.key, Some(KeyEnrollment::Present), "{shell}");
+            assert_eq!(second.pubkey.as_deref(), Some(host_key.as_str()));
+
+            let ssh = home.path().join(".ssh");
+            let authorized = ssh.join("authorized_keys");
+            assert_eq!(
+                fs::read_to_string(&authorized).unwrap(),
+                format!("{line}\n")
+            );
+            assert_eq!(
+                fs::metadata(&ssh).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(
+                fs::metadata(&authorized).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            let data = if cfg!(target_os = "macos") {
+                home.path().join("Library/Application Support")
+            } else {
+                home.path().join(".local/share")
+            };
+            let key_directory = data.join(zz_protocol::app_identity::DIRECTORY).join("ssh");
+            assert_eq!(
+                fs::metadata(&key_directory).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(
+                fs::metadata(key_directory.join("id_ed25519"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_probe_without_a_key_line_writes_nothing() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let output = Command::new("/bin/sh")
+            .args(["-c", &format!("sh -c {}", remote_socket_probe(None))])
+            .env("HOME", home.path())
+            .env("PATH", "/usr/bin:/bin")
+            .env_remove("XDG_DATA_HOME")
+            .output()
+            .expect("run the probe");
+        let probe = parse_remote_probe_output("host", &output.stdout);
+        assert!(probe.socket.is_ok());
+        assert_eq!((probe.key, probe.pubkey), (None, None));
+        assert_eq!(fs::read_dir(home.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn the_probe_reports_enrollment_and_only_a_well_formed_host_key() {
+        let output = format!(
+            "zz-probe-key=added\nzz-probe-pubkey=ssh-ed25519 AAAAzz zz@xps\n\
+             zz-probe-socket=/run/zz.sock\nzz-probe-protocol={}\n",
+            zz_protocol::PROTOCOL_VERSION
+        );
+        let probe = parse_remote_probe_output("host", output.as_bytes());
+        assert_eq!(probe.key, Some(KeyEnrollment::Added));
+        assert_eq!(probe.pubkey.as_deref(), Some("ssh-ed25519 AAAAzz zz@xps"));
+        assert!(probe.socket.is_ok());
+
+        let probe = parse_remote_probe_output(
+            "host",
+            b"zz-probe-key=failed\nzz-probe-pubkey=command=\"id\" ssh-ed25519 AAAAzz zz@xps\n\
+              zz-probe-socket=/run/zz.sock\nzz-probe-protocol=48\n",
+        );
+        assert_eq!(probe.key, Some(KeyEnrollment::Failed));
+        assert_eq!(probe.pubkey, None);
+        assert!(matches!(
+            probe.socket,
+            Err(EndpointError::RemoteProtocolMismatch { daemon: 48, .. })
         ));
     }
 
@@ -2748,7 +3198,7 @@ mod tests {
             }),
         };
         for command in [
-            ssh_probe_command(&endpoint, session),
+            ssh_probe_command(&endpoint, session, None, None),
             ssh_daemon_start_command(&endpoint, session, Path::new("/run/zz.sock")),
             ssh_forward_command(
                 &endpoint,
@@ -2820,7 +3270,7 @@ mod tests {
     #[test]
     fn every_remote_script_looks_where_the_installer_puts_the_cli() {
         let scripts = [
-            remote_socket_probe(),
+            remote_socket_probe(None),
             remote_daemon_start_script(Path::new("/run/zz.sock")),
             remote_proxy_script(Path::new("/run/zz.sock")),
             remote_install_script(Some(Path::new("/run/zz.sock")), true),
@@ -2847,7 +3297,10 @@ mod tests {
         let path = format!("{}:/usr/bin:/bin", directory.path().display());
         let name = zz_protocol::app_identity::DIRECTORY;
         for (script, expected) in [
-            (remote_socket_probe(), format!("zz-probe-protocol={name}\n")),
+            (
+                remote_socket_probe(None),
+                format!("zz-probe-protocol={name}\n"),
+            ),
             (
                 shell_quote(&remote_proxy_script(Path::new("/tmp/explicit.sock"))),
                 format!("{name}\n"),
@@ -2900,7 +3353,7 @@ mod tests {
             String::from_utf8_lossy(&output.stdout).into_owned()
         };
 
-        assert!(run(remote_socket_probe()).ends_with("zz-probe-protocol=managed\n"));
+        assert!(run(remote_socket_probe(None)).ends_with("zz-probe-protocol=managed\n"));
         assert!(run(shell_quote(&remote_proxy_script(&socket))).ends_with("managed\n"));
         run(shell_quote(&remote_daemon_start_script(&socket)));
         let started = home.path().join("managed-ran");
@@ -3427,7 +3880,7 @@ mod tests {
         }
         for (script, expected) in [
             (
-                remote_socket_probe(),
+                remote_socket_probe(None),
                 "zz-probe-protocol=bundle protocol-version\n",
             ),
             (
@@ -3557,6 +4010,15 @@ mod tests {
             (
                 "ssh: connect to host desk port 22: No route to host",
                 "not reachable",
+            ),
+            (
+                "sign_and_send_pubkey: signing failed for ED25519-SK \"/Users/f/.ssh/id_ed25519_sk\": \
+                 device not found\nuser@host: Permission denied (publickey).",
+                "the security key was not touched",
+            ),
+            (
+                "sign_and_send_pubkey: signing failed for ECDSA-SK \"/k\" from agent: invalid format",
+                "the security key was not touched",
             ),
         ] {
             let reason = ssh_failure_reason(stderr, "exit status: 255");
@@ -3884,7 +4346,7 @@ mod tests {
         let mut command = Command::new("/bin/sh");
         command
             .arg("-c")
-            .arg(format!("sh -c {}", remote_socket_probe()));
+            .arg(format!("sh -c {}", remote_socket_probe(None)));
         for (key, value) in environment {
             if let Some(value) = value {
                 command.env(key, value);
