@@ -537,6 +537,7 @@ fn ssh_forward_command(
     let mut command = Command::new("ssh");
     command
         .arg("-N")
+        .arg("-n")
         .arg("-o")
         .arg("ExitOnForwardFailure=yes")
         .arg("-o")
@@ -905,15 +906,17 @@ fn control_master_path(endpoint: &SshEndpoint) -> io::Result<PathBuf> {
 
 #[cfg(unix)]
 fn discard_dead_control_master(endpoint: &SshEndpoint, control_path: &Path) {
-    if !control_path.exists() {
-        return;
-    }
-    let alive = ssh_control_command(endpoint, control_path, "check", None)
-        .status_unmasked()
-        .is_ok_and(|status| status.success());
-    if !alive {
+    if control_path.exists() && !control_master_alive(endpoint, control_path) {
         let _ = fs::remove_file(control_path);
     }
+}
+
+#[cfg(unix)]
+fn control_master_alive(endpoint: &SshEndpoint, control_path: &Path) -> bool {
+    control_path.exists()
+        && ssh_control_command(endpoint, control_path, "check", &[])
+            .status_unmasked()
+            .is_ok_and(|status| status.success())
 }
 
 #[cfg(unix)]
@@ -921,7 +924,7 @@ fn ssh_control_command(
     endpoint: &SshEndpoint,
     control_path: &Path,
     request: &str,
-    forwarding: Option<(&str, &OsStr)>,
+    forwarding: &[(&str, &OsStr)],
 ) -> Command {
     let mut command = Command::new("ssh");
     command
@@ -929,7 +932,7 @@ fn ssh_control_command(
         .arg(request)
         .arg("-o")
         .arg(control_path_option(control_path));
-    if let Some((flag, spec)) = forwarding {
+    for (flag, spec) in forwarding {
         command.arg(flag).arg(spec);
     }
     if let Some(port) = endpoint.port {
@@ -1167,7 +1170,7 @@ fn forwarded_local_socket_path() -> PathBuf {
 
 #[cfg(unix)]
 pub(crate) struct SshForward {
-    child: Child,
+    child: Option<Child>,
     local_socket: PathBuf,
     endpoint: SshEndpoint,
     control_path: Option<PathBuf>,
@@ -1197,24 +1200,16 @@ impl SshForward {
         ensure_remote_daemon(endpoint, session, &remote_socket)?;
 
         let local_socket = forwarded_local_socket_path();
-        let socks_port = available_socks_port();
-        let child =
-            ssh_forward_command(endpoint, session, &local_socket, &remote_socket, socks_port)
-                .spawn_unmasked()
-                .map_err(|source| EndpointError::SshSpawn {
-                    operation: "socket forward",
-                    source,
-                })?;
         let mut forward = Self {
-            child,
+            child: None,
             forwarding: forwarding_spec(&local_socket, &remote_socket),
             local_socket,
             endpoint: endpoint.clone(),
             control_path,
-            socks_port,
+            socks_port: available_socks_port(),
             askpass,
         };
-        if let Err(error) = forward.wait_for_socket(endpoint) {
+        if let Err(error) = forward.open(&remote_socket) {
             let Some(port) = forward.socks_port else {
                 return Err(error);
             };
@@ -1223,15 +1218,15 @@ impl SshForward {
                 "ssh forward to {endpoint} failed while binding -D {}; retrying on a fresh port: {error}",
                 socks_spec(port),
             );
-            forward.restart_with_fresh_socks_port(endpoint, &remote_socket)?;
+            forward.restart_with_fresh_socks_port(&remote_socket)?;
         }
 
         let mut permissions = fs::metadata(&forward.local_socket)
-            .map_err(|source| forward.io_error(endpoint, "reading permissions for", source))?
+            .map_err(|source| forward.io_error("reading permissions for", source))?
             .permissions();
         permissions.set_mode(0o600);
         fs::set_permissions(&forward.local_socket, permissions)
-            .map_err(|source| forward.io_error(endpoint, "setting permissions on", source))?;
+            .map_err(|source| forward.io_error("setting permissions on", source))?;
         Ok(forward)
     }
 
@@ -1243,33 +1238,77 @@ impl SshForward {
         self.socks_port
     }
 
-    fn restart_with_fresh_socks_port(
-        &mut self,
-        endpoint: &SshEndpoint,
-        remote_socket: &Path,
-    ) -> Result<(), EndpointError> {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        self.cancel_forwards();
-        let _ = fs::remove_file(&self.local_socket);
-        self.socks_port = available_socks_port();
-        let mut command = ssh_forward_command(
-            endpoint,
-            SshSession {
+    /// A live master takes the forward over its control socket; only without one does a child
+    /// ssh hold it, and that child must not read the caller's stdin: against a master, OpenSSH
+    /// turns a `-N` mux client into a login shell fed by whatever stdin it was given.
+    fn open(&mut self, remote_socket: &Path) -> Result<(), EndpointError> {
+        let master = self
+            .control_path
+            .clone()
+            .filter(|control_path| control_master_alive(&self.endpoint, control_path));
+        let Some(control_path) = master else {
+            let session = SshSession {
                 control_path: self.control_path.as_deref(),
                 askpass: session_askpass(self.askpass.as_ref()),
-            },
-            &self.local_socket,
-            remote_socket,
-            self.socks_port,
-        );
-        self.child = command
+            };
+            let child = ssh_forward_command(
+                &self.endpoint,
+                session,
+                &self.local_socket,
+                remote_socket,
+                self.socks_port,
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
             .spawn_unmasked()
             .map_err(|source| EndpointError::SshSpawn {
                 operation: "socket forward",
                 source,
             })?;
-        self.wait_for_socket(endpoint)
+            self.child = Some(child);
+            return self.wait_for_socket();
+        };
+        let socks = self.socks_port.map(socks_spec);
+        let mut forwarding = vec![("-L", self.forwarding.as_os_str())];
+        if let Some(socks) = &socks {
+            forwarding.push(("-D", OsStr::new(socks)));
+        }
+        let output = ssh_control_command(&self.endpoint, &control_path, "forward", &forwarding)
+            .stderr(Stdio::piped())
+            .output_unmasked()
+            .map_err(|source| EndpointError::SshSpawn {
+                operation: "socket forward",
+                source,
+            })?;
+        if !output.status.success() {
+            log::debug!(
+                target: "zz_daemon::diagnostics",
+                "ssh -O forward to {} failed: {}",
+                self.endpoint,
+                String::from_utf8_lossy(&output.stderr).trim(),
+            );
+            return Err(EndpointError::ForwardExited {
+                target: self.endpoint.to_string(),
+                status: output.status.to_string(),
+                local_socket: self.local_socket.clone(),
+            });
+        }
+        self.wait_for_socket()
+    }
+
+    fn restart_with_fresh_socks_port(&mut self, remote_socket: &Path) -> Result<(), EndpointError> {
+        self.stop_child();
+        self.cancel_forwards();
+        let _ = fs::remove_file(&self.local_socket);
+        self.socks_port = available_socks_port();
+        self.open(remote_socket)
+    }
+
+    fn stop_child(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 
     fn cancel_forwards(&self) {
@@ -1280,7 +1319,7 @@ impl SshForward {
             return;
         }
         let cancel = |forwarding| {
-            let _ = ssh_control_command(&self.endpoint, control_path, "cancel", Some(forwarding))
+            let _ = ssh_control_command(&self.endpoint, control_path, "cancel", &[forwarding])
                 .status_unmasked();
         };
         cancel(("-L", self.forwarding.as_os_str()));
@@ -1290,52 +1329,49 @@ impl SshForward {
         }
     }
 
-    fn wait_for_socket(&mut self, endpoint: &SshEndpoint) -> Result<(), EndpointError> {
+    fn wait_for_socket(&mut self) -> Result<(), EndpointError> {
         for _ in 0..FORWARD_POLL_ATTEMPTS {
-            if self.socket_exists(endpoint)? {
+            if self.socket_exists()? {
                 return Ok(());
             }
-            if let Some(status) = self
-                .child
-                .try_wait()
-                .map_err(|source| self.io_error(endpoint, "checking ssh child for", source))?
-            {
-                if self.socket_exists(endpoint)? {
+            let exited = match &mut self.child {
+                Some(child) => child
+                    .try_wait()
+                    .map_err(|source| self.io_error("checking ssh child for", source))?,
+                None => None,
+            };
+            if let Some(status) = exited {
+                if self.socket_exists()? {
                     return Ok(());
                 }
                 return Err(EndpointError::ForwardExited {
-                    target: endpoint.to_string(),
+                    target: self.endpoint.to_string(),
                     status: status.to_string(),
                     local_socket: self.local_socket.clone(),
                 });
             }
             thread::sleep(FORWARD_POLL_INTERVAL);
         }
-        if self.socket_exists(endpoint)? {
+        if self.socket_exists()? {
             return Ok(());
         }
         Err(EndpointError::ForwardTimeout {
-            target: endpoint.to_string(),
+            target: self.endpoint.to_string(),
             local_socket: self.local_socket.clone(),
         })
     }
 
-    fn socket_exists(&self, endpoint: &SshEndpoint) -> Result<bool, EndpointError> {
+    fn socket_exists(&self) -> Result<bool, EndpointError> {
         match fs::metadata(&self.local_socket) {
             Ok(metadata) => Ok(metadata.file_type().is_socket()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-            Err(source) => Err(self.io_error(endpoint, "inspecting", source)),
+            Err(source) => Err(self.io_error("inspecting", source)),
         }
     }
 
-    fn io_error(
-        &self,
-        endpoint: &SshEndpoint,
-        action: &'static str,
-        source: io::Error,
-    ) -> EndpointError {
+    fn io_error(&self, action: &'static str, source: io::Error) -> EndpointError {
         EndpointError::ForwardIo {
-            target: endpoint.to_string(),
+            target: self.endpoint.to_string(),
             action,
             path: self.local_socket.clone(),
             source,
@@ -1346,8 +1382,7 @@ impl SshForward {
 #[cfg(unix)]
 impl Drop for SshForward {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.stop_child();
         self.cancel_forwards();
         let _ = fs::remove_file(&self.local_socket);
     }
@@ -1787,6 +1822,7 @@ mod tests {
                 );
                 let mut expected = vec![
                     "-N",
+                    "-n",
                     "-o",
                     "ExitOnForwardFailure=yes",
                     "-o",
@@ -1817,21 +1853,43 @@ mod tests {
             ("-L", "/tmp/local.sock:/run/zz.sock"),
             ("-D", "127.0.0.1:41080"),
         ] {
-            let command = ssh_control_command(
-                &endpoint,
-                control_path,
-                "cancel",
-                Some((flag, OsStr::new(spec))),
-            );
-            let arguments = command_args(&command);
-            assert!(
-                arguments
-                    .windows(2)
-                    .any(|pair| pair == [flag.to_owned(), spec.to_owned()]),
-                "{arguments:?}",
-            );
+            for request in ["cancel", "forward"] {
+                let command = ssh_control_command(
+                    &endpoint,
+                    control_path,
+                    request,
+                    &[(flag, OsStr::new(spec))],
+                );
+                let arguments = command_args(&command);
+                assert!(
+                    arguments
+                        .windows(2)
+                        .any(|pair| pair == [flag.to_owned(), spec.to_owned()]),
+                    "{arguments:?}",
+                );
+                assert_eq!(arguments[..2], ["-O".to_owned(), request.to_owned()]);
+            }
         }
-        let check = command_args(&ssh_control_command(&endpoint, control_path, "check", None));
+        let both = command_args(&ssh_control_command(
+            &endpoint,
+            control_path,
+            "forward",
+            &[
+                ("-L", OsStr::new("/tmp/local.sock:/run/zz.sock")),
+                ("-D", OsStr::new("127.0.0.1:41080")),
+            ],
+        ));
+        assert!(
+            both.windows(4).any(|window| window
+                == [
+                    "-L",
+                    "/tmp/local.sock:/run/zz.sock",
+                    "-D",
+                    "127.0.0.1:41080"
+                ]),
+            "{both:?}",
+        );
+        let check = command_args(&ssh_control_command(&endpoint, control_path, "check", &[]));
         assert!(
             !check
                 .iter()

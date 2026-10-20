@@ -252,12 +252,18 @@ for one connect, and each rung of the reconnect ladder asks again.
 Two consequences of multiplexing that the code has to know about, both measured against
 OpenSSH 10.3p1:
 
-- Against a live master, `ssh -N -L …` becomes a *forward request*: the master binds the socket,
-  answers, and the requesting child **exits 0 in about 16 ms**. `wait_for_socket` therefore treats a
-  finished child as success whenever the socket is there, and `Drop` runs `ssh -O cancel -L <spec>`
-  as well as killing the child, because the listener belongs to the master rather than to the child
-  that asked for it. Forwarded traffic is an open channel, so it keeps the master alive well past
-  `ControlPersist`.
+- Against a live master, `ssh -N -L …` is not a forward request. OpenSSH's mux client sends the
+  forward and then always asks the master for a session (`mux_client_request_session`), handing it
+  the child's stdin, stdout and stderr; with no command that session is a login shell, which runs
+  whatever the caller's stdin holds. `printf 'echo PWNED\n' | zz --host xps list-sessions` printed
+  PWNED from xps, and a `while read` loop around `zz --host` lost the rest of its input. The GUI got
+  away with it only because launchd gives it `/dev/null`, so that shell hit EOF at once: the child
+  that "exits 0 in about 16 ms" was the shell ending, not a forward being granted. Forwards now go
+  through `ssh -O forward -L <spec> [-D <port>]` on the live master, with stdin and stdout null and
+  stderr kept for the error. Only when no master answers `ssh -O check` does a child
+  `ssh -N -n -L …` hold the forward, with null stdin and stdout. `Drop` still runs
+  `ssh -O cancel` for each forward and removes the socket file, which cancel leaves behind.
+  Forwarded traffic is an open channel, so it keeps the master alive past `ControlPersist`.
 - A master that died leaves its socket behind, and ssh then only warns and gives every child its own
   handshake. `discard_dead_control_master` runs `ssh -O check` first . a local round trip that costs
   about 5 ms and never touches the network . and unlinks the path when it fails.
