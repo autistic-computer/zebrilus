@@ -1067,7 +1067,7 @@ impl SshFailure {
             Self::SecurityKey => "the security key was not touched",
             Self::Login => "ssh rejected the login: add your key to the host or start an ssh agent",
             Self::HostKey => {
-                "the host key does not match known_hosts: verify the host before connecting"
+                "known_hosts has no matching key for the host: verify the host before connecting"
             }
             Self::Resolve => "the host name did not resolve",
             Self::Refused => {

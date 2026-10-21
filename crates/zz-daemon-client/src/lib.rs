@@ -84,7 +84,7 @@ pub use fleet_hosts::{
     resolve_fleet_host, validate_fleet_host, write_fleet_host,
 };
 #[cfg(any(unix, windows))]
-pub use fleet_sync::{SyncLine, sync_fleet};
+pub use fleet_sync::{SyncLine, TrustReport, sync_fleet, trust_fleet_key};
 #[cfg(any(unix, windows))]
 pub use host_probe::{HostProbe, HostStatus, probe_host};
 pub use lifecycle::{

@@ -34,25 +34,16 @@ pub struct SyncLine {
     pub outcome: Result<String, String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrustReport {
+    pub lines: Vec<SyncLine>,
+    pub hosts: Vec<(String, String)>,
+    pub known_hosts: Vec<String>,
+}
+
 pub fn sync_fleet() -> io::Result<Vec<SyncLine>> {
     let _one_at_a_time = SYNC.lock();
-    let (configured, _) = configured_fleet_hosts()?;
-    let hosts = configured
-        .into_iter()
-        .filter_map(|host| match host.endpoint {
-            Endpoint::Ssh(endpoint) => Some(FleetHost {
-                name: host.name,
-                endpoint,
-            }),
-            Endpoint::Local(_) => None,
-        })
-        .collect::<Vec<_>>();
-    if hosts.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "zz/config lists no ssh hosts; add one with zz fleet add NAME DEST",
-        ));
-    }
+    let hosts = fleet_hosts()?;
     let hub = Hub::discover(&hosts)?;
     let collected = in_parallel(&hosts, |host| {
         collect(&host.endpoint, &hub.key).map(|facts| (host, facts))
@@ -89,9 +80,73 @@ pub fn sync_fleet() -> io::Result<Vec<SyncLine>> {
     Ok(lines)
 }
 
+pub fn trust_fleet_key(key: &str) -> io::Result<TrustReport> {
+    let key = key.trim();
+    if !is_zz_key_line(key) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "that is not a zz key; pass the line zz fleet key prints on the machine to trust",
+        ));
+    }
+    let _one_at_a_time = SYNC.lock();
+    let hosts = fleet_hosts()?;
+    let hub = Hub::discover(&hosts)?;
+    let plan = HostPlan {
+        keys: vec![key.to_owned()],
+        ..HostPlan::default()
+    };
+    let applied = in_parallel(&hosts, |host| {
+        apply(&host.endpoint, &plan).and_then(|applied| key_outcome(applied.keys))
+    });
+    let mut lines = hosts
+        .iter()
+        .zip(applied)
+        .map(|(host, outcome)| SyncLine {
+            name: host.name.clone(),
+            outcome,
+        })
+        .collect::<Vec<_>>();
+    lines.push(SyncLine {
+        name: hub.name.clone(),
+        outcome: trust_locally(&plan.keys),
+    });
+    let mut seen = HashSet::new();
+    Ok(TrustReport {
+        lines,
+        hosts: hub.hosts.iter().cloned().chain(hub.entry.clone()).collect(),
+        known_hosts: hub
+            .known_hosts
+            .iter()
+            .map(|known| known.line.clone())
+            .filter(|line| seen.insert(line.clone()))
+            .collect(),
+    })
+}
+
 struct FleetHost {
     name: String,
     endpoint: SshEndpoint,
+}
+
+fn fleet_hosts() -> io::Result<Vec<FleetHost>> {
+    let (configured, _) = configured_fleet_hosts()?;
+    let hosts = configured
+        .into_iter()
+        .filter_map(|host| match host.endpoint {
+            Endpoint::Ssh(endpoint) => Some(FleetHost {
+                name: host.name,
+                endpoint,
+            }),
+            Endpoint::Local(_) => None,
+        })
+        .collect::<Vec<_>>();
+    if hosts.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "zz/config lists no ssh hosts; add one with zz fleet add NAME DEST",
+        ));
+    }
+    Ok(hosts)
 }
 
 #[derive(Debug, Default)]
@@ -561,7 +616,10 @@ fn trust_locally(keys: &[String]) -> Result<String, String> {
         .stdin(Stdio::null())
         .output_unmasked()
         .map_err(|error| format!("could not run sh: {error}"))?;
-    let keys = applied(&output, &plan)?.keys;
+    key_outcome(applied(&output, &plan)?.keys)
+}
+
+fn key_outcome(keys: Tally) -> Result<String, String> {
     let text = trust_text(keys);
     if keys.failed > 0 {
         Err(format!(

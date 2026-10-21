@@ -1,16 +1,19 @@
 use zz_config::{remove_fleet_host, write_fleet_host};
 use zz_daemon_client::{
     Endpoint, EndpointError, HostEntry, RejectedHost, RemoteInstall, configured_fleet_hosts,
-    install_remote, install_remote_batch, ssh_public_key, sync_fleet, validate_fleet_host,
+    install_remote, install_remote_batch, ssh_public_key, sync_fleet, trust_fleet_key,
+    validate_fleet_host,
 };
 
-const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] (-a | <name>...)\n       zz fleet key\n       zz fleet list [-F <format> | --json]\n       zz fleet remove <name>\n       zz fleet sync";
+const FLEET_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>\n       zz fleet install [--restart-daemon] (-a | <name>...)\n       zz fleet key\n       zz fleet list [-F <format> | --json]\n       zz fleet remove <name>\n       zz fleet sync\n       zz fleet trust <key>";
 const FLEET_INSTALL_USAGE: &str = "usage: zz fleet install [--restart-daemon] (-a | <name>...)";
 const FLEET_ADD_USAGE: &str = "usage: zz fleet add <name> <ssh-destination>";
 const FLEET_KEY_USAGE: &str = "usage: zz fleet key";
 const FLEET_LIST_USAGE: &str = "usage: zz fleet list [-F <format> | --json]";
 const FLEET_REMOVE_USAGE: &str = "usage: zz fleet remove <name>";
 const FLEET_SYNC_USAGE: &str = "usage: zz fleet sync";
+const FLEET_TRUST_USAGE: &str =
+    "usage: zz fleet trust <key>  (the line zz fleet key prints on the machine to trust)";
 
 pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String, String> {
     let arguments = arguments.into_iter().collect::<Vec<_>>();
@@ -45,6 +48,12 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String,
                 return Err(FLEET_SYNC_USAGE.to_owned());
             }
             fleet_sync()
+        }
+        "trust" => {
+            if arguments.is_empty() {
+                return Err(FLEET_TRUST_USAGE.to_owned());
+            }
+            fleet_trust(&arguments.join(" "))
         }
         _ => Err(FLEET_USAGE.to_owned()),
     }
@@ -343,6 +352,67 @@ fn fleet_sync() -> Result<String, String> {
     }
 }
 
+fn fleet_trust(key: &str) -> Result<String, String> {
+    let report = trust_fleet_key(key).map_err(|error| format!("fleet trust: {error}"))?;
+    let failed = report
+        .lines
+        .iter()
+        .filter(|line| line.outcome.is_err())
+        .count();
+    for line in &report.lines {
+        match &line.outcome {
+            Ok(text) => println!("{}: {text}", line.name),
+            Err(reason) => eprintln!("{}: {reason}", line.name),
+        }
+    }
+    print!(
+        "{}",
+        trusted_machine_setup(&report.hosts, &report.known_hosts)
+    );
+    if failed == 0 {
+        Ok(String::new())
+    } else {
+        Err(format!(
+            "fleet trust: {failed} of {} machines did not take the key",
+            report.lines.len()
+        ))
+    }
+}
+
+fn trusted_machine_setup(hosts: &[(String, String)], known_hosts: &[String]) -> String {
+    use std::fmt::Write as _;
+
+    let mut text = String::new();
+    if !hosts.is_empty() {
+        text.push_str("\non the trusted machine, list the hosts:\n");
+        for (name, url) in hosts {
+            let _ = writeln!(text, "zz fleet add {} {}", pasteable(name), pasteable(url));
+        }
+    }
+    if !known_hosts.is_empty() {
+        text.push_str(
+            "\nand append these lines to its ~/.ssh/known_hosts (%USERPROFILE%\\.ssh\\known_hosts on \
+             Windows):\n",
+        );
+        for line in known_hosts {
+            text.push_str(line);
+            text.push('\n');
+        }
+    }
+    text
+}
+
+fn pasteable(value: &str) -> std::borrow::Cow<'_, str> {
+    if value
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"._-@:/%+=,".contains(&byte))
+    {
+        value.into()
+    } else {
+        zz_daemon_client::shell_quote(value).into()
+    }
+}
+
 fn fleet_add(arguments: &FleetAddArguments) -> Result<String, String> {
     write_fleet_host(&arguments.name, &arguments.endpoint)
         .map_err(|error| format!("could not write zz/config: {error}"))?;
@@ -354,6 +424,28 @@ mod tests {
     use std::{fs, path::PathBuf, process::Command};
 
     use super::*;
+
+    #[test]
+    fn trust_tells_the_trusted_machine_its_hosts_and_host_keys() {
+        assert_eq!(
+            trusted_machine_setup(
+                &[("xps".to_owned(), "ssh://me@xps".to_owned())],
+                &["xps ssh-ed25519 AAAA".to_owned()],
+            ),
+            "\non the trusted machine, list the hosts:\nzz fleet add xps ssh://me@xps\n\nand append \
+             these lines to its ~/.ssh/known_hosts (%USERPROFILE%\\.ssh\\known_hosts on \
+             Windows):\nxps ssh-ed25519 AAAA\n"
+        );
+        assert_eq!(trusted_machine_setup(&[], &[]), "");
+        assert_eq!(
+            trusted_machine_setup(
+                &[("a;b".to_owned(), "ssh://me@box/tmp/my sock".to_owned())],
+                &[]
+            ),
+            "\non the trusted machine, list the hosts:\nzz fleet add 'a;b' 'ssh://me@box/tmp/my sock'\n"
+        );
+        assert_eq!(run(["trust".to_owned()]), Err(FLEET_TRUST_USAGE.to_owned()));
+    }
 
     #[test]
     fn install_takes_hosts_or_all_and_an_optional_restart_flag() {

@@ -1139,7 +1139,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         name: "fleet",
         aliases: &[],
         description: "Add, list, and remove hosts in zz/config, install zz on them, and share zz's ssh key",
-        usage: "add NAME DEST | remove NAME | install [--restart-daemon] (-a | NAME...) | list | key | sync",
+        usage: "add NAME DEST | remove NAME | install [--restart-daemon] (-a | NAME...) | list | key | sync | trust KEY",
         options: &[CommandOptionSpec::flag(
             "--restart-daemon",
             "with install, restart the host's daemon; this ends its sessions",
