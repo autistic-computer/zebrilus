@@ -118,14 +118,22 @@ a small `zz-workspace` skill that points the agent at `zz tools --skill`, in
 only what it added. Codex runs a new hook only after you approve it: pick
 **Trust** in the review screen Codex shows at its next start, or use `/hooks`.
 
+The install also gives each agent an allow rule for `zz` in its own format:
+`Bash(zz:*)` in Claude Code's `permissions.allow`, and `~/.codex/rules/zz.rules`
+for Codex. Your agents then run `zz` commands without asking, and Codex runs
+them outside its sandbox, as long as pane and session ids are written out rather
+than held in variables (Codex can't match a rule against a command whose words
+it can't see).
+
 ### Codex's sandbox
 
 Codex's sandbox blocks the zz socket, so in its default modes a `zz` command
 fails with "Operation not permitted" until Codex reruns it with escalated
-permissions. In an agent pane zz approves that rerun for you; in a terminal
-pane Codex asks you each time. To let Codex reach zz without asking, allow the
-socket's folder in `~/.codex/config.toml` (the error prints the socket path;
-on Linux the folder is usually `/run/user/1000/zz`):
+permissions. In an agent pane zz approves that rerun for you. In a terminal
+pane, the rule `zz tools --install-hooks` writes lets plain `zz` commands out of
+the sandbox; anything mixed with other programs still asks. To let every
+command reach zz, allow the socket's folder in `~/.codex/config.toml` (the
+error prints the socket path; on Linux the folder is usually `/run/user/1000/zz`):
 
 ```toml
 default_permissions = "zz"

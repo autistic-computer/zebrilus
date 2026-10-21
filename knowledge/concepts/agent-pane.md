@@ -927,7 +927,10 @@ Codex drivers also answer a shell command that runs only `zz` (`agent/zz_command
 assignment prefixes.
 Codex's default sandbox blocks the daemon socket, so every `zz` call there fails with "Operation not
 permitted" until Codex reruns it with escalated permissions; this answers that rerun. Anything that
-reaches the socket can type into other panes, so it is the same trust as opening the socket. `preferred_allow_option`
+reaches the socket can type into other panes, so it is the same trust as opening the socket. Claude Code
+panes also start with `--allowedTools Bash(zz:*)` (`ZZ_ALLOWED_TOOL`) when the tier is not `off` and the user's
+command sets no allowed tools, so Claude's own parser approves `zz` loops and pipes before a request ever
+reaches zz; it is fixed at spawn, so switching to `off` applies to agents started afterwards. `preferred_allow_option`
 (`zz-daemon/src/agent/runtime.rs:1288`) takes `AllowAlways` and falls back to `AllowOnce`, never a
 reject kind and never an empty option ID; a request that advertises no allow option falls through to
 the interactive UI rather than being silently denied. The tool call is still published as a

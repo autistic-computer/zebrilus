@@ -17,6 +17,9 @@ const HOOK_COMMAND: &str = r#"/bin/sh -c ': zz-agent-context; [ -n "${ZZ_PANE-}"
 const HOOK_TIMEOUT_SECONDS: u64 = 5;
 const STUB_MARKER: &str = "zz-stub:";
 const SKILL_NAME: &str = "zz-workspace";
+const CLAUDE_RULE: &str = "Bash(zz:*)";
+const CODEX_RULES: &str = "# Written by zz tools --install-hooks; zz tools --remove-hooks deletes it.\nprefix_rule(pattern = [\"zz\"], decision = \"allow\")\n";
+const RULES_MARKER: &str = "zz tools --install-hooks";
 const CODEX_HOOK_REVIEW: &str =
     "approve the new hook with /hooks in Codex; until then Codex skips it";
 
@@ -129,7 +132,13 @@ struct Agent {
     config: PathBuf,
     hooks: PathBuf,
     skill: PathBuf,
+    rule: Rule,
     hook_review: Option<&'static str>,
+}
+
+enum Rule {
+    ClaudeAllow,
+    CodexFile(PathBuf),
 }
 
 fn agents(home: &Path, var: impl Fn(&str) -> Option<OsString>) -> [Agent; 2] {
@@ -146,6 +155,7 @@ fn agents(home: &Path, var: impl Fn(&str) -> Option<OsString>) -> [Agent; 2] {
             hooks: claude.join("settings.json"),
             skill: claude.join("skills").join(SKILL_NAME).join("SKILL.md"),
             config: claude,
+            rule: Rule::ClaudeAllow,
             hook_review: None,
         },
         Agent {
@@ -156,6 +166,7 @@ fn agents(home: &Path, var: impl Fn(&str) -> Option<OsString>) -> [Agent; 2] {
                 .join("skills")
                 .join(SKILL_NAME)
                 .join("SKILL.md"),
+            rule: Rule::CodexFile(codex.join("rules").join("zz.rules")),
             config: codex,
             hook_review: Some(CODEX_HOOK_REVIEW),
         },
@@ -176,7 +187,7 @@ impl Agent {
         let changed = hook
             .as_ref()
             .is_ok_and(|line| !line.starts_with("hook current"));
-        let mut lines = vec![hook, self.install_skill()];
+        let mut lines = vec![hook, self.install_skill(), self.install_rule()];
         if changed && let Some(review) = self.hook_review {
             lines.push(Ok(review.to_owned()));
         }
@@ -184,7 +195,106 @@ impl Agent {
     }
 
     fn remove(&self) -> Vec<Line> {
-        vec![self.remove_hook(), self.remove_skill()]
+        vec![self.remove_hook(), self.remove_skill(), self.remove_rule()]
+    }
+
+    fn install_rule(&self) -> Line {
+        match &self.rule {
+            Rule::ClaudeAllow => {
+                let path = self.hooks.display();
+                let mut root = read_object(&self.hooks)?;
+                let allow = root
+                    .entry("permissions")
+                    .or_insert_with(|| Value::Object(Map::new()))
+                    .as_object_mut()
+                    .ok_or("\"permissions\" is not an object; left alone")?
+                    .entry("allow")
+                    .or_insert_with(|| Value::Array(Vec::new()))
+                    .as_array_mut()
+                    .ok_or("\"permissions.allow\" is not an array; left alone")?;
+                if allow.iter().any(|rule| rule == CLAUDE_RULE) {
+                    return Ok(format!("rule current in {path}"));
+                }
+                allow.push(CLAUDE_RULE.into());
+                write_object(&self.hooks, &root)
+                    .map_err(|error| format!("could not write {path}: {error}"))?;
+                Ok(format!(
+                    "rule added in {path}: {CLAUDE_RULE} runs zz commands without asking"
+                ))
+            }
+            Rule::CodexFile(rules) => {
+                let path = rules.display();
+                let change = match fs::read_to_string(rules) {
+                    Ok(text) if text == CODEX_RULES => {
+                        return Ok(format!("rule current at {path}"));
+                    }
+                    Ok(text) if !text.contains(RULES_MARKER) => {
+                        return Ok(format!("rule left alone at {path}, zz did not write it"));
+                    }
+                    Ok(_) => "updated",
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => "added",
+                    Err(error) => return Err(format!("could not read {path}: {error}")),
+                };
+                if let Some(parent) = rules.parent() {
+                    fs::create_dir_all(parent).map_err(|error| {
+                        format!("could not create {}: {error}", parent.display())
+                    })?;
+                }
+                write_atomically(rules, CODEX_RULES.as_bytes())
+                    .map_err(|error| format!("could not write {path}: {error}"))?;
+                Ok(format!(
+                    "rule {change} at {path}: zz commands run outside the sandbox without asking"
+                ))
+            }
+        }
+    }
+
+    fn remove_rule(&self) -> Line {
+        match &self.rule {
+            Rule::ClaudeAllow => {
+                let path = self.hooks.display();
+                if !self.hooks.exists() {
+                    return Ok(format!("no rule, {path} does not exist"));
+                }
+                let mut root = read_object(&self.hooks)?;
+                let Some(permissions) = root.get_mut("permissions").and_then(Value::as_object_mut)
+                else {
+                    return Ok(format!("no rule in {path}"));
+                };
+                let Some(allow) = permissions.get_mut("allow").and_then(Value::as_array_mut) else {
+                    return Ok(format!("no rule in {path}"));
+                };
+                let count = allow.len();
+                allow.retain(|rule| rule != CLAUDE_RULE);
+                if allow.len() == count {
+                    return Ok(format!("no rule in {path}"));
+                }
+                if allow.is_empty() {
+                    permissions.remove("allow");
+                }
+                if permissions.is_empty() {
+                    root.remove("permissions");
+                }
+                write_object(&self.hooks, &root)
+                    .map_err(|error| format!("could not write {path}: {error}"))?;
+                Ok(format!("rule removed from {path}"))
+            }
+            Rule::CodexFile(rules) => {
+                let path = rules.display();
+                match fs::read_to_string(rules) {
+                    Ok(text) if text.contains(RULES_MARKER) => {
+                        fs::remove_file(rules)
+                            .map_err(|error| format!("could not remove {path}: {error}"))?;
+                        Ok(format!("rule removed from {path}"))
+                    }
+                    Ok(_) => Ok(format!("rule left alone at {path}, zz did not write it")),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        Ok(format!("no rule at {path}"))
+                    }
+                    Err(error) => Err(format!("could not read {path}: {error}")),
+                }
+            }
+        }
     }
 
     fn install_hook(&self) -> Line {
@@ -420,7 +530,7 @@ mod tests {
         let settings = claude.join("settings.json");
         fs::write(
             &settings,
-            r#"{"model":"opus","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"rex hook"}]}],"Stop":[]}}"#,
+            r#"{"model":"opus","permissions":{"allow":["Bash(git:*)"]},"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"rex hook"}]}],"Stop":[]}}"#,
         )
         .expect("settings");
         let [claude_agent, codex_agent] = agents_in(home.path());
@@ -442,6 +552,10 @@ mod tests {
         );
         assert!(root["hooks"]["Stop"].is_array());
         assert_eq!(
+            root["permissions"]["allow"],
+            json!(["Bash(git:*)", CLAUDE_RULE])
+        );
+        assert_eq!(
             fs::read_to_string(claude.join("skills/zz-workspace/SKILL.md")).expect("skill"),
             WORKSPACE_STUB_SKILL
         );
@@ -449,6 +563,10 @@ mod tests {
         assert_eq!(
             again[0].as_deref(),
             Ok(format!("hook current in {}", settings.display()).as_str())
+        );
+        assert_eq!(
+            again[2].as_deref(),
+            Ok(format!("rule current in {}", settings.display()).as_str())
         );
         assert_eq!(session_start_commands(&settings).len(), 2);
         assert!(
@@ -478,8 +596,13 @@ mod tests {
         let lines = codex_agent.install();
         assert!(lines[0].as_ref().expect("hook").starts_with("hook updated"));
         assert!(lines[1].as_ref().expect("skill").contains("left alone"));
-        assert_eq!(lines[2].as_deref(), Ok(CODEX_HOOK_REVIEW));
-        assert_eq!(codex_agent.install().len(), 2);
+        assert!(lines[2].as_ref().expect("rule").starts_with("rule added"));
+        assert_eq!(lines[3].as_deref(), Ok(CODEX_HOOK_REVIEW));
+        assert_eq!(
+            fs::read_to_string(codex.join("rules/zz.rules")).expect("rules"),
+            CODEX_RULES
+        );
+        assert_eq!(codex_agent.install().len(), 3);
         assert_eq!(session_start_commands(&hooks), [HOOK_COMMAND]);
         assert_eq!(
             fs::read_to_string(&skill).expect("skill"),
@@ -524,6 +647,41 @@ mod tests {
         assert!(claude_agent.install().iter().all(Result::is_ok));
         assert!(claude_agent.remove().iter().all(Result::is_ok));
         assert_eq!(read(&settings), json!({"theme": "dark"}));
+    }
+
+    #[test]
+    fn codex_rules_zz_did_not_write_are_left_alone() {
+        let home = tempfile::tempdir().expect("home");
+        let rules = home.path().join(".codex/rules/zz.rules");
+        fs::create_dir_all(rules.parent().expect("parent")).expect("rules dir");
+        fs::write(
+            &rules,
+            "prefix_rule(pattern = [\"zz\"], decision = \"prompt\")\n",
+        )
+        .expect("rules");
+        let [_, codex_agent] = agents_in(home.path());
+        assert!(
+            codex_agent.install()[2]
+                .as_ref()
+                .expect("rule")
+                .contains("left alone")
+        );
+        assert!(
+            codex_agent.remove()[2]
+                .as_ref()
+                .expect("rule")
+                .contains("left alone")
+        );
+        assert!(
+            fs::read_to_string(&rules)
+                .expect("rules")
+                .contains("prompt")
+        );
+        let [_, codex_agent] = agents_in(home.path());
+        fs::remove_file(&rules).expect("remove");
+        assert!(codex_agent.install().iter().all(Result::is_ok));
+        assert!(codex_agent.remove().iter().all(Result::is_ok));
+        assert!(!rules.exists());
     }
 
     #[test]

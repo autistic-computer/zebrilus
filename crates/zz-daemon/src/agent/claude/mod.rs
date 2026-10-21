@@ -67,6 +67,8 @@ const BASE_ARGS: [&str; 11] = [
     "stdio",
     "--await-initialize",
 ];
+const ALLOWED_TOOLS_FLAGS: [&str; 2] = ["--allowedTools", "--allowed-tools"];
+const ZZ_ALLOWED_TOOL: &str = "Bash(zz:*)";
 const SYSTEM_PROMPT_FLAGS: [&str; 4] = [
     "--system-prompt",
     "--system-prompt-file",
@@ -129,6 +131,17 @@ impl ClaudeCommand {
             }
         }
         None
+    }
+
+    fn sets_allowed_tools(&self) -> bool {
+        self.args.iter().any(|arg| {
+            ALLOWED_TOOLS_FLAGS.iter().any(|flag| {
+                arg == flag
+                    || arg
+                        .strip_prefix(flag)
+                        .is_some_and(|rest| rest.starts_with('='))
+            })
+        })
     }
 
     fn sets_system_prompt(&self) -> bool {
@@ -866,6 +879,10 @@ impl Runtime {
                 &crate::workspace_context(pane, session, true),
             ]);
             command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
+        }
+        if *self.auto_approve.lock() != AgentAutoApprove::Off && !self.command.sets_allowed_tools()
+        {
+            command.args(["--allowedTools", ZZ_ALLOWED_TOOL]);
         }
         if let Some(path) = self.workspace.path(agent_path()) {
             command.env("PATH", path);
@@ -2059,6 +2076,18 @@ mod tests {
         assert!(sets("claude --append-system-prompt be-brief"));
         assert!(sets("claude --system-prompt=terse"));
         assert!(sets("claude --append-system-prompt-file /tmp/p.md"));
+    }
+
+    #[test]
+    fn a_user_allowed_tools_flag_keeps_the_zz_rule_out() {
+        let sets = |command: &str| {
+            ClaudeCommand::parse(command)
+                .expect("native")
+                .sets_allowed_tools()
+        };
+        assert!(!sets("claude --model opus"));
+        assert!(sets("claude --allowedTools Bash(git:*)"));
+        assert!(sets("claude --allowed-tools=Read"));
     }
 
     #[test]
