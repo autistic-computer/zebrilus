@@ -38,6 +38,8 @@ pub(crate) enum Behavior {
     AskKindedPermission(ToolKind),
     /// A turn that never answers, so the pane stays RUNNING.
     Hang,
+    /// The first prompt fails, later ones end normally.
+    FailFirst,
 }
 
 impl Behavior {
@@ -141,7 +143,10 @@ pub(crate) fn fixture_agent(behavior: Behavior, load: bool) -> impl ConnectTo<Ac
                     ))),
                 ))?;
                 match behavior {
-                    Behavior::Chunk | Behavior::Echo => {
+                    Behavior::FailFirst if turn == 0 => responder.respond_with_error(
+                        agent_client_protocol::Error::internal_error().data("rate limited"),
+                    ),
+                    Behavior::Chunk | Behavior::Echo | Behavior::FailFirst => {
                         responder.respond(PromptResponse::new(StopReason::EndTurn))
                     }
                     Behavior::Hang => Ok(()),

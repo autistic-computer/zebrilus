@@ -731,7 +731,6 @@ async fn run_pane(
         git_refresh: GitRefreshGate::default(),
         next_turn_id: 0,
         active_turn: None,
-        external_busy: false,
         dispatched_prompt: None,
         active_waiter: None,
         session_waiter: None,
@@ -767,7 +766,6 @@ struct PanePump {
     git_refresh: GitRefreshGate,
     next_turn_id: u64,
     active_turn: Option<u64>,
-    external_busy: bool,
     dispatched_prompt: Option<(u64, AgentPrompt)>,
     active_waiter: Option<AgentTurnWaiter>,
     session_waiter: Option<crate::daemon::cmdq::Reply<Result<(), String>>>,
@@ -1243,15 +1241,8 @@ impl PanePump {
                         if self.active_turn.is_none() && state.phase == AgentConnectionPhase::Ready
                         {
                             state.phase = AgentConnectionPhase::Running;
-                            self.external_busy = true;
                         }
-                    } else if std::mem::take(&mut self.external_busy)
-                        && self.active_turn.is_none()
-                        && matches!(
-                            state.phase,
-                            AgentConnectionPhase::Running | AgentConnectionPhase::Cancelling
-                        )
-                    {
+                    } else if self.active_turn.is_none() && state.phase.has_active_turn() {
                         state.phase = AgentConnectionPhase::Ready;
                         follow = FollowUp::DrainQueue;
                     }
@@ -1287,7 +1278,7 @@ impl PanePump {
                             };
                         }
                         AgentPromptOutcome::Failed { message } => {
-                            state.phase = AgentConnectionPhase::Failed;
+                            state.phase = AgentConnectionPhase::Ready;
                             state.error = Some(message.clone());
                             settle_turn(&mut state);
                             turn_result = Some(Err(AgentTurnFailure::Failed(message.clone())));
@@ -1436,7 +1427,6 @@ impl PanePump {
         self.next_turn_id = self.next_turn_id.saturating_add(1).max(1);
         let turn_id = self.next_turn_id;
         self.active_turn = Some(turn_id);
-        self.external_busy = false;
         self.active_waiter = queued.waiter;
         self.turn_reply = AgentTurnReply::default();
         self.turn_started = Instant::now();
@@ -1601,7 +1591,7 @@ impl PanePump {
         if !self.state.lock().phase.has_active_turn() {
             return;
         }
-        if self.external_busy && self.active_turn.is_none() {
+        if self.active_turn.is_none() {
             let session_id = self.state.lock().session_id.clone();
             if self.send_control(RuntimeControl::Cancel {
                 turn_id: 0,
@@ -2300,6 +2290,38 @@ mod tests {
             .flatten()
             .map(|prompt| prompt.text.clone())
             .collect()
+    }
+
+    #[test]
+    fn a_failed_turn_leaves_the_pane_ready_for_the_next_prompt() {
+        let fixture = Fixture::open(Behavior::FailFirst, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("first");
+        fixture.recorder.wait("the failed turn", |payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::PromptFinished {
+                    outcome: AgentPromptOutcome::Failed { .. },
+                    ..
+                }
+            )
+        });
+        let state = fixture.state();
+        assert_eq!(state.phase, AgentConnectionPhase::Ready);
+        assert!(state.error.is_some());
+        fixture.prompt("second");
+        fixture.recorder.wait("the second turn", |payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::PromptFinished {
+                    outcome: AgentPromptOutcome::Finished { .. },
+                    ..
+                }
+            )
+        });
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Ready);
+        assert_eq!(fixture.state().error, None);
+        fixture.close();
     }
 
     #[test]
@@ -3295,7 +3317,6 @@ mod tests {
             git_refresh: GitRefreshGate::default(),
             next_turn_id: 0,
             active_turn: None,
-            external_busy: false,
             dispatched_prompt: None,
             active_waiter: None,
             session_waiter: None,

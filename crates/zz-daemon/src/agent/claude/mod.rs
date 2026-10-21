@@ -1354,7 +1354,7 @@ impl Runtime {
             message.push('\n');
             message.push_str(&tail);
         }
-        self.permissions.clear();
+        self.cancel_permissions(false).await?;
         if let Some(starting) = self.starting.take() {
             self.requests.clear();
             return self.fail_start(starting.start, message).await;
@@ -1844,6 +1844,12 @@ impl Runtime {
         request_id: u64,
         answers: &[AgentQuestionAnswer],
     ) -> Result<(), String> {
+        if !matches!(
+            self.permissions.get(&request_id),
+            Some(Permission::Question { .. })
+        ) {
+            return Ok(());
+        }
         let Some(Permission::Question {
             claude_id,
             input,

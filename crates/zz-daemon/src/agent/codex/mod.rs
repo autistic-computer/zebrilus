@@ -1656,7 +1656,7 @@ impl Runtime {
             message.push('\n');
             message.push_str(&tail);
         }
-        self.permissions.clear();
+        self.cancel_permissions().await?;
         self.requests.clear();
         if let Some(starting) = self.starting.take() {
             return self.fail_start(starting.start, message).await;
