@@ -1,0 +1,11 @@
+[package]
+name = "zz-machine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Pure state machines: a transition picks the next state and the effects to run, and the state says when to wake"
+publish = false
+
+[lints]
+workspace = true

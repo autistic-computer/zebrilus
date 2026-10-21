@@ -15,6 +15,7 @@ agent = [
     "dep:base64",
     "dep:futures-lite",
     "dep:smol",
+    "dep:zz-machine",
 ]
 
 [dependencies]
@@ -39,6 +40,7 @@ thiserror.workspace = true
 zz-daemon-client.workspace = true
 zz-mux.workspace = true
 zz-protocol.workspace = true
+zz-machine = { workspace = true, optional = true }
 zz-terminal = { workspace = true, features = ["session"] }
 
 [target.'cfg(unix)'.dependencies]

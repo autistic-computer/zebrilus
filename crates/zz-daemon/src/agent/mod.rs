@@ -25,5 +25,6 @@ pub(crate) mod journal;
 pub(crate) mod paths;
 pub(crate) mod runtime;
 pub(crate) mod stream;
+pub(crate) mod turn;
 pub(crate) mod visualize;
 pub(crate) mod zz_command;
