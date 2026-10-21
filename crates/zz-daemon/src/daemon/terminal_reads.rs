@@ -1107,3 +1107,167 @@ impl Shared {
         );
     }
 }
+
+const RUN_PANE_TYPED_START: &str = " printf '\\n%s\\n' 'ZZRUN-";
+
+pub(super) fn without_run_pane_lines(text: &str, width: usize) -> String {
+    if !text.contains("ZZRUN-") {
+        return text.to_owned();
+    }
+    let rows = text.split('\n').collect::<Vec<_>>();
+    let mut joined = String::with_capacity(text.len());
+    let mut spans = Vec::with_capacity(rows.len());
+    for (index, row) in rows.iter().enumerate() {
+        let start = joined.len();
+        joined.push_str(row);
+        spans.push((start, joined.len()));
+        if index + 1 < rows.len() {
+            let shown = zz_protocol::display_width(row);
+            joined.extend(std::iter::repeat_n(' ', width.saturating_sub(shown)));
+        }
+    }
+    let row_of = |offset: usize| spans.partition_point(|(start, _)| *start <= offset) - 1;
+    let mut kept = Vec::with_capacity(rows.len());
+    let mut next_row = 0;
+    let mut from = 0;
+    while let Some(found) = joined[from..].find(RUN_PANE_TYPED_START) {
+        let start = from + found;
+        let Some((length, command)) = typed_run_pane_line(&joined[start..]) else {
+            from = start + RUN_PANE_TYPED_START.len();
+            continue;
+        };
+        let end = start + length;
+        let (first, last) = (row_of(start), row_of(end - 1));
+        kept.extend(rows[next_row..first].iter().map(|row| (*row).to_owned()));
+        let (row_start, _) = spans[first];
+        let (_, row_end) = spans[last];
+        let mut line = format!("{} {command}", joined[row_start..start].trim_end());
+        if end < row_end {
+            line.push_str(&joined[end..row_end]);
+        }
+        kept.push(line);
+        next_row = last + 1;
+        from = spans
+            .get(next_row)
+            .map_or(joined.len(), |(start, _)| *start);
+    }
+    kept.extend(rows[next_row..].iter().map(|row| (*row).to_owned()));
+    let mut lines = Vec::<String>::with_capacity(kept.len());
+    for line in kept {
+        if is_run_pane_marker(line.trim_end()) {
+            if lines
+                .last()
+                .is_some_and(|previous| previous.trim().is_empty())
+            {
+                lines.pop();
+            }
+            continue;
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
+}
+
+fn typed_run_pane_line(text: &str) -> Option<(usize, String)> {
+    let rest = text.strip_prefix(" printf '\\n%s\\n' '")?;
+    let marker = run_pane_marker_prefix(rest)?;
+    let rest = rest[marker.len()..].strip_prefix("-BEGIN'; ")?;
+    let rest = rest
+        .strip_prefix("command ")
+        .unwrap_or(rest)
+        .strip_prefix("eval \"$(printf '%b' '")?;
+    let (escaped, rest) = rest.split_once('\'')?;
+    let rest = rest.strip_prefix(&format!(")\"; printf '\\n{marker}-RC=%d=END\\n' $?"))?;
+    Some((text.len() - rest.len(), run_pane_command(escaped)?))
+}
+
+fn run_pane_marker_prefix(text: &str) -> Option<&str> {
+    let hex = text.strip_prefix("ZZRUN-")?.get(..16)?;
+    hex.bytes()
+        .all(|byte| byte.is_ascii_hexdigit())
+        .then(|| &text[.."ZZRUN-".len() + 16])
+}
+
+fn is_run_pane_marker(line: &str) -> bool {
+    run_pane_marker_prefix(line).is_some_and(|marker| {
+        let rest = &line[marker.len()..];
+        rest == "-BEGIN"
+            || rest
+                .strip_prefix("-RC=")
+                .and_then(|rest| rest.strip_suffix("=END"))
+                .is_some_and(|code| {
+                    !code.is_empty() && code.bytes().all(|byte| byte.is_ascii_digit())
+                })
+    })
+}
+
+#[cfg(test)]
+mod run_pane_line_tests {
+    use super::*;
+
+    const ALIENWARE: &str = "demfabris@alienware ~ $  printf '\\n%s\\n' 'ZZRUN-8554ccef87efc416-BEGIN'; command\n eval \"$(printf '%b' 'echo probe-out')\"; printf '\\nZZRUN-8554ccef87efc416-RC=%d=\nEND\\n' $?\n\nZZRUN-8554ccef87efc416-BEGIN\nprobe-out\n\nZZRUN-8554ccef87efc416-RC=0=END\ndemfabris@alienware ~ $";
+
+    #[test]
+    fn capture_shows_a_run_pane_call_as_the_command_and_its_output() {
+        assert_eq!(
+            without_run_pane_lines(ALIENWARE, 80),
+            "demfabris@alienware ~ $ echo probe-out\nprobe-out\ndemfabris@alienware ~ $"
+        );
+        let joined = ALIENWARE
+            .replacen("command\n eval", "command eval", 1)
+            .replacen("%d=\nEND", "%d=END", 1);
+        assert_eq!(
+            without_run_pane_lines(&joined, 80),
+            "demfabris@alienware ~ $ echo probe-out\nprobe-out\ndemfabris@alienware ~ $"
+        );
+    }
+
+    #[test]
+    fn a_space_trimmed_at_a_wrap_still_matches_and_the_command_is_decoded() {
+        let line = run_pane_line("ZZRUN-0123456789abcdef", "eval", "echo \"it's\"  ok");
+        let typed = format!("$ {line}");
+        let width = 30;
+        let mut rows = typed
+            .chars()
+            .collect::<Vec<_>>()
+            .chunks(width)
+            .map(|chunk| chunk.iter().collect::<String>().trim_end().to_owned())
+            .collect::<Vec<_>>();
+        let wrapped = rows.len() - 1;
+        assert!(
+            rows[..wrapped].iter().any(|row| row.len() < width),
+            "{rows:#?}"
+        );
+        rows.extend([
+            String::new(),
+            "ZZRUN-0123456789abcdef-BEGIN".to_owned(),
+            "it's  ok".to_owned(),
+            "ZZRUN-0123456789abcdef-RC=0=END".to_owned(),
+            "$".to_owned(),
+        ]);
+        assert_eq!(
+            without_run_pane_lines(&rows.join("\n"), width),
+            "$ echo \"it's\"  ok\nit's  ok\n$"
+        );
+    }
+
+    #[test]
+    fn output_without_a_final_newline_and_lookalikes_survive() {
+        let text = "a\n\nZZRUN-0123456789abcdef-BEGIN\npartial\nZZRUN-0123456789abcdef-RC=7=END\n\nZZRUN-nothex0000000000-BEGIN\nZZRUN-0123456789abcdef-RC=x=END";
+        assert_eq!(
+            without_run_pane_lines(text, 80),
+            "a\npartial\n\nZZRUN-nothex0000000000-BEGIN\nZZRUN-0123456789abcdef-RC=x=END"
+        );
+        assert_eq!(without_run_pane_lines("plain\ntext\n", 80), "plain\ntext\n");
+    }
+
+    #[test]
+    fn two_typed_lines_on_one_row_keep_the_second_as_text() {
+        let line = run_pane_line("ZZRUN-0123456789abcdef", "eval", "true");
+        let row = format!("${line}{line}");
+        assert_eq!(
+            without_run_pane_lines(&format!("{row}\nafter"), 80),
+            format!("$ true{line}\nafter")
+        );
+    }
+}
