@@ -1,12 +1,11 @@
 use crate::{
     SshEndpoint,
     endpoint::{
-        SSH_FAILURE_STATUS, SshFailure, probe_value, remote_socket_probe_script, run_remote_script,
-        ssh_failure_reason,
+        SSH_FAILURE_STATUS, SshFailure, UNATTENDED_CONNECT_TIMEOUT_SECONDS, probe_value,
+        remote_socket_probe_script, run_remote_script, ssh_failure_reason,
     },
 };
 
-const PROBE_CONNECT_TIMEOUT_SECONDS: u32 = 3;
 const LOGIN_REFUSED: &str = "refused every login zz tried";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,7 +53,7 @@ impl HostProbe {
 pub fn probe_host(endpoint: &SshEndpoint) -> HostProbe {
     match run_remote_script(
         endpoint,
-        PROBE_CONNECT_TIMEOUT_SECONDS,
+        UNATTENDED_CONNECT_TIMEOUT_SECONDS,
         &host_probe_script(),
     ) {
         Ok(output) => host_probe_from(
