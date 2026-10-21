@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Flat sidebar data: pane summaries, attention and time"
-description: "The data layer for a flat, two-line-per-window sidebar on every client: one PaneSummary per pane in the tree (last change time, unseen finish latch, last shell command, @name, display cwd and git branch), one status record for every agent kind, the daemon clock on the handshake, and a renderer-free view model in zz-client. Both data slices are built, and the desktop, web and iPad sidebars draw it when the footer's eye switch is on."
+description: "The data layer for a flat, two-line-per-window sidebar on every client: one PaneSummary per pane in the tree (last change time, unseen finish latch, last shell command, @name, display cwd and git branch, and the program running in a terminal), one status record for every agent kind, the daemon clock on the handshake, and a renderer-free view model in zz-client. Both data slices are built, and the desktop, web and iPad sidebars draw it when the footer's eye switch is on."
 status: Complete
 resource: crates/zz-client/src/window_summary.rs
 tags:
@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-17T12:00:00-03:00
+timestamp: 2026-10-20T20:00:00-03:00
 ---
 
 # Overview
@@ -43,13 +43,14 @@ it, so the two-line rows never turn into pills.
   see [Native Agent pane](/concepts/agent-pane.md)), and terminal panes without a 7501 record through
   a mirror of their `@agent_state` option.
 - `PaneSnapshot.summary: PaneSummary` holds `changed_at`, `unseen`, `command`, `name`, `cwd`,
-  `repo` and `branch`, with its own `TreeOp::PaneSummary` at tag 18.
+  `repo`, `branch` and `process`, with its own `TreeOp::PaneSummary` at tag 18.
 - `Welcome.clock` and `ServerHello.clock` carry the daemon wall clock once per connection.
 
 Field meanings, bounds and the exact stamping rules live in
 [snapshots](/protocol/snapshots.md#pane-status-summary-and-time); the wire changes are listed under
 v108 in [the wire protocol](/protocol/wire-protocol.md). v108 was still unreleased when this
-landed, so there was no version bump. If a release tags v108 first, bump to 109.
+landed, so there was no version bump. If a release tags v108 first, bump to 109. `process` came
+later, in v112.
 
 # Decisions
 
@@ -129,8 +130,8 @@ the agreed mock; Done is in the foreground only while the finish is unseen.
 
 **Ages** are `short_age`: "now" under a minute, then minutes, hours and days. `age_label` shows
 nothing while `changed_at` is 0. **Tiles** put the active pane first, then layout order, each with
-its pane id and label; the row draws the first with its glyph and a blank tile for each of the next
-two, and the open row offers every pane (`FlatEvent::OpenPane`).
+its pane id, label and program (`pane_program`, below); the row draws the first with its glyph and
+a blank tile for each of the next two, and the open row offers every pane (`FlatEvent::OpenPane`).
 **Rollups** count one attention per window and keep the newest change; a host merges its sessions.
 
 **Session headers** come from `navigation::session_label`, which every sidebar, the palettes and the
@@ -139,6 +140,43 @@ is labeled with the place most of its panes are in: the last folder of their `re
 `cwd` (`~` at home), ties going to the active pane. Its number follows, faint, as `zz 0`, so the
 target to type stays visible and two sessions in one repo still differ. The name itself never
 changes, so `-t 0` and `#S` behave as in tmux.
+
+# Program icons
+
+A terminal pane's tile shows the icon of the program running in it, the way Rex does. The daemon
+does not pick the icon: `PaneSummary.process` carries the names it found, and the client matches
+them, so a client with new icons works against an older v112 daemon.
+
+**The daemon lists names, foreground first.** It starts at the terminal's foreground process
+group and walks parents up to the pane's shell, at most 16 processes, and leaves out any known
+shell, so an idle shell sends an empty list. Each process gives its script (for `node`, `bun`,
+`deno`, `python`, `ruby`, `perl` and `php`), the script without its extension, the invoked path
+(argv0 found in the process `PATH`, kept only when it is the executable or a symlink to it), argv0,
+the process name and the executable path. On Windows, where ConPTY has no foreground group, it
+starts at the newest leaf process under the shell instead. The exact rules are in
+[snapshots](/protocol/snapshots.md#pane-status-summary-and-time).
+
+**It is cheap because it rides the existing check.** The runtime check behind
+`#{pane_current_command}` already reads the foreground pid and its name after output or a frame,
+at most every 500 ms per pane. The daemon compares that pair with the one behind the pane's list
+inside the lock the check already takes, and stops there when they match. A shell name clears the
+list in the same place. A new pair waits until its process is 250 ms old, which keeps a shell loop
+of short commands (`echo; sleep 0.01`) from flipping the list; a young one gets a single timer
+callback for when it turns 250 ms, so a program that draws once and goes quiet still gets its
+icon. Once settled it queues one job per pane on the location thread, and a result that matches
+the summary sends nothing. An idle pane
+and a program that keeps running cost nothing past that comparison.
+
+**The client picks the icon.** `zz_client::program::resolve` takes the first name that ends in a
+known command at a `/` boundary (case folded, `\` read as `/`, `.exe` dropped, and tried again
+without its extension), the longest command winning, so `/home/me/bin/claude.py` and
+`codex` (from `exec -a codex sleep 30`) both resolve, and a later `node` or `python3` never beats
+the script before it. `pane_program` keeps Agent panes on their provider's icon.
+
+**The tree draws the mark alone.** The session tree on desktop, web and iPad puts the program's
+mark, without its tile, in the row's ink where the kind icon was (`zz_ui::program::program_mark`):
+on a pane row, and on a folded window row for its active pane. A logo with more than one color has
+no single-ink mark, so its row keeps the kind icon.
 
 # What the source changed in the first draft
 
@@ -194,6 +232,12 @@ changes, so `-t 0` and `#S` behave as in tmux.
 
 - A `DaemonClock` per host connection (the desktop reads ages against the local clock) and a
   once-a-minute repaint for ages; keyboard navigation in the flat list.
+- Program icons for a program that stays in the foreground for less than 250 ms: it is skipped
+  while young on purpose.
+- Program icons for a pane whose program runs in the background of its shell's process group:
+  the foreground group's leader is the only starting point, so a script that a non-interactive
+  shell runs without `exec` shows the shell's (empty) list. A program that execs another binary
+  under the same pid and name keeps its old list until its pid or name changes.
 - A live "what the agent is doing" line while Working, agent diff stats on line 2, an `Auth` kind
   for native agents, `#{pane_unseen}` and `#{pane_changed_at}` formats, chimes for every host from
   `unseen` edges, and retiring `AgentAttentionTracker`, `AgentBadge` and the thin client's

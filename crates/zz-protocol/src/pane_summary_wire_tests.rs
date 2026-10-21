@@ -29,6 +29,7 @@ fn filled() -> PaneSummary {
         cwd: "~".to_owned(),
         repo: "~".to_owned(),
         branch: "main".to_owned(),
+        process: vec!["codex".to_owned(), "sleep".to_owned()],
     }
 }
 
@@ -81,8 +82,9 @@ fn status(app: String, title: String, message: String) -> PaneStatus {
     }
 }
 
-const SUMMARY_TAIL: [u8; 19] = [
-    0, 172, 2, 1, 1, 1, 2, 2, b'r', b'v', 1, b'~', 1, b'~', 4, b'm', b'a', b'i', b'n',
+const SUMMARY_TAIL: [u8; 32] = [
+    0, 172, 2, 1, 1, 1, 2, 2, b'r', b'v', 1, b'~', 1, b'~', 4, b'm', b'a', b'i', b'n', 2, 5, b'c',
+    b'o', b'd', b'e', b'x', 5, b's', b'l', b'e', b'e', b'p',
 ];
 
 #[test]
@@ -171,6 +173,32 @@ fn pane_summary_text_decode_is_bounded() {
         let bytes = postcard::to_stdvec(&pane(oversized)).unwrap();
         assert!(postcard::from_bytes::<PaneSnapshot>(&bytes).is_err());
     }
+}
+
+#[test]
+fn pane_summary_process_decode_is_bounded() {
+    let decoded = |process: Vec<String>| {
+        let bytes = postcard::to_stdvec(&pane(PaneSummary {
+            process,
+            ..filled()
+        }))
+        .unwrap();
+        postcard::from_bytes::<PaneSnapshot>(&bytes).map(|pane| pane.summary.process)
+    };
+    let full = vec!["x".repeat(MAX_PANE_PROCESS_BYTES); MAX_PANE_PROCESS_ENTRIES];
+    assert_eq!(decoded(full.clone()).unwrap(), full);
+    assert!(decoded(vec![String::new(); MAX_PANE_PROCESS_ENTRIES + 1]).is_err());
+    assert!(decoded(vec!["x".repeat(MAX_PANE_PROCESS_BYTES + 1)]).is_err());
+
+    let mut json = serde_json::to_value(filled()).unwrap();
+    json.as_object_mut().unwrap().remove("process");
+    assert_eq!(
+        serde_json::from_value::<PaneSummary>(json).unwrap(),
+        PaneSummary {
+            process: Vec::new(),
+            ..filled()
+        }
+    );
 }
 
 #[test]

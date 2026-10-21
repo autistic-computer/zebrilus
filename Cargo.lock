@@ -11677,6 +11677,7 @@ dependencies = [
  "markdown",
  "merman",
  "parking_lot",
+ "rust-embed",
  "serde",
  "serde_json",
  "smallvec",

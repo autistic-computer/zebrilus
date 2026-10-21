@@ -464,8 +464,9 @@ fn terminal_working_directory(terminal: &TerminalSession) -> Option<PathBuf> {
     terminal_foreground_process(terminal).and_then(process_working_directory)
 }
 
-fn terminal_foreground_facts(terminal: &TerminalSession) -> (String, Option<String>) {
-    terminal_foreground_process(terminal).map_or_else(
+fn terminal_foreground_facts(terminal: &TerminalSession) -> (Option<u32>, String, Option<String>) {
+    let foreground = terminal_foreground_process(terminal);
+    let (command, path) = foreground.map_or_else(
         || (String::new(), None),
         |pid| {
             (
@@ -473,7 +474,8 @@ fn terminal_foreground_facts(terminal: &TerminalSession) -> (String, Option<Stri
                 process_working_directory(pid).map(|path| path.to_string_lossy().into_owned()),
             )
         },
-    )
+    );
+    (foreground, command, path)
 }
 
 #[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
@@ -10347,6 +10349,7 @@ impl Shared {
                                 retire_terminal(&terminal);
                             }
                             inner.name_checks.remove(pane);
+                            pane_summary::forget_pane_program(&mut inner, *pane);
                             inner.pane_read_observations.remove(pane);
                             inner.control_activity_pending.remove(pane);
                             inner.program_status_panes.remove(pane);
@@ -28531,8 +28534,16 @@ impl Shared {
         now: Instant,
     ) {
         terminal.take_output_since_check();
-        let (current_command, live_path) = terminal_foreground_facts(terminal);
-        self.synchronize_pane_runtime(pane, terminal, &current_command, live_path, output, now);
+        let (foreground, current_command, live_path) = terminal_foreground_facts(terminal);
+        self.synchronize_pane_runtime(
+            pane,
+            terminal,
+            foreground,
+            &current_command,
+            live_path,
+            output,
+            now,
+        );
     }
 
     fn synchronize_pane_reported_path(
@@ -28574,13 +28585,21 @@ impl Shared {
         self: &Arc<Self>,
         pane: PaneId,
         terminal: &Arc<TerminalSession>,
+        foreground: Option<u32>,
         current_command: &str,
         live_path: Option<String>,
         output: bool,
         now: Instant,
     ) {
-        let events =
-            self.apply_pane_runtime(pane, terminal, current_command, live_path, output, now);
+        let events = self.apply_pane_runtime(
+            pane,
+            terminal,
+            foreground,
+            current_command,
+            live_path,
+            output,
+            now,
+        );
         self.run_event_hooks(events);
     }
 
@@ -28588,6 +28607,7 @@ impl Shared {
         self: &Arc<Self>,
         pane: PaneId,
         terminal: &Arc<TerminalSession>,
+        foreground: Option<u32>,
         current_command: &str,
         live_path: Option<String>,
         output: bool,
@@ -28598,7 +28618,7 @@ impl Shared {
             .tty()
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let ((changed, events), relocated) = {
+        let ((changed, events), relocated, program) = {
             let mut inner = self.inner.lock();
             if !inner
                 .terminals
@@ -28653,13 +28673,20 @@ impl Shared {
                 inner.engine.note_automatic_rename_output(pane, now);
             }
             self.schedule_window_renames(&mut inner);
-            (result, relocated)
+            let program =
+                pane_summary::sight_program(&mut inner, pane, foreground, current_command, now);
+            (result, relocated, program)
         };
-        let changed = if relocated && self.locate_moved_pane(pane) {
+        let changed = if (relocated && self.locate_moved_pane(pane))
+            || program == pane_summary::ProgramSighting::Cleared
+        {
             Some(timers::PublishReason::Tree)
         } else {
             changed
         };
+        if let pane_summary::ProgramSighting::Changed(foreground) = program {
+            self.watch_pane_program(pane, terminal, foreground, pid, current_command, true);
+        }
         if (output || changed.is_some()) && pid.is_some() {
             self.request_peer_probe();
         }
@@ -83638,6 +83665,7 @@ set-option -g @alias-mixed-next yes
         shared.synchronize_pane_runtime(
             pane,
             &terminal,
+            None,
             &facts.current_command,
             Some(facts.current_path.clone()),
             false,
@@ -83652,6 +83680,7 @@ set-option -g @alias-mixed-next yes
         shared.synchronize_pane_runtime(
             pane,
             &terminal,
+            None,
             "zz-changed",
             Some(facts.current_path.clone()),
             false,
@@ -116033,7 +116062,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 inner.engine.state.sessions[&session].sort_activity,
             )
         };
-        shared.synchronize_pane_runtime(pane, &terminal, "fish", None, false, Instant::now());
+        shared.synchronize_pane_runtime(pane, &terminal, None, "fish", None, false, Instant::now());
         {
             let inner = shared.inner.lock();
             assert_eq!(

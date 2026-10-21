@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use zz_client::program::Program;
 use zz_gpui::{
     AnyElement, App, Hsla, IntoElement, ListSizingBehavior, ParentElement as _, Stateful,
     Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
@@ -9,7 +10,7 @@ use zz_ui::{
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
         WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH,
+        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
         sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
             tree_node_marker, tree_row_menu,
@@ -19,6 +20,7 @@ use zz_ui::{
         workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_sidebar_view_button,
         workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_row,
     },
+    program::program_mark,
     scroll::ScrollableElement as _,
 };
 
@@ -61,6 +63,7 @@ pub struct Node {
     pub expanded: bool,
     pub bell: bool,
     pub badge: Option<Badge>,
+    pub program: Option<&'static str>,
 }
 
 impl Node {
@@ -82,7 +85,22 @@ impl Node {
             expanded: true,
             bell: false,
             badge: None,
+            program: None,
         }
+    }
+
+    const fn running(mut self, program: &'static str) -> Self {
+        self.program = Some(program);
+        self
+    }
+
+    pub fn shown_program(&self) -> Option<&'static Program> {
+        let shown = match self.kind {
+            Kind::Pane => true,
+            Kind::Window => !self.expanded,
+            Kind::Host | Kind::Session => false,
+        };
+        self.program.filter(|_| shown).and_then(Program::by_id)
     }
 
     const fn active_path(mut self) -> Self {
@@ -118,26 +136,40 @@ pub fn workspace_tree() -> Vec<Node> {
             .badge(Badge::NeedsInput),
         Node::new("editor", Kind::Window, IconName::AppWindow, "editor")
             .active_path()
-            .badge(Badge::NeedsInput),
-        Node::new("nvim", Kind::Pane, IconName::SquareTerminal, "nvim").active_path(),
+            .badge(Badge::NeedsInput)
+            .running("neovim"),
+        Node::new("nvim", Kind::Pane, IconName::SquareTerminal, "nvim")
+            .active_path()
+            .running("neovim"),
         Node::new("review", Kind::Pane, IconName::Claude, "Review sidebar")
-            .badge(Badge::NeedsInput),
+            .badge(Badge::NeedsInput)
+            .running("claude"),
         Node::new("docs", Kind::Pane, IconName::Globe, "zed.dev"),
-        Node::new("agents", Kind::Window, IconName::AppWindow, "agents").badge(Badge::Failed),
+        Node::new("shell", Kind::Pane, IconName::SquareTerminal, "zsh"),
+        Node::new("agents", Kind::Window, IconName::AppWindow, "agents")
+            .badge(Badge::Failed)
+            .running("codex"),
         Node::new("rework", Kind::Pane, IconName::Openai, "Rework status bar")
-            .badge(Badge::Working),
+            .badge(Badge::Working)
+            .running("codex"),
         Node::new(
             "flaky",
             Kind::Pane,
             IconName::Claude,
             "Fix flaky daemon test",
         )
-        .badge(Badge::Failed),
+        .badge(Badge::Failed)
+        .running("claude"),
         Node::new("notes", Kind::Pane, IconName::Claude, "Write release notes")
-            .badge(Badge::Finished),
+            .badge(Badge::Finished)
+            .running("claude"),
+        Node::new("build", Kind::Window, IconName::AppWindow, "build")
+            .collapsed()
+            .running("rust"),
         Node::new("logs", Kind::Window, IconName::AppWindow, "logs")
             .collapsed()
-            .bell(),
+            .bell()
+            .running("docker"),
         Node::new("scratch", Kind::Session, IconName::Layers, "scratch").collapsed(),
     ]
 }
@@ -234,12 +266,18 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
     let marker = if is_host {
         tree_host_marker(node.bell, badge, cx)
     } else {
-        tree_node_marker(
-            Icon::new(node.icon.clone()).medium().text_color(color),
-            node.bell,
-            badge,
-            cx,
-        )
+        let icon = node
+            .shown_program()
+            .and_then(|program| {
+                program_mark(program, px(WORKSPACE_TREE_NODE_ICON_SIZE), color, None)
+            })
+            .unwrap_or_else(|| {
+                Icon::new(node.icon.clone())
+                    .medium()
+                    .text_color(color)
+                    .into_any_element()
+            });
+        tree_node_marker(icon, node.bell, badge, cx)
     };
     let marker = if node.expandable {
         workspace_tree_disclosure(

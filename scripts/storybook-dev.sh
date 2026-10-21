@@ -31,6 +31,8 @@ cargo watch \
     --watch clients/storybook/src \
     --watch clients/storybook/web \
     --watch crates/zz-ui/src \
+    --watch crates/zz-ui/assets \
+    --watch crates/zz-client/src \
     --watch crates/zz-gpui-kit/src \
     --watch crates/zz-gpui-kit/assets \
     --watch crates/zz-gpui/src \

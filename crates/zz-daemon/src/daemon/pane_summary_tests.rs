@@ -1458,6 +1458,7 @@ fn a_move_into_a_known_directory_publishes_the_tree() {
     shared.apply_pane_runtime(
         pane,
         &terminal,
+        None,
         "",
         Some(repo.display().to_string()),
         false,
@@ -1468,4 +1469,176 @@ fn a_move_into_a_known_directory_publishes_the_tree() {
     shared.publish_flush.lock().frozen = Some(Instant::now() + Duration::from_hours(1));
     shared.synchronize_pane_reported_path(pane, &terminal, &report);
     assert_eq!(location(), ("~/report".into(), "next".into(), true, true));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_settled_foreground_program_fills_the_summary_and_a_shell_clears_it() {
+    use std::os::unix::process::CommandExt as _;
+
+    let mut child = std::process::Command::new("/bin/sleep")
+        .arg0("codex")
+        .arg("30")
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id();
+    let shared = Arc::new(Shared::new(1));
+    let (pane, terminal) = empty_terminal_pane(&shared, "programs");
+    let state = || {
+        let inner = shared.inner.lock();
+        (
+            summary(&inner, pane).process,
+            inner.last_published_mux_generation == inner.engine.state.generation(),
+            inner.engine.state.generation(),
+        )
+    };
+    let later = Instant::now() + Duration::from_hours(1);
+    let at = |step| shared.publish_flush.lock().frozen = Some(later + Duration::from_secs(step));
+    let check = |foreground, command| {
+        shared.synchronize_pane_runtime(
+            pane,
+            &terminal,
+            foreground,
+            command,
+            None,
+            true,
+            Instant::now(),
+        );
+    };
+
+    at(0);
+    check(Some(pid), "sleep");
+    assert!(shared.inner.lock().locations.programs.is_empty());
+    thread::sleep(PROGRAM_SETTLE);
+    at(1);
+    check(Some(pid), "sleep");
+    shared.settle_pane_locations();
+    let (process, published, generation) = state();
+    let _ = child.kill();
+    let _ = child.wait();
+    assert_eq!(process[..2], ["codex", "sleep"]);
+    assert!(published);
+
+    check(Some(pid), "sleep");
+    assert!(shared.inner.lock().locations.program_jobs.is_empty());
+    assert_eq!(state().2, generation);
+
+    at(2);
+    check(Some(pid), "-zsh");
+    assert!(shared.inner.lock().locations.program_jobs.is_empty());
+    let (process, published, _) = state();
+    assert!(process.is_empty());
+    assert!(published);
+    assert!(shared.inner.lock().locations.programs.is_empty());
+
+    let generation = state().2;
+    check(None, "");
+    assert_eq!(state().2, generation);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_pane_reports_the_program_it_runs_under_another_name() {
+    let shared = Arc::new(Shared::new(1));
+    let pane = new_pane(
+        &shared,
+        &[
+            "new-session",
+            "-d",
+            "-s",
+            "renamed",
+            "exec bash -c 'exec -a codex /bin/sleep 30'",
+        ],
+    );
+    let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+    wait_until("the program in the pane summary", || {
+        shared.check_pane_runtime(pane, &terminal, false, Instant::now());
+        shared.settle_pane_locations();
+        !summary(&shared.inner.lock(), pane).process.is_empty()
+    });
+    let process = summary(&shared.inner.lock(), pane).process;
+    assert_eq!(process[..2], ["codex", "sleep"]);
+    assert_eq!(process.len(), 3, "{process:?}");
+    assert!(process[2].ends_with("sleep"), "{process:?}");
+    shared.request_shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_script_under_an_interpreter_leads_its_pane_process() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let scratch = tempfile::tempdir().expect("temp dir");
+    let work = fs::canonicalize(scratch.path()).expect("resolved temp dir");
+    fs::write(
+        work.join("claude.py"),
+        "import sys, time\nwhile True:\n    sys.stdout.write('.')\n    sys.stdout.flush()\n    time.sleep(0.1)\n",
+    )
+    .expect("script");
+    let start = work.display().to_string();
+    let shared = Arc::new(Shared::new(1));
+    let pane = new_pane(
+        &shared,
+        &[
+            "new-session",
+            "-d",
+            "-s",
+            "script",
+            "-c",
+            &start,
+            "exec python3 claude.py",
+        ],
+    );
+    let expected = [
+        work.join("claude.py").display().to_string(),
+        work.join("claude").display().to_string(),
+    ];
+    wait_until("the script in the pane summary", || {
+        summary(&shared.inner.lock(), pane).process.get(..2) == Some(&expected[..])
+    });
+    shared.request_shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_program_that_goes_quiet_right_after_it_starts_still_gets_its_process() {
+    let shared = Arc::new(Shared::new(1));
+    let inputs = shared.timer_rx.lock().take().unwrap();
+    let pane = new_pane(
+        &shared,
+        &[
+            "new-session",
+            "-d",
+            "-s",
+            "quiet",
+            "exec bash -c 'printf ready; exec -a codex /bin/sleep 30'",
+        ],
+    );
+    let found = || {
+        shared.settle_pane_locations();
+        summary(&shared.inner.lock(), pane)
+            .process
+            .first()
+            .map(String::as_str)
+            == Some("codex")
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !found() {
+        let Ok(input) = inputs.recv_deadline(deadline) else {
+            panic!("the quiet program never reached the pane summary");
+        };
+        if let timers::TimerInput::Callback { deadline, callback } = input {
+            if let Some(due) = deadline {
+                thread::sleep(due.saturating_duration_since(Instant::now()));
+            }
+            callback();
+        }
+    }
+    shared.request_shutdown();
 }

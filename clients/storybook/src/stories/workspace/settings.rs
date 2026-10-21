@@ -423,6 +423,13 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 ),
         )
         .state(
+            "sidebar rows",
+            SettingsStack::titled("Sidebar").child(
+                entry(AppearancePageItem::ProgramColors)
+                    .control(Switch::new("program-colors").checked(knobs.program_colors)),
+            ),
+        )
+        .state(
             "advanced heading, collapsed and expanded",
             div()
                 .flex()

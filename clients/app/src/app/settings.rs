@@ -112,6 +112,7 @@ impl Preferences {
             cx.set_global(PlatformReduceMotion(cx.reduce_motion()));
         }
         cx.set_reduce_motion(cx.global::<PlatformReduceMotion>().0 || !self.animations);
+        cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
         #[cfg(target_os = "ios")]
         let (contrast, text_scale) = (
             self.contrast * if system.increase_contrast { 1.25 } else { 1.0 },
@@ -605,6 +606,7 @@ impl AppShell {
                                 | AppearancePageItem::TintHue
                                 | AppearancePageItem::Tint
                                 | AppearancePageItem::Themes
+                                | AppearancePageItem::ProgramColors
                                 | AppearancePageItem::CornerRadius
                                 | AppearancePageItem::ChromeContrast
                                 | AppearancePageItem::UiFontFamily
@@ -967,6 +969,27 @@ impl AppShell {
                     slider,
                     narrow,
                 )
+            }
+            AppearancePageItem::ProgramColors => {
+                let (title, description) = item.text().unwrap_or_default();
+                SettingEntry::new(title, description)
+                    .title_actions(reset_button(
+                        "settings-program-colors-reset",
+                        self.preferences.program_colors != Preferences::default().program_colors,
+                        |this, _, _| {
+                            this.preferences.program_colors = Preferences::default().program_colors;
+                        },
+                        cx,
+                    ))
+                    .control(
+                        Switch::new("settings-program-colors")
+                            .checked(self.preferences.program_colors)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.preferences.program_colors = !this.preferences.program_colors;
+                                this.preferences.save();
+                                this.preferences.apply(&this.connection, window, cx);
+                            })),
+                    )
             }
             AppearancePageItem::Animations => SettingEntry::new(
                 "Animations",

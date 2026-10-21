@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 
+use zz_client::{program::Program, window_summary::pane_program};
 use zz_gpui::{App, Entity, SharedString};
 use zz_protocol::{
     AgentProvider, Axis, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
@@ -490,6 +491,14 @@ impl MuxTreeWindow {
     fn has_pending_bell(&self) -> bool {
         self.panes.iter().any(|pane| pane.bell)
     }
+
+    #[must_use]
+    pub fn program(&self) -> Option<&'static Program> {
+        self.panes
+            .iter()
+            .find(|pane| pane.id == self.active_pane)
+            .and_then(|pane| pane.program)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -500,6 +509,7 @@ pub struct MuxTreePane {
     /// A BEL rang here and nobody has been back since.
     pub bell: bool,
     pub status: Option<PaneStatusState>,
+    pub program: Option<&'static Program>,
 }
 
 impl MuxTreePane {
@@ -518,6 +528,7 @@ impl MuxTreePane {
             kind,
             bell: pane.bell,
             status: pane.status.as_ref().map(|status| status.state),
+            program: pane_program(pane),
         }
     }
 

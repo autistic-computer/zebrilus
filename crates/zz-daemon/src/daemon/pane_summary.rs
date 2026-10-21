@@ -1,6 +1,10 @@
 use super::*;
 use std::collections::btree_map::Entry;
-use zz_protocol::{MAX_PANE_BRANCH_BYTES, MAX_PANE_CWD_BYTES, MAX_PANE_NAME_BYTES, ShellCommand};
+use zz_daemon_client::process_info;
+use zz_protocol::{
+    MAX_PANE_BRANCH_BYTES, MAX_PANE_CWD_BYTES, MAX_PANE_NAME_BYTES, MAX_PANE_PROCESS_BYTES,
+    MAX_PANE_PROCESS_ENTRIES, ShellCommand,
+};
 use zz_terminal::{ShellMark, ShellMarkKind};
 
 pub(super) fn pane_window_watched(inner: &ServerState, pane: PaneId) -> bool {
@@ -215,10 +219,18 @@ pub(super) fn stamp_pane(inner: &mut ServerState, pane: PaneId, now: u64) -> boo
 }
 
 const LOCATION_FRESH: Duration = Duration::from_secs(10);
+const PROGRAM_SETTLE: Duration = Duration::from_millis(250);
+const PROGRAM_RECHECK: Duration = Duration::from_secs(2);
 const LOCATION_RECHECK: Duration = Duration::from_secs(2);
 const KNOWN_LOCATIONS: usize = 64;
 
 type LocationSource = (String, PathBuf);
+type ProgramSource = (u32, Option<u32>, String);
+
+enum Job {
+    Location(PaneId, LocationSource),
+    Program(PaneId, ProgramSource),
+}
 
 struct KnownLocation {
     source: LocationSource,
@@ -236,6 +248,11 @@ pub(super) struct Locations {
     known: VecDeque<KnownLocation>,
     unread: BTreeSet<PaneId>,
     recheck: bool,
+    programs: BTreeMap<PaneId, ProgramSource>,
+    program_jobs: BTreeMap<PaneId, bool>,
+    program_queue: VecDeque<(PaneId, ProgramSource)>,
+    program_settling: BTreeMap<PaneId, Instant>,
+    program_checked: BTreeMap<PaneId, Instant>,
 }
 
 impl Shared {
@@ -324,6 +341,131 @@ impl Shared {
         }
     }
 
+    pub(super) fn watch_pane_program(
+        self: &Arc<Self>,
+        pane: PaneId,
+        terminal: &Arc<TerminalSession>,
+        foreground: u32,
+        shell: Option<u32>,
+        command: &str,
+        settle: bool,
+    ) {
+        if let Some(age) = process_info::running_for(foreground).filter(|age| *age < PROGRAM_SETTLE)
+        {
+            if settle {
+                self.settle_pane_program(pane, terminal, PROGRAM_SETTLE.saturating_sub(age));
+            }
+            return;
+        }
+        let start = {
+            let mut inner = self.inner.lock();
+            if !inner
+                .terminals
+                .get(&pane)
+                .is_some_and(|current| Arc::ptr_eq(current, terminal))
+            {
+                return;
+            }
+            let locations = &mut inner.locations;
+            locations
+                .programs
+                .insert(pane, (foreground, shell, command.to_owned()));
+            queue_program(locations, pane)
+        };
+        if start {
+            self.start_location_worker();
+        }
+    }
+
+    fn settle_pane_program(
+        self: &Arc<Self>,
+        pane: PaneId,
+        terminal: &Arc<TerminalSession>,
+        wait: Duration,
+    ) {
+        let due = Instant::now() + wait;
+        {
+            let settling = &mut self.inner.lock().locations.program_settling;
+            if settling
+                .get(&pane)
+                .is_some_and(|pending| *pending > Instant::now())
+            {
+                return;
+            }
+            settling.insert(pane, due);
+        }
+        let owner = Arc::downgrade(&self.server_owner());
+        let terminal = Arc::downgrade(terminal);
+        let _ = self.timer_tx.send(timers::TimerInput::Callback {
+            deadline: Some(due),
+            callback: Box::new(move || {
+                if let (Some(shared), Some(terminal)) = (owner.upgrade(), terminal.upgrade()) {
+                    shared.resight_pane_program(pane, &terminal);
+                }
+            }),
+        });
+    }
+
+    fn resight_pane_program(self: &Arc<Self>, pane: PaneId, terminal: &Arc<TerminalSession>) {
+        let foreground = terminal_foreground_process(terminal);
+        let command = foreground
+            .and_then(process_info::command_name)
+            .unwrap_or_default();
+        let sighting = {
+            let mut inner = self.inner.lock();
+            inner.locations.program_settling.remove(&pane);
+            if !inner
+                .terminals
+                .get(&pane)
+                .is_some_and(|current| Arc::ptr_eq(current, terminal))
+            {
+                return;
+            }
+            sight_program(&mut inner, pane, foreground, &command, Instant::now())
+        };
+        match sighting {
+            ProgramSighting::Unchanged => {}
+            ProgramSighting::Cleared => self.request_publish(timers::PublishReason::Tree),
+            ProgramSighting::Changed(foreground) => {
+                self.watch_pane_program(
+                    pane,
+                    terminal,
+                    foreground,
+                    terminal.process_id(),
+                    &command,
+                    false,
+                );
+            }
+        }
+    }
+
+    pub(super) fn finish_pane_program(
+        self: &Arc<Self>,
+        pane: PaneId,
+        source: &ProgramSource,
+        process: Vec<String>,
+    ) {
+        let (changed, start) = {
+            let mut inner = self.inner.lock();
+            let locations = &mut inner.locations;
+            let current = locations.programs.get(&pane) == Some(source);
+            let start = locations.program_jobs.remove(&pane) == Some(true)
+                && queue_program(locations, pane);
+            let changed = current
+                && inner
+                    .engine
+                    .state
+                    .update_pane_summary(pane, |summary| summary.process = process);
+            (changed, start)
+        };
+        if changed {
+            self.request_publish(timers::PublishReason::Tree);
+        }
+        if start {
+            self.start_location_worker();
+        }
+    }
+
     fn start_location_worker(self: &Arc<Self>) {
         let owner = Arc::downgrade(&self.server_owner());
         if let Err(error) = thread::Builder::new()
@@ -335,10 +477,17 @@ impl Shared {
                 jobs,
                 queue,
                 running,
+                programs,
+                program_jobs,
+                program_queue,
                 ..
             } = &mut inner.locations;
             for (pane, ..) in queue.drain(..) {
                 jobs.remove(&pane);
+            }
+            for (pane, ..) in program_queue.drain(..) {
+                program_jobs.remove(&pane);
+                programs.remove(&pane);
             }
             *running = false;
             log::debug!("could not start the pane location worker: {error}");
@@ -350,7 +499,10 @@ impl Shared {
 impl Shared {
     pub(super) fn settle_pane_locations(&self) {
         let deadline = Instant::now() + Duration::from_secs(30);
-        while !self.inner.lock().locations.jobs.is_empty() {
+        while {
+            let locations = &self.inner.lock().locations;
+            !locations.jobs.is_empty() || !locations.program_jobs.is_empty()
+        } {
             assert!(Instant::now() < deadline, "pane locations never settled");
             thread::sleep(Duration::from_millis(2));
         }
@@ -364,19 +516,134 @@ fn locate_panes(owner: &Weak<Shared>) {
                 return;
             };
             let mut inner = shared.inner.lock();
-            let job = inner.locations.queue.pop_front();
-            inner.locations.running = job.is_some();
+            let locations = &mut inner.locations;
+            let job = locations
+                .queue
+                .pop_front()
+                .map(|(pane, source)| Job::Location(pane, source))
+                .or_else(|| {
+                    locations
+                        .program_queue
+                        .pop_front()
+                        .map(|(pane, source)| Job::Program(pane, source))
+                });
+            locations.running = job.is_some();
             job
         };
-        let Some((pane, source)) = job else {
-            return;
-        };
-        let location = resolve_location(&source.0, &source.1, daemon_home());
-        let Some(shared) = owner.upgrade() else {
-            return;
-        };
-        shared.finish_pane_location(pane, source, location);
+        match job {
+            None => return,
+            Some(Job::Location(pane, source)) => {
+                let location = resolve_location(&source.0, &source.1, daemon_home());
+                let Some(shared) = owner.upgrade() else {
+                    return;
+                };
+                shared.finish_pane_location(pane, source, location);
+            }
+            Some(Job::Program(pane, source)) => {
+                let process = pane_process(&source);
+                let Some(shared) = owner.upgrade() else {
+                    return;
+                };
+                shared.finish_pane_program(pane, &source, process);
+            }
+        }
     }
+}
+
+pub(super) fn forget_pane_program(inner: &mut ServerState, pane: PaneId) {
+    inner.locations.programs.remove(&pane);
+    inner.locations.program_settling.remove(&pane);
+    inner.locations.program_checked.remove(&pane);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ProgramSighting {
+    Unchanged,
+    Cleared,
+    Changed(u32),
+}
+
+pub(super) fn sight_program(
+    inner: &mut ServerState,
+    pane: PaneId,
+    foreground: Option<u32>,
+    command: &str,
+    now: Instant,
+) -> ProgramSighting {
+    let running = foreground.filter(|_| {
+        cfg!(windows) || (!command.is_empty() && !process_info::is_shell_name(command))
+    });
+    let Some(foreground) = running else {
+        inner.locations.programs.remove(&pane);
+        let shown = inner
+            .engine
+            .state
+            .pane(pane)
+            .is_some_and(|pane| !pane.summary.process.is_empty());
+        return if shown
+            && inner
+                .engine
+                .state
+                .update_pane_summary(pane, |summary| summary.process.clear())
+        {
+            ProgramSighting::Cleared
+        } else {
+            ProgramSighting::Unchanged
+        };
+    };
+    if inner
+        .locations
+        .program_settling
+        .get(&pane)
+        .is_some_and(|due| *due > now)
+    {
+        return ProgramSighting::Unchanged;
+    }
+    let known = inner
+        .locations
+        .programs
+        .get(&pane)
+        .is_some_and(|(seen, _, name)| *seen == foreground && name == command);
+    if !cfg!(windows) {
+        return if known {
+            ProgramSighting::Unchanged
+        } else {
+            ProgramSighting::Changed(foreground)
+        };
+    }
+    let checked = &mut inner.locations.program_checked;
+    if checked
+        .get(&pane)
+        .is_some_and(|at| now.saturating_duration_since(*at) < PROGRAM_RECHECK)
+    {
+        return ProgramSighting::Unchanged;
+    }
+    checked.insert(pane, now);
+    ProgramSighting::Changed(foreground)
+}
+
+fn queue_program(locations: &mut Locations, pane: PaneId) -> bool {
+    let Some(source) = locations.programs.get(&pane).cloned() else {
+        return false;
+    };
+    match locations.program_jobs.entry(pane) {
+        Entry::Occupied(mut job) => {
+            job.insert(true);
+            false
+        }
+        Entry::Vacant(job) => {
+            job.insert(false);
+            locations.program_queue.push_back((pane, source));
+            !std::mem::replace(&mut locations.running, true)
+        }
+    }
+}
+
+fn pane_process((foreground, shell, _): &ProgramSource) -> Vec<String> {
+    let mut process = process_info::program_candidates(*foreground, *shell);
+    process.retain(|entry| entry.len() <= MAX_PANE_PROCESS_BYTES);
+    process.truncate(MAX_PANE_PROCESS_ENTRIES);
+    process
 }
 
 fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool, bool) {

@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v111)
+title: zz wire protocol (v112)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-10-19T13:00:00-03:00
+timestamp: 2026-10-20T20:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 111`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 112`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (111) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (112) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -983,11 +983,24 @@ adds `client-remote-v1` (`ClientHello::CLIENT_REMOTE_CAPABILITY`) to its hello. 
 `update-environment` for both, so panes created or attached from another machine keep the host's
 own `SSH_AUTH_SOCK`, `DISPLAY` and the rest. No message or field changes shape.
 
+v111 shipped in zz 0.20.0. v112 tells clients what runs in each terminal pane
+([flat sidebar data](/designs/flat-sidebar-data.md#program-icons),
+[snapshots](/protocol/snapshots.md#pane-status-summary-and-time)). `PaneSummary` appends
+`process: Vec<String>` after `branch`: the foreground process of the pane's terminal, then its
+parents up to the pane's shell, each as script path, script path without its extension, invoked
+path, argv0, process name and executable path, duplicates dropped. It is empty for an idle shell
+and for every other pane kind, and `#[serde(default)]`. It decodes bounded at
+`MAX_PANE_PROCESS_ENTRIES` (32) entries of `MAX_PANE_PROCESS_BYTES` (1024) bytes each; the daemon
+drops longer entries and keeps the first 32. Clients map it to an icon with
+`zz_client::program::resolve`, so new icons work against an older v112 daemon.
+
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 111`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 112`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v112 requires updated clients and daemon together, including the daemon on every ssh host.
+  v111 shipped in zz 0.20.0; v112 appends `PaneSummary.process`.
 - v111 requires updated clients and daemon together, including the daemon on every ssh host.
   v110 shipped in zz 0.19.0; v111 adds the remote-client exec flag and hello capability.
 - v110 requires updated clients and daemon together, including the daemon on every ssh host.

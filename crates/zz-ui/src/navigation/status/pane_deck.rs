@@ -84,6 +84,7 @@ pub fn status_pane_deck(
                     .into(),
                     icon: pane.icon,
                     favicon: pane.favicon,
+                    program: None,
                     label: pane.label,
                     select: connected.then_some(pane.select),
                 })

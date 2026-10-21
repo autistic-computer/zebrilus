@@ -14,7 +14,7 @@ pub use zz_gpui_kit::{
 pub use zz_gpui_kit::code_editor;
 
 pub use zz_gpui_kit::{
-    ADAPTIVE_CORNER_FRACTION, ActiveTheme, Assets, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
+    ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
     Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill, Ground, Highlight, Icon,
     IconName, IndexPath, InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt, Kind,
     Knobs, Layer, MACOS_TRAFFIC_LIGHT_SPAN, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint,
@@ -43,12 +43,15 @@ pub mod pane;
 pub mod path_picker;
 pub mod picker;
 pub mod pip;
+pub mod program;
 pub mod roles;
 pub mod settings;
 pub mod shell;
 pub mod terminal;
 pub mod terminal_images;
 pub mod which_key;
+
+pub use program::Assets;
 
 /// How far a label too long for its box fades out at its end, instead of
 /// ending in an ellipsis.

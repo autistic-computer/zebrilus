@@ -4,7 +4,7 @@ title: Mux snapshots (snapshot.rs)
 description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-10-17T12:00:00-03:00
+timestamp: 2026-10-20T20:00:00-03:00
 ---
 
 # Overview
@@ -60,7 +60,7 @@ deserializer so hostile nesting is rejected before it can exhaust the receiving 
 | `PaneStatus` | `state: PaneStatusState`, `kind: Option<PaneStatusKind>`, `progress: Option<u8>`, `app: String`, `title: String`, `message: String` |
 | `PaneStatusState` | `Idle` \| `Working` \| `Done` \| `Blocked` \| `Error` |
 | `PaneStatusKind` | `Permission` \| `Question` \| `Auth` |
-| `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `repo: String`, `branch: String` |
+| `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `repo: String`, `branch: String`, `process: Vec<String>` |
 | `ShellCommand` | `Running` \| `Finished(u8)` |
 | `PaneMode` | `Clock { .. }` \| `Switch { .. }` \| `Customize { .. }` \| `Panes { .. }` |
 | `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Agent(AgentDescriptor)` \| `Editor(EditorDescriptor)` |
@@ -158,6 +158,7 @@ moves on an event, never on output bytes:
 | `cwd` | Working directory for display: absolute, the daemon user's home folded to `~` (spelled as `HOME` gives it or as it resolves through symlinks), with the daemon platform's separators (`\` on Windows); empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
 | `repo` | The root of the git repository holding `cwd` (the folder with the `.git` directory or `gitdir:` file, so a linked worktree's own folder), written like `cwd`; empty outside a repository. Clients name a numbered session after it |
 | `branch` | The branch checked out at `cwd`, the ref as written when HEAD names something outside `refs/heads/`, or a 7-character commit id when HEAD is detached; empty outside a repository; cut to `MAX_PANE_BRANCH_BYTES` (256) |
+| `process` | What runs in a Terminal pane, as names a client matches against its program icons: the foreground process first, then its parents up to the pane's shell. Empty for an idle shell and for every other pane kind. At most `MAX_PANE_PROCESS_ENTRIES` (32) entries of `MAX_PANE_PROCESS_BYTES` (1024) bytes |
 
 `changed_at` is stamped by a status state or kind change, a shell command start (the `C` mark's
 start time) or finish (the `D` mark's end time), a bell latch going from false to true, and pane
@@ -196,6 +197,39 @@ again with fresh inputs. The branch is read from the `.git` directory
 or `gitdir:` file and `HEAD` (4 KiB at most) without running git; bare repositories and `GIT_DIR`
 are not followed, and a reftable repository, whose `HEAD` is the `refs/heads/.invalid` placeholder,
 shows no branch.
+
+`process` starts from the foreground process group of the pane's terminal (`tcgetpgrp`; on
+Windows, where ConPTY has none, the newest leaf process under the shell) and walks parents for at
+most 16 processes. It stops at the pane's spawned child, which it includes only when it is the
+foreground process itself, and at any known shell (`sh`, `bash`, `zsh`, `fish`, `dash`, `ash`, `ksh`,
+`mksh`, `csh`, `tcsh`, `nu`, `nushell`, `xonsh`, `elvish`, `yash`, `pwsh`, `powershell`, `cmd`, by
+process name or executable name, `.exe` and a login `-` ignored), which it leaves out. Each process adds, in this order: the script an
+interpreter runs (`node`, `nodejs`, `bun`, `deno`, `python`, `ruby`, `perl`, `php`, with any version
+suffix: the first of its next 8 arguments that is not a flag and names a regular file under the
+process cwd, none after an inline-code or module flag such as `-c`, `-e`, `-m` or `--eval`), that
+script without its last extension, the invoked path (argv0 looked up in the process `PATH`, or
+against its cwd when it holds a separator, kept only when it is the executable or a symlink to it),
+argv0, the process name and the executable path. Repeats are dropped. `exec -a codex sleep 30`
+gives `codex`, `sleep`, `/bin/sleep`; `python3 claude.py` puts `<cwd>/claude.py` and `<cwd>/claude`
+first.
+
+The runtime check that already reads the foreground pid and its name for
+`#{pane_current_command}` (after output or a frame, at most every 500 ms per pane) compares the
+pair, inside the server lock it already holds, with the pair behind the current list, and does
+nothing more when they match: no reads, no allocation, no publish. A shell name clears `process`
+there and then. A new pair whose process started less than 250 ms ago is skipped, so a shell loop
+whose foreground flips between the shell and short commands costs one start time read per check
+and publishes nothing; one timer callback per pane rechecks it when it turns 250 ms, so a program that
+draws once and goes quiet is not missed. A settled new pair queues one job
+per pane on the location thread (a pair that changes while it runs reruns it once, and a stale
+result is dropped), and the result publishes only when the list changes. The name stands in for
+the start time as the guard against pid reuse, because reading it costs nothing more. On Windows
+the pair never changes, since the foreground is always the shell, so a check queues a job at most
+every 2 s per pane.
+`zz_daemon_client::process_info::program_candidates` builds the list (libproc and
+`KERN_PROCARGS2` on macOS, `/proc/<pid>/{stat,exe,cmdline,cwd,environ}` on Linux, `sysinfo` on
+Windows). macOS hides the environment of its own platform binaries, so their invoked path only
+comes from an argv0 that holds a separator.
 
 `TreeOp::PaneSummary { session, window, pane, summary }` (tag 18) carries a summary change on its
 own, so a stamp that moves sends one small op instead of the pane.

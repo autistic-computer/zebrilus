@@ -214,6 +214,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         cx.set_global(UiFontConfig::default());
         cx.set_global(Themes::default());
         apply_animations(cx);
+        apply_program_colors(cx);
         apply_window_background_appearance(cx);
         apply_window_decorations(cx);
         crate::app_icon::apply(cx);
@@ -290,6 +291,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     cx.set_global(UiFontConfig(parsed.ui_font));
     cx.set_global(loaded);
     apply_animations(cx);
+    apply_program_colors(cx);
     apply_window_background_appearance(cx);
     apply_window_decorations(cx);
     crate::app_icon::apply(cx);
@@ -592,6 +594,11 @@ pub(crate) fn window_decorations(cx: &App) -> WindowDecorations {
     } else {
         WindowDecorations::Client
     }
+}
+
+fn apply_program_colors(cx: &mut App) {
+    let colors = resolved_config(cx).program_colors.value;
+    cx.set_global(zz_ui::program::ProgramColors(colors));
 }
 
 fn apply_animations(cx: &mut App) {

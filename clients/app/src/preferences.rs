@@ -12,6 +12,7 @@ const MAX_THEME_BYTES: usize = 64 * 1024;
 pub struct Preferences {
     pub sidebar: bool,
     pub flat_sidebar: bool,
+    pub program_colors: bool,
     pub sidebar_width: f32,
     pub status_badges: bool,
     pub status_agents: bool,
@@ -51,6 +52,7 @@ impl Default for Preferences {
         Self {
             sidebar: true,
             flat_sidebar: false,
+            program_colors: true,
             sidebar_width: zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
             status_badges: true,
             status_agents: true,

@@ -4,7 +4,8 @@ use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     AgentAttentionStatus, ChromeAction,
     navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
-    window_summary::{DaemonClock, age_label, summarize_host},
+    program::Program,
+    window_summary::{DaemonClock, age_label, pane_program, summarize_host},
 };
 use zz_gpui::{
     AnyElement, App, Context, Entity, FocusHandle, Hsla, ListSizingBehavior, MouseButton,
@@ -19,7 +20,7 @@ use zz_ui::{
     motion::Instant,
     navigation::{
         WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH,
+        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
         flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatState, HostConnection, flat_sidebar,
         },
@@ -32,6 +33,8 @@ use zz_ui::{
         workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_opened,
         workspace_tree_row,
     },
+    program::program_mark,
+    rems_from_px,
     scroll::ScrollableElement as _,
 };
 
@@ -347,6 +350,7 @@ struct TreeRow {
     expandable: bool,
     bell: bool,
     badge: Option<Badge>,
+    program: Option<&'static Program>,
 }
 pub(super) struct Runtime {
     pub connection: Entity<Connection>,
@@ -610,6 +614,7 @@ fn tree_rows(
             core,
             unseen_agents,
         ),
+        program: None,
     }];
     if !expanded {
         return rows;
@@ -641,6 +646,7 @@ fn tree_rows(
                 core,
                 unseen_agents,
             ),
+            program: None,
         });
         if !expanded {
             continue;
@@ -660,6 +666,11 @@ fn tree_rows(
                 expandable: !window.panes.is_empty(),
                 bell: window.panes.values().any(|pane| pane.bell),
                 badge: rollup(window.panes.keys().copied(), core, unseen_agents),
+                program: if expanded {
+                    None
+                } else {
+                    window.panes.get(&window.active_pane).and_then(pane_program)
+                },
             });
             if !expanded {
                 continue;
@@ -675,6 +686,7 @@ fn tree_rows(
                 expandable: false,
                 bell: pane.bell,
                 badge: pane_badge(pane.id, core, unseen_agents),
+                program: pane_program(pane),
             }));
         }
     }
@@ -791,7 +803,22 @@ fn render_row(
         tree_host_marker(entry.bell, badge_color, cx)
     } else {
         tree_node_marker(
-            Icon::new(entry.icon.clone()).medium().text_color(color),
+            entry
+                .program
+                .and_then(|program| {
+                    program_mark(
+                        program,
+                        rems_from_px(WORKSPACE_TREE_NODE_ICON_SIZE),
+                        color,
+                        None,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    Icon::new(entry.icon.clone())
+                        .medium()
+                        .text_color(color)
+                        .into_any_element()
+                }),
             entry.bell,
             badge_color,
             cx,

@@ -483,6 +483,8 @@ pub const MAX_PANE_BRANCH_BYTES: usize = 256;
 pub const MAX_PANE_STATUS_APP_BYTES: usize = 64;
 pub const MAX_PANE_STATUS_TITLE_BYTES: usize = 256;
 pub const MAX_PANE_STATUS_MESSAGE_BYTES: usize = 2048;
+pub const MAX_PANE_PROCESS_ENTRIES: usize = 32;
+pub const MAX_PANE_PROCESS_BYTES: usize = 1024;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -498,6 +500,8 @@ pub struct PaneSummary {
     pub repo: String,
     #[serde(deserialize_with = "deserialize_pane_branch")]
     pub branch: String,
+    #[serde(deserialize_with = "deserialize_pane_process")]
+    pub process: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -713,6 +717,29 @@ where
     D: Deserializer<'de>,
 {
     deserialize_bounded_text(deserializer, MAX_PANE_BRANCH_BYTES)
+}
+
+fn deserialize_pane_process<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let process = Vec::<String>::deserialize(deserializer)?;
+    if process.len() > MAX_PANE_PROCESS_ENTRIES {
+        return Err(D::Error::invalid_length(
+            process.len(),
+            &"a process list within the wire entry limit",
+        ));
+    }
+    if let Some(entry) = process
+        .iter()
+        .find(|entry| entry.len() > MAX_PANE_PROCESS_BYTES)
+    {
+        return Err(D::Error::invalid_length(
+            entry.len(),
+            &"a process entry within the wire byte limit",
+        ));
+    }
+    Ok(process)
 }
 
 fn deserialize_pane_status_app<'de, D>(deserializer: D) -> Result<String, D::Error>

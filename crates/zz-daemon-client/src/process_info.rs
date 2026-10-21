@@ -1,4 +1,10 @@
-use std::{ffi::OsString, path::PathBuf, time::Duration};
+use std::{
+    env,
+    ffi::{OsStr, OsString},
+    fs,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 #[cfg(windows)]
 pub type ProcessOwner = String;
@@ -30,6 +36,10 @@ pub struct ProcessSample {
 
 pub fn start_time(pid: u32) -> Option<u64> {
     platform::start_time(pid)
+}
+
+pub fn running_for(pid: u32) -> Option<Duration> {
+    platform::running_for(pid)
 }
 
 pub fn record(pid: u32) -> Option<ProcessRecord> {
@@ -68,6 +78,228 @@ pub fn host_name() -> Option<String> {
     platform::host_name()
 }
 
+const PROGRAM_DEPTH: usize = 16;
+const SCRIPT_ARGUMENTS: usize = 8;
+const SHELLS: &[&str] = &[
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "dash",
+    "ash",
+    "ksh",
+    "mksh",
+    "csh",
+    "tcsh",
+    "nu",
+    "nushell",
+    "xonsh",
+    "elvish",
+    "yash",
+    "pwsh",
+    "powershell",
+    "cmd",
+];
+const INTERPRETERS: &[&str] = &[
+    "node", "nodejs", "bun", "deno", "python", "ruby", "perl", "php",
+];
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct ProgramProcess {
+    name: String,
+    executable: Option<PathBuf>,
+    arguments: Vec<OsString>,
+    cwd: Option<PathBuf>,
+    search_path: Option<OsString>,
+    parent: Option<u32>,
+}
+
+impl ProgramProcess {
+    fn executable_name(&self) -> Option<&str> {
+        self.executable.as_deref()?.file_name()?.to_str()
+    }
+
+    fn is_shell(&self) -> bool {
+        is_shell_name(&self.name) || self.executable_name().is_some_and(is_shell_name)
+    }
+
+    fn is_interpreter(&self) -> bool {
+        [
+            Some(self.name.as_str()),
+            self.executable_name(),
+            self.arguments
+                .first()
+                .and_then(|argument| argument.to_str()),
+        ]
+        .into_iter()
+        .flatten()
+        .any(is_interpreter_name)
+    }
+
+    fn candidates(&self) -> Vec<String> {
+        let cwd = self.cwd.as_deref();
+        let script = self
+            .is_interpreter()
+            .then(|| script_path(&self.arguments, cwd))
+            .flatten();
+        let bare = script.as_deref().and_then(without_extension);
+        let invoked = self.arguments.first().and_then(|argument| {
+            invoked_path(
+                argument,
+                cwd,
+                self.search_path.as_deref(),
+                self.executable.as_deref()?,
+            )
+        });
+        [script, bare, invoked]
+            .into_iter()
+            .flatten()
+            .map(PathBuf::into_os_string)
+            .chain(self.arguments.first().cloned())
+            .chain(Some(OsString::from(&self.name)))
+            .chain(self.executable.clone().map(PathBuf::into_os_string))
+            .map(|candidate| candidate.to_string_lossy().into_owned())
+            .filter(|candidate| !candidate.is_empty())
+            .collect()
+    }
+}
+
+pub fn program_candidates(foreground: u32, shell: Option<u32>) -> Vec<String> {
+    program_chain(
+        platform::program_start(foreground, shell),
+        shell,
+        platform::program_process,
+    )
+}
+
+fn program_chain(
+    start: u32,
+    shell: Option<u32>,
+    mut read: impl FnMut(u32) -> Option<ProgramProcess>,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let mut pid = start;
+    for depth in 0..PROGRAM_DEPTH {
+        if pid <= 1 || (depth > 0 && Some(pid) == shell) {
+            break;
+        }
+        let Some(process) = read(pid) else {
+            break;
+        };
+        if process.is_shell() {
+            break;
+        }
+        for candidate in process.candidates() {
+            if !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        }
+        match process.parent {
+            Some(parent) if Some(pid) != shell && parent != pid => pid = parent,
+            _ => break,
+        }
+    }
+    candidates
+}
+
+pub fn is_shell_name(name: &str) -> bool {
+    let stem = command_stem(name);
+    SHELLS.iter().any(|shell| shell.eq_ignore_ascii_case(stem))
+}
+
+fn is_interpreter_name(name: &str) -> bool {
+    let stem = command_stem(name)
+        .trim_end_matches(|character: char| character.is_ascii_digit() || character == '.');
+    INTERPRETERS
+        .iter()
+        .any(|interpreter| interpreter.eq_ignore_ascii_case(stem))
+}
+
+fn command_stem(name: &str) -> &str {
+    let name = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(name)
+        .trim_start_matches('-');
+    name.len()
+        .checked_sub(4)
+        .filter(|end| {
+            name.get(*end..)
+                .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".exe"))
+        })
+        .map_or(name, |end| &name[..end])
+}
+
+fn script_path(arguments: &[OsString], cwd: Option<&Path>) -> Option<PathBuf> {
+    for argument in arguments.iter().skip(1).take(SCRIPT_ARGUMENTS) {
+        let text = argument.to_string_lossy();
+        if inline_code_flag(&text) {
+            return None;
+        }
+        if text.is_empty() || text.starts_with('-') {
+            continue;
+        }
+        let Some(path) = located(Path::new(argument), cwd) else {
+            continue;
+        };
+        if fs::metadata(&path).is_ok_and(|metadata| metadata.is_file()) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn inline_code_flag(argument: &str) -> bool {
+    if let Some(long) = argument.strip_prefix("--") {
+        let name = long.split_once('=').map_or(long, |(name, _)| name);
+        return matches!(name, "eval" | "print" | "command");
+    }
+    argument.strip_prefix('-').is_some_and(|flags| {
+        flags.len() <= 4
+            && flags.chars().all(|flag| flag.is_ascii_alphabetic())
+            && flags.ends_with(['c', 'e', 'E', 'm'])
+    })
+}
+
+fn without_extension(path: &Path) -> Option<PathBuf> {
+    path.extension()?;
+    Some(path.with_extension(""))
+}
+
+fn located(path: &Path, cwd: Option<&Path>) -> Option<PathBuf> {
+    if path.is_absolute() {
+        Some(path.to_path_buf())
+    } else {
+        Some(cwd?.join(path))
+    }
+}
+
+fn invoked_path(
+    argument: &OsStr,
+    cwd: Option<&Path>,
+    search_path: Option<&OsStr>,
+    executable: &Path,
+) -> Option<PathBuf> {
+    let name = Path::new(argument);
+    let found = if name.is_absolute() || name.components().count() > 1 {
+        located(name, cwd)?
+    } else {
+        env::split_paths(search_path?)
+            .filter(|directory| directory.is_absolute())
+            .flat_map(|directory| {
+                let path = directory.join(name);
+                let windows = (cfg!(windows) && path.extension().is_none())
+                    .then(|| path.with_extension("exe"));
+                std::iter::once(path).chain(windows)
+            })
+            .find(|path| path.is_file())?
+    };
+    (fs::canonicalize(&found).ok()? == fs::canonicalize(executable).ok()?).then_some(found)
+}
+
+#[cfg(test)]
+mod program_tests;
+
 #[cfg(unix)]
 #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
 fn unix_host_name() -> Option<String> {
@@ -101,12 +333,12 @@ mod platform {
         os::unix::ffi::{OsStrExt as _, OsStringExt as _},
         path::{Path, PathBuf},
         sync::OnceLock,
-        time::Duration,
+        time::{Duration, SystemTime},
     };
 
     use parking_lot::Mutex;
 
-    use super::{ProcessRecord, ProcessSample};
+    use super::{ProcessRecord, ProcessSample, ProgramProcess};
 
     const PROC_PIDUNIQIDENTIFIERINFO: libc::c_int = 17;
     const RECENT_NAME_CAPACITY: usize = 64;
@@ -280,6 +512,58 @@ mod platform {
         Some((executable, arguments))
     }
 
+    fn split_command(data: &[u8]) -> Option<(Vec<OsString>, Option<OsString>)> {
+        let (count, rest) = data.split_at_checked(std::mem::size_of::<libc::c_int>())?;
+        let count = usize::try_from(libc::c_int::from_ne_bytes(count.try_into().ok()?)).ok()?;
+        let executable = rest
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(rest.len());
+        let rest = &rest[executable..];
+        let start = rest.iter().position(|byte| *byte != 0)?;
+        let mut strings = rest[start..].split(|byte| *byte == 0);
+        let arguments = strings
+            .by_ref()
+            .take(count)
+            .map(|argument| OsStr::from_bytes(argument).to_os_string())
+            .collect();
+        let search_path = strings
+            .take_while(|variable| !variable.is_empty())
+            .find_map(|variable| variable.strip_prefix(b"PATH="))
+            .map(|path| OsStr::from_bytes(path).to_os_string());
+        Some((arguments, search_path))
+    }
+
+    fn c_text(characters: &[libc::c_char]) -> Option<String> {
+        let bytes = characters
+            .iter()
+            .map(|character| u8::from_ne_bytes(character.to_ne_bytes()))
+            .take_while(|byte| *byte != 0)
+            .collect::<Vec<_>>();
+        (!bytes.is_empty()).then(|| String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    pub(super) fn program_start(foreground: u32, _shell: Option<u32>) -> u32 {
+        foreground
+    }
+
+    pub(super) fn program_process(pid: u32) -> Option<ProgramProcess> {
+        let raw = raw_pid(pid)?;
+        let info = bsd_info(raw)?;
+        let (arguments, search_path) =
+            with_process_arguments(raw, split_command).unwrap_or_default();
+        Some(ProgramProcess {
+            name: c_text(&info.pbi_name)
+                .or_else(|| c_text(&info.pbi_comm))
+                .unwrap_or_default(),
+            executable: image_path(raw),
+            arguments,
+            cwd: working_directory(pid),
+            search_path,
+            parent: Some(info.pbi_ppid).filter(|parent| *parent != 0),
+        })
+    }
+
     fn exec_path(pid: libc::pid_t) -> Option<PathBuf> {
         with_process_arguments(pid, |data| {
             let path = &data[std::mem::size_of::<libc::c_int>()..];
@@ -313,6 +597,14 @@ mod platform {
 
     pub(super) fn start_time(pid: u32) -> Option<u64> {
         bsd_info(raw_pid(pid)?).map(|info| info.pbi_start_tvsec)
+    }
+
+    pub(super) fn running_for(pid: u32) -> Option<Duration> {
+        let info = bsd_info(raw_pid(pid)?)?;
+        let started = SystemTime::UNIX_EPOCH
+            + Duration::from_secs(info.pbi_start_tvsec)
+            + Duration::from_micros(info.pbi_start_tvusec);
+        SystemTime::now().duration_since(started).ok()
     }
 
     pub(super) fn record(pid: u32) -> Option<ProcessRecord> {
@@ -781,7 +1073,7 @@ mod platform {
         time::Duration,
     };
 
-    use super::{ProcessRecord, ProcessSample};
+    use super::{ProcessRecord, ProcessSample, ProgramProcess};
 
     const PARENT: usize = 1;
     const PROCESS_GROUP: usize = 2;
@@ -921,8 +1213,54 @@ mod platform {
             .collect()
     }
 
+    fn search_path(pid: u32) -> Option<OsString> {
+        fs::read(format!("/proc/{pid}/environ"))
+            .ok()?
+            .split(|byte| *byte == 0)
+            .find_map(|variable| variable.strip_prefix(b"PATH="))
+            .map(|path| OsStr::from_bytes(path).to_os_string())
+    }
+
+    pub(super) fn program_start(foreground: u32, _shell: Option<u32>) -> u32 {
+        foreground
+    }
+
+    pub(super) fn program_process(pid: u32) -> Option<ProgramProcess> {
+        let stat = Stat::read(pid)?;
+        Some(ProgramProcess {
+            name: stat.comm(),
+            executable: executable(pid),
+            arguments: arguments(pid),
+            cwd: working_directory(pid),
+            search_path: search_path(pid),
+            parent: stat
+                .number(PARENT)
+                .and_then(|parent| u32::try_from(parent).ok())
+                .filter(|parent| *parent != 0),
+        })
+    }
+
     pub(super) fn start_time(pid: u32) -> Option<u64> {
         Stat::read(pid)?.start_time()
+    }
+
+    #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
+    pub(super) fn running_for(pid: u32) -> Option<Duration> {
+        let started = Stat::read(pid)?.number(START_TICKS)?;
+        let mut now = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &raw mut now) } != 0 {
+            return None;
+        }
+        let now = Duration::new(
+            u64::try_from(now.tv_sec).ok()?,
+            u32::try_from(now.tv_nsec).ok()?,
+        );
+        now.checked_sub(Duration::from_nanos(
+            started.saturating_mul(1_000_000_000) / clock_ticks(),
+        ))
     }
 
     pub(super) fn record(pid: u32) -> Option<ProcessRecord> {
@@ -1032,11 +1370,17 @@ mod platform {
 
 #[cfg(windows)]
 mod platform {
-    use std::{path::PathBuf, time::Duration};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        ffi::OsString,
+        path::PathBuf,
+        sync::{Mutex, PoisonError},
+        time::{Duration, Instant},
+    };
 
     use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, Signal, System, UpdateKind};
 
-    use super::{ProcessRecord, ProcessSample};
+    use super::{ProcessRecord, ProcessSample, ProgramProcess};
 
     fn refreshed(pids: &[Pid], refresh: ProcessRefreshKind) -> System {
         let mut system = System::new();
@@ -1164,6 +1508,105 @@ mod platform {
         found
     }
 
+    pub(super) fn running_for(_pid: u32) -> Option<Duration> {
+        None
+    }
+
+    const TREE_FRESH: Duration = Duration::from_secs(2);
+
+    struct Tree {
+        at: Instant,
+        children: BTreeMap<Pid, Vec<Pid>>,
+        started: BTreeMap<Pid, u64>,
+    }
+
+    static TREE: Mutex<Option<Tree>> = Mutex::new(None);
+
+    fn scan() -> Tree {
+        let mut system = System::new();
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+        let mut children = BTreeMap::<Pid, Vec<Pid>>::new();
+        let mut started = BTreeMap::new();
+        for (pid, process) in system.processes() {
+            started.insert(*pid, process.start_time());
+            if let Some(parent) = process.parent().filter(|parent| parent != pid) {
+                children.entry(parent).or_default().push(*pid);
+            }
+        }
+        Tree {
+            at: Instant::now(),
+            children,
+            started,
+        }
+    }
+
+    pub(super) fn program_start(foreground: u32, shell: Option<u32>) -> u32 {
+        if shell != Some(foreground) {
+            return foreground;
+        }
+        let mut tree = TREE.lock().unwrap_or_else(PoisonError::into_inner);
+        if tree
+            .as_ref()
+            .is_none_or(|tree| tree.at.elapsed() >= TREE_FRESH)
+        {
+            *tree = Some(scan());
+        }
+        let Some(tree) = tree.as_ref() else {
+            return foreground;
+        };
+        let root = Pid::from_u32(foreground);
+        let mut seen = BTreeSet::from([root]);
+        let mut pending = vec![root];
+        let mut newest = None;
+        while let Some(parent) = pending.pop() {
+            let below = tree
+                .children
+                .get(&parent)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|child| seen.insert(*child))
+                .collect::<Vec<_>>();
+            if below.is_empty() && parent != root {
+                let started = tree.started.get(&parent).copied().unwrap_or(0);
+                newest = newest.max(Some((started, parent)));
+            }
+            pending.extend(below);
+        }
+        newest.map_or(foreground, |(_, pid)| pid.as_u32())
+    }
+
+    pub(super) fn program_process(pid: u32) -> Option<ProgramProcess> {
+        let key = Pid::from_u32(pid);
+        let system = refreshed(
+            &[key],
+            ProcessRefreshKind::nothing()
+                .with_exe(UpdateKind::Always)
+                .with_cmd(UpdateKind::Always)
+                .with_cwd(UpdateKind::Always)
+                .with_environ(UpdateKind::Always),
+        );
+        let process = system.process(key)?;
+        let search_path = process.environ().iter().find_map(|variable| {
+            let variable = variable.to_string_lossy();
+            let (name, value) = variable.split_once('=')?;
+            name.eq_ignore_ascii_case("PATH")
+                .then(|| OsString::from(value))
+        });
+        Some(ProgramProcess {
+            name: process.name().to_string_lossy().into_owned(),
+            executable: process.exe().map(PathBuf::from),
+            arguments: process.cmd().to_vec(),
+            cwd: process.cwd().map(PathBuf::from),
+            search_path,
+            parent: process.parent().map(Pid::as_u32),
+        })
+    }
+
     pub(super) fn host_name() -> Option<String> {
         System::host_name()
     }
@@ -1173,9 +1616,21 @@ mod platform {
 mod platform {
     use std::path::PathBuf;
 
-    use super::{ProcessRecord, ProcessSample};
+    use super::{ProcessRecord, ProcessSample, ProgramProcess};
 
     pub(super) fn start_time(_pid: u32) -> Option<u64> {
+        None
+    }
+
+    pub(super) fn running_for(_pid: u32) -> Option<std::time::Duration> {
+        None
+    }
+
+    pub(super) fn program_start(foreground: u32, _shell: Option<u32>) -> u32 {
+        foreground
+    }
+
+    pub(super) fn program_process(_pid: u32) -> Option<ProgramProcess> {
         None
     }
 

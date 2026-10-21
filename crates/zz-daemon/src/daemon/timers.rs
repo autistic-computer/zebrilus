@@ -1038,9 +1038,16 @@ impl Shared {
 
     fn check_names(self: &Arc<Self>, due: Vec<(PaneId, Arc<TerminalSession>, bool)>, now: Instant) {
         for (pane, terminal, output) in due {
-            let (current_command, live_path) = terminal_foreground_facts(&terminal);
-            let events =
-                self.apply_pane_runtime(pane, &terminal, &current_command, live_path, output, now);
+            let (foreground, current_command, live_path) = terminal_foreground_facts(&terminal);
+            let events = self.apply_pane_runtime(
+                pane,
+                &terminal,
+                foreground,
+                &current_command,
+                live_path,
+                output,
+                now,
+            );
             self.enqueue_event_hooks(events);
         }
     }
