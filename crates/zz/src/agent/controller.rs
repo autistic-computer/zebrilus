@@ -2249,7 +2249,7 @@ impl AgentController {
                             thread.transcript.finish_turn();
                         }
                         Err(error) => {
-                            thread.connection = AgentConnectionState::Failed;
+                            thread.connection = AgentConnectionState::Ready;
                             thread.error = Some(Arc::from(error));
                             thread.transcript.fail_inflight();
                         }

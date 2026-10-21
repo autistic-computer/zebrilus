@@ -249,3 +249,54 @@ fn a_task_registered_before_its_start_gets_its_launch_tool() {
         Some("toolu_011C2jqx3vLKCFQJnQo3JzMo")
     );
 }
+
+fn ask_bash(runtime: &mut Runtime, receiver: &Receiver<AgentStreamPayload>) -> u64 {
+    smol::block_on(runtime.frame(json!({
+        "type": "control_request",
+        "request_id": "perm-1",
+        "request": {
+            "subtype": "can_use_tool",
+            "tool_name": "Bash",
+            "input": { "command": "rm -rf build" },
+            "tool_use_id": "t1",
+            "permission_suggestions": [],
+        },
+    })))
+    .expect("permission");
+    std::iter::from_fn(|| receiver.try_recv().ok())
+        .find_map(|event| match event {
+            AgentStreamPayload::PermissionRequested { request_id, .. } => Some(request_id),
+            _ => None,
+        })
+        .expect("permission card")
+}
+
+fn resolved(receiver: &Receiver<AgentStreamPayload>) -> Vec<(u64, bool)> {
+    std::iter::from_fn(|| receiver.try_recv().ok())
+        .filter_map(|event| match event {
+            AgentStreamPayload::PermissionResolved {
+                request_id,
+                canceled,
+            } => Some((request_id, canceled)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn question_answers_for_a_permission_card_leave_the_card_open() {
+    let (mut runtime, receiver) = setup();
+    let request = ask_bash(&mut runtime, &receiver);
+    smol::block_on(runtime.answer_questions(request, &[])).expect("answers");
+    assert_eq!(resolved(&receiver), []);
+    smol::block_on(runtime.answer(request, Some("allow".to_owned()))).expect("allow");
+    assert_eq!(resolved(&receiver), [(request, false)]);
+}
+
+#[test]
+fn an_exit_resolves_the_open_permission_cards() {
+    let (mut runtime, receiver) = setup();
+    let request = ask_bash(&mut runtime, &receiver);
+    smol::block_on(runtime.closed()).expect("closed");
+    assert_eq!(resolved(&receiver), [(request, true)]);
+}

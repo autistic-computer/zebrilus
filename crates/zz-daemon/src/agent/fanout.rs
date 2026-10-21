@@ -403,6 +403,7 @@ enum TurnEnd {
     Finished,
     Cancelled,
     Stopped(String),
+    Failed(String),
 }
 
 #[derive(Clone)]
@@ -519,16 +520,19 @@ impl PaneLane {
                 let status = u8::from(matches!(outcome, AgentPromptOutcome::Failed { .. }));
                 bytes.extend_from_slice(format!("\r\n\x1b]133;D;{status}\x07\x07").as_bytes());
                 self.external_turn = false;
-                if let AgentPromptOutcome::Finished { stop_reason } = outcome {
-                    let reason = stop_reason
-                        .as_str()
-                        .map_or_else(|| stop_reason.to_string(), str::to_owned);
-                    self.turn_end = Some(match reason.as_str() {
-                        "end_turn" => TurnEnd::Finished,
-                        "cancelled" => TurnEnd::Cancelled,
-                        _ => TurnEnd::Stopped(reason),
-                    });
-                }
+                self.turn_end = Some(match outcome {
+                    AgentPromptOutcome::Finished { stop_reason } => {
+                        let reason = stop_reason
+                            .as_str()
+                            .map_or_else(|| stop_reason.to_string(), str::to_owned);
+                        match reason.as_str() {
+                            "end_turn" => TurnEnd::Finished,
+                            "cancelled" => TurnEnd::Cancelled,
+                            _ => TurnEnd::Stopped(reason),
+                        }
+                    }
+                    AgentPromptOutcome::Failed { message } => TurnEnd::Failed(message.clone()),
+                });
             }
             AgentStreamPayload::Activity { busy } => {
                 if *busy {
@@ -1047,6 +1051,11 @@ impl AgentFanout {
                 }
                 AgentStreamPayload::SessionReset { .. } => lane.turn_id = None,
                 AgentStreamPayload::TurnStarted { turn_id } => lane.turn_id = Some(*turn_id),
+                AgentStreamPayload::PromptFinished { turn_id, .. }
+                    if lane.turn_id == Some(*turn_id) =>
+                {
+                    lane.turn_id = None;
+                }
                 AgentStreamPayload::SessionsListed { client, .. }
                 | AgentStreamPayload::SessionListFailed { client, .. }
                 | AgentStreamPayload::SessionDeleted { client, .. }
@@ -1524,6 +1533,11 @@ fn agent_status(
                 PaneStatusState::Error,
                 None,
                 status_excerpt(&format!("Stopped: {reason}")),
+            ),
+            Some(TurnEnd::Failed(message)) => (
+                PaneStatusState::Error,
+                None,
+                status_excerpt(message.trim().lines().next().unwrap_or_default()),
             ),
             Some(TurnEnd::Cancelled) | None => (PaneStatusState::Idle, None, status_excerpt(reply)),
         },
@@ -3056,6 +3070,59 @@ mod tests {
                 None,
                 "the agent disconnected".to_owned()
             )
+        );
+    }
+
+    fn replays_a_running_turn(fixture: &Fixture) -> bool {
+        fixture
+            .fanout
+            .lanes
+            .lock()
+            .get(&fixture.pane)
+            .expect("lane")
+            .recovery_metadata()
+            .iter()
+            .any(|payload| matches!(payload, AgentStreamPayload::TurnStarted { .. }))
+    }
+
+    #[test]
+    fn a_finished_turn_is_not_replayed_as_running() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            AgentStreamPayload::TurnStarted { turn_id: 1 },
+        );
+        assert!(replays_a_running_turn(&fixture));
+        accept_in(&fixture, AgentConnectionPhase::Ready, finished("end_turn"));
+        assert!(!replays_a_running_turn(&fixture));
+    }
+
+    #[test]
+    fn a_failed_turn_leaves_an_error_status_with_its_message() {
+        let fixture = Fixture::open(None, Some("s-1"));
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Running,
+            AgentStreamPayload::TurnStarted { turn_id: 1 },
+        );
+        accept_in(
+            &fixture,
+            AgentConnectionPhase::Ready,
+            AgentStreamPayload::PromptFinished {
+                turn_id: 1,
+                outcome: AgentPromptOutcome::Failed {
+                    message: "usage limit reached\ntry later".to_owned(),
+                },
+            },
+        );
+        assert_eq!(
+            recorded_statuses(&fixture).last(),
+            Some(&(
+                PaneStatusState::Error,
+                None,
+                "usage limit reached".to_owned()
+            ))
         );
     }
 

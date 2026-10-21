@@ -39,6 +39,7 @@ pub(crate) struct Translator {
     task_tools: HashMap<String, String>,
     background: HashSet<String>,
     settled: HashSet<String>,
+    ended_early: HashMap<String, (bool, Option<String>)>,
     todos: Vec<PlanItem>,
     tasks: Vec<(String, PlanItem)>,
     pending_tasks: HashMap<String, PlanItem>,
@@ -145,23 +146,21 @@ impl Translator {
                     .as_str()
                     .filter(|summary| !summary.is_empty())
                     .map(str::to_owned);
+                let failed = matches!(
+                    frame["status"].as_str(),
+                    Some("failed" | "stopped" | "killed")
+                );
                 if !self.settled.contains(&tool) {
+                    if self.background.contains(&tool) {
+                        let output = self.task_output(&tool, frame, summary.clone());
+                        self.ended_early.insert(tool.clone(), (failed, output));
+                    }
                     if let Some(summary) = summary {
                         self.summaries.insert(tool, summary);
                     }
                     return Vec::new();
                 }
-                let failed = matches!(
-                    frame["status"].as_str(),
-                    Some("failed" | "stopped" | "killed")
-                );
-                let output = match self.tools.get(&tool).map(String::as_str) {
-                    Some("Bash" | "PowerShell") => frame["output_file"]
-                        .as_str()
-                        .and_then(|path| output_tail(Path::new(path)))
-                        .or(summary),
-                    _ => summary,
-                };
+                let output = self.task_output(&tool, frame, summary);
                 let mut update = json!({
                     "sessionUpdate": "tool_call_update",
                     "toolCallId": tool,
@@ -397,6 +396,16 @@ impl Translator {
             .collect()
     }
 
+    fn task_output(&self, tool: &str, frame: &Value, summary: Option<String>) -> Option<String> {
+        match self.tools.get(tool).map(String::as_str) {
+            Some("Bash" | "PowerShell") => frame["output_file"]
+                .as_str()
+                .and_then(|path| output_tail(Path::new(path)))
+                .or(summary),
+            _ => summary,
+        }
+    }
+
     fn tool_result(&mut self, block: &Value, structured: Option<&Value>) -> Vec<Value> {
         let Some(id) = block["tool_use_id"].as_str() else {
             return Vec::new();
@@ -433,12 +442,14 @@ impl Translator {
             }
         };
         self.settled.insert(id.to_owned());
-        let running = !is_error && self.background.contains(id);
-        let status = match (is_error, running) {
-            (true, _) => "failed",
-            (false, true) => "in_progress",
-            (false, false) => "completed",
+        let early = self.ended_early.remove(id);
+        let running = !is_error && self.background.contains(id) && early.is_none();
+        let status = match (is_error, running, &early) {
+            (true, _, _) | (false, _, Some((true, _))) => "failed",
+            (false, true, _) => "in_progress",
+            (false, false, _) => "completed",
         };
+        let output = early.and_then(|(_, output)| output).or(output);
         let mut update = json!({
             "sessionUpdate": "tool_call_update",
             "toolCallId": id,
@@ -1084,6 +1095,26 @@ mod tests {
         for update in &updates {
             serde_json::from_value::<SessionUpdate>(update.clone()).expect("ACP update");
         }
+    }
+
+    #[test]
+    fn background_work_that_ends_before_its_launch_result_settles_on_the_result() {
+        let output = tempfile::NamedTempFile::new().expect("output");
+        std::fs::write(output.path(), "fast\n").expect("write");
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let call = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"tool_use","id":"b1","name":"Bash","input":{"command":"echo fast","run_in_background":true}}]}});
+        translator.frame(&call);
+        let started = json!({"type":"system","subtype":"task_started","task_id":"t9","tool_use_id":"b1","is_backgrounded":true,"task_type":"local_bash","description":"fast"});
+        translator.frame(&started);
+        let done = json!({"type":"system","subtype":"task_notification","task_id":"t9","tool_use_id":"b1","status":"completed",
+            "output_file": output.path(), "summary":"Background command completed"});
+        assert!(translator.frame(&done).is_empty());
+        let launched = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"b1","content":"Command running in background with ID: t9."}]}});
+        let updates = translator.frame(&launched);
+        assert_eq!(updates[0]["status"], "completed");
+        assert_eq!(updates[0]["content"][0]["content"]["text"], "fast");
     }
 
     #[test]
