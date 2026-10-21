@@ -1,0 +1,32 @@
+claude-haiku-5-5	pane	n1	1	1	6	2	0	0	0	0	0	0	saNkia	4711 
+claude-haiku-5-5	pane	n3	1	0	8	3	0	0	1	0	0	0	FLqQy0	 
+claude-haiku-5-5	pane	n2	1	1	11	3	0	0	0	0	0	0	lcoKVe	parser::rejects_trailing_comma_b4093ff1 
+claude-haiku-5-5	pane	n4	1	0	6	2	0	0	1	0	0	0	XBzMP2	 
+claude-haiku-5-5	pane	n5	1	1	7	2	0	0	0	0	0	0	kAabdn	done 
+gpt-6-luna	pane	n2	1	0	29	5	3	1	0	0	0	0	BKzRra	rejects_trailing_comma_8f034206 
+gpt-6-luna	pane	n1	1	1	32	3	2	0	0	0	0	0	eXlC9c	4711 
+gpt-6-luna	pane	n3	1	1	26	3	2	0	0	0	0	0	2hmGkZ	DONE-0451b93d 
+gpt-6-luna	pane	n4	1	1	24	7	6	0	0	0	0	0	htu7IJ	%4 
+claude-haiku-5-5	pane	n6	1	1	6	1	0	0	0	0	0	0	lDTWVh	done 
+claude-haiku-5-5	pane	n7	1	0	6	2	0	0	1	0	0	0	aTqXvg	 
+claude-haiku-5-5	pane	n8	1	1	12	5	0	0	0	0	0	0	Kg59Fs	done  Note: xps had no existing zz session, so I created one named `bench-466b97
+gpt-6-luna	pane	n5	1	1	28	3	2	0	0	0	0	0	MCfK8B	done 
+gpt-6-luna	pane	n6	1	1	26	2	1	0	0	0	0	0	lQmPwl	done 
+claude-haiku-5-5	pane	n1	2	1	9	3	0	0	0	0	0	0	vvdpZU	4711 
+gpt-6-luna	pane	n7	1	1	26	5	4	0	0	0	0	0	DeKZ0Y	Claude answered: `pong`. 
+gpt-6-luna	pane	n8	1	1	25	5	4	1	0	0	0	0	6wzlxa	done 
+claude-haiku-5-5	pane	n2	2	1	9	3	0	0	0	0	0	0	9uI2WM	parser::rejects_trailing_comma_4168ddef 
+claude-haiku-5-5	pane	n3	2	0	10	2	0	0	1	0	0	0	nzqyIh	 
+claude-haiku-5-5	pane	n4	2	0	6	2	0	0	1	0	0	0	UUvcUo	 
+gpt-6-luna	pane	n1	2	1	31	3	2	0	0	0	0	0	zDN5qO	4711 
+claude-haiku-5-5	pane	n5	2	1	7	2	0	0	0	0	0	0	Mcf9hk	done 
+gpt-6-luna	pane	n2	2	1	24	5	4	0	0	0	0	0	BhfyY0	parser::rejects_trailing_comma_64412c2f 
+claude-haiku-5-5	pane	n6	2	1	7	1	0	0	0	0	0	0	2BhoTH	done 
+gpt-6-luna	pane	n3	2	1	32	3	2	0	0	0	0	0	R2KOPo	DONE-7acccccd 
+gpt-6-luna	pane	n6	2	1	18	2	1	0	0	0	0	0	gmq8nG	done 
+claude-haiku-5-5	pane	n7	2	0	9	2	0	0	1	0	0	0	Lj6LFu	 
+gpt-6-luna	pane	n5	2	1	33	3	2	0	0	0	0	0	X2kxbt	done 
+claude-haiku-5-5	pane	n8	2	1	14	5	0	0	0	0	0	0	EdaPGD	done 
+gpt-6-luna	pane	n4	2	1	50	7	6	0	0	0	0	0	9YTjF0	%4 
+gpt-6-luna	pane	n8	2	1	30	6	5	1	0	0	0	0	UArn9H	done 
+gpt-6-luna	pane	n7	2	1	59	8	7	0	0	0	0	0	wMyZkN	Claude replied: **pong**. 

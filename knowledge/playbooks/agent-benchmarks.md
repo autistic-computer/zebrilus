@@ -1,10 +1,10 @@
 ---
 type: Playbook
 title: Agent benchmarks
-description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, and whether the zz-workspace skill helps weak agents; harness layout, prerequisites, results, and traps."
+description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, and what a fresh user's Claude Code and Codex get; harness layout, prerequisites, results, and traps."
 resource: bench/agents/browser/matrix.sh
 tags: [agents, browser, cdp, benchmark, skill, agent-browser, playwright-mcp, chrome-devtools-mcp]
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-21T00:00:00Z
 ---
 
 # What the benchmarks answer
@@ -161,6 +161,38 @@ gpt-oss (21/22), a ~1 KB startup hook gets zz to 18-19/22 from 14-15 and is the 
 Haiku; Rex's hook drops gpt-oss to 9/22 because it sends the agent to rename the session first;
 Haiku passes everything on both products but spends 1.7x the tokens on Rex.
 
+# Fresh user (2026-10-21)
+
+`bench/agents/fresh/` asks what a new user's Claude Code and Codex get from zz 0.21.0 with nothing
+else installed (see `bench/agents/README.md`). Haiku 5.5 and gpt-6-luna, 8 tasks, 2 reps, 119 runs:
+
+| Setup | Claude | Codex |
+| --- | --- | --- |
+| zz installed, nothing else | 13/16 | 9/16 |
+| after `zz tools --install-hooks` | 16/16 | 14/16 (hook skipped, stub only) |
+| hook trusted in Codex | n/a | 16/16 |
+| agent pane, `agent-auto-approve all` | 15/16 | 14/16 |
+
+Without the hook neither agent knows its pane; Codex rarely realizes it is in a multiplexer, and
+Claude manages with plain `tmux`. What it turned up, all fixed the same day: Codex's sandbox blocks
+the daemon socket (macOS and Linux), so every `zz` call there fails with "Operation not permitted";
+Codex skips an untrusted hook (`codex exec` silently, the TUI asks on its next start); Codex's
+login shell finds a real `tmux` before zz's; `--install-hooks` was documented only for agents;
+`kill-server` orphaned Claude's background shells.
+
+Agent panes at the shipped default (`reads`), where a permission prompt counts as blocked, before
+and after zz approves its own commands (8 tasks, 2 reps):
+
+| Build | Claude | Codex |
+| --- | --- | --- |
+| 0.21.0 | 0/16, 16 blocked | 0/16, 13 blocked |
+| plain `zz` commands approved | 8/16, 9 blocked | 12/16, 2 blocked |
+| `zz` piped into filters and chained with helpers approved | 10/16, 6 blocked | 15/16, 0 blocked |
+
+Claude's six blocks are shell structure: `until`/`for` loops polling `zz capture-pane`, and
+`PANE=$(zz split-window ...)`. Approving those safely needs a real bash parser (brush-parser or
+bash-ast) that checks every command inside loops and substitutions.
+
 # Traps
 
 - `agy` print mode does not read `<cwd>/.agents/skills`, `.agent/skills`, or `~/.gemini/skills`;
@@ -186,5 +218,14 @@ Haiku passes everything on both products but spends 1.7x the tokens on Rex.
   `-S` in the wrapper.
 - `#!/usr/bin/env bash` resolves to bash 3.2 on macOS, which has no `EPOCHREALTIME`; the scripts
   fall back to `perl -MTime::HiRes`.
+- A fresh `HOME` logs Claude out on macOS, because the keychain is found through `HOME`; link
+  `<fresh>/Library/Keychains` to `~/Library/Keychains`. Codex needs only `auth.json` linked.
+- Each fresh `HOME` downloads Codex's app-server (about 130 MB) into `.codex/packages`; 119 runs
+  filled 16 GB of `/tmp` before the harness started deleting it. An interactive Codex run also
+  leaves a managed app-server (and the npm MCP it starts) running.
+- Codex runs commands in your passwd login shell, so the logging wrappers need the fresh `HOME`'s
+  profile files, and under the sandbox a wrapper cannot write its log outside the workspace.
+- Start the throwaway daemon under `env -i`: a daemon started from inside a zz pane inherits that
+  pane's shim directory on `PATH` and its `CLAUDECODE` variables.
 - Only one CEF instance can host browser panes per cache directory: run the matrix against the
   installed app, never against a `dist/zz-dev` instance while the app is up.
