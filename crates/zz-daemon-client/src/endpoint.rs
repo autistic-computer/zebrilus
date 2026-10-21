@@ -1001,6 +1001,10 @@ pub fn shell_quote(value: &str) -> String {
 
 #[cfg(any(unix, windows, test))]
 pub(crate) const SSH_FAILURE_STATUS: i32 = 255;
+#[cfg(any(unix, windows, test))]
+const SSH_CONNECT_TIMEOUT_SECONDS: u32 = 10;
+#[cfg(any(unix, windows, test))]
+pub(crate) const UNATTENDED_CONNECT_TIMEOUT_SECONDS: u32 = 3;
 
 #[cfg(any(unix, windows, test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1101,9 +1105,14 @@ pub(crate) fn ssh_failure_reason(stderr: &str, status: &str) -> String {
 #[cfg(any(unix, windows, test))]
 fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: SshSession<'_>) {
     login_options(command, session);
+    let connect_timeout = if batch_logins() {
+        UNATTENDED_CONNECT_TIMEOUT_SECONDS
+    } else {
+        SSH_CONNECT_TIMEOUT_SECONDS
+    };
     command
         .arg("-o")
-        .arg("ConnectTimeout=10")
+        .arg(format!("ConnectTimeout={connect_timeout}"))
         .arg("-o")
         .arg("ServerAliveInterval=5")
         .arg("-o")

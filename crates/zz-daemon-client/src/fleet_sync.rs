@@ -12,9 +12,9 @@ use parking_lot::Mutex;
 use crate::{
     Endpoint, SshEndpoint, configured_fleet_hosts,
     endpoint::{
-        KeyEnrollment, SSH_FAILURE_STATUS, authorized_key_script, parse_remote_probe_output,
-        probe_value, remote_path_fallback, remote_socket_probe_script, run_remote_script,
-        shell_quote, ssh_failure_reason,
+        KeyEnrollment, SSH_FAILURE_STATUS, UNATTENDED_CONNECT_TIMEOUT_SECONDS,
+        authorized_key_script, parse_remote_probe_output, probe_value, remote_path_fallback,
+        remote_socket_probe_script, run_remote_script, shell_quote, ssh_failure_reason,
     },
     short_device_name,
     ssh_key::{is_zz_key_line, key_body},
@@ -22,7 +22,6 @@ use crate::{
     validate_fleet_host,
 };
 
-const SYNC_CONNECT_TIMEOUT_SECONDS: u32 = 10;
 const LOCAL_SSH_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 const HOST_KEY_FILES: [&str; 3] = ["ed25519", "ecdsa", "rsa"];
 const HOST_LINE_PREFIX: &str = "zz-sync-host=";
@@ -229,7 +228,7 @@ fn collect_script(hub_key: &str) -> String {
 fn collect(endpoint: &SshEndpoint, hub_key: &str) -> Result<HostFacts, String> {
     let output = run_remote_script(
         endpoint,
-        SYNC_CONNECT_TIMEOUT_SECONDS,
+        UNATTENDED_CONNECT_TIMEOUT_SECONDS,
         &collect_script(hub_key),
     )
     .map_err(|error| format!("could not run ssh: {error}"))?;
@@ -447,8 +446,12 @@ fn apply(endpoint: &SshEndpoint, plan: &HostPlan) -> Result<Applied, String> {
     if plan.keys.is_empty() && plan.host_lines.is_empty() && plan.known_hosts.is_empty() {
         return Ok(Applied::default());
     }
-    let output = run_remote_script(endpoint, SYNC_CONNECT_TIMEOUT_SECONDS, &apply_script(plan))
-        .map_err(|error| format!("could not run ssh: {error}"))?;
+    let output = run_remote_script(
+        endpoint,
+        UNATTENDED_CONNECT_TIMEOUT_SECONDS,
+        &apply_script(plan),
+    )
+    .map_err(|error| format!("could not run ssh: {error}"))?;
     if output.status.code() == Some(SSH_FAILURE_STATUS) {
         return Err(ssh_failure_reason(
             &String::from_utf8_lossy(&output.stderr),
