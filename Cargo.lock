@@ -11345,6 +11345,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "windows 0.62.2",
  "zeroize",
  "zz-protocol",
  "zz-terminal",
