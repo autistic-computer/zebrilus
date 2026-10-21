@@ -12961,6 +12961,11 @@ impl Shared {
         let wait = terminal_requests::CommandWait::new(self);
         let request = terminal.capture_request(parsed.options, self.terminal_requests.notifier());
         let no_hooks = context.no_hooks;
+        let plain = !(parsed.options.escape_sequences
+            || parsed.options.escape_nonprintable
+            || parsed.options.number_lines
+            || parsed.options.line_flags
+            || parsed.options.hyperlinks);
         let retained = Arc::clone(&terminal);
         wait.read(
             self,
@@ -12985,6 +12990,16 @@ impl Shared {
                 } else {
                     capture
                 };
+                let capture = capture.map(|text| {
+                    if plain {
+                        terminal_reads::without_run_pane_lines(
+                            &text,
+                            usize::from(retained.size().0),
+                        )
+                    } else {
+                        text
+                    }
+                });
                 shared.finish_capture_pane(pane, &parsed, no_hooks, capture)
             },
         );
