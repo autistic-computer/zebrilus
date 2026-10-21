@@ -50,6 +50,7 @@ run there.
 | `zz fleet install [--restart-daemon] (-a \| NAME...)` | install or update zz there, in `~/.local/bin` |
 | `zz fleet sync` | make every listed machine trust the others' zz keys and know their host lines |
 | `zz fleet key` | print this machine's zz ssh key |
+| `zz fleet trust KEY` | make every listed machine trust another machine's zz key (from its `zz fleet key`) and print the lines that machine needs |
 
 ## Beyond tmux
 
