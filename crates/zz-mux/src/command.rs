@@ -7169,6 +7169,9 @@ impl MuxEngine {
     ) -> Result<Execution, ServerError> {
         let (options, positional) = parse_command_options("list-windows", args)?;
         reject_positionals("list-windows", &positional)?;
+        if options.has("-a") && self.state.sessions.is_empty() {
+            return Ok(Execution::default());
+        }
         let target_session = self.resolve_session(options.value("-t"), context.session)?;
         let sort = TmuxSort::parse(options.value("-O"), options.has("-r"), None)?;
         let session_ids = if options.has("-a") {
@@ -9383,6 +9386,9 @@ impl MuxEngine {
     ) -> Result<Execution, ServerError> {
         let (options, positional) = parse_command_options("list-panes", args)?;
         reject_positionals("list-panes", &positional)?;
+        if options.has("-a") && self.state.sessions.is_empty() {
+            return Ok(Execution::default());
+        }
         let target_window =
             self.resolve_window(options.value("-t"), context.session, context.window)?;
         let sort = TmuxSort::parse(options.value("-O"), options.has("-r"), None)?;
@@ -23087,6 +23093,23 @@ mod tests {
             ),
             Err(ServerError::WindowNotFound(target)) if target == "1"
         ));
+    }
+
+    #[test]
+    fn listing_everything_on_a_server_with_no_sessions_prints_nothing() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        for verb in ["list-panes", "list-windows"] {
+            let execution = engine
+                .execute(&mut context, &command(verb, &["-a"]))
+                .unwrap_or_else(|error| panic!("{verb} -a: {error:?}"));
+            assert!(execution.output.is_empty(), "{verb}");
+        }
+        assert!(
+            engine
+                .execute(&mut context, &command("list-panes", &[]))
+                .is_err()
+        );
     }
 
     #[test]

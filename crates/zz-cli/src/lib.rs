@@ -2731,13 +2731,24 @@ fn untargeted_host_input(host: &str, command_chain: &[CommandInvocation]) -> Opt
         .iter()
         .take_while(|invocation| !starts_its_own_target(invocation))
         .find_map(untargeted_kind)?;
-    let (noun, id, list) = match kind {
-        CommandValueKind::Window => ("window", "@N", "list-windows -a"),
-        CommandValueKind::Session => ("session", "NAME", "list-sessions"),
-        _ => ("pane", "%N", "list-panes -a"),
+    let (noun, id, list, make) = match kind {
+        CommandValueKind::Window => (
+            "window",
+            "@N",
+            "list-windows -a",
+            "new-session -d -P -F '#{window_id}'",
+        ),
+        CommandValueKind::Session => ("session", "NAME", "list-sessions", "new-session -d -s NAME"),
+        _ => (
+            "pane",
+            "%N",
+            "list-panes -a",
+            "new-session -d -P -F '#{pane_id}'",
+        ),
     };
     Some(format!(
-        "zz --host {host}: name the {noun} with {flag} {id} (zz --host {host} {list})"
+        "zz --host {host}: name the {noun} with {flag} {id} (zz --host {host} {list}, or make one \
+         with zz --host {host} {make})"
     ))
 }
 
@@ -4679,12 +4690,26 @@ mod tests {
                 &words.iter().copied().map(RawText::from).collect::<Vec<_>>(),
             )
         };
-        let pane = "zz --host xps: name the pane with -t %N (zz --host xps list-panes -a)";
-        let window = "zz --host xps: name the window with -t @N (zz --host xps list-windows -a)";
-        let session = "zz --host xps: name the session with -t NAME (zz --host xps list-sessions)";
-        let pane_source = "zz --host xps: name the pane with -s %N (zz --host xps list-panes -a)";
-        let window_source =
-            "zz --host xps: name the window with -s @N (zz --host xps list-windows -a)";
+        let make_pane = "or make one with zz --host xps new-session -d -P -F '#{pane_id}')";
+        let make_window = "or make one with zz --host xps new-session -d -P -F '#{window_id}')";
+        let pane = format!(
+            "zz --host xps: name the pane with -t %N (zz --host xps list-panes -a, {make_pane}"
+        );
+        let pane = pane.as_str();
+        let window = format!(
+            "zz --host xps: name the window with -t @N (zz --host xps list-windows -a, {make_window}"
+        );
+        let window = window.as_str();
+        let session = "zz --host xps: name the session with -t NAME (zz --host xps list-sessions, \
+                       or make one with zz --host xps new-session -d -s NAME)";
+        let pane_source = format!(
+            "zz --host xps: name the pane with -s %N (zz --host xps list-panes -a, {make_pane}"
+        );
+        let pane_source = pane_source.as_str();
+        let window_source = format!(
+            "zz --host xps: name the window with -s @N (zz --host xps list-windows -a, {make_window}"
+        );
+        let window_source = window_source.as_str();
         for (words, refusal) in [
             (&["send-keys", "ls", "Enter"][..], pane),
             (&["send", "-l", "x"][..], pane),
