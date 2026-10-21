@@ -1212,23 +1212,33 @@ fn run_local_command_chain(
         {
             LocalChain::Done(recover_kill_server_failure(routing.socket_path, &error))
         }
-        Ok(ExecChainEnd::Failed(error)) => LocalChain::Done(print_chain_failure(error)),
+        Ok(ExecChainEnd::Failed(error)) => LocalChain::Done(print_chain_failure(error, None)),
         Ok(ExecChainEnd::ServerMismatch) => LocalChain::Done(exit_code_for(CliFailure::Runtime)),
         Err(error) => LocalChain::Unanswered(error),
     }
 }
 
-fn print_chain_failure(error: DaemonError) -> ExitCode {
+fn print_chain_failure(error: DaemonError, host: Option<&str>) -> ExitCode {
     match error {
         DaemonError::CommandFailed { output, error } => {
             print_chain_output(&output, false);
-            eprintln!("{}", command_error_message(&error));
+            eprintln!("{}", with_host_hint(host, command_error_message(&error)));
             exit_code_for(CliFailure::Runtime)
         }
         error => {
-            eprintln!("{}", command_error_message(&error));
+            eprintln!("{}", with_host_hint(host, command_error_message(&error)));
             exit_code_for(CliFailure::Daemon(&error))
         }
+    }
+}
+
+fn with_host_hint(host: Option<&str>, message: String) -> String {
+    match host {
+        Some(host) if message == "can't find session: current session" => format!(
+            "{message}\nzz --host {host}: name the session with -t NAME (zz --host {host} \
+             list-sessions, or make one with zz --host {host} new-session -d -s NAME)"
+        ),
+        _ => message,
     }
 }
 
@@ -1287,10 +1297,13 @@ fn run_host_command_chain(
     match client.exec_chain(ExecChain::new(command_chain), emit_chain_outcome) {
         Ok(ExecChainEnd::Ran { exit_code }) => ExitCode::from(exit_code),
         Ok(ExecChainEnd::Rejected(error)) => {
-            eprintln!("{}", server_error_message(&error));
+            eprintln!(
+                "{}",
+                with_host_hint(Some(host), server_error_message(&error))
+            );
             exit_code_for(CliFailure::Server(&error))
         }
-        Ok(ExecChainEnd::Failed(error)) => print_chain_failure(error),
+        Ok(ExecChainEnd::Failed(error)) => print_chain_failure(error, Some(host)),
         Ok(ExecChainEnd::Resume(_) | ExecChainEnd::ServerMismatch) => {
             exit_code_for(CliFailure::Runtime)
         }
@@ -2671,7 +2684,7 @@ fn host_command_error_message(host: &str, error: &DaemonError) -> String {
     if zz_daemon_client::EndpointError::find(error).is_some() {
         format!("zz: {}", host_connect_failure(host, error))
     } else {
-        command_error_message(error)
+        with_host_hint(Some(host), command_error_message(error))
     }
 }
 
@@ -4688,6 +4701,16 @@ mod tests {
                 Err(ApplicationArgumentError::Message(message)) if message.contains("must not start with `-`")
             ));
         }
+    }
+
+    #[test]
+    fn a_host_without_a_current_session_says_how_to_make_one() {
+        let error = DaemonError::Server(ServerError::SessionNotFound("current session".to_owned()));
+        assert_eq!(
+            super::host_command_error_message("xps", &error),
+            "can't find session: current session\nzz --host xps: name the session with -t NAME \
+             (zz --host xps list-sessions, or make one with zz --host xps new-session -d -s NAME)"
+        );
     }
 
     #[test]
