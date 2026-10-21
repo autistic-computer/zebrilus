@@ -3513,9 +3513,27 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn path_with_a_current_zz() -> (tempfile::TempDir, String) {
+        let bin = tempfile::tempdir().expect("temporary bin");
+        let zz = bin.path().join(zz_protocol::app_identity::DIRECTORY);
+        fs::write(
+            &zz,
+            format!(
+                "#!/bin/sh\ncase \"$1\" in protocol-version) echo {};; esac\n",
+                zz_protocol::PROTOCOL_VERSION
+            ),
+        )
+        .expect("write zz");
+        fs::set_permissions(&zz, fs::Permissions::from_mode(0o755)).expect("make zz runnable");
+        let path = format!("{}:/usr/bin:/bin", bin.path().display());
+        (bin, path)
+    }
+
+    #[cfg(unix)]
     #[test]
     fn the_probe_enrolls_this_machine_once_and_reports_the_hosts_own_key() {
         let line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGW3/OPNnD2l/h6LfRGUUDgkTB5X9f1CU1CuD1GC4d5u zz@hub";
+        let (_bin, path) = path_with_a_current_zz();
         let shells = ["/bin/sh", "/bin/tcsh"]
             .into_iter()
             .filter(|shell| Path::new(shell).exists());
@@ -3525,7 +3543,7 @@ mod tests {
                 let output = Command::new(shell)
                     .args(["-c", &format!("sh -c {}", remote_socket_probe(Some(line)))])
                     .env("HOME", home.path())
-                    .env("PATH", "/usr/bin:/bin")
+                    .env("PATH", &path)
                     .env_remove("XDG_DATA_HOME")
                     .env_remove("XDG_RUNTIME_DIR")
                     .output()
@@ -3583,10 +3601,11 @@ mod tests {
     #[test]
     fn a_probe_without_a_key_line_writes_nothing() {
         let home = tempfile::tempdir().expect("temporary home");
+        let (_bin, path) = path_with_a_current_zz();
         let output = Command::new("/bin/sh")
             .args(["-c", &format!("sh -c {}", remote_socket_probe(None))])
             .env("HOME", home.path())
-            .env("PATH", "/usr/bin:/bin")
+            .env("PATH", &path)
             .env_remove("XDG_DATA_HOME")
             .output()
             .expect("run the probe");
