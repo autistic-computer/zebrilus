@@ -799,9 +799,9 @@ impl EngineFilter {
                         self.metadata_hint |= csi_touches_metadata(&self.sequence, byte);
                         let sequence = std::mem::take(&mut self.sequence);
                         self.track_private_modes(&sequence, byte);
+                        let erased = Self::erased_rows(&sequence, byte, terminal);
+                        self.drop_alternate_marks(&sequence, byte, terminal);
                         self.sequence = sequence;
-                        let erased = Self::erased_rows(&self.sequence, byte, terminal);
-                        self.drop_alternate_marks(&self.sequence.clone(), byte, terminal);
                         if csi_needs_rewrite(&self.sequence, byte, knobs) {
                             write_engine_csi(
                                 &self.sequence,
@@ -811,11 +811,9 @@ impl EngineFilter {
                                 &mut self.primary_history_size,
                             );
                         } else {
-                            let mut raw = Vec::with_capacity(self.sequence.len() + 3);
-                            raw.extend_from_slice(b"\x1b[");
-                            raw.extend_from_slice(&self.sequence);
-                            raw.push(byte);
-                            terminal.vt_write(&raw);
+                            self.sequence.push(byte);
+                            self.sequence.splice(0..0, *b"\x1b[");
+                            terminal.vt_write(&self.sequence);
                         }
                         if let Some(erased) = erased {
                             self.drop_erased_marks(erased);
@@ -918,6 +916,10 @@ impl EngineFilter {
                         continue;
                     }
                     let final_byte = bytes[end];
+                    cursor = end + 1;
+                    if !csi_is_tracked(final_byte) {
+                        continue;
+                    }
                     let parameters = &bytes[escape + 2..end];
                     self.metadata_hint |= csi_touches_metadata(parameters, final_byte);
                     self.track_private_modes(parameters, final_byte);
@@ -942,7 +944,6 @@ impl EngineFilter {
                         }
                         start = end + 1;
                     }
-                    cursor = end + 1;
                 }
                 b']' => {
                     terminal.vt_write(&bytes[start..escape + 2]);
@@ -1153,6 +1154,10 @@ fn osc_touches_metadata(payload: &[u8]) -> bool {
         .position(|byte| !byte.is_ascii_digit())
         .unwrap_or(payload.len());
     matches!(&payload[..digits], b"0" | b"1" | b"2" | b"7")
+}
+
+fn csi_is_tracked(final_byte: u8) -> bool {
+    matches!(final_byte, b'J' | b'h' | b'l' | b'p' | b'q' | b't' | b'u')
 }
 
 fn csi_touches_metadata(parameters: &[u8], final_byte: u8) -> bool {
@@ -1464,31 +1469,31 @@ impl PassthroughFilter {
         loop {
             match self.state {
                 PassthroughState::Ground => {
-                    let Some(escape) = find_escape(bytes) else {
-                        if !bytes.is_empty() {
-                            sink(bytes);
-                            written += bytes.len();
+                    let (escape, matched) = if let Some(escape) =
+                        memchr::memmem::find(bytes, TMUX_PASSTHROUGH_PREFIX)
+                    {
+                        (escape, TMUX_PASSTHROUGH_PREFIX.len())
+                    } else {
+                        let held = held_passthrough_prefix(bytes);
+                        if held == 0 {
+                            if !bytes.is_empty() {
+                                sink(bytes);
+                                written += bytes.len();
+                            }
+                            return written;
                         }
-                        return written;
+                        (bytes.len() - held, held)
                     };
                     if escape > 0 {
                         sink(&bytes[..escape]);
                         written += escape;
-                        bytes = &bytes[escape..];
                     }
-
-                    let matched = common_prefix(bytes, TMUX_PASSTHROUGH_PREFIX);
+                    bytes = &bytes[escape + matched..];
                     if matched == TMUX_PASSTHROUGH_PREFIX.len() {
                         self.start_payload();
-                        bytes = &bytes[matched..];
-                    } else if matched == bytes.len() {
+                    } else {
                         self.state = PassthroughState::Prefix(matched);
                         return written;
-                    } else {
-                        let next = find_escape(&bytes[1..]).map_or(bytes.len(), |next| next + 1);
-                        sink(&bytes[..next]);
-                        written += next;
-                        bytes = &bytes[next..];
                     }
                 }
                 PassthroughState::Prefix(matched) => {
@@ -1593,7 +1598,24 @@ fn force_pty_erase(descriptor: std::os::fd::RawFd, erase: u8) {
 }
 
 fn find_escape(bytes: &[u8]) -> Option<usize> {
+    if bytes.first() == Some(&0x1b) {
+        return Some(0);
+    }
     memchr::memchr(0x1b, bytes)
+}
+
+fn held_passthrough_prefix(bytes: &[u8]) -> usize {
+    let tail = bytes
+        .len()
+        .saturating_sub(TMUX_PASSTHROUGH_PREFIX.len() - 1);
+    memchr::memrchr(0x1b, &bytes[tail..]).map_or(0, |offset| {
+        let held = &bytes[tail + offset..];
+        if TMUX_PASSTHROUGH_PREFIX.starts_with(held) {
+            held.len()
+        } else {
+            0
+        }
+    })
 }
 
 fn common_prefix(left: &[u8], right: &[u8]) -> usize {
@@ -18443,16 +18465,48 @@ mod tests {
         while clears.len() < 512 << 10 {
             clears.extend_from_slice(b"\x1b[H\x1b[2J");
         }
-        for (name, input) in [
-            ("coloured", &coloured),
-            ("plain", &plain),
-            ("clears", &clears),
+        let mut fire = Vec::new();
+        let mut seed = 0x2545_f491_u32;
+        while fire.len() < 26 << 20 {
+            fire.extend_from_slice(b"\x1b[H");
+            for _ in 0..50 {
+                for _ in 0..200 {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 17;
+                    seed ^= seed << 5;
+                    if !seed.is_multiple_of(4) {
+                        fire.extend_from_slice(
+                            format!(
+                                "\x1b[48;5;{}m\x1b[38;5;{}m",
+                                16 + seed % 216,
+                                16 + (seed >> 8) % 216
+                            )
+                            .as_bytes(),
+                        );
+                    }
+                    fire.extend_from_slice("\u{2580}".as_bytes());
+                }
+                fire.extend_from_slice(b"\r\n");
+            }
+        }
+        for (name, input, chunk_size) in [
+            ("coloured", &coloured, 65536),
+            ("plain", &plain, 65536),
+            ("clears", &clears, 65536),
+            ("fire", &fire, 65536),
+            ("fire", &fire, 1024),
         ] {
             for round in 0..3 {
                 let mut terminal = new_terminal(200, 50, 1000).expect("terminal");
+                let started = Instant::now();
+                for chunk in input.chunks(chunk_size) {
+                    terminal.vt_write(chunk);
+                }
+                let direct = started.elapsed();
+                let mut terminal = new_terminal(200, 50, 1000).expect("terminal");
                 let mut passthrough = PassthroughFilter::default();
                 let started = Instant::now();
-                for chunk in input.chunks(65536) {
+                for chunk in input.chunks(chunk_size) {
                     passthrough.write(chunk, |bytes| terminal.vt_write(bytes));
                 }
                 let base = started.elapsed();
@@ -18469,11 +18523,13 @@ mod tests {
                     last_command_status: &mut None,
                 };
                 let started = Instant::now();
-                for chunk in input.chunks(65536) {
+                for chunk in input.chunks(chunk_size) {
                     feed_pty_output(&mut terminal, &mut passthrough, &mut engine, chunk);
                 }
                 let filtered = started.elapsed();
-                println!("{name} round {round}: passthrough {base:?} filtered {filtered:?}");
+                println!(
+                    "{name}/{chunk_size} round {round}: direct {direct:?} passthrough {base:?} filtered {filtered:?}"
+                );
             }
         }
     }
@@ -18504,6 +18560,47 @@ mod tests {
         assert_eq!(calls, 1);
         assert_eq!(filter.payload.capacity(), 0);
         assert_eq!(filter.state, PassthroughState::Ground);
+    }
+
+    #[test]
+    fn passthrough_hands_sequences_over_in_one_write() {
+        let input =
+            b"\x1b[38;5;1m\xe2\x96\x80\x1b[48;5;2m\x1b]0;title\x07\x1bP1$r\x1b\\\x1b[0m done";
+        let mut filter = PassthroughFilter::default();
+        let mut calls = 0;
+        let written = filter.write(input, |output| {
+            calls += 1;
+            assert!(std::ptr::eq(output.as_ptr(), input.as_ptr()));
+            assert_eq!(output.len(), input.len());
+        });
+        assert_eq!(written, input.len());
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn untracked_csi_finals_need_no_bookkeeping() {
+        for final_byte in 0x40..=0x7e_u8 {
+            if csi_is_tracked(final_byte) {
+                continue;
+            }
+            for parameters in [
+                &b""[..],
+                b"?1049",
+                b"2",
+                b"?1000;1006",
+                b"0 ",
+                b">1",
+                b"!",
+                b"22",
+            ] {
+                assert!(!csi_touches_metadata(parameters, final_byte));
+                assert!(!csi_needs_rewrite(
+                    parameters,
+                    final_byte,
+                    EngineKnobs::default()
+                ));
+            }
+        }
     }
 
     #[test]
