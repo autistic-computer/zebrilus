@@ -39,6 +39,7 @@ zz_gpui::actions!(
         CheckForUpdates,
         OpenLogs,
         ImportTmuxConfig,
+        SetUpAgents,
         About,
         Undo,
         Redo,
@@ -136,6 +137,7 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
             MenuItem::action("Check for Updates…", CheckForUpdates),
             MenuItem::action("Settings…", OpenSettings),
             MenuItem::action("Import tmux config…", ImportTmuxConfig),
+            MenuItem::action("Set Up Agents…", SetUpAgents),
             MenuItem::separator(),
             #[cfg(target_os = "macos")]
             MenuItem::os_submenu("Services", SystemMenuType::Services),

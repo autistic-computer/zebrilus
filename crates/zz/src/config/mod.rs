@@ -25,6 +25,7 @@ use crate::{
     window::corners::WindowCorners,
 };
 
+pub(crate) mod agent_setup;
 pub(crate) mod import;
 pub(crate) mod import_prompt;
 mod mux_bindings;

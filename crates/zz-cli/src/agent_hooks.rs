@@ -17,6 +17,8 @@ const HOOK_COMMAND: &str = r#"/bin/sh -c ': zz-agent-context; [ -n "${ZZ_PANE-}"
 const HOOK_TIMEOUT_SECONDS: u64 = 5;
 const STUB_MARKER: &str = "zz-stub:";
 const SKILL_NAME: &str = "zz-workspace";
+const CODEX_HOOK_REVIEW: &str =
+    "approve the new hook with /hooks in Codex; until then Codex skips it";
 
 pub(crate) fn run(arguments: &[RawText]) -> ExitCode {
     let (flag, install) = match arguments {
@@ -30,24 +32,17 @@ pub(crate) fn run(arguments: &[RawText]) -> ExitCode {
         [flag] if flag == "--remove-hooks" => (flag, false),
         _ => return guide(arguments),
     };
-    let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
+    let Some(home) = home() else {
         eprintln!("tools {flag}: HOME is not set");
         return ExitCode::from(1);
     };
-    let home = PathBuf::from(home);
     let mut failed = false;
-    for agent in agents(&home, |name| std::env::var_os(name)) {
-        for line in if install {
-            agent.install()
-        } else {
-            agent.remove()
-        } {
-            match line {
-                Ok(line) => println!("{}: {line}", agent.name),
-                Err(line) => {
-                    failed = true;
-                    eprintln!("{}: {line}", agent.name);
-                }
+    for line in apply(&home, install) {
+        match line {
+            Ok(line) => println!("{line}"),
+            Err(line) => {
+                failed = true;
+                eprintln!("{line}");
             }
         }
     }
@@ -56,6 +51,46 @@ pub(crate) fn run(arguments: &[RawText]) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+pub fn install_agent_hooks() -> Result<String, String> {
+    let home = home().ok_or_else(|| "HOME is not set".to_owned())?;
+    let lines = apply(&home, true);
+    let report = lines
+        .iter()
+        .map(|line| match line {
+            Ok(line) | Err(line) => line.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if lines.iter().any(Result::is_err) {
+        Err(report)
+    } else {
+        Ok(report)
+    }
+}
+
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+}
+
+fn apply(home: &Path, install: bool) -> Vec<Line> {
+    agents(home, |name| std::env::var_os(name))
+        .iter()
+        .flat_map(|agent| {
+            let lines = if install {
+                agent.install()
+            } else {
+                agent.remove()
+            };
+            lines.into_iter().map(|line| {
+                line.map(|line| format!("{}: {line}", agent.name))
+                    .map_err(|line| format!("{}: {line}", agent.name))
+            })
+        })
+        .collect()
 }
 
 fn guide(arguments: &[RawText]) -> ExitCode {
@@ -94,6 +129,7 @@ struct Agent {
     config: PathBuf,
     hooks: PathBuf,
     skill: PathBuf,
+    hook_review: Option<&'static str>,
 }
 
 fn agents(home: &Path, var: impl Fn(&str) -> Option<OsString>) -> [Agent; 2] {
@@ -110,6 +146,7 @@ fn agents(home: &Path, var: impl Fn(&str) -> Option<OsString>) -> [Agent; 2] {
             hooks: claude.join("settings.json"),
             skill: claude.join("skills").join(SKILL_NAME).join("SKILL.md"),
             config: claude,
+            hook_review: None,
         },
         Agent {
             name: "Codex",
@@ -120,6 +157,7 @@ fn agents(home: &Path, var: impl Fn(&str) -> Option<OsString>) -> [Agent; 2] {
                 .join(SKILL_NAME)
                 .join("SKILL.md"),
             config: codex,
+            hook_review: Some(CODEX_HOOK_REVIEW),
         },
     ]
 }
@@ -134,7 +172,15 @@ impl Agent {
                 self.config.display()
             ))];
         }
-        vec![self.install_hook(), self.install_skill()]
+        let hook = self.install_hook();
+        let changed = hook
+            .as_ref()
+            .is_ok_and(|line| !line.starts_with("hook current"));
+        let mut lines = vec![hook, self.install_skill()];
+        if changed && let Some(review) = self.hook_review {
+            lines.push(Ok(review.to_owned()));
+        }
+        lines
     }
 
     fn remove(&self) -> Vec<Line> {
@@ -432,6 +478,8 @@ mod tests {
         let lines = codex_agent.install();
         assert!(lines[0].as_ref().expect("hook").starts_with("hook updated"));
         assert!(lines[1].as_ref().expect("skill").contains("left alone"));
+        assert_eq!(lines[2].as_deref(), Ok(CODEX_HOOK_REVIEW));
+        assert_eq!(codex_agent.install().len(), 2);
         assert_eq!(session_start_commands(&hooks), [HOOK_COMMAND]);
         assert_eq!(
             fs::read_to_string(&skill).expect("skill"),

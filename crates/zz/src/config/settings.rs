@@ -1437,6 +1437,24 @@ impl SettingsView {
                 )))
             })
             .child(
+                SettingsStack::titled("Coding agents").child(
+                    SettingEntry::new(
+                        "Claude Code and Codex",
+                        "Add a startup hook and a short skill to their settings in your home \
+                         folder, so the ones you start in a terminal pane know they run in zz. \
+                         Agent panes need nothing.",
+                    )
+                    .control(
+                        Button::new("settings-agent-setup")
+                            .label("Set up")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, window, cx| {
+                                crate::config::agent_setup::set_up_agents(window, cx);
+                            }),
+                    ),
+                ),
+            )
+            .child(
                 SettingsStack::titled("Notifications").child(Self::boolean_setting(
                     ConfigKey::Notifications,
                     "Notify when a pane needs you",

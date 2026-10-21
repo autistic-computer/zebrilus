@@ -52675,7 +52675,8 @@ and `zz tools advanced` for state subscriptions and terminal-agent integration.
 `zz tools --context` prints the short startup context for the calling pane.
 Agent panes get it without a hook; run `zz tools --install-hooks` once so
 Claude Code and Codex started by hand in a terminal pane get it too, and
-`zz tools --remove-hooks` to take the hook and stub skill out again.
+`zz tools --remove-hooks` to take the hook and stub skill out again. Codex
+skips a new or changed hook until you approve it with `/hooks` in Codex.
 
 ## Environment
 
