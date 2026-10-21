@@ -516,6 +516,9 @@ impl Render for AppShell {
                 .on_action(|_: &menus::ImportTmuxConfig, window, cx| {
                     crate::config::import_prompt::choose_tmux_config(window, cx);
                 })
+                .on_action(|_: &menus::SetUpAgents, window, cx| {
+                    crate::config::agent_setup::set_up_agents(window, cx);
+                })
                 .on_action(cx.listener(|shell, _: &menus::About, window, cx| {
                     shell
                         .sidebar
