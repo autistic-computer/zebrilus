@@ -15,10 +15,12 @@ pub trait SpawnUnmasked {
 )]
 impl SpawnUnmasked for Command {
     fn spawn_unmasked(&mut self) -> io::Result<Child> {
+        without_new_console(self);
         unmasked(|| self.spawn())
     }
 
     fn output_unmasked(&mut self) -> io::Result<Output> {
+        without_new_console(self);
         unmasked(|| self.output())
     }
 
@@ -26,6 +28,25 @@ impl SpawnUnmasked for Command {
         self.spawn_unmasked()?.wait()
     }
 }
+
+#[cfg(windows)]
+fn without_new_console(command: &mut Command) {
+    use std::os::windows::process::CommandExt as _;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    #[allow(
+        unsafe_code,
+        reason = "GetConsoleWindow is a raw Win32 entry point with no safe wrapper"
+    )]
+    // SAFETY: no pointers are involved; the call only reports this process's console window.
+    let console = unsafe { windows::Win32::System::Console::GetConsoleWindow() };
+    if console.is_invalid() {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+}
+
+#[cfg(not(windows))]
+fn without_new_console(_command: &mut Command) {}
 
 #[cfg(unix)]
 struct RestoreMask(libc::sigset_t);
