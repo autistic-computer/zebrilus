@@ -13,6 +13,7 @@ use zz_protocol::MAX_AGENT_RESULT_BYTES;
 use crate::agent::{
     runtime::{StderrTail, validate_payload},
     stream::{AgentPromptOutcome, AgentStreamPayload},
+    turn::Outcome,
 };
 
 const REAP_GRACE: Duration = Duration::from_secs(2);
@@ -257,6 +258,16 @@ pub(crate) fn spawn_thread(name: &str, body: impl FnOnce() + Send + 'static) -> 
 pub(crate) fn cancelled() -> AgentPromptOutcome {
     AgentPromptOutcome::Finished {
         stop_reason: Value::from("cancelled"),
+    }
+}
+
+pub(crate) fn prompt_outcome(outcome: Outcome) -> AgentPromptOutcome {
+    match outcome {
+        Outcome::Completed { stop_reason } => AgentPromptOutcome::Finished {
+            stop_reason: Value::from(stop_reason),
+        },
+        Outcome::Cancelled | Outcome::Dropped => cancelled(),
+        Outcome::Failed { message } => AgentPromptOutcome::Failed { message },
     }
 }
 

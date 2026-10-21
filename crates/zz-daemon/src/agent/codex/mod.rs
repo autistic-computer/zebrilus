@@ -24,7 +24,8 @@ use zz_protocol::{
 
 use crate::agent::{
     child::{
-        ChildEvent, Input, Process, Rewind, cancelled, fit_update, next_input, option, random_u64,
+        ChildEvent, Input, Process, Rewind, cancelled, fit_update, next_input, option,
+        prompt_outcome, random_u64,
     },
     environment::{AgentWorkspaceEnvironment, agent_path, find_executable},
     host::RuntimeChannels,
@@ -37,8 +38,10 @@ use crate::agent::{
         AgentPrompt, AgentPromptOutcome, AgentQuestion, AgentQuestionOption,
         AgentSessionCapabilities, AgentSessionSummary, AgentStreamPayload,
     },
+    turn::{self, Effect, End, Fact, Reject, Turn, TurnMachine, TurnState},
     zz_command,
 };
+use zz_machine::Machine;
 
 use translate::Translator;
 
@@ -127,8 +130,7 @@ pub(crate) async fn run_codex_runtime(
         requests: HashMap::new(),
         next_request: 0,
         permissions: HashMap::new(),
-        turn: None,
-        external_turn: None,
+        turns: TurnState::default(),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         settings: Settings::default(),
@@ -220,11 +222,6 @@ enum Outgoing {
         cwd: Option<PathBuf>,
         replace: bool,
     },
-}
-
-struct Turn {
-    id: u64,
-    codex: Option<String>,
 }
 
 enum Reply {
@@ -405,8 +402,7 @@ struct Runtime {
     requests: HashMap<u64, (Outgoing, Instant)>,
     next_request: u64,
     permissions: HashMap<u64, Pending>,
-    turn: Option<Turn>,
-    external_turn: Option<String>,
+    turns: TurnState,
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
     settings: Settings,
@@ -506,7 +502,67 @@ impl Runtime {
     }
 
     fn next_deadline(&self) -> Option<Instant> {
-        self.requests.values().map(|(_, deadline)| *deadline).min()
+        self.requests
+            .values()
+            .map(|(_, deadline)| *deadline)
+            .chain(TurnMachine::wake_at(&self.turns))
+            .min()
+    }
+
+    async fn apply(&mut self, fact: &Fact) -> Result<Option<Reject>, String> {
+        let idle = self.turns.turn().is_none();
+        let step = TurnMachine::step(
+            &mut self.turns,
+            fact,
+            &turn::Ctx {
+                now: Instant::now(),
+            },
+        );
+        if let Some(reject) = &step.rejected {
+            log::debug!(target: "zz::agent", "Codex turn kept {fact:?} out: {reject:?}");
+        }
+        if idle && self.turns.turn().is_some_and(|turn| turn.owner.is_none()) {
+            self.emit(AgentStreamPayload::Activity { busy: true })
+                .await?;
+        }
+        let gone = matches!(fact, Fact::Exited { .. } | Fact::SessionClosed);
+        for effect in step.effects {
+            match effect {
+                Effect::Interrupt => {
+                    let codex = self
+                        .turns
+                        .turn()
+                        .and_then(Turn::active_command)
+                        .map(str::to_owned);
+                    if let (Some(thread), Some(codex)) = (self.thread_id(), codex) {
+                        self.request(
+                            "turn/interrupt",
+                            &json!({ "threadId": thread, "turnId": codex }),
+                            Outgoing::Quiet,
+                        );
+                    }
+                }
+                Effect::Settle {
+                    turn: Some(turn_id),
+                    outcome,
+                } => self.finish(turn_id, prompt_outcome(outcome)).await?,
+                Effect::Settle { turn: None, .. } if !gone => {
+                    self.emit(AgentStreamPayload::Activity { busy: false })
+                        .await?;
+                }
+                Effect::Settle { turn: None, .. }
+                | Effect::Dismiss { .. }
+                | Effect::Drain
+                | Effect::Reclaim => {}
+            }
+        }
+        Ok(step.rejected)
+    }
+
+    fn owns(&self, turn_id: u64) -> bool {
+        self.turns
+            .turn()
+            .is_some_and(|turn| turn.owner == Some(turn_id))
     }
 
     fn thread_id(&self) -> Option<String> {
@@ -646,35 +702,13 @@ impl Runtime {
 
     async fn control(&mut self, control: RuntimeControl) -> Result<(), String> {
         match control {
-            RuntimeControl::Cancel { turn_id: 0, .. } if self.turn.is_none() => {
-                if let (Some(thread), Some(codex)) = (self.thread_id(), self.external_turn.clone())
-                {
-                    self.request(
-                        "turn/interrupt",
-                        &json!({ "threadId": thread, "turnId": codex }),
-                        Outgoing::Quiet,
-                    );
-                }
-                self.cancel_permissions().await
-            }
             RuntimeControl::Cancel { turn_id, .. } => {
-                if self.turn.as_ref().is_some_and(|turn| turn.id == turn_id) {
-                    let turn = self.turn.take();
-                    if let (Some(thread), Some(codex)) =
-                        (self.thread_id(), turn.and_then(|turn| turn.codex))
-                    {
-                        self.request(
-                            "turn/interrupt",
-                            &json!({ "threadId": thread, "turnId": codex }),
-                            Outgoing::Quiet,
-                        );
-                    }
-                    self.cancel_permissions().await?;
-                    self.emit(AgentStreamPayload::PromptFinished {
-                        turn_id,
-                        outcome: cancelled(),
-                    })
-                    .await
+                let owner = self.turns.turn().map(|turn| turn.owner.unwrap_or(0));
+                if owner == Some(turn_id) {
+                    self.apply(&Fact::Cancel).await?;
+                    self.cancel_permissions().await
+                } else if turn_id == 0 && owner.is_none() {
+                    self.cancel_permissions().await
                 } else {
                     if turn_id > self.last_turn {
                         self.deferred_cancels.insert(turn_id);
@@ -716,13 +750,7 @@ impl Runtime {
                 .await;
         }
         self.cancel_permissions().await?;
-        if let Some(turn) = self.turn.take() {
-            self.emit(AgentStreamPayload::PromptFinished {
-                turn_id: turn.id,
-                outcome: cancelled(),
-            })
-            .await?;
-        }
+        self.apply(&Fact::SessionClosed).await?;
         if self.process.is_none()
             && let Err(message) = self.spawn()
         {
@@ -928,6 +956,7 @@ impl Runtime {
         }
         let modes = Some(self.settings.mode_state());
         let config_options = Some(self.settings.config_options());
+        self.apply(&Fact::SessionReady).await?;
         match start {
             Start::Open => {
                 self.emit(AgentStreamPayload::SessionReady {
@@ -973,7 +1002,7 @@ impl Runtime {
     }
 
     async fn rewind(&mut self, target: &Rewind, thread: &Value) -> Result<(), String> {
-        if self.turn.is_some() {
+        if self.turns.turn().is_some() {
             return self.notice("Stop the turn before rewinding.").await;
         }
         let Some(source) = thread["id"].as_str().map(str::to_owned) else {
@@ -1112,14 +1141,26 @@ impl Runtime {
         let echo = format!("zz-prompt-{turn_id}-{:016x}", random_u64());
         let text = prompt.text.clone();
         let input = turn_input(&prompt);
+        let fact = Fact::Prompt {
+            turn: turn_id,
+            command: (text.trim() == "/compact").then(|| compact_command(turn_id)),
+        };
+        if self.apply(&fact).await?.is_some() {
+            self.emit(AgentStreamPayload::PromptAccepted { turn_id })
+                .await?;
+            return self
+                .finish(
+                    turn_id,
+                    AgentPromptOutcome::Failed {
+                        message: "a turn is already running".to_owned(),
+                    },
+                )
+                .await;
+        }
         for update in prompt_updates(&prompt_blocks(prompt), &MessageId::new(echo.clone())) {
             let update = serde_json::to_value(&update).map_err(|error| error.to_string())?;
             self.update(update, true).await?;
         }
-        self.turn = Some(Turn {
-            id: turn_id,
-            codex: None,
-        });
         self.emit(AgentStreamPayload::PromptAccepted { turn_id })
             .await?;
         match text.trim() {
@@ -1184,7 +1225,12 @@ impl Runtime {
         };
         match name {
             "steer" if !rest.is_empty() => {
-                let Some(codex) = self.turn.as_ref().and_then(|turn| turn.codex.clone()) else {
+                let Some(codex) = self
+                    .turns
+                    .turn()
+                    .and_then(Turn::active_command)
+                    .map(str::to_owned)
+                else {
                     return self.notice("Nothing is running to steer.").await;
                 };
                 self.request(
@@ -1199,7 +1245,7 @@ impl Runtime {
                 Ok(())
             }
             "fork" => {
-                if self.turn.is_some() {
+                if self.turns.turn().is_some() {
                     return self.notice("Stop the turn before forking.").await;
                 }
                 let cwd = self.cwd();
@@ -1209,7 +1255,7 @@ impl Runtime {
                 let Some(target) = Rewind::parse(rest) else {
                     return self.notice(VERB_HELP).await;
                 };
-                if self.turn.is_some() {
+                if self.turns.turn().is_some() {
                     return self.notice("Stop the turn before rewinding.").await;
                 }
                 self.request(
@@ -1269,6 +1315,9 @@ impl Runtime {
 
     async fn expire(&mut self) -> Result<(), String> {
         let now = Instant::now();
+        if TurnMachine::wake_at(&self.turns).is_some_and(|wake| wake <= now) {
+            self.apply(&Fact::Tick).await?;
+        }
         let expired = self
             .requests
             .iter()
@@ -1404,31 +1453,37 @@ impl Runtime {
                 self.load().await
             }
             (Outgoing::Turn { turn_id }, Ok(response)) => {
-                if let Some(turn) = self.turn.as_mut().filter(|turn| turn.id == turn_id) {
-                    turn.codex = response["turn"]["id"].as_str().map(str::to_owned);
-                }
-                Ok(())
-            }
-            (Outgoing::Turn { turn_id } | Outgoing::Command { turn_id }, Err(error)) => {
-                if self.turn.as_ref().is_some_and(|turn| turn.id == turn_id) {
-                    self.turn = None;
-                    self.finish(turn_id, AgentPromptOutcome::Failed { message: error })
-                        .await?;
-                }
-                Ok(())
-            }
-            (Outgoing::Command { turn_id }, Ok(_)) => {
-                if self.turn.as_ref().is_some_and(|turn| turn.id == turn_id) {
-                    self.turn = None;
-                    self.finish(
-                        turn_id,
-                        AgentPromptOutcome::Finished {
-                            stop_reason: Value::from("end_turn"),
-                        },
-                    )
+                if let Some(command) = response["turn"]["id"].as_str() {
+                    self.apply(&Fact::Accepted {
+                        turn: turn_id,
+                        command: command.to_owned(),
+                    })
                     .await?;
                 }
                 Ok(())
+            }
+            (Outgoing::Turn { turn_id }, Err(error)) => {
+                if !self.owns(turn_id) {
+                    return Ok(());
+                }
+                self.apply(&Fact::Ended {
+                    command: format!("zz-turn-{turn_id}"),
+                    end: End::Failed(error),
+                })
+                .await
+                .map(drop)
+            }
+            (Outgoing::Command { turn_id }, result) => {
+                if !self.owns(turn_id) {
+                    return Ok(());
+                }
+                let end = result.map_or_else(End::Failed, |_| End::Completed);
+                self.apply(&Fact::Ended {
+                    command: compact_command(turn_id),
+                    end,
+                })
+                .await
+                .map(drop)
             }
             (
                 Outgoing::SideFork {
@@ -1606,15 +1661,10 @@ impl Runtime {
         if let Some(starting) = self.starting.take() {
             return self.fail_start(starting.start, message).await;
         }
-        if let Some(turn) = self.turn.take() {
-            self.finish(
-                turn.id,
-                AgentPromptOutcome::Failed {
-                    message: message.clone(),
-                },
-            )
-            .await?;
-        }
+        self.apply(&Fact::Exited {
+            message: message.clone(),
+        })
+        .await?;
         self.emit(AgentStreamPayload::PaneFailed { message }).await
     }
 
@@ -1667,43 +1717,39 @@ impl Runtime {
             return Ok(());
         }
         match method {
-            "turn/started" => match self.turn.as_mut() {
-                Some(turn) => {
-                    if turn.codex.is_none() {
-                        turn.codex = params["turn"]["id"].as_str().map(str::to_owned);
-                    }
+            "turn/started" => {
+                if let Some(command) = params["turn"]["id"].as_str() {
+                    self.apply(&Fact::Started {
+                        command: command.to_owned(),
+                    })
+                    .await?;
                 }
-                None => {
-                    self.external_turn = params["turn"]["id"].as_str().map(str::to_owned);
-                }
-            },
-            "thread/status/changed" if self.turn.is_none() => {
-                let busy = params["status"]["type"] == "active";
-                if !busy {
-                    self.external_turn = None;
-                }
-                self.emit(AgentStreamPayload::Activity { busy }).await?;
+            }
+            "thread/status/changed" => {
+                let fact = if params["status"]["type"] == "active" {
+                    Fact::Busy
+                } else {
+                    Fact::Idle
+                };
+                self.apply(&fact).await?;
             }
             "turn/completed" => {
-                let codex = params["turn"]["id"].as_str();
-                let matches = self
-                    .turn
-                    .as_ref()
-                    .is_some_and(|turn| turn.codex.is_none() || turn.codex.as_deref() == codex);
-                if matches && let Some(turn) = self.turn.take() {
-                    let outcome = match params["turn"]["status"].as_str() {
-                        Some("interrupted") => cancelled(),
-                        Some("failed") => AgentPromptOutcome::Failed {
-                            message: params["turn"]["error"]["message"]
+                if let Some(command) = params["turn"]["id"].as_str() {
+                    let end = match params["turn"]["status"].as_str() {
+                        Some("interrupted") => End::Cancelled,
+                        Some("failed") => End::Failed(
+                            params["turn"]["error"]["message"]
                                 .as_str()
                                 .unwrap_or("Codex turn failed")
                                 .to_owned(),
-                        },
-                        _ => AgentPromptOutcome::Finished {
-                            stop_reason: Value::from("end_turn"),
-                        },
+                        ),
+                        _ => End::Completed,
                     };
-                    self.finish(turn.id, outcome).await?;
+                    self.apply(&Fact::Ended {
+                        command: command.to_owned(),
+                        end,
+                    })
+                    .await?;
                 }
                 if let Some(thread) = current {
                     self.request(
@@ -2157,6 +2203,10 @@ fn question_answers(answers: &[AgentQuestionAnswer]) -> Value {
     json!({ "answers": map })
 }
 
+fn compact_command(turn_id: u64) -> String {
+    format!("zz-compact-{turn_id}")
+}
+
 fn turn_input(prompt: &AgentPrompt) -> Value {
     let mut input = Vec::new();
     if !prompt.text.is_empty() {
@@ -2170,6 +2220,9 @@ fn turn_input(prompt: &AgentPrompt) -> Value {
     }
     Value::Array(input)
 }
+
+#[cfg(test)]
+mod replay_tests;
 
 #[cfg(test)]
 mod tests {

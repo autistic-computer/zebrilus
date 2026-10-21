@@ -26,7 +26,7 @@ use zz_protocol::{
 use crate::agent::{
     child::{
         ChildEvent, Input, Process, Rewind, cancelled, fit_update, new_uuid, next_input, option,
-        random_u64, rewind_shortfall,
+        prompt_outcome, random_u64, rewind_shortfall,
     },
     environment::{AgentWorkspaceEnvironment, agent_path, find_executable},
     host::RuntimeChannels,
@@ -39,8 +39,10 @@ use crate::agent::{
         AgentPromptOutcome, AgentQuestion, AgentQuestionOption, AgentSessionCapabilities,
         AgentStreamPayload,
     },
+    turn::{self, Effect, End, Fact, Reject, TurnMachine, TurnState},
     zz_command,
 };
+use zz_machine::Machine;
 
 use translate::{Translator, available_commands, tool_info};
 
@@ -184,11 +186,10 @@ pub(crate) async fn run_claude_runtime(
         requests: HashMap::new(),
         next_request: 0,
         permissions: HashMap::new(),
-        turn: None,
+        turns: TurnState::default(),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
-        stale_commands: HashSet::new(),
-        lifecycle_seen: false,
+        tasks: Vec::new(),
         verbs: 0,
         reply: None,
     };
@@ -269,13 +270,6 @@ enum Outgoing {
     Mode { mode_id: String },
     Side { message_id: String, reply: String },
     StopTask,
-}
-
-struct Turn {
-    id: u64,
-    uuid: String,
-    started: bool,
-    error: Option<String>,
 }
 
 enum Permission {
@@ -432,11 +426,10 @@ struct Runtime {
     requests: HashMap<String, (Outgoing, Instant)>,
     next_request: u64,
     permissions: HashMap<u64, Permission>,
-    turn: Option<Turn>,
+    turns: TurnState,
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
-    stale_commands: HashSet<String>,
-    lifecycle_seen: bool,
+    tasks: Vec<AgentTaskWire>,
     settings: Settings,
     verbs: u64,
     reply: Option<String>,
@@ -494,7 +487,52 @@ impl Runtime {
     }
 
     fn next_deadline(&self) -> Option<Instant> {
-        self.requests.values().map(|(_, deadline)| *deadline).min()
+        self.requests
+            .values()
+            .map(|(_, deadline)| *deadline)
+            .chain(TurnMachine::wake_at(&self.turns))
+            .min()
+    }
+
+    async fn apply(&mut self, fact: &Fact) -> Result<Option<Reject>, String> {
+        let idle = self.turns.turn().is_none();
+        let step = TurnMachine::step(
+            &mut self.turns,
+            fact,
+            &turn::Ctx {
+                now: Instant::now(),
+            },
+        );
+        if let Some(reject) = &step.rejected {
+            log::debug!(target: "zz::agent", "Claude Code turn kept {fact:?} out: {reject:?}");
+        }
+        if idle && self.turns.turn().is_some_and(|turn| turn.owner.is_none()) {
+            self.emit(AgentStreamPayload::Activity { busy: true })
+                .await?;
+        }
+        let gone = matches!(fact, Fact::Exited { .. } | Fact::SessionClosed);
+        for effect in step.effects {
+            match effect {
+                Effect::Interrupt => self.request(
+                    &json!({ "subtype": "interrupt" }),
+                    Outgoing::Interrupt,
+                    CONTROL_TIMEOUT,
+                ),
+                Effect::Settle {
+                    turn: Some(turn_id),
+                    outcome,
+                } => self.finish(turn_id, prompt_outcome(outcome)).await?,
+                Effect::Settle { turn: None, .. } if !gone => {
+                    self.emit(AgentStreamPayload::Activity { busy: false })
+                        .await?;
+                }
+                Effect::Settle { turn: None, .. }
+                | Effect::Dismiss { .. }
+                | Effect::Drain
+                | Effect::Reclaim => {}
+            }
+        }
+        Ok(step.rejected)
     }
 
     fn cwd(&self) -> PathBuf {
@@ -579,6 +617,22 @@ impl Runtime {
                 }
                 let content = prompt_content(&prompt);
                 let uuid = new_uuid();
+                let fact = Fact::Prompt {
+                    turn: turn_id,
+                    command: Some(uuid.clone()),
+                };
+                if self.apply(&fact).await?.is_some() {
+                    self.emit(AgentStreamPayload::PromptAccepted { turn_id })
+                        .await?;
+                    return self
+                        .finish(
+                            turn_id,
+                            AgentPromptOutcome::Failed {
+                                message: "a turn is already running".to_owned(),
+                            },
+                        )
+                        .await;
+                }
                 for update in prompt_updates(&prompt_blocks(prompt), &MessageId::new(uuid.clone()))
                 {
                     let update =
@@ -593,12 +647,6 @@ impl Runtime {
                     "message": { "role": "user", "content": content },
                     "origin": { "kind": "human" },
                 }));
-                self.turn = Some(Turn {
-                    id: turn_id,
-                    uuid,
-                    started: false,
-                    error: None,
-                });
                 self.emit(AgentStreamPayload::PromptAccepted { turn_id })
                     .await
             }
@@ -674,30 +722,18 @@ impl Runtime {
 
     async fn control(&mut self, control: RuntimeControl) -> Result<(), String> {
         match control {
-            RuntimeControl::Cancel { turn_id: 0, .. } if self.turn.is_none() => {
-                self.request(
-                    &json!({ "subtype": "interrupt" }),
-                    Outgoing::Interrupt,
-                    CONTROL_TIMEOUT,
-                );
-                self.cancel_permissions(true).await
-            }
             RuntimeControl::Cancel { turn_id, .. } => {
-                if self.turn.as_ref().is_some_and(|turn| turn.id == turn_id) {
-                    if let Some(turn) = self.turn.take() {
-                        self.stale_commands.insert(turn.uuid);
-                    }
+                let owner = self.turns.turn().map(|turn| turn.owner.unwrap_or(0));
+                if owner == Some(turn_id) {
+                    self.apply(&Fact::Cancel).await?;
+                    self.cancel_permissions(true).await
+                } else if turn_id == 0 && owner.is_none() {
                     self.request(
                         &json!({ "subtype": "interrupt" }),
                         Outgoing::Interrupt,
                         CONTROL_TIMEOUT,
                     );
-                    self.cancel_permissions(true).await?;
-                    self.emit(AgentStreamPayload::PromptFinished {
-                        turn_id,
-                        outcome: cancelled(),
-                    })
-                    .await
+                    self.cancel_permissions(true).await
                 } else {
                     if turn_id > self.last_turn {
                         self.deferred_cancels.insert(turn_id);
@@ -771,16 +807,9 @@ impl Runtime {
 
     async fn launch(&mut self, cwd: PathBuf, start: Start, launch: Launch) -> Result<(), String> {
         self.cancel_permissions(false).await?;
-        if let Some(turn) = self.turn.take() {
-            self.emit(AgentStreamPayload::PromptFinished {
-                turn_id: turn.id,
-                outcome: cancelled(),
-            })
-            .await?;
-        }
+        self.apply(&Fact::SessionClosed).await?;
         self.process = None;
         self.requests.clear();
-        self.lifecycle_seen = false;
         if let Err(message) = self.spawn(&cwd, &launch) {
             return self.fail_start(start, message).await;
         }
@@ -929,6 +958,7 @@ impl Runtime {
         }
         let modes = Some(self.settings.mode_state());
         let config_options = Some(self.settings.config_options());
+        self.apply(&Fact::SessionReady).await?;
         match starting.start {
             Start::Open { .. } => {
                 self.emit(AgentStreamPayload::SessionReady {
@@ -1046,12 +1076,22 @@ impl Runtime {
                 Ok(())
             }
             "steer" if !rest.is_empty() => {
-                if self.turn.is_none() {
-                    return self.notice("Nothing is running to steer.").await;
+                let uuid = new_uuid();
+                match self
+                    .apply(&Fact::Steer {
+                        command: uuid.clone(),
+                    })
+                    .await?
+                {
+                    Some(Reject::NotRunning) => {
+                        return self.notice("Nothing is running to steer.").await;
+                    }
+                    Some(_) => return self.notice("The turn is stopping.").await,
+                    None => {}
                 }
                 self.send(&json!({
                     "type": "user",
-                    "uuid": new_uuid(),
+                    "uuid": uuid,
                     "session_id": "",
                     "parent_tool_use_id": null,
                     "priority": "now",
@@ -1061,7 +1101,7 @@ impl Runtime {
                 Ok(())
             }
             "fork" => {
-                if self.turn.is_some() {
+                if self.turns.turn().is_some() {
                     return self.notice("Stop the turn before forking.").await;
                 }
                 let Some(session) = &self.session else {
@@ -1079,7 +1119,7 @@ impl Runtime {
     }
 
     async fn rewind(&mut self, target: Rewind) -> Result<(), String> {
-        if self.turn.is_some() {
+        if self.turns.turn().is_some() {
             return self.notice("Stop the turn before rewinding.").await;
         }
         let Some(session) = &self.session else {
@@ -1168,6 +1208,9 @@ impl Runtime {
 
     async fn expire(&mut self) -> Result<(), String> {
         let now = Instant::now();
+        if TurnMachine::wake_at(&self.turns).is_some_and(|wake| wake <= now) {
+            self.apply(&Fact::Tick).await?;
+        }
         let expired = self
             .requests
             .iter()
@@ -1317,15 +1360,10 @@ impl Runtime {
             return self.fail_start(starting.start, message).await;
         }
         self.requests.clear();
-        if let Some(turn) = self.turn.take() {
-            self.emit(AgentStreamPayload::PromptFinished {
-                turn_id: turn.id,
-                outcome: AgentPromptOutcome::Failed {
-                    message: message.clone(),
-                },
-            })
-            .await?;
-        }
+        self.apply(&Fact::Exited {
+            message: message.clone(),
+        })
+        .await?;
         self.emit(AgentStreamPayload::PaneFailed { message }).await
     }
 
@@ -1359,10 +1397,24 @@ impl Runtime {
             Some("command_lifecycle") => return self.lifecycle(&frame).await,
             Some("system") => self.system(&frame).await?,
             Some("result") => {
-                if frame["is_error"] == true
-                    && let Some(turn) = &mut self.turn
-                {
-                    turn.error = Some(result_error(&frame));
+                let error = (frame["is_error"] == true).then(|| result_error(&frame));
+                let commands = result_commands(&frame);
+                if commands.is_empty() {
+                    self.apply(&Fact::Reported {
+                        command: None,
+                        stop_reason: None,
+                        error,
+                    })
+                    .await?;
+                } else {
+                    for command in commands {
+                        self.apply(&Fact::Reported {
+                            command: Some(command),
+                            stop_reason: None,
+                            error: error.clone(),
+                        })
+                        .await?;
+                    }
                 }
             }
             _ => {}
@@ -1373,7 +1425,25 @@ impl Runtime {
         for update in self.translator.frame(&frame) {
             self.update(update, true).await?;
         }
+        if frame["subtype"] == "task_started" {
+            self.link_tasks().await?;
+        }
         Ok(())
+    }
+
+    async fn link_tasks(&mut self) -> Result<(), String> {
+        let mut linked = false;
+        for task in &mut self.tasks {
+            if task.tool_call_id.is_none() {
+                task.tool_call_id = self.translator.task_tool_call(&task.id);
+                linked |= task.tool_call_id.is_some();
+            }
+        }
+        if !linked {
+            return Ok(());
+        }
+        let tasks = self.tasks.clone();
+        self.emit(AgentStreamPayload::TasksChanged { tasks }).await
     }
 
     async fn system(&mut self, frame: &Value) -> Result<(), String> {
@@ -1449,7 +1519,8 @@ impl Runtime {
                         })
                     })
                     .take(MAX_AGENT_TASKS)
-                    .collect();
+                    .collect::<Vec<_>>();
+                self.tasks.clone_from(&tasks);
                 self.emit(AgentStreamPayload::TasksChanged { tasks })
                     .await?;
             }
@@ -1458,18 +1529,12 @@ impl Runtime {
                 self.publish_commands().await?;
             }
             Some("session_state_changed") => {
-                let idle = frame["state"] == "idle";
-                if self.turn.is_none() {
-                    self.emit(AgentStreamPayload::Activity { busy: !idle })
-                        .await?;
-                } else if idle
-                    && self
-                        .turn
-                        .as_ref()
-                        .is_some_and(|turn| turn.started || !self.lifecycle_seen)
-                {
-                    self.finish_active().await?;
-                }
+                let fact = if frame["state"] == "idle" {
+                    Fact::Idle
+                } else {
+                    Fact::Busy
+                };
+                self.apply(&fact).await?;
             }
             _ => {}
         }
@@ -1477,46 +1542,28 @@ impl Runtime {
     }
 
     async fn lifecycle(&mut self, frame: &Value) -> Result<(), String> {
-        self.lifecycle_seen = true;
         let (Some(uuid), Some(state)) = (frame["command_uuid"].as_str(), frame["state"].as_str())
         else {
             return Ok(());
         };
-        if self.stale_commands.contains(uuid) {
-            if !matches!(state, "queued" | "started") {
-                self.stale_commands.remove(uuid);
-            }
-            return Ok(());
-        }
-        let Some(turn) = self.turn.as_mut().filter(|turn| turn.uuid == uuid) else {
-            return Ok(());
-        };
-        match state {
-            "started" => {
-                turn.started = true;
-                Ok(())
-            }
-            "cancelled" => {
-                let turn_id = turn.id;
-                self.turn = None;
-                self.finish(turn_id, cancelled()).await
-            }
-            "completed" | "failed" | "errored" => self.finish_active().await,
-            _ => Ok(()),
-        }
-    }
-
-    async fn finish_active(&mut self) -> Result<(), String> {
-        let Some(turn) = self.turn.take() else {
-            return Ok(());
-        };
-        let outcome = turn.error.map_or_else(
-            || AgentPromptOutcome::Finished {
-                stop_reason: Value::from("end_turn"),
+        let command = uuid.to_owned();
+        let fact = match state {
+            "started" => Fact::Started { command },
+            "completed" => Fact::Ended {
+                command,
+                end: End::Completed,
             },
-            |message| AgentPromptOutcome::Failed { message },
-        );
-        self.finish(turn.id, outcome).await
+            "cancelled" => Fact::Ended {
+                command,
+                end: End::Cancelled,
+            },
+            "failed" | "errored" => Fact::Ended {
+                command,
+                end: End::Failed("Claude Code could not finish the turn".to_owned()),
+            },
+            _ => return Ok(()),
+        };
+        self.apply(&fact).await.map(drop)
     }
 
     async fn finish(&self, turn_id: u64, outcome: AgentPromptOutcome) -> Result<(), String> {
@@ -1914,6 +1961,21 @@ fn deny(message: &str, interrupt: bool) -> Value {
     response
 }
 
+fn result_commands(frame: &Value) -> Vec<String> {
+    match frame["user_message_uuids"].as_array() {
+        Some(uuids) => uuids
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect(),
+        None => frame["user_message_uuid"]
+            .as_str()
+            .map(str::to_owned)
+            .into_iter()
+            .collect(),
+    }
+}
+
 fn result_error(frame: &Value) -> String {
     frame["result"]
         .as_str()
@@ -1950,6 +2012,9 @@ fn prompt_content(prompt: &crate::agent::stream::AgentPrompt) -> Value {
     }
     Value::Array(content)
 }
+
+#[cfg(test)]
+mod replay_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2320,6 +2385,7 @@ printf '%s\n' '{"type":"system","subtype":"background_tasks_changed","tasks":[{"
 printf '%s\n' '{"type":"control_request","request_id":"q-1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","tool_use_id":"t9","input":{"questions":[{"question":"Which fruit?","header":"Fruit","multiSelect":false,"options":[{"label":"apple"},{"label":"pear"}]},{"question":"Which colors?","header":"Colors","multiSelect":true,"options":[{"label":"red"},{"label":"blue"},{"label":"green"}]}]}}}'
 read -r answer
 case "$answer" in *'"request_id":"q-1"'*'"answers":{"Which colors?":"red, green","Which fruit?":"a fig"}'*) ;; *) echo "bad answer: $answer" >&2; exit 4 ;; esac
+printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"idle"}'
 while read -r line; do :; done
 "#;

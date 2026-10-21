@@ -11323,6 +11323,7 @@ dependencies = [
  "thiserror 2.0.20",
  "windows-sys 0.61.2",
  "zz-daemon-client",
+ "zz-machine",
  "zz-mux",
  "zz-protocol",
  "zz-terminal",
@@ -11590,6 +11591,10 @@ dependencies = [
  "zz-terminal",
  "zz-ui",
 ]
+
+[[package]]
+name = "zz-machine"
+version = "0.21.0"
 
 [[package]]
 name = "zz-mux"

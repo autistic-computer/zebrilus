@@ -195,6 +195,7 @@ zz-chrome-import = { path = "crates/zz-chrome-import" }
 zz-cli = { path = "crates/zz-cli" }
 zz-client = { path = "crates/zz-client" }
 zz-config = { path = "crates/zz-config" }
+zz-machine = { path = "crates/zz-machine" }
 zz-daemon = { path = "crates/zz-daemon", default-features = false }
 zz-daemon-client = { path = "crates/zz-daemon-client" }
 zz-mux = { path = "crates/zz-mux" }
