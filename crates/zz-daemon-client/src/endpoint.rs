@@ -773,7 +773,7 @@ fn zz_identity() -> Option<(PathBuf, String)> {
     }
 }
 
-#[cfg(any(unix, windows, test))]
+#[cfg(unix)]
 fn ssh_daemon_start_command(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
@@ -790,11 +790,19 @@ fn ssh_daemon_start_command(
     command
 }
 
-#[cfg(any(unix, windows, test))]
+#[cfg(any(unix, test))]
 pub(crate) fn remote_daemon_start_script(remote_socket: &Path) -> String {
-    let socket = shell_quote(&remote_socket.to_string_lossy());
     format!(
-        "{fallback}command -v \"$zz_cli\" >/dev/null 2>&1 || exit {REMOTE_ZZ_MISSING_STATUS}; \
+        "{}{}",
+        remote_path_fallback(),
+        remote_daemon_start_body(&shell_quote(&remote_socket.to_string_lossy())),
+    )
+}
+
+#[cfg(any(unix, windows, test))]
+fn remote_daemon_start_body(socket: &str) -> String {
+    format!(
+        "command -v \"$zz_cli\" >/dev/null 2>&1 || exit {REMOTE_ZZ_MISSING_STATUS}; \
          if setsid true >/dev/null 2>&1; \
          then setsid \"$zz_cli\" daemon --socket {socket} >/dev/null 2>&1 </dev/null & \
          else nohup \"$zz_cli\" daemon --socket {socket} >/dev/null 2>&1 </dev/null & fi; \
@@ -806,7 +814,6 @@ pub(crate) fn remote_daemon_start_script(remote_socket: &Path) -> String {
          if [ -S {socket} ]; then exit 0; fi; \
          sleep \"$delay\"; attempt=$((attempt + 1)); done; \
          exit {REMOTE_DAEMON_TIMEOUT_STATUS}",
-        fallback = remote_path_fallback(),
     )
 }
 
@@ -958,12 +965,34 @@ fn daemon_was_not_running(message: &str) -> bool {
 }
 
 /// The remote half of an attach that cannot forward a Unix socket: `zz proxy` on its stdio.
-#[cfg(any(windows, target_os = "ios", test))]
+#[cfg(any(target_os = "ios", test))]
 pub(crate) fn remote_proxy_script(remote_socket: &Path) -> String {
     format!(
         "{fallback}exec \"$zz_cli\" proxy --socket {socket}",
         fallback = remote_path_fallback(),
         socket = shell_quote(&remote_socket.to_string_lossy()),
+    )
+}
+
+/// One login for a whole Windows attach: the probe, a daemon start when its protocol matches, and
+/// `zz proxy`, whose ready marker follows the probe lines.
+#[cfg(any(windows, test))]
+pub(crate) fn remote_connect_script(
+    remote_socket: Option<&Path>,
+    key_line: Option<&str>,
+) -> String {
+    let socket = remote_socket.map_or_else(
+        || "\"$zz_dir/default.sock\"".to_owned(),
+        |socket| shell_quote(&socket.to_string_lossy()),
+    );
+    format!(
+        "{probe}; command -v \"$zz_cli\" >/dev/null 2>&1 || exit {REMOTE_ZZ_MISSING_STATUS}; \
+         [ \"$(\"$zz_cli\" protocol-version 2>/dev/null)\" = {protocol} ] || exit 0; \
+         zz_socket={socket}; ( {start} ) || exit $?; \
+         exec \"$zz_cli\" proxy --socket \"$zz_socket\"",
+        probe = remote_socket_probe_script(key_line),
+        protocol = zz_protocol::PROTOCOL_VERSION,
+        start = remote_daemon_start_body("\"$zz_socket\""),
     )
 }
 
@@ -1374,7 +1403,7 @@ fn ssh_control_command(
     command
 }
 
-#[cfg(any(unix, windows))]
+#[cfg(unix)]
 fn probe_remote_socket(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
@@ -1623,7 +1652,7 @@ fn remote_probe_socket(target: &str, stdout: &str) -> Result<PathBuf, EndpointEr
     Ok(PathBuf::from(path))
 }
 
-#[cfg(any(unix, windows))]
+#[cfg(unix)]
 fn ensure_remote_daemon(
     endpoint: &SshEndpoint,
     session: SshSession<'_>,
@@ -2555,11 +2584,7 @@ pub(crate) fn remote_socket_is_absolute(path: &Path) -> bool {
 }
 
 #[cfg(windows)]
-fn ssh_proxy_command(
-    endpoint: &SshEndpoint,
-    session: SshSession<'_>,
-    remote_socket: &Path,
-) -> Command {
+fn ssh_connect_command(endpoint: &SshEndpoint, session: SshSession<'_>, script: &str) -> Command {
     let mut command = Command::new("ssh");
     append_ssh_options(&mut command, endpoint, session);
     command
@@ -2567,7 +2592,7 @@ fn ssh_proxy_command(
         .arg(&endpoint.host)
         .arg("sh")
         .arg("-lc")
-        .arg(shell_quote(&remote_proxy_script(remote_socket)))
+        .arg(shell_quote(script))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -2632,18 +2657,12 @@ impl SshForward {
             askpass: session_askpass(askpass.as_ref()),
             ..SshSession::default()
         };
-
-        let (probed_socket, identity) = probe_remote_socket(endpoint, session)?;
-        let session = SshSession {
-            identity: identity.as_deref(),
-            ..session
-        };
-        let remote_socket = endpoint.remote_socket.clone().unwrap_or(probed_socket);
-        if !remote_socket_is_absolute(&remote_socket) {
-            return Err(EndpointError::InvalidRemoteSocket(remote_socket));
-        }
-        ensure_remote_daemon(endpoint, session, &remote_socket)?;
-
+        let identity = zz_identity();
+        let key_line = identity
+            .as_ref()
+            .filter(|_| configured_fleet_endpoint(endpoint))
+            .map(|(_, line)| line.as_str());
+        let script = remote_connect_script(endpoint.remote_socket.as_deref(), key_line);
         let (local_socket, listener) = ssh_pipe(
             FORWARD_PIPE_ROLE,
             FORWARD_COUNTER.fetch_add(1, Ordering::Relaxed),
@@ -2655,55 +2674,90 @@ impl SshForward {
             source,
         })?;
 
-        let mut child = ssh_proxy_command(endpoint, session, &remote_socket)
-            .spawn_unmasked()
-            .map_err(|source| EndpointError::SshSpawn {
-                operation: "socket proxy",
-                source,
-            })?;
-        let (Some(stdin), Some(stdout), Some(stderr)) =
-            (child.stdin.take(), child.stdout.take(), child.stderr.take())
-        else {
-            let _ = child.kill();
-            return Err(EndpointError::ForwardIo {
-                target: endpoint.to_string(),
-                action: "opening a pipe to ssh for",
-                path: local_socket,
-                source: io::Error::other("ssh was spawned without redirected stdio"),
-            });
-        };
-
-        let mut stderr = SshStderr::drain(stderr);
-        let mut stdout = BufReader::new(stdout);
-        let stopped = Arc::new(AtomicBool::new(false));
-        let started = await_proxy_ready(
-            endpoint,
-            &mut child,
-            &mut stdout,
-            &mut stderr,
-            &local_socket,
-        )
-        .and_then(|()| {
-            spawn_bridge(listener, stdin, stdout, Arc::clone(&stopped)).map_err(|source| {
-                EndpointError::ForwardIo {
-                    target: endpoint.to_string(),
-                    action: "starting the bridge for",
-                    path: local_socket.clone(),
+        let mut phase = identity.as_ref().map(|(path, _)| path.as_path());
+        loop {
+            let session = SshSession {
+                identity: phase,
+                ..session
+            };
+            let mut child = ssh_connect_command(endpoint, session, &script)
+                .spawn_unmasked()
+                .map_err(|source| EndpointError::SshSpawn {
+                    operation: "socket proxy",
                     source,
+                })?;
+            end_with_this_process(&child);
+            let (Some(stdin), Some(stdout), Some(stderr)) =
+                (child.stdin.take(), child.stdout.take(), child.stderr.take())
+            else {
+                let _ = child.kill();
+                return Err(EndpointError::ForwardIo {
+                    target: endpoint.to_string(),
+                    action: "opening a pipe to ssh for",
+                    path: local_socket,
+                    source: io::Error::other("ssh was spawned without redirected stdio"),
+                });
+            };
+
+            let mut stderr = SshStderr::drain(stderr);
+            let mut stdout = BufReader::new(stdout);
+            let preamble = match await_proxy_ready(endpoint, &mut stdout, &local_socket) {
+                Ok(ProxyStart::Ready(preamble)) => preamble,
+                Ok(ProxyStart::Exited(preamble)) => {
+                    let status = child.wait().ok();
+                    let stderr = stderr.settled();
+                    let code = status.and_then(|status| status.code());
+                    if phase.is_some() && refused_login(code, stderr.as_bytes()) {
+                        log::debug!(
+                            target: "zz_daemon::diagnostics",
+                            "the zz key did not sign in: {}",
+                            stderr.trim(),
+                        );
+                        phase = None;
+                        continue;
+                    }
+                    return Err(connect_failure(endpoint, status, &preamble, &stderr));
                 }
-            })
-        });
-        if let Err(error) = started {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(error);
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(error);
+                }
+            };
+            let probe = parse_remote_probe_output(&endpoint.to_string(), &preamble);
+            note_key_enrollment(endpoint, session, &probe);
+            let probed = endpoint.remote_socket.clone().map_or(probe.socket, Ok);
+            let stopped = Arc::new(AtomicBool::new(false));
+            let started = probed
+                .and_then(|socket| {
+                    if remote_socket_is_absolute(&socket) {
+                        Ok(())
+                    } else {
+                        Err(EndpointError::InvalidRemoteSocket(socket))
+                    }
+                })
+                .and_then(|()| {
+                    spawn_bridge(listener, stdin, stdout, Arc::clone(&stopped)).map_err(|source| {
+                        EndpointError::ForwardIo {
+                            target: endpoint.to_string(),
+                            action: "starting the bridge for",
+                            path: local_socket.clone(),
+                            source,
+                        }
+                    })
+                });
+            if let Err(error) = started {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
+            return Ok(Self {
+                child,
+                local_socket,
+                stopped,
+                _askpass: askpass,
+            });
         }
-        Ok(Self {
-            child,
-            local_socket,
-            stopped,
-            _askpass: askpass,
-        })
     }
 
     pub(crate) fn local_socket(&self) -> &Path {
@@ -2722,14 +2776,18 @@ impl SshForward {
 }
 
 #[cfg(windows)]
+enum ProxyStart {
+    Ready(Vec<u8>),
+    Exited(Vec<u8>),
+}
+
+#[cfg(windows)]
 fn await_proxy_ready(
     endpoint: &SshEndpoint,
-    child: &mut Child,
     stdout: &mut BufReader<ChildStdout>,
-    stderr: &mut SshStderr,
     local_socket: &Path,
-) -> Result<(), EndpointError> {
-    let mut discarded = 0_usize;
+) -> Result<ProxyStart, EndpointError> {
+    let mut preamble = Vec::new();
     let mut line = Vec::new();
     loop {
         line.clear();
@@ -2743,18 +2801,20 @@ fn await_proxy_ready(
                     source,
                 })?;
         if read == 0 {
-            return Err(proxy_never_started(endpoint, child, stderr));
+            return Ok(ProxyStart::Exited(preamble));
         }
         if line.ends_with(PROXY_READY_MARKER) {
-            return Ok(());
+            return Ok(ProxyStart::Ready(preamble));
         }
-        log::debug!(
-            target: "zz_daemon::diagnostics",
-            "remote login preamble: {}",
-            String::from_utf8_lossy(&line).trim_end(),
-        );
-        discarded = discarded.saturating_add(read);
-        if discarded > MAX_PROXY_PREAMBLE_BYTES {
+        if !line.starts_with(b"zz-probe-") {
+            log::debug!(
+                target: "zz_daemon::diagnostics",
+                "remote login preamble: {}",
+                String::from_utf8_lossy(&line).trim_end(),
+            );
+        }
+        preamble.extend_from_slice(&line);
+        if preamble.len() > MAX_PROXY_PREAMBLE_BYTES {
             return Err(EndpointError::SshFailed {
                 target: endpoint.to_string(),
                 reason: "the remote kept writing to stdout instead of starting the zz proxy; \
@@ -2766,23 +2826,87 @@ fn await_proxy_ready(
 }
 
 #[cfg(windows)]
-fn proxy_never_started(
+fn connect_failure(
     endpoint: &SshEndpoint,
-    child: &mut Child,
-    stderr: &mut SshStderr,
+    status: Option<std::process::ExitStatus>,
+    preamble: &[u8],
+    stderr: &str,
 ) -> EndpointError {
     let target = endpoint.to_string();
-    let status = child.wait().ok();
-    match status.and_then(|status| status.code()) {
-        // `exec zz` in a POSIX shell exits 127 when there is no `zz` to exec.
+    let code = status.and_then(|status| status.code());
+    if code != Some(SSH_FAILURE_STATUS)
+        && preamble
+            .windows(b"zz-probe-protocol=".len())
+            .any(|window| window == b"zz-probe-protocol=")
+        && let Err(error) = parse_remote_probe_output(&target, preamble).socket
+    {
+        return error;
+    }
+    match code {
         Some(REMOTE_ZZ_MISSING_STATUS) => EndpointError::RemoteBinaryMissing { target },
+        Some(REMOTE_DAEMON_TIMEOUT_STATUS) => EndpointError::RemoteDaemonUnavailable { target },
         _ => EndpointError::SshFailed {
             target,
             reason: ssh_failure_reason(
-                &stderr.settled(),
+                stderr,
                 &status.map_or_else(|| "no exit status".to_owned(), |status| status.to_string()),
             ),
         },
+    }
+}
+
+#[cfg(windows)]
+fn end_with_this_process(child: &Child) {
+    use std::{os::windows::io::AsRawHandle as _, sync::OnceLock};
+
+    use windows::Win32::{
+        Foundation::HANDLE,
+        System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        },
+    };
+
+    static JOB: OnceLock<Option<usize>> = OnceLock::new();
+    let job = JOB.get_or_init(|| {
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let size = u32::try_from(size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>()).ok()?;
+        #[allow(
+            unsafe_code,
+            reason = "job objects are raw Win32 entry points with no safe wrapper"
+        )]
+        // SAFETY: `limits` outlives the call and `size` is its exact size; the job handle is
+        // never closed, so the kernel closes it when this process ends and kills the job.
+        let job = unsafe {
+            let job = CreateJobObjectW(None, windows::core::PCWSTR::null()).ok()?;
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&raw const limits).cast(),
+                size,
+            )
+            .ok()?;
+            job
+        };
+        Some(job.0 as usize)
+    });
+    let Some(job) = *job else {
+        return;
+    };
+    #[allow(
+        unsafe_code,
+        reason = "AssignProcessToJobObject is a raw Win32 entry point with no safe wrapper"
+    )]
+    // SAFETY: both handles are live: the job is never closed and `child` owns its process handle.
+    let assigned =
+        unsafe { AssignProcessToJobObject(HANDLE(job as *mut _), HANDLE(child.as_raw_handle())) };
+    if let Err(error) = assigned {
+        log::debug!(
+            target: "zz_daemon::diagnostics",
+            "ssh will outlive zz if zz is killed: {error}",
+        );
     }
 }
 
@@ -3601,6 +3725,50 @@ mod tests {
             for dir in ["$HOME/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"] {
                 assert!(script.contains(dir), "{dir} missing from: {script}");
             }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn one_windows_login_probes_starts_the_daemon_and_runs_the_proxy() {
+        let home = tempfile::tempdir().expect("temporary home");
+        let bin = home.path().join("bin");
+        fs::create_dir(&bin).expect("bin directory");
+        let socket = home.path().join("s.sock");
+        let _daemon = std::os::unix::net::UnixListener::bind(&socket).expect("daemon socket");
+        let zz = bin.join(zz_protocol::app_identity::DIRECTORY);
+        let script = remote_connect_script(Some(&socket), None);
+        let run = || {
+            Command::new("/bin/sh")
+                .args(["-c", &format!("sh -c {}", shell_quote(&script))])
+                .env("HOME", home.path())
+                .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+                .output()
+                .expect("run the connect script")
+        };
+        let ours = zz_protocol::PROTOCOL_VERSION.to_string();
+        for (protocol, proxied) in [(ours.as_str(), true), ("1", false)] {
+            fs::write(
+                &zz,
+                format!(
+                    "#!/bin/sh\ncase \"$1\" in protocol-version) echo {protocol};; \
+                     proxy) echo \"proxy $3\";; esac\n"
+                ),
+            )
+            .expect("write zz");
+            fs::set_permissions(&zz, fs::Permissions::from_mode(0o755)).expect("make zz runnable");
+            let output = run();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert_eq!(output.status.code(), Some(0), "{output:?}");
+            assert!(
+                stdout.contains(&format!("zz-probe-protocol={protocol}\n")),
+                "{stdout}"
+            );
+            assert_eq!(
+                stdout.ends_with(&format!("proxy {}\n", socket.display())),
+                proxied,
+                "{stdout}"
+            );
         }
     }
 
