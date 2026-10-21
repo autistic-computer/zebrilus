@@ -63,6 +63,7 @@ run there.
 | `zz split-window --kind picker [-h\|-v]` | split into an empty pane and pick its type |
 | `zz new-window --kind agent [--provider codex\|claude-code]` | new window with an agent pane |
 | `zz tools` | the command catalog written for agents |
+| `zz tools --install-hooks` | teach Claude Code and Codex started in a terminal pane about zz ([details](/docs/agents/#agents-you-start-yourself)) |
 
 Two more verbs, `zz agent-send` and `zz send-last-output`, talk to an Agent
 pane. They need `experimental-agent-pane` on and a pane to aim at; see
