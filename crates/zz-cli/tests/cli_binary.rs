@@ -1432,7 +1432,8 @@ mod daemon_autostart {
         assert_eq!(untargeted.status.code(), Some(2));
         assert_eq!(
             String::from_utf8_lossy(&untargeted.stderr),
-            "zz --host peer: name the pane with -t %N (zz --host peer list-panes -a)\n"
+            "zz --host peer: name the pane with -t %N (zz --host peer list-panes -a, or make one \
+             with zz --host peer new-session -d -P -F '#{pane_id}')\n"
         );
         let targeted = zz(&["--host", "peer", "send-keys", "-t", "%0", "x"]);
         assert_eq!(targeted.status.code(), Some(0), "{targeted:?}");
