@@ -52,7 +52,7 @@ const NATIVE_ATTACH_USAGE: &str = "zz: usage: zz [--host <name>] attach [--resta
 const NATIVE_APP_USAGE: &str = "zz: usage: zz app";
 const ALL_HOSTS: &str = "all";
 const SSH_LOGIN_REFUSED: &str = "ssh rejected the login";
-const SSH_HOST_KEY_UNTRUSTED: &str = "the host key does not match known_hosts";
+const SSH_HOST_KEY_UNTRUSTED: &str = "known_hosts has no matching key for the host";
 const UNTARGETED_HOST_VERBS: [&str; 5] = [
     "new-window",
     "attach-session",
