@@ -1,0 +1,112 @@
+claude-haiku-5-5	pane	n1	1	1	6	2	0	0	0	0	0	0	Lityri	4711 
+claude-haiku-5-5	strict	n1	1	1	7	3	3	0	0	73175	359	0.0034566500000000003	EOyCa8	4711 
+gpt-6-luna	pane	n1	1	1	18	3	2	0	0	0	0	0	v2zXlH	4711 
+claude-haiku-5-5	pane	n2	1	1	7	3	0	0	0	0	0	0	iYxjSO	parser::rejects_trailing_comma_e23fa784 
+gpt-6-luna	strict	n1	1	1	30	4	3	0	0	81584	253	0	vdDVkh	4711 
+claude-haiku-5-5	strict	n2	1	1	12	4	4	0	0	109516	775	0.00517071	onlCfl	parser::rejects_trailing_comma_712306b2 
+claude-haiku-5-5	pane	n3	1	0	8	3	0	0	1	0	0	0	1gl9pT	 
+gpt-6-luna	pane	n2	1	1	26	4	3	0	0	0	0	0	v9U3HL	parser::rejects_trailing_comma_f9d572b5 
+gpt-6-luna	strict	n2	1	1	40	7	5	1	0	132698	840	0	6ZUX0d	parser::rejects_trailing_comma_434ba5b3 
+claude-haiku-5-5	strict	n3	1	1	17	6	4	0	0	150642	1067	0.00484084	yAwiDj	DONE-18fd9abc 
+claude-haiku-5-5	pane	n4	1	0	5	2	0	0	1	0	0	0	F7xLOa	 
+gpt-6-luna	pane	n3	1	1	19	3	2	0	0	0	0	0	8XK4QF	DONE-dced9bc2 
+gpt-6-luna	strict	n3	1	1	32	4	4	1	0	85657	422	0	i6qxiY	DONE-7f5ba8c2 
+claude-haiku-5-5	strict	n4	1	1	16	8	9	0	0	148916	1066	0.00475335	Xbo9v1	%3 
+claude-haiku-5-5	pane	n5	1	1	8	2	0	0	0	0	0	0	yStBm0	done 
+gpt-6-luna	pane	n4	1	1	21	7	6	0	0	0	0	0	VEChhQ	%4 
+gpt-6-luna	strict	n4	1	1	32	8	8	1	0	101581	664	0	DyUB5q	%3 
+claude-haiku-5-5	strict	n5	1	1	14	5	3	0	0	106671	797	0.0034711800000000004	wsm1pv	done  I ran `touch /tmp/fu-runs/wsm1pv/fx/n5.ok` in pane `%1`, the session's foc
+gpt-6-luna	pane	n5	1	1	24	3	2	0	0	0	0	0	AVjkp7	done 
+claude-haiku-5-5	pane	n6	1	1	4	1	0	0	0	0	0	0	jRSbQE	done 
+gpt-6-luna	strict	n5	1	1	29	4	3	0	0	84617	227	0	w24iy4	done 
+claude-haiku-5-5	strict	n6	1	1	10	3	3	0	0	73287	432	0.00350301	6odU95	done 
+gpt-6-luna	pane	n6	1	1	13	2	1	0	0	0	0	0	NhljEP	done 
+gpt-6-luna	strict	n6	1	1	24	4	3	0	0	84936	200	0	v6bv29	done 
+claude-haiku-5-5	pane	n7	1	1	9	3	0	0	0	0	0	0	olQRxX	The new Claude Code agent pane is %5, beside this one. I asked it to reply with 
+claude-haiku-5-5	strict	n7	1	1	12	5	4	0	0	141255	791	0.00529355	3ar1Qd	I opened a new Claude agent pane (`%4`) beside this one and asked it to reply wi
+claude-haiku-5-5	pane	n8	1	1	11	6	0	0	0	0	0	0	5jqfln	done  The window `bench-4cf21b4f` is running `sleep 900` on xps (window `@36`, p
+gpt-6-luna	pane	n7	1	1	29	6	5	0	0	0	0	0	prpxGW	Claude replied: **pong**. 
+gpt-6-luna	strict	n7	1	1	34	4	4	1	0	85498	469	0	SDPp9i	Claude answered: **pong**. 
+gpt-6-luna	pane	n8	1	0	16	3	2	1	0	0	0	0	PiKdbY	I couldn’t create the window: `xps` has no existing session to open it in. 
+claude-haiku-5-5	pane	n1	2	1	5	2	0	0	0	0	0	0	uBqUga	4711 
+claude-haiku-5-5	strict	n8	1	1	37	16	18	4	0	459277	3443	0.010420580000000002	CAu2PY	done  The window `bench-c66f2bad` is running `sleep 900` on xps (pane `%38`). It
+claude-haiku-5-5	strict	n1	2	1	10	3	3	0	0	73089	314	0.0034232200000000007	2HMm3P	4711 
+gpt-6-luna	strict	n8	1	1	32	7	6	1	0	143986	652	0	65HVNQ	done 
+gpt-6-luna	strict	n1	2	0	17	1	1	1	0	28759	207	0	ZlcuLM	I can’t access the other pane: the sandbox blocked the `zz` connection. 
+gpt-6-luna	pane	n1	2	1	16	3	2	0	0	0	0	0	34xrih	4711 
+claude-haiku-5-5	pane	n2	2	1	7	3	0	0	0	0	0	0	nz7PeP	parser::rejects_trailing_comma_cf68cad7 
+claude-haiku-5-5	strict	n2	2	1	17	5	3	0	0	110267	955	0.0038378900000000005	2WJjfh	parser::rejects_trailing_comma_1712bf39 
+claude-haiku-5-5	pane	n3	2	0	4	2	0	0	1	0	0	0	zDzYX6	 
+gpt-6-luna	pane	n2	2	1	28	5	4	0	0	0	0	0	Pgi5ce	parser::rejects_trailing_comma_206890be 
+gpt-6-luna	strict	n2	2	1	32	5	6	2	0	124257	697	0	J4Dize	parser::rejects_trailing_comma_68143cca 
+claude-haiku-5-5	strict	n3	2	1	29	6	5	0	0	128889	962	0.0038339900000000007	NrUiSi	DONE-df1dd4ef 
+gpt-6-luna	pane	n3	2	1	30	3	2	0	0	0	0	0	RjG9xE	DONE-380981b2 
+claude-haiku-5-5	pane	n4	2	0	5	2	0	0	1	0	0	0	fwoq9R	 
+claude-haiku-5-5	strict	n4	2	1	17	11	9	0	0	153214	1412	0.0044361800000000005	xBPetZ	%3 
+gpt-6-luna	pane	n4	2	1	17	7	6	0	0	0	0	0	eiKyoH	%4 
+gpt-6-luna	strict	n3	2	1	57	5	37	33	0	124511	565	0	jFYTnl	DONE-dc16b4b3 
+claude-haiku-5-5	pane	n5	2	1	9	2	0	0	0	0	0	0	nwF2Tv	done 
+gpt-6-luna	strict	n4	2	0	31	5	4	0	0	107077	302	0	n1eAXf	No pane in this session is waiting on a yes/no question. 
+claude-haiku-5-5	strict	n5	2	1	12	4	3	0	0	98080	704	0.00392607	wg3iM7	done  I ran the touch in pane `%1`, the session's active pane. The command retur
+gpt-6-luna	pane	n5	2	1	17	3	2	0	0	0	0	0	tD67Fh	done 
+claude-haiku-5-5	pane	n6	2	1	3	1	0	0	0	0	0	0	aKQsm7	done 
+gpt-6-luna	strict	n5	2	1	26	4	3	0	0	84561	226	0	bTubex	done 
+claude-haiku-5-5	strict	n6	2	1	11	3	3	0	0	63124	323	0.00269632	6QHiNZ	done 
+gpt-6-luna	pane	n6	2	1	14	2	1	0	0	0	0	0	6obymK	done 
+gpt-6-luna	strict	n6	2	1	23	4	3	0	0	85037	201	0	V4u0oB	done 
+claude-haiku-5-5	pane	n7	2	1	21	3	0	0	0	0	0	0	NgXgrB	The new Claude agent pane (`%5`, opened beside this one) answered **`pong`**. Th
+claude-haiku-5-5	strict	n7	2	1	20	7	4	0	0	172574	935	0.006010660000000001	hhzf9s	The new agent pane answered **pong**.  I opened a Claude agent pane beside this 
+gpt-6-luna	strict	n7	2	1	29	4	3	0	0	103732	420	0	xRLesP	The Claude agent in pane `%4` answered: `pong`. 
+claude-haiku-5-5	pane	n8	2	1	13	5	0	0	0	0	0	0	TpKdCT	done  The window `bench-eff2a369` is running `sleep 900` on xps. xps had no sess
+gpt-6-luna	pane	n7	2	0	48	12	11	0	0	0	0	0	4pOygR	Claude answered: `pong`. The Claude pane is open next to mine. 
+claude-haiku-5-5	strict	n8	2	1	25	12	13	3	0	282359	2377	0.00703317	sWVCst	done  The window `bench-df8fe2ba` is running `sleep 900` on xps. I confirmed the
+gpt-6-luna	pane	n8	2	0	15	2	1	0	0	0	0	0	jr1stk	done 
+claude-haiku-5-5	pane	n1	3	1	4	2	0	0	0	0	0	0	SBM2kg	4711 
+gpt-6-luna	strict	n8	2	0	37	8	8	3	0	163800	844	0	sJfsHD	I couldn’t create the window: xps’s listed session disappeared before I could ta
+claude-haiku-5-5	strict	n1	3	1	11	3	3	0	0	73123	339	0.00344005	JseYn1	4711 
+gpt-6-luna	strict	n1	3	1	26	2	2	0	0	42880	128	0	Zn0P0F	4711 
+gpt-6-luna	pane	n1	3	1	27	3	2	0	0	0	0	0	lfPnwG	4711 
+claude-haiku-5-5	pane	n2	3	1	9	3	0	0	0	0	0	0	6WzAEw	parser::rejects_trailing_comma_19dd8703 
+claude-haiku-5-5	strict	n2	3	1	14	6	3	0	0	127262	1075	0.00477084	H56NR7	parser::rejects_trailing_comma_218afaa4 
+claude-haiku-5-5	pane	n3	3	0	8	3	0	0	1	0	0	0	7oQSrt	 
+gpt-6-luna	pane	n2	3	1	29	6	5	0	0	0	0	0	qXng6w	parser::rejects_trailing_comma_e54c5b5c 
+gpt-6-luna	strict	n2	3	1	38	6	4	0	0	123869	593	0	OGd0c3	parser::rejects_trailing_comma_1500fb8 
+gpt-6-luna	pane	n3	3	1	15	3	2	0	0	0	0	0	o8FIew	DONE-f3e1b559 
+claude-haiku-5-5	strict	n3	3	1	23	10	5	0	0	229873	2073	0.006383500000000001	4kxIgi	DONE-e0885846 
+gpt-6-luna	strict	n3	3	1	25	5	5	1	0	101185	486	0	rdm6R5	DONE-773d07f4 
+claude-haiku-5-5	pane	n4	3	1	11	5	0	0	0	0	0	0	7Afqp1	%4 
+claude-haiku-5-5	strict	n4	3	1	17	8	8	0	0	174449	1202	0.005108400000000001	HS2vk7	%3 
+gpt-6-luna	pane	n4	3	1	22	7	6	0	0	0	0	0	0NKdEA	%4 
+claude-haiku-5-5	pane	n5	3	1	5	3	0	0	1	0	0	0	Nq9Njs	 
+gpt-6-luna	strict	n4	3	1	29	5	6	0	0	103837	330	0	aLBW9C	%3 
+claude-haiku-5-5	strict	n5	3	1	17	5	3	0	0	123234	800	0.00426816	LBgF5Z	done  I ran `touch /tmp/fu-runs/LBgF5Z/fx/n5.ok` in pane `%1`, the session's act
+gpt-6-luna	pane	n5	3	1	20	3	2	0	0	0	0	0	Zf4Ugq	done 
+claude-haiku-5-5	pane	n6	3	1	3	1	0	0	0	0	0	0	vZuUsB	done 
+gpt-6-luna	strict	n5	3	1	24	4	3	0	0	84745	267	0	BPg9JQ	done 
+claude-haiku-5-5	strict	n6	3	1	7	2	2	0	0	48532	252	0.00311113	Wo7GRN	done 
+gpt-6-luna	pane	n6	3	1	15	2	1	0	0	0	0	0	HpROoU	done 
+claude-haiku-5-5	pane	n7	3	1	10	3	0	0	0	0	0	0	2bPulu	I opened a new Claude Code agent pane, `%5`, beside my own pane. I asked it to r
+gpt-6-luna	strict	n6	3	1	26	4	3	0	0	85066	227	0	KG5etL	done 
+claude-haiku-5-5	strict	n7	3	1	23	7	4	0	0	152698	928	0.005177219999999999	NmSlau	The new agent pane answered **pong**.  I opened it with `zz split-window --kind 
+gpt-6-luna	pane	n7	3	0	26	3	2	0	0	0	0	0	se7lcc	Claude replied: “Hi, what would you like to do? Your message was just ‘Reply,’ s
+claude-haiku-5-5	pane	n8	3	1	10	5	0	0	0	0	0	0	k4CFrZ	done  I created a new session named `bench-adbba775` on xps, since xps had no se
+gpt-6-luna	strict	n7	3	1	50	4	3	0	0	84397	318	0	07wCi5	Claude replied: `pong` 
+claude-haiku-5-5	strict	n8	3	0	28	12	13	3	0	279848	2606	0.0070617599999999985	XV7jmg	Not done. I could not confirm the window exists on xps.  The create command prin
+gpt-6-luna	strict	n8	3	1	27	6	5	0	0	124319	518	0	4tdK4m	done 
+claude-haiku-5-5	pane	n1	4	1	7	2	0	0	0	0	0	0	aCDvp9	4711 
+claude-haiku-5-5	pane	n2	4	1	8	3	0	0	0	0	0	0	OoNIgj	parser::rejects_trailing_comma_d88461fd 
+claude-haiku-5-5	pane	n3	4	0	5	2	0	0	1	0	0	0	UGkSbj	 
+gpt-6-luna	pane	n8	3	1	33	4	3	1	0	0	0	0	dVrZVa	done 
+claude-haiku-5-5	pane	n4	4	0	4	2	0	0	1	0	0	0	n3Bi7g	 
+claude-haiku-5-5	pane	n5	4	1	5	2	0	0	0	0	0	0	cnOear	done 
+claude-haiku-5-5	pane	n6	4	1	7	1	0	0	0	0	0	0	Dwxyn7	done 
+claude-haiku-5-5	pane	n1	5	1	6	2	0	0	0	0	0	0	kA3F62	4711 
+claude-haiku-5-5	pane	n7	4	1	16	3	0	0	0	0	0	0	P8CV9n	I opened a new Claude agent pane beside mine (`%5`) and asked it to reply with e
+claude-haiku-5-5	pane	n8	4	1	16	5	0	0	0	0	0	0	W694pI	done 
+claude-haiku-5-5	pane	n4	5	0	4	2	0	0	1	0	0	0	sMkGRt	 
+claude-haiku-5-5	pane	n2	5	1	7	2	0	0	0	0	0	0	w11wk0	parser::rejects_trailing_comma_1ad75993 
+claude-haiku-5-5	pane	n3	5	0	7	3	0	0	1	0	0	0	DoW5WX	 
+claude-haiku-5-5	pane	n5	5	1	6	2	0	0	0	0	0	0	FcCPl7	done 
+claude-haiku-5-5	pane	n6	5	1	6	1	0	0	0	0	0	0	xpMft0	done 
+claude-haiku-5-5	pane	n8	5	1	12	5	0	0	0	0	0	0	jzxA84	done  Note: xps had no existing session, so I created one named `bench` to host 
+claude-haiku-5-5	pane	n7	5	0	154	8	0	0	1	0	0	0	dBLQLU	 

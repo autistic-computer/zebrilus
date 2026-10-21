@@ -189,6 +189,18 @@ and after zz approves its own commands (8 tasks, 2 reps):
 | plain `zz` commands approved | 8/16, 9 blocked | 12/16, 2 blocked |
 | `zz` piped into filters and chained with helpers approved | 10/16, 6 blocked | 15/16, 0 blocked |
 
+Then `--install-hooks` started writing each agent's own allow rule (`Bash(zz:*)`, a Codex
+`rules/zz.rules`), Claude agent panes got `--allowedTools Bash(zz:*)`, and the startup context wrote
+ids out (Codex leaves the sandbox only when every word of a command is known, so `-t "$ZZ_SESSION"`
+stayed sandboxed). A/B against HEAD, interleaved:
+
+| Setup | HEAD | With the rules |
+| --- | --- | --- |
+| Claude, terminal pane, default permissions (`strict`) | 0/24 | 23/24 |
+| Codex, terminal pane, default sandbox (`strict`) | 0/24 | 21/24 |
+| Claude agent pane | 24/40, 16 blocked | 30/40, 11 blocked |
+| Codex agent pane | 22/24 | 20/24 |
+
 Claude's six blocks are shell structure: `until`/`for` loops polling `zz capture-pane`, and
 `PANE=$(zz split-window ...)`. Approving those safely needs a real bash parser (brush-parser or
 bash-ast) that checks every command inside loops and substitutions.

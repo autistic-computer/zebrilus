@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-one.sh MODEL ARM TASK [REP]
-#   MODEL claude-* | gpt-*;  ARM bare | hooks | trusted (codex only) | pane;  TASK n0..n8
-#   ZZ_BINARY (default /opt/homebrew/bin/zz), AUTO = agent-auto-approve (default reads), REMOTE_HOST for n8
+#   MODEL claude-* | gpt-*;  ARM bare | hooks | trusted (codex only) | strict | pane;  TASK n0..n8
+#   ZZ_BINARY (default /opt/homebrew/bin/zz), AUTO = agent-auto-approve (default reads), REMOTE_HOST for n8, RESULTS (default out/results.tsv)
 set -uo pipefail
 MODEL=$1 ARM=$2 TASK=$3 REP=${4:-1}
 S=$(cd "$(dirname "$0")" && pwd)
@@ -90,11 +90,13 @@ cd "$WS"
 export PATH="$RUN/bin:\$PATH"
 env > "$RUN/agent.env"
 EOF
-  [ "$ARM" = hooks ] || [ "$ARM" = trusted ] && echo "\"$ZB\" tools --install-hooks > \"$RUN/install.out\" 2>&1" >> "$RUN/agent.sh"
+  [ "$ARM" = hooks ] || [ "$ARM" = trusted ] || [ "$ARM" = strict ] && echo "\"$ZB\" tools --install-hooks > \"$RUN/install.out\" 2>&1" >> "$RUN/agent.sh"
   case $MODEL in
-    claude-*) echo "claude -p \"\$(cat \"$RUN/prompt.txt\")\" --model $MODEL --dangerously-skip-permissions --output-format json > \"$RUN/agent.json\" 2> \"$RUN/agent.err\"" >> "$RUN/agent.sh" ;;
-    *) extra=""; [ "$ARM" = trusted ] && extra="--dangerously-bypass-hook-trust"
-       echo "codex exec $extra --model $MODEL --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral --json -o \"$RUN/final.txt\" \"\$(cat \"$RUN/prompt.txt\")\" < /dev/null > \"$RUN/agent.jsonl\" 2> \"$RUN/agent.err\"" >> "$RUN/agent.sh" ;;
+    claude-*) skip="--dangerously-skip-permissions"; [ "$ARM" = strict ] && skip=""
+       echo "claude -p \"\$(cat \"$RUN/prompt.txt\")\" --model $MODEL $skip --output-format json > \"$RUN/agent.json\" 2> \"$RUN/agent.err\"" >> "$RUN/agent.sh" ;;
+    *) extra="--dangerously-bypass-approvals-and-sandbox"; [ "$ARM" = trusted ] && extra="--dangerously-bypass-hook-trust $extra"
+       [ "$ARM" = strict ] && extra="--dangerously-bypass-hook-trust --sandbox workspace-write"
+       echo "codex exec $extra --model $MODEL --skip-git-repo-check --ephemeral --json -o \"$RUN/final.txt\" \"\$(cat \"$RUN/prompt.txt\")\" < /dev/null > \"$RUN/agent.jsonl\" 2> \"$RUN/agent.err\"" >> "$RUN/agent.sh" ;;
   esac
   printf 'touch "%s/done"\nexec sleep 100000\n' "$RUN" >> "$RUN/agent.sh"
   chmod +x "$RUN/agent.sh"
@@ -165,5 +167,5 @@ Z kill-server >/dev/null 2>&1; rm -f "$SOCK"
 pkill -f "$RUN/" 2>/dev/null
 rm -rf "$H/.codex/packages" "$H/.codex/tmp"
 snippet=$(tr '\n\t' '  ' <<<"$resp" | cut -c1-80)
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$MODEL" "$ARM" "$TASK" "$REP" "$pass" "$wall" "$turns" "$calls" "$fails" "$blocked" "$itok" "$otok" "$cost" "${RUN##*/}" "$snippet" >> "$S/out/results.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$MODEL" "$ARM" "$TASK" "$REP" "$pass" "$wall" "$turns" "$calls" "$fails" "$blocked" "$itok" "$otok" "$cost" "${RUN##*/}" "$snippet" >> "${RESULTS:-$S/out/results.tsv}"
 printf '%-18s %-7s %-3s r%s pass=%s %4ss turns=%-3s calls=%-3s fail=%-2s blocked=%s run=%s | %s\n' "$MODEL" "$ARM" "$TASK" "$REP" "$pass" "$wall" "$turns" "$calls" "$fails" "$blocked" "${RUN##*/}" "$snippet"

@@ -81,7 +81,9 @@ with no hint that zz exists.
 
 Arms: `bare` (nothing installed), `hooks` (`zz tools --install-hooks` run in the pane first; Codex
 skips the untrusted hook, so it gets only the stub skill), `trusted` (Codex only: the same plus
-`--dangerously-bypass-hook-trust`, as after approving the hook), `pane`. Terminal arms approve
+`--dangerously-bypass-hook-trust`, as after approving the hook), `strict` (hooks installed and the
+hook trusted, but the agent keeps its default permissions: `claude -p` without a bypass, `codex
+exec --sandbox workspace-write`), `pane`. Terminal arms approve
 everything (`--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`), the
 way a user clicking yes would; agent panes use `AUTO` (`agent-auto-approve`, default `reads`), and
 a permission prompt counts as `blocked`. Tasks: n0 asks the agent for its pane id (delivery only),
@@ -90,7 +92,8 @@ n3 waits for a `DONE-` line in another window, n4 answers a yes/no prompt, n5 ac
 pane, n6 opens a window without switching to it, n7 asks a new Claude agent pane for pong, n8
 opens a window on `REMOTE_HOST` (and removes it).
 
-`ZZ_BINARY` picks the zz under test (the installed one by default). Each row of `out/results.tsv`:
+`ZZ_BINARY` picks the zz under test (the installed one by default) and `RESULTS` the file a run
+appends to, so A/B arms can run interleaved. Each row of `out/results.tsv`:
 model, arm, task, rep, pass, wall s, turns, CLI calls, failed calls, blocked, input tokens, output
 tokens, cost, run id. `run-all.sh` fans out (`TASKS`, `REPS`, `CLAUDE_ARMS`, `CODEX_ARMS`, `PAR`) and
 `summary.py` pivots. Run directories stay under `/tmp/fu-runs/`; delete them afterwards. `results/`
