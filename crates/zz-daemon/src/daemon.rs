@@ -52615,7 +52615,7 @@ metadata:
 Run `zz tools --skill` and follow the guide it prints. The guide comes from the installed zz, so it describes the commands this version has.
 "#;
 
-const WORKSPACE_CONTEXT: &str = r#"You're running in a zz pane. zz is a tmux-compatible multiplexer: the `zz` CLI (also reachable as `tmux`) is on PATH and already targets this workspace.
+const WORKSPACE_CONTEXT: &str = r#"You're running in a zz pane. zz is a tmux-compatible multiplexer: run its commands as `zz`, which is on PATH and already targets this workspace (a login shell can find a real `tmux` first).
 
 ```text
 ZZ_SESSION={session}
@@ -52630,13 +52630,15 @@ ZZ_PANE={pane}
 
 Target panes by id (`-t %N`), never `session:%N`. Keep the ids that creating commands print (`-P -F '#{pane_id}'`), and pass `-d` so you don't take focus from the user. If a creating command times out, list panes before retrying.
 
-Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output and exits with its status); read a pane with `zz capture-pane -p -J -t %N -S -`.
+Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output and exits with its status); read a pane with `zz capture-pane -p -J -t %N -S -`. If a `zz` command fails with "Operation not permitted", a sandbox kept it from the daemon: rerun it with escalated permissions.
 
 Other machines: `zz list-hosts` names them and `zz --host NAME VERB -t %N` runs a verb there; pane IDs are per host. Run `zz tools --skill` for the full guide.
 "#;
 
 const AGENT_PANE_CONTEXT: &str = r"
 This is an Agent pane. To show a chart, diagram, mockup, or small page, put the HTML in your reply in a fenced block opened with ```html preview (a fragment or a whole page; scripts may load from CDNs). The pane shows it rendered, and a click makes it live. For a bigger page beside you, write a file and run `zz html PATH`.
+
+This pane approves `zz` commands without asking, alone or piped into `head`, `tail`, `grep`, `rg`, `wc` or `jq`, with no redirect but `2>&1` or `>/dev/null`.
 ";
 
 pub const WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE: &str = "ZZ_AGENT_CONTEXT";
@@ -52798,6 +52800,8 @@ Print the chosen option ID. `--allow` prefers allow-once; `--deny` selects a rej
 ### Permissions
 
 Choose `off`, `reads` (the default), or `all` for `agent-auto-approve`. With `reads`, the daemon answers ACP tool requests whose kind is `read`. With `all`, it answers requests with any tool kind. With `off`, it sends permission requests to the pane. Requests without a tool kind still need an answer when you use `reads` or `all`.
+
+With `reads` or `all`, Claude Code and Codex panes also run, without asking, a shell command made of `zz` calls, piped only into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, joined only with `cd`, `echo`, `printf` or `sleep`, and redirected only with `2>&1` or `>/dev/null`. Codex's sandbox blocks the daemon socket, so a `zz` command there fails with "Operation not permitted" until Codex reruns it with escalated permissions; that rerun is approved the same way.
 
 Set `@agent-auto-approve` at pane, window, session, or global scope, in that order of precedence. If no user option applies, use the server option `agent-auto-approve`. Invalid values leave the pane's effective tier unchanged and log a warning.
 

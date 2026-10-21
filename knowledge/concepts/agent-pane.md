@@ -918,7 +918,16 @@ connection. Authentication methods advertised during initialization appear besid
 session fails, and send ACP `authenticate` requests.
 
 `agent-auto-approve` (a mux option, default `reads`) answers a *kinded* request in the daemon, without
-waiting for the user or for a client to be attached. `preferred_allow_option`
+waiting for the user or for a client to be attached. Under `reads` (and `all`) the native Claude Code and
+Codex drivers also answer a shell command that runs only `zz` (`agent/zz_command.rs`): it unwraps
+`sh|bash|zsh|dash -c|-lc SCRIPT` and accepts a chain (`&&`, `||`, `;`) of pipelines that contains a `zz` or
+`zz-dev` call, where each pipeline starts with `zz`, `cd`, `echo`, `printf` or `sleep` and pipes only into
+`head`, `tail`, `grep`, `rg` (without `--pre`), `wc`, `jq`, `cut` or `tr`, and the only redirects are
+`2>&1`, `>&2` and `>/dev/null`. It refuses `$(...)`, backticks, subshells, loops, newlines, `<`, `&` and
+assignment prefixes.
+Codex's default sandbox blocks the daemon socket, so every `zz` call there fails with "Operation not
+permitted" until Codex reruns it with escalated permissions; this answers that rerun. Anything that
+reaches the socket can type into other panes, so it is the same trust as opening the socket. `preferred_allow_option`
 (`zz-daemon/src/agent/runtime.rs:1288`) takes `AllowAlways` and falls back to `AllowOnce`, never a
 reject kind and never an empty option ID; a request that advertises no allow option falls through to
 the interactive UI rather than being silently denied. The tool call is still published as a

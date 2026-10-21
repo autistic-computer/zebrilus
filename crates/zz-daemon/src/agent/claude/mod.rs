@@ -39,6 +39,7 @@ use crate::agent::{
         AgentPromptOutcome, AgentQuestion, AgentQuestionOption, AgentSessionCapabilities,
         AgentStreamPayload,
     },
+    zz_command,
 };
 
 use translate::{Translator, available_commands, tool_info};
@@ -1576,8 +1577,12 @@ impl Runtime {
             _ => {
                 let info = tool_info(&tool, &input, &self.cwd());
                 let kind = serde_json::from_value::<ToolKind>(Value::from(info.kind)).ok();
+                let tier = *self.auto_approve.lock();
                 if request["requires_user_interaction"] != true
-                    && tier_approves(*self.auto_approve.lock(), kind)
+                    && (tier_approves(tier, kind)
+                        || (tier != AgentAutoApprove::Off
+                            && tool == "Bash"
+                            && zz_command::runs_only_zz(&input["command"])))
                 {
                     self.respond(&claude_id, &allow(&input, None));
                     return Ok(());

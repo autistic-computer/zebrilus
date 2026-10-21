@@ -1972,6 +1972,12 @@ fn format_local_command_error(path: &Path, error: DaemonError) -> String {
         DaemonError::Io(error) if error.kind() == ErrorKind::ConnectionRefused => {
             format!("no server running on {}", path.display())
         }
+        #[cfg(unix)]
+        DaemonError::Io(error) if error.raw_os_error() == Some(libc::EPERM) => format!(
+            "error connecting to {} ({}): a sandbox keeps this command away from the zz daemon; rerun it with escalated permissions",
+            path.display(),
+            os_error_text(&error)
+        ),
         DaemonError::Io(error) => format!(
             "error connecting to {} ({})",
             path.display(),

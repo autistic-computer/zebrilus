@@ -138,6 +138,8 @@ Print the chosen option ID. `--allow` prefers allow-once; `--deny` selects a rej
 
 Choose `off`, `reads` (the default), or `all` for `agent-auto-approve`. With `reads`, the daemon answers ACP tool requests whose kind is `read`. With `all`, it answers requests with any tool kind. With `off`, it sends permission requests to the pane. Requests without a tool kind still need an answer when you use `reads` or `all`.
 
+With `reads` or `all`, Claude Code and Codex panes also run, without asking, a shell command made of `zz` calls, piped only into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, joined only with `cd`, `echo`, `printf` or `sleep`, and redirected only with `2>&1` or `>/dev/null`. Codex's sandbox blocks the daemon socket, so a `zz` command there fails with "Operation not permitted" until Codex reruns it with escalated permissions; that rerun is approved the same way.
+
 Set `@agent-auto-approve` at pane, window, session, or global scope, in that order of precedence. If no user option applies, use the server option `agent-auto-approve`. Invalid values leave the pane's effective tier unchanged and log a warning.
 
 ```sh
