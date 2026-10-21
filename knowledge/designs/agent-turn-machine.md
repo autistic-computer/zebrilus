@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent turn machine . one owner for "a turn is running"
-description: "One pure state machine in the daemon decides whether an Agent pane's turn is running, waiting, cancelling or done, from a small set of facts the Claude and Codex drivers report. It replaces the six turn flags spread over the drivers, the host, the fanout lane and the desktop client. zz-machine holds the shape (transition, decision, wake time from the state). The Claude and Codex drivers run the machine and replay their recordings through it in tests; moving it into the host and deleting the other flags is next."
-status: Partly built (2026-10-21; the Claude and Codex drivers run the machine; the host, fanout and clients still keep their own turn flags)
+description: "One pure state machine in the daemon decides whether an Agent pane's turn is running, waiting, cancelling or done, from a small set of facts the Claude and Codex drivers report. It replaces the six turn flags spread over the drivers, the host, the fanout lane and the desktop client. zz-machine holds the shape (transition, decision, wake time from the state). The Claude and Codex drivers run it and replay their recordings through it in tests; the host, fanout lane and clients mirror the turn events instead of deriving their own."
+status: Built (2026-10-21; drivers run the machine, host, fanout and clients mirror it; shared client dispatcher and timeline turn boundaries next)
 resource: crates/zz-daemon/src/agent/turn.rs
 tags:
 - agent
@@ -122,19 +122,37 @@ What a user sees change:
 `claude/replay_tests.rs` and `codex/replay_tests.rs` run the recordings through the real runtimes
 and check every turn event and the line it lands on.
 
+## Built: everything above the drivers mirrors them
+
+The plan was to move the machine into the host. It stayed in the drivers instead: each driver sees
+the vendor's frames in order and already owns the vendor ids, and the generic ACP runtime
+(`runtime.rs`) keeps its simpler model, where the `session/prompt` reply ends a turn. What changed
+above the drivers is that nothing derives turn state on its own any more:
+
+- The host dropped `external_busy`. `Activity` from a driver is now one edge per agent turn, so
+  Running with no prompt of the host's own in flight already means the agent started the turn.
+- A failed turn leaves the pane Ready with the error shown (the sidebar status reads Error with the
+  error's first line). Only the agent exiting fails the pane. Before this, any failed turn left the
+  pane Failed and its next prompt queued forever, though the agent was still running.
+- The fanout lane clears its `turn_id` when that turn finishes, so a replay after a lag no longer
+  says a finished turn is running. Its `external_turn` stays: the subagent feed repeats
+  `Activity { busy: true }` when it replaces its list.
+- The desktop client's `background_turn` became `submitted`: set when it sends a prompt from Ready,
+  cleared once the daemon shows a turn running, the prompt finishes, or the queue is handed back.
+  The daemon's Ready ends the turn whenever no prompt of the client's is still on its way. The thin
+  client already drew the daemon's phase.
+
+Fixed on the way: an agent exit resolves its open permission cards for the clients, a Claude
+permission card answered through the question path keeps waiting for a real answer instead of
+being dropped, and a background Bash task that ends before its launch result settles its row.
+
 ## Next
 
-1. The host owns one `TurnState` per pane. It applies its own facts (`Prompt`, `Steer`, `Cancel`)
-   before handing the command to the driver, so the vendor's answer always comes after. It mints the
-   Claude uuids, and arms one timer from `wake_at`.
-2. The drivers stop deciding turns: `turn`, `stale_commands`, `lifecycle_seen` and `external_turn`
-   go, and they report facts instead of `PromptFinished` and `Activity`.
-3. `AgentPaneWire` carries the phase and turn id from `TurnState`. The fanout lane's turn fields and
-   the desktop client's `AgentConnectionState` and `background_turn` go; clients draw the phase they
-   are sent.
-4. The recorded streams (`claude/fixtures/*.ndjson`, `codex/fixtures/*.ndjson`) run through the
-   driver's fact translation and the machine, not only the translators.
-5. Clients group timeline rows by turn id instead of cutting at each user row.
+1. One stream dispatcher in `zz-client` for desktop and thin. They differ today on
+   `finish_replay`, `sessionReset` and `stateSynced`.
+2. Turn boundaries in the timeline: rows group by turn instead of cutting at each user row, so a
+   turn the agent starts gets its own row and clock. This needs a marker the journal keeps, or it
+   folds back after a replay.
 
 # Not covered
 
