@@ -31,7 +31,12 @@ rustix = { workspace = true, features = ["fs", "net"] }
 
 [target.'cfg(windows)'.dependencies]
 sysinfo.workspace = true
-windows = { workspace = true, features = ["Win32_System_Console"] }
+windows = { workspace = true, features = [
+    "Win32_Security",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 sysinfo.workspace = true
