@@ -1,6 +1,8 @@
 //! Location and permission policy for user-owned application data.
 
-use std::{fs, io, path::Path};
+#[cfg(unix)]
+use std::fs;
+use std::{io, path::Path};
 
 pub use zz_protocol::app_identity::platform_data_dir;
 
