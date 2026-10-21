@@ -284,8 +284,9 @@ and `list-panes`.
 :::tip[Help]
 `zz --help` lists every command and the global flags, and `zz <verb> --help`
 shows one command's options; neither needs a running daemon. `zz -h` keeps
-tmux's usage banner. `zz tools` prints the guide written for agents, and the
-command palette (<kbd>C-b</kbd> <kbd>:</kbd>) completes commands and targets
+tmux's usage banner. `zz tools` prints the guide written for agents, and
+`zz tools --install-hooks` hands it to Claude Code and Codex you start in a
+pane. The command palette (<kbd>C-b</kbd> <kbd>:</kbd>) completes commands and targets
 live. There is no man page or shell completion.
 :::
 

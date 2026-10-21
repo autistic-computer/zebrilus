@@ -38,12 +38,15 @@ composer is empty. Queued prompts fire in order as each turn settles, and a
 chip above the composer hands them all back to the draft — text and pasted
 images — if you change your mind or the turn dies.
 
-Approvals are automatic by default. A permission request that carries a normal
-allow option is answered with it, so the agent runs its tools without stopping
-to ask; the tool call still lands in the transcript, so nothing happens out of
-sight. Set `agent-auto-approve = false` to answer them yourself, and they
-arrive as a wizard — `1`-`9` picks an option, Enter confirms the highlight,
-Escape cancels.
+Approvals follow `agent-auto-approve`. The default, `reads`, answers requests
+to read, search or fetch, and shell commands made of `zz` calls (piped only
+into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, joined only with
+`cd`, `echo`, `printf` or `sleep`), so the agent can work the workspace without
+stopping to ask. Everything else arrives as a
+wizard: `1`-`9` picks an option, Enter confirms the highlight, Escape cancels.
+`all` answers every request with the agent's preferred allow option, and `off`
+sends every request to you. Tool calls land in the transcript either way, so
+nothing happens out of sight.
 
 **Changes** in the pane header shows what the turn did to your worktree: a
 file list with line counts, and hunks per file. It diffs against a snapshot
@@ -98,6 +101,53 @@ zz agent-send -t %5 'check the failing test'
 `zz tools` works in any build. The rest of that list needs a browser pane or an
 agent pane to aim at.
 
+### Agents you start yourself
+
+An agent pane tells its agent which pane it runs in and how to reach the
+others. Claude Code or Codex started by hand in a terminal pane get none of
+that until you run, once:
+
+```sh
+zz tools --install-hooks
+```
+
+or press **Set up** under **Settings → Advanced → Coding agents** (on macOS also
+**zz → Set Up Agents…**). It adds a startup hook that prints the same note and
+a small `zz-workspace` skill that points the agent at `zz tools --skill`, in
+`~/.claude` and `~/.codex` when they exist. `zz tools --remove-hooks` takes out
+only what it added. Codex runs a new hook only after you approve it: pick
+**Trust** in the review screen Codex shows at its next start, or use `/hooks`.
+
+### Codex's sandbox
+
+Codex's sandbox blocks the zz socket, so in its default modes a `zz` command
+fails with "Operation not permitted" until Codex reruns it with escalated
+permissions. In an agent pane zz approves that rerun for you; in a terminal
+pane Codex asks you each time. To let Codex reach zz without asking, allow the
+socket's folder in `~/.codex/config.toml` (the error prints the socket path;
+on Linux the folder is usually `/run/user/1000/zz`):
+
+```toml
+default_permissions = "zz"
+
+[features]
+network_proxy = true
+
+[permissions.zz]
+extends = ":workspace"
+
+[permissions.zz.network]
+enabled = true
+
+[permissions.zz.network.unix_sockets]
+"/run/user/1000/zz" = "allow"
+```
+
+Other network access stays blocked. Anything that reaches the socket can type
+into your other panes, so this lets a sandboxed Codex run commands outside its
+sandbox. Permission profiles do not apply when `sandbox_mode` is set anywhere
+in your Codex config.
+
 ## What survives what
 
 Close the window and the agent keeps working. The turn runs on in the daemon,
@@ -123,7 +173,7 @@ daemon for you, and they also work from `zz/mux.conf` or `zz set-option -g`:
 
 | Key | Set on | Default | Effect |
 | --- | --- | --- | --- |
-| `agent-auto-approve` | daemon | `true` | Answer permission requests with the agent's preferred allow option. Off means you answer them |
+| `agent-auto-approve` | daemon | `reads` | `reads` answers reads, searches, fetches and shell commands made of `zz` calls; `all` answers every request; `off` means you answer them |
 | `agent-command` | daemon | `codex` | The Codex binary, plus any flags to pass it. A command whose program is not `codex` runs as an ACP adapter: a command line, or a launch-config JSON object `{"command", "args", "env"}` |
 | `agent-claude-code-command` | daemon | `claude` | The Claude Code binary, plus any flags to pass it. A command whose program is not `claude` runs as an ACP adapter instead |
 | `agent-working-directory` | app | the donor pane's cwd | Absolute path for brand-new sessions |
