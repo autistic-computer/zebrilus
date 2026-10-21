@@ -37,6 +37,7 @@ use crate::agent::{
         AgentPrompt, AgentPromptOutcome, AgentQuestion, AgentQuestionOption,
         AgentSessionCapabilities, AgentSessionSummary, AgentStreamPayload,
     },
+    zz_command,
 };
 
 use translate::Translator;
@@ -1851,6 +1852,12 @@ impl Runtime {
                 } else {
                     Reply::Command
                 };
+                if *self.auto_approve.lock() != AgentAutoApprove::Off
+                    && zz_command::runs_only_zz(&params["command"])
+                {
+                    self.reply(&rpc_id, &decision(&reply, "allow"));
+                    return Ok(());
+                }
                 self.approve(rpc_id, reply, &item, &command, "execute", reason)
                     .await
             }
