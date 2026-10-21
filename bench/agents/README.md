@@ -1,7 +1,7 @@
 # Agent benchmarks
 
-Two harnesses that measure zz as a target for AI agents. Both run against real agents and a real
-zz, append TSV rows, and print a summary; neither is part of `cargo test`.
+Three harnesses that measure zz as a target for AI agents. All run against real agents and a real
+zz, append TSV rows, and print a summary; none is part of `cargo test`.
 
 ## browser/ - capability parity for browser panes
 
@@ -68,5 +68,33 @@ Each row of `out/results.tsv`: backend, model, arm, task, pass, wall s, turns, C
 failed calls, bytes the CLI printed, input tokens, output tokens, cost. `run-all.sh` fans out
 (`BACKENDS`, `MODELS`, `TASKS`, `ZZ_ARMS`, `REX_ARMS`, `PAR`); `summary.sh` pivots.
 
-Results and the traps both harnesses found live in
+## fresh/ - what a new user's agents get
+
+Question: after installing zz and nothing else, how well do Claude Code and Codex work in it,
+with and without `zz tools --install-hooks`, and in an agent pane? `run-one.sh MODEL ARM TASK
+[REP]` gives every run an empty HOME (macOS only: it links `~/Library/Keychains` so Claude keeps
+its login, and `~/.codex/auth.json`) and its own daemon started under `env -i`, so panes get a
+real pane environment and the agent sees none of the user's skills, hooks or CLAUDE.md. The agent
+runs as the command of the session's first pane (`claude -p`, `codex exec`), or in an agent pane
+driven with `agent-send --wait --on-block fail` (`pane`). The prompts are what a user would type,
+with no hint that zz exists.
+
+Arms: `bare` (nothing installed), `hooks` (`zz tools --install-hooks` run in the pane first; Codex
+skips the untrusted hook, so it gets only the stub skill), `trusted` (Codex only: the same plus
+`--dangerously-bypass-hook-trust`, as after approving the hook), `pane`. Terminal arms approve
+everything (`--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`), the
+way a user clicking yes would; agent panes use `AUTO` (`agent-auto-approve`, default `reads`), and
+a permission prompt counts as `blocked`. Tasks: n0 asks the agent for its pane id (delivery only),
+n1 reads a number from the other pane, n2 runs a 3000-line test log there and names the failure,
+n3 waits for a `DONE-` line in another window, n4 answers a yes/no prompt, n5 acts on the focused
+pane, n6 opens a window without switching to it, n7 asks a new Claude agent pane for pong, n8
+opens a window on `REMOTE_HOST` (and removes it).
+
+`ZZ_BINARY` picks the zz under test (the installed one by default). Each row of `out/results.tsv`:
+model, arm, task, rep, pass, wall s, turns, CLI calls, failed calls, blocked, input tokens, output
+tokens, cost, run id. `run-all.sh` fans out (`TASKS`, `REPS`, `CLAUDE_ARMS`, `CODEX_ARMS`, `PAR`) and
+`summary.py` pivots. Run directories stay under `/tmp/fu-runs/`; delete them afterwards. `results/`
+keeps the 2026-10-21 runs; the 0.21.0 grid there predates the `blocked` column.
+
+Results and the traps the harnesses found live in
 `knowledge/playbooks/agent-benchmarks.md`.

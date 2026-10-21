@@ -1,0 +1,32 @@
+claude-haiku-5-5	pane	n1	1	1	6	2	0	0	0	0	0	0	jdzpDG	4711 
+claude-haiku-5-5	pane	n2	1	1	8	3	0	0	0	0	0	0	uD5Mnl	parser::rejects_trailing_comma_b21e8d71 
+claude-haiku-5-5	pane	n3	1	0	10	4	0	0	1	0	0	0	PyPRIs	 
+claude-haiku-5-5	pane	n4	1	0	4	2	0	0	1	0	0	0	tPCQdK	 
+gpt-6-luna	pane	n1	1	1	23	3	2	0	0	0	0	0	8tSiQX	4711 
+claude-haiku-5-5	pane	n5	1	1	6	3	0	0	1	0	0	0	kzbmQM	 
+claude-haiku-5-5	pane	n6	1	1	5	2	0	0	0	0	0	0	hvre9y	done 
+gpt-6-luna	pane	n2	1	0	35	7	5	0	1	0	0	0	frQQsQ	 
+gpt-6-luna	pane	n4	1	1	23	7	6	0	0	0	0	0	DePZrq	%4 
+gpt-6-luna	pane	n3	1	1	29	3	2	0	0	0	0	0	ZQSWie	DONE-72a0e777 
+claude-haiku-5-5	pane	n7	1	0	4	1	0	0	1	0	0	0	FSTFxC	 
+gpt-6-luna	pane	n5	1	1	22	3	2	0	0	0	0	0	CgAGmS	done 
+claude-haiku-5-5	pane	n8	1	1	13	4	0	0	0	0	0	0	zPA1bS	done  The window `bench-f150dae4` is running `sleep 900` on xps. xps had no sess
+claude-haiku-5-5	pane	n1	2	1	6	2	0	0	0	0	0	0	7lS8ft	4711 
+gpt-6-luna	pane	n6	1	1	29	2	1	0	0	0	0	0	ext70F	done 
+claude-haiku-5-5	pane	n2	2	0	6	3	0	0	1	0	0	0	lHHtny	 
+gpt-6-luna	pane	n7	1	1	27	6	5	0	0	0	0	0	dkXLZW	Claude replied: `pong`. 
+claude-haiku-5-5	pane	n3	2	0	7	3	0	0	1	0	0	0	mWOyQ7	 
+gpt-6-luna	pane	n8	1	0	36	4	3	1	0	0	0	0	qvoh1x	I couldn’t create the window: `xps` has no existing session to open it in. I did
+gpt-6-luna	pane	n1	2	1	25	3	2	0	0	0	0	0	hca34m	4711 
+gpt-6-luna	pane	n2	2	0	15	4	2	0	1	0	0	0	7OYsBW	 
+claude-haiku-5-5	pane	n4	2	0	4	2	0	0	1	0	0	0	lXLnXK	 
+claude-haiku-5-5	pane	n6	2	1	4	1	0	0	0	0	0	0	oQN5ZH	done 
+claude-haiku-5-5	pane	n5	2	0	6	2	0	0	1	0	0	0	LETtyy	 
+gpt-6-luna	pane	n3	2	1	25	3	2	0	0	0	0	0	3ROuhx	DONE-91236605 
+claude-haiku-5-5	pane	n7	2	0	3	1	0	0	1	0	0	0	Krrqnj	 
+gpt-6-luna	pane	n5	2	1	13	3	2	0	0	0	0	0	nQUIY8	done 
+gpt-6-luna	pane	n6	2	1	19	2	1	0	0	0	0	0	6NQ0q4	done 
+claude-haiku-5-5	pane	n8	2	1	13	4	0	0	0	0	0	0	83WHe1	done  On xps there was no existing session, so I created one named `bench-e716f3
+gpt-6-luna	pane	n7	2	1	39	4	3	0	0	0	0	0	ogSFR1	The Claude agent in pane `%5` replied: `pong`. 
+gpt-6-luna	pane	n8	2	1	46	6	5	0	0	0	0	0	bJX43V	done 
+gpt-6-luna	pane	n4	2	0	71	12	11	0	0	0	0	0	IQbH1C	%4 
