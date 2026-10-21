@@ -92,9 +92,24 @@ impl Drop for Process {
         let spawned = thread::Builder::new()
             .name("zz-claude-reap".to_owned())
             .spawn(move || reap(&mut child));
-        if let Err(error) = spawned {
-            log::warn!(target: "zz::agent", "could not reap Claude Code: {error}");
+        match spawned {
+            Ok(reaper) => {
+                let mut reapers = REAPERS.lock();
+                reapers.retain(|reaper| !reaper.is_finished());
+                reapers.push(reaper);
+            }
+            Err(error) => log::warn!(target: "zz::agent", "could not reap Claude Code: {error}"),
         }
+    }
+}
+
+static REAPERS: parking_lot::Mutex<Vec<thread::JoinHandle<()>>> =
+    parking_lot::Mutex::new(Vec::new());
+
+pub(crate) fn join_reapers() {
+    let reapers = std::mem::take(&mut *REAPERS.lock());
+    for reaper in reapers {
+        let _ = reaper.join();
     }
 }
 
@@ -345,5 +360,57 @@ pub(crate) fn rewind_shortfall(prompts: usize) -> String {
         0 => "Nothing to rewind yet: send a prompt first.".to_owned(),
         1 => "There is only 1 prompt to go back over.".to_owned(),
         count => format!("There are only {count} prompts to go back over."),
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn join_reapers_waits_until_a_child_that_outlives_stdin_cleans_up() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let job_path = directory.path().join("job");
+        let script = format!(
+            "set -m; sleep 30 & job=$!; trap 'kill $job; exit 0' TERM; echo $job > {}; while :; do sleep 0.05; done",
+            job_path.display()
+        );
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", &script]);
+        let (events, _events) = async_channel::unbounded();
+        let process = Process::launch(
+            &mut command,
+            "test agent",
+            1,
+            &events,
+            &StderrTail::default(),
+        )
+        .expect("launch");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let job = loop {
+            if let Some(job) = std::fs::read_to_string(&job_path)
+                .ok()
+                .and_then(|text| text.trim().parse::<i32>().ok())
+            {
+                break job;
+            }
+            assert!(Instant::now() < deadline, "job never started");
+            thread::sleep(Duration::from_millis(10));
+        };
+        let alive = |pid: i32| {
+            rustix::process::test_kill_process(rustix::process::Pid::from_raw(pid).expect("pid"))
+                .is_ok()
+        };
+        assert!(alive(job));
+        drop(process);
+        join_reapers();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while alive(job) {
+            assert!(
+                Instant::now() < deadline,
+                "the background job outlived its agent"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 }
