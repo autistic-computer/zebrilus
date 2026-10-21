@@ -782,7 +782,7 @@ fn run_command_mode(
         && host != ALL_HOSTS
         && matches!(
             canonical_command(&command),
-            "fleet" | "list-hosts" | "tools" | "protocol-version"
+            "fleet" | "list-hosts" | "tools" | "protocol-version" | "--version"
         )
     {
         return Some(run_host_cli(host, arguments));
@@ -2824,7 +2824,7 @@ fn fan_out_refusal(command_chain: &[CommandInvocation]) -> Option<(String, ExitC
     };
     for invocation in command_chain
         .iter()
-        .filter(|invocation| invocation.name != "protocol-version")
+        .filter(|invocation| !matches!(invocation.name.as_str(), "protocol-version" | "--version"))
     {
         if let Err(error) = zz_mux::validate_static_command_chain(std::slice::from_ref(invocation))
         {
