@@ -206,10 +206,18 @@ daemon that was killed and `[ -S ]` reports those corpses as healthy . the state
 exists to rescue. `zz daemon` already probes the endpoint, takes over a dead one, and answers
 `AlreadyRunning` within milliseconds when the daemon really is up. The script is also a single
 `;`-joined line: sshd hands it to the account's login shell before any `sh` sees it, and csh cannot
-hold a newline inside single quotes. Every `<host>` argument is preceded by `--`, and a host opening
+hold a newline inside single quotes.
+
+Windows has no Unix-socket forward and no connection sharing, so its `SshForward::start` makes the
+steps one login. `remote_connect_script` runs the probe, exits 127 without zz and 0 on another
+protocol (the client reads which from the probe lines), runs the auto-start in a subshell, then
+`exec zz proxy`, whose `zz-proxy-1` ready marker follows the probe lines on stdout. The zz-key-first
+retry repeats that one login. The ssh child joins a kill-on-close job object, so it ends with zz
+even when zz is killed. Every `<host>` argument is preceded by `--`, and a host opening
 with `-` is rejected at parse time, so a destination can never reach ssh's own option parser.
 
-Every step carries `ConnectTimeout=10` and the endpoint's `-p`/`-l` options. This mirrors local
+Every step carries `ConnectTimeout=10` (3 s under `ZZ_SSH_BATCH`, and for list-hosts and fleet sync,
+so a machine that is off costs a fan-out 3 s) and the endpoint's `-p`/`-l` options. This mirrors local
 auto-spawn: a remote host with zz installed but no daemon running now just works, which is the
 2026-08-01 reversal recorded in [fleet attach](/designs/fleet-attach.md). Failures classify into
 typed `EndpointError` variants (`RemoteBinaryMissing`, `RemoteDaemonUnavailable`, `ForwardExited`,
@@ -381,7 +389,8 @@ toasts it.
 Parallel work never prompts. `ZZ_SSH_BATCH=1`, which the `--host all` fan-out sets in each child,
 and `SshSession::batch` (list-hosts, fleet sync, the first pass of `zz fleet install`) add
 `BatchMode=yes` and `PubkeyAcceptedKeyTypes=-sk-*,webauthn-sk-*` to every login, since BatchMode
-alone still waits for a security-key touch. A `--host all` host that needs a typed login reports
+alone still waits for a security-key touch. Those logins and the fan-out children connect with
+`ConnectTimeout=3` (`UNATTENDED_CONNECT_TIMEOUT_SECONDS`). A `--host all` host that needs a typed login reports
 the hint to sign in once; `zz fleet install` retries those hosts one at a time on the terminal
 (`EndpointError::needs_sign_in`).
 
@@ -392,6 +401,12 @@ outlives the cleanup of that host. Nothing ties a key's comment to the host that
 planted key can carry any `zz@` name. After a compromise, remove every `zz@` line that host could
 have reported (or all of them) from each `~/.ssh/authorized_keys`, then run `zz fleet sync` again
 from a clean machine.
+
+`zz fleet trust KEY` is for a machine that drives the fleet but cannot be a host, such as a Windows
+box whose ssh shell is PowerShell. KEY is the line `zz fleet key` prints there. `trust_fleet_key`
+adds it to every listed host and to this machine with the sync's apply script, then prints the
+`zz fleet add` lines and the `known_hosts` lines that machine needs. Only the key's shape is checked,
+as with sync.
 
 ## Password and host-key prompts
 

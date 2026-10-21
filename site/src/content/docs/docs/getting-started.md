@@ -329,7 +329,8 @@ and the rest) needs `-t`, and a move or swap (`join-pane`, `move-window`,
 `swap-window` and the like) needs `-s` too. With `all`, text lines start with
 `NAME: `, JSON lines carry `host_name`, and a host that fails says why on
 stderr while the others still answer. `all` never prompts: a host that wants a password or a
-host-key answer fails with the command to run. `zz --host NAME events`,
+host-key answer fails with the command to run, and a machine that is off is
+given up on after 3 seconds. `zz --host NAME events`,
 `agent-send --wait --progress` and `zz -CC --host NAME` stream from the host.
 
 zz signs in with its own ssh key. The first login to a listed host uses your
@@ -338,6 +339,11 @@ later connections ask for nothing, security key included. `zz fleet sync` makes
 every listed machine trust every other and know each other's host lines, so an
 agent on any of them can reach the rest; run it after you add a machine.
 `zz fleet key` prints this machine's zz key.
+
+A machine that only drives the others, such as Windows with its PowerShell ssh
+shell, can't be a host. Run `zz fleet key` there, then `zz fleet trust KEY` on a
+fleet machine: every listed machine trusts that key, and it prints the
+`zz fleet add` and `known_hosts` lines to add on the new one.
 
 The other machine needs zz too. If it has none, the app installs it on the
 spot: it runs the installer there over ssh and puts the headless zz in
