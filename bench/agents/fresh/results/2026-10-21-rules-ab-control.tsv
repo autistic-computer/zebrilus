@@ -1,0 +1,112 @@
+claude-haiku-5-5	pane	n1	1	1	5	4	0	0	0	0	0	0	M8FHfw	4711 
+claude-haiku-5-5	strict	n1	1	0	11	3	1	0	0	73061	515	0.003518500000000001	Xzrcgi	I couldn't read the other pane. Listing the session's panes requires approval, w
+gpt-6-luna	pane	n1	1	1	13	3	2	0	0	0	0	0	xt877C	4711 
+claude-haiku-5-5	pane	n2	1	0	5	2	0	0	1	0	0	0	ukGHiw	 
+gpt-6-luna	strict	n1	1	0	22	1	1	1	0	77040	201	0	yGDhld	 
+claude-haiku-5-5	strict	n2	1	0	10	3	1	0	0	63091	686	0.00287198	WoPGo3	I couldn't run the test. Listing the panes needs approval that this non-interact
+gpt-6-luna	pane	n2	1	1	19	4	3	0	0	0	0	0	aBiO2L	parser::rejects_trailing_comma_855bf2af 
+gpt-6-luna	strict	n2	1	0	29	2	3	2	0	84834	485	0	sRt7Zh	I couldn’t access the zz daemon from this shell, so I couldn’t run the test scri
+claude-haiku-5-5	pane	n3	1	0	5	2	0	0	1	0	0	0	R1H2Vr	 
+claude-haiku-5-5	strict	n3	1	0	10	3	1	0	0	72992	565	0.00353616	NeVDNE	I couldn't find or read the `jobs` window, so I have not seen a `DONE-` line yet
+gpt-6-luna	pane	n3	1	1	17	3	2	0	0	0	0	0	rpdyeK	DONE-5dee9981 
+claude-haiku-5-5	pane	n4	1	0	4	2	0	0	1	0	0	0	5iQryN	 
+gpt-6-luna	strict	n3	1	0	30	3	3	2	0	99916	631	0	b9RgfC	I can’t access the `zz` daemon because the sandbox blocks it, so I can’t see the
+claude-haiku-5-5	strict	n4	1	0	17	7	1	0	0	150887	1323	0.0049669200000000005	HSAWAi	I couldn't find the pane. Every `zz` command I tried was blocked with "This comm
+gpt-6-luna	pane	n4	1	1	22	7	6	0	0	0	0	0	ANnkcA	%4 
+gpt-6-luna	strict	n4	1	0	26	2	3	2	0	66176	326	0	qjkIbN	I can’t reach the zz daemon: the sandbox blocks access to its socket, and escala
+claude-haiku-5-5	pane	n5	1	1	5	2	0	0	0	0	0	0	SgTdNt	done 
+claude-haiku-5-5	strict	n5	1	0	14	5	1	0	0	124203	1612	0.00479348	0lhSxB	Not done. I haven't touched anything in your pane.  The `zz` commands I need to 
+claude-haiku-5-5	pane	n6	1	1	4	1	0	0	0	0	0	0	Zbypa2	done 
+gpt-6-luna	strict	n5	1	0	31	3	2	1	0	80724	722	0	ev40Ro	I couldn’t reach the zz daemon: the sandbox blocked the connection, and elevated
+claude-haiku-5-5	strict	n6	1	0	11	5	1	0	0	122817	970	0.004325240000000001	68G7NM	I couldn't open the `build` window. Both `zz new-window` attempts were blocked w
+gpt-6-luna	pane	n6	1	1	14	2	1	0	0	0	0	0	rYdVyJ	done 
+gpt-6-luna	strict	n6	1	0	26	2	2	1	0	65832	282	0	gq4rGQ	I couldn’t open the window: the sandbox blocked `zz` from reaching its daemon. 
+claude-haiku-5-5	pane	n7	1	0	4	3	0	0	1	0	0	0	nZ2bmB	 
+claude-haiku-5-5	strict	n7	1	0	9	4	1	0	0	73051	611	0.0035631700000000005	W287ib	I couldn't open the agent pane. `zz tools --skill` returned "This command requir
+gpt-6-luna	pane	n7	1	1	18	3	2	0	0	0	0	0	mx8Dro	Claude replied: **pong**. 
+gpt-6-luna	strict	n7	1	0	23	2	2	1	0	65922	450	0	TAIx1F	I couldn’t open the Claude pane: the sandbox blocked zz’s connection to its daem
+gpt-6-luna	pane	n5	1	1	81	3	2	0	0	0	0	0	hmQ59e	done 
+claude-haiku-5-5	pane	n8	1	1	8	5	0	0	0	0	0	0	C5yw3D	done  I created the window on xps. xps had no existing sessions, so I made a new
+claude-haiku-5-5	strict	n8	1	0	11	3	1	0	0	63323	761	0.00294467	4E19Nn	I couldn't open the window. Both `zz` commands were blocked with "This command r
+gpt-6-luna	pane	n8	1	1	20	4	3	1	0	0	0	0	kviex6	done 
+claude-haiku-5-5	pane	n1	2	1	7	2	0	0	0	0	0	0	hLNN8p	4711 
+gpt-6-luna	strict	n8	1	0	35	6	4	1	0	119750	660	0	hVWBf0	I couldn’t open the window: zz reports xps as unreachable because its host name 
+claude-haiku-5-5	strict	n1	2	0	10	3	1	0	0	73058	560	0.0035417300000000007	t9mc4M	I couldn't read the other pane. Listing the panes was blocked with "This command
+gpt-6-luna	pane	n1	2	1	21	3	2	0	0	0	0	0	jLeGhd	4711 
+claude-haiku-5-5	pane	n2	2	1	6	3	0	0	0	0	0	0	DeMUpm	test parser::rejects_trailing_comma_8c92e259 
+gpt-6-luna	strict	n1	2	0	27	3	3	2	0	96771	341	0	8TS7u7	I can’t read the other pane because the sandbox blocked access to the zz daemon.
+claude-haiku-5-5	strict	n2	2	0	10	3	1	0	0	73060	698	0.00360866	P99OCt	I couldn't run the test. Listing the panes requires approval, and I haven't been
+claude-haiku-5-5	pane	n3	2	0	6	3	0	0	1	0	0	0	c1DKcL	 
+gpt-6-luna	strict	n2	2	0	22	2	3	2	0	64502	360	0	m7DGIa	I couldn’t access the zz daemon: the sandbox blocked the pane listing, so I coul
+gpt-6-luna	pane	n2	2	1	24	6	4	0	0	0	0	0	WSRLtu	parser::rejects_trailing_comma_25ec405a 
+claude-haiku-5-5	strict	n3	2	0	10	3	1	0	0	73160	640	0.0035913000000000004	8uZtXm	I couldn't find the `jobs` window, so I haven't waited on anything yet. Listing 
+claude-haiku-5-5	pane	n4	2	0	4	2	0	0	1	0	0	0	kVAA1S	 
+gpt-6-luna	pane	n3	2	1	21	3	2	0	0	0	0	0	LkB6zm	DONE-86220e1f 
+claude-haiku-5-5	strict	n4	2	0	13	4	1	0	0	84683	856	0.00324414	E5lkek	I couldn't find the pending yes/no prompt, so I haven't answered anything and I 
+gpt-6-luna	strict	n3	2	0	39	2	3	2	0	122651	468	0	DiGjTZ	I can’t access the `jobs` window: the sandbox blocks `zz` from connecting to its
+gpt-6-luna	strict	n4	2	0	32	4	2	1	0	123809	560	0	PuP9ro	I couldn’t access the zz daemon: the sandbox blocked the pane listing, and escal
+claude-haiku-5-5	pane	n5	2	1	5	2	0	0	0	0	0	0	WKqWpj	done 
+gpt-6-luna	pane	n4	2	1	25	7	6	0	0	0	0	0	Pvcodn	%4 
+claude-haiku-5-5	strict	n5	2	0	12	4	1	0	0	84591	902	0.003246460000000001	HwUGd1	I couldn't run the touch. The commands I needed to find the pane you're looking 
+gpt-6-luna	pane	n5	2	1	12	3	2	0	0	0	0	0	wfkmPB	done 
+claude-haiku-5-5	pane	n6	2	1	3	1	0	0	0	0	0	0	EECji7	done 
+gpt-6-luna	strict	n5	2	0	22	2	2	1	0	84664	282	0	Fi6DYF	I couldn’t access the zz daemon: the sandbox blocked it, and escalated access is
+claude-haiku-5-5	strict	n6	2	0	11	2	1	0	0	48489	563	0.00326278	ykN5qF	I couldn't open the `build` window. The `zz new-window` command was blocked with
+gpt-6-luna	pane	n6	2	1	19	2	1	0	0	0	0	0	4BbHIx	done 
+claude-haiku-5-5	pane	n7	2	0	5	2	0	0	1	0	0	0	FPn3s0	 
+gpt-6-luna	strict	n6	2	0	33	1	1	1	0	28592	272	0	Wn4Vzq	I couldn’t create the window: the sandbox blocked access to the zz daemon, and t
+claude-haiku-5-5	strict	n7	2	0	13	6	1	0	0	106518	922	0.0035101100000000003	uq1Gov	I couldn't open the zz pane. Bash is refusing to run `zz`: `zz tools --skill` re
+gpt-6-luna	pane	n7	2	1	19	3	2	0	0	0	0	0	t45Duo	The Claude agent replied: **pong**. 
+gpt-6-luna	strict	n7	2	0	24	2	3	2	0	66330	425	0	40zk2a	I couldn’t open the Claude pane: the sandbox blocked zz from connecting to its d
+claude-haiku-5-5	pane	n8	2	1	13	5	0	0	0	0	0	0	IgzbAK	done  On xps there were no existing sessions, so I created one named `bench-2def
+claude-haiku-5-5	strict	n8	2	0	15	5	1	0	0	98346	1063	0.004121720000000001	wmgKy3	I couldn't open the window on xps. Both `zz` commands I tried were blocked with 
+gpt-6-luna	strict	n8	2	0	22	3	2	1	0	65874	188	0	dtKeIv	done 
+claude-haiku-5-5	pane	n1	3	1	8	2	0	0	0	0	0	0	awjbcA	4711 
+gpt-6-luna	pane	n8	2	0	39	11	10	4	0	0	0	0	M096pO	I couldn’t create the window: xps kept rejecting its listed session as a target.
+claude-haiku-5-5	strict	n1	3	0	12	3	1	0	0	73019	642	0.00357797	AzPjG7	I couldn't read the other pane's output. My attempts to list the panes in this w
+gpt-6-luna	pane	n1	3	1	18	3	2	0	0	0	0	0	8Glovy	4711 
+gpt-6-luna	strict	n1	3	0	27	3	2	1	0	60621	390	0	aU8rsf	I can’t access the other pane: the sandbox blocked the zz daemon connection. 
+claude-haiku-5-5	pane	n2	3	1	12	3	0	0	0	0	0	0	Vh1vEE	parser::rejects_trailing_comma_24260ef3 
+claude-haiku-5-5	strict	n2	3	0	14	4	1	0	0	84684	1000	0.0033218500000000003	AxDIkZ	I couldn't run it. Every `zz` command I tried was blocked with "This command req
+claude-haiku-5-5	pane	n3	3	0	7	3	0	0	1	0	0	0	1bricf	 
+gpt-6-luna	pane	n2	3	1	25	5	4	0	0	0	0	0	IvS8Hd	parser::rejects_trailing_comma_eff6e688 
+gpt-6-luna	strict	n2	3	0	34	2	3	2	0	66011	442	0	pt3IiG	I can’t access the zz daemon from this sandbox, so I couldn’t run `./test-log.sh
+claude-haiku-5-5	strict	n3	3	0	14	4	1	0	0	97991	968	0.00404673	x61fra	I can't find the `jobs` window, so I can't wait on it yet. Both attempts to list
+gpt-6-luna	pane	n3	3	0	11	3	1	0	1	0	0	0	QBAJEA	 
+claude-haiku-5-5	pane	n4	3	0	4	2	0	0	1	0	0	0	6baDTR	 
+gpt-6-luna	strict	n3	3	0	29	2	3	2	0	84743	386	0	tg31Tj	I can’t access the `zz` daemon from this sandbox, so I can’t read the `jobs` win
+claude-haiku-5-5	strict	n4	3	0	15	4	1	0	0	84659	817	0.00321034	CTseFx	I couldn't find the waiting pane, so I haven't sent a `y` to anything.  `zz list
+gpt-6-luna	pane	n4	3	1	13	7	6	0	0	0	0	0	sN0yd4	%4 
+gpt-6-luna	strict	n4	3	0	25	2	3	2	0	66162	312	0	etmSkc	I couldn’t access the zz daemon: the sandbox blocked the connection, and escalat
+claude-haiku-5-5	pane	n5	3	1	5	2	0	0	0	0	0	0	tlh9s8	done 
+claude-haiku-5-5	strict	n5	3	0	17	5	1	0	0	123595	1452	0.00461183	dU7mIy	I couldn't touch the file in your pane, so I haven't run `touch /tmp/fu-runs/dU7
+gpt-6-luna	pane	n5	3	1	20	3	2	0	0	0	0	0	5BXyuH	done 
+claude-haiku-5-5	pane	n6	3	1	2	1	0	0	0	0	0	0	MCFBZ6	done 
+gpt-6-luna	strict	n5	3	0	26	2	1	1	0	67194	470	0	51CqaR	I couldn’t run it: the sandbox blocked access to the zz daemon, and escalated ex
+claude-haiku-5-5	strict	n6	3	0	10	2	1	0	0	48485	686	0.00332348	7fGMMy	I couldn't create the window. The `zz new-window` command came back with "This c
+gpt-6-luna	pane	n6	3	1	11	2	1	0	0	0	0	0	sfffsR	done 
+claude-haiku-5-5	pane	n7	3	0	6	2	0	0	1	0	0	0	hCc5h8	 
+gpt-6-luna	strict	n6	3	0	23	3	3	1	0	84905	328	0	trXWia	I couldn’t create the window: the sandbox blocked zz from connecting to its daem
+claude-haiku-5-5	strict	n7	3	0	16	5	1	0	0	122931	1002	0.0043482699999999996	KshTLU	I couldn't open the agent pane. Every `zz` command I tried was blocked before it
+gpt-6-luna	pane	n7	3	1	21	5	4	0	0	0	0	0	Q17RpY	Claude replied: **pong**. 
+gpt-6-luna	strict	n7	3	0	23	2	2	1	0	65900	391	0	2JC5ID	I couldn’t open the pane: the sandbox blocked zz from connecting to its daemon (
+claude-haiku-5-5	pane	n8	3	1	16	6	0	0	0	0	0	0	5qiVhy	done  On xps there were no sessions, so I created one named `bench-19c0f35b` wit
+claude-haiku-5-5	strict	n8	3	0	13	4	1	0	0	98280	897	0.0040449	UFwgNx	I couldn't open the window. Both `zz` commands I tried were blocked with "This c
+gpt-6-luna	strict	n8	3	0	31	5	4	1	0	104618	566	0	FtB7j9	I couldn’t reach xps: its host name didn’t resolve. No window was created. 
+claude-haiku-5-5	pane	n1	4	1	8	3	0	0	0	0	0	0	Sdygcf	4711 
+gpt-6-luna	pane	n8	3	1	33	9	8	1	0	0	0	0	FFDIX5	done 
+claude-haiku-5-5	pane	n3	4	0	6	3	0	0	1	0	0	0	lCS6zQ	 
+claude-haiku-5-5	pane	n4	4	0	4	2	0	0	1	0	0	0	tEcZRS	 
+claude-haiku-5-5	pane	n2	4	1	14	3	0	0	0	0	0	0	oRKzG7	parser::rejects_trailing_comma_1809b207 
+claude-haiku-5-5	pane	n5	4	1	5	2	0	0	0	0	0	0	CsnIiG	done 
+claude-haiku-5-5	pane	n6	4	1	4	1	0	0	0	0	0	0	zkt7Kw	done 
+claude-haiku-5-5	pane	n1	5	1	5	2	0	0	0	0	0	0	DjyTM2	4711 
+claude-haiku-5-5	pane	n8	4	1	12	5	0	0	0	0	0	0	fpEucK	done  The window `bench-43b46509` is running `sleep 900` on xps (pane `%50`). xp
+claude-haiku-5-5	pane	n7	4	1	16	3	0	0	0	0	0	0	Gnm81P	The new Claude agent pane is %5, opened beside mine. I asked it to reply with ex
+claude-haiku-5-5	pane	n2	5	0	5	3	0	0	1	0	0	0	PnbfxY	 
+claude-haiku-5-5	pane	n3	5	0	5	2	0	0	1	0	0	0	ZvIItF	 
+claude-haiku-5-5	pane	n4	5	0	7	2	0	0	1	0	0	0	1p8C1p	 
+claude-haiku-5-5	pane	n5	5	1	5	2	0	0	0	0	0	0	uH1boo	done 
+claude-haiku-5-5	pane	n6	5	1	4	1	0	0	0	0	0	0	GaYhJT	done 
+claude-haiku-5-5	pane	n7	5	0	5	2	0	0	1	0	0	0	wChZKq	 
+claude-haiku-5-5	pane	n8	5	1	13	5	0	0	0	0	0	0	AY0eUu	done  The window `bench-a3252119` is running `sleep 900` on xps (pane `%52`). xp
