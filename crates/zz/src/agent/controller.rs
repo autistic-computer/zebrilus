@@ -171,7 +171,7 @@ struct AgentThread {
     transcript: AgentTranscript<Arc<Image>>,
     provider: AgentProvider,
     connection: AgentConnectionState,
-    background_turn: bool,
+    submitted: bool,
     auth_methods: Arc<[AgentAuthMethod]>,
     error: Option<Arc<str>>,
     agent_name: Option<Arc<str>>,
@@ -208,7 +208,7 @@ impl AgentThread {
             transcript: AgentTranscript::new(transcript_image),
             provider,
             connection: AgentConnectionState::Starting,
-            background_turn: false,
+            submitted: false,
             auth_methods: Arc::from([]),
             error: None,
             agent_name: None,
@@ -331,7 +331,7 @@ impl AgentThread {
     fn begin_prompt(&mut self, prompt: String, images: Vec<Arc<Image>>) {
         self.transcript.begin_prompt(prompt, images);
         self.connection = AgentConnectionState::Running;
-        self.background_turn = false;
+        self.submitted = true;
         self.error = None;
     }
 
@@ -1630,19 +1630,18 @@ impl AgentController {
                     AgentConnectionState::Starting
                         | AgentConnectionState::Failed
                         | AgentConnectionState::Disconnected
-                ) || (thread.background_turn && thread.connection.has_active_turn());
+                ) || (!thread.submitted && thread.connection.has_active_turn());
                 if settled && !session_change_pending {
                     thread.connection = AgentConnectionState::Ready;
-                    thread.background_turn = false;
                 }
                 if was_failed || state.error.is_some() {
                     thread.error = state.error.as_deref().map(Arc::from);
                 }
             }
             AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission => {
+                thread.submitted = false;
                 if !thread.connection.has_active_turn() {
                     thread.connection = AgentConnectionState::Running;
-                    thread.background_turn = true;
                 }
                 thread.error = state.error.as_deref().map(Arc::from);
             }
@@ -2237,6 +2236,7 @@ impl AgentController {
             }
             RuntimeEvent::PromptFinished { pane, result } => {
                 if let Some(thread) = self.panes.get_mut(&pane) {
+                    thread.submitted = false;
                     match result {
                         Ok(StopReason::Cancelled) => {
                             thread.connection = AgentConnectionState::Ready;
@@ -2397,6 +2397,9 @@ impl AgentController {
             } => {
                 let viewport = self.viewport_mut(pane);
                 viewport.queued_prompts = viewport.queued_prompts.saturating_sub(count);
+                if let Some(thread) = self.panes.get_mut(&pane) {
+                    thread.submitted = false;
+                }
                 self.queue_composer_text(pane, &text);
                 if !images.is_empty() {
                     self.pending_images.entry(pane).or_default().extend(images);
@@ -4075,6 +4078,13 @@ mod tests {
                     connection(controller),
                     AgentConnectionState::Running,
                     "a Ready published before the daemon saw the prompt does not end it"
+                );
+                controller.apply_pane_state(pane, &wire(AgentConnectionPhase::Running), cx);
+                controller.apply_pane_state(pane, &wire(AgentConnectionPhase::Ready), cx);
+                assert_eq!(
+                    connection(controller),
+                    AgentConnectionState::Ready,
+                    "once the daemon ran the prompt, its Ready ends the turn without waiting for PromptFinished"
                 );
             });
         });
