@@ -643,6 +643,7 @@ impl AgentHost {
         for handle in handles.into_values() {
             let _ = handle.thread.join();
         }
+        crate::agent::child::join_reapers();
     }
 }
 
