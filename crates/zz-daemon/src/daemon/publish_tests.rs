@@ -48,6 +48,8 @@ fn attached_fixture(
 ) {
     let (shared, client, mut context, pane, mailbox) = key_table_fixture(name);
     wait_for_runtime_facts(&shared, pane);
+    wait_for_pane_program(&shared, pane);
+    shared.publish_snapshot();
     run_test_command(
         &shared,
         client,
@@ -75,6 +77,30 @@ fn wait_for_runtime_facts(shared: &Shared, pane: PaneId) {
         thread::sleep(Duration::from_millis(10));
     }
     thread::sleep(Duration::from_millis(50));
+}
+
+fn wait_for_pane_program(shared: &Arc<Shared>, pane: PaneId) {
+    let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        shared.check_pane_runtime(pane, &terminal, false, Instant::now());
+        shared.settle_pane_locations();
+        let shown = shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .is_some_and(|pane| !pane.summary.process.is_empty());
+        if shown {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the pane's program never reached its summary"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn set_current_command(shared: &Shared, pane: PaneId, command: &str) -> bool {

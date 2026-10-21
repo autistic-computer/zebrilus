@@ -7,9 +7,14 @@ use zz_gpui::{
     prelude::*, px,
 };
 
+use zz_client::program::Program;
+
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, InteractiveSurfaceExt as _,
-    Layer, PaintState, StyledExt as _, Surface, Tone, roles, tooltip::Tooltip,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Layer, PaintState,
+    StyledExt as _, Surface, Tone,
+    program::{Face, Lit, program_colors, program_mark},
+    roles,
+    tooltip::Tooltip,
     touch::CoarsePointer,
 };
 
@@ -67,6 +72,7 @@ impl StackSize {
 pub struct StackTile {
     pub icon: IconName,
     pub favicon: Option<Arc<[u8]>>,
+    pub program: Option<&'static Program>,
     pub label: SharedString,
     pub tooltip: SharedString,
     pub select: Option<StackAction>,
@@ -169,6 +175,12 @@ impl PaneStack {
 }
 
 fn glyph(tile: &StackTile, size: f32, color: Hsla) -> AnyElement {
+    if let Some(mark) = tile
+        .program
+        .and_then(|program| program_mark(program, px(size), color, None))
+    {
+        return mark;
+    }
     let icon = Icon::new(tile.icon.clone())
         .size(px(size))
         .text_color(color);
@@ -220,23 +232,49 @@ impl PaneStack {
         }
     }
 
-    fn resting(&self, slot: usize, shown: usize, layer: &Layer) -> Div {
+    fn lit(&self, dark: bool, dimmed: f32) -> Lit {
+        Lit {
+            size: px(self.size.tile()),
+            dark,
+            strength: if dimmed > 0.0 { dimmed } else { 1.0 },
+        }
+    }
+
+    fn face(&self, program: &'static Program, smoothing: f32, dark: bool, dimmed: f32) -> Face {
+        Face {
+            program,
+            size: px(self.size.tile()),
+            radius: self.radius,
+            smoothing,
+            dark,
+            ground: self.ground.fill,
+            dimmed,
+        }
+    }
+
+    fn resting(&self, slot: usize, shown: usize, layer: &Layer, dark: bool, colors: bool) -> Div {
         let size = self.size;
-        let layer = Layer {
-            fill: self.dim(layer.fill),
-            border: self.dim(layer.fill.blend(layer.border)),
-            ..layer.clone()
+        let front = self.tiles.first().filter(|_| slot == 0);
+        let tile = if let Some(program) = front.and_then(|front| front.program).filter(|_| colors) {
+            self.face(program, layer.smoothing, dark, self.dimmed)
+                .tile()
+        } else {
+            let layer = Layer {
+                fill: self.dim(layer.fill),
+                border: self.dim(layer.fill.blend(layer.border)),
+                ..layer.clone()
+            };
+            tile_box(size)
+                .layer(&layer)
+                .rounded(self.radius)
+                .when(layer.glass.is_none(), |tile| {
+                    tile.bg(Lit::background(layer.fill))
+                })
+                .when(front.is_some(), |tile| {
+                    tile.shadow(self.lit(dark, self.dimmed).shadows())
+                })
+                .children(front.map(|front| glyph(front, size.glyph(), self.dim(layer.text))))
         };
-        let tile = tile_box(size)
-            .layer(&layer)
-            .rounded(self.radius)
-            .when(slot == 0, |tile| {
-                tile.children(
-                    self.tiles
-                        .first()
-                        .map(|front| glyph(front, size.glyph(), self.dim(layer.text))),
-                )
-            });
         let left = px(slot as f32 * size.step());
         if slot + 1 == shown {
             return tile.absolute().left(left).top_0();
@@ -257,6 +295,7 @@ impl PaneStack {
 
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
         let size = self.size;
+        let colors = program_colors(cx);
         let theme = cx.theme();
         let tile = Surface::new(roles::PANE_STACK).on(self.ground);
         let pad = size.gap();
@@ -286,6 +325,9 @@ impl PaneStack {
                 };
                 let select = stack_tile.select.clone();
                 let tooltip = stack_tile.tooltip.clone();
+                let program = stack_tile.program;
+                let dark = theme.is_dark();
+                let hover = (!front).then(|| theme.layer(tile, PaintState::Hover));
                 let element = tile_box(size)
                     .id(("pane-stack-tile", index))
                     .debug_selector(move || format!("pane-stack-tile-{index}"))
@@ -293,7 +335,7 @@ impl PaneStack {
                     .aria_label(stack_tile.label.clone())
                     .aria_selected(front)
                     .relative()
-                    .surface_hover(tile, state, cx)
+                    .layer(&layer)
                     .rounded(self.radius)
                     .tooltip(move |window, cx| {
                         Tooltip::new(tooltip.clone())
@@ -308,8 +350,26 @@ impl PaneStack {
                             update(&pointer, view, cx, |pointer| *pointer = Pointer::default());
                             select(window, cx);
                         })
-                    })
-                    .child(glyph(stack_tile, size.glyph(), ink));
+                    });
+                let element = match program.filter(|_| colors) {
+                    Some(program) => self
+                        .face(program, layer.smoothing, dark, 0.0)
+                        .paint(element),
+                    None => element
+                        .when(layer.glass.is_none(), |element| {
+                            element.bg(Lit::background(layer.fill))
+                        })
+                        .shadow(self.lit(dark, 0.0).shadows())
+                        .when_some(hover, |element, hover| {
+                            element.hover(move |style| {
+                                style
+                                    .border_color(hover.border)
+                                    .text_color(hover.text)
+                                    .bg(Lit::background(hover.fill))
+                            })
+                        })
+                        .child(glyph(stack_tile, size.glyph(), ink)),
+                };
                 let from = index.min(RESTING - 1) as f32 * size.step() - index as f32 * travel;
                 if animate {
                     element
@@ -409,11 +469,15 @@ impl RenderOnce for PaneStack {
                     })
             })
             .when(!open, |stack| {
-                stack.children(
-                    (0..shown)
-                        .rev()
-                        .map(|slot| self.resting(slot, shown, &resting)),
-                )
+                stack.children((0..shown).rev().map(|slot| {
+                    self.resting(
+                        slot,
+                        shown,
+                        &resting,
+                        cx.theme().is_dark(),
+                        program_colors(cx),
+                    )
+                }))
             })
             .children(row);
         let Some((content, gap)) = beside else {

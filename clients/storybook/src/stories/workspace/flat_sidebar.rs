@@ -1,8 +1,11 @@
 use std::rc::Rc;
 
-use zz_client::window_summary::{
-    PaneTag::{self, Agent, Browser, Editor, Picker, Terminal},
-    PaneTile, age_label, summarize_host,
+use zz_client::{
+    program::{Program, resolve},
+    window_summary::{
+        PaneTag::{self, Agent, Browser, Editor, Picker, Terminal},
+        PaneTile, age_label, summarize_host,
+    },
 };
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
@@ -15,7 +18,7 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _,
+    ActiveTheme as _, Colorize as _,
     command::PaletteHostId,
     menu::PopupMenuItem,
     navigation::{
@@ -61,9 +64,15 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(stacks, cx),
         },
         Section {
+            id: "programs",
+            name: "Program icons",
+            summary: "A terminal's tile wears the program running in it: the daemon reports the foreground process and its parents up to the shell (script, invoked path, argv0, name, executable), and the first one whose path ends in a known command at a / picks the icon, the longest command winning. A shell with nothing running keeps the plain terminal tile. Every icon in the catalog, with the commands that select it.",
+            build: |_, cx| stateless(programs, cx),
+        },
+        Section {
             id: "hosts",
             name: "Hosts",
-            summary: "Folded sessions and hosts keep a rollup of what needs you on the right. A host that is not connected says so, with Connect, Retry or Upgrade when there is something to do; hover Unreachable for the reason. Its rows dim and keep their last known state, with no spinners.",
+            summary: "Folded sessions and hosts keep a rollup of what needs you on the right. A host that is not connected shows a status icon, with Connect, Retry or Upgrade when there is something to do; hover the icon for the reason. Its rows dim and keep their last known state, with no spinners.",
             build: |_, cx| stateless(hosts, cx),
         },
     ],
@@ -72,7 +81,7 @@ pub const STORY: Story = Story {
 const NOW: u64 = 1_792_000_000;
 const MINUTE: u64 = 60;
 const HOUR: u64 = 3_600;
-const SIDEBAR_HEIGHT: f32 = 800.0;
+const SIDEBAR_HEIGHT: f32 = 1040.0;
 const STACK_CELL: f32 = 48.0;
 const MAC: &str = "/Users/fabrico/dev/zz";
 const MACBOOK: PaletteHostId = PaletteHostId(0);
@@ -219,24 +228,37 @@ fn session(id: u64, name: &str, windows: Vec<WindowSnapshot>) -> SessionSnapshot
     }
 }
 
+type Running<'a> = &'a [(u64, &'a [&'a str])];
+
 fn host(
     id: PaletteHostId,
     name: &str,
     remote: bool,
     connection: HostConnection,
     sessions: Vec<SessionSnapshot>,
+    running: Running,
 ) -> FlatHost {
     let snapshot = MuxSnapshot {
         generation: 1,
         sessions,
         focused_window: None,
     };
+    let (mut sessions, rollup) = summarize_host(&snapshot);
+    for tile in sessions
+        .iter_mut()
+        .flat_map(|session| &mut session.windows)
+        .flat_map(|window| &mut window.tiles)
+    {
+        if let Some((_, process)) = running.iter().find(|(pane, _)| PaneId(*pane) == tile.pane) {
+            tile.program = resolve(process.iter().copied());
+        }
+    }
     FlatHost::new(
         id,
         name,
         remote,
         connection,
-        summarize_host(&snapshot),
+        (sessions, rollup),
         |changed_at| age_label(changed_at, NOW),
     )
 }
@@ -286,6 +308,16 @@ fn macbook() -> FlatHost {
                         None,
                         vec![terminal(4, "zsh").at(MAC, "main").ago(4 * MINUTE)],
                     ),
+                    window(
+                        9,
+                        None,
+                        vec![terminal(10, "nvim flat.rs").at(MAC, "main").ago(7 * MINUTE)],
+                    ),
+                    window(
+                        10,
+                        None,
+                        vec![terminal(11, "lazygit").at(MAC, "main").ago(MINUTE)],
+                    ),
                 ],
             ),
             session(
@@ -326,6 +358,7 @@ fn macbook() -> FlatHost {
                                 .ago(12 * MINUTE),
                         ],
                     ),
+                    window(11, None, vec![terminal(12, "btop").ago(HOUR)]),
                     window(
                         8,
                         None,
@@ -337,6 +370,20 @@ fn macbook() -> FlatHost {
                     ),
                 ],
             ),
+        ],
+        &[
+            (7, &["/opt/homebrew/bin/just", "just", "just"]),
+            (
+                10,
+                &[
+                    "/opt/homebrew/bin/nvim",
+                    "nvim",
+                    "nvim",
+                    "/opt/homebrew/Cellar/neovim/0.12.1/bin/nvim",
+                ],
+            ),
+            (11, &["/opt/homebrew/bin/lazygit", "lazygit", "lazygit"]),
+            (12, &["/opt/homebrew/bin/btop", "btop", "btop"]),
         ],
     )
 }
@@ -366,12 +413,26 @@ fn ubuntu() -> FlatHost {
                         2,
                         Some("GPU bench"),
                         vec![
-                            terminal(2, "bench/run.sh")
+                            terminal(2, "cargo bench")
                                 .at("/home/fabrico/zz/bench", "main")
                                 .ago(3 * HOUR),
                             codex(3, "codex"),
                             browser(4, "Grafana", "http://localhost:3000/"),
                         ],
+                    ),
+                    window(
+                        4,
+                        None,
+                        vec![
+                            terminal(6, "copilot")
+                                .at("/home/fabrico/zz", "main")
+                                .ago(8 * MINUTE),
+                        ],
+                    ),
+                    window(
+                        5,
+                        None,
+                        vec![terminal(7, "docker compose logs -f").ago(2 * HOUR)],
                     ),
                 ],
             ),
@@ -388,6 +449,20 @@ fn ubuntu() -> FlatHost {
                     ],
                 )],
             ),
+        ],
+        &[
+            (2, &["/home/fabrico/.cargo/bin/cargo", "cargo", "cargo"]),
+            (
+                6,
+                &[
+                    "/usr/lib/node_modules/@github/copilot/npm-loader.js",
+                    "/usr/lib/node_modules/@github/copilot/npm-loader",
+                    "/usr/bin/node",
+                    "node",
+                    "node",
+                ],
+            ),
+            (7, &["/usr/bin/docker", "docker", "docker"]),
         ],
     )
 }
@@ -457,6 +532,18 @@ fn extras() -> FlatHost {
                 ),
             ],
         )],
+        &[
+            (20, &["/Users/fabrico/.cargo/bin/cargo", "cargo", "cargo"]),
+            (
+                26,
+                &[
+                    "/Users/fabrico/.cargo/bin/cargo-watch",
+                    "cargo-watch",
+                    "/Users/fabrico/.cargo/bin/cargo",
+                    "cargo",
+                ],
+            ),
+        ],
     )
 }
 
@@ -483,7 +570,7 @@ fn devbox() -> FlatHost {
                     2,
                     None,
                     vec![
-                        terminal(2, "zsh")
+                        terminal(2, "python manage.py runserver")
                             .at("/home/fabrico/src/api", "main")
                             .ago(20 * MINUTE),
                     ],
@@ -510,11 +597,21 @@ fn devbox() -> FlatHost {
                 ),
             ],
         )],
+        &[(
+            2,
+            &[
+                "/home/fabrico/src/api/manage.py",
+                "/home/fabrico/src/api/manage",
+                "/usr/bin/python3.12",
+                "python3",
+                "python3.12",
+            ],
+        )],
     )
 }
 
 fn offline(id: u32, name: &str, connection: HostConnection) -> FlatHost {
-    host(PaletteHostId(id), name, true, connection, Vec::new())
+    host(PaletteHostId(id), name, true, connection, Vec::new(), &[])
 }
 
 fn sidebar_hosts() -> Vec<FlatHost> {
@@ -666,7 +763,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         dimmed: true,
         ..rest
     };
-    let cases: [(&str, PaletteHostId, &FlatWindow, FlatRowState); 23] = [
+    let cases: [(&str, PaletteHostId, &FlatWindow, FlatRowState); 27] = [
         ("working", MACBOOK, find(&mac, 1), rest),
         ("needs approval", MACBOOK, find(&mac, 2), rest),
         ("asked a question", MACBOOK, find(&mac, 3), rest),
@@ -675,6 +772,20 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         ("failed", MACBOOK, find(&mac, 8), rest),
         ("shell, idle", MACBOOK, find(&mac, 4), rest),
         ("shell, exit code", MACBOOK, find(&mac, 7), rest),
+        ("program: nvim", MACBOOK, find(&mac, 9), rest),
+        (
+            "program: node running copilot",
+            UBUNTU,
+            find(&ubuntu, 4),
+            rest,
+        ),
+        ("program, current", MACBOOK, find(&mac, 10), current),
+        (
+            "program, host reconnecting: dimmed",
+            DEVBOX,
+            find(&devbox, 2),
+            dimmed,
+        ),
         ("bell", EXTRAS, find(&extras, 20), rest),
         ("browser", EXTRAS, find(&extras, 21), rest),
         ("editor", EXTRAS, find(&extras, 23), rest),
@@ -751,14 +862,15 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             ..FlatRowState::default()
         },
     ];
-    let cell = |id: u64, tags: &[PaneTag], state: FlatRowState| {
-        let tiles = tags
+    let stack_cell = |id: u64, tiles: &[(PaneTag, Option<&str>)], state: FlatRowState| {
+        let tiles = tiles
             .iter()
             .enumerate()
-            .map(|(index, tag)| PaneTile {
+            .map(|(index, (tag, program))| PaneTile {
                 pane: PaneId(index as u64),
                 tag: *tag,
-                label: format!("{tag:?}"),
+                label: program.map_or_else(|| format!("{tag:?}"), str::to_owned),
+                program: program.and_then(Program::by_id),
             })
             .collect::<Vec<_>>();
         div()
@@ -770,6 +882,27 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             .rounded(cx.theme().radius)
             .bg(flat_row_ground(state, cx).fill)
             .child(flat_tile_stack(MACBOOK, WindowId(id), &tiles, state, cx))
+    };
+    let cell = |id: u64, tags: &[PaneTag], state: FlatRowState| {
+        let tiles = tags
+            .iter()
+            .map(|tag| {
+                let program = match tag {
+                    Agent(AgentProvider::ClaudeCode) => Some("claude"),
+                    Agent(AgentProvider::Codex) => Some("codex"),
+                    _ => None,
+                };
+                (*tag, program)
+            })
+            .collect::<Vec<_>>();
+        stack_cell(id, &tiles, state)
+    };
+    let running = |id: u64, programs: &[&'static str], state: FlatRowState| {
+        let tiles = programs
+            .iter()
+            .map(|program| (Terminal, Some(*program)))
+            .collect::<Vec<_>>();
+        stack_cell(id, &tiles, state)
     };
     let claude = Agent(AgentProvider::ClaudeCode);
     let codex = Agent(AgentProvider::Codex);
@@ -808,6 +941,81 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             "five panes: still two behind, all five when open",
             on_every_ground(5, &[Terminal, codex, Browser, Editor, claude]),
         )
+        .state(
+            "terminals running programs: the front tile wears the program",
+            row().children(
+                [
+                    "neovim",
+                    "gitchanges",
+                    "rust",
+                    "btop",
+                    "docker",
+                    "python",
+                    "just",
+                    "bottom",
+                ]
+                .iter()
+                .enumerate()
+                .map(|(index, program)| running(60 + index as u64, &[program], grounds[0])),
+            ),
+        )
+        .state(
+            "a program on rest, hover, current and selected",
+            row().children(
+                grounds
+                    .iter()
+                    .enumerate()
+                    .map(|(index, state)| running(70 + index as u64, &["neovim"], *state)),
+            ),
+        )
+        .state(
+            "programs in a split, open on hover",
+            row().children(grounds.iter().enumerate().map(|(index, state)| {
+                running(80 + index as u64, &["neovim", "rust", "gitchanges"], *state)
+            })),
+        )
+        .into_any_element()
+}
+
+fn programs(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    let muted = cx.theme().foreground.muted();
+    let mono = cx.theme().mono_font_family.clone();
+    let state = FlatRowState::default();
+    Program::all()
+        .iter()
+        .enumerate()
+        .fold(states().columns(4), |list, (index, program)| {
+            let tile = PaneTile {
+                pane: PaneId(0),
+                tag: Terminal,
+                label: program.name.to_owned(),
+                program: Some(program),
+            };
+            list.state(
+                program.name,
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.0))
+                    .child(flat_tile_stack(
+                        MACBOOK,
+                        WindowId(1_000 + index as u64),
+                        &[tile],
+                        state,
+                        cx,
+                    ))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(11.0))
+                            .font_family(mono.clone())
+                            .text_color(muted)
+                            .child(program.commands.join(" ")),
+                    ),
+            )
+        })
         .into_any_element()
 }
 

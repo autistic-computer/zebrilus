@@ -597,7 +597,7 @@ fn a_command_reads_the_foreground_command_over_stale_runtime_facts() {
     });
     thread::sleep(Duration::from_millis(500));
     for stale in ["sleep", "", "bash"] {
-        shared.synchronize_pane_runtime(pane, &terminal, stale, None, false, Instant::now());
+        shared.synchronize_pane_runtime(pane, &terminal, None, stale, None, false, Instant::now());
         assert_eq!(command(&mut context), "cat");
     }
     shared.request_shutdown();
@@ -635,10 +635,10 @@ fn a_lost_lookup_at_a_due_rename_names_the_window_from_the_start_command() {
         terminal_current_command(&terminal) == "cat"
     });
     thread::sleep(Duration::from_millis(600));
-    shared.synchronize_pane_runtime(pane, &terminal, "cat", None, false, Instant::now());
+    shared.synchronize_pane_runtime(pane, &terminal, None, "cat", None, false, Instant::now());
     assert_eq!(names(&mut context), "cat|cat");
     thread::sleep(Duration::from_millis(600));
-    shared.synchronize_pane_runtime(pane, &terminal, "", None, false, Instant::now());
+    shared.synchronize_pane_runtime(pane, &terminal, None, "", None, false, Instant::now());
     assert_eq!(names(&mut context), "sh|cat");
     shared.request_shutdown();
 }

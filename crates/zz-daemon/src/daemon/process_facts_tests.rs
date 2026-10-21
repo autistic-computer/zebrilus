@@ -113,7 +113,7 @@ fn a_pane_without_a_process_never_requests_a_peer_probe() {
         .terminals_mut()
         .insert(pane, Arc::clone(&terminal));
     assert!(terminal.process_id().is_none());
-    shared.synchronize_pane_runtime(pane, &terminal, "", None, true, Instant::now());
+    shared.synchronize_pane_runtime(pane, &terminal, None, "", None, true, Instant::now());
     assert!(!shared.peer_probe.load(Ordering::Acquire));
     shared.request_shutdown();
 }

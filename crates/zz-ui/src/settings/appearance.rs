@@ -58,6 +58,7 @@ pub enum AppearancePageItem {
     TintHue,
     Tint,
     Themes,
+    ProgramColors,
     Advanced {
         expanded: bool,
     },
@@ -92,6 +93,10 @@ impl AppearancePageItem {
             ),
             Self::TintHue => ("Tint", "The color every surface leans toward."),
             Self::Tint => ("Tint strength", "How far surfaces lean toward the tint."),
+            Self::ProgramColors => (
+                "Program colors",
+                "Fill a flat sidebar tile with the colors of the program running in it, like Neovim's blue. Off, every tile keeps the theme's color and draws the program's mark in its ink.",
+            ),
             Self::Themes => (
                 "Themes",
                 "Corners, outlines, shadows, glass and colors, all at once. Save keeps the look on screen as a theme; Import adds one from the clipboard.",
@@ -132,6 +137,11 @@ pub fn appearance_page_items(
         AppearancePageItem::Accent,
         AppearancePageItem::TintHue,
         AppearancePageItem::Tint,
+        AppearancePageItem::Group {
+            title: "Sidebar",
+            description: None,
+        },
+        AppearancePageItem::ProgramColors,
         AppearancePageItem::Advanced { expanded: advanced },
     ];
     if !advanced {

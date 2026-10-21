@@ -70,6 +70,7 @@ const KNOBS = [
     "pane-inactive-opacity",
     "pane-glow",
     "motion",
+    "program-colors",
     "backdrop",
     "interface-theme",
     ...MATERIAL_KNOBS,
@@ -90,6 +91,7 @@ const DEFAULTS = {
     "pane-inactive-opacity": "0.7",
     "pane-glow": "1",
     motion: "1",
+    "program-colors": "1",
     backdrop: "plain",
     glass: "theme",
 };

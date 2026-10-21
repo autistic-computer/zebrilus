@@ -65,6 +65,7 @@ const CHEVRON_SIZE: f32 = 10.0;
 const NOTE_SIZE: f32 = 11.0;
 const NOTE_LINE: f32 = 15.0;
 const HEADER_BUTTON_HEIGHT: f32 = 20.0;
+const STATUS_ICON: f32 = 14.0;
 const ROLLUP_DOT: f32 = super::STATUS_DOT_SIZE;
 const ROLLUP_SPINNER: f32 = 10.0;
 const ROLLUP_GAP: f32 = 8.0;
@@ -354,6 +355,7 @@ fn tile_stack(
         .map(|tile| StackTile {
             icon: pane_glyph(tile.tag),
             favicon: None,
+            program: tile.program,
             label: tile.label.clone().into(),
             tooltip: tile.label.clone().into(),
             select: handler.map(|handler| {
@@ -625,17 +627,6 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
         )
 }
 
-fn header_note(text: impl Into<SharedString>, color: Hsla) -> Div {
-    div()
-        .flex_none()
-        .whitespace_nowrap()
-        .text_size(px(NOTE_SIZE))
-        .line_height(px(NOTE_LINE))
-        .font_weight(FontWeight::NORMAL)
-        .text_color(color)
-        .child(text.into())
-}
-
 fn header_button(
     id: impl Into<ElementId>,
     label: &'static str,
@@ -678,39 +669,49 @@ fn chevron(
 }
 
 struct HostNote {
-    text: SharedString,
+    icon: Option<IconName>,
     color: Hsla,
-    reason: Option<SharedString>,
+    text: SharedString,
     action: Option<(&'static str, FlatEvent)>,
 }
 
 fn host_note(host: &FlatHost, cx: &App) -> Option<HostNote> {
     let theme = cx.theme();
-    let note =
-        |text: SharedString, color: Hsla, action: Option<(&'static str, FlatEvent)>| HostNote {
-            text,
-            color,
-            reason: None,
-            action,
-        };
+    let note = |icon: Option<IconName>,
+                color: Hsla,
+                text: SharedString,
+                action: Option<(&'static str, FlatEvent)>| HostNote {
+        icon,
+        color,
+        text,
+        action,
+    };
     let muted = theme.foreground.muted();
     let connect = Some(("Connect", FlatEvent::Connect(host.id)));
     Some(match &host.connection {
         HostConnection::Connected => return None,
-        HostConnection::Connecting => note("Connecting…".into(), muted, None),
-        HostConnection::Reconnecting => note("Reconnecting…".into(), muted, None),
-        HostConnection::Disconnected => note("Disconnected".into(), muted, connect),
-        HostConnection::Unreachable(reason) => HostNote {
-            reason: Some(reason.clone()).filter(|reason| !reason.is_empty()),
-            ..note(
-                "Unreachable".into(),
-                theme.danger,
-                Some(("Retry", FlatEvent::Connect(host.id))),
-            )
-        },
+        HostConnection::Connecting => note(None, muted, "Connecting…".into(), None),
+        HostConnection::Reconnecting => note(None, muted, "Reconnecting…".into(), None),
+        HostConnection::Disconnected => note(
+            Some(IconName::CircleX),
+            muted,
+            "Disconnected".into(),
+            connect,
+        ),
+        HostConnection::Unreachable(reason) => note(
+            Some(IconName::CircleX),
+            theme.danger,
+            if reason.is_empty() {
+                "Unreachable".into()
+            } else {
+                format!("Unreachable: {reason}").into()
+            },
+            Some(("Retry", FlatEvent::Connect(host.id))),
+        ),
         HostConnection::Incompatible(version) => note(
-            version.clone(),
+            Some(IconName::TriangleAlert),
             theme.warning,
+            format!("Speaks {version}").into(),
             Some(("Upgrade", FlatEvent::Upgrade(host.id))),
         ),
     })
@@ -731,19 +732,17 @@ pub fn flat_host_header(
     let action = note.as_ref().and_then(|note| note.action);
     let rollup =
         (host.folded && action.is_none()).then(|| flat_rollup(&host.rollup, host.live(), cx));
-    let ssh = (host.remote && host.live() && !host.folded).then(|| header_note("ssh", muted));
     let description = note.as_ref().map(|note| note.text.clone());
     let note = note.map(|note| {
-        let text = header_note(note.text, note.color);
-        match note.reason {
-            Some(reason) => div()
-                .id(("flat-host-reason", id.0))
-                .flex_none()
-                .tooltip(move |window, cx| Tooltip::new(reason.clone()).build(window, cx))
-                .child(text)
-                .into_any_element(),
-            None => text.into_any_element(),
-        }
+        let text = note.text;
+        div()
+            .id(("flat-host-status", id.0))
+            .flex_none()
+            .tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
+            .child(match note.icon {
+                Some(icon) => glyph(icon, STATUS_ICON, HOST_NAME_SIZE, note.color, cx),
+                None => spinner(STATUS_ICON, HOST_NAME_SIZE, note.color, cx),
+            })
     });
     let hover = handler.clone();
     let click = handler.clone();
@@ -794,7 +793,6 @@ pub fn flat_host_header(
         ))
         .child(div().flex_1())
         .children(rollup)
-        .children(ssh)
         .children(note)
         .children(
             action.map(|(label, event)| {

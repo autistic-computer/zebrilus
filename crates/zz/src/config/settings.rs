@@ -866,6 +866,16 @@ impl SettingsView {
                 ),
                 cx,
             ),
+            AppearancePageItem::ProgramColors => {
+                let (title, description) = item.text().unwrap_or_default();
+                Self::boolean_setting(
+                    ConfigKey::ProgramColors,
+                    title,
+                    description,
+                    resolved.program_colors,
+                    cx,
+                )
+            }
             AppearancePageItem::Animations => Self::boolean_setting(
                 ConfigKey::Animations,
                 "Animations",
@@ -2423,6 +2433,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::StatusAgents
                 | ConfigKey::StatusHost
                 | ConfigKey::StatusUpdate
+                | ConfigKey::ProgramColors
         )
     {
         return;
@@ -2539,6 +2550,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::StatusHost
         | ConfigKey::StatusUpdate
         | ConfigKey::FlatSidebar
+        | ConfigKey::ProgramColors
         | ConfigKey::ExperimentalAgentPane
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps

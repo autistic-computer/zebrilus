@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use zz_client::program::Program;
 use zz_gpui::{
     AnyElement, App, IntoElement, ListSizingBehavior, ParentElement as _, SharedString,
     Styled as _, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
@@ -7,7 +8,7 @@ use zz_gpui::{
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, h_flex,
     navigation::{
-        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WorkspaceStatusWindowState,
+        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState,
         sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
         workspace_layout_button, workspace_palette_button, workspace_settings_button,
         workspace_sidebar_footer, workspace_sidebar_titlebar, workspace_sidebar_view_button,
@@ -15,6 +16,7 @@ use zz_ui::{
         workspace_tree_action_row, workspace_tree_disclosure, workspace_tree_marker,
         workspace_tree_row,
     },
+    program::program_mark,
 };
 
 use super::{
@@ -48,7 +50,7 @@ pub const STORY: Story = Story {
         Section {
             id: "markers",
             name: "Markers and badges",
-            summary: "The icon slot at the start of each row: the zz host logo, node icons, the bell dot at top right and the agent badge at bottom right.",
+            summary: "The icon slot at the start of each row: the zz host logo, node icons, the bell dot at top right and the agent badge at bottom right. A pane running a known program, and a folded window whose active pane runs one, shows that program's lit tile instead, the badges sitting on its corners.",
             build: |_, cx| stateless(markers, cx),
         },
         Section {
@@ -294,6 +296,31 @@ fn node_icon(icon: IconName, cx: &App) -> Icon {
     Icon::new(icon).medium().text_color(cx.theme().foreground)
 }
 
+const PROGRAM_SAMPLE: [&str; 10] = [
+    "neovim",
+    "rust",
+    "gitchanges",
+    "docker",
+    "python",
+    "claude",
+    "codex",
+    "github",
+    "gemini",
+    "bottom",
+];
+
+fn program_marker(id: &'static str, brand: bool, cx: &App) -> AnyElement {
+    let program = Program::by_id(id).expect("catalog program");
+    let mark = program_mark(
+        program,
+        px(WORKSPACE_TREE_NODE_ICON_SIZE),
+        cx.theme().foreground.muted(),
+        brand.then(|| cx.theme().ground().fill),
+    )
+    .unwrap_or_else(|| node_icon(IconName::SquareTerminal, cx).into_any_element());
+    labeled(id, tree_node_marker(mark, false, None, cx), cx)
+}
+
 fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
     let badge = |badge: Badge| Some(badge.color(cx));
     states()
@@ -332,6 +359,35 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         tree_node_marker(node_icon(icon, cx), false, None, cx),
                         cx,
                     )
+                }),
+            ),
+        )
+        .state(
+            "programs, in the row's ink",
+            row().children(PROGRAM_SAMPLE.map(|id| program_marker(id, false, cx))),
+        )
+        .state(
+            "programs, in their brand color",
+            row().children(PROGRAM_SAMPLE.map(|id| program_marker(id, true, cx))),
+        )
+        .state(
+            "a program with the bell and badges",
+            row().children(
+                [
+                    ("bell", true, None),
+                    ("needs input", false, badge(Badge::NeedsInput)),
+                    ("failed", false, badge(Badge::Failed)),
+                    ("done", false, badge(Badge::Finished)),
+                ]
+                .map(|(label, bell, badge)| {
+                    let mark = program_mark(
+                        Program::by_id("claude").expect("catalog program"),
+                        px(WORKSPACE_TREE_NODE_ICON_SIZE),
+                        cx.theme().foreground.muted(),
+                        None,
+                    )
+                    .expect("claude has a mark");
+                    labeled(label, tree_node_marker(mark, bell, badge, cx), cx)
                 }),
             ),
         )

@@ -120,6 +120,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `status-host` | `true` | `true` or `false` | Whether the bar shows the host name while attached to a remote host. Local attachment has no host item |
 | `status-update` | `true` | `true` or `false` | Whether an available release appears in the bar with its version and an install action. `check-for-updates` separately controls the release check |
 | `flat-sidebar` | `false` | `true` or `false` | Whether the sidebar shows the flat window list instead of the session tree. The eye button at the bottom right of the sidebar sets it |
+| `program-colors` | `true` | `true` or `false` | Whether a flat sidebar tile takes the colors of the program running in it. Off, tiles keep the theme's color and draw the program's mark in its ink. Settings › Appearance › Sidebar sets it; the web and iPad clients keep their own switch |
 | `experimental-agent-pane` | `true` | `true` or `false` | Whether new Agent panes can be created at all . picker row, palette completion, and the daemon's `split-window --kind agent` and `select-pane-kind agent` |
 | `experimental-editor-pane` | `false` | `true` or `false` | Whether new Editor panes can be created at all . picker row, palette completion, and the daemon's `select-pane-kind editor` |
 | `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped treatment: margin, radius, a glass frame, and no split dividers |

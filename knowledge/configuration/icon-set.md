@@ -4,17 +4,21 @@ title: zz icon set
 description: zz's own icons, drawn from skeletons in the Mac school so their corners follow the theme radius and superellipse smoothing, how the app and the site get them, and how to draw, preview and review a new one.
 resource: crates/zz-gpui-kit/src/icon/mac.json
 tags: [ui, icons, zz-gpui-kit, storybook, site, theme]
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-20T00:00:00Z
 ---
 
 # Overview
 
-zz has its own icon set: 83 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
+zz has its own icon set: 85 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
 `brand-chrome`, `zz`), which keep their own artwork as files in `crates/zz-gpui-kit/assets/icons`. The
 set lives as skeletons in `crates/zz-gpui-kit/src/icon/mac.json`, not as SVG files, and is drawn at
 paint time for the current theme, so radius 0 gives flat icons and higher radii round them the way zz
 rounds panes. The desktop app, the web and iOS clients and the storybook all draw it; Tabler, which zz
 shipped before, is gone except for the `brand-chrome` mark.
+
+Program tiles in the flat sidebar draw the generic programs (a terminal, `log`, `sleep`, `top`,
+`caffeinate`, lazygit, an inspector, a browser) from this set too, through the `icon` field of
+`zz_client::program::Program`; brand programs use their own marks from `crates/zz-ui/assets/programs`.
 
 The set went through two rounds on 2026-10-10. The first followed Tabler's skeletons on a 2px stroke and
 was dropped as too close to Tabler. The second, the one kept, follows the Mac school. These are our own

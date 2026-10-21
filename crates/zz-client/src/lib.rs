@@ -25,6 +25,7 @@ pub mod navigation;
 pub mod pane_separator;
 pub mod path_insert;
 pub mod path_rank;
+pub mod program;
 pub mod scrollback;
 mod status;
 mod status_bar;

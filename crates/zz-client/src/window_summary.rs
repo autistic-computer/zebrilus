@@ -6,7 +6,10 @@ use zz_protocol::{
     PaneStatusState, SessionId, SessionSnapshot, ShellCommand, WindowId, WindowSnapshot,
 };
 
-use crate::navigation::{SessionLabel, last_component, ordered_panes, pane_label, session_label};
+use crate::{
+    navigation::{SessionLabel, last_component, ordered_panes, pane_label, session_label},
+    program::{Program, resolve},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneTag {
@@ -22,6 +25,7 @@ pub struct PaneTile {
     pub pane: PaneId,
     pub tag: PaneTag,
     pub label: String,
+    pub program: Option<&'static Program>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,6 +156,18 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
 }
 
 #[must_use]
+pub fn pane_program(pane: &PaneSnapshot) -> Option<&'static Program> {
+    match &pane.kind {
+        PaneKindSnapshot::Agent(agent) => Program::by_id(match agent.provider {
+            AgentProvider::ClaudeCode => "claude",
+            AgentProvider::Codex => "codex",
+        }),
+        PaneKindSnapshot::Terminal => resolve(pane.summary.process.iter().map(String::as_str)),
+        _ => None,
+    }
+}
+
+#[must_use]
 pub fn pane_attention(pane: &PaneSnapshot) -> Attention {
     let state = pane.status.as_ref().map(|status| status.state);
     match state {
@@ -186,6 +202,7 @@ pub fn summarize_window(window: &WindowSnapshot) -> WindowSummary {
             pane: pane.id,
             tag: pane_tag(&pane.kind),
             label: pane_label(pane),
+            program: pane_program(pane),
         })
         .collect();
     WindowSummary {
@@ -904,6 +921,54 @@ mod tests {
         assert_eq!(summarize_window(&window).headline, PaneId(2));
         window.panes.get_mut(&PaneId(3)).unwrap().summary.changed_at = 60;
         assert_eq!(summarize_window(&window).headline, PaneId(3));
+    }
+
+    #[test]
+    fn tiles_wear_the_program_running_in_the_pane() {
+        let running = |id, process: &[&str]| {
+            let mut pane = terminal(id, "x");
+            pane.summary.process = process.iter().map(|entry| (*entry).to_owned()).collect();
+            pane
+        };
+        let mut browser = running(4, &["/opt/homebrew/bin/nvim"]);
+        browser.kind = PaneKindSnapshot::Browser(BrowserDescriptor::single(
+            String::new(),
+            "default".to_owned(),
+        ));
+        let summary = summarize_window(&window(
+            1,
+            vec![
+                running(
+                    1,
+                    &[
+                        "/home/me/bin/claude.py",
+                        "/home/me/bin/claude",
+                        "/usr/bin/python3",
+                        "python3",
+                    ],
+                ),
+                running(2, &["codex", "sleep", "/bin/sleep"]),
+                running(3, &[]),
+                browser,
+                agent(5, "x"),
+                running(6, &["/usr/local/bin/unknown-tool", "unknown-tool"]),
+            ],
+        ));
+        assert_eq!(
+            summary
+                .tiles
+                .iter()
+                .map(|tile| tile.program.map(|program| program.id))
+                .collect::<Vec<_>>(),
+            [
+                Some("claude"),
+                Some("codex"),
+                None,
+                None,
+                Some("claude"),
+                None
+            ]
+        );
     }
 
     #[test]

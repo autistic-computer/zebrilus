@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use zz_client::{ChromeAction, SIDEBAR_TABLE};
+use zz_client::{ChromeAction, SIDEBAR_TABLE, program::Program};
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Hsla,
     InteractiveElement as _, IntoElement, KeyBinding, ListSizingBehavior, MouseButton,
@@ -34,7 +34,9 @@ use zz_ui::navigation::{
     workspace_tree_opened, workspace_tree_row,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, rems_from_px,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _,
+    program::program_mark,
+    rems_from_px,
     scroll::ScrollableElement as _,
     settings::{
         settings_navigation_back_button, settings_navigation_back_row, settings_navigation_button,
@@ -990,6 +992,7 @@ struct VisibleTreeEntry {
     expandable: bool,
     expanded: bool,
     on_active_path: bool,
+    program: Option<&'static Program>,
 }
 
 impl VisibleTreeEntry {
@@ -1029,6 +1032,7 @@ impl TreeProjection {
                     expandable: true,
                     expanded: host_expanded,
                     on_active_path: false,
+                    program: None,
                 },
             );
 
@@ -1052,6 +1056,7 @@ impl TreeProjection {
                         expandable: session_expandable,
                         expanded: session_expanded,
                         on_active_path: session.active,
+                        program: None,
                     },
                 );
 
@@ -1075,6 +1080,11 @@ impl TreeProjection {
                             expandable: window_expandable,
                             expanded: window_expanded,
                             on_active_path: window.active,
+                            program: if window_expanded {
+                                None
+                            } else {
+                                window.program()
+                            },
                         },
                     );
 
@@ -1095,6 +1105,7 @@ impl TreeProjection {
                                 expandable: false,
                                 expanded: false,
                                 on_active_path: window.active && pane.id == window.active_pane,
+                                program: pane.program,
                             },
                         );
                     }
@@ -1556,13 +1567,21 @@ fn render_node_marker(
         TreeNodeKind::Window => IconName::AppWindow,
         TreeNodeKind::Pane { kind } => pane_kind_icon(*kind),
     };
+    let color = if on_active_path {
+        cx.theme().foreground
+    } else {
+        cx.theme().foreground.muted()
+    };
+    let size = rems_from_px(TREE_NODE_ICON_SIZE);
     tree_node_marker(
-        Icon::new(icon)
-            .size(rems_from_px(TREE_NODE_ICON_SIZE))
-            .text_color(if on_active_path {
-                cx.theme().foreground
-            } else {
-                cx.theme().foreground.muted()
+        entry
+            .program
+            .and_then(|program| program_mark(program, size, color, None))
+            .unwrap_or_else(|| {
+                Icon::new(icon)
+                    .size(size)
+                    .text_color(color)
+                    .into_any_element()
             }),
         belled,
         badge.map(|badge| agent_badge_color(badge, cx)),
@@ -2365,6 +2384,38 @@ mod tests {
                 .map(|entry| entry.on_active_path)
                 .collect::<Vec<_>>(),
             vec![false, true, true, true, false]
+        );
+    }
+
+    #[test]
+    fn panes_and_folded_windows_wear_the_program_running_in_them() {
+        let mut snapshot = snapshot_with_two_panes();
+        let window = &mut snapshot.sessions[0].windows[0];
+        window.active_pane = PaneId(101);
+        window.panes.get_mut(&PaneId(101)).unwrap().summary.process =
+            vec!["/opt/homebrew/bin/nvim".to_owned()];
+        let model = local_model(&snapshot, Some(SessionId(1)));
+        let programs = |expanded: &BTreeSet<TreeNode>| {
+            TreeProjection::new(&model, expanded)
+                .entries
+                .iter()
+                .map(|entry| entry.program.map(|program| program.id))
+                .collect::<Vec<_>>()
+        };
+        let mut expanded = BTreeSet::from([
+            TreeNode::Host(HostId::LOCAL),
+            TreeNode::Target(HostId::LOCAL, TreeTarget::Session(SessionId(1))),
+        ]);
+
+        assert_eq!(programs(&expanded), [None, None, Some("neovim")]);
+
+        expanded.insert(TreeNode::Target(
+            HostId::LOCAL,
+            TreeTarget::Window(WindowId(11)),
+        ));
+        assert_eq!(
+            programs(&expanded),
+            [None, None, None, None, Some("neovim")]
         );
     }
 
