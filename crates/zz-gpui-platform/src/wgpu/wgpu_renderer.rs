@@ -25,6 +25,8 @@ const INITIAL_INSTANCE_DATA_SIZE: u64 = 2 * 1024 * 1024;
 
 const INSTANCE_TEXTURE_TEXEL_SIZE: u64 = 16;
 
+const PATH_TEXTURE_GRANULARITY: u32 = 256;
+
 /// Shader variant for backends with storage buffer support: the shared shader
 /// logic plus the storage-buffer instance transport.
 const STORAGE_BUFFER_SHADERS: &str = concat!(
@@ -59,6 +61,39 @@ fn instance_part<T>(instances: &[T]) -> (&[u8], u64) {
     (bytes, (std::mem::size_of::<T>() as u64).max(1))
 }
 
+fn path_raster_bounds(scene: &Scene, size: Size<DevicePixels>) -> Option<Bounds<DevicePixels>> {
+    fn union_paths(scene: &Scene, union: &mut Option<Bounds<ScaledPixels>>) {
+        for path in &scene.paths {
+            let bounds = path.clipped_bounds();
+            *union = Some(union.map_or(bounds, |union| union.union(&bounds)));
+        }
+        for layer in &scene.shader_layers {
+            union_paths(&layer.scene, union);
+        }
+    }
+    let mut union = None;
+    union_paths(scene, &mut union);
+    let union = union?;
+    let left = union.origin.x.0.floor().max(0.0);
+    let top = union.origin.y.0.floor().max(0.0);
+    let right = (union.origin.x.0 + union.size.width.0)
+        .ceil()
+        .min(size.width.0 as f32);
+    let bottom = (union.origin.y.0 + union.size.height.0)
+        .ceil()
+        .min(size.height.0 as f32);
+    (right > left && bottom > top).then(|| Bounds {
+        origin: Point {
+            x: DevicePixels(left as i32),
+            y: DevicePixels(top as i32),
+        },
+        size: Size {
+            width: DevicePixels((right - left) as i32),
+            height: DevicePixels((bottom - top) as i32),
+        },
+    })
+}
+
 fn least_common_multiple(left: u64, right: u64) -> u64 {
     let mut first = left;
     let mut second = right;
@@ -82,7 +117,8 @@ struct GlobalParams {
     window_mask_size: [f32; 2],
     window_mask_radii: [f32; 4],
     clip_window_shadows: u32,
-    _window_mask_pad: [u32; 3],
+    _window_mask_pad: u32,
+    path_origin: [f32; 2],
 }
 
 #[repr(C)]
@@ -267,6 +303,7 @@ struct WgpuResources {
     path_intermediate_view: Option<wgpu::TextureView>,
     path_msaa_texture: Option<wgpu::Texture>,
     path_msaa_view: Option<wgpu::TextureView>,
+    path_bounds: Option<Bounds<DevicePixels>>,
     shader_layers: ShaderLayerResources,
     /// Created when a scene first paints glass.
     glass: Option<GlassResources>,
@@ -1571,6 +1608,7 @@ impl WgpuRendererCore {
                 path_intermediate_view: None,
                 path_msaa_texture: None,
                 path_msaa_view: None,
+                path_bounds: None,
                 shader_layers,
                 glass: None,
             },
@@ -1618,19 +1656,28 @@ impl WgpuRendererCore {
         &mut self.resources
     }
 
-    /// Path rendering goes through an intermediate texture that must match the frame
-    /// target's dimensions, so the textures are keyed by size and rebuilt on mismatch.
-    fn ensure_intermediate_textures(&mut self, size: Size<DevicePixels>) {
-        let width = size.width.0 as u32;
-        let height = size.height.0 as u32;
-        if self
+    fn ensure_intermediate_textures(
+        &mut self,
+        needed: Size<DevicePixels>,
+        frame: Size<DevicePixels>,
+    ) -> [f32; 2] {
+        let current = self
             .resources
             .path_intermediate_texture
             .as_ref()
-            .is_some_and(|texture| texture.width() == width && texture.height() == height)
-        {
-            return;
+            .map_or((0, 0), |texture| (texture.width(), texture.height()));
+        let needed = (needed.width.0 as u32, needed.height.0 as u32);
+        if current.0 >= needed.0 && current.1 >= needed.1 {
+            return [current.0 as f32, current.1 as f32];
         }
+        let grow = |needed: u32, current: u32, frame: i32| {
+            needed
+                .next_multiple_of(PATH_TEXTURE_GRANULARITY)
+                .min((frame as u32).max(needed))
+                .max(current)
+        };
+        let width = grow(needed.0, current.0, frame.width.0);
+        let height = grow(needed.1, current.1, frame.height.0);
 
         let format = self.target_format;
         let path_sample_count = self.rendering_params.path_sample_count;
@@ -1652,6 +1699,7 @@ impl WgpuRendererCore {
         .unwrap_or((None, None));
         resources.path_msaa_texture = path_msaa_texture;
         resources.path_msaa_view = path_msaa_view;
+        [width as f32, height as f32]
     }
 
     fn render_frame(
@@ -1684,6 +1732,14 @@ impl WgpuRendererCore {
             _pad: 0,
         };
 
+        let path_bounds = path_raster_bounds(scene, size);
+        let path_viewport =
+            path_bounds.map(|bounds| self.ensure_intermediate_textures(bounds.size, size));
+        self.resources.path_bounds = path_bounds;
+        let path_origin = path_bounds.map_or([0.0; 2], |bounds| {
+            [bounds.origin.x.0 as f32, bounds.origin.y.0 as f32]
+        });
+
         let window_mask = scene.window_corner_mask.unwrap_or_default();
         let globals = GlobalParams {
             viewport_size: [size.width.0 as f32, size.height.0 as f32],
@@ -1701,9 +1757,11 @@ impl WgpuRendererCore {
                 window_mask.corner_radii.bottom_left.0,
             ],
             clip_window_shadows: self.clip_window_shadows as u32,
-            _window_mask_pad: [0; 3],
+            _window_mask_pad: 0,
+            path_origin,
         };
         let path_globals = GlobalParams {
+            viewport_size: path_viewport.unwrap_or(globals.viewport_size),
             premultiplied_alpha: 0,
             ..globals
         };
@@ -1855,7 +1913,7 @@ impl WgpuRendererCore {
 
                     drop(pass);
                     let rasterized =
-                        self.draw_paths_to_intermediate(encoder, paths, size, instance_offset)?;
+                        self.draw_paths_to_intermediate(encoder, paths, instance_offset)?;
 
                     pass = begin_pass(
                         encoder,
@@ -2427,7 +2485,6 @@ impl WgpuRendererCore {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         paths: &[Path<ScaledPixels>],
-        size: Size<DevicePixels>,
         instance_offset: &mut u64,
     ) -> Result<bool> {
         let mut vertices = Vec::new();
@@ -2441,11 +2498,9 @@ impl WgpuRendererCore {
             }));
         }
 
-        if vertices.is_empty() {
+        if vertices.is_empty() || self.resources.path_bounds.is_none() {
             return Ok(false);
         }
-
-        self.ensure_intermediate_textures(size);
 
         let vertex_binding = self.write_instance_binding(instance_offset, &vertices)?;
 

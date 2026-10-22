@@ -87,9 +87,8 @@ struct GlobalParams {
     window_mask_size: vec2<f32>,
     window_mask_radii: vec4<f32>,
     clip_window_shadows: u32,
-    _window_mask_pad_0: u32,
-    _window_mask_pad_1: u32,
-    _window_mask_pad_2: u32,
+    _window_mask_pad: u32,
+    path_origin: vec2<f32>,
 }
 
 struct GammaParams {
@@ -1186,7 +1185,7 @@ fn vs_path_rasterization(@builtin(vertex_index) vertex_id: u32) -> PathRasteriza
     let v = load_path_vertex(vertex_id);
 
     var out = PathRasterizationVarying();
-    out.position = to_device_position_impl(v.xy_position);
+    out.position = to_device_position_impl(v.xy_position - globals.path_origin);
     out.st_position = v.st_position;
     out.vertex_id = vertex_id;
     out.clip_distances = distance_from_clip_rect_impl(v.xy_position, v.bounds);
@@ -1221,7 +1220,7 @@ fn fs_path_rasterization(input: PathRasterizationVarying) -> @location(0) vec4<f
         background.solid,
         background.colors,
     );
-    let color = gradient_color(background, input.position.xy, bounds,
+    let color = gradient_color(background, input.position.xy + globals.path_origin, bounds,
         prepared_gradient.solid, prepared_gradient.color0, prepared_gradient.color1);
     return vec4<f32>(color.rgb * color.a * alpha, color.a * alpha);
 }
@@ -1244,9 +1243,8 @@ fn vs_path(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     let sprite = load_path_sprite(instance_id);
     // Don't apply content mask because it was already accounted for when rasterizing the path.
     let device_position = to_device_position(unit_vertex, sprite.bounds);
-    // For screen-space intermediate texture, convert screen position to texture coordinates
     let screen_position = sprite.bounds.origin + unit_vertex * sprite.bounds.size;
-    let texture_coords = screen_position / globals.viewport_size;
+    let texture_coords = (screen_position - globals.path_origin) / vec2<f32>(textureDimensions(t_sprite, 0));
 
     var out = PathVarying();
     out.position = device_position;
