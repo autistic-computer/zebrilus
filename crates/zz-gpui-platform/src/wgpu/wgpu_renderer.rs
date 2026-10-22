@@ -5157,6 +5157,236 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             )
         }
 
+        fn polychrome_tile(renderer: &WgpuHeadlessRenderer) -> anyhow::Result<AtlasTile> {
+            let size = Size {
+                width: DevicePixels(12),
+                height: DevicePixels(12),
+            };
+            let bytes: Vec<u8> = (0..12)
+                .flat_map(|y| {
+                    (0..12).flat_map(move |x| {
+                        [(x * 21) as u8, (y * 21) as u8, ((x + y) * 9) as u8, 255]
+                    })
+                })
+                .collect();
+            renderer
+                .core
+                .atlas
+                .get_or_insert_with(
+                    AtlasKey::Image(zz_gpui::RenderImageParams {
+                        image_id: zz_gpui::ImageId(9001),
+                        frame_index: 0,
+                    }),
+                    &mut || Ok(Some((size, Cow::Owned(bytes.clone())))),
+                )?
+                .ok_or_else(|| anyhow::anyhow!("no image tile"))
+        }
+
+        fn clip_cases(
+            mono: AtlasTile,
+            poly: AtlasTile,
+        ) -> Vec<(
+            &'static str,
+            Box<dyn Fn(ContentMask<ScaledPixels>) -> zz_gpui::Primitive>,
+        )> {
+            let accent = hsla(0.1, 0.9, 0.6, 0.9);
+            let shadow = move |bounds, radius: f32, blur: f32, inset| {
+                move |content_mask| {
+                    Shadow {
+                        order: 0,
+                        blur_radius: ScaledPixels(blur),
+                        bounds,
+                        corner_radii: Corners::all(radius.into()),
+                        content_mask,
+                        color: accent,
+                        element_bounds: rect(16.0, 8.0, 64.0, 48.0),
+                        element_corner_radii: Corners::all(ScaledPixels(12.0)),
+                        inset,
+                        corner_smoothing: 4.0,
+                    }
+                    .into()
+                }
+            };
+            let sprite = move |bounds, transformation| {
+                move |content_mask| {
+                    MonochromeSprite {
+                        order: 0,
+                        pad: 0,
+                        bounds,
+                        content_mask,
+                        color: hsla(0.5, 0.8, 0.7, 1.0),
+                        tile: mono,
+                        transformation,
+                    }
+                    .into()
+                }
+            };
+            let underline = move |wavy: bool| {
+                move |content_mask| {
+                    Underline {
+                        order: 0,
+                        pad: 0,
+                        bounds: rect(6.0, 30.0, 84.0, 8.0),
+                        content_mask,
+                        color: accent,
+                        thickness: ScaledPixels(2.0),
+                        wavy: wavy.into(),
+                    }
+                    .into()
+                }
+            };
+            vec![
+                (
+                    "rounded bordered gradient quad",
+                    Box::new(|content_mask| {
+                        Quad {
+                            bounds: rect(8.0, 6.0, 80.0, 52.0),
+                            content_mask,
+                            background: linear_gradient(
+                                30.0,
+                                linear_color_stop(hsla(0.0, 0.8, 0.5, 1.0), 0.0),
+                                linear_color_stop(hsla(0.6, 0.8, 0.5, 0.6), 1.0),
+                            ),
+                            border_color: hsla(0.3, 0.9, 0.7, 0.8),
+                            corner_radii: Corners::all(ScaledPixels(12.0)),
+                            border_widths: Edges::all(ScaledPixels(3.0)),
+                            corner_smoothing: 4.0,
+                            ..Default::default()
+                        }
+                        .into()
+                    }),
+                ),
+                (
+                    "dashed border",
+                    Box::new(|content_mask| {
+                        Quad {
+                            border_style: BorderStyle::Dashed,
+                            bounds: rect(10.0, 8.0, 76.0, 48.0),
+                            content_mask,
+                            background: hsla(0.0, 0.0, 0.0, 0.0).into(),
+                            border_color: hsla(0.8, 0.9, 0.7, 1.0),
+                            corner_radii: Corners::all(ScaledPixels(10.0)),
+                            border_widths: Edges::all(ScaledPixels(2.0)),
+                            corner_smoothing: 2.0,
+                            ..Default::default()
+                        }
+                        .into()
+                    }),
+                ),
+                (
+                    "blurred drop shadow",
+                    Box::new(shadow(rect(24.0, 16.0, 48.0, 32.0), 10.0, 6.0, 0)),
+                ),
+                (
+                    "sharp-cornered drop shadow",
+                    Box::new(shadow(rect(24.0, 16.0, 48.0, 32.0), 1.0, 8.0, 0)),
+                ),
+                (
+                    "inset shadow",
+                    Box::new(shadow(rect(24.0, 16.0, 48.0, 32.0), 8.0, 6.0, 1)),
+                ),
+                (
+                    "glyph",
+                    Box::new(sprite(
+                        rect(40.0, 20.0, GLYPH_WIDTH as f32, GLYPH_HEIGHT as f32),
+                        TransformationMatrix::unit(),
+                    )),
+                ),
+                (
+                    "stretched glyph",
+                    Box::new(sprite(
+                        rect(20.0, 6.0, 54.0, 50.0),
+                        TransformationMatrix::unit(),
+                    )),
+                ),
+                (
+                    "translated glyph",
+                    Box::new(sprite(
+                        rect(20.0, 6.0, 40.0, 40.0),
+                        TransformationMatrix::unit()
+                            .translate(point(ScaledPixels(9.0), ScaledPixels(5.0))),
+                    )),
+                ),
+                (
+                    "rotated glyph",
+                    Box::new(sprite(
+                        rect(30.0, 12.0, 36.0, 36.0),
+                        TransformationMatrix::unit()
+                            .translate(point(ScaledPixels(48.0), ScaledPixels(30.0)))
+                            .rotate(zz_gpui::radians(0.4))
+                            .translate(point(ScaledPixels(-48.0), ScaledPixels(-30.0))),
+                    )),
+                ),
+                (
+                    "rounded image",
+                    Box::new(move |content_mask| {
+                        PolychromeSprite {
+                            order: 0,
+                            pad: 0,
+                            grayscale: false.into(),
+                            opacity: 0.9,
+                            bounds: rect(30.0, 12.0, 36.0, 36.0),
+                            content_mask,
+                            corner_radii: Corners::all(ScaledPixels(8.0)),
+                            corner_smoothing: 4.0,
+                            pad2: 0,
+                            tile: poly,
+                        }
+                        .into()
+                    }),
+                ),
+                ("underline", Box::new(underline(false))),
+                ("wavy underline", Box::new(underline(true))),
+            ]
+        }
+
+        #[test]
+        fn clipping_keeps_pixels_inside_the_mask_and_clears_the_rest() -> anyhow::Result<()> {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let size = device_size(96, 64);
+            let mono = glyph_tile(&renderer)?;
+            let poly = polychrome_tile(&renderer)?;
+            let masks = [
+                rect(20.0, 10.0, 40.0, 30.0),
+                rect(0.0, 0.0, 48.0, 64.0),
+                rect(50.0, 30.0, 46.0, 34.0),
+                rect(33.0, 0.0, 1.0, 64.0),
+                rect(0.0, 27.0, 96.0, 1.0),
+                rect(30.25, 14.75, 20.375, 17.125),
+            ];
+            for (name, primitive) in clip_cases(mono, poly) {
+                let render = |renderer: &mut WgpuHeadlessRenderer, bounds| {
+                    let mut scene = Scene::default();
+                    scene.insert_primitive(primitive(ContentMask { bounds }));
+                    scene.finish();
+                    renderer.render_scene_to_image(&scene, size)
+                };
+                let unclipped = render(&mut renderer, rect(0.0, 0.0, 96.0, 64.0))?;
+                assert!(
+                    unclipped.pixels().any(|pixel| pixel.0 != BLACK),
+                    "{name} drew nothing"
+                );
+                for mask in masks {
+                    let clipped = render(&mut renderer, mask)?;
+                    for (x, y, pixel) in clipped.enumerate_pixels() {
+                        let center = (x as f32 + 0.5, y as f32 + 0.5);
+                        let inside = (mask.left().0..mask.right().0).contains(&center.0)
+                            && (mask.top().0..mask.bottom().0).contains(&center.1);
+                        let expected = if inside {
+                            unclipped.get_pixel(x, y).0
+                        } else {
+                            BLACK
+                        };
+                        assert_eq!(
+                            pixel.0, expected,
+                            "{name} clipped to {mask:?} at ({x}, {y})"
+                        );
+                    }
+                }
+            }
+            Ok(())
+        }
+
         #[test]
         #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_overdraw -- --ignored --nocapture"]
         fn bench_overdraw() -> anyhow::Result<()> {
