@@ -232,10 +232,17 @@ impl SessionId {
     }
 }
 
+#[must_use]
 pub struct Timer(oneshot::Receiver<()>);
 
 impl Timer {
     pub fn new(rx: oneshot::Receiver<()>) -> Self {
+        Timer(rx)
+    }
+
+    pub fn ready() -> Self {
+        let (tx, rx) = oneshot::channel();
+        tx.send(()).ok();
         Timer(rx)
     }
 }

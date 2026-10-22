@@ -10,7 +10,7 @@ use std::{future::Future, marker::PhantomData, rc::Rc, sync::Arc, time::Duration
 use std::{mem, pin::Pin};
 
 pub use crate::scheduler::{
-    DedicatedExecutor, FallibleTask, LocalExecutor as SchedulerLocalExecutor, Priority, Task,
+    DedicatedExecutor, FallibleTask, LocalExecutor as SchedulerLocalExecutor, Priority, Task, Timer,
 };
 
 /// A pointer to the executor that is currently running,
@@ -176,15 +176,15 @@ impl BackgroundExecutor {
         self.inner.scheduler().clock().now()
     }
 
-    /// Returns a task that will complete after the given duration.
+    /// Returns a future that will complete after the given duration.
     /// Depending on other concurrent tasks the elapsed duration may be longer
     /// than requested.
     #[track_caller]
-    pub fn timer(&self, duration: Duration) -> Task<()> {
+    pub fn timer(&self, duration: Duration) -> Timer {
         if duration.is_zero() {
-            return Task::ready(());
+            return Timer::ready();
         }
-        self.spawn(self.inner.scheduler().timer(duration))
+        self.inner.scheduler().timer(duration)
     }
 
     /// In tests, run an arbitrary number of tasks (determined by the SEED environment variable)

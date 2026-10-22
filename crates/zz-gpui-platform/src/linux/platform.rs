@@ -24,7 +24,7 @@ use ashpd::{
     },
     enumflags2::BitFlags,
 };
-use calloop::{LoopSignal, channel::Sender};
+use calloop::{EventLoop, LoopSignal, channel::Sender};
 use futures::channel::oneshot;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
@@ -141,8 +141,8 @@ pub(crate) struct LinuxCommon {
 }
 
 impl LinuxCommon {
-    pub fn new(
-        signal: LoopSignal,
+    pub fn new<Data: 'static>(
+        event_loop: &EventLoop<'static, Data>,
     ) -> (
         Self,
         PriorityQueueCalloopReceiver<RunnableVariant>,
@@ -167,6 +167,7 @@ impl LinuxCommon {
         let callbacks = PlatformHandlers::default();
 
         let dispatcher = Arc::new(LinuxDispatcher::new(main_sender));
+        dispatcher.run_main_thread_timers_on(&event_loop.handle());
 
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
 
@@ -180,7 +181,7 @@ impl LinuxCommon {
             auto_hide_scrollbars: false,
             button_layout: WindowButtonLayout::linux_default(),
             callbacks,
-            signal,
+            signal: event_loop.get_signal(),
             menus: Vec::new(),
             app_name: None,
             system_notifications: crate::linux::system_notifications::SystemNotificationState::new(
@@ -317,6 +318,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         on_finish_launching();
 
         LinuxClient::run(&self.inner);
+        crate::linux::stop_main_thread_timers();
 
         let quit = self
             .inner

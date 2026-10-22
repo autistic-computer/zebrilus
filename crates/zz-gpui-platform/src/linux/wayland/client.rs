@@ -886,7 +886,7 @@ impl WaylandClient {
 
         let event_loop = EventLoop::<WaylandClientStatePtr>::try_new().unwrap();
 
-        let (common, main_receiver, power_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (common, main_receiver, power_receiver) = LinuxCommon::new(&event_loop);
 
         let handle = event_loop.handle();
         handle
