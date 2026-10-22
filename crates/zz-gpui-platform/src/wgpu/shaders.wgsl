@@ -204,15 +204,28 @@ fn distance_from_clip_rect_impl(position: vec2<f32>, clip_bounds: Bounds) -> vec
     return vec4<f32>(tl.x, br.x, tl.y, br.y);
 }
 
-fn distance_from_clip_rect(unit_vertex: vec2<f32>, bounds: Bounds, clip_bounds: Bounds) -> vec4<f32> {
-    let position = unit_vertex * vec2<f32>(bounds.size) + bounds.origin;
-    return distance_from_clip_rect_impl(position, clip_bounds);
-}
-
 fn distance_from_clip_rect_transformed(unit_vertex: vec2<f32>, bounds: Bounds, clip_bounds: Bounds, transform: TransformationMatrix) -> vec4<f32> {
     let position = unit_vertex * vec2<f32>(bounds.size) + bounds.origin;
     let transformed = transpose(transform.rotation_scale) * position + transform.translation;
     return distance_from_clip_rect_impl(transformed, clip_bounds);
+}
+
+fn clip_to_mask(unit_vertex: vec2<f32>, bounds: Bounds, clip_bounds: Bounds) -> vec2<f32> {
+    let low = max(bounds.origin, clip_bounds.origin);
+    let high = max(low, min(bounds.origin + bounds.size, clip_bounds.origin + clip_bounds.size));
+    return select(low, high, unit_vertex > vec2<f32>(0.5));
+}
+
+fn unit_within(position: vec2<f32>, bounds: Bounds) -> vec2<f32> {
+    return (position - bounds.origin) / bounds.size;
+}
+
+fn clip_sprite_to_mask(unit_vertex: vec2<f32>, bounds: Bounds, clip_bounds: Bounds, transform: TransformationMatrix) -> vec2<f32> {
+    if (any(transform.rotation_scale[0] != vec2<f32>(1.0, 0.0)) || any(transform.rotation_scale[1] != vec2<f32>(0.0, 1.0))) {
+        return unit_vertex;
+    }
+    let translated = Bounds(bounds.origin + transform.translation, bounds.size);
+    return unit_within(clip_to_mask(unit_vertex, translated, clip_bounds), translated);
 }
 
 // https://gamedev.stackexchange.com/questions/92015/optimized-linear-to-srgb-glsl
@@ -601,8 +614,6 @@ struct QuadVarying {
     @builtin(position) position: vec4<f32>,
     @location(0) @interpolate(flat) border_color: vec4<f32>,
     @location(1) @interpolate(flat) quad_id: u32,
-    // TODO: use `clip_distance` once Naga supports it
-    @location(2) clip_distances: vec4<f32>,
     @location(3) @interpolate(flat) background_solid: vec4<f32>,
     @location(4) @interpolate(flat) background_color0: vec4<f32>,
     @location(5) @interpolate(flat) background_color1: vec4<f32>,
@@ -614,7 +625,7 @@ fn vs_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     let quad = load_quad(instance_id);
 
     var out = QuadVarying();
-    out.position = to_device_position(unit_vertex, quad.bounds);
+    out.position = to_device_position_impl(clip_to_mask(unit_vertex, quad.bounds, quad.content_mask));
 
     let gradient = prepare_gradient_color(
         quad.background.tag,
@@ -627,17 +638,11 @@ fn vs_quad(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
     out.background_color1 = gradient.color1;
     out.border_color = hsla_to_rgba(quad.border_color);
     out.quad_id = instance_id;
-    out.clip_distances = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
     return out;
 }
 
 @fragment
 fn fs_quad(input: QuadVarying) -> @location(0) vec4<f32> {
-    // Alpha clip first, since we don't have `clip_distance`.
-    if (any(input.clip_distances < vec4<f32>(0.0))) {
-        return vec4<f32>(0.0);
-    }
-
     let quad = load_quad(input.quad_id);
 
     let background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
@@ -1060,8 +1065,6 @@ struct ShadowVarying {
     @builtin(position) position: vec4<f32>,
     @location(0) @interpolate(flat) color: vec4<f32>,
     @location(1) @interpolate(flat) shadow_id: u32,
-    //TODO: use `clip_distance` once Naga supports it
-    @location(3) clip_distances: vec4<f32>,
 }
 
 @vertex
@@ -1081,20 +1084,14 @@ fn vs_shadow(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) ins
     }
 
     var out = ShadowVarying();
-    out.position = to_device_position(unit_vertex, geometry);
+    out.position = to_device_position_impl(clip_to_mask(unit_vertex, geometry, shadow.content_mask));
     out.color = hsla_to_rgba(shadow.color);
     out.shadow_id = instance_id;
-    out.clip_distances = distance_from_clip_rect(unit_vertex, geometry, shadow.content_mask);
     return out;
 }
 
 @fragment
 fn fs_shadow(input: ShadowVarying) -> @location(0) vec4<f32> {
-    // Alpha clip first, since we don't have `clip_distance`.
-    if (any(input.clip_distances < vec4<f32>(0.0))) {
-        return vec4<f32>(0.0);
-    }
-
     let shadow = load_shadow(input.shadow_id);
     let half_size = shadow.bounds.size / 2.0;
     let center = shadow.bounds.origin + half_size;
@@ -1280,8 +1277,6 @@ struct UnderlineVarying {
     @builtin(position) position: vec4<f32>,
     @location(0) @interpolate(flat) color: vec4<f32>,
     @location(1) @interpolate(flat) underline_id: u32,
-    //TODO: use `clip_distance` once Naga supports it
-    @location(3) clip_distances: vec4<f32>,
 }
 
 @vertex
@@ -1290,10 +1285,9 @@ fn vs_underline(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) 
     let underline = load_underline(instance_id);
 
     var out = UnderlineVarying();
-    out.position = to_device_position(unit_vertex, underline.bounds);
+    out.position = to_device_position_impl(clip_to_mask(unit_vertex, underline.bounds, underline.content_mask));
     out.color = hsla_to_rgba(underline.color);
     out.underline_id = instance_id;
-    out.clip_distances = distance_from_clip_rect(unit_vertex, underline.bounds, underline.content_mask);
     return out;
 }
 
@@ -1301,11 +1295,6 @@ fn vs_underline(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) 
 fn fs_underline(input: UnderlineVarying) -> @location(0) vec4<f32> {
     const WAVE_FREQUENCY: f32 = 2.0;
     const WAVE_HEIGHT_RATIO: f32 = 0.8;
-
-    // Alpha clip first, since we don't have `clip_distance`.
-    if (any(input.clip_distances < vec4<f32>(0.0))) {
-        return vec4<f32>(0.0);
-    }
 
     let underline = load_underline(input.underline_id);
     if (underline.wavy == 0u)
@@ -1354,12 +1343,14 @@ fn vs_mono_sprite(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index
     let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
     let sprite = load_mono_sprite(instance_id);
 
-    var out = MonoSpriteVarying();
-    out.position = to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
+    let unit = clip_sprite_to_mask(unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
 
-    out.tile_position = to_tile_position(unit_vertex, sprite.tile);
+    var out = MonoSpriteVarying();
+    out.position = to_device_position_transformed(unit, sprite.bounds, sprite.transformation);
+
+    out.tile_position = to_tile_position(unit, sprite.tile);
     out.color = hsla_to_rgba(sprite.color);
-    out.clip_distances = distance_from_clip_rect_transformed(unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
+    out.clip_distances = distance_from_clip_rect_transformed(unit, sprite.bounds, sprite.content_mask, sprite.transformation);
     return out;
 }
 
@@ -1396,7 +1387,6 @@ struct PolySpriteVarying {
     @builtin(position) position: vec4<f32>,
     @location(0) tile_position: vec2<f32>,
     @location(1) @interpolate(flat) sprite_id: u32,
-    @location(3) clip_distances: vec4<f32>,
 }
 
 @vertex
@@ -1404,22 +1394,18 @@ fn vs_poly_sprite(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index
     let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
     let sprite = load_poly_sprite(instance_id);
 
+    let position = clip_to_mask(unit_vertex, sprite.bounds, sprite.content_mask);
+
     var out = PolySpriteVarying();
-    out.position = to_device_position(unit_vertex, sprite.bounds);
-    out.tile_position = to_tile_position(unit_vertex, sprite.tile);
+    out.position = to_device_position_impl(position);
+    out.tile_position = to_tile_position(unit_within(position, sprite.bounds), sprite.tile);
     out.sprite_id = instance_id;
-    out.clip_distances = distance_from_clip_rect(unit_vertex, sprite.bounds, sprite.content_mask);
     return out;
 }
 
 @fragment
 fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
     let sample = textureSample(t_sprite, s_sprite, input.tile_position);
-    // Alpha clip after using the derivatives.
-    if (any(input.clip_distances < vec4<f32>(0.0))) {
-        return vec4<f32>(0.0);
-    }
-
     let sprite = load_poly_sprite(input.sprite_id);
     let distance = quad_sdf_smooth(input.position.xy, sprite.bounds, sprite.corner_radii, sprite.corner_smoothing);
 
@@ -1445,7 +1431,6 @@ struct SurfaceVarying {
     @builtin(position) position: vec4<f32>,
     @location(0) texture_position: vec2<f32>,
     @location(1) @interpolate(flat) surface_id: u32,
-    @location(3) clip_distances: vec4<f32>,
 }
 
 @vertex
@@ -1453,25 +1438,17 @@ fn vs_surface(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) in
     let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
     let surface = load_surface(instance_id);
 
+    let position = clip_to_mask(unit_vertex, surface.bounds, surface.content_mask);
+
     var out = SurfaceVarying();
-    out.position = to_device_position(unit_vertex, surface.bounds);
-    out.texture_position = unit_vertex;
+    out.position = to_device_position_impl(position);
+    out.texture_position = unit_within(position, surface.bounds);
     out.surface_id = instance_id;
-    out.clip_distances = distance_from_clip_rect(unit_vertex, surface.bounds, surface.content_mask);
     return out;
 }
 
 @fragment
 fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
-    if (any(input.clip_distances < vec4<f32>(0.0))) {
-        return vec4<f32>(0.0);
-    }
-
-    // Explicitly level 0, not `textureSample`: sampling with implicit
-    // derivatives is only allowed in uniform control flow, and the clip above
-    // makes this call non-uniform. Metal and D3D let that slide, but WebGPU
-    // rejects the whole shader module, which takes every pipeline in it down.
-    // Surface textures have no mips, so level 0 is what sampling meant anyway.
     let sample = textureSampleLevel(t_sprite, s_sprite, input.texture_position, 0.0);
     // Cut the texture with the same superellipse the pane's quads draw, as
     // surface_fragment does on Metal; the content mask is rectangular, so
