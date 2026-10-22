@@ -233,16 +233,7 @@ impl Fixture {
     fn colors(&self, cx: &mut TestAppContext) -> Vec<Hsla> {
         self.update(cx, |window, _| {
             (0..self.renders.len())
-                .map(|index| {
-                    let center = leaf_center(index).scale(window.scale_factor());
-                    window
-                        .painted_quads()
-                        .iter()
-                        .rev()
-                        .find(|quad| quad.bounds.contains(&center))
-                        .and_then(|quad| quad.background.as_solid())
-                        .unwrap_or_default()
-                })
+                .map(|index| color_at(window, leaf_center(index)).unwrap_or_default())
                 .collect()
         })
     }
@@ -564,4 +555,179 @@ fn pressing_an_element_without_active_styles_rerenders_nothing(cx: &mut TestAppC
         .unwrap();
     }
     assert_eq!(renders.get(), 0);
+}
+
+fn color_at(window: &Window, position: Point<Pixels>) -> Option<Hsla> {
+    let position = position.scale(window.scale_factor());
+    window
+        .painted_quads()
+        .iter()
+        .rev()
+        .find(|quad| quad.bounds.contains(&position))
+        .and_then(|quad| quad.background.as_solid())
+}
+
+fn draw<R>(
+    cx: &mut TestAppContext,
+    window: impl Into<AnyWindowHandle>,
+    read: impl FnOnce(&Window) -> R,
+) -> R {
+    cx.update_window(window.into(), |_, window, cx| {
+        window.draw(cx).clear(cx);
+        read(window)
+    })
+    .unwrap()
+}
+
+struct Faded {
+    opacity: f32,
+    child: Entity<Leaf>,
+}
+
+impl Render for Faded {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child(
+            div().opacity(self.opacity).child(
+                self.child
+                    .clone()
+                    .cached(StyleRefinement::default().w(px(SIDE)).h(px(SIDE))),
+            ),
+        )
+    }
+}
+
+#[crate::test]
+fn a_cached_view_follows_the_opacity_of_its_parent(cx: &mut TestAppContext) {
+    let renders = Rc::new(Cell::new(0));
+    let window = cx.add_window(|_, cx| Faded {
+        opacity: 0.25,
+        child: cx.new(|_| Leaf {
+            renders: renders.clone(),
+            ..Leaf::default()
+        }),
+    });
+    let alpha = |window: &Window| color_at(window, leaf_center(0)).map(|color| color.a);
+    assert_eq!(draw(cx, window, alpha), Some(0.25));
+
+    window
+        .update(cx, |faded, _, cx| {
+            faded.opacity = 1.;
+            cx.notify();
+        })
+        .unwrap();
+    assert_eq!(draw(cx, window, alpha), Some(1.));
+    assert_eq!(renders.get(), 2);
+
+    window.update(cx, |_, _, cx| cx.notify()).unwrap();
+    assert_eq!(draw(cx, window, alpha), Some(1.));
+    assert_eq!(renders.get(), 2);
+}
+
+struct RemSized;
+
+impl Render for RemSized {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(div().size(crate::rems(1.)).bg(focused()))
+    }
+}
+
+struct RemRoot {
+    child: Entity<RemSized>,
+}
+
+impl Render for RemRoot {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child(
+            self.child
+                .clone()
+                .cached(StyleRefinement::default().w(px(SIDE)).h(px(SIDE))),
+        )
+    }
+}
+
+#[crate::test]
+fn a_cached_view_follows_the_rem_size(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, cx| RemRoot {
+        child: cx.new(|_| RemSized),
+    });
+    for rem in [16., 32.] {
+        window
+            .update(cx, |_, window, cx| {
+                window.set_rem_size(px(rem));
+                cx.notify();
+            })
+            .unwrap();
+        let painted = draw(cx, window, |window| {
+            color_at(window, point(px(rem - 1.), px(rem - 1.)))
+        });
+        assert_eq!(painted, Some(focused()));
+    }
+}
+
+struct Outer {
+    renders: Rc<Cell<usize>>,
+    inner: Entity<Leaf>,
+}
+
+impl Render for Outer {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        self.renders.set(self.renders.get() + 1);
+        div().size_full().bg(hovered()).child(
+            self.inner
+                .clone()
+                .cached(StyleRefinement::default().w(px(SIDE)).h(px(SIDE))),
+        )
+    }
+}
+
+struct OuterRoot {
+    outer: Entity<Outer>,
+}
+
+impl Render for OuterRoot {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child(
+            self.outer
+                .clone()
+                .cached(StyleRefinement::default().w(px(SIDE * 2.)).h(px(SIDE * 2.))),
+        )
+    }
+}
+
+#[crate::test]
+fn a_clean_cached_view_survives_its_cached_parent_rerendering(cx: &mut TestAppContext) {
+    let outer_renders = Rc::new(Cell::new(0));
+    let inner_renders = Rc::new(Cell::new(0));
+    let window = cx.add_window(|_, cx| {
+        let inner = cx.new(|_| Leaf {
+            renders: inner_renders.clone(),
+            ..Leaf::default()
+        });
+        OuterRoot {
+            outer: cx.new(|_| Outer {
+                renders: outer_renders.clone(),
+                inner,
+            }),
+        }
+    });
+    let quads = |window: &Window| format!("{:?}", window.painted_quads());
+    let first = draw(cx, window, quads);
+    let (outer, inner) = window
+        .update(cx, |root, _, cx| {
+            (
+                root.outer.entity_id(),
+                root.outer.read(cx).inner.entity_id(),
+            )
+        })
+        .unwrap();
+
+    for (notified, expected) in [(outer, (1, 0)), (inner, (1, 1))] {
+        outer_renders.set(0);
+        inner_renders.set(0);
+        cx.update(|cx| cx.notify(notified));
+        assert_eq!(draw(cx, window, quads), first);
+        assert_eq!((outer_renders.get(), inner_renders.get()), expected);
+    }
 }

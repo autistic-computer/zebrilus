@@ -4563,6 +4563,10 @@ impl Window {
         result
     }
 
+    pub(crate) fn with_opacity_set_at_paint<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.with_element_opacity(Some(f32::NAN), f)
+    }
+
     /// Fades the text painted in `f` across `fade`, a horizontal span in
     /// window coordinates from where text is opaque to where it is gone. Left
     /// to right it fades text out toward its end; right to left it hides text
