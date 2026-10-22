@@ -194,6 +194,38 @@ class Power:
         return out
 
 
+def thread_switches(pid):
+    found = {}
+    if not LINUX:
+        return found
+    try:
+        tids = os.listdir(f"/proc/{pid}/task")
+    except OSError:
+        return found
+    for tid in tids:
+        try:
+            status = Path(f"/proc/{pid}/task/{tid}/status").read_text()
+            name = Path(f"/proc/{pid}/task/{tid}/comm").read_text().strip()
+        except OSError:
+            continue
+        fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+        if tid == str(pid):
+            name = "main"
+        found[tid] = (name.rstrip("0123456789").rstrip("-"), int(fields["voluntary_ctxt_switches"]))
+    return found
+
+
+def wakeups(before, after, elapsed):
+    by_name = defaultdict(int)
+    for tid, (name, count) in after.items():
+        by_name[name] += count - before.get(tid, (name, 0))[1]
+    total = sum(by_name.values())
+    return {
+        "gui_wakeups_per_s": total / elapsed,
+        "gui_wakeups_by_thread": {k: round(v / elapsed, 2) for k, v in sorted(by_name.items(), key=lambda kv: -kv[1]) if v},
+    }
+
+
 def gpu_usage(pid):
     clients = {}
     try:
@@ -466,6 +498,7 @@ class Run:
         self.drive(scenario, warm_until)
         main0, total0, threads0 = thread_times(self.gui_pid)
         gpu0 = gpu_usage(self.gui_pid) if LINUX else None
+        switches0 = thread_switches(self.gui_pid)
         daemon0 = thread_times(self.daemon_pid)[1]
         power = Power(self.duration) if self.power else None
         t0 = time.time_ns()
@@ -481,6 +514,7 @@ class Run:
         t1 = time.time_ns()
         main1, total1, threads1 = thread_times(self.gui_pid)
         gpu1 = gpu_usage(self.gui_pid) if LINUX else None
+        switches1 = thread_switches(self.gui_pid)
         daemon1 = thread_times(self.daemon_pid)[1]
         elapsed = (t1 - t0) / 1e9
         power = power.stop(elapsed) if power else {}
@@ -489,6 +523,7 @@ class Run:
             power["gpu_resident"] = gpu1[1]
         return {
             **power,
+            **(wakeups(switches0, switches1, elapsed) if switches1 else {}),
             "scenario": scenario,
             "t0_ns": t0,
             "t1_ns": t1,
@@ -569,6 +604,7 @@ def summarize_frames(frames_path, window):
 METRICS = [
     ("gui_main_cpu_pct", "main%"),
     ("gui_total_cpu_pct", "gui%"),
+    ("gui_wakeups_per_s", "wakeups/s"),
     ("frames", "frames"),
     ("draw_cpu_us_med", "draw_us"),
     ("request_layout_us_med", "layout_us"),
@@ -617,6 +653,16 @@ def summarize(argv):
                     delta = f"{100 * (med - base_med) / base_med:+.1f}%"
                 cells.append(f"{med:.2f} {delta} [{min(values):.2f}-{max(values):.2f}]".rjust(32))
             print(f"{scenario:<9} " + "  ".join(cells))
+    print("\nwakeups/s by thread (median)")
+    for scenario in SCENARIOS:
+        for label in labels:
+            runs = [r["gui_wakeups_by_thread"] for r in groups[(label, scenario)] if "gui_wakeups_by_thread" in r]
+            if not runs:
+                continue
+            names = sorted({n for run in runs for n in run})
+            meds = {n: statistics.median([run.get(n, 0) for run in runs]) for n in names}
+            top = sorted(meds.items(), key=lambda kv: -kv[1])[:8]
+            print(f"{scenario:<9} {label:>12}  " + "  ".join(f"{n}={v:.1f}" for n, v in top))
 
 
 
