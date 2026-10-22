@@ -5537,4 +5537,525 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             Ok(())
         }
     }
+
+    #[cfg(target_os = "linux")]
+    mod paths {
+        use super::*;
+        use std::time::Instant;
+        use zz_gpui::{
+            Background, DevicePixels, PathBuilder, Pixels, PlatformHeadlessRenderer, Scene, hsla,
+            point, px,
+        };
+
+        const SCALE: f32 = 1.25;
+
+        fn logical(x: f32, y: f32, width: f32, height: f32) -> Bounds<Pixels> {
+            Bounds {
+                origin: point(px(x), px(y)),
+                size: Size {
+                    width: px(width),
+                    height: px(height),
+                },
+            }
+        }
+
+        fn insert_path(
+            scene: &mut Scene,
+            mut path: zz_gpui::Path<Pixels>,
+            color: impl Into<Background>,
+            mask: Bounds<Pixels>,
+        ) {
+            path.content_mask = ContentMask { bounds: mask };
+            path.color = color.into();
+            scene.insert_primitive(path.scale(SCALE));
+        }
+
+        fn insert_quad(
+            scene: &mut Scene,
+            bounds: Bounds<Pixels>,
+            background: impl Into<Background>,
+        ) {
+            let bounds = bounds.scale(SCALE);
+            scene.insert_primitive(Quad {
+                order: 0,
+                border_style: BorderStyle::Solid,
+                bounds,
+                content_mask: ContentMask { bounds },
+                background: background.into(),
+                border_color: zz_gpui::transparent_black(),
+                corner_radii: Corners::default(),
+                border_widths: Edges::default(),
+                corner_smoothing: 2.0,
+                pad: [0; 3],
+            });
+        }
+
+        fn rectangle(bounds: Bounds<Pixels>) -> zz_gpui::Path<Pixels> {
+            let mut path = PathBuilder::fill();
+            path.move_to(bounds.origin);
+            path.line_to(bounds.top_right());
+            path.line_to(bounds.bottom_right());
+            path.line_to(bounds.bottom_left());
+            path.close();
+            path.build().expect("rectangle path")
+        }
+
+        fn ring(
+            scene: &mut Scene,
+            center: Point<Pixels>,
+            size: f32,
+            progress: f32,
+            mask: Bounds<Pixels>,
+        ) {
+            let stroke = 2.0;
+            let radius = px((size - stroke) / 2.0);
+            let mut track = PathBuilder::stroke(px(stroke));
+            track.move_to(point(center.x + radius, center.y));
+            track.arc_to(
+                point(radius, radius),
+                px(0.0),
+                false,
+                true,
+                point(center.x - radius, center.y),
+            );
+            track.arc_to(
+                point(radius, radius),
+                px(0.0),
+                false,
+                true,
+                point(center.x + radius, center.y),
+            );
+            track.close();
+            insert_path(
+                scene,
+                track.build().expect("ring track"),
+                hsla(0.0, 0.0, 0.4, 1.0),
+                mask,
+            );
+            let mut fill = PathBuilder::stroke(px(stroke));
+            fill.move_to(point(center.x, center.y - radius));
+            let angle = -std::f32::consts::FRAC_PI_2 + progress * std::f32::consts::TAU;
+            fill.arc_to(
+                point(radius, radius),
+                px(0.0),
+                progress > 0.5,
+                true,
+                point(
+                    center.x + radius * angle.cos(),
+                    center.y + radius * angle.sin(),
+                ),
+            );
+            insert_path(
+                scene,
+                fill.build().expect("ring fill"),
+                hsla(0.0, 0.0, 0.9, 1.0),
+                mask,
+            );
+        }
+
+        fn rounded_corner(
+            scene: &mut Scene,
+            cell: Bounds<Pixels>,
+            right: bool,
+            down: bool,
+            mask: Bounds<Pixels>,
+        ) {
+            let stroke = px(1.0);
+            let center = cell.center();
+            let radius = cell.size.width.min(cell.size.height) * 0.5;
+            let vertical = if down { 1.0 } else { -1.0 };
+            let horizontal = if right { 1.0 } else { -1.0 };
+            let vertical_edge = if down { cell.bottom() } else { cell.top() };
+            let horizontal_edge = if right { cell.right() } else { cell.left() };
+            let mut path = PathBuilder::stroke(stroke);
+            path.move_to(point(center.x, vertical_edge));
+            path.line_to(point(center.x, center.y + radius * vertical));
+            path.cubic_bezier_to(
+                point(center.x + radius * horizontal, center.y),
+                point(center.x, center.y + radius * 0.25 * vertical),
+                point(center.x + radius * 0.25 * horizontal, center.y),
+            );
+            path.line_to(point(horizontal_edge, center.y));
+            insert_path(
+                scene,
+                path.build().expect("rounded corner"),
+                hsla(0.55, 0.3, 0.7, 1.0),
+                mask,
+            );
+        }
+
+        fn window_scene(width: f32, height: f32, paths: &str) -> Scene {
+            let window = logical(0.0, 0.0, width, height);
+            let mut scene = Scene::default();
+            insert_quad(&mut scene, window, hsla(0.6, 0.1, 0.12, 1.0));
+            for row in 0..40 {
+                insert_quad(
+                    &mut scene,
+                    logical(260.0, 40.0 + row as f32 * 22.0, 1000.0, 18.0),
+                    hsla(0.6, 0.1, 0.16 + row as f32 * 0.002, 1.0),
+                );
+            }
+            if paths.contains("ring") {
+                ring(
+                    &mut scene,
+                    point(px(width - 60.0), px(height - 40.0)),
+                    16.0,
+                    0.37,
+                    window,
+                );
+            }
+            if paths.contains("corners") {
+                let (left, top, right, bottom) = (240.0, 24.0, 1240.0, 924.0);
+                let pane = logical(left, top, right - left, bottom - top);
+                let (cell_width, cell_height) = (8.0, 18.0);
+                for (x, y, right, down) in [
+                    (left, top, true, true),
+                    (right - cell_width, top, false, true),
+                    (left, bottom - cell_height, true, false),
+                    (right - cell_width, bottom - cell_height, false, false),
+                ] {
+                    rounded_corner(
+                        &mut scene,
+                        logical(x, y, cell_width, cell_height),
+                        right,
+                        down,
+                        pane,
+                    );
+                }
+            }
+            scene.finish();
+            scene
+        }
+
+        fn path_texture_bytes(renderer: &WgpuHeadlessRenderer) -> u64 {
+            let resources = &renderer.core.resources;
+            [
+                resources.path_intermediate_texture.as_ref(),
+                resources.path_msaa_texture.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|texture| {
+                u64::from(texture.width())
+                    * u64::from(texture.height())
+                    * u64::from(texture.sample_count())
+                    * 4
+            })
+            .sum()
+        }
+
+        fn drm_usage() -> (u64, u64, u64) {
+            let mut seen = std::collections::HashSet::new();
+            let mut usage = (0, 0, 0);
+            let Ok(entries) = std::fs::read_dir("/proc/self/fdinfo") else {
+                return usage;
+            };
+            for entry in entries.flatten() {
+                let Ok(text) = std::fs::read_to_string(entry.path()) else {
+                    continue;
+                };
+                let field = |name: &str| {
+                    text.lines().find_map(|line| {
+                        let value = line.strip_prefix(name)?.trim();
+                        let mut parts = value.split_whitespace();
+                        let number: u64 = parts.next()?.parse().ok()?;
+                        Some(match parts.next() {
+                            Some("MiB") => number * 1024,
+                            _ => number,
+                        })
+                    })
+                };
+                let Some(client) = field("drm-client-id:") else {
+                    continue;
+                };
+                if !seen.insert(client) {
+                    continue;
+                }
+                usage.0 += field("drm-engine-render:").unwrap_or(0);
+                usage.1 += field("drm-total-system0:").unwrap_or(0);
+                usage.2 += field("drm-resident-system0:").unwrap_or(0);
+            }
+            usage
+        }
+
+        #[test]
+        #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_paths -- --ignored --nocapture"]
+        fn bench_paths() -> anyhow::Result<()> {
+            let target = Size {
+                width: DevicePixels(1920),
+                height: DevicePixels(1200),
+            };
+            let (width, height) = (1920.0 / SCALE, 1200.0 / SCALE);
+            let scenes = std::env::var("ZZ_BENCH_PATHS").unwrap_or("none,ring,corners".into());
+            let frames: u32 = std::env::var("ZZ_BENCH_FRAMES")
+                .ok()
+                .and_then(|frames| frames.parse().ok())
+                .unwrap_or(600);
+            for name in scenes.split(',') {
+                let scene = window_scene(width, height, name);
+                let mut renderer = WgpuHeadlessRenderer::new()?;
+                renderer.render_scene_to_image(&scene, target)?;
+                let (gpu_before, _, _) = drm_usage();
+                let start = Instant::now();
+                for _ in 0..frames {
+                    renderer.render_scene(&scene, target)?;
+                }
+                renderer.render_scene_to_image(&scene, target)?;
+                let wall = start.elapsed().as_secs_f64() * 1000.0 / f64::from(frames + 1);
+                let (gpu_after, total_kib, resident_kib) = drm_usage();
+                let gpu = (gpu_after - gpu_before) as f64 / 1e6 / f64::from(frames + 1);
+                println!(
+                    "bench_paths scene={name} frames={frames} wall_ms_per_frame={wall:.3} gpu_ms_per_frame={gpu:.3} path_texture_bytes={} drm_total_kib={total_kib} drm_resident_kib={resident_kib}",
+                    path_texture_bytes(&renderer),
+                );
+            }
+            Ok(())
+        }
+
+        #[test]
+        #[ignore = "dump: ZZ_PATH_DUMP=<dir> cargo test -p zz-gpui-platform --all-features dump_path_scenes -- --ignored"]
+        fn dump_path_scenes() -> anyhow::Result<()> {
+            let directory = std::path::PathBuf::from(std::env::var("ZZ_PATH_DUMP")?);
+            std::fs::create_dir_all(&directory)?;
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let target = Size {
+                width: DevicePixels(1920),
+                height: DevicePixels(1200),
+            };
+            for name in ["ring", "corners", "ring,corners"] {
+                let scene = window_scene(1920.0 / SCALE, 1200.0 / SCALE, name);
+                let image = renderer.render_scene_to_image(&scene, target)?;
+                std::fs::write(
+                    directory.join(format!("{}.rgba", name.replace(',', "-"))),
+                    image.as_raw(),
+                )?;
+            }
+            Ok(())
+        }
+
+        fn render(scene: &Scene, width: i32, height: i32) -> anyhow::Result<image::RgbaImage> {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            renderer.render_scene_to_image(
+                scene,
+                Size {
+                    width: DevicePixels(width),
+                    height: DevicePixels(height),
+                },
+            )
+        }
+
+        fn assert_images_match(left: &image::RgbaImage, right: &image::RgbaImage, tolerance: u8) {
+            assert_eq!(left.dimensions(), right.dimensions());
+            for (x, y, pixel) in left.enumerate_pixels() {
+                let other = right.get_pixel(x, y).0;
+                assert!(
+                    pixel
+                        .0
+                        .iter()
+                        .zip(other)
+                        .all(|(left, right)| left.abs_diff(right) <= tolerance),
+                    "pixel ({x}, {y}): {:?} != {other:?}",
+                    pixel.0
+                );
+            }
+        }
+
+        fn canvas() -> Bounds<Pixels> {
+            logical(0.0, 0.0, 192.0, 128.0)
+        }
+
+        #[test]
+        fn filled_path_rectangles_match_quads() -> anyhow::Result<()> {
+            let red = hsla(0.0, 1.0, 0.5, 1.0);
+            let gradient = zz_gpui::linear_gradient(
+                90.0,
+                zz_gpui::linear_color_stop(hsla(0.6, 1.0, 0.5, 1.0), 0.0),
+                zz_gpui::linear_color_stop(hsla(0.1, 1.0, 0.5, 1.0), 1.0),
+            );
+            let rectangles = [
+                (logical(4.8, 9.6, 20.0, 8.0), Background::from(red)),
+                (logical(100.0, 64.0, 48.0, 40.0), gradient),
+            ];
+            let mut paths = Scene::default();
+            let mut quads = Scene::default();
+            for (bounds, background) in rectangles {
+                insert_path(&mut paths, rectangle(bounds), background, canvas());
+                insert_quad(&mut quads, bounds, background);
+            }
+            paths.finish();
+            quads.finish();
+            assert_images_match(&render(&paths, 200, 150)?, &render(&quads, 200, 150)?, 1);
+            Ok(())
+        }
+
+        #[test]
+        fn paths_draw_the_same_pixels_wherever_they_sit() -> anyhow::Result<()> {
+            let gradient = zz_gpui::linear_gradient(
+                45.0,
+                zz_gpui::linear_color_stop(hsla(0.3, 1.0, 0.5, 1.0), 0.0),
+                zz_gpui::linear_color_stop(hsla(0.8, 1.0, 0.5, 0.6), 1.0),
+            );
+            let draw = |dx: f32, dy: f32| {
+                let mut scene = Scene::default();
+                let at = |x: f32, y: f32| point(px(x + dx), px(y + dy));
+                ring(&mut scene, at(12.0, 12.0), 16.0, 0.7, canvas());
+                insert_quad(
+                    &mut scene,
+                    logical(8.0 + dx, 8.0 + dy, 4.0, 30.0),
+                    hsla(0.0, 0.0, 1.0, 0.5),
+                );
+                let mut wedge = PathBuilder::fill();
+                wedge.move_to(at(16.0, 20.0));
+                wedge.curve_to(at(44.0, 36.0), at(40.0, 16.0));
+                wedge.line_to(at(20.0, 40.0));
+                wedge.close();
+                insert_path(
+                    &mut scene,
+                    wedge.build().expect("wedge"),
+                    gradient,
+                    logical(0.0 + dx, 0.0 + dy, 36.0, 34.0),
+                );
+                scene.finish();
+                render(&scene, 240, 160)
+            };
+            let near = draw(0.0, 0.0)?;
+            let far = draw(128.0, 64.0)?;
+            let (shift_x, shift_y) = (160, 80);
+            let mut drawn = 0;
+            for y in 0..60 {
+                for x in 0..60 {
+                    let pixel = near.get_pixel(x, y).0;
+                    assert_eq!(
+                        pixel,
+                        far.get_pixel(x + shift_x, y + shift_y).0,
+                        "pixel ({x}, {y})"
+                    );
+                    drawn += usize::from(pixel != [0, 0, 0, 255]);
+                }
+            }
+            assert!(drawn > 200, "only {drawn} pixels were drawn");
+            Ok(())
+        }
+
+        #[test]
+        fn paths_stay_inside_their_content_mask() -> anyhow::Result<()> {
+            let white = hsla(0.0, 0.0, 1.0, 1.0);
+            let mut scene = Scene::default();
+            insert_path(
+                &mut scene,
+                rectangle(logical(8.0, 8.0, 80.0, 60.0)),
+                white,
+                logical(24.0, 16.0, 40.0, 24.0),
+            );
+            scene.finish();
+            let image = render(&scene, 120, 100)?;
+            for (x, y) in image
+                .enumerate_pixels()
+                .filter(|(_, _, pixel)| pixel.0 != [0, 0, 0, 255])
+                .map(|(x, y, _)| (x, y))
+            {
+                assert!(
+                    (30..80).contains(&x) && (20..50).contains(&y),
+                    "pixel ({x}, {y}) is outside the mask"
+                );
+            }
+            assert_eq!(image.get_pixel(40, 30).0, [255, 255, 255, 255]);
+            Ok(())
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    mod atlas_upload {
+        use super::*;
+        use std::borrow::Cow;
+        use std::time::{Duration, Instant};
+        use zz_gpui::{
+            AtlasKey, DevicePixels, FontId, GlyphId, PlatformAtlas, PlatformHeadlessRenderer,
+            RenderGlyphParams, Scene, point, px,
+        };
+
+        fn median(samples: &mut [Duration]) -> f64 {
+            samples.sort_unstable();
+            samples[samples.len() / 2].as_secs_f64() * 1e3
+        }
+
+        fn spread(samples: &[Duration]) -> String {
+            format!(
+                "{:.3}-{:.3}",
+                samples[0].as_secs_f64() * 1e3,
+                samples[samples.len() - 1].as_secs_f64() * 1e3
+            )
+        }
+
+        #[test]
+        #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_atlas_upload_burst -- --ignored --nocapture"]
+        fn bench_atlas_upload_burst() -> anyhow::Result<()> {
+            let glyphs: u32 = std::env::var("ZZ_BENCH_GLYPHS")
+                .ok()
+                .and_then(|glyphs| glyphs.parse().ok())
+                .unwrap_or(2000);
+            let bursts = 30;
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let target = Size {
+                width: DevicePixels(4),
+                height: DevicePixels(4),
+            };
+            renderer.render_scene_to_image(&Scene::default(), target)?;
+            let atlas = renderer.core.atlas.clone();
+            let (mut insert, mut submit, mut finish) = (Vec::new(), Vec::new(), Vec::new());
+            for burst in 0..bursts {
+                let start = Instant::now();
+                for index in 0..glyphs {
+                    let width = 6 + (index % 9) as i32;
+                    let height = 12 + (index % 11) as i32;
+                    let size = Size {
+                        width: DevicePixels(width),
+                        height: DevicePixels(height),
+                    };
+                    let params = RenderGlyphParams {
+                        font_id: FontId(burst),
+                        glyph_id: GlyphId(index),
+                        font_size: px(13.0),
+                        subpixel_variant: point(0, 0),
+                        scale_factor: 1.25,
+                        is_emoji: false,
+                        subpixel_rendering: false,
+                        font_smoothing: false,
+                        font_smoothing_strength: 0,
+                        synthetic_bold: false,
+                        synthetic_italic: false,
+                    };
+                    atlas.get_or_insert_with(AtlasKey::Glyph(params), &mut || {
+                        Ok(Some((
+                            size,
+                            Cow::Owned(vec![index as u8; (width * height) as usize]),
+                        )))
+                    })?;
+                }
+                let inserted = Instant::now();
+                renderer.render_scene(&Scene::default(), target)?;
+                let submitted = Instant::now();
+                renderer
+                    .context
+                    .device
+                    .poll(wgpu::PollType::wait_indefinitely())?;
+                let finished = Instant::now();
+                if burst >= 5 {
+                    insert.push(inserted - start);
+                    submit.push(submitted - inserted);
+                    finish.push(finished - inserted);
+                }
+            }
+            println!(
+                "bench_atlas_upload_burst glyphs={glyphs} bursts={} median_ms insert={:.3} flush_submit={:.3} until_idle={:.3} | spread flush_submit={} until_idle={}",
+                insert.len(),
+                median(&mut insert),
+                median(&mut submit),
+                median(&mut finish),
+                spread(&submit),
+                spread(&finish),
+            );
+            Ok(())
+        }
+    }
 }
