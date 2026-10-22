@@ -235,7 +235,13 @@ impl WgpuAtlasTextures {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | if cfg!(test) {
+                    wgpu::TextureUsages::COPY_SRC
+                } else {
+                    wgpu::TextureUsages::empty()
+                },
             view_formats: &[],
         });
 
@@ -647,6 +653,135 @@ mod tests {
 
         assert_eq!(second_tile.texture_id, first_tile.texture_id);
         assert_ne!(second_generation, first_generation);
+        Ok(())
+    }
+
+    fn read_tile(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
+        bounds: Bounds<DevicePixels>,
+        bytes_per_pixel: u32,
+    ) -> Vec<u8> {
+        let width = bounds.size.width.0 as u32;
+        let height = bounds.size.height.0 as u32;
+        let row = width * bytes_per_pixel;
+        let padded = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("atlas_readback"),
+            size: u64::from(padded * height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: bounds.origin.x.0 as u32,
+                    y: bounds.origin.y.0 as u32,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit([encoder.finish()]);
+        buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("readback");
+        let mapped = buffer
+            .slice(..)
+            .get_mapped_range()
+            .expect("mapped readback");
+        mapped
+            .chunks_exact(padded as usize)
+            .flat_map(|line| &line[..row as usize])
+            .copied()
+            .collect()
+    }
+
+    #[test]
+    fn uploads_land_at_their_tile_bounds() -> anyhow::Result<()> {
+        let (device, queue) = test_device_and_queue()?;
+        let atlas = WgpuAtlas::new(
+            device.clone(),
+            queue.clone(),
+            wgpu::TextureFormat::Bgra8Unorm,
+        );
+        let shapes = [
+            (AtlasTextureKind::Monochrome, 1, 1),
+            (AtlasTextureKind::Monochrome, 3, 7),
+            (AtlasTextureKind::Monochrome, 17, 5),
+            (AtlasTextureKind::Monochrome, 300, 2),
+            (AtlasTextureKind::Monochrome, 11, 19),
+            (AtlasTextureKind::Polychrome, 5, 3),
+            (AtlasTextureKind::Polychrome, 70, 9),
+            (AtlasTextureKind::Polychrome, 1, 1),
+            (AtlasTextureKind::Monochrome, 64, 64),
+        ];
+        let mut expected = Vec::new();
+        for round in 0..2 {
+            for (index, &(kind, width, height)) in shapes.iter().enumerate() {
+                let size = Size {
+                    width: DevicePixels(width),
+                    height: DevicePixels(height),
+                };
+                let channels = if kind == AtlasTextureKind::Monochrome {
+                    1
+                } else {
+                    4
+                };
+                let bytes: Vec<u8> = (0..width * height * channels)
+                    .map(|byte| (byte * 7 + index as i32 * 13 + round * 101) as u8)
+                    .collect();
+                let key = match kind {
+                    AtlasTextureKind::Monochrome => AtlasKey::Svg(zz_gpui::RenderSvgParams {
+                        path: format!("tile-{round}-{index}").into(),
+                        size,
+                    }),
+                    _ => AtlasKey::Image(RenderImageParams {
+                        image_id: ImageId(round as usize * 100 + index),
+                        frame_index: 0,
+                    }),
+                };
+                let tile = atlas
+                    .get_or_insert_with(key, &mut || Ok(Some((size, Cow::Owned(bytes.clone())))))?
+                    .context("tile")?;
+                expected.push((tile, channels as u32, bytes));
+            }
+            atlas.before_frame();
+        }
+        for (tile, channels, bytes) in expected {
+            let texture = atlas
+                .0
+                .lock()
+                .backend
+                .storage
+                .get(tile.texture_id)
+                .context("texture")?
+                .texture
+                .clone();
+            assert_eq!(
+                read_tile(&device, &queue, &texture, tile.bounds, channels),
+                bytes,
+                "tile {tile:?}"
+            );
+        }
         Ok(())
     }
 
