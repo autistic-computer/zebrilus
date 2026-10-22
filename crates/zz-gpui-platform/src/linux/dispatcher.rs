@@ -16,7 +16,7 @@ use std::{
 
 use zz_gpui::{
     PlatformDispatcher, Priority, PriorityQueueReceiver, PriorityQueueSender, RunnableVariant,
-    profiler,
+    profiler, scheduler::MainThreadBusy,
 };
 
 struct TimerAfter {
@@ -237,19 +237,75 @@ impl PlatformDispatcher for LinuxDispatcher {
     }
 }
 
+pub(crate) struct BusyMarker(MainThreadBusy);
+
+impl BusyMarker {
+    pub(crate) fn new(busy: MainThreadBusy) -> Self {
+        Self(busy)
+    }
+}
+
+impl calloop::EventSource for BusyMarker {
+    type Event = ();
+    type Metadata = ();
+    type Ret = ();
+    type Error = std::convert::Infallible;
+
+    const NEEDS_EXTRA_LIFECYCLE_EVENTS: bool = true;
+
+    fn process_events<F>(
+        &mut self,
+        _readiness: calloop::Readiness,
+        _token: calloop::Token,
+        _callback: F,
+    ) -> Result<PostAction, Self::Error>
+    where
+        F: FnMut(Self::Event, &mut Self::Metadata) -> Self::Ret,
+    {
+        Ok(PostAction::Continue)
+    }
+
+    fn register(
+        &mut self,
+        _poll: &mut calloop::Poll,
+        _token_factory: &mut calloop::TokenFactory,
+    ) -> calloop::Result<()> {
+        Ok(())
+    }
+
+    fn reregister(
+        &mut self,
+        _poll: &mut calloop::Poll,
+        _token_factory: &mut calloop::TokenFactory,
+    ) -> calloop::Result<()> {
+        Ok(())
+    }
+
+    fn unregister(&mut self, _poll: &mut calloop::Poll) -> calloop::Result<()> {
+        Ok(())
+    }
+
+    fn before_sleep(&mut self) -> calloop::Result<Option<(calloop::Readiness, calloop::Token)>> {
+        self.0.leave();
+        Ok(None)
+    }
+
+    fn before_handle_events(&mut self, _events: calloop::EventIterator<'_>) {
+        self.0.enter();
+    }
+}
+
 pub struct PriorityQueueCalloopSender<T> {
     sender: PriorityQueueSender<T>,
     ping: calloop::ping::Ping,
+    busy: MainThreadBusy,
 }
 
 impl<T> PriorityQueueCalloopSender<T> {
-    fn new(tx: PriorityQueueSender<T>, ping: calloop::ping::Ping) -> Self {
-        Self { sender: tx, ping }
-    }
-
     fn send(&self, priority: Priority, item: T) -> Result<(), zz_gpui::queue::SendError<T>> {
         let res = self.sender.send(priority, item);
         if res.is_ok() {
+            self.busy.queue();
             self.ping.ping();
         }
         res
@@ -266,22 +322,33 @@ pub struct PriorityQueueCalloopReceiver<T> {
     receiver: PriorityQueueReceiver<T>,
     source: calloop::ping::PingSource,
     ping: calloop::ping::Ping,
+    busy: MainThreadBusy,
 }
 
 impl<T> PriorityQueueCalloopReceiver<T> {
     pub fn new() -> (PriorityQueueCalloopSender<T>, Self) {
         let (ping, source) = calloop::ping::make_ping().expect("Failed to create a Ping.");
+        let busy = MainThreadBusy::new();
 
         let (tx, rx) = PriorityQueueReceiver::new();
 
         (
-            PriorityQueueCalloopSender::new(tx, ping.clone()),
+            PriorityQueueCalloopSender {
+                sender: tx,
+                ping: ping.clone(),
+                busy: busy.clone(),
+            },
             Self {
                 receiver: rx,
                 source,
                 ping,
+                busy,
             },
         )
+    }
+
+    pub(crate) fn main_thread_busy(&self) -> MainThreadBusy {
+        self.busy.clone()
     }
 }
 
@@ -325,6 +392,7 @@ impl<T> calloop::EventSource for PriorityQueueCalloopReceiver<T> {
         let action = self
             .source
             .process_events(readiness, token, |(), &mut ()| {
+                self.busy.dequeue();
                 let mut is_empty = true;
 
                 let receiver = self.receiver.clone();
@@ -467,6 +535,9 @@ mod tests {
         let (sender, receiver) = PriorityQueueCalloopReceiver::new();
         let dispatcher = Arc::new(LinuxDispatcher::new(sender));
         dispatcher.run_main_thread_timers_on(&handle);
+        handle
+            .insert_source(BusyMarker::new(receiver.main_thread_busy()), |_, _, _| {})
+            .unwrap();
         handle
             .insert_source(receiver, {
                 let handle = handle.clone();
@@ -615,6 +686,71 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .unwrap();
         assert_ne!(timer_thread, thread::current().id());
+    }
+
+    #[test]
+    fn busy_marker_is_idle_only_while_the_loop_polls() {
+        let mut event_loop = EventLoop::<()>::try_new().unwrap();
+        let busy = MainThreadBusy::new();
+        event_loop
+            .handle()
+            .insert_source(BusyMarker::new(busy.clone()), |_, _, _| {})
+            .unwrap();
+        let in_callback = Rc::new(std::cell::Cell::new(Duration::ZERO));
+        event_loop
+            .handle()
+            .insert_source(
+                calloop::timer::Timer::from_duration(Duration::from_millis(1)),
+                {
+                    let busy = busy.clone();
+                    let in_callback = in_callback.clone();
+                    move |_, _, _| {
+                        thread::sleep(Duration::from_millis(30));
+                        in_callback.set(busy.busy_for());
+                        TimeoutAction::Drop
+                    }
+                },
+            )
+            .unwrap();
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut ())
+            .unwrap();
+        assert!(in_callback.get() >= Duration::from_millis(30));
+
+        let watcher = thread::spawn({
+            let busy = busy.clone();
+            move || {
+                thread::sleep(Duration::from_millis(50));
+                busy.busy_for()
+            }
+        });
+        event_loop
+            .dispatch(Some(Duration::from_millis(200)), &mut ())
+            .unwrap();
+        assert_eq!(watcher.join().unwrap(), Duration::ZERO);
+        assert!(busy.busy_for() < Duration::from_millis(50));
+    }
+
+    #[test]
+    fn main_thread_work_waiting_in_the_queue_counts_as_busy() {
+        let mut event_loop = EventLoop::<()>::try_new().unwrap();
+        let (sender, receiver) = PriorityQueueCalloopReceiver::new();
+        let busy = receiver.main_thread_busy();
+        event_loop
+            .handle()
+            .insert_source(receiver, |_, _, _| {})
+            .unwrap();
+        busy.leave();
+        assert_eq!(busy.busy_for(), Duration::ZERO);
+
+        sender.send(Priority::Medium, ()).unwrap();
+        thread::sleep(Duration::from_millis(30));
+        assert!(busy.busy_for() >= Duration::from_millis(30));
+
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut ())
+            .unwrap();
+        assert_eq!(busy.busy_for(), Duration::ZERO);
     }
 
     #[test]

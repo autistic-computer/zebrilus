@@ -93,20 +93,27 @@ const STALL_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
 /// Logs main-thread freezes and recoveries from a watchdog thread.
 pub fn start_main_thread_watchdog(cx: &mut App) {
     let epoch = Instant::now();
-    let heartbeat = Arc::new(AtomicU64::new(0));
-    let beat = Arc::clone(&heartbeat);
-    cx.spawn(async move |cx| {
-        loop {
-            cx.background_executor()
-                .timer(STALL_HEARTBEAT_INTERVAL)
-                .await;
-            beat.store(elapsed_us_from(epoch), Ordering::Relaxed);
-        }
-    })
-    .detach();
+    let stall_age: Box<dyn Fn() -> u64 + Send> = if let Some(busy) = cx.main_thread_busy() {
+        Box::new(move || {
+            u64::try_from(busy.busy_for().min(epoch.elapsed()).as_micros()).unwrap_or(u64::MAX)
+        })
+    } else {
+        let heartbeat = Arc::new(AtomicU64::new(0));
+        let beat = Arc::clone(&heartbeat);
+        cx.spawn(async move |cx| {
+            loop {
+                cx.background_executor()
+                    .timer(STALL_HEARTBEAT_INTERVAL)
+                    .await;
+                beat.store(elapsed_us_from(epoch), Ordering::Relaxed);
+            }
+        })
+        .detach();
+        Box::new(move || elapsed_us_from(epoch).saturating_sub(heartbeat.load(Ordering::Relaxed)))
+    };
     if let Err(error) = thread::Builder::new()
         .name("zz-stall-watchdog".to_owned())
-        .spawn(move || watch_main_thread_heartbeat(&heartbeat, epoch))
+        .spawn(move || watch_main_thread(&*stall_age, epoch))
     {
         log::error!(
             target: "zz::diagnostics::stall",
@@ -115,14 +122,13 @@ pub fn start_main_thread_watchdog(cx: &mut App) {
     }
 }
 
-fn watch_main_thread_heartbeat(heartbeat: &AtomicU64, epoch: Instant) {
+fn watch_main_thread(stall_age: &dyn Fn() -> u64, epoch: Instant) {
     let mut stalled_since = None;
     let mut check_interval = watchdog_check_interval(0);
     loop {
         thread::sleep(check_interval);
-        let now = elapsed_us_from(epoch);
-        let beat = heartbeat.load(Ordering::Relaxed);
-        let age = now.saturating_sub(beat);
+        let age = stall_age();
+        let beat = elapsed_us_from(epoch).saturating_sub(age);
         check_interval = watchdog_check_interval(age);
         if age > STALL_THRESHOLD_US {
             if stalled_since.is_none() {
@@ -213,6 +219,45 @@ mod tests {
             let recovered = recovered.expect("foreground progress must clear the stall");
             assert!((end..=end + 100_000).contains(&recovered));
         }
+    }
+
+    #[test]
+    fn busy_marker_deadlines_detect_and_clear_stalls() {
+        for start in (100_000_u64..2_000_000).step_by(10_000) {
+            let end = start + 900_000;
+            let mut now = 0;
+            let mut detected = None;
+            let mut recovered = None;
+            while now < end + 200_000 {
+                let age = if (start..end).contains(&now) {
+                    now - start
+                } else {
+                    0
+                };
+                if age > STALL_THRESHOLD_US {
+                    detected.get_or_insert(now);
+                } else if detected.is_some() {
+                    recovered.get_or_insert(now);
+                }
+                now += u64::try_from(watchdog_check_interval(age).as_micros()).unwrap();
+            }
+            let detected = detected.expect("a busy main loop must be detected");
+            assert!(detected > start + STALL_THRESHOLD_US);
+            assert!(detected <= start + STALL_THRESHOLD_US + 100_000);
+            let recovered = recovered.expect("an idle main loop must clear the stall");
+            assert!((end..=end + 100_000).contains(&recovered));
+        }
+    }
+
+    #[test]
+    fn idle_busy_marker_checks_at_most_twice_a_second() {
+        let mut now = 0;
+        let mut checks = 0;
+        while now < 10_000_000 {
+            now += u64::try_from(watchdog_check_interval(0).as_micros()).unwrap();
+            checks += 1;
+        }
+        assert!(checks <= 20);
     }
 
     #[test]
