@@ -52,6 +52,17 @@ pub use daemon::{
     load_buffer_reads_stdin, send_text_reads_stdin, workspace_context, workspace_tools,
 };
 
+#[cfg(unix)]
+#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
+pub(crate) fn pid_alive(pid: u32) -> bool {
+    let Ok(pid) = i32::try_from(pid) else {
+        return false;
+    };
+    pid > 0
+        && (unsafe { libc::kill(pid, 0) } == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
+}
+
 fn tmux_shim_environment(
     tmux_shim: Option<&Path>,
     zz_executable: Option<&Path>,

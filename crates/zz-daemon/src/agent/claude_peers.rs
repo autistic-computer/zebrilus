@@ -20,6 +20,8 @@ use serde_json::{Value, json};
 
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
+use crate::pid_alive;
+
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub(crate) struct PeerRecord {
@@ -298,16 +300,6 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
-}
-
-#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
-pub(crate) fn pid_alive(pid: u32) -> bool {
-    let Ok(pid) = i32::try_from(pid) else {
-        return false;
-    };
-    pid > 0
-        && (unsafe { libc::kill(pid, 0) } == 0
-            || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
 }
 
 fn matches_pane(tmux: &str, pane: &str) -> bool {

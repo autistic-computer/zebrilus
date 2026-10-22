@@ -248,7 +248,7 @@ pub(super) fn watch_peer(
             let Some(sender) = reply.upgrade() else {
                 return;
             };
-            if crate::agent::claude_peers::pid_alive(pid) {
+            if crate::pid_alive(pid) {
                 watch_peer(shared, pid, reply, continuation);
             } else {
                 sender.close();
