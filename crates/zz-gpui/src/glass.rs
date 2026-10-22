@@ -717,6 +717,12 @@ impl GlassUniform {
         self.shadow[2] == 0. && self.tint[3] < 1.
     }
 
+    /// The vertices its strip takes: a shadow is a ring around the part of
+    /// the body that covers it, anything else one quad.
+    pub fn vertex_count(&self) -> u32 {
+        if self.shadow[2] > 0. { 10 } else { 4 }
+    }
+
     /// The block's bytes, as the shader lays them out.
     pub fn as_bytes(&self) -> &[u8] {
         // SAFETY: `GlassUniform` is `repr(C)` and only holds `f32`s, so it

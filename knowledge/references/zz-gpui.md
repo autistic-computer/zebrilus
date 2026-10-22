@@ -345,6 +345,21 @@ overlaps the run. Platforms without backdrop sampling keep the old drop shadows 
 fallback fill. `check_glass_shadow_rendering` (Metal and wgpu) holds the face unchanged at any
 shadow strength.
 
+A shadow-only draw skips the part of the body that hides it (2026-10-21). `vs_glass` draws it as
+a ten-vertex ring (`GlassUniform::vertex_count`) around the first shape inset by its largest corner
+radius plus half a pixel, with the hole collapsed to the quad's center when the inset leaves
+nothing, and `glass_shadow` returns clear for a pixel half a pixel inside any one shape before the
+erf loop and the field run. Both cover only pixels the body already masked to zero with
+`saturate(0.5 + field)`, so the frame is unchanged: byte-identical on Metal across the shadow cases
+and 512x384 squircle panes, a palette's float shadow and a melted pair. Before, every gapped pane's
+contact shadow ran the four-sample erf loop with the superellipse `pow` over the whole pane. With
+the macOS theme, gaps and window blur in a 1280x900pt window, zz's GPU time fell from 109 to
+61 ms/s streaming, 141 to 99 in a 3x3 grid and 195 to 116 with the palette open at scale 2 (M4
+Max), and from 39 to 26-28, 57-61 to 51 and 71-76 to 50-53 at scale 1. Liquid Glass, which casts no
+glass shadows, did not move. What the grid still pays is runs: each pane's shadow reaches past the
+gap under its neighbor, so `plan_glass` starts a run per pane, 22 to 24 render encoders a frame
+against 10 to 12 without pane shadows.
+
 `check_glass_rendering`, which both renderers' `glass_lenses_its_backdrop` run, compares the flat
 face against the full field within 1/255 for square, round, smoothed, circular and uneven corners,
 two melting and two overlapping shapes, five materials (lit opaque, edge, glowing and grainy, a

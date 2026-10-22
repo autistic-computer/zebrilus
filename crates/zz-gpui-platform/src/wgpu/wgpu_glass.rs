@@ -39,9 +39,9 @@ pub(crate) struct GlassResources {
 /// Glass draws waiting for a pass over the target.
 pub(crate) struct PendingGlass {
     bind_group: wgpu::BindGroup,
-    /// Each draw's uniform offset, scissor, and whether it reads its
-    /// backdrop.
-    draws: Vec<(u32, Bounds<i32>, bool)>,
+    /// Each draw's uniform offset, scissor, whether it reads its backdrop,
+    /// and how many vertices it draws.
+    draws: Vec<(u32, Bounds<i32>, bool, u32)>,
 }
 
 struct Level {
@@ -490,6 +490,7 @@ impl GlassResources {
                         self.push_uniform(uniform.as_bytes()),
                         *scissor,
                         uniform.reads_backdrop(),
+                        uniform.vertex_count(),
                     )
                 })
                 .collect();
@@ -516,6 +517,7 @@ impl GlassResources {
                     self.push_uniform(uniform.as_bytes()),
                     scissor,
                     uniform.reads_backdrop(),
+                    uniform.vertex_count(),
                 )
             })
             .collect();
@@ -531,7 +533,7 @@ impl GlassResources {
         viewport: Size<i32>,
     ) {
         let mut reading = None;
-        for (offset, scissor, reads) in pending.draws {
+        for (offset, scissor, reads, vertices) in pending.draws {
             if reading != Some(reads) {
                 reading = Some(reads);
                 pass.set_pipeline(if reads {
@@ -547,7 +549,7 @@ impl GlassResources {
                 scissor.size.width as u32,
                 scissor.size.height as u32,
             );
-            pass.draw(0..4, 0..1);
+            pass.draw(0..vertices, 0..1);
         }
         pass.set_scissor_rect(0, 0, viewport.width as u32, viewport.height as u32);
     }
