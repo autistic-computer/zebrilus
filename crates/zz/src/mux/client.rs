@@ -112,6 +112,8 @@ impl AgentEvents {
 }
 
 const MAX_PENDING_DECODED_MESSAGES: usize = 1;
+const MAX_DECODED_MESSAGES_PER_UPDATE: usize = 64;
+const MAX_DECODED_BATCH_TIME: Duration = Duration::from_millis(4);
 const MAX_PANE_IMAGE_SNAPSHOTS: usize = 8;
 const MAX_TRACKED_COMMANDS: usize = 32;
 const TERMINAL_FONT_SIZE_STEP_POINTS: f32 = 1.0;
@@ -181,6 +183,28 @@ fn decoded_message_channel() -> (
     async_channel::Receiver<ProtocolMessage>,
 ) {
     async_channel::bounded(MAX_PENDING_DECODED_MESSAGES)
+}
+
+fn drain_decoded_batch<T>(
+    first: T,
+    incoming: &async_channel::Receiver<T>,
+    started: Instant,
+    mut handle: impl FnMut(T) -> bool,
+) -> Option<bool> {
+    let mut next = Some(first);
+    let mut handled = 0;
+    while let Some(message) = next.take() {
+        if !handle(message) {
+            return None;
+        }
+        handled += 1;
+        if handled == MAX_DECODED_MESSAGES_PER_UPDATE || started.elapsed() >= MAX_DECODED_BATCH_TIME
+        {
+            return Some(true);
+        }
+        next = incoming.try_recv().ok();
+    }
+    Some(false)
 }
 
 fn connect_error_state(error: &DaemonError) -> HostState {
@@ -855,19 +879,20 @@ impl HostConnection {
         let message_route = Arc::clone(&route);
         cx.spawn(async move |this, cx| {
             while let Ok(message) = incoming.recv().await {
-                let applied = this.update(cx, |client, cx| {
-                    let mut next = Some(message);
-                    while let Some(message) = next.take() {
+                let started = Instant::now();
+                let batch = this.update(cx, |client, cx| {
+                    drain_decoded_batch(message, &incoming, started, |message| {
                         let Some(host) = *message_route.read() else {
                             return false;
                         };
                         client.handle_message(host, message, cx);
-                        next = incoming.try_recv().ok();
-                    }
-                    true
+                        true
+                    })
                 });
-                if !matches!(applied, Ok(true)) {
-                    break;
+                match batch {
+                    Ok(Some(true)) => cx.background_executor().timer(Duration::ZERO).await,
+                    Ok(Some(false)) => {}
+                    _ => break,
                 }
             }
             let _ = this.update(cx, |client, cx| {
@@ -10191,6 +10216,44 @@ mod tests {
                 assert!(!mux.pending_pasted_image_previews.contains(&(pane, 13)));
             });
         });
+    }
+
+    #[test]
+    fn a_decoded_backlog_drains_in_bounded_batches() {
+        let (sender, incoming) = async_channel::unbounded();
+        for message in 1..200 {
+            sender.try_send(message).unwrap();
+        }
+        let mut handled = Vec::new();
+        let cut = drain_decoded_batch(0, &incoming, Instant::now(), |message| {
+            handled.push(message);
+            true
+        });
+        assert_eq!(cut, Some(true));
+        assert_eq!(handled, (0..64).collect::<Vec<_>>());
+        assert_eq!(incoming.len(), 200 - 64);
+
+        let (sender, incoming) = async_channel::unbounded();
+        sender.try_send(1).unwrap();
+        let mut handled = Vec::new();
+        let cut = drain_decoded_batch(0, &incoming, Instant::now(), |message| {
+            handled.push(message);
+            true
+        });
+        assert_eq!(cut, Some(false));
+        assert_eq!(handled, vec![0, 1]);
+
+        let stale = Instant::now().checked_sub(MAX_DECODED_BATCH_TIME).unwrap();
+        let (sender, incoming) = async_channel::unbounded();
+        sender.try_send(1).unwrap();
+        let cut = drain_decoded_batch(0, &incoming, stale, |_| true);
+        assert_eq!(cut, Some(true));
+        assert_eq!(incoming.len(), 1);
+
+        assert_eq!(
+            drain_decoded_batch(0, &incoming, Instant::now(), |_| false),
+            None
+        );
     }
 
     #[zz_gpui::test]
