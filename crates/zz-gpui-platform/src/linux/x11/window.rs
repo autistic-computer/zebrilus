@@ -1813,6 +1813,10 @@ impl PlatformWindow for X11Window {
         }
     }
 
+    fn keeps_presenting_after_input(&self) -> bool {
+        false
+    }
+
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         let inner = self.0.state.borrow();
         inner.renderer.sprite_atlas().clone()

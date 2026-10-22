@@ -2070,6 +2070,10 @@ impl PlatformWindow for WaylandWindow {
         self.0.schedule_frame_after(delay);
     }
 
+    fn keeps_presenting_after_input(&self) -> bool {
+        false
+    }
+
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         let state = self.borrow();
         state.renderer.sprite_atlas().clone()
