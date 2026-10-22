@@ -107,6 +107,8 @@ use crate::{App, Bounds, FocusId, Pixels, SharedString, Window};
 use accesskit::{Action, NodeId, TreeUpdate};
 use smallvec::SmallVec;
 use std::hash::{Hash, Hasher};
+use std::mem;
+use std::ops::Range;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -157,6 +159,11 @@ pub(crate) struct A11y {
     /// its ancestors (such as a scrolled container), used to aim clicks.
     pub(crate) node_visible_bounds: FxHashMap<NodeId, Bounds<Pixels>>,
     pub(crate) action_listeners: FxHashMap<NodeId, Vec<(Action, A11yActionListener)>>,
+    previous_focus_ids: FxHashMap<NodeId, FocusId>,
+    previous_node_bounds: FxHashMap<NodeId, Bounds<Pixels>>,
+    previous_node_visible_bounds: FxHashMap<NodeId, Bounds<Pixels>>,
+    previous_action_listeners: FxHashMap<NodeId, Vec<(Action, A11yActionListener)>>,
+    built_last_frame: bool,
     /// The window's title, used to label the root node so assistive
     /// technology can tell windows apart.
     window_title: Option<SharedString>,
@@ -188,6 +195,11 @@ impl A11y {
             node_bounds: FxHashMap::default(),
             node_visible_bounds: FxHashMap::default(),
             action_listeners: FxHashMap::default(),
+            previous_focus_ids: FxHashMap::default(),
+            previous_node_bounds: FxHashMap::default(),
+            previous_node_visible_bounds: FxHashMap::default(),
+            previous_action_listeners: FxHashMap::default(),
+            built_last_frame: false,
             window_title,
             last_focus_without_node: None,
             debug: debug::A11yDebug::default(),
@@ -290,12 +302,82 @@ impl A11y {
     }
 
     /// Clear per-frame state and push the root node to start a new frame.
-    pub(crate) fn begin_frame(&mut self) {
+    pub(crate) fn begin_frame(&mut self) -> bool {
+        mem::swap(&mut self.focus_ids, &mut self.previous_focus_ids);
+        mem::swap(&mut self.node_bounds, &mut self.previous_node_bounds);
+        mem::swap(
+            &mut self.node_visible_bounds,
+            &mut self.previous_node_visible_bounds,
+        );
+        mem::swap(
+            &mut self.action_listeners,
+            &mut self.previous_action_listeners,
+        );
         self.focus_ids.clear();
         self.node_bounds.clear();
         self.node_visible_bounds.clear();
         self.action_listeners.clear();
         self.nodes.begin_frame(self.window_title.as_ref());
+        mem::replace(&mut self.built_last_frame, true)
+    }
+
+    pub(crate) fn skip_frame(&mut self) {
+        self.built_last_frame = false;
+    }
+
+    pub(crate) fn reuse(&mut self, range: Range<A11yIndex>, focus: Option<FocusId>) {
+        if !self.active_this_frame {
+            return;
+        }
+        let Some(nodes) = self
+            .debug
+            .last_tree_update()
+            .and_then(|update| update.nodes.get(range.start.nodes..range.end.nodes))
+        else {
+            return;
+        };
+        let children: FxHashSet<NodeId> = nodes
+            .iter()
+            .flat_map(|(_, node)| node.children().iter().copied())
+            .collect();
+        for (id, node) in nodes {
+            if !self.nodes.seen_ids.insert(*id) {
+                continue;
+            }
+            if !children.contains(id)
+                && let Some(parent) = self.nodes.nodes_stack.last_mut()
+            {
+                parent.push_child(*id);
+            }
+            self.nodes.all_nodes.push((*id, node.clone()));
+            if let Some(focus_id) = self.previous_focus_ids.get(id) {
+                self.focus_ids.insert(*id, *focus_id);
+                if focus == Some(*focus_id) && self.nodes.focus.is_none() {
+                    self.nodes.focus = Some(*id);
+                }
+            }
+            if let Some(bounds) = self.previous_node_bounds.get(id) {
+                self.node_bounds.insert(*id, *bounds);
+            }
+            if let Some(bounds) = self.previous_node_visible_bounds.get(id) {
+                self.node_visible_bounds.insert(*id, *bounds);
+            }
+            if let Some(listeners) = self.previous_action_listeners.remove(id) {
+                self.action_listeners.insert(*id, listeners);
+            }
+        }
+        if range.end.active_descendant != range.start.active_descendant
+            && self.nodes.active_descendant.is_none()
+            && range
+                .end
+                .active_descendant
+                .is_some_and(|node| nodes.iter().any(|(id, _)| *id == node))
+            && self.nodes.focus.is_some_and(|focus| {
+                self.nodes.ids_stack.contains(&focus) || nodes.iter().any(|(id, _)| *id == focus)
+            })
+        {
+            self.nodes.active_descendant = range.end.active_descendant;
+        }
     }
 
     /// Finalize the tree and produce a [`TreeUpdate`] for the platform adapter.
@@ -547,7 +629,14 @@ impl A11yNodeBuilder {
         parent.0.hash(&mut hasher);
         "anonymous".hash(&mut hasher);
         position.hash(&mut hasher);
-        self.push_leaf(NodeId(hasher.finish()), node)
+        let mut id = NodeId(hasher.finish());
+        while self.seen_ids.contains(&id) {
+            let mut hasher = std::hash::DefaultHasher::default();
+            id.0.hash(&mut hasher);
+            "anonymous".hash(&mut hasher);
+            id = NodeId(hasher.finish());
+        }
+        self.push_leaf(id, node)
     }
 
     pub(crate) fn current_node_mut(&mut self) -> Option<&mut accesskit::Node> {

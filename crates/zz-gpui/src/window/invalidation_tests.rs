@@ -731,3 +731,128 @@ fn a_clean_cached_view_survives_its_cached_parent_rerendering(cx: &mut TestAppCo
         assert_eq!((outer_renders.get(), inner_renders.get()), expected);
     }
 }
+
+struct Button {
+    renders: Rc<Cell<usize>>,
+    clicks: Rc<Cell<usize>>,
+    focus: FocusHandle,
+}
+
+impl Render for Button {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        self.renders.set(self.renders.get() + 1);
+        let clicks = self.clicks.clone();
+        div()
+            .id("button")
+            .role(accesskit::Role::Button)
+            .aria_label("Run")
+            .track_focus(&self.focus)
+            .size_full()
+            .child("Run")
+            .on_a11y_action(accesskit::Action::Click, move |_, _, _| {
+                clicks.set(clicks.get() + 1)
+            })
+    }
+}
+
+struct Buttons {
+    buttons: Vec<Entity<Button>>,
+}
+
+impl Render for Buttons {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .id("buttons")
+            .role(accesskit::Role::Group)
+            .flex()
+            .size_full()
+            .children(self.buttons.iter().map(|button| {
+                button
+                    .clone()
+                    .cached(StyleRefinement::default().w(px(SIDE)).h(px(SIDE)))
+            }))
+    }
+}
+
+fn reachable_buttons(tree: &accesskit::TreeUpdate) -> Vec<accesskit::NodeId> {
+    let nodes: std::collections::HashMap<_, _> =
+        tree.nodes.iter().map(|(id, node)| (*id, node)).collect();
+    let mut stack = vec![tree.tree.as_ref().unwrap().root];
+    let mut buttons = Vec::new();
+    while let Some(id) = stack.pop() {
+        let node = nodes[&id];
+        if node.role() == accesskit::Role::Button {
+            buttons.push(id);
+        }
+        stack.extend(node.children().iter().rev().copied());
+    }
+    buttons
+}
+
+#[crate::test]
+fn a_reused_cached_view_keeps_its_accessibility_nodes(cx: &mut TestAppContext) {
+    let renders = Rc::new(Cell::new(0));
+    let clicks = Rc::new(Cell::new(0));
+    let focuses: Vec<FocusHandle> = cx.update(|cx| (0..2).map(|_| cx.focus_handle()).collect());
+    let focus = focuses[0].clone();
+    let window = cx.add_window(|_, cx| Buttons {
+        buttons: focuses
+            .into_iter()
+            .map(|focus| {
+                cx.new(|_| Button {
+                    renders: renders.clone(),
+                    clicks: clicks.clone(),
+                    focus,
+                })
+            })
+            .collect(),
+    });
+    window
+        .update(cx, |_, window, _| window.set_a11y_forced(true))
+        .unwrap();
+    let frame = |cx: &mut TestAppContext| {
+        draw(cx, window, |window| {
+            let tree = window.a11y_tree().unwrap();
+            (reachable_buttons(tree), tree.focus)
+        })
+    };
+    let (first, _) = frame(cx);
+    assert_eq!(first.len(), 2);
+    renders.set(0);
+
+    let (reused, _) = frame(cx);
+    assert_eq!(renders.get(), 0);
+    assert_eq!(reused, first);
+
+    cx.update_window(window.into(), |_, window, cx| {
+        window.handle_a11y_action(
+            accesskit::ActionRequest {
+                action: accesskit::Action::Click,
+                target_tree: accesskit::TreeId::ROOT,
+                target_node: first[1],
+                data: None,
+            },
+            cx,
+        );
+        window.handle_a11y_action(
+            accesskit::ActionRequest {
+                action: accesskit::Action::Focus,
+                target_tree: accesskit::TreeId::ROOT,
+                target_node: first[0],
+                data: None,
+            },
+            cx,
+        );
+        assert!(focus.is_focused(window));
+    })
+    .unwrap();
+    assert_eq!(clicks.get(), 1);
+
+    let (_, focused_node) = frame(cx);
+    assert_eq!(focused_node, first[0]);
+    renders.set(0);
+    let (reused, focused_node) = frame(cx);
+    assert_eq!(renders.get(), 0);
+    assert_eq!(reused, first);
+    assert_eq!(focused_node, first[0]);
+}

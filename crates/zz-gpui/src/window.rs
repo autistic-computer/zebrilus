@@ -4000,7 +4000,11 @@ impl Window {
         self.a11y.sync_active_flag();
         crate::frame_stats::accessibility_active(self.a11y.is_active());
         if self.a11y.is_active() {
-            self.a11y.begin_frame();
+            if !self.a11y.begin_frame() {
+                self.refreshing = true;
+            }
+        } else {
+            self.a11y.skip_frame();
         }
 
         let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
@@ -4344,6 +4348,8 @@ impl Window {
         if reused_subtree.contains_focus() {
             self.next_frame.focus = self.focus;
         }
+        self.a11y
+            .reuse(range.start.a11y_index..range.end.a11y_index, self.focus);
 
         self.next_frame.deferred_draws.extend(
             self.rendered_frame.deferred_draws
