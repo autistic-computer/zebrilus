@@ -304,8 +304,7 @@ pub struct PriorityQueueCalloopSender<T> {
 impl<T> PriorityQueueCalloopSender<T> {
     fn send(&self, priority: Priority, item: T) -> Result<(), zz_gpui::queue::SendError<T>> {
         let res = self.sender.send(priority, item);
-        if res.is_ok() {
-            self.busy.queue();
+        if res.is_ok() && self.busy.queue() {
             self.ping.ping();
         }
         res
@@ -321,7 +320,6 @@ impl<T> Drop for PriorityQueueCalloopSender<T> {
 pub struct PriorityQueueCalloopReceiver<T> {
     receiver: PriorityQueueReceiver<T>,
     source: calloop::ping::PingSource,
-    ping: calloop::ping::Ping,
     busy: MainThreadBusy,
 }
 
@@ -335,13 +333,12 @@ impl<T> PriorityQueueCalloopReceiver<T> {
         (
             PriorityQueueCalloopSender {
                 sender: tx,
-                ping: ping.clone(),
+                ping,
                 busy: busy.clone(),
             },
             Self {
                 receiver: rx,
                 source,
-                ping,
                 busy,
             },
         )
@@ -386,46 +383,30 @@ impl<T> calloop::EventSource for PriorityQueueCalloopReceiver<T> {
     where
         F: FnMut(Self::Event, &mut Self::Metadata) -> Self::Ret,
     {
-        let mut clear_readiness = false;
         let mut disconnected = false;
 
         let action = self
             .source
             .process_events(readiness, token, |(), &mut ()| {
                 self.busy.dequeue();
-                let mut is_empty = true;
-
                 let receiver = self.receiver.clone();
                 for runnable in receiver.try_iter() {
                     match runnable {
-                        Ok(r) => {
-                            callback(Event::Msg(r), &mut ());
-                            is_empty = false;
-                        }
-                        Err(_) => {
-                            disconnected = true;
-                        }
+                        Ok(r) => callback(Event::Msg(r), &mut ()),
+                        Err(_) => disconnected = true,
                     }
                 }
 
                 if disconnected {
                     callback(Event::Closed, &mut ());
                 }
-
-                if is_empty {
-                    clear_readiness = true;
-                }
             })
             .map_err(ChannelError)?;
 
         if disconnected {
             Ok(PostAction::Remove)
-        } else if clear_readiness {
-            Ok(action)
         } else {
-            // Re-notify the ping source so we can try again.
-            self.ping.ping();
-            Ok(PostAction::Continue)
+            Ok(action)
         }
     }
 
@@ -751,6 +732,40 @@ mod tests {
             .dispatch(Some(Duration::from_secs(5)), &mut ())
             .unwrap();
         assert_eq!(busy.busy_for(), Duration::ZERO);
+    }
+
+    #[test]
+    fn a_drained_batch_leaves_the_loop_asleep() {
+        let mut event_loop = EventLoop::<u32>::try_new().unwrap();
+        let (tx, rx) = PriorityQueueCalloopReceiver::new();
+        event_loop
+            .handle()
+            .insert_source(rx, |event, _, received: &mut u32| {
+                if let Event::Msg(()) = event {
+                    *received += 1;
+                }
+            })
+            .unwrap();
+        for _ in 0..3 {
+            tx.send(Priority::Medium, ()).unwrap();
+        }
+        let mut received = 0;
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut received)
+            .unwrap();
+        assert_eq!(received, 3);
+
+        let started = Instant::now();
+        event_loop
+            .dispatch(Some(Duration::from_millis(50)), &mut received)
+            .unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(40));
+
+        tx.send(Priority::Medium, ()).unwrap();
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut received)
+            .unwrap();
+        assert_eq!(received, 4);
     }
 
     #[test]
