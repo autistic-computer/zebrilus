@@ -3,12 +3,11 @@ use crate::refineable::Refineable;
 use crate::{
     AnyElement, AnyEntity, AnyWeakEntity, App, AvailableSpace, Bounds, ContentMask, Context,
     Element, ElementId, Entity, EntityId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, PaintIndex, Pixels, PrepaintStateIndex, Render, RenderOnce, Size, Style,
-    StyleRefinement, TextStyle, WeakEntity,
+    LayoutId, PaintIndex, Pixels, PrepaintStateIndex, Render, RenderOnce, ScaledPixels, Size,
+    Style, StyleRefinement, TextStyle, WeakEntity,
 };
 use crate::{Empty, Window};
 use anyhow::Result;
-use std::mem;
 use std::{
     any::{TypeId, type_name},
     fmt,
@@ -307,10 +306,27 @@ struct ViewElementState {
     accessed_entities: FxHashSet<EntityId>,
 }
 
+#[derive(PartialEq)]
 struct ViewElementCacheKey {
     bounds: Bounds<Pixels>,
     content_mask: ContentMask<Pixels>,
     text_style: TextStyle,
+    rem_size: Pixels,
+    opacity: f32,
+    text_fade: Option<(ScaledPixels, ScaledPixels)>,
+}
+
+impl ViewElementCacheKey {
+    fn new(bounds: Bounds<Pixels>, window: &Window) -> Self {
+        Self {
+            bounds,
+            content_mask: window.content_mask(),
+            text_style: window.text_style(),
+            rem_size: window.rem_size(),
+            opacity: window.element_opacity(),
+            text_fade: window.text_fade,
+        }
+    }
 }
 
 #[cfg(not(all(feature = "hot-reload", debug_assertions, not(target_family = "wasm"))))]
@@ -492,15 +508,13 @@ fn prepaint_view(
         window.with_element_state::<ViewElementState, _>(
             global_id.unwrap(),
             |element_state, window| {
-                let content_mask = window.content_mask();
-                let text_style = window.text_style();
+                let cache_key = ViewElementCacheKey::new(bounds, window);
 
                 if let Some(mut element_state) = element_state
-                    && element_state.cache_key.bounds == bounds
-                    && element_state.cache_key.content_mask == content_mask
-                    && element_state.cache_key.text_style == text_style
+                    && element_state.cache_key == cache_key
                     && !window.dirty_views.contains(&entity_id)
                     && !window.refreshing
+                    && window.glass_groups.is_empty()
                 {
                     let prepaint_start = window.prepaint_index();
                     window.reuse_prepaint(element_state.prepaint_range.clone());
@@ -512,7 +526,6 @@ fn prepaint_view(
                     return (None, element_state);
                 }
 
-                let refreshing = mem::replace(&mut window.refreshing, true);
                 let prepaint_start = window.prepaint_index();
                 let (element, accessed_entities) = cx.detect_accessed_entities(|cx| {
                     let mut element = render(window, cx);
@@ -522,7 +535,6 @@ fn prepaint_view(
                 });
 
                 let prepaint_end = window.prepaint_index();
-                window.refreshing = refreshing;
 
                 (
                     Some(element),
@@ -530,11 +542,7 @@ fn prepaint_view(
                         accessed_entities,
                         prepaint_range: prepaint_start..prepaint_end,
                         paint_range: PaintIndex::default()..PaintIndex::default(),
-                        cache_key: ViewElementCacheKey {
-                            bounds,
-                            content_mask,
-                            text_style,
-                        },
+                        cache_key,
                     },
                 )
             },
@@ -575,9 +583,7 @@ fn paint_view(
                     let paint_start = window.paint_index();
 
                     if let Some(element) = element {
-                        let refreshing = mem::replace(&mut window.refreshing, true);
                         element.paint(window, cx);
-                        window.refreshing = refreshing;
                     } else {
                         window.reuse_paint(element_state.paint_range.clone());
                     }
