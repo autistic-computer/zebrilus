@@ -4576,7 +4576,11 @@ impl Render for AppView {
             .collect::<Vec<_>>()
         };
         if let Some(palette) = &self.command_palette {
-            overlays.push(palette.clone().into_any_element());
+            overlays.push(
+                AnyView::from(palette.clone())
+                    .cached(StyleRefinement::default().absolute().inset_0())
+                    .into_any_element(),
+            );
         }
         if let Some(menu) = self.menu_overlay(canvas_origin, window, cx) {
             overlays.push(menu);
