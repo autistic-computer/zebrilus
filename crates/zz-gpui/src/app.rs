@@ -8,7 +8,10 @@ use std::{
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     rc::{Rc, Weak},
-    sync::{Arc, atomic::Ordering::SeqCst},
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering, Ordering::SeqCst},
+    },
     time::Duration,
 };
 
@@ -752,6 +755,19 @@ enum PlatformOwnedDragState {
     RestoredInSourceWindow,
 }
 
+static ANIMATION_SPEED: AtomicU32 = AtomicU32::new(0x3F80_0000);
+
+/// How fast animations run, for code with no `App` at hand: springs step
+/// from an `Instant`. [`App::set_animation_speed`] sets it.
+pub fn animation_speed() -> f32 {
+    f32::from_bits(ANIMATION_SPEED.load(Ordering::Relaxed))
+}
+
+/// `elapsed` wall time as animation time, at [`animation_speed`].
+pub fn animation_time(elapsed: Duration) -> Duration {
+    elapsed.mul_f32(animation_speed())
+}
+
 /// Contains the state of the full application, and passed as a reference to a variety of callbacks.
 /// Other [Context] derefs to this type.
 /// You need a reference to an `App` to access the state of a [Entity].
@@ -1162,6 +1178,26 @@ impl App {
     pub fn set_reduce_motion(&mut self, reduce_motion: bool) {
         if self.reduce_motion != reduce_motion {
             self.reduce_motion = reduce_motion;
+            self.refresh_windows();
+        }
+    }
+
+    /// How fast animations run relative to their designed timing: 2.0 plays
+    /// them in half the time, 0.5 in twice the time.
+    pub fn animation_speed(&self) -> f32 {
+        animation_speed()
+    }
+
+    /// Sets how fast animations run relative to their designed timing. The
+    /// speed is process-wide, so springs stepped from a bare `Instant` follow
+    /// it too.
+    pub fn set_animation_speed(&mut self, speed: f32) {
+        let speed = if speed.is_finite() && speed > 0.0 {
+            speed
+        } else {
+            1.0
+        };
+        if ANIMATION_SPEED.swap(speed.to_bits(), Ordering::Relaxed) != speed.to_bits() {
             self.refresh_windows();
         }
     }

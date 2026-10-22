@@ -41,10 +41,20 @@ impl Press {
         let Some(from) = self.from else {
             return 0.0;
         };
-        let rise = |at: Instant| ease_out(at.saturating_duration_since(from), RISE);
+        let rise = |at: Instant| {
+            ease_out(
+                zz_gpui::animation_time(at.saturating_duration_since(from)),
+                RISE,
+            )
+        };
         match self.until {
             Some(until) if now >= until => {
-                rise(until) * (1.0 - ease_out(now.saturating_duration_since(until), FALL))
+                rise(until)
+                    * (1.0
+                        - ease_out(
+                            zz_gpui::animation_time(now.saturating_duration_since(until)),
+                            FALL,
+                        ))
             }
             _ => rise(now),
         }

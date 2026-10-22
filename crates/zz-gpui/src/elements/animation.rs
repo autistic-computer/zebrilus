@@ -417,11 +417,13 @@ impl<E: IntoElement + 'static> Element for AnimationElement<E> {
                 let duration = self.animations[animation_ix].duration;
 
                 let elapsed = if self.animations[animation_ix].synced && !duration.is_zero() {
-                    let elapsed = cx.background_executor().now() - cx.synced_animation_epoch;
+                    let elapsed = crate::animation_time(
+                        cx.background_executor().now() - cx.synced_animation_epoch,
+                    );
                     // Reduce modulo the duration before f32 conversion, which loses sub-second precision at scale.
                     Duration::from_nanos((elapsed.as_nanos() % duration.as_nanos()) as u64)
                 } else {
-                    state.start.elapsed()
+                    crate::animation_time(state.start.elapsed())
                 };
                 let mut delta = elapsed.as_secs_f32() / duration.as_secs_f32();
 

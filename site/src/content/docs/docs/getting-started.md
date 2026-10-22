@@ -413,6 +413,7 @@ mkdir -p ~/.config/zz && cp examples/config ~/.config/zz/config
 | `pane-gaps` | `false` | The card treatment: spaced panes framed in glass, their corners a little rounder than the theme's. Off makes them flush and square |
 | `pane-margin` | `8` | Gap between panes and at the window edge, 0–32 |
 | `animations` | `true` | Interface transitions, loading indicators, scrollbars, and animated UI images |
+| `animation-speed` | `1` | How fast those animations run, from `0.25` (four times slower) to `2` (twice as fast) |
 | `theme` | unset | A Ghostty theme file by name, or `light:a,dark:b` |
 | `font-family` | platform default | Terminal font stack. `font-size` is `13` |
 | `background-opacity` | `1.0` | Terminal background tint over an opaque pane |

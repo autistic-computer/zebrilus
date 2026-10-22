@@ -54,8 +54,9 @@ pub(crate) fn eased(
         return 1.0;
     };
     let now = cx.background_executor().now();
-    let t = (now.saturating_duration_since(since + delay).as_secs_f32() / span.as_secs_f32())
-        .clamp(0.0, 1.0);
+    let elapsed =
+        zz_gpui::animation_time(now.saturating_duration_since(since)).saturating_sub(delay);
+    let t = (elapsed.as_secs_f32() / span.as_secs_f32()).clamp(0.0, 1.0);
     if t < 1.0 && !cx.reduce_motion() {
         window.request_animation_frame();
         ease_out_quint()(t)

@@ -33,6 +33,7 @@ pub struct Knobs {
     pub zoom: f32,
     pub pane: PaneKnobs,
     pub motion: bool,
+    pub speed: f32,
     pub program_colors: bool,
     pub backdrop: Backdrop,
 }
@@ -220,6 +221,7 @@ impl Knobs {
             zoom: 1.0,
             pane: PaneKnobs::default(),
             motion: true,
+            speed: 1.0,
             program_colors: true,
             backdrop: Backdrop::Plain,
         }
@@ -345,6 +347,7 @@ impl Knobs {
                 "pane-inactive-opacity" => knobs.pane.inactive = number(key, value)?,
                 "pane-glow" => knobs.pane.glow = number(key, value)?,
                 "motion" => knobs.motion = flag(value),
+                "speed" => knobs.speed = number(key, value)?,
                 "program-colors" => knobs.program_colors = flag(value),
                 "backdrop" => {
                     knobs.backdrop = match value {
@@ -409,6 +412,7 @@ impl Knobs {
         });
         Theme::change(mode, None, cx);
         cx.set_reduce_motion(!self.motion);
+        cx.set_animation_speed(self.speed);
         cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
         let font_loads =
             (self.materials.font.as_ref()).is_some_and(|family| cx.text_system().has_font(family));

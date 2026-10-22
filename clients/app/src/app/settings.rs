@@ -112,6 +112,7 @@ impl Preferences {
             cx.set_global(PlatformReduceMotion(cx.reduce_motion()));
         }
         cx.set_reduce_motion(cx.global::<PlatformReduceMotion>().0 || !self.animations);
+        cx.set_animation_speed(self.animation_speed);
         cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
         #[cfg(target_os = "ios")]
         let (contrast, text_scale) = (
@@ -612,6 +613,7 @@ impl AppShell {
                                 | AppearancePageItem::UiFontFamily
                                 | AppearancePageItem::UiZoom
                                 | AppearancePageItem::Animations
+                                | AppearancePageItem::AnimationSpeed
                         )
                     })
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Description))
@@ -962,6 +964,40 @@ impl AppShell {
                         .on(settings_card_ground(cx))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.preferences.contrast = 1.0;
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        })),
+                    ),
+                    slider,
+                    narrow,
+                )
+            }
+            AppearancePageItem::AnimationSpeed => {
+                let (title, description) = item.text().unwrap_or_default();
+                let view = cx.entity().downgrade();
+                let slider = zz_ui::settings::appearance::animation_speed_slider(
+                    self.preferences.animation_speed,
+                    move |speed, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.animation_speed = speed;
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        });
+                    },
+                    cx,
+                );
+                let default = Preferences::default().animation_speed;
+                with_control(
+                    SettingEntry::new(title, description).title_actions(
+                        settings_reset_button(
+                            "settings-animation-speed-reset",
+                            "Reset animation speed to 100%",
+                            self.preferences.animation_speed != default,
+                        )
+                        .on(settings_card_ground(cx))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.preferences.animation_speed =
+                                Preferences::default().animation_speed;
                             this.preferences.save();
                             this.preferences.apply(&this.connection, window, cx);
                         })),

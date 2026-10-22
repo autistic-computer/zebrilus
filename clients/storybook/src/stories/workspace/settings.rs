@@ -62,7 +62,7 @@ pub const STORY: Story = Story {
         Section {
             id: "appearance",
             name: "Appearance pickers",
-            summary: "The Interface page's Theme rows: the mode tiles, the Style strip drawn over the look on screen, the accent swatches with a custom picker (all following the corner radius), the tint sliders (they follow the tint knobs), the saved themes strip, the Advanced heading, and the corner radius, contrast and window blur opacity sliders under it.",
+            summary: "The Interface page's Theme rows: the mode tiles, the Style strip drawn over the look on screen, the accent swatches with a custom picker (all following the corner radius), the tint sliders (they follow the tint knobs), the saved themes strip, the Advanced heading, and the corner radius, contrast, animation speed (it follows the speed knob) and window blur opacity sliders under it.",
             build: |window, cx| stateful(window, cx, Controls::new, appearance),
         },
         Section {
@@ -465,6 +465,13 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         cx,
                     )),
                 )
+                .child(entry(AppearancePageItem::AnimationSpeed).control(
+                    zz_ui::settings::appearance::animation_speed_slider(
+                        knobs.speed,
+                        |_, _, _| {},
+                        cx,
+                    ),
+                ))
                 .child(
                     entry(AppearancePageItem::WindowBackgroundOpacity)
                         .control(window_opacity_slider(0.0, |_, _, _| {}, cx)),
