@@ -122,10 +122,31 @@ fn fs_glass_copy(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f3
 
 @vertex
 fn vs_glass(@builtin(vertex_index) vertex_id: u32) -> @builtin(position) vec4<f32> {
-    let unit = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
-    let position = glass.quad.xy + unit * glass.quad.zw;
+    var position: vec2<f32>;
+    if (glass.shadow.z > 0.5) {
+        position = shadow_ring_vertex(vertex_id);
+    } else {
+        let unit = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
+        position = glass.quad.xy + unit * glass.quad.zw;
+    }
     let device = position / glass.viewport.xy * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
     return vec4<f32>(device, 0.0, 1.0);
+}
+
+fn shadow_ring_vertex(vertex_id: u32) -> vec2<f32> {
+    let corner = (vertex_id / 2u) % 4u;
+    let unit = vec2<f32>(f32(corner == 1u || corner == 2u), f32(corner >= 2u));
+    if ((vertex_id & 1u) == 0u) {
+        return glass.quad.xy + unit * glass.quad.zw;
+    }
+    let shape = glass.shapes[0];
+    let inset = max(max(shape.radii.x, shape.radii.y), max(shape.radii.z, shape.radii.w)) + 0.5;
+    let low = max(shape.rect.xy + inset, glass.quad.xy);
+    let high = min(shape.rect.xy + shape.rect.zw - inset, glass.quad.xy + glass.quad.zw);
+    if (any(high <= low)) {
+        return glass.quad.xy + 0.5 * glass.quad.zw;
+    }
+    return mix(low, high, unit);
 }
 
 // Signed distance to a rounded rectangle (negative inside) and its outward
@@ -237,7 +258,7 @@ fn shadow_blur_along_x(x: f32, y: f32, sigma: f32, corner: f32, half_size: vec2<
 }
 
 fn glass_shadow(position: vec2<f32>) -> vec4<f32> {
-    if (any(glass.shadow_bounds.zw <= vec2<f32>(0.0))) {
+    if (any(glass.shadow_bounds.zw <= vec2<f32>(0.0)) || covered_by_body(position)) {
         return vec4<f32>(0.0);
     }
     let caster = GlassShape(glass.shadow_bounds, glass.shadow_radii);
@@ -319,6 +340,16 @@ fn deep_inside(point: vec2<f32>, shape: GlassShape, depth: f32) -> bool {
     let inset = half_size - abs(point - (shape.rect.xy + half_size));
     let radius = max(max(shape.radii.x, shape.radii.y), max(shape.radii.z, shape.radii.w));
     return min(inset.x, inset.y) >= depth && max(inset.x, inset.y) >= max(radius, depth);
+}
+
+fn covered_by_body(point: vec2<f32>) -> bool {
+    let count = u32(glass.shape.x);
+    for (var i = 0u; i < count; i += 1u) {
+        if (deep_inside(point, glass.shapes[i], 0.5)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Whether a point is on the flat face: deep inside one of the shapes, which

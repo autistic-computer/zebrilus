@@ -329,7 +329,11 @@ impl MetalGlass {
             encoder.set_vertex_bytes(0, bytes.len() as u64, bytes.as_ptr() as *const c_void);
             encoder.set_fragment_bytes(0, bytes.len() as u64, bytes.as_ptr() as *const c_void);
             if set_scissor(encoder, *scissor, viewport) {
-                encoder.draw_primitives(metal::MTLPrimitiveType::TriangleStrip, 0, 4);
+                encoder.draw_primitives(
+                    metal::MTLPrimitiveType::TriangleStrip,
+                    0,
+                    u64::from(uniform.vertex_count()),
+                );
             }
         }
         encoder.set_scissor_rect(metal::MTLScissorRect {
