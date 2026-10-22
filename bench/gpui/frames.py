@@ -229,11 +229,20 @@ class Power:
                 out[f"{name}_w"] = (e1 - e0) / 1e6 / elapsed
         if self.perf:
             _, err = self.perf.communicate()
+            self.perf = None
             for line in err.splitlines():
                 fields = line.split(",")
                 if len(fields) > 2 and "rcs0-busy" in fields[2] and fields[0].replace(".", "").isdigit():
                     out["gpu_busy_pct"] = 100 * float(fields[0]) / 1e9 / self.duration
         return out
+
+    def discard(self):
+        if self.perf is None:
+            return
+        if self.perf.poll() is None:
+            subprocess.run(["sudo", "-n", "kill", "-TERM", str(self.perf.pid)], capture_output=True)
+        self.perf.communicate()
+        self.perf = None
 
 
 def thread_switches(pid):
@@ -566,11 +575,17 @@ class Run:
             power.start()
         noisy = []
         end = time.time() + self.duration
-        while time.time() < end:
-            commands += self.drive(scenario, min(end, time.time() + 2))
-            noisy += noise((self.gui.pid,))
-            if self.freeze_for_gate():
-                return None
+        finished = False
+        try:
+            while time.time() < end:
+                commands += self.drive(scenario, min(end, time.time() + 2))
+                noisy += noise((self.gui.pid,))
+                if self.freeze_for_gate():
+                    return None
+            finished = True
+        finally:
+            if power and not finished:
+                power.discard()
         t1 = time.time_ns()
         main1, total1, threads1 = thread_times(self.gui_pid)
         gpu1 = gpu_usage(self.gui_pid) if LINUX else None
