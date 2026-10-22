@@ -394,10 +394,11 @@ impl TextSystem {
 
     fn sync_font_generation(&self) {
         let generation = self.platform_text_system.font_generation();
-        if self
-            .platform_font_generation
-            .swap(generation, Ordering::Relaxed)
-            != generation
+        if self.platform_font_generation.load(Ordering::Relaxed) != generation
+            && self
+                .platform_font_generation
+                .swap(generation, Ordering::Relaxed)
+                != generation
         {
             self.font_ids_by_font.write().clear();
             self.resolved_fonts.write().clear();

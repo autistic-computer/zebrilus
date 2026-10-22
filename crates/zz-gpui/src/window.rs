@@ -3741,6 +3741,10 @@ impl Window {
         if self.platform_window.prepare_frame() {
             self.refresh();
         }
+        let atlas_generation = self.sprite_atlas.generation();
+        self.glyph_lookup_cache
+            .get_mut()
+            .sync_atlas_generation(atlas_generation);
         self.invalidate_entities();
         cx.entities.clear_accessed();
         debug_assert!(self.rendered_entity_stack.is_empty());
@@ -3819,7 +3823,6 @@ impl Window {
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.global_ids.finish_frame();
-        self.glyph_lookup_cache.get_mut().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
         crate::frame_stats::scene(&self.next_frame.scene, self.next_frame.hitboxes.len());
 
@@ -5627,9 +5630,7 @@ impl Window {
             synthetic_italic: options.synthetic_italic,
         };
 
-        let raster_bounds = self.glyph_raster_bounds(&params)?;
-        if !raster_bounds.is_zero() {
-            let tile = self.get_or_insert_glyph_tile(&params)?;
+        if let Some((raster_bounds, tile)) = self.glyph_tile(&params)? {
             let bounds = Bounds {
                 origin: integer_origin + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
@@ -5656,44 +5657,38 @@ impl Window {
     }
 
     #[cfg(test)]
+    pub(crate) fn set_sprite_atlas(&mut self, atlas: Arc<dyn PlatformAtlas>) {
+        self.sprite_atlas = atlas;
+    }
+
+    #[cfg(test)]
     pub(crate) fn glyph_lookup_count(&self) -> usize {
         self.glyph_lookup_cache.borrow().lookups.get()
     }
 
-    pub(crate) fn glyph_raster_bounds(
+    pub(crate) fn glyph_tile(
         &self,
         params: &RenderGlyphParams,
-    ) -> Result<Bounds<DevicePixels>> {
-        let generation = self.text_system().font_cache_generation();
-        {
-            let mut cache = self.glyph_lookup_cache.borrow_mut();
-            cache.sync_font_generation(generation);
-            if let Some((bounds, _)) = cache.lookup(params) {
-                return Ok(bounds);
-            }
-        }
-        let bounds = self.text_system().raster_bounds(params)?;
-        self.glyph_lookup_cache
-            .borrow_mut()
-            .insert_bounds(params, bounds);
-        Ok(bounds)
-    }
-
-    pub(crate) fn get_or_insert_glyph_tile(&self, params: &RenderGlyphParams) -> Result<AtlasTile> {
+    ) -> Result<Option<(Bounds<DevicePixels>, AtlasTile)>> {
         let generation = self.text_system().font_cache_generation();
         let cached = {
             let mut cache = self.glyph_lookup_cache.borrow_mut();
             cache.sync_font_generation(generation);
             cache.lookup(params)
         };
-        if let Some((_, Some(tile))) = cached {
-            return Ok(tile);
-        }
-        if cached.is_none() {
-            let bounds = self.text_system().raster_bounds(params)?;
-            self.glyph_lookup_cache
-                .borrow_mut()
-                .insert_bounds(params, bounds);
+        let bounds = match cached {
+            Some((bounds, Some(tile))) => return Ok(Some((bounds, tile))),
+            Some((bounds, None)) => bounds,
+            None => {
+                let bounds = self.text_system().raster_bounds(params)?;
+                self.glyph_lookup_cache
+                    .borrow_mut()
+                    .insert_bounds(params, bounds);
+                bounds
+            }
+        };
+        if bounds.is_zero() {
+            return Ok(None);
         }
         let tile = self
             .sprite_atlas
@@ -5705,7 +5700,7 @@ impl Window {
         self.glyph_lookup_cache
             .borrow_mut()
             .insert_tile(params, tile);
-        Ok(tile)
+        Ok(Some((bounds, tile)))
     }
 
     pub(crate) fn paint_cached_monochrome_glyph(
@@ -5779,6 +5774,10 @@ impl Window {
             .is_subpixel_rendering_supported()
             .hash(&mut hasher);
         mem::discriminant(&self.text_rendering_mode.get()).hash(&mut hasher);
+        self.glyph_lookup_cache
+            .borrow()
+            .atlas_generation()
+            .hash(&mut hasher);
         hasher.finish()
     }
 

@@ -1,6 +1,6 @@
 use crate::util::round_half_toward_zero;
 use crate::{
-    App, AtlasTile, Bounds, GlyphRenderOptions, Half, Hsla, IsZero, LineLayout, Pixels, Point,
+    App, AtlasTile, Bounds, GlyphRenderOptions, Half, Hsla, LineLayout, Pixels, Point,
     RenderGlyphParams, Result, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels,
     SharedString, StrikethroughStyle, TextAlign, UnderlineStyle, Window, WrapBoundary,
     WrappedLineLayout, black, fill, point, px, size, underline_y_offset,
@@ -282,11 +282,9 @@ impl ShapedLine {
                         synthetic_bold: false,
                         synthetic_italic: false,
                     };
-                    let raster_bounds = window.glyph_raster_bounds(&params)?;
-                    if raster_bounds.is_zero() {
+                    let Some((raster_bounds, tile)) = window.glyph_tile(&params)? else {
                         continue;
-                    }
-                    let tile = window.get_or_insert_glyph_tile(&params)?;
+                    };
                     (
                         Bounds {
                             origin: integer_origin + raster_bounds.origin.map(Into::into),
@@ -330,11 +328,9 @@ impl ShapedLine {
                         synthetic_bold: options.synthetic_bold,
                         synthetic_italic: options.synthetic_italic,
                     };
-                    let raster_bounds = window.glyph_raster_bounds(&params)?;
-                    if raster_bounds.is_zero() {
+                    let Some((raster_bounds, tile)) = window.glyph_tile(&params)? else {
                         continue;
-                    }
-                    let tile = window.get_or_insert_glyph_tile(&params)?;
+                    };
                     (
                         Bounds {
                             origin: integer_origin + raster_bounds.origin.map(Into::into),
@@ -2490,7 +2486,7 @@ mod tests {
                                 ));
                                 assert_eq!(
                                     direct_lookups,
-                                    line.runs.iter().map(|run| run.glyphs.len()).sum::<usize>() * 2
+                                    line.runs.iter().map(|run| run.glyphs.len()).sum::<usize>()
                                 );
                             },
                         );
@@ -2504,6 +2500,160 @@ mod tests {
             totals.get().1,
             totals.get().2
         );
+    }
+
+    #[derive(Default)]
+    struct ClearableAtlas(
+        parking_lot::Mutex<crate::AtlasState<crate::HeadlessAtlasBackend>>,
+        std::sync::atomic::AtomicUsize,
+    );
+
+    impl ClearableAtlas {
+        fn clear(&self) {
+            self.0.lock().clear(|_| {});
+        }
+
+        fn lookups(&self) -> usize {
+            self.1.load(std::sync::atomic::Ordering::Relaxed)
+        }
+    }
+
+    impl crate::PlatformAtlas for ClearableAtlas {
+        fn get_or_insert_with<'a>(
+            &self,
+            key: crate::AtlasKey,
+            build: &mut dyn FnMut() -> Result<
+                Option<(crate::Size<crate::DevicePixels>, std::borrow::Cow<'a, [u8]>)>,
+            >,
+        ) -> Result<Option<crate::AtlasTile>> {
+            self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.0.lock().get_or_insert_with(key, build)
+        }
+
+        fn remove(&self, key: &crate::AtlasKey) {
+            self.0.lock().remove(key);
+        }
+
+        fn generation(&self) -> u64 {
+            self.0.lock().generation()
+        }
+    }
+
+    #[test]
+    fn cached_raster_data_is_rebuilt_after_the_atlas_is_cleared() {
+        let mut cx = TestAppContext::build_with_text_system(
+            crate::TestDispatcher::new(0),
+            None,
+            Arc::new(SpriteTextSystem),
+        );
+        let enabled = Rc::new(std::cell::Cell::new(false));
+        let cached = Rc::new(std::cell::RefCell::new(None::<GlyphRasterData>));
+        let painted = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let view = {
+            let (enabled, painted) = (enabled.clone(), painted.clone());
+            UnderlineHandlerTestView(Rc::new(move |window, cx| {
+                if !enabled.get() {
+                    return;
+                }
+                let line = window.text_system().shape_line(
+                    "ab".into(),
+                    px(16.),
+                    &[TextRun {
+                        len: 2,
+                        ..TextRun::default()
+                    }],
+                    None,
+                );
+                let origin = point(px(8.), px(12.));
+                let mut cached = cached.borrow_mut();
+                let data = cached.get_or_insert_with(|| {
+                    line.compute_glyph_raster_data(
+                        origin,
+                        px(20.),
+                        GlyphRenderOptions::default(),
+                        window,
+                        cx,
+                    )
+                    .unwrap()
+                    .unwrap()
+                });
+                painted.borrow_mut().push(line.paint_with_raster_data(
+                    data,
+                    origin,
+                    px(20.),
+                    window,
+                ));
+            }))
+        };
+        let window = cx.add_window(move |_, _| view);
+        let atlas = Arc::new(ClearableAtlas::default());
+        cx.update_window(window.into(), |_, window, _| {
+            window.set_sprite_atlas(atlas.clone());
+        })
+        .unwrap();
+        enabled.set(true);
+        let draw = |cx: &mut TestAppContext| {
+            cx.update_window(window.into(), |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            })
+            .unwrap();
+        };
+        draw(&mut cx);
+        atlas.clear();
+        draw(&mut cx);
+        assert_eq!(*painted.borrow(), [true, false]);
+    }
+
+    #[test]
+    fn glyph_tiles_last_across_draws_until_the_atlas_retires_them() {
+        let mut cx = TestAppContext::build_with_text_system(
+            crate::TestDispatcher::new(0),
+            None,
+            Arc::new(SpriteTextSystem),
+        );
+        let window = cx.add_window(|_, _| crate::Empty);
+        cx.update_window(window.into(), |_, window, cx| {
+            let atlas = Arc::new(ClearableAtlas::default());
+            window.set_sprite_atlas(atlas.clone());
+            window.draw(cx).clear(cx);
+            let params = RenderGlyphParams {
+                font_id: FontId(1),
+                glyph_id: GlyphId(7),
+                font_size: px(14.),
+                subpixel_variant: point(0, 0),
+                scale_factor: 2.,
+                is_emoji: false,
+                subpixel_rendering: false,
+                font_smoothing: false,
+                font_smoothing_strength: 0,
+                synthetic_bold: false,
+                synthetic_italic: false,
+            };
+            let tile = |window: &Window| window.glyph_tile(&params).unwrap().unwrap().1;
+            let first = tile(window);
+            assert_eq!(tile(window), first);
+            window.draw(cx).clear(cx);
+            assert_eq!(tile(window), first);
+            assert_eq!(atlas.lookups(), 1);
+
+            crate::PlatformAtlas::remove(&*atlas, &crate::AtlasKey::Glyph(params.clone()));
+            window.draw(cx).clear(cx);
+            let second = tile(window);
+            assert_ne!(second, first);
+            assert_eq!(atlas.lookups(), 2);
+
+            atlas.clear();
+            window.draw(cx).clear(cx);
+            let third = tile(window);
+            assert_ne!(third, second);
+            assert_eq!(atlas.lookups(), 3);
+
+            window.text_system().add_fonts(Vec::new()).unwrap();
+            assert_eq!(tile(window), third);
+            assert_eq!(atlas.lookups(), 4);
+        })
+        .unwrap();
     }
 
     #[test]
