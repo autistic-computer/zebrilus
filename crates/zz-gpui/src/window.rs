@@ -5144,6 +5144,7 @@ impl Window {
                 shape.corner_radii,
                 shadows,
                 corner_smoothing,
+                false,
             );
         }
         self.paint_glass_shapes_with_smoothing(&[shape], material, corner_smoothing);
@@ -5191,7 +5192,7 @@ impl Window {
         corner_radii: Corners<Pixels>,
         shadows: &[BoxShadow],
     ) {
-        self.paint_drop_shadows_with_smoothing(bounds, corner_radii, shadows, None);
+        self.paint_drop_shadows_with_smoothing(bounds, corner_radii, shadows, None, false);
     }
 
     pub(crate) fn paint_drop_shadows_with_smoothing(
@@ -5200,6 +5201,7 @@ impl Window {
         corner_radii: Corners<Pixels>,
         shadows: &[BoxShadow],
         corner_smoothing: Option<f32>,
+        covered_by_opaque_fill: bool,
     ) {
         self.invalidator.debug_assert_paint();
 
@@ -5208,6 +5210,9 @@ impl Window {
         let opacity = self.element_opacity();
         let element_bounds = self.cover_bounds(bounds);
         let element_corner_radii = corner_radii.scale(scale_factor);
+        let hidden = (covered_by_opaque_fill && opacity == 1.0)
+            .then(|| self.opaque_fill_interior(bounds, corner_radii, content_mask))
+            .flatten();
         for shadow in shadows {
             if shadow.inset {
                 continue;
@@ -5225,7 +5230,7 @@ impl Window {
                 bottom_right: (corner_radii.bottom_right + shadow.spread_radius).max(zero),
                 bottom_left: (corner_radii.bottom_left + shadow.spread_radius).max(zero),
             };
-            self.next_frame.scene.insert_primitive(Shadow {
+            let shadow = Shadow {
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: self.cover_bounds(shadow_bounds),
@@ -5236,8 +5241,56 @@ impl Window {
                 element_corner_radii,
                 inset: 0,
                 corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
-            });
+            };
+            let hole = hidden
+                .map(|hidden| hidden.intersect(&shadow.bounds.dilate(ScaledPixels(-1.0))))
+                .filter(|hole| !hole.is_empty());
+            match hole {
+                Some(hole) => {
+                    self.insert_around(content_mask.bounds, content_mask, hole, |content_mask| {
+                        Shadow {
+                            content_mask,
+                            ..shadow
+                        }
+                    })
+                }
+                None => self.next_frame.scene.insert_primitive(shadow),
+            }
         }
+    }
+
+    fn opaque_fill_interior(
+        &self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        content_mask: ContentMask<ScaledPixels>,
+    ) -> Option<Bounds<ScaledPixels>> {
+        let scale_factor = self.scale_factor();
+        let rounded_interior = |bounds, corner_radii| {
+            Self::largest_border_interior(&Quad {
+                bounds,
+                corner_radii,
+                ..Default::default()
+            })
+        };
+        let mut interior =
+            rounded_interior(self.snap_bounds(bounds), corner_radii.scale(scale_factor))
+                .intersect(&content_mask.bounds);
+        if let Some(mask) = self.window_corner_mask {
+            let mask = window_corner_mask_for_viewport(
+                mask,
+                self.platform_window.content_size(),
+                self.viewport_size(),
+                scale_factor,
+                self.default_corner_smoothing,
+            );
+            interior = interior.intersect(&rounded_interior(mask.bounds, mask.corner_radii));
+        }
+        let interior = Bounds::from_corners(
+            point(interior.left().ceil(), interior.top().ceil()),
+            point(interior.right().floor(), interior.bottom().floor()),
+        );
+        (!interior.is_empty()).then_some(interior)
     }
 
     /// Paint the inset shadows from `shadows` into the scene at the current z-index. Should
@@ -5379,6 +5432,24 @@ impl Window {
             return;
         }
 
+        self.insert_around(
+            outer_bounds,
+            quad.content_mask,
+            inner_bounds,
+            |content_mask| Quad {
+                content_mask,
+                ..quad
+            },
+        );
+    }
+
+    fn insert_around<P: Into<crate::Primitive>>(
+        &mut self,
+        outer_bounds: Bounds<ScaledPixels>,
+        content_mask: ContentMask<ScaledPixels>,
+        inner_bounds: Bounds<ScaledPixels>,
+        primitive: impl Fn(ContentMask<ScaledPixels>) -> P,
+    ) {
         let strips = [
             // Top
             Bounds::from_corners(
@@ -5403,14 +5474,11 @@ impl Window {
         ];
 
         for strip in strips {
-            let content_mask_bounds = quad.content_mask.bounds.intersect(&strip);
-            if !content_mask_bounds.is_empty() {
-                self.next_frame.scene.insert_primitive(Quad {
-                    content_mask: ContentMask {
-                        bounds: content_mask_bounds,
-                    },
-                    ..quad
-                });
+            let bounds = content_mask.bounds.intersect(&strip);
+            if !bounds.is_empty() {
+                self.next_frame
+                    .scene
+                    .insert_primitive(primitive(ContentMask { bounds }));
             }
         }
     }
@@ -9120,6 +9188,59 @@ mod tests {
     }
 
     #[zz_gpui::test]
+    fn drop_shadows_skip_the_interior_of_an_opaque_fill(cx: &mut TestAppContext) {
+        struct ShadowedView;
+
+        impl Render for ShadowedView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let card = |color: crate::Hsla, shadow: crate::Hsla| {
+                    div()
+                        .w(px(200.0))
+                        .h(px(100.0))
+                        .flex_shrink_0()
+                        .rounded(px(12.0))
+                        .bg(color)
+                        .shadow(vec![crate::BoxShadow {
+                            color: shadow,
+                            blur_radius: px(8.0),
+                            spread_radius: px(0.0),
+                            offset: point(px(0.0), px(2.0)),
+                            inset: false,
+                        }])
+                };
+                div().flex().flex_col().gap(px(40.0)).p(px(40.0)).children([
+                    card(crate::white(), crate::red()),
+                    card(crate::white().opacity(0.5), crate::green()),
+                    card(crate::white(), crate::blue()).opacity(0.5),
+                ])
+            }
+        }
+
+        let window = cx.add_window(|_, _| ShadowedView);
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear(cx);
+            let scene = &window.rendered_frame.scene;
+            let shadows = |color: crate::Hsla| {
+                scene
+                    .shadows
+                    .iter()
+                    .filter(move |shadow| shadow.color.h == color.h && shadow.color.s == color.s)
+                    .collect::<Vec<_>>()
+            };
+            let split = shadows(crate::red());
+            assert_eq!(split.len(), 4);
+            let center = split[0].element_bounds.center();
+            for shadow in &split {
+                assert!(!shadow.content_mask.bounds.contains(&center));
+                assert_eq!(shadow.bounds, split[0].bounds);
+            }
+            assert_eq!(shadows(crate::green()).len(), 1);
+            assert_eq!(shadows(crate::blue()).len(), 1);
+        })
+        .unwrap();
+    }
+
+    #[zz_gpui::test]
     fn element_corner_smoothing_applies_to_own_quads_and_shadows(cx: &mut TestAppContext) {
         struct CornerSmoothingView;
 
@@ -9190,7 +9311,7 @@ mod tests {
                     .iter()
                     .filter(|shadow| shadow.color == color)
                     .collect();
-                assert_eq!(shadows.len(), 2);
+                assert_eq!(shadows.iter().filter(|shadow| shadow.inset == 1).count(), 1);
                 assert!(shadows.iter().any(|shadow| shadow.inset == 0));
                 assert!(shadows.iter().any(|shadow| shadow.inset == 1));
                 for shadow in shadows {

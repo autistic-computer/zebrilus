@@ -4768,24 +4768,7 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             }
         }
 
-        fn border(
-            scene: &mut Scene,
-            bounds: Bounds<ScaledPixels>,
-            radius: f32,
-            width: f32,
-            color: Hsla,
-            content_mask: ContentMask<ScaledPixels>,
-        ) {
-            let quad = Quad {
-                bounds,
-                content_mask,
-                background: hsla(0.0, 0.0, 0.0, 0.0).into(),
-                border_color: color,
-                corner_radii: Corners::all(radius.into()),
-                border_widths: Edges::all(width.into()),
-                corner_smoothing: 4.0,
-                ..Default::default()
-            };
+        fn interior(bounds: Bounds<ScaledPixels>, radius: f32, width: f32) -> Bounds<ScaledPixels> {
             let (left, top) = (bounds.left().0, bounds.top().0);
             let (right, bottom) = (bounds.right().0, bounds.bottom().0);
             let band = |horizontal: f32, vertical: f32| {
@@ -4805,30 +4788,61 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             };
             let horizontal_band = band(width, width.max(radius));
             let vertical_band = band(width.max(radius), width);
-            let inner = if area(&horizontal_band) >= area(&vertical_band) {
+            if area(&horizontal_band) >= area(&vertical_band) {
                 horizontal_band
             } else {
                 vertical_band
+            }
+        }
+
+        fn around<P: Into<zz_gpui::Primitive>>(
+            scene: &mut Scene,
+            outer: Bounds<ScaledPixels>,
+            content_mask: ContentMask<ScaledPixels>,
+            inner: Bounds<ScaledPixels>,
+            primitive: impl Fn(ContentMask<ScaledPixels>) -> P,
+        ) {
+            let strips = [
+                Bounds::from_corners(outer.origin, point(outer.right(), inner.top())),
+                Bounds::from_corners(point(outer.left(), inner.bottom()), outer.bottom_right()),
+                Bounds::from_corners(point(outer.left(), inner.top()), inner.bottom_left()),
+                Bounds::from_corners(inner.top_right(), point(outer.right(), inner.bottom())),
+            ];
+            for strip in strips {
+                let bounds = content_mask.bounds.intersect(&strip);
+                if !bounds.is_empty() {
+                    scene.insert_primitive(primitive(ContentMask { bounds }));
+                }
+            }
+        }
+
+        fn border(
+            scene: &mut Scene,
+            bounds: Bounds<ScaledPixels>,
+            radius: f32,
+            width: f32,
+            color: Hsla,
+            content_mask: ContentMask<ScaledPixels>,
+        ) {
+            let quad = Quad {
+                bounds,
+                content_mask,
+                background: hsla(0.0, 0.0, 0.0, 0.0).into(),
+                border_color: color,
+                corner_radii: Corners::all(radius.into()),
+                border_widths: Edges::all(width.into()),
+                corner_smoothing: 4.0,
+                ..Default::default()
             };
+            let inner = interior(bounds, radius, width);
             if inner.is_empty() {
                 scene.insert_primitive(quad);
                 return;
             }
-            let strips = [
-                Bounds::from_corners(bounds.origin, point(bounds.right(), inner.top())),
-                Bounds::from_corners(point(bounds.left(), inner.bottom()), bounds.bottom_right()),
-                Bounds::from_corners(point(bounds.left(), inner.top()), inner.bottom_left()),
-                Bounds::from_corners(inner.top_right(), point(bounds.right(), inner.bottom())),
-            ];
-            for strip in strips {
-                let mask = content_mask.bounds.intersect(&strip);
-                if !mask.is_empty() {
-                    scene.insert_primitive(Quad {
-                        content_mask: ContentMask { bounds: mask },
-                        ..quad
-                    });
-                }
-            }
+            around(scene, bounds, content_mask, inner, |content_mask| Quad {
+                content_mask,
+                ..quad
+            });
         }
 
         fn glyph(
@@ -4912,10 +4926,39 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             }
         }
 
-        fn frame_floating() -> Scene {
+        fn shadow_under_opaque_fill(
+            scene: &mut Scene,
+            shadow: Shadow,
+            fill_bounds: Bounds<ScaledPixels>,
+            radius: f32,
+            split: bool,
+        ) {
+            let hidden = interior(fill_bounds, radius, 0.0).intersect(&shadow.content_mask.bounds);
+            let hole = Bounds::from_corners(
+                point(hidden.left().ceil(), hidden.top().ceil()),
+                point(hidden.right().floor(), hidden.bottom().floor()),
+            )
+            .intersect(&shadow.bounds.dilate(ScaledPixels(-1.0)));
+            if split && !hole.is_empty() {
+                around(
+                    scene,
+                    shadow.content_mask.bounds,
+                    shadow.content_mask,
+                    hole,
+                    |content_mask| Shadow {
+                        content_mask,
+                        ..shadow
+                    },
+                );
+            } else {
+                scene.insert_primitive(shadow);
+            }
+        }
+
+        fn frame_floating(split_shadow: bool) -> Scene {
             let (chrome, radius) = floating_chrome();
             let mut scene = Scene::default();
-            scene.insert_primitive(Shadow {
+            let shadow = Shadow {
                 order: 0,
                 blur_radius: (6.0 * SCALE).into(),
                 bounds: chrome,
@@ -4926,7 +4969,8 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
                 element_corner_radii: Corners::all(radius.into()),
                 inset: 0,
                 corner_smoothing: 4.0,
-            });
+            };
+            shadow_under_opaque_fill(&mut scene, shadow, chrome, radius, split_shadow);
             scene.insert_primitive(fill(chrome, radius, chrome_color(), viewport()));
             border(&mut scene, chrome, radius, 1.0, ring_color(), viewport());
             scene.finish();
@@ -5076,7 +5120,7 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             empty.finish();
             vec![
                 ("clear", empty),
-                ("frame_floating", frame_floating()),
+                ("frame_floating", frame_floating(true)),
                 ("frame_tiled", frame_tiled()),
                 ("bordered", bordered()),
                 ("sidebar_faded", sidebar(tile, true)),
@@ -5338,6 +5382,68 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
                 ("underline", Box::new(underline(false))),
                 ("wavy underline", Box::new(underline(true))),
             ]
+        }
+
+        #[test]
+        fn splitting_the_window_shadow_around_its_opaque_chrome_keeps_pixels() -> anyhow::Result<()>
+        {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let size = device_size(WIDTH as i32, HEIGHT as i32);
+            let whole = frame_floating(false);
+            let split = frame_floating(true);
+            assert_eq!(whole.shadows.len(), 1);
+            assert_eq!(split.shadows.len(), 4);
+            let whole = renderer.render_scene_to_image(&whole, size)?;
+            let split = renderer.render_scene_to_image(&split, size)?;
+            assert!(whole.as_raw() == split.as_raw());
+
+            let size = device_size(160, 120);
+            let card = rect(40.0, 30.0, 80.0, 50.0);
+            let mask = ContentMask {
+                bounds: rect(0.0, 0.0, 160.0, 120.0),
+            };
+            for (offset, blur, radius) in [
+                ((0.0, 0.0), 2.0, 12.0),
+                ((0.0, 4.0), 8.0, 12.0),
+                ((6.0, -3.0), 20.0, 0.0),
+                ((-2.0, 2.0), 0.0, 8.0),
+            ] {
+                let render = |renderer: &mut WgpuHeadlessRenderer, split| {
+                    let mut scene = Scene::default();
+                    let bounds = Bounds {
+                        origin: point(
+                            card.origin.x + ScaledPixels(offset.0),
+                            card.origin.y + ScaledPixels(offset.1),
+                        ),
+                        size: card.size,
+                    };
+                    let shadow = Shadow {
+                        order: 0,
+                        blur_radius: ScaledPixels(blur),
+                        bounds,
+                        corner_radii: Corners::all(ScaledPixels(radius)),
+                        content_mask: mask,
+                        color: hsla(0.7, 0.8, 0.6, 0.8),
+                        element_bounds: card,
+                        element_corner_radii: Corners::all(ScaledPixels(radius)),
+                        inset: 0,
+                        corner_smoothing: 4.0,
+                    };
+                    shadow_under_opaque_fill(&mut scene, shadow, card, radius, split);
+                    let shadows = scene.shadows.len();
+                    scene.insert_primitive(fill(card, radius, hsla(0.1, 0.5, 0.5, 1.0), mask));
+                    scene.finish();
+                    anyhow::Ok((shadows, renderer.render_scene_to_image(&scene, size)?))
+                };
+                let (_, whole) = render(&mut renderer, false)?;
+                let (shadows, split) = render(&mut renderer, true)?;
+                assert_eq!(shadows, 4, "{offset:?} {blur} {radius}");
+                assert!(
+                    whole.as_raw() == split.as_raw(),
+                    "{offset:?} {blur} {radius}"
+                );
+            }
+            Ok(())
         }
 
         #[test]

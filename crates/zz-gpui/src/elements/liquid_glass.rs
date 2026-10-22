@@ -716,6 +716,7 @@ impl Element for GlassGroup {
                     glass.shape.corner_radii,
                     &glass.shadows,
                     glass.corner_smoothing,
+                    false,
                 );
             }
         }
