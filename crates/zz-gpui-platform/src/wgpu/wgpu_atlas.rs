@@ -842,6 +842,81 @@ mod tests {
         Ok(())
     }
 
+    fn texture_bytes(atlas: &WgpuAtlas) -> (usize, u64) {
+        let lock = atlas.0.lock();
+        let storage = &lock.backend.storage;
+        [
+            &storage.monochrome_textures,
+            &storage.subpixel_textures,
+            &storage.polychrome_textures,
+        ]
+        .into_iter()
+        .flat_map(|list| list.textures.iter().flatten())
+        .fold((0, 0), |(pages, bytes), texture| {
+            (
+                pages + 1,
+                bytes
+                    + u64::from(texture.texture.width())
+                        * u64::from(texture.texture.height())
+                        * u64::from(texture.bytes_per_pixel()),
+            )
+        })
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_glyph_atlas_zoom_bytes -- --ignored --nocapture"]
+    fn bench_glyph_atlas_zoom_bytes() -> anyhow::Result<()> {
+        use zz_gpui::{
+            IsZero, PlatformTextSystem, RenderGlyphParams, SUBPIXEL_VARIANTS_X, font, point, px,
+        };
+        let text_system = crate::wgpu::CosmicTextSystem::new("DejaVu Sans");
+        let font_id = text_system.font_id(&font("DejaVu Sans Mono"))?;
+        let (device, queue) = test_device_and_queue()?;
+        for subpixel_rendering in [false, true] {
+            let atlas = WgpuAtlas::new(device.clone(), wgpu::TextureFormat::Bgra8Unorm);
+            let mut steps = Vec::new();
+            for font_size in 13..=23 {
+                for ch in (b' '..=b'~').map(char::from) {
+                    let Some(glyph_id) = text_system.glyph_for_char(font_id, ch) else {
+                        continue;
+                    };
+                    for variant in 0..SUBPIXEL_VARIANTS_X {
+                        let params = RenderGlyphParams {
+                            font_id,
+                            glyph_id,
+                            font_size: px(font_size as f32),
+                            subpixel_variant: point(variant, 0),
+                            scale_factor: 1.25,
+                            is_emoji: false,
+                            subpixel_rendering,
+                            font_smoothing: false,
+                            font_smoothing_strength: 0,
+                            synthetic_bold: false,
+                            synthetic_italic: false,
+                        };
+                        let bounds = text_system.glyph_raster_bounds(&params)?;
+                        if bounds.is_zero() {
+                            continue;
+                        }
+                        atlas.get_or_insert_with(AtlasKey::Glyph(params.clone()), &mut || {
+                            let (size, bytes) = text_system.rasterize_glyph(&params, bounds)?;
+                            Ok(Some((size, Cow::Owned(bytes))))
+                        })?;
+                    }
+                }
+                flush(&atlas, &queue);
+                let (pages, bytes) = texture_bytes(&atlas);
+                steps.push(format!("{font_size}px={pages}/{}KiB", bytes / 1024));
+            }
+            println!(
+                "bench_glyph_atlas_zoom_bytes subpixel={subpixel_rendering} pages/bytes after each size: {}",
+                steps.join(" ")
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn swizzle_upload_data_preserves_bgra_uploads() {
         let mut data = vec![0x10, 0x20, 0x30, 0x40];
