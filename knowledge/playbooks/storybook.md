@@ -40,7 +40,7 @@ just storybook serve    # serve the last build
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&radius=4`.
 Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default` or
-`liquid-glass`: the built-in the knobs start from, materials and roles both, picked under Start from), the theme's `name`,
+`macos`: the built-in the knobs start from, materials and roles both, picked under Start from), the theme's `name`,
 the materials (`radius`, `outline`, `row-inset`, `primary`, `highlights` (`lift` or `flat`), `font`, `glass` with its sliders, the
 contact shadow as `contact-y`, `contact-blur`, `contact-spread`, `contact-strength` and the float
 shadow as `float-y`, `float-blur`, `float-spread`, `float-strength`), `roles` (the theme file's
@@ -59,7 +59,7 @@ animations off and freezes spinners). Two more keys only steer the page: `step` 
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
 they stay in the URL. The Settings story's Appearance pickers section (`#/settings/appearance`)
 draws the Interface page's Theme rows with the builders the app uses: the Mode tiles, the Themes
-strip (Default, Liquid Glass and a saved theme), the accent swatches with a custom picker (both
+strip (Default, macOS and a saved theme), the accent swatches with a custom picker (both
 rounding with the corner radius) and the tint sliders (which follow the tint knobs), then
 the Advanced heading and its Corner radius and Contrast sliders.
 

@@ -510,7 +510,7 @@ mod tests {
             status_badges: false,
             status_agents: false,
             animations: false,
-            theme: Some("liquid-glass".into()),
+            theme: Some("macos".into()),
             sidebar_width: 320.0,
             ..defaults
         };
@@ -523,11 +523,9 @@ mod tests {
             changed.status_bar_settings()
         );
         assert!(!restored.animations);
-        let glass = &interface_theme::builtin_theme("liquid-glass")
-            .unwrap()
-            .materials;
-        assert_eq!(restored.shown_theme().materials.outline, glass.outline);
-        assert_eq!(restored.widget_corner_radius(), glass.radius);
+        let macos = &interface_theme::builtin_theme("macos").unwrap().materials;
+        assert_eq!(restored.shown_theme().materials.outline, macos.outline);
+        assert_eq!(restored.widget_corner_radius(), macos.radius);
         assert_eq!(restored.sidebar_width, 320.0);
     }
 
@@ -683,7 +681,7 @@ mod tests {
         assert_eq!(restored.interface_theme().name, "Neon");
 
         let mut glass = Preferences {
-            theme: Some("liquid-glass".into()),
+            theme: Some("macos".into()),
             ..Preferences::default()
         };
         glass.duplicate_theme().unwrap();

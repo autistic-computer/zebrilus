@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Interface themes: materials, roles and colors in one file"
-description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default and Liquid Glass ship built in. Settings draws the theme with an accent and a background tint over it, and saves the result as a theme; the 34 old palette presets, the color and material presets, Flat/Modern/Full, the chrome color overrides, the nine-key look and the per-material keys are gone."
+description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default and macOS ship built in. Settings draws the theme with an accent and a background tint over it, and saves the result as a theme; the 34 old palette presets, the color and material presets, Flat/Modern/Full, the chrome color overrides, the nine-key look and the per-material keys are gone."
 status: Built
 resource: crates/zz-ui/src/interface_theme.rs
 tags:
@@ -10,7 +10,7 @@ tags:
 - design-system
 - configuration
 - design-plan
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-22T00:00:00Z
 ---
 
 # Why
@@ -42,15 +42,8 @@ A file can leave keys out: materials fall back to `Materials::default()` (Defaul
 
 | Theme | Materials and roles | Colors |
 |---|---|---|
-| Default | 10px corners, 0.5px outlines, both shadows at their built-in geometry, no glass, foreground primary, 4px row inset; no role patches, so every piece draws as its kind's built-in | neutral planes `#fcfcfc` / `#18181a`, near-black and near-white ink, a blue accent `#3d6df2` / `#6b8cff`, status colors that read on both planes |
-| Liquid Glass | 25px corners (so capsule roles are pills), no outlines, 5px row inset, foreground primary, glass (blur 40, bezel 3, refraction 38, dispersion 0.04, tint `#ffffff7a`, saturation 1.8, specular 0.3, fresnel 0.08, edge shadow 0.95, merge 20), no shadows. Glass fills the agent composer, attachments and jump button, the address bar and pane drop zones, and marks the selected browser tab, sidebar entry and window tab; the phone pill, keys and New pane tile are glass; pane chips, tooltips and the agent status are solid, badges have no fill, and pane header buttons and titlebar status chips lift on hover and when selected; the composer has no outline and no hover | macOS 27's: `#ffffff` / `#1e1e1e` planes, `#262626` / `#dddddd` ink, accent `#007aff` in both modes, the system green, orange and red |
-
-Liquid Glass was made in the theme creator. Its colors are the ones AppKit's `NSColor` reports on
-macOS 27: `windowBackgroundColor`, `labelColor` (black or white at 85% over the window),
-`controlAccentColor`, and `systemGreen`, `systemOrange` and `systemRed` (`#30d158`, `#ff9230` and
-`#ff4245` in dark). In light those three (`#34c759`, `#ff8d28`, `#ff383c`) fall under the 3:1 floor
-on a popover, so they are darkened in Oklch along their own hue until they pass: `#029437`,
-`#c66702` and `#f62d34`.
+| Default | 24px corners, 0.75px outlines, both shadows at their built-in geometry, no glass, foreground primary, 5px row inset; no role patches, so every piece draws as its kind's built-in | neutral planes `#fcfcfc` / `#18181a`, near-black and near-white ink, a blue accent `#3d6df2` / `#6b8cff`, status colors that read on both planes |
+| macOS | 24px corners, 0.5px outlines, 5px row inset, accent primary, glass (blur 20, bezel 3, refraction 4, tint `#ffffff8c`, light from above) on chrome buttons, selected tabs and sidebar entries and floating surfaces, contact and float shadows, 38 role patches | `#f5f5f7` / `#242424` planes, `#1d1d1f` / `#f5f5f7` ink, accent `#006fe8` / `#0a84ff`, the system green, orange and red darkened in light to pass the 3:1 floor |
 
 There are no color or material presets: a theme's materials and palettes are its own, and Settings
 colors the interface with the accent and the tint below. A test holds every built-in to contrast floors in both modes: foreground 7:1 on the window and a popover, accent and status colors 3:1, text on the accent 3:1.
@@ -116,6 +109,7 @@ The web and iOS clients pick their theme themselves and never take the host's. T
 - **Style, an accent and a tint, in Settings (2026-10-15).** The Interface page was one strip of whole themes, with six material keys under Advanced. It now picks a style from the presets the creator already had, so any theme goes with any materials without writing a file, and Save keeps the result as a theme. The material keys went with the Materials group: a style sets outlines, shadows, row inset, primary and glass together, only the radius stays a key of its own, and a look outside the presets is made in the theme creator. Pane corners and the pane edge follow the theme too (`Theme::pane_radius()` is the radius plus 3.5, the glint is the outline width), so a square style squares the panes and a style without outlines has no glint; `pane-corner-radius` and `pane-border-width` were retired with them. The accent comes as eight names, each a light and a dark color checked at every tint hue, or a hex color for both modes. The tint changes only the background, toward a low-chroma color of the same lightness, so contrast hardly moves. `interface-style` and `chrome-accent`, retired on 2026-10-11 with other meanings, are reused for these settings.
 - **Pane opacity and window blur stay two settings (2026-10-15).** Folding them into one transparency setting was considered and not done: `pane-background-opacity` also decides how much a terminal's own background shows over the chrome while the window is opaque, so merging it into blur would change how every terminal looks. Superseded on 2026-10-18: `pane-background-opacity` is gone, panes always show the window behind them, and only PiPs keep an opacity, `pip-background-opacity`.
 - **Themes only, Liquid Glass built in (2026-10-15).** Styles and themes side by side confused people: two strips that both changed the corners, the glass and the shadows. Settings' Style row and `interface-style` went the same day they arrived, the material presets behind them with them, and zz bundles finished themes instead, each one's materials, roles and colors made together in the theme creator. Liquid Glass is the first, drawn in macOS 27's own colors. `interface-style` was never released with its preset meaning, so it is simply retired again.
+- **Liquid Glass removed (2026-10-22).** Default and macOS are the built-ins. A config or saved preference that names `liquid-glass` loads Default, as for any theme that is not found.
 - **Nine look keys, not seventeen (2026-10-13).** Shadow strength, the share controls cast and elevation became one choice, `shadows`. Outline strength and outline width became `outline`, a width. Corner smoothing became the constant `CORNER_SMOOTHING` (4) that every window draws with. Density, control fill, divider strength and animation speed are gone, so control heights, fills, rules and transitions no longer change per theme.
 - **Materials and roles instead of a look (2026-10-13, same day).** A global look could not put glass on toolbar buttons and flat fills on the chips under them. `shadows`, `selection` and `field` became role props (`shadow`, `selected`, a field role's `fill` and `outline`), the shadows became two materials with their own geometry, and `look` became `materials` plus `roles`. Unreleased, so there is no migration: a file with `look` stops loading until rewritten. See [surface roles](/designs/surface-roles.md).
 - **`interface-theme` keeps `theme-mode`.** The mode stays its own setting, as in the apps themes imitate.

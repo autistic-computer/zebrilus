@@ -291,14 +291,14 @@ mod tests {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             let default = zz_ui::interface_theme::default_theme().clone();
-            let glass = zz_ui::interface_theme::builtin_theme("liquid-glass")
-                .expect("the Liquid Glass theme")
+            let macos = zz_ui::interface_theme::builtin_theme("macos")
+                .expect("the macOS theme")
                 .clone();
             for (id, theme, gaps) in [
                 ("default", &default, true),
                 ("default", &default, false),
-                ("liquid-glass", &glass, true),
-                ("liquid-glass", &glass, false),
+                ("macos", &macos, true),
+                ("macos", &macos, false),
             ] {
                 cx.set_global(config::Themes {
                     active: theme.clone(),
