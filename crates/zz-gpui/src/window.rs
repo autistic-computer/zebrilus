@@ -72,6 +72,8 @@ use uuid::Uuid;
 
 pub(crate) mod a11y;
 mod glyph_cache;
+#[cfg(test)]
+mod invalidation_tests;
 mod prompts;
 
 pub use a11y::A11ySubtreeBuilder;
@@ -260,6 +262,10 @@ impl WindowInvalidator {
         } else {
             false
         }
+    }
+
+    pub fn invalidate_view_for_redraw(&self, entity: EntityId) {
+        self.inner.borrow_mut().dirty_views.insert(entity);
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -586,22 +592,29 @@ pub(crate) struct FocusRef {
 impl FocusId {
     /// Obtains whether the element associated with this handle is currently focused.
     pub fn is_focused(&self, window: &Window) -> bool {
-        window.focus == Some(*self)
+        let focused = window.focus == Some(*self);
+        window.record_input_read(InputRead::Focused(*self, focused));
+        focused
     }
 
     /// Obtains whether the element associated with this handle contains the focused
     /// element or is itself focused.
-    pub fn contains_focused(&self, window: &Window, cx: &App) -> bool {
-        window
-            .focused(cx)
-            .is_some_and(|focused| self.contains(focused.id, window))
+    pub fn contains_focused(&self, window: &Window, _cx: &App) -> bool {
+        let contains = window
+            .focus
+            .is_some_and(|focused| self.contains(focused, window));
+        window.record_input_read(InputRead::ContainsFocused(*self, contains));
+        contains
     }
 
     /// Obtains whether the element associated with this handle is contained within the
     /// focused element or is itself focused.
-    pub fn within_focused(&self, window: &Window, cx: &App) -> bool {
-        let focused = window.focused(cx);
-        focused.is_some_and(|focused| focused.id.contains(*self, window))
+    pub fn within_focused(&self, window: &Window, _cx: &App) -> bool {
+        let within = window
+            .focus
+            .is_some_and(|focused| focused.contains(*self, window));
+        window.record_input_read(InputRead::WithinFocused(*self, within));
+        within
     }
 
     /// Obtains whether this handle contains the given handle in the most recently rendered frame.
@@ -869,10 +882,12 @@ impl HitboxId {
         if window.captured_hitbox == Some(self) {
             return true;
         }
-        if window.last_input_was_keyboard() {
-            return false;
-        }
-        self.hit_test(window)
+        self.hit_test(window) && !window.last_input_was_keyboard()
+    }
+
+    pub(crate) fn hovered(self, window: &Window) -> bool {
+        window.captured_hitbox == Some(self)
+            || (window.last_input_modality != InputModality::Keyboard && self.hit_test(window))
     }
 
     /// Checks if the hitbox with this ID is currently hovered, regardless of the last
@@ -1095,9 +1110,43 @@ pub(crate) struct DeferredDraw {
     paint_range: Range<PaintIndex>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InputRead {
+    Focused(FocusId, bool),
+    ContainsFocused(FocusId, bool),
+    WithinFocused(FocusId, bool),
+    Focus(Option<FocusId>),
+    Keyboard(bool),
+    Touch(bool),
+    Hovered(HitboxId, bool),
+}
+
+impl InputRead {
+    fn changed(self, window: &Window) -> bool {
+        match self {
+            InputRead::Focused(id, was) => (window.focus == Some(id)) != was,
+            InputRead::ContainsFocused(id, was) => {
+                window.focus.is_some_and(|focus| id.contains(focus, window)) != was
+            }
+            InputRead::WithinFocused(id, was) => {
+                window.focus.is_some_and(|focus| focus.contains(id, window)) != was
+            }
+            InputRead::Focus(was) => window.focus != was,
+            InputRead::Keyboard(was) => {
+                (window.last_input_modality == InputModality::Keyboard) != was
+            }
+            InputRead::Touch(was) => (window.last_input_modality == InputModality::Touch) != was,
+            InputRead::Hovered(id, was) => id.hovered(window) != was,
+        }
+    }
+}
+
 pub(crate) struct Frame {
     pub(crate) focus: Option<FocusId>,
     pub(crate) window_active: bool,
+    pub(crate) drag_active: bool,
+    pub(crate) input_reads: RefCell<Vec<(EntityId, InputRead)>>,
+    input_reads_floor: Cell<usize>,
     pub(crate) element_states: FxHashMap<(GlobalElementId, TypeId), ElementStateBox>,
     accessed_element_states: Vec<(GlobalElementId, TypeId)>,
     pub(crate) mouse_listeners: Vec<Option<AnyMouseListener>>,
@@ -1128,6 +1177,7 @@ pub(crate) struct PrepaintStateIndex {
     deferred_draws_index: usize,
     dispatch_tree_index: usize,
     accessed_element_states_index: usize,
+    input_reads_index: usize,
     line_layout_index: LineLayoutIndex,
     a11y_index: a11y::A11yIndex,
 }
@@ -1141,6 +1191,7 @@ pub(crate) struct PaintIndex {
     input_handlers_index: usize,
     cursor_styles_index: usize,
     accessed_element_states_index: usize,
+    input_reads_index: usize,
     tab_handle_index: usize,
     line_layout_index: LineLayoutIndex,
 }
@@ -1156,6 +1207,9 @@ impl Frame {
         Frame {
             focus: None,
             window_active: false,
+            drag_active: false,
+            input_reads: RefCell::new(Vec::new()),
+            input_reads_floor: Cell::new(0),
             element_states: FxHashMap::default(),
             accessed_element_states: Vec::new(),
             mouse_listeners: Vec::new(),
@@ -1198,6 +1252,9 @@ impl Frame {
         self.deferred_draws.clear();
         self.tab_stops.clear();
         self.focus = None;
+        self.drag_active = false;
+        self.input_reads.get_mut().clear();
+        self.input_reads_floor.set(0);
 
         #[cfg(any(test, feature = "test-support"))]
         {
@@ -2451,6 +2508,7 @@ impl Window {
 
     /// Obtain the currently focused [`FocusHandle`]. If no elements are focused, returns `None`.
     pub fn focused(&self, cx: &App) -> Option<FocusHandle> {
+        self.record_input_read(InputRead::Focus(self.focus));
         self.focus
             .and_then(|id| FocusHandle::for_id(id, &cx.focus_handles))
     }
@@ -2476,7 +2534,7 @@ impl Window {
         self.focus_generation = self.focus_generation.wrapping_add(1);
         self.clear_pending_keystrokes(cx);
 
-        self.refresh();
+        self.invalidate_input_readers();
     }
 
     /// Remove focus from all elements within this context's window.
@@ -2491,7 +2549,7 @@ impl Window {
             self.focus_generation = self.focus_generation.wrapping_add(1);
         }
         self.focus = None;
-        self.refresh();
+        self.invalidate_input_readers();
     }
 
     /// Blur the window and don't allow anything in it to be focused again.
@@ -3539,9 +3597,9 @@ impl Window {
     }
 
     /// Determine whether the given action is available along the dispatch path to the currently focused element.
-    pub fn is_action_available(&self, action: &dyn Action, cx: &App) -> bool {
-        let node_id =
-            self.focus_node_id_in_rendered_frame(self.focused(cx).map(|handle| handle.id));
+    pub fn is_action_available(&self, action: &dyn Action, _cx: &App) -> bool {
+        self.record_input_read(InputRead::Focus(self.focus));
+        let node_id = self.focus_node_id_in_rendered_frame(self.focus);
         self.rendered_frame
             .dispatch_tree
             .is_action_available(action, node_id)
@@ -3602,11 +3660,56 @@ impl Window {
     /// Returns true if the last input event was keyboard-based (key press, tab navigation, etc.)
     /// This is used for focus-visible styling to show focus indicators only for keyboard navigation.
     pub fn last_input_was_keyboard(&self) -> bool {
-        self.last_input_modality == InputModality::Keyboard
+        let keyboard = self.last_input_modality == InputModality::Keyboard;
+        self.record_input_read(InputRead::Keyboard(keyboard));
+        keyboard
     }
 
     pub(crate) fn last_input_was_touch(&self) -> bool {
-        self.last_input_modality == InputModality::Touch
+        let touch = self.last_input_modality == InputModality::Touch;
+        self.record_input_read(InputRead::Touch(touch));
+        touch
+    }
+
+    pub(crate) fn record_input_read(&self, read: InputRead) {
+        let Some(view) = self.rendered_entity_stack.last() else {
+            return;
+        };
+        let mut reads = self.next_frame.input_reads.borrow_mut();
+        if reads.len() == self.next_frame.input_reads_floor.get()
+            || reads.last() != Some(&(*view, read))
+        {
+            reads.push((*view, read));
+        }
+    }
+
+    pub(crate) fn drag_target_hovered(&self, hitbox: HitboxId) -> bool {
+        let hovered = hitbox.hovered(self);
+        self.record_input_read(InputRead::Hovered(hitbox, hovered));
+        hovered
+    }
+
+    fn invalidate_input_readers(&mut self) {
+        if !self.invalidator.not_drawing() {
+            return;
+        }
+        let mut views = SmallVec::<[EntityId; 8]>::new();
+        for (view, read) in self.rendered_frame.input_reads.borrow().iter() {
+            if read.changed(self) && !views.contains(view) {
+                views.push(*view);
+            }
+        }
+        for view in views {
+            self.invalidator.invalidate_view_for_redraw(view);
+        }
+        self.invalidator.set_dirty(true);
+    }
+
+    pub(crate) fn invalidate_view(&mut self, view: EntityId) {
+        if self.invalidator.not_drawing() {
+            self.invalidator.invalidate_view_for_redraw(view);
+            self.invalidator.set_dirty(true);
+        }
     }
 
     /// The current state of the keyboard's capslock
@@ -3676,6 +3779,7 @@ impl Window {
         }
         self.dirty_views.clear();
         self.next_frame.window_active = self.active.get();
+        self.next_frame.drag_active = cx.active_drag.is_some();
 
         // Register requested input handler with the platform window.
         // Use .take() instead of .pop() to preserve Vec length, so that cached
@@ -3781,7 +3885,7 @@ impl Window {
         // schedule another frame here to render the new focus state and dispatch the
         // resulting focus events.
         if self.focus != focus_before_listeners {
-            self.refresh();
+            self.invalidate_input_readers();
         }
         self.needs_present.set(true);
 
@@ -4203,6 +4307,7 @@ impl Window {
             deferred_draws_index: self.next_frame.deferred_draws.len(),
             dispatch_tree_index: self.next_frame.dispatch_tree.len(),
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
+            input_reads_index: self.input_reads_index(),
             line_layout_index: self.text_system.layout_index(),
             a11y_index: self.a11y.index(),
         }
@@ -4226,6 +4331,7 @@ impl Window {
                 .iter()
                 .map(|(id, type_id)| (id.clone(), *type_id)),
         );
+        self.reuse_input_reads(range.start.input_reads_index..range.end.input_reads_index);
         self.text_system
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
 
@@ -4259,6 +4365,19 @@ impl Window {
         );
     }
 
+    fn input_reads_index(&self) -> usize {
+        let index = self.next_frame.input_reads.borrow().len();
+        self.next_frame.input_reads_floor.set(index);
+        index
+    }
+
+    fn reuse_input_reads(&mut self, range: Range<usize>) {
+        self.next_frame
+            .input_reads
+            .get_mut()
+            .extend_from_slice(&self.rendered_frame.input_reads.get_mut()[range]);
+    }
+
     pub(crate) fn paint_index(&self) -> PaintIndex {
         PaintIndex {
             scene_index: self.next_frame.scene.len(),
@@ -4268,6 +4387,7 @@ impl Window {
             input_handlers_index: self.next_frame.input_handlers.len(),
             cursor_styles_index: self.next_frame.cursor_styles.len(),
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
+            input_reads_index: self.input_reads_index(),
             tab_handle_index: self.next_frame.tab_stops.paint_index(),
             line_layout_index: self.text_system.layout_index(),
         }
@@ -4306,6 +4426,7 @@ impl Window {
                 .iter()
                 .map(|(id, type_id)| (id.clone(), *type_id)),
         );
+        self.reuse_input_reads(range.start.input_reads_index..range.end.input_reads_index);
         self.next_frame.tab_stops.replay(
             &self.rendered_frame.tab_stops.insertion_history
                 [range.start.tab_handle_index..range.end.tab_handle_index],
@@ -6451,7 +6572,7 @@ impl Window {
             _ => self.last_input_modality,
         };
         if self.last_input_modality != old_modality {
-            self.refresh();
+            self.invalidate_input_readers();
         }
 
         // Handlers may set this to false by calling `stop_propagation`.
@@ -6833,9 +6954,11 @@ impl Window {
 
         if cx.has_active_drag() {
             if event.is::<MouseMoveEvent>() {
-                // If this was a mouse move event, redraw the window so that the
-                // active drag can follow the mouse cursor.
-                self.refresh();
+                if self.rendered_frame.drag_active {
+                    self.invalidate_input_readers();
+                } else {
+                    self.refresh();
+                }
             } else if event.is::<MouseUpEvent>() {
                 // If this was a mouse up event, cancel the active drag and redraw
                 // the window.
@@ -7589,6 +7712,7 @@ impl Window {
 
     /// Returns the current context stack.
     pub fn context_stack(&self) -> Vec<KeyContext> {
+        self.record_input_read(InputRead::Focus(self.focus));
         let node_id = self.focus_node_id_in_rendered_frame(self.focus);
         let dispatch_tree = &self.rendered_frame.dispatch_tree;
         dispatch_tree
@@ -7600,6 +7724,7 @@ impl Window {
 
     /// Returns all available actions for the focused element.
     pub fn available_actions(&self, cx: &App) -> Vec<Box<dyn Action>> {
+        self.record_input_read(InputRead::Focus(self.focus));
         let node_id = self.focus_node_id_in_rendered_frame(self.focus);
         let mut actions = self.rendered_frame.dispatch_tree.available_actions(node_id);
         for action_type in cx.global_action_listeners.keys() {
