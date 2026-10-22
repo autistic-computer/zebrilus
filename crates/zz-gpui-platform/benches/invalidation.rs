@@ -1,7 +1,7 @@
 use std::{cell::Cell, rc::Rc, time::Duration};
 
 use zz_gpui::{
-    App, AppContext as _, BenchAppContext, BenchWindowContext, Bounds, Context, Entity,
+    App, AppContext as _, BenchAppContext, BenchWindowContext, Bounds, Context, Div, Entity,
     FocusHandle, InteractiveElement as _, IntoElement, Modifiers, MouseButton, MouseDownEvent,
     MouseUpEvent, ParentElement as _, Pixels, PlatformInput, Point, Render, SharedString,
     StatefulInteractiveElement as _, StyleRefinement, Styled as _, Window, div, point,
@@ -31,6 +31,7 @@ struct Workspace {
     sidebar: Entity<Sidebar>,
     headers: Vec<Entity<Header>>,
     terminals: Vec<Entity<Terminal>>,
+    frames: Vec<Entity<PaneFrame>>,
     renders: Rc<Renders>,
 }
 
@@ -38,23 +39,13 @@ impl Render for Workspace {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         self.renders.view();
         let pane = |index: usize| {
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .border_1()
-                .border_color(rgb(0x2a2f36))
-                .child(
-                    self.headers[index]
-                        .clone()
-                        .cached(StyleRefinement::default().w_full().h(px(24.))),
-                )
-                .child(
-                    self.terminals[index]
-                        .clone()
-                        .cached(StyleRefinement::default().w_full().flex_1()),
-                )
+            if let Some(frame) = self.frames.get(index) {
+                return frame
+                    .clone()
+                    .cached(StyleRefinement::default().flex_1().min_w_0())
+                    .into_any_element();
+            }
+            pane_frame(&self.headers[index], &self.terminals[index]).into_any_element()
         };
         div()
             .size_full()
@@ -73,15 +64,13 @@ impl Render for Workspace {
                             .clone()
                             .cached(StyleRefinement::default().w(px(SIDEBAR_WIDTH)).h_full()),
                     )
-                    .child(
-                        div().flex().flex_col().flex_1().children((0..3).map(|row| {
-                            div()
-                                .flex()
-                                .flex_1()
-                                .min_h_0()
-                                .children((0..3).map(|column| pane(row * 3 + column)))
-                        })),
-                    ),
+                    .child(div().flex().flex_col().flex_1().children((0..3).map(|row| {
+                        div()
+                            .flex()
+                            .flex_1()
+                            .min_h_0()
+                            .children((0..3).map(|column| pane(row * 3 + column)))
+                    }))),
             )
             .child(
                 div()
@@ -91,6 +80,39 @@ impl Render for Workspace {
                     .px_2()
                     .child("session main  window 1  9 panes"),
             )
+    }
+}
+
+fn pane_frame(header: &Entity<Header>, terminal: &Entity<Terminal>) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .border_1()
+        .border_color(rgb(0x2a2f36))
+        .child(
+            header
+                .clone()
+                .cached(StyleRefinement::default().w_full().h(px(24.))),
+        )
+        .child(
+            terminal
+                .clone()
+                .cached(StyleRefinement::default().w_full().flex_1()),
+        )
+}
+
+struct PaneFrame {
+    header: Entity<Header>,
+    terminal: Entity<Terminal>,
+    renders: Rc<Renders>,
+}
+
+impl Render for PaneFrame {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        self.renders.view();
+        pane_frame(&self.header, &self.terminal).size_full()
     }
 }
 
@@ -216,7 +238,7 @@ struct Fixture {
     renders: Rc<Renders>,
 }
 
-fn build(window: &mut BenchWindowContext, a11y: bool) -> Fixture {
+fn build(window: &mut BenchWindowContext, a11y: bool, framed: bool) -> Fixture {
     let renders = Rc::new(Renders::default());
     let workspace = window.update(|window, cx| {
         window.set_a11y_forced(a11y);
@@ -237,7 +259,7 @@ fn build(window: &mut BenchWindowContext, a11y: bool) -> Fixture {
                     })
                 })
                 .collect();
-            let headers = terminals
+            let headers: Vec<_> = terminals
                 .iter()
                 .enumerate()
                 .map(|(pane, terminal)| {
@@ -249,10 +271,26 @@ fn build(window: &mut BenchWindowContext, a11y: bool) -> Fixture {
                     })
                 })
                 .collect();
+            let frames = if framed {
+                headers
+                    .iter()
+                    .zip(&terminals)
+                    .map(|(header, terminal)| {
+                        cx.new(|_| PaneFrame {
+                            header: header.clone(),
+                            terminal: terminal.clone(),
+                            renders: renders.clone(),
+                        })
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             Workspace {
                 sidebar,
                 headers,
                 terminals,
+                frames,
                 renders,
             }
         })
@@ -266,7 +304,10 @@ fn pane_point(window: &mut BenchWindowContext, pane: usize) -> Point<Pixels> {
         let viewport = window.viewport_size();
         let grid = Bounds::new(
             point(px(SIDEBAR_WIDTH), px(0.)),
-            zz_gpui::size(viewport.width - px(SIDEBAR_WIDTH), viewport.height - px(22.)),
+            zz_gpui::size(
+                viewport.width - px(SIDEBAR_WIDTH),
+                viewport.height - px(22.),
+            ),
         );
         let width = grid.size.width / 3.;
         let height = grid.size.height / 3.;
@@ -331,9 +372,12 @@ fn reset(fixture: &Fixture) {
 
 #[zz_gpui::bench(fps = 60)]
 fn click_sidebar_row(cx: &mut BenchAppContext) {
-    assert!(!cfg!(debug_assertions), "build the bench with optimizations");
+    assert!(
+        !cfg!(debug_assertions),
+        "build the bench with optimizations"
+    );
     let mut window = cx.add_empty_window();
-    let fixture = build(&mut window, false);
+    let fixture = build(&mut window, false, false);
     let position = sidebar_point(5);
     click(&mut window, position);
     reset(&fixture);
@@ -348,9 +392,12 @@ fn click_sidebar_row(cx: &mut BenchAppContext) {
 }
 
 fn focus_between_panes(cx: &mut BenchAppContext, a11y: bool, name: &str) {
-    assert!(!cfg!(debug_assertions), "build the bench with optimizations");
+    assert!(
+        !cfg!(debug_assertions),
+        "build the bench with optimizations"
+    );
     let mut window = cx.add_empty_window();
-    let fixture = build(&mut window, a11y);
+    let fixture = build(&mut window, a11y, false);
     let targets = [pane_point(&mut window, 0), pane_point(&mut window, 4)];
     click(&mut window, targets[0]);
     click(&mut window, targets[1]);
@@ -378,9 +425,12 @@ fn click_to_focus_pane_a11y(cx: &mut BenchAppContext) {
 
 #[zz_gpui::bench(fps = 60)]
 fn keyboard_focus_pane(cx: &mut BenchAppContext) {
-    assert!(!cfg!(debug_assertions), "build the bench with optimizations");
+    assert!(
+        !cfg!(debug_assertions),
+        "build the bench with optimizations"
+    );
     let mut window = cx.add_empty_window();
-    let fixture = build(&mut window, false);
+    let fixture = build(&mut window, false, false);
     let handles: Vec<FocusHandle> = window.update(|_, cx| {
         let workspace = fixture.workspace.read(cx);
         [0, 4]
@@ -403,6 +453,27 @@ fn keyboard_focus_pane(cx: &mut BenchAppContext) {
     drop(fixture.workspace);
 }
 
+#[zz_gpui::bench(fps = 60)]
+fn rerender_pane_frame(cx: &mut BenchAppContext) {
+    assert!(
+        !cfg!(debug_assertions),
+        "build the bench with optimizations"
+    );
+    let mut window = cx.add_empty_window();
+    let fixture = build(&mut window, false, true);
+    let frame = window.update(|_, cx| fixture.workspace.read(cx).frames[4].entity_id());
+    reset(&fixture);
+    let mut iterations = 0;
+    let mut bench_window = window.clone();
+    window.app_context().bench_iter(|_| {
+        iterations += 1;
+        bench_window.update(|_, cx| cx.notify(frame));
+        bench_window.run_until_idle();
+    });
+    report("rerender_pane_frame", &fixture, iterations);
+    drop(fixture.workspace);
+}
+
 zz_gpui::bench_group! {
     name = benches;
     config = criterion::Criterion::default()
@@ -410,6 +481,6 @@ zz_gpui::bench_group! {
         .warm_up_time(Duration::from_secs(1))
         .measurement_time(Duration::from_secs(4))
         .without_plots();
-    targets = click_sidebar_row, click_to_focus_pane, click_to_focus_pane_a11y, keyboard_focus_pane
+    targets = click_sidebar_row, click_to_focus_pane, click_to_focus_pane_a11y, keyboard_focus_pane, rerender_pane_frame
 }
 zz_gpui::bench_main!(benches);
