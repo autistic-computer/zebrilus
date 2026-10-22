@@ -16,9 +16,10 @@ use zz_ui::{
             tree_node_marker, tree_row_menu,
         },
         tree::{IndentGuideColors, WorkspaceIndentGuides},
-        workspace_layout_button, workspace_settings_button, workspace_sidebar_footer,
-        workspace_sidebar_surface, workspace_sidebar_titlebar, workspace_sidebar_view_button,
-        workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_row,
+        workspace_add_host_button, workspace_layout_button, workspace_settings_button,
+        workspace_sidebar_footer, workspace_sidebar_footer_controls, workspace_sidebar_surface,
+        workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
+        workspace_tree_disclosure, workspace_tree_row,
     },
     program::program_mark,
     scroll::ScrollableElement as _,
@@ -401,7 +402,13 @@ fn sidebar_in_view(
         surface.child(workspace_sidebar_footer(
             "sidebar-footer",
             workspace_settings_button("settings"),
-            Some(workspace_sidebar_view_button("sidebar-view", flat).into_any_element()),
+            Some(
+                workspace_sidebar_footer_controls(
+                    workspace_add_host_button("add-host"),
+                    workspace_sidebar_view_button("sidebar-view", flat),
+                )
+                .into_any_element(),
+            ),
             cx,
         ))
     })

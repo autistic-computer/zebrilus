@@ -113,6 +113,11 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
     workspace_chrome_button(id, IconName::Settings, "Settings")
 }
 
+#[must_use]
+pub fn workspace_add_host_button(id: impl Into<ElementId>) -> Button {
+    workspace_chrome_button(id, IconName::ServerPlus, "Add host")
+}
+
 /// Switches the sidebar between the session tree and the flat window list;
 /// its icon shows the one on screen.
 #[must_use]
@@ -122,6 +127,20 @@ pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Bu
     } else {
         workspace_chrome_button(id, IconName::ListTree, "Show the flat window list")
     }
+}
+
+/// The footer's trailing controls: Add host, then the view toggle.
+#[must_use]
+pub fn workspace_sidebar_footer_controls(
+    add_host: impl IntoElement,
+    view: impl IntoElement,
+) -> zz_gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(rems_from_px(WORKSPACE_CHROME_CONTROL_GAP))
+        .child(add_host)
+        .child(view)
 }
 
 fn workspace_chrome_button(
@@ -578,27 +597,6 @@ pub fn workspace_tree_row(
         .child(marker)
         .child(workspace_tree_row_label(label))
         .child(trailing)
-}
-
-#[must_use]
-pub fn workspace_tree_action_row(
-    id: impl Into<ElementId>,
-    depth: u8,
-    icon: IconName,
-    label: impl Into<SharedString>,
-    cx: &App,
-) -> Stateful<zz_gpui::Div> {
-    let foreground = cx.theme().foreground;
-    workspace_tree_row_frame(id, depth, cx)
-        .text_color(foreground.muted())
-        .cursor_pointer()
-        .hover(move |row| row.text_color(foreground))
-        .child(workspace_tree_marker(
-            Icon::new(icon)
-                .size(rems_from_px(WORKSPACE_TREE_NODE_ICON_SIZE))
-                .text_color(foreground.muted()),
-        ))
-        .child(workspace_tree_row_label(div().child(label.into())))
 }
 
 #[must_use]

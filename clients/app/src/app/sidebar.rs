@@ -557,6 +557,14 @@ fn flat_event(
             cx.notify();
             return;
         }
+        FlatEvent::NewSession(_) => {
+            if writable(connection.read(cx)) {
+                connection.update(cx, |connection, cx| {
+                    connection.command("new-session", Vec::new(), cx);
+                });
+            }
+            return;
+        }
         FlatEvent::NewWindow(_, session) => {
             if writable(connection.read(cx)) {
                 connection.update(cx, |connection, cx| {

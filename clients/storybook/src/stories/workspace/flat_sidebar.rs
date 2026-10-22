@@ -48,7 +48,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the row fill and the brighter session label follow the pointer; a right click opens the row's menu.",
+            summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the row fill and the brighter session label follow the pointer; a right click opens the row's menu. A host header's button opens a new session and a session header's opens a new window; nas is connected with no sessions; hover it for New session. The footer adds a host and switches between the session tree and this list.",
             build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
         },
         Section {
@@ -72,7 +72,7 @@ pub const STORY: Story = Story {
         Section {
             id: "hosts",
             name: "Hosts",
-            summary: "Folded sessions and hosts keep a rollup of what needs you on the right. A host that is not connected shows a status icon, with Connect, Retry or Upgrade when there is something to do; hover the icon for the reason. Its rows dim and keep their last known state, with no spinners.",
+            summary: "Folded sessions and hosts keep a rollup of what needs you on the right. A connected host shows New session at its right edge on hover. A host that is not connected shows a status icon, with Connect, Retry or Upgrade when there is something to do; hover the icon for the reason. Its rows dim and keep their last known state, with no spinners.",
             build: |_, cx| stateless(hosts, cx),
         },
     ],
@@ -614,8 +614,19 @@ fn offline(id: u32, name: &str, connection: HostConnection) -> FlatHost {
     host(PaletteHostId(id), name, true, connection, Vec::new(), &[])
 }
 
+fn empty(id: u32, name: &str) -> FlatHost {
+    host(
+        PaletteHostId(id),
+        name,
+        true,
+        HostConnection::Connected,
+        Vec::new(),
+        &[],
+    )
+}
+
 fn sidebar_hosts() -> Vec<FlatHost> {
-    vec![macbook(), ubuntu()]
+    vec![macbook(), ubuntu(), empty(9, "nas")]
 }
 
 fn window_menu() -> FlatMenu {
@@ -681,7 +692,10 @@ impl Live {
                 true
             }
             FlatEvent::Hover(target, hovered) => self.state.hover(target, hovered),
-            FlatEvent::NewWindow(..) | FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => false,
+            FlatEvent::NewSession(_)
+            | FlatEvent::NewWindow(..)
+            | FlatEvent::Connect(_)
+            | FlatEvent::Upgrade(_) => false,
         };
         if changed {
             cx.notify();
@@ -1062,6 +1076,15 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
     lost.connection = HostConnection::Unreachable(refused.into());
     lost.folded = true;
     let folded = [stale, lost];
+    let mut quiet = macbook();
+    for session in &mut quiet.sessions {
+        session.folded = true;
+    }
+    let adding = [quiet, empty(9, "nas")];
+    let adding_state = FlatState {
+        hovered: Some(FlatTarget::Host(MACBOOK)),
+        ..FlatState::default()
+    };
     states()
         .columns(2)
         .state(
@@ -1071,6 +1094,21 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
                 flat_sidebar(
                     &folding,
                     folding_state,
+                    &handler,
+                    &window_menu(),
+                    cx.theme().ground(),
+                    cx,
+                ),
+                cx,
+            ),
+        )
+        .state(
+            "new session: on the hovered host only, even one with no sessions",
+            host_frame(
+                "flat-hosts-new-session",
+                flat_sidebar(
+                    &adding,
+                    adding_state,
                     &handler,
                     &window_menu(),
                     cx.theme().ground(),

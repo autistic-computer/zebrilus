@@ -27,11 +27,11 @@ use zz_ui::navigation::{
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
         tree_node_marker, tree_row_menu,
     },
-    workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
-    workspace_sidebar_footer, workspace_sidebar_ground, workspace_sidebar_panel,
-    workspace_sidebar_resize_handle, workspace_sidebar_titlebar, workspace_sidebar_view_button,
-    workspace_tree_action_button, workspace_tree_action_row, workspace_tree_disclosure,
-    workspace_tree_opened, workspace_tree_row,
+    workspace_add_host_button, workspace_layout_button, workspace_settings_button,
+    workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_footer_controls,
+    workspace_sidebar_ground, workspace_sidebar_panel, workspace_sidebar_resize_handle,
+    workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
+    workspace_tree_disclosure, workspace_tree_opened, workspace_tree_row,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _,
@@ -806,10 +806,15 @@ impl WorkspaceSidebar {
                     settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
                 }),
             Some(
-                workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
-                    .on(ground)
-                    .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat))
-                    .into_any_element(),
+                workspace_sidebar_footer_controls(
+                    workspace_add_host_button("workspace-add-host")
+                        .on(ground)
+                        .on_click(|_, window, cx| crate::workspace::add_host::open(window, cx)),
+                    workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+                        .on(ground)
+                        .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat)),
+                )
+                .into_any_element(),
             ),
             cx,
         )
@@ -1261,16 +1266,12 @@ fn render_expanded_navigation(
     let row_runtime = runtime.clone();
     let rows = uniform_list(
         "workspace-tree-rows",
-        entries.len() + 1,
+        entries.len(),
         move |range, window, cx| {
             range
                 .map(|index| {
-                    if let Some(entry) = row_entries.get(index) {
-                        let opened = tree_row_opened(&row_entries, index, cx);
-                        render_tree_row(index, entry, opened, &row_runtime, window, cx)
-                    } else {
-                        render_add_host_row(cx)
-                    }
+                    let opened = tree_row_opened(&row_entries, index, cx);
+                    render_tree_row(index, &row_entries[index], opened, &row_runtime, window, cx)
                 })
                 .collect::<Vec<_>>()
         },
@@ -1474,15 +1475,6 @@ fn render_tree_row(
         entry,
         runtime,
     )
-}
-
-fn render_add_host_row(cx: &mut App) -> AnyElement {
-    workspace_tree_action_row("workspace-tree-add-host", 0, IconName::Plus, "Add host", cx)
-        .on_click(move |_, window, cx| {
-            crate::workspace::add_host::open(window, cx);
-            cx.stop_propagation();
-        })
-        .into_any_element()
 }
 
 fn render_host_indicator(index: usize, indicator: HostIndicator, cx: &mut App) -> AnyElement {
