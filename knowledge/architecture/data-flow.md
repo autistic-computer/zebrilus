@@ -4,7 +4,7 @@ title: End-to-end data flow
 description: How terminal frames, browser pixels, ACP updates, and user input move among the daemon, GUI, PTY workers, CEF, and agents.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [architecture, data-flow, frames, input, rendering]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-22T00:00:00Z
 ---
 
 # Overview
@@ -126,7 +126,7 @@ GPUI event ─┬─ prefix chord (any focus) ─▶ window-root claim ─▶ mu
 
 At GUI startup, the app independently resolves the first platform-appropriate
 [`zz/config`](/configuration/app-config.md) file into client-local GPUI globals used by native
-window rendering. A 500 ms watcher hot-reloads it; daemon-owned appearance and mux entries cross the
+window rendering. A file watch (500 ms polling outside Linux) hot-reloads it; daemon-owned appearance and mux entries cross the
 override channel, and the three agent adapter keys are among them . the daemon reconfigures what the
 *next* pane spawns without disturbing the children already running. Only `agent-working-directory`
 stays client-side.

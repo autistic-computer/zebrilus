@@ -1452,6 +1452,11 @@ impl App {
         self.platform.thermal_state()
     }
 
+    /// Returns how long the main thread has been running or leaving queued work waiting, when the platform tracks it.
+    pub fn main_thread_busy(&self) -> Option<crate::scheduler::MainThreadBusy> {
+        self.platform.main_thread_busy()
+    }
+
     /// Prevents idle sleep while the returned guard is held.
     pub fn prevent_idle_sleep(&self, reason: &str) -> Task<Result<ActivityGuard>> {
         self.platform.prevent_idle_sleep(reason)

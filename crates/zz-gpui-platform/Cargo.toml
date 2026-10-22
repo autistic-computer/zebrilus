@@ -66,6 +66,11 @@ name = "inspector_render"
 harness = false
 required-features = ["bench-support"]
 
+[[bench]]
+name = "invalidation"
+harness = false
+required-features = ["bench-support"]
+
 [dependencies]
 anyhow.workspace = true
 zz-gpui.workspace = true
@@ -488,6 +493,7 @@ unicode-segmentation.workspace = true
 zz-gpui = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
+async-task.workspace = true
 wayland-backend = { version = "0.3.15", features = ["client_system", "dlopen", "rwh_06"] }
 wayland-client = "0.31.11"
 wayland-protocols = { version = "0.32.9", features = ["client"] }

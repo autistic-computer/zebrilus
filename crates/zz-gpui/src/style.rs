@@ -753,6 +753,10 @@ impl Style {
                 corner_radii,
                 &self.box_shadow,
                 self.corner_smoothing,
+                self.background
+                    .as_ref()
+                    .and_then(Fill::color)
+                    .is_some_and(|color| color.is_opaque()),
             );
         }
 

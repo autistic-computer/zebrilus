@@ -955,7 +955,7 @@ pub struct PolychromeSprite {
     /// two edges part company along the diagonal.
     pub corner_smoothing: f32,
     /// Padding for alignment for repr(C) layout.
-    pub(crate) pad2: u32,
+    pub pad2: u32,
     pub tile: AtlasTile,
 }
 

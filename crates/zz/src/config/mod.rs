@@ -2,7 +2,6 @@ use std::{
     io::{self, ErrorKind},
     path::Path,
     sync::{Arc, Weak},
-    time::Duration,
 };
 
 use zz_browser::SearchProvider;
@@ -30,9 +29,10 @@ pub(crate) mod import;
 pub(crate) mod import_prompt;
 mod mux_bindings;
 pub(crate) mod settings;
+mod watch;
 
 pub use zz_config::*;
-const CONFIG_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 pub(crate) const WINDOW_FRAME_BORDER_SIZE: Pixels = px(1.0);
 #[cfg(target_os = "linux")]
 const UNBLURRED_WINDOW_BACKGROUND: WindowBackgroundAppearance =
@@ -177,10 +177,11 @@ pub fn init(cx: &mut App) {
     install_config(initial.path.as_deref(), parsed, cx);
 
     let background = cx.background_executor().clone();
+    let mut file_events = watch::ConfigChanges::new(&candidates);
     cx.spawn(async move |cx| {
         let mut observed = initial;
         loop {
-            background.timer(CONFIG_POLL_INTERVAL).await;
+            file_events.next(&candidates, &background).await;
             let previous = observed.clone();
             let candidates = candidates.clone();
             let changed = background

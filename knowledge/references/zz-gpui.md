@@ -4,7 +4,7 @@ title: zz-gpui
 description: zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 resource: crates/zz-gpui/Cargo.toml
 tags: [zz-gpui, gpui, reference, vendored]
-timestamp: 2026-10-20T00:00:00Z
+timestamp: 2026-10-22T00:00:00Z
 ---
 
 # Overview
@@ -122,7 +122,12 @@ Five fixes from building the iPhone client (`67e9cbc` to `01d7c9a`):
 - `PlatformWindow::keeps_presenting_after_input` (default true) lets a platform skip re-presenting
   the last frame for a second after fast input, which Zed does to keep ProMotion Macs from
   lowering their refresh rate. The iOS window returns false: its display link asks for its rate
-  itself, and each present encoded the whole scene again.
+  itself, and each present encoded the whole scene again. The Wayland and X11 windows return false
+  too: the compositor owns the refresh rate, Mutter allows VRR on an output only while a
+  fullscreen, unobscured surface covers it, and no Wayland protocol tells a client whether VRR is
+  on. In the `frame_pacing` example's input mode under headless GNOME Shell on an Iris Plus G7,
+  the 1.5 s after a 0.5 s scroll burst went from 60 commits and 102 GPU ms/s to 1 commit and
+  2 GPU ms/s.
 - `Window::end_touch_momentum` ends the touch fling a scroll listener swallowed. The next tick
   closes the stream with a zero-delta `Ended`. The pager calls it after a release it handled, and
   `coast_guard` calls it for sheets and the swipe back, so the display link can pause instead of
@@ -274,6 +279,27 @@ uses to show macOS browser frames on a native layer under the window (see
 [OSR rendering](/browser/osr-rendering.md)); and `9b46226e6f` pauses a macOS window's
 display link after three vsyncs without frame demand, restarting it through `schedule_frame`
 and a new `frame_waker`, the same contract `zz_gpui_platform::web` uses for `requestAnimationFrame`.
+
+`PlatformWindow::schedule_frame_after` tells the platform when a frame that the inactive-window
+cap deferred is due. The Wayland window arms its retry timer for exactly that delay instead of a
+fixed 16.67 ms, which landed the default 33.3 ms cap at about 24 fps instead of 30. Only frame
+requests that draw, run next-frame callbacks or force a render restart the cap's clock. Other
+platforms keep the default, which calls `schedule_frame`.
+
+Interaction no longer refreshes the whole window (2026-10-22). Clicks, active styles, tooltips and
+interactive text invalidate only the view that painted the element (`Window::invalidate_view`).
+Focus, input modality and drag-over styles are recorded as reads while a view renders
+(`InputRead` in `window.rs`: `is_focused`, `contains_focused`, `within_focused`, `focused`,
+`last_input_was_keyboard`/`touch`, the drag-over hit test); the reads are replayed with a reused
+view, and a focus, modality or drag change re-renders only views whose answer changed. A drag
+still refreshes once, on its first frame. A cached view that misses its cache no longer forces
+its nested cached views to render: the cache key holds rem size, element opacity and text fade
+next to bounds, content mask and text style, divs apply opacity in prepaint as well as paint,
+liquid glass content always misses (its opacity is known only at paint), and views inside a
+glass group still render with the group. A reused view replays its accessibility nodes, focus
+ids, bounds and `on_a11y_action` listeners from the previous frame's tree. Tests live in
+`window/invalidation_tests.rs`; `crates/zz-gpui-platform/benches/invalidation.rs` measures a
+nine-pane window.
 
 The web backend hosts several windows per page through `WindowOptions::mount`, mirrors each
 window's accessibility tree into ARIA elements, and installs a `globalThis.zzGpui` automation API;

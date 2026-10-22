@@ -297,6 +297,9 @@ pub trait Platform: 'static {
 
     fn thermal_state(&self) -> ThermalState;
     fn on_thermal_state_change(&self, callback: Box<dyn FnMut()>);
+    fn main_thread_busy(&self) -> Option<crate::scheduler::MainThreadBusy> {
+        None
+    }
     fn prevent_idle_sleep(&self, reason: &str) -> Task<Result<ActivityGuard>>;
 
     /// Sets the application's process-wide identity and user-visible name.
@@ -996,12 +999,16 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn on_button_layout_changed(&self, _callback: Box<dyn FnMut()>) {}
     fn draw(&self, scene: &Scene);
     fn schedule_frame(&self) {}
+    fn schedule_frame_after(&self, _delay: Duration) {
+        self.schedule_frame();
+    }
     /// Whether GPUI re-presents the last frame for a second after fast input,
     /// which keeps a variable refresh rate display from lowering its rate
     /// between input events. Each of those frames encodes the whole scene. A
     /// platform whose frame source asks for its refresh rate directly, as an
     /// iOS display link does with its preferred frame rate range, can return
-    /// false.
+    /// false, and so can one whose compositor owns the refresh rate, as on
+    /// Wayland and X11.
     fn keeps_presenting_after_input(&self) -> bool {
         true
     }
@@ -1500,6 +1507,7 @@ pub trait PlatformAtlas {
         build: &mut dyn FnMut() -> Result<Option<(Size<DevicePixels>, Cow<'a, [u8]>)>>,
     ) -> Result<Option<AtlasTile>>;
     fn remove(&self, key: &AtlasKey);
+    fn generation(&self) -> u64;
 
     #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
     fn contains(&self, _key: &AtlasKey) -> bool {
@@ -1522,6 +1530,7 @@ pub trait AtlasBackend {
 #[doc(hidden)]
 pub struct AtlasState<Backend> {
     tiles_by_key: FxHashMap<AtlasKey, AtlasTile>,
+    generation: u64,
     pub backend: Backend,
 }
 
@@ -1529,6 +1538,7 @@ impl<Backend> AtlasState<Backend> {
     pub fn new(backend: Backend) -> Self {
         Self {
             tiles_by_key: FxHashMap::default(),
+            generation: 0,
             backend,
         }
     }
@@ -1537,8 +1547,13 @@ impl<Backend> AtlasState<Backend> {
         self.tiles_by_key.contains_key(key)
     }
 
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     pub fn clear(&mut self, reset_backend: impl FnOnce(&mut Backend)) {
         self.tiles_by_key.clear();
+        self.generation += 1;
         reset_backend(&mut self.backend);
     }
 }
@@ -1573,6 +1588,9 @@ impl<Backend: AtlasBackend> AtlasState<Backend> {
 
     pub fn remove(&mut self, key: &AtlasKey) {
         if let Some(tile) = self.tiles_by_key.remove(key) {
+            if matches!(key, AtlasKey::Glyph(_)) {
+                self.generation += 1;
+            }
             self.backend.remove(tile);
         }
     }
@@ -1629,6 +1647,10 @@ impl PlatformAtlas for HeadlessAtlas {
 
     fn remove(&self, key: &AtlasKey) {
         self.0.lock().remove(key);
+    }
+
+    fn generation(&self) -> u64 {
+        self.0.lock().generation()
     }
 
     #[cfg(any(test, feature = "test-support", feature = "bench-support"))]

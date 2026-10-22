@@ -15,7 +15,10 @@ use std::{
     future::Future,
     panic::Location,
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     task::{Context, Poll},
     time::Duration,
 };
@@ -232,10 +235,79 @@ impl SessionId {
     }
 }
 
+#[derive(Clone)]
+pub struct MainThreadBusy {
+    epoch: Instant,
+    running_since: Arc<AtomicU64>,
+    queued_since: Arc<AtomicU64>,
+}
+
+impl MainThreadBusy {
+    pub fn new() -> Self {
+        let busy = Self {
+            epoch: Instant::now(),
+            running_since: Arc::default(),
+            queued_since: Arc::default(),
+        };
+        busy.enter();
+        busy
+    }
+
+    fn stamp(&self) -> u64 {
+        u64::try_from(self.epoch.elapsed().as_micros())
+            .map_or(u64::MAX, |now| now.saturating_add(1))
+    }
+
+    pub fn enter(&self) {
+        self.running_since.store(self.stamp(), Ordering::Relaxed);
+    }
+
+    pub fn leave(&self) {
+        self.running_since.store(0, Ordering::Relaxed);
+    }
+
+    pub fn queue(&self) -> bool {
+        self.queued_since.load(Ordering::Acquire) == 0
+            && self
+                .queued_since
+                .compare_exchange(0, self.stamp(), Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+    }
+
+    pub fn dequeue(&self) {
+        self.queued_since.store(0, Ordering::Release);
+    }
+
+    pub fn busy_for(&self) -> Duration {
+        let now = self.epoch.elapsed();
+        [&self.running_since, &self.queued_since]
+            .into_iter()
+            .map(|since| since.load(Ordering::Relaxed))
+            .filter(|&since| since != 0)
+            .min()
+            .map_or(Duration::ZERO, |since| {
+                now.saturating_sub(Duration::from_micros(since - 1))
+            })
+    }
+}
+
+impl Default for MainThreadBusy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[must_use]
 pub struct Timer(oneshot::Receiver<()>);
 
 impl Timer {
     pub fn new(rx: oneshot::Receiver<()>) -> Self {
+        Timer(rx)
+    }
+
+    pub fn ready() -> Self {
+        let (tx, rx) = oneshot::channel();
+        tx.send(()).ok();
         Timer(rx)
     }
 }

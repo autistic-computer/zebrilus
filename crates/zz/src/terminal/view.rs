@@ -17,11 +17,11 @@ use zz_client::{
     },
 };
 use zz_gpui::{
-    AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, Context, Entity, EntityInputHandler,
-    FocusHandle, Focusable, Font, Hsla, Image, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent,
-    Keystroke, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent,
-    MouseUpEvent, NoAction, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Subscription,
-    Task, UTF16Selection, Window, div, point, prelude::*, px,
+    AnyElement, AnyWindowHandle, App, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
+    EntityInputHandler, FocusHandle, Focusable, Font, Hsla, Image, IntoElement, KeyBinding,
+    KeyDownEvent, KeyUpEvent, Keystroke, ModifiersChangedEvent, MouseButton, MouseDownEvent,
+    MouseExitEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, ScrollDelta,
+    ScrollWheelEvent, Subscription, Task, UTF16Selection, Window, div, point, prelude::*, px,
 };
 use zz_protocol::{ClientMessageKind, CommandInvocation, InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
@@ -48,7 +48,7 @@ use crate::{
     keymap::ChromeChord,
     mux::client::{
         HistoryRing, KittyImageCache, MuxClient, RetainedTerminalViewport,
-        TerminalFontSizeAdjustment,
+        TerminalFontSizeAdjustment, TerminalSignal,
     },
     mux::hosts::HostId,
     terminal::{
@@ -439,6 +439,7 @@ pub(crate) struct TerminalView {
     painted_selection: Vec<Bounds<Pixels>>,
     selection_cleared_at: Option<Instant>,
     copy_flash: Option<CopyFlash>,
+    _terminal_signal: Option<Entity<TerminalSignal>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -450,6 +451,133 @@ pub(crate) struct CopyFlash {
 }
 
 impl TerminalView {
+    fn sync_with_mux(
+        &mut self,
+        mux: &Entity<MuxClient>,
+        window_handle: AnyWindowHandle,
+        cx: &mut Context<Self>,
+    ) {
+        let mux = mux.read(cx);
+        let appearance = mux.appearance();
+        let retained = if self.command_output {
+            mux.command_output()
+                .filter(|output| output.pane == self.pane)
+                .map(|output| output.retained)
+        } else {
+            mux.viewport(self.pane)
+        };
+        let kitty_images = (!self.command_output)
+            .then(|| mux.kitty_images(self.pane))
+            .flatten();
+        let mut changed = false;
+        if !self.command_output
+            && self
+                .last_grid_size
+                .is_some_and(|(_, generation)| generation != mux.layout_generation())
+        {
+            changed = true;
+        }
+        if !Arc::ptr_eq(&self.render_appearance.source, &appearance)
+            && self.render_appearance.source.as_ref() != appearance.as_ref()
+        {
+            self.render_appearance = TerminalRenderAppearance::new(appearance);
+            self.last_grid_size = None;
+            self.hit_grid = None;
+            self.cursor_blink_visible = true;
+            self.cursor_blink_active = false;
+            self.cursor_blink_task = Task::ready(());
+            changed = true;
+        }
+        if let Some(retained) = retained {
+            let retained_changed = !Arc::ptr_eq(&retained, &self.retained);
+            let (generation, view_generation, row_revision_epoch, copy_generation, restore) = {
+                let state = retained.read();
+                let observation = self
+                    .scroll
+                    .observe(&state, retained_changed, Instant::now());
+                changed |= observation.changed;
+                (
+                    state.viewport.generation,
+                    state.viewport.view_generation,
+                    state.row_revision_epoch,
+                    state.copy_generation,
+                    observation.restore,
+                )
+            };
+            if let Some(target) = restore {
+                self.send_view_action(cx, TerminalViewAction::ScrollToOffset(target));
+            }
+            if generation != self.observed_generation
+                || view_generation != self.observed_view_generation
+                || row_revision_epoch != self.observed_row_revision_epoch
+                || retained_changed
+            {
+                self.retained = retained;
+                self.observed_generation = generation;
+                self.observed_view_generation = view_generation;
+                self.observed_row_revision_epoch = row_revision_epoch;
+                changed = true;
+            }
+            if copy_generation != self.observed_copy_generation {
+                self.observed_copy_generation = copy_generation;
+                changed |= !retained_changed && self.start_copy_flash();
+            }
+        }
+        let mut retired_images = Vec::new();
+        if let Some(kitty_images) = kitty_images {
+            let revision = kitty_images.read().revision();
+            let cache_replaced = !Arc::ptr_eq(&kitty_images, &self.kitty_images);
+            if cache_replaced {
+                retired_images = self.kitty_images.write().release_view();
+                kitty_images.write().retain_view();
+            }
+            if cache_replaced || revision != self.observed_kitty_revision {
+                retired_images.extend(kitty_images.write().take_retired());
+                self.kitty_images = kitty_images;
+                self.observed_kitty_revision = revision;
+                changed = true;
+            }
+        } else {
+            let revision = self.kitty_images.read().revision();
+            if revision != self.observed_kitty_revision {
+                retired_images.extend(self.kitty_images.write().take_retired());
+                self.observed_kitty_revision = revision;
+                changed = true;
+            }
+        }
+        let pasted_image_revision = if self.command_output {
+            0
+        } else {
+            mux.pasted_image_revision(self.pane)
+        };
+        if pasted_image_revision != self.observed_pasted_image_revision {
+            self.observed_pasted_image_revision = pasted_image_revision;
+            changed = true;
+        }
+        let hovered_uri = self
+            .retained
+            .read()
+            .viewport
+            .presentation
+            .hovered_uri
+            .clone();
+        self.observe_image_hover(hovered_uri, cx);
+        if !retired_images.is_empty() {
+            cx.defer(move |cx| {
+                let _ = window_handle.update(cx, |_, window, _| {
+                    for image in retired_images {
+                        if let Err(error) = window.drop_image(image) {
+                            log::warn!("failed to release superseded Kitty image: {error}");
+                        }
+                    }
+                });
+            });
+        }
+        if changed {
+            cx.notify();
+        }
+    }
+
     fn observe_image_hover(&mut self, hovered_uri: Option<Arc<str>>, cx: &mut Context<Self>) {
         if self.observed_hovered_uri == hovered_uri {
             return;
@@ -812,127 +940,18 @@ impl TerminalView {
         })
         .detach();
         cx.observe(&mux, move |view, mux, cx| {
-            let mux = mux.read(cx);
-            let appearance = mux.appearance();
-            let retained = if view.command_output {
-                mux.command_output()
-                    .filter(|output| output.pane == pane)
-                    .map(|output| output.retained)
-            } else {
-                mux.viewport(pane)
-            };
-            let kitty_images = (!view.command_output)
-                .then(|| mux.kitty_images(pane))
-                .flatten();
-            let mut changed = false;
-            if !view.command_output
-                && view
-                    .last_grid_size
-                    .is_some_and(|(_, generation)| generation != mux.layout_generation())
-            {
-                changed = true;
-            }
-            if !Arc::ptr_eq(&view.render_appearance.source, &appearance)
-                && view.render_appearance.source.as_ref() != appearance.as_ref()
-            {
-                view.render_appearance = TerminalRenderAppearance::new(appearance);
-                view.last_grid_size = None;
-                view.hit_grid = None;
-                view.cursor_blink_visible = true;
-                view.cursor_blink_active = false;
-                view.cursor_blink_task = Task::ready(());
-                changed = true;
-            }
-            if let Some(retained) = retained {
-                let retained_changed = !Arc::ptr_eq(&retained, &view.retained);
-                let (generation, view_generation, row_revision_epoch, copy_generation, restore) = {
-                    let state = retained.read();
-                    let observation = view
-                        .scroll
-                        .observe(&state, retained_changed, Instant::now());
-                    changed |= observation.changed;
-                    (
-                        state.viewport.generation,
-                        state.viewport.view_generation,
-                        state.row_revision_epoch,
-                        state.copy_generation,
-                        observation.restore,
-                    )
-                };
-                if let Some(target) = restore {
-                    view.send_view_action(cx, TerminalViewAction::ScrollToOffset(target));
-                }
-                if generation != view.observed_generation
-                    || view_generation != view.observed_view_generation
-                    || row_revision_epoch != view.observed_row_revision_epoch
-                    || retained_changed
-                {
-                    view.retained = retained;
-                    view.observed_generation = generation;
-                    view.observed_view_generation = view_generation;
-                    view.observed_row_revision_epoch = row_revision_epoch;
-                    changed = true;
-                }
-                if copy_generation != view.observed_copy_generation {
-                    view.observed_copy_generation = copy_generation;
-                    changed |= !retained_changed && view.start_copy_flash();
-                }
-            }
-            let mut retired_images = Vec::new();
-            if let Some(kitty_images) = kitty_images {
-                let revision = kitty_images.read().revision();
-                let cache_replaced = !Arc::ptr_eq(&kitty_images, &view.kitty_images);
-                if cache_replaced {
-                    retired_images = view.kitty_images.write().release_view();
-                    kitty_images.write().retain_view();
-                }
-                if cache_replaced || revision != view.observed_kitty_revision {
-                    retired_images.extend(kitty_images.write().take_retired());
-                    view.kitty_images = kitty_images;
-                    view.observed_kitty_revision = revision;
-                    changed = true;
-                }
-            } else {
-                let revision = view.kitty_images.read().revision();
-                if revision != view.observed_kitty_revision {
-                    retired_images.extend(view.kitty_images.write().take_retired());
-                    view.observed_kitty_revision = revision;
-                    changed = true;
-                }
-            }
-            let pasted_image_revision = if view.command_output {
-                0
-            } else {
-                mux.pasted_image_revision(pane)
-            };
-            if pasted_image_revision != view.observed_pasted_image_revision {
-                view.observed_pasted_image_revision = pasted_image_revision;
-                changed = true;
-            }
-            let hovered_uri = view
-                .retained
-                .read()
-                .viewport
-                .presentation
-                .hovered_uri
-                .clone();
-            view.observe_image_hover(hovered_uri, cx);
-            if !retired_images.is_empty() {
-                cx.defer(move |cx| {
-                    let _ = window_handle.update(cx, |_, window, _| {
-                        for image in retired_images {
-                            if let Err(error) = window.drop_image(image) {
-                                log::warn!("failed to release superseded Kitty image: {error}");
-                            }
-                        }
-                    });
-                });
-            }
-            if changed {
-                cx.notify();
-            }
+            view.sync_with_mux(&mux, window_handle, cx);
         })
         .detach();
+        let terminal_signal =
+            (!command_output).then(|| mux.update(cx, |mux, cx| mux.terminal_signal(pane, cx)));
+        if let Some(signal) = &terminal_signal {
+            let signal_mux = mux.clone();
+            cx.observe(signal, move |view, _, cx| {
+                view.sync_with_mux(&signal_mux, window_handle, cx);
+            })
+            .detach();
+        }
 
         let mut view = Self {
             pane,
@@ -998,6 +1017,7 @@ impl TerminalView {
             painted_selection: Vec::new(),
             selection_cleared_at: None,
             copy_flash: None,
+            _terminal_signal: terminal_signal,
             _subscriptions: subscriptions,
         };
         view.observe_image_hover(initial_hovered_uri, cx);

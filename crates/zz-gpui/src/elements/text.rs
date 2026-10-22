@@ -1219,7 +1219,7 @@ impl Element for InteractiveText {
                                     }
 
                                     mouse_down.take();
-                                    window.refresh();
+                                    window.invalidate_view(current_view);
                                 }
                             },
                         );
@@ -1232,7 +1232,7 @@ impl Element for InteractiveText {
                                     text_layout.index_for_position(event.position)
                             {
                                 mouse_down.set(Some(mouse_down_index));
-                                window.refresh();
+                                window.invalidate_view(current_view);
                             }
                         });
                     }
