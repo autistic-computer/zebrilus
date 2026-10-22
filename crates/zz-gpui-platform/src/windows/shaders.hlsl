@@ -309,6 +309,9 @@ float quad_sdf_impl(float2 corner_center_to_point, float corner_radius,
     if (corner_radius == 0.0) {
         // Fast path for unrounded corners
         return max(corner_center_to_point.x, corner_center_to_point.y);
+    } else if (min(corner_center_to_point.x, corner_center_to_point.y) <= 0.0) {
+        return max(corner_center_to_point.x, corner_center_to_point.y) -
+            corner_radius;
     } else {
         // 0 inside the quad inset by corner_radius, positive outside
         float2 outset = max(float2(0.0, 0.0), corner_center_to_point);

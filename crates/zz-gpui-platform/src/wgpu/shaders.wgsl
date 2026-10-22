@@ -422,6 +422,8 @@ fn quad_sdf_impl(corner_center_to_point: vec2<f32>, corner_radius: f32, corner_s
     if (corner_radius == 0.0) {
         // Fast path for unrounded corners.
         return max(corner_center_to_point.x, corner_center_to_point.y);
+    } else if (min(corner_center_to_point.x, corner_center_to_point.y) <= 0.0) {
+        return max(corner_center_to_point.x, corner_center_to_point.y) - corner_radius;
     } else {
         // 0 inside the quad inset by corner_radius, positive outside.
         let outset = max(vec2<f32>(0.0), corner_center_to_point);
