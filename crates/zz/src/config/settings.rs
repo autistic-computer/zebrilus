@@ -51,8 +51,9 @@ use zz_ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use zz_ui::feedback::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::appearance::{
-    SWATCH, ThemePicks, accent_swatches, contrast_slider, corner_radius_slider, picker_tile,
-    themes_strip, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
+    SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
+    corner_radius_slider, picker_tile, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
+    window_opacity_slider,
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -881,6 +882,20 @@ impl SettingsView {
                 "Animations",
                 "Animate interface transitions, loading indicators, and image frames.",
                 resolved.animations,
+                cx,
+            ),
+            AppearancePageItem::AnimationSpeed => Self::slider_setting(
+                item,
+                ConfigKey::AnimationSpeed,
+                resolved.animation_speed.provenance,
+                animation_speed_slider(
+                    resolved.animation_speed.value,
+                    |speed, _, cx| {
+                        let key = ConfigKey::AnimationSpeed;
+                        written(key, set_config_key(key, &format!("{speed:.2}")), cx);
+                    },
+                    cx,
+                ),
                 cx,
             ),
             AppearancePageItem::WindowBackgroundBlur => Self::boolean_setting(
@@ -2546,6 +2561,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::PaneMargin => config.pane_margin,
         ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
         ConfigKey::ChromeContrast => config.chrome_contrast,
+        ConfigKey::AnimationSpeed => config.animation_speed,
         ConfigKey::ChromeTint => config.chrome_tint,
         ConfigKey::ChromeTintHue => config.chrome_tint_hue,
         ConfigKey::WindowCornerRadius => config.window_corner_radius,

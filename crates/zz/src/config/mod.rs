@@ -607,7 +607,10 @@ fn apply_animations(cx: &mut App) {
     let platform_reduce_motion = cx
         .try_global::<PlatformReduceMotion>()
         .is_some_and(|preference| preference.0);
-    cx.set_reduce_motion(platform_reduce_motion || !resolved_config(cx).animations.value);
+    let config = resolved_config(cx);
+    let (animations, speed) = (config.animations.value, config.animation_speed.value);
+    cx.set_reduce_motion(platform_reduce_motion || !animations);
+    cx.set_animation_speed(speed);
 }
 
 /// The titlebar every zz window opens with: a transparent strip, nothing else.

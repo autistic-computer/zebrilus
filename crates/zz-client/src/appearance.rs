@@ -9,6 +9,12 @@ pub const BUILTIN_THEMES: [&str; 2] = ["default", "macos"];
 /// The theme a fresh install uses.
 pub const DEFAULT_THEME: &str = "default";
 
+/// How fast interface motion runs, as a share of its designed speed:
+/// `animation-speed` takes 0.25 (four times slower) to 2 (twice as fast).
+pub const DEFAULT_ANIMATION_SPEED: f32 = 1.0;
+pub const MIN_ANIMATION_SPEED: f32 = 0.25;
+pub const MAX_ANIMATION_SPEED: f32 = 2.0;
+
 /// The roundest corner radius `widget-corner-radius` takes.
 pub const MAX_CORNER_RADIUS: f32 = 25.0;
 

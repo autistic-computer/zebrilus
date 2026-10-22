@@ -17,6 +17,7 @@ pub struct Preferences {
     pub status_badges: bool,
     pub status_agents: bool,
     pub animations: bool,
+    pub animation_speed: f32,
     pub gaps: bool,
     pub agent_enabled: bool,
     pub dark: bool,
@@ -57,6 +58,7 @@ impl Default for Preferences {
             status_badges: true,
             status_agents: true,
             animations: true,
+            animation_speed: interface_theme::DEFAULT_ANIMATION_SPEED,
             gaps: false,
             agent_enabled: true,
             dark: true,
@@ -122,6 +124,12 @@ impl Preferences {
         self.zoom = bounded(self.zoom, 0.5, 3.0, 1.0);
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         self.contrast = bounded(self.contrast, 1.0, 2.0, 1.0);
+        self.animation_speed = bounded(
+            self.animation_speed,
+            interface_theme::MIN_ANIMATION_SPEED,
+            interface_theme::MAX_ANIMATION_SPEED,
+            interface_theme::DEFAULT_ANIMATION_SPEED,
+        );
         for (value, min, max, fallback) in [
             (&mut self.pip_background_opacity, 0., 1., 0.8),
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),

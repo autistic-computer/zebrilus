@@ -53,7 +53,10 @@ pub fn pulse_phase(period: Duration, view: EntityId, cx: &mut App) -> f32 {
         return 0.0;
     }
 
-    let phase = phase_at(cx.default_global::<PulseClock>().epoch.elapsed(), period);
+    let phase = phase_at(
+        zz_gpui::animation_time(cx.default_global::<PulseClock>().epoch.elapsed()),
+        period,
+    );
     pulse_lease(view, cx);
     phase
 }

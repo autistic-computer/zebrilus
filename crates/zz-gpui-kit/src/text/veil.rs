@@ -90,7 +90,9 @@ impl ElementVeil {
 
         let boost = chunk_boost(self.chunks.len());
         self.chunks.retain(|chunk| {
-            now.saturating_duration_since(chunk.started).as_secs_f32() * 1_000.0 * boost
+            zz_gpui::animation_time(now.saturating_duration_since(chunk.started)).as_secs_f32()
+                * 1_000.0
+                * boost
                 < chunk.duration_ms
         });
         let boost = chunk_boost(self.chunks.len());
@@ -98,7 +100,9 @@ impl ElementVeil {
             .iter()
             .map(|chunk| {
                 let elapsed_ms =
-                    now.saturating_duration_since(chunk.started).as_secs_f32() * 1_000.0;
+                    zz_gpui::animation_time(now.saturating_duration_since(chunk.started))
+                        .as_secs_f32()
+                        * 1_000.0;
                 let progress = (elapsed_ms * boost / chunk.duration_ms).clamp(0.0, 1.0);
                 (chunk.range.clone(), veil_opacity(progress))
             })

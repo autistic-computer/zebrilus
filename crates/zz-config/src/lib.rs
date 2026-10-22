@@ -8,8 +8,9 @@ use std::{
 };
 use zz_client::StatusBarSettings;
 use zz_client::appearance::{
-    ACCENTS, AccentSetting, AppIconSetting, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE,
-    MAX_CORNER_RADIUS, ThemeModeSetting, is_builtin_theme,
+    ACCENTS, AccentSetting, AppIconSetting, BUILTIN_THEMES, DEFAULT_ANIMATION_SPEED, DEFAULT_THEME,
+    DEFAULT_TINT_HUE, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS, MIN_ANIMATION_SPEED,
+    ThemeModeSetting, is_builtin_theme,
 };
 use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{
@@ -116,6 +117,7 @@ pub enum ConfigKey {
     WindowBackgroundBlur,
     WindowBackgroundOpacity,
     Animations,
+    AnimationSpeed,
     Tray,
     Notifications,
     QuitDaemonOnExit,
@@ -167,6 +169,7 @@ impl ConfigKey {
             Self::WindowBackgroundBlur => "window-background-blur",
             Self::WindowBackgroundOpacity => "window-background-opacity",
             Self::Animations => "animations",
+            Self::AnimationSpeed => "animation-speed",
             Self::Tray => "tray",
             Self::Notifications => "notifications",
             Self::QuitDaemonOnExit => "quit-daemon-on-exit",
@@ -218,6 +221,7 @@ impl ConfigKey {
             "window-background-blur" => Some(Self::WindowBackgroundBlur),
             "window-background-opacity" => Some(Self::WindowBackgroundOpacity),
             "animations" => Some(Self::Animations),
+            "animation-speed" => Some(Self::AnimationSpeed),
             "tray" => Some(Self::Tray),
             "notifications" => Some(Self::Notifications),
             "quit-daemon-on-exit" => Some(Self::QuitDaemonOnExit),
@@ -272,6 +276,7 @@ impl ConfigKey {
             Self::PaneMargin => Some((0.0, MAX_PANE_MARGIN)),
             Self::WidgetCornerRadius => Some((0.0, MAX_CORNER_RADIUS)),
             Self::ChromeContrast => Some((1.0, 2.0)),
+            Self::AnimationSpeed => Some((MIN_ANIMATION_SPEED, MAX_ANIMATION_SPEED)),
             Self::ChromeTintHue => Some((0.0, 360.0)),
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
             Self::EditorFontSize => Some((MIN_EDITOR_FONT_SIZE, MAX_EDITOR_FONT_SIZE)),
@@ -439,6 +444,7 @@ pub struct AppConfig {
     pub window_background_blur: ConfigValue<bool>,
     pub window_background_opacity: ConfigValue<f32>,
     pub animations: ConfigValue<bool>,
+    pub animation_speed: ConfigValue<f32>,
     pub tray: ConfigValue<bool>,
     pub notifications: ConfigValue<bool>,
     pub quit_daemon_on_exit: ConfigValue<bool>,
@@ -489,6 +495,7 @@ impl Default for AppConfig {
             window_background_blur: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_BLUR),
             window_background_opacity: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_OPACITY),
             animations: ConfigValue::from_default(DEFAULT_ANIMATIONS),
+            animation_speed: ConfigValue::from_default(DEFAULT_ANIMATION_SPEED),
             tray: ConfigValue::from_default(DEFAULT_TRAY),
             notifications: ConfigValue::from_default(DEFAULT_NOTIFICATIONS),
             quit_daemon_on_exit: ConfigValue::from_default(DEFAULT_QUIT_DAEMON_ON_EXIT),
@@ -573,6 +580,7 @@ impl AppConfig {
             | ConfigKey::PaneMargin
             | ConfigKey::WidgetCornerRadius
             | ConfigKey::ChromeContrast
+            | ConfigKey::AnimationSpeed
             | ConfigKey::ChromeAccent
             | ConfigKey::ChromeTint
             | ConfigKey::ChromeTintHue
@@ -1166,6 +1174,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::PaneMargin => &mut parsed.config.pane_margin,
             ConfigKey::WidgetCornerRadius => &mut parsed.config.widget_corner_radius,
             ConfigKey::ChromeContrast => &mut parsed.config.chrome_contrast,
+            ConfigKey::AnimationSpeed => &mut parsed.config.animation_speed,
             ConfigKey::ChromeTint => &mut parsed.config.chrome_tint,
             ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
@@ -1374,6 +1383,7 @@ pub fn parse_numeric_value(
             | ConfigKey::WindowBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::ChromeContrast
+            | ConfigKey::AnimationSpeed
             | ConfigKey::ChromeTint
     ) {
         ""
@@ -2289,6 +2299,17 @@ mod tests {
             fs::read_to_string(&target).expect("read target"),
             "# mine\ntray = false\n"
         );
+    }
+
+    #[test]
+    fn animation_speed_takes_a_share_of_the_designed_speed_within_its_range() {
+        let parsed = parse_config("animation-speed = 0.5\n", "monospace");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.config.animation_speed.value, 0.5);
+
+        let parsed = parse_config("animation-speed = 5\n", "monospace");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.config.animation_speed.value, DEFAULT_ANIMATION_SPEED);
     }
 
     #[test]

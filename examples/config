@@ -72,6 +72,10 @@ interface-theme = default
 # frames. Turning this off settles each interface state immediately.
 animations = true
 
+# How fast those animations run, from 0.25 (four times slower) to 2 (twice
+# as fast).
+animation-speed = 1
+
 # Follow the desktop's light/dark setting, or pin one: system, light, or dark.
 theme-mode = system
 

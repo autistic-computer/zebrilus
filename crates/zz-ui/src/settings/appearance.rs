@@ -68,6 +68,7 @@ pub enum AppearancePageItem {
     UiZoom,
     AppIcon,
     Animations,
+    AnimationSpeed,
     WindowBackgroundBlur,
     WindowBackgroundOpacity,
     #[cfg(target_os = "linux")]
@@ -113,6 +114,10 @@ impl AppearancePageItem {
                 "Window blur opacity",
                 "How much of the blur shows through, from 0% (the most) to 100% (opaque).",
             ),
+            Self::AnimationSpeed => (
+                "Animation speed",
+                "How fast the interface moves, from 25% (slow and smooth) to 200% (snappy).",
+            ),
             _ => return None,
         })
     }
@@ -156,7 +161,10 @@ pub fn appearance_page_items(
     if macos {
         items.push(AppearancePageItem::AppIcon);
     }
-    items.push(AppearancePageItem::Animations);
+    items.extend([
+        AppearancePageItem::Animations,
+        AppearancePageItem::AnimationSpeed,
+    ]);
     if has_window_blur {
         items.extend([
             AppearancePageItem::WindowBackgroundBlur,
@@ -434,6 +442,27 @@ pub fn contrast_slider(
         )
         .step(0.05)
         .display(|contrast| format!("{:.0}%", contrast * 100.0).into()),
+        cx,
+    )
+}
+
+/// The animation speed, from 25% to 200%, as a slider with its percentage.
+pub fn animation_speed_slider(
+    speed: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    value_slider(
+        Slider::new(
+            "settings-animation-speed",
+            "Animation speed",
+            speed,
+            crate::interface_theme::MIN_ANIMATION_SPEED
+                ..=crate::interface_theme::MAX_ANIMATION_SPEED,
+            on_change,
+        )
+        .step(0.05)
+        .display(|speed| format!("{:.0}%", speed * 100.0).into()),
         cx,
     )
 }

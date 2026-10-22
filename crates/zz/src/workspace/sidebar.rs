@@ -398,10 +398,11 @@ impl WorkspaceSidebar {
         let Some(since) = self.mode_changed else {
             return 1.0;
         };
-        let elapsed = cx
-            .background_executor()
-            .now()
-            .saturating_duration_since(since);
+        let elapsed = zz_gpui::animation_time(
+            cx.background_executor()
+                .now()
+                .saturating_duration_since(since),
+        );
         if cx.reduce_motion() || elapsed >= SIDEBAR_SLIDE {
             return 1.0;
         }

@@ -9,7 +9,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use zz_gpui::{GlassMaterial, Hsla, SharedString, px};
 
 pub use zz_client::appearance::{
-    ACCENTS, AccentSetting, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE, MAX_CORNER_RADIUS,
+    ACCENTS, AccentSetting, BUILTIN_THEMES, DEFAULT_ANIMATION_SPEED, DEFAULT_THEME,
+    DEFAULT_TINT_HUE, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS, MIN_ANIMATION_SPEED,
     ThemeModeSetting, is_builtin_theme,
 };
 

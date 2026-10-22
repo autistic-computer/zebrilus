@@ -375,8 +375,9 @@ impl PaneArrivals {
     pub fn shown(&self, pane: zz_protocol::PaneId, now: web_time::Instant) -> f32 {
         self.arrived.get(&pane).map_or(1.0, |since| {
             zz_gpui::ease_out_quint()(
-                (now.saturating_duration_since(*since).as_secs_f32() / PANE_ARRIVAL.as_secs_f32())
-                    .min(1.0),
+                (zz_gpui::animation_time(now.saturating_duration_since(*since)).as_secs_f32()
+                    / PANE_ARRIVAL.as_secs_f32())
+                .min(1.0),
             )
         })
     }

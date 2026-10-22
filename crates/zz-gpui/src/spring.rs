@@ -40,8 +40,9 @@ impl SpringConfig {
     ///
     /// This analytic step is independent of frame rate and preserves velocity,
     /// allowing an interrupted spring to be retargeted without restarting it.
+    /// `delta_time` is wall time; it runs at [`crate::animation_speed`].
     pub fn step(&self, state: SpringState, target: f32, delta_time: f32) -> SpringState {
-        let propagator = self.propagator(delta_time);
+        let propagator = self.propagator(delta_time * crate::animation_speed());
         let displacement = state.position - target;
 
         SpringState {
