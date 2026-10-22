@@ -25,7 +25,10 @@ use zz_daemon_client::{
     AskpassPrompt, AskpassReply, DaemonError, Endpoint, EndpointError, InteractiveClient,
     RemoteInstall, RemoteRestart, terminate_incompatible_daemon,
 };
-use zz_gpui::{ClipboardItem, Context, EventEmitter, Image, RenderImage, Task};
+use zz_gpui::{
+    AppContext as _, ClipboardItem, Context, Entity, EventEmitter, Image, RenderImage, Task,
+    WeakEntity,
+};
 #[cfg(test)]
 use zz_protocol::StatusLine;
 use zz_protocol::{
@@ -853,10 +856,14 @@ impl HostConnection {
         cx.spawn(async move |this, cx| {
             while let Ok(message) = incoming.recv().await {
                 let applied = this.update(cx, |client, cx| {
-                    let Some(host) = *message_route.read() else {
-                        return false;
-                    };
-                    client.handle_message(host, message, cx);
+                    let mut next = Some(message);
+                    while let Some(message) = next.take() {
+                        let Some(host) = *message_route.read() else {
+                            return false;
+                        };
+                        client.handle_message(host, message, cx);
+                        next = incoming.try_recv().ok();
+                    }
                     true
                 });
                 if !matches!(applied, Ok(true)) {
@@ -977,6 +984,8 @@ impl HostConnection {
     }
 }
 
+pub(crate) struct TerminalSignal;
+
 pub struct MuxClient {
     /// Protocol reduction for the attached connection: snapshot, options, key
     /// tables, status, prefix arming, attachment and the overlay models. It
@@ -1002,6 +1011,7 @@ pub struct MuxClient {
     client_focus_attach_recoverable: bool,
     sent_client_window_focus: Option<bool>,
     viewports: BTreeMap<PaneId, Arc<RwLock<RetainedTerminalViewport>>>,
+    terminal_signals: BTreeMap<PaneId, WeakEntity<TerminalSignal>>,
     kitty_images: BTreeMap<PaneId, Arc<RwLock<KittyImageCache>>>,
     kitty_image_assemblies: BTreeMap<(PaneId, u32, u64), KittyImageAssembly>,
     browser_commands: BTreeMap<PaneId, Vec<BrowserCommand>>,
@@ -1160,6 +1170,7 @@ impl MuxClient {
             client_focus_attach_recoverable: false,
             sent_client_window_focus: None,
             viewports: BTreeMap::new(),
+            terminal_signals: BTreeMap::new(),
             kitty_images: BTreeMap::new(),
             kitty_image_assemblies: BTreeMap::new(),
             browser_commands: BTreeMap::new(),
@@ -2562,6 +2573,35 @@ impl MuxClient {
     }
 
     #[must_use]
+    pub(crate) fn terminal_signal(
+        &mut self,
+        pane: PaneId,
+        cx: &mut Context<Self>,
+    ) -> Entity<TerminalSignal> {
+        if let Some(signal) = self
+            .terminal_signals
+            .get(&pane)
+            .and_then(WeakEntity::upgrade)
+        {
+            return signal;
+        }
+        self.terminal_signals
+            .retain(|_, signal| signal.upgrade().is_some());
+        let signal = cx.new(|_| TerminalSignal);
+        self.terminal_signals.insert(pane, signal.downgrade());
+        signal
+    }
+
+    fn signal_terminal(&self, pane: PaneId, cx: &mut Context<Self>) {
+        if let Some(signal) = self
+            .terminal_signals
+            .get(&pane)
+            .and_then(WeakEntity::upgrade)
+        {
+            signal.update(cx, |_, cx| cx.notify());
+        }
+    }
+
     pub(crate) fn kitty_images(&self, pane: PaneId) -> Option<Arc<RwLock<KittyImageCache>>> {
         self.kitty_images.get(&pane).cloned()
     }
@@ -4191,6 +4231,13 @@ impl MuxClient {
                 | ProtocolMessage::PathListChunk { .. }
                 | ProtocolMessage::PathListGit { .. }
         );
+        let terminal_frame = matches!(
+            &message,
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::TerminalViewport { .. } | EventPayload::TerminalPatch { .. },
+                ..
+            })
+        );
         log::trace!(
             target: "zz::diagnostics::mux",
             "handle_message begin message={message:#?}"
@@ -4203,11 +4250,11 @@ impl MuxClient {
             ProtocolMessage::Event(Event {
                 payload: EventPayload::TerminalViewport { pane, viewport },
                 ..
-            }) => self.apply_terminal_viewport(pane, viewport),
+            }) => self.apply_terminal_viewport(pane, viewport, cx),
             ProtocolMessage::Event(Event {
                 payload: EventPayload::TerminalPatch { pane, patch },
                 ..
-            }) => self.apply_terminal_patch(pane, patch),
+            }) => self.apply_terminal_patch(pane, patch, cx),
             ProtocolMessage::Event(Event {
                 payload: EventPayload::CommandOutput { pane, viewport, .. },
                 ..
@@ -4242,7 +4289,7 @@ impl MuxClient {
             self.viewports.len(),
             self.attached_connection().resync_pending,
         );
-        if !status_only && !quiet_success && !path_list {
+        if !status_only && !quiet_success && !path_list && !terminal_frame {
             cx.notify();
         }
     }
@@ -4757,7 +4804,12 @@ impl MuxClient {
         }
     }
 
-    fn apply_terminal_viewport(&mut self, pane: PaneId, viewport: TerminalViewport) {
+    fn apply_terminal_viewport(
+        &mut self,
+        pane: PaneId,
+        viewport: TerminalViewport,
+        cx: &mut Context<Self>,
+    ) {
         self.kitty_image_cache(pane);
         self.viewports.insert(
             pane,
@@ -4770,9 +4822,15 @@ impl MuxClient {
         connection.full_requests_pending.remove(&pane);
         connection.history.forget(pane);
         self.request_history_backfill(pane);
+        self.signal_terminal(pane, cx);
     }
 
-    fn apply_terminal_patch(&mut self, pane: PaneId, patch: TerminalViewportPatch) {
+    fn apply_terminal_patch(
+        &mut self,
+        pane: PaneId,
+        patch: TerminalViewportPatch,
+        cx: &mut Context<Self>,
+    ) {
         self.kitty_image_cache(pane);
         let retained = self.viewports.get(&pane).cloned();
         let request_missing =
@@ -4798,6 +4856,7 @@ impl MuxClient {
             self.request_full_viewport(pane);
         } else if apply_result.is_ok() {
             self.request_history_backfill(pane);
+            self.signal_terminal(pane, cx);
         }
     }
 
@@ -9153,6 +9212,7 @@ mod tests {
         mux: &mut MuxClient,
         pane: PaneId,
         generation: u64,
+        cx: &mut Context<MuxClient>,
     ) -> Arc<RenderImage> {
         let mut viewport = TerminalViewport::blank_with_appearance(
             20,
@@ -9176,7 +9236,7 @@ mod tests {
             pixel_height: 8,
             source_rect: None,
         }]);
-        mux.apply_terminal_viewport(pane, viewport);
+        mux.apply_terminal_viewport(pane, viewport, cx);
         mux.begin_kitty_image(pane, 4, generation, 8, 8, 256);
         mux.push_kitty_image_chunk(pane, 4, generation, &[127; 256]);
         mux.kitty_images(pane)
@@ -9213,8 +9273,8 @@ mod tests {
         let (mux, image) = cx.update(|cx| {
             zz_ui::init(cx);
             let mux = test_mux(cx);
-            let image = mux.update(cx, |mux, _| {
-                install_kitty_lifecycle_image(mux, PaneId(7), 1)
+            let image = mux.update(cx, |mux, cx| {
+                install_kitty_lifecycle_image(mux, PaneId(7), 1, cx)
             });
             (mux, image)
         });
@@ -9268,8 +9328,8 @@ mod tests {
         let (mux, first, old_cache) = cx.update(|cx| {
             zz_ui::init(cx);
             let mux = test_mux(cx);
-            let first = mux.update(cx, |mux, _| {
-                install_kitty_lifecycle_image(mux, PaneId(7), 1)
+            let first = mux.update(cx, |mux, cx| {
+                install_kitty_lifecycle_image(mux, PaneId(7), 1, cx)
             });
             let cache = mux.read(cx).kitty_images(PaneId(7)).unwrap();
             (mux, first, cache)
@@ -9300,7 +9360,7 @@ mod tests {
             assert_eq!(old_cache.read().view_count, 2);
             let second = mux.update(cx, |mux, cx| {
                 mux.clear_kitty_images(PaneId(7));
-                let image = install_kitty_lifecycle_image(mux, PaneId(7), 2);
+                let image = install_kitty_lifecycle_image(mux, PaneId(7), 2, cx);
                 cx.notify();
                 image
             });
@@ -9329,8 +9389,8 @@ mod tests {
             zz_ui::init(cx);
             cx.set_quit_mode(zz_gpui::QuitMode::Explicit);
             let mux = test_mux(cx);
-            let image = mux.update(cx, |mux, _| {
-                install_kitty_lifecycle_image(mux, PaneId(7), 1)
+            let image = mux.update(cx, |mux, cx| {
+                install_kitty_lifecycle_image(mux, PaneId(7), 1, cx)
             });
             let cache = mux.read(cx).kitty_images(PaneId(7)).unwrap();
             (mux, image, cache)
@@ -9363,10 +9423,10 @@ mod tests {
         let (mux, first, other_image) = cx.update(|cx| {
             zz_ui::init(cx);
             let mux = test_mux(cx);
-            let (first, other) = mux.update(cx, |mux, _| {
+            let (first, other) = mux.update(cx, |mux, cx| {
                 (
-                    install_kitty_lifecycle_image(mux, PaneId(7), 1),
-                    install_kitty_lifecycle_image(mux, PaneId(8), 1),
+                    install_kitty_lifecycle_image(mux, PaneId(7), 1, cx),
+                    install_kitty_lifecycle_image(mux, PaneId(8), 1, cx),
                 )
             });
             (mux, first, other)
@@ -9421,7 +9481,7 @@ mod tests {
         });
         cx.update(|window, cx| window.draw(cx).clear(cx));
         let second = mux.update(cx, |mux, cx| {
-            let image = install_kitty_lifecycle_image(mux, PaneId(7), 2);
+            let image = install_kitty_lifecycle_image(mux, PaneId(7), 2, cx);
             cx.notify();
             image
         });
@@ -9440,7 +9500,7 @@ mod tests {
 
         let third = mux.update(cx, |mux, cx| {
             mux.clear_kitty_images(PaneId(7));
-            let image = install_kitty_lifecycle_image(mux, PaneId(7), 3);
+            let image = install_kitty_lifecycle_image(mux, PaneId(7), 3, cx);
             cx.notify();
             image
         });
@@ -9467,7 +9527,7 @@ mod tests {
 
         for generation in 4..7 {
             let image = mux.update(cx, |mux, cx| {
-                let image = install_kitty_lifecycle_image(mux, PaneId(7), generation);
+                let image = install_kitty_lifecycle_image(mux, PaneId(7), generation, cx);
                 cx.notify();
                 image
             });
@@ -9525,8 +9585,8 @@ mod tests {
         }
 
         let (unpainted_image, unpainted_view) = cx.update(|window, cx| {
-            let image = mux.update(cx, |mux, _| {
-                install_kitty_lifecycle_image(mux, PaneId(7), 7)
+            let image = mux.update(cx, |mux, cx| {
+                install_kitty_lifecycle_image(mux, PaneId(7), 7, cx)
             });
             let unpainted = cx.new(|cx| {
                 TerminalView::new(PaneId(7), mux.clone(), Rc::new(Cell::new(true)), window, cx)
@@ -9546,8 +9606,8 @@ mod tests {
             assert!(window.has_image_atlas_entry(&other_image));
         });
 
-        let final_image = mux.update(cx, |mux, _| {
-            install_kitty_lifecycle_image(mux, PaneId(7), 8)
+        let final_image = mux.update(cx, |mux, cx| {
+            install_kitty_lifecycle_image(mux, PaneId(7), 8, cx)
         });
         cx.update(|window, cx| {
             root.update(cx, |root, cx| {
@@ -9560,8 +9620,8 @@ mod tests {
         });
         cx.update(|window, _| assert!(window.has_image_atlas_entry(&final_image)));
         let (last_image, released_views) = root.update(cx, |root, cx| {
-            let last_image = mux.update(cx, |mux, _| {
-                install_kitty_lifecycle_image(mux, PaneId(7), 9)
+            let last_image = mux.update(cx, |mux, cx| {
+                install_kitty_lifecycle_image(mux, PaneId(7), 9, cx)
             });
             let first = root.terminal.take().unwrap();
             let second = root.other.take().unwrap();
@@ -10131,6 +10191,98 @@ mod tests {
                 assert!(!mux.pending_pasted_image_previews.contains(&(pane, 13)));
             });
         });
+    }
+
+    #[zz_gpui::test]
+    fn terminal_frames_reach_only_their_pane_view(cx: &mut TestAppContext) {
+        use crate::terminal::view::TerminalView;
+        use std::cell::Cell;
+
+        let mux = cx.update(|cx| {
+            zz_ui::init(cx);
+            let mux = test_mux(cx);
+            mux.update(cx, |mux, _| {
+                install_fake_connection(mux, HostId::LOCAL);
+            });
+            mux
+        });
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let terminal = cx.new(|cx| {
+                TerminalView::new(PaneId(7), mux.clone(), Rc::new(Cell::new(true)), window, cx)
+            });
+            let other = cx.new(|cx| {
+                TerminalView::new(PaneId(8), mux.clone(), Rc::new(Cell::new(true)), window, cx)
+            });
+            KittyPaneLifecycleRoot {
+                terminal: Some(terminal),
+                other: Some(other),
+                shown: true,
+            }
+        });
+        let (terminal, other) = root.read_with(cx, |root, _| {
+            (root.terminal.clone().unwrap(), root.other.clone().unwrap())
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.run_until_parked();
+
+        let counts = Rc::new([Cell::new(0), Cell::new(0), Cell::new(0)]);
+        let _subscriptions = cx.update(|_, cx| {
+            let mux_count = Rc::clone(&counts);
+            let terminal_count = Rc::clone(&counts);
+            let other_count = Rc::clone(&counts);
+            [
+                cx.observe(&mux, move |_, _| mux_count[0].set(mux_count[0].get() + 1)),
+                cx.observe(&terminal, move |_, _| {
+                    terminal_count[1].set(terminal_count[1].get() + 1);
+                }),
+                cx.observe(&other, move |_, _| {
+                    other_count[2].set(other_count[2].get() + 1);
+                }),
+            ]
+        });
+        let seen = |counts: &[Cell<usize>; 3]| counts.each_ref().map(Cell::get);
+        let generation = |view: &zz_gpui::Entity<TerminalView>,
+                          cx: &mut zz_gpui::VisualTestContext| {
+            view.read_with(cx, |view, _| view.retained().read().viewport.generation)
+        };
+
+        let first = history_fixture_viewport(&[1, 2, 3], 5, 3, 0);
+        mux.update(cx, |mux, cx| {
+            mux.handle_message(
+                HostId::LOCAL,
+                ProtocolMessage::Event(zz_protocol::Event {
+                    sequence: 1,
+                    payload: EventPayload::TerminalViewport {
+                        pane: PaneId(7),
+                        viewport: first.clone(),
+                    },
+                }),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert_eq!(seen(&counts), [0, 1, 0]);
+        assert_eq!(generation(&terminal, cx), 5);
+
+        let next = history_fixture_viewport(&[1, 2, 4], 6, 3, 0);
+        let patch = TerminalViewport::diff(&first, &next).expect("compatible frames");
+        mux.update(cx, |mux, cx| {
+            mux.handle_message(
+                HostId::LOCAL,
+                ProtocolMessage::Event(zz_protocol::Event {
+                    sequence: 2,
+                    payload: EventPayload::TerminalPatch {
+                        pane: PaneId(7),
+                        patch,
+                    },
+                }),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert_eq!(seen(&counts), [0, 2, 0]);
+        assert_eq!(generation(&terminal, cx), 6);
+        assert_eq!(generation(&other, cx), 0);
     }
 
     fn history_fixture_viewport(
