@@ -312,6 +312,167 @@ impl<T> calloop::EventSource for PriorityQueueCalloopReceiver<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        collections::BTreeMap,
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+    use zz_gpui::{BackgroundExecutor, ForegroundExecutor};
+
+    type Switches = BTreeMap<String, (u64, u64)>;
+
+    fn context_switches() -> Switches {
+        let main_tid = unsafe { libc::gettid() };
+        let mut by_name = Switches::new();
+        for task in std::fs::read_dir("/proc/self/task").unwrap().flatten() {
+            let path = task.path();
+            let Ok(status) = std::fs::read_to_string(path.join("status")) else {
+                continue;
+            };
+            let tid: i32 = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.parse().ok())
+                .unwrap_or_default();
+            let name = if tid == main_tid {
+                "main".to_owned()
+            } else {
+                let comm = std::fs::read_to_string(path.join("comm")).unwrap_or_default();
+                comm.trim()
+                    .trim_end_matches(|c: char| c.is_ascii_digit())
+                    .trim_end_matches('-')
+                    .to_owned()
+            };
+            let field = |key: &str| -> u64 {
+                status
+                    .lines()
+                    .find_map(|line| line.strip_prefix(key))
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or_default()
+            };
+            let entry = by_name.entry(name).or_default();
+            entry.0 += field("voluntary_ctxt_switches:");
+            entry.1 += field("nonvoluntary_ctxt_switches:");
+        }
+        by_name
+    }
+
+    fn process_cpu() -> Duration {
+        let mut usage = MaybeUninit::<libc::rusage>::zeroed();
+        unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
+        let usage = unsafe { usage.assume_init() };
+        let micros = |time: libc::timeval| {
+            Duration::from_secs(time.tv_sec as u64) + Duration::from_micros(time.tv_usec as u64)
+        };
+        micros(usage.ru_utime) + micros(usage.ru_stime)
+    }
+
+    fn report(label: &str, ops: u32, wall: Duration, cpu: Duration, before: &Switches) {
+        let after = context_switches();
+        let mut total = 0;
+        let mut rows = Vec::new();
+        for (name, (voluntary, involuntary)) in &after {
+            let (voluntary0, involuntary0) = before.get(name).copied().unwrap_or_default();
+            let delta = voluntary - voluntary0 + involuntary - involuntary0;
+            if delta > 0 {
+                total += delta;
+                rows.push(format!("{name}={:.2}", delta as f64 / f64::from(ops)));
+            }
+        }
+        println!(
+            "{label}: ops={ops} wall_ns_per_op={:.0} cpu_ns_per_op={:.0} switches_per_op={:.2} [{}]",
+            wall.as_nanos() as f64 / f64::from(ops),
+            cpu.as_nanos() as f64 / f64::from(ops),
+            total as f64 / f64::from(ops),
+            rows.join(" ")
+        );
+    }
+
+    fn main_loop() -> (EventLoop<'static, ()>, Arc<LinuxDispatcher>) {
+        let event_loop = EventLoop::<()>::try_new().unwrap();
+        let handle = event_loop.handle();
+        let (sender, receiver) = PriorityQueueCalloopReceiver::new();
+        let dispatcher = Arc::new(LinuxDispatcher::new(sender));
+        handle
+            .insert_source(receiver, {
+                let handle = handle.clone();
+                move |event, _, _: &mut ()| {
+                    if let Event::Msg(runnable) = event {
+                        handle.insert_idle(|_| {
+                            runnable.run();
+                        });
+                    }
+                }
+            })
+            .unwrap();
+        (event_loop, dispatcher)
+    }
+
+    fn run_bench(
+        label: &str,
+        ops: u32,
+        body: impl AsyncFnOnce(ForegroundExecutor, BackgroundExecutor) + 'static,
+    ) {
+        let (mut event_loop, dispatcher) = main_loop();
+        let foreground = ForegroundExecutor::new(dispatcher.clone());
+        let background = BackgroundExecutor::new(dispatcher.clone());
+        let signal = event_loop.get_signal();
+        thread::sleep(Duration::from_millis(50));
+        let before = context_switches();
+        let cpu = process_cpu();
+        let started = Instant::now();
+        foreground
+            .spawn({
+                let foreground = foreground.clone();
+                async move {
+                    body(foreground, background).await;
+                    signal.stop();
+                }
+            })
+            .detach();
+        event_loop.run(None, &mut (), |_| {}).unwrap();
+        report(label, ops, started.elapsed(), process_cpu() - cpu, &before);
+        drop(dispatcher);
+    }
+
+    #[test]
+    #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --lib bench_dispatch -- --ignored --nocapture --test-threads=1"]
+    fn bench_dispatch_timer_ticks() {
+        const TICKS: u32 = 200;
+        run_bench(
+            "main_thread_timer_tick",
+            TICKS,
+            async move |_, background: BackgroundExecutor| {
+                for _ in 0..TICKS {
+                    background.timer(Duration::from_millis(2)).await;
+                }
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --lib bench_dispatch -- --ignored --nocapture --test-threads=1"]
+    fn bench_dispatch_runnable_round_trips() {
+        const OPS: u32 = 20_000;
+        run_bench(
+            "main_thread_spawn_await",
+            OPS,
+            async move |foreground: ForegroundExecutor, _| {
+                for _ in 0..OPS {
+                    foreground.spawn(async {}).await;
+                }
+            },
+        );
+        run_bench(
+            "background_round_trip",
+            OPS,
+            async move |_, background: BackgroundExecutor| {
+                for _ in 0..OPS {
+                    background.spawn(async {}).await;
+                }
+            },
+        );
+    }
 
     #[test]
     fn dispatcher_threads_exit_when_owner_drops() {
