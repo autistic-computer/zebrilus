@@ -4,12 +4,12 @@ title: zz icon set
 description: zz's own icons, drawn from skeletons in the Mac school so their corners follow the theme radius and superellipse smoothing, how the app and the site get them, and how to draw, preview and review a new one.
 resource: crates/zz-gpui-kit/src/icon/mac.json
 tags: [ui, icons, zz-gpui-kit, storybook, site, theme]
-timestamp: 2026-10-20T00:00:00Z
+timestamp: 2026-10-22T00:00:00Z
 ---
 
 # Overview
 
-zz has its own icon set: 85 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
+zz has its own icon set: 88 glyphs, every icon zz ships except the four brand marks (`claude`, `openai`,
 `brand-chrome`, `zz`), which keep their own artwork as files in `crates/zz-gpui-kit/assets/icons`. The
 set lives as skeletons in `crates/zz-gpui-kit/src/icon/mac.json`, not as SVG files, and is drawn at
 paint time for the current theme, so radius 0 gives flat icons and higher radii round them the way zz
@@ -102,9 +102,11 @@ a missing scale means a sharp vertex.
   the control mark and the letter (⌃B, ⎈B), so it follows a rebinding.
 - Meanings follow use, not names: `panel-left` is Toggle sidebar, a frame taller than the window
   glyphs (2..22 × 3..21) after the reference fabrico picked; `list` and `list-tree` are the sidebar's
-  flat window list and session tree, and the view button shows the one on screen; `panel-right` and
+  flat window list (tiles with two lines, flush left) and session tree (the same tiles in three even rows,
+  the last two hanging off the first by elbow guides), and the footer's view button shows the one on screen; `panel-right` and
   `panel-bottom` are the split right and split down actions (two equal panes, no plus); `layout-columns` is a float's Tile back (one tall pane and two
-  stacked); `layers` is a session (a stack of window cards); `picture-in-picture` is Float (a window with a
+  stacked); `layers` is a session (a stack of window cards); `layers-plus`, `window-plus` and `server-plus` are
+  New session, New window and Add host, each a plus on the thing it makes; `picture-in-picture` is Float (a window with a
   filled card in its corner); `loader` is the Mac activity spinner.
 - Each icon may carry a `note` that explains a choice; the review page shows it on the card.
 

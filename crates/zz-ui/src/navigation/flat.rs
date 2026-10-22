@@ -59,8 +59,8 @@ const SESSION_BOTTOM: f32 = 2.0;
 const SESSION_LINE: f32 = 18.0;
 const SESSION_SIZE: f32 = 12.0;
 const SESSION_SPACING: f32 = 6.0;
-const NEW_WINDOW_SIZE: f32 = 18.0;
-const NEW_WINDOW_ICON: f32 = 12.0;
+const ADD_BUTTON_SIZE: f32 = 18.0;
+const ADD_BUTTON_ICON: f32 = 14.0;
 const CHEVRON_SIZE: f32 = 10.0;
 const NOTE_SIZE: f32 = 11.0;
 const NOTE_LINE: f32 = 15.0;
@@ -172,6 +172,7 @@ pub enum FlatEvent {
     OpenPane(PaletteHostId, WindowId, PaneId),
     FoldHost(PaletteHostId),
     FoldSession(PaletteHostId, SessionId),
+    NewSession(PaletteHostId),
     NewWindow(PaletteHostId, SessionId),
     Connect(PaletteHostId),
     Upgrade(PaletteHostId),
@@ -724,7 +725,8 @@ pub fn flat_host_header(
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let hovered = hovered && !CoarsePointer::get(cx);
+    let coarse = CoarsePointer::get(cx);
+    let hovered = hovered && !coarse;
     let muted = theme.foreground.muted();
     let id = host.id;
     let target = FlatTarget::Host(id);
@@ -743,6 +745,16 @@ pub fn flat_host_header(
                 Some(icon) => glyph(icon, STATUS_ICON, HOST_NAME_SIZE, note.color, cx),
                 None => spinner(STATUS_ICON, HOST_NAME_SIZE, note.color, cx),
             })
+    });
+    let new_session = (host.live() && (hovered || coarse)).then(|| {
+        add_button(
+            ElementId::from(("flat-new-session", id.0)),
+            IconName::LayersPlus,
+            "New session",
+            FlatEvent::NewSession(id),
+            handler,
+            cx,
+        )
     });
     let hover = handler.clone();
     let click = handler.clone();
@@ -799,6 +811,40 @@ pub fn flat_host_header(
                 header_button(("flat-host-action", id.0), label, event, handler)
             }),
         )
+        .children(new_session)
+}
+
+fn add_button(
+    id: ElementId,
+    icon: IconName,
+    tooltip: &'static str,
+    event: FlatEvent,
+    handler: &FlatHandler,
+    cx: &App,
+) -> impl IntoElement + use<> {
+    let handler = handler.clone();
+    let selector = match event {
+        FlatEvent::NewSession(_) => "flat-new-session",
+        _ => "flat-new-window",
+    };
+    let button = workspace_row_action(
+        icon_button(id.clone(), icon, ADD_BUTTON_ICON),
+        cx.theme().ground(),
+        false,
+        cx,
+    )
+    .size(px(ADD_BUTTON_SIZE))
+    .debug_selector(move || selector.into())
+    .hit_slop(
+        (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
+        (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
+    )
+    .tooltip(tooltip)
+    .on_click(move |_: &ClickEvent, window, cx| {
+        cx.stop_propagation();
+        handler(event, window, cx);
+    });
+    motion::appear(ElementId::from((id, "appear")), button)
 }
 
 pub fn flat_session_header(
@@ -819,29 +865,14 @@ pub fn flat_session_header(
         .folded
         .then(|| flat_rollup(&session.rollup, host.live(), cx));
     let new_window = (hovered || coarse).then(|| {
-        let handler = handler.clone();
-        let button = workspace_row_action(
-            icon_button(
-                ("flat-new-window", session_id.0),
-                IconName::Plus,
-                NEW_WINDOW_ICON,
-            ),
-            theme.ground(),
-            false,
+        add_button(
+            ElementId::from(("flat-new-window", session_id.0)),
+            IconName::WindowPlus,
+            "New window",
+            FlatEvent::NewWindow(host_id, session_id),
+            handler,
             cx,
         )
-        .size(px(NEW_WINDOW_SIZE))
-        .debug_selector(|| "flat-new-window".into())
-        .hit_slop(
-            (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,
-            (TOUCH_TARGET - NEW_WINDOW_SIZE) / 2.0,
-        )
-        .tooltip("New window")
-        .on_click(move |_: &ClickEvent, window, cx| {
-            cx.stop_propagation();
-            handler(FlatEvent::NewWindow(host_id, session_id), window, cx);
-        });
-        motion::appear(("flat-new-window-appear", session_id.0), button)
     });
     let hover = handler.clone();
     let click = handler.clone();

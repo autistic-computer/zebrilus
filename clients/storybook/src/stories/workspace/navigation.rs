@@ -10,11 +10,11 @@ use zz_ui::{
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState,
         sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
-        workspace_layout_button, workspace_palette_button, workspace_settings_button,
-        workspace_sidebar_footer, workspace_sidebar_titlebar, workspace_sidebar_view_button,
-        workspace_status_item, workspace_status_window, workspace_tree_action_button,
-        workspace_tree_action_row, workspace_tree_disclosure, workspace_tree_marker,
-        workspace_tree_row,
+        workspace_add_host_button, workspace_layout_button, workspace_palette_button,
+        workspace_settings_button, workspace_sidebar_footer, workspace_sidebar_footer_controls,
+        workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_status_item,
+        workspace_status_window, workspace_tree_action_button, workspace_tree_disclosure,
+        workspace_tree_marker, workspace_tree_row,
     },
     program::program_mark,
 };
@@ -572,19 +572,6 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                     cx,
                 )),
         )
-        .state(
-            "action row",
-            div()
-                .id("action-row")
-                .w(px(300.0))
-                .child(workspace_tree_action_row(
-                    "new-session",
-                    1,
-                    IconName::Plus,
-                    "New session",
-                    cx,
-                )),
-        )
         .into_any_element()
 }
 
@@ -723,7 +710,13 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(workspace_sidebar_footer(
                     "sidebar-footer",
                     workspace_settings_button("footer-settings"),
-                    Some(workspace_sidebar_view_button("footer-view", false).into_any_element()),
+                    Some(
+                        workspace_sidebar_footer_controls(
+                            workspace_add_host_button("footer-add-host"),
+                            workspace_sidebar_view_button("footer-view", false),
+                        )
+                        .into_any_element(),
+                    ),
                     cx,
                 )),
         )

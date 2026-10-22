@@ -219,6 +219,7 @@ impl WorkspaceSidebar {
                 }
                 cx.notify();
             }
+            FlatEvent::NewSession(host) => self.mux.read(cx).new_session(host.into()),
             FlatEvent::NewWindow(host, session) => {
                 self.mux
                     .read(cx)
