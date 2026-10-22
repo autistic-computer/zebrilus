@@ -537,7 +537,7 @@ struct AgentPaneChrome {
 }
 
 impl AgentPaneChrome {
-    #[cfg(test)]
+    #[cfg(all(test, not(target_os = "macos")))]
     fn detached() -> Self {
         Self {
             connected: false,
