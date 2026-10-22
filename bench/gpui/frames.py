@@ -151,6 +151,73 @@ def clock(value):
     return seconds
 
 
+RAPL = ("intel-rapl:0", "intel-rapl:0:0", "intel-rapl:0:1")
+
+
+class Power:
+    def __init__(self, duration):
+        self.duration = duration
+        self.perf = None
+        self.energy0 = None
+
+    @staticmethod
+    def energy():
+        paths = [f"/sys/class/powercap/{d}/energy_uj" for d in RAPL]
+        out = subprocess.run(["sudo", "-n", "cat", *paths], capture_output=True, text=True)
+        if out.returncode != 0:
+            return None
+        return [int(v) for v in out.stdout.split()]
+
+    def start(self):
+        self.energy0 = self.energy()
+        self.perf = subprocess.Popen(
+            ["sudo", "-n", "perf", "stat", "-x,", "-a", "-e", "i915/rcs0-busy/", "--", "sleep", str(self.duration)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+    def stop(self, elapsed):
+        out = {}
+        energy1 = self.energy()
+        if self.energy0 and energy1:
+            for name, d, e0, e1 in zip(("package", "core", "uncore"), RAPL, self.energy0, energy1):
+                if e1 < e0:
+                    e1 += int(Path(f"/sys/class/powercap/{d}/max_energy_range_uj").read_text())
+                out[f"{name}_w"] = (e1 - e0) / 1e6 / elapsed
+        if self.perf:
+            _, err = self.perf.communicate()
+            for line in err.splitlines():
+                fields = line.split(",")
+                if len(fields) > 2 and "rcs0-busy" in fields[2] and fields[0].replace(".", "").isdigit():
+                    out["gpu_busy_pct"] = 100 * float(fields[0]) / 1e9 / self.duration
+        return out
+
+
+def gpu_usage(pid):
+    clients = {}
+    try:
+        fds = os.listdir(f"/proc/{pid}/fdinfo")
+    except OSError:
+        return None
+    for fd in fds:
+        try:
+            text = Path(f"/proc/{pid}/fdinfo/{fd}").read_text()
+        except OSError:
+            continue
+        if "drm-engine-render:" not in text:
+            continue
+        fields = dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+        client = fields.get("drm-client-id", fd).strip()
+        render = int(fields["drm-engine-render"].split()[0])
+        resident = fields.get("drm-resident-system0", "0 KiB").split()
+        scale = {"KiB": 1024, "MiB": 1024 * 1024, "GiB": 1024**3}.get(resident[1] if len(resident) > 1 else "", 1)
+        clients[client] = (render, int(resident[0]) * scale)
+    if not clients:
+        return None
+    return sum(r for r, _ in clients.values()), sum(m for _, m in clients.values())
+
+
 def footprint(pid):
     if LINUX:
         for line in Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines():
@@ -167,7 +234,9 @@ def footprint(pid):
 
 
 class Run:
-    def __init__(self, app, out_dir, label, warmup, duration, rate, extra_env=None, config=None, display=None):
+    def __init__(self, app, out_dir, label, warmup, duration, rate, extra_env=None, config=None, display=None, refresh=120, power=False):
+        self.refresh = refresh
+        self.power = power
         self.extra_env = extra_env or {}
         self.config = config
         self.display = display
@@ -241,7 +310,7 @@ class Run:
         command = [str(self.binary), "--socket", str(self.socket), "app"]
         if LINUX:
             w, h = (str(v) for v in self.size)
-            command = ["gamescope", "--backend", "headless", "-W", w, "-H", h, "-w", w, "-h", h, "-r", "120", "--expose-wayland", "--", *command]
+            command = ["gamescope", "--backend", "headless", "-W", w, "-H", h, "-w", w, "-h", h, "-r", str(self.refresh), "--expose-wayland", "--", *command]
         self.gui = subprocess.Popen(
             command,
             env=env,
@@ -396,8 +465,12 @@ class Run:
         commands = 0
         self.drive(scenario, warm_until)
         main0, total0, threads0 = thread_times(self.gui_pid)
+        gpu0 = gpu_usage(self.gui_pid) if LINUX else None
         daemon0 = thread_times(self.daemon_pid)[1]
+        power = Power(self.duration) if self.power else None
         t0 = time.time_ns()
+        if power:
+            power.start()
         noisy = []
         end = time.time() + self.duration
         while time.time() < end:
@@ -407,9 +480,15 @@ class Run:
                 return None
         t1 = time.time_ns()
         main1, total1, threads1 = thread_times(self.gui_pid)
+        gpu1 = gpu_usage(self.gui_pid) if LINUX else None
         daemon1 = thread_times(self.daemon_pid)[1]
         elapsed = (t1 - t0) / 1e9
+        power = power.stop(elapsed) if power else {}
+        if gpu0 and gpu1:
+            power["gpu_ms_per_s"] = (gpu1[0] - gpu0[0]) / 1e6 / elapsed
+            power["gpu_resident"] = gpu1[1]
         return {
+            **power,
             "scenario": scenario,
             "t0_ns": t0,
             "t1_ns": t1,
@@ -497,6 +576,10 @@ METRICS = [
     ("paint_us_med", "paint_us"),
     ("scene_finish_us_med", "finish_us"),
     ("present_submit_us_med", "submit_us"),
+    ("gpu_ms_per_s", "gpu_ms/s"),
+    ("package_w", "package_W"),
+    ("uncore_w", "uncore_W"),
+    ("gpu_busy_pct", "gpu_busy%"),
 ]
 
 
@@ -554,6 +637,8 @@ def main():
     parser.add_argument("--repeat-offset", type=int, default=0)
     parser.add_argument("--config", help="zz config file every run starts with")
     parser.add_argument("--display-uuid", help="display the window opens on (lowercase CGDisplay UUID)")
+    parser.add_argument("--refresh", type=int, default=120, help="Linux gamescope refresh rate")
+    parser.add_argument("--power", action="store_true", help="Linux: RAPL package watts and i915 render busy, needs passwordless sudo")
     args = parser.parse_args()
     apps = []
     envs = {}
@@ -570,7 +655,9 @@ def main():
     for repeat in range(args.repeat_offset, args.repeat_offset + args.repeats):
         order = apps if repeat % 2 == 0 else list(reversed(apps))
         for label, app in order:
-            run = Run(app, out, label, args.warmup, args.duration, args.rate, envs[label], args.config, args.display_uuid)
+            run = Run(
+                app, out, label, args.warmup, args.duration, args.rate, envs[label], args.config, args.display_uuid, args.refresh, args.power
+            )
             run.quiet_wait = args.quiet_wait
             frames = None if args.no_recorder else out / f"frames-{label}-{repeat}.jsonl"
             try:
