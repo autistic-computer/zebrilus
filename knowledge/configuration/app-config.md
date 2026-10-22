@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-20T12:00:00-03:00
+timestamp: 2026-10-22T12:00:00-03:00
 ---
 
 # Overview
@@ -44,8 +44,10 @@ gets nothing written. These local schema entries retain `Default`/`Override` pro
 grammar deliberately stays in the zz-terminal appearance loader or
 mux `set-option` engine.
 
-The GUI polls candidate paths every 500ms (path, mtime, and size) and live-applies edits, file
-appearance, precedence changes, and deletion. On connect and every poll change it sends the complete
+On Linux the GUI watches the candidate directories, the selected file's resolved directory and the
+`themes` folder with inotify, and re-checks path, mtime and size after each change; other platforms
+poll every 500ms. Either way it live-applies edits, file appearance, precedence changes, and deletion.
+On connect and every detected change it sends the complete
 ordered daemon-owned set through `SetConfigOverrides`, including an empty set after the
 last override is removed. The daemon never reads `zz/config`; it stores the latest appearance and
 mux subsets, layers appearance above built-in defaults (it reads no donor appearance config of its
@@ -330,7 +332,8 @@ hue every 30 degrees.
 Saved themes live one per file in a `themes` folder beside the configuration file
 (`~/.config/zz/themes/<name>.json`; zz Dev keeps its own), named by letters, digits, `-` and `_`;
 a file named after a built-in id is ignored. `interface-theme = <name>` selects one. The config
-poll stamps the folder, so adding, editing or removing a theme applies within half a second. A
+check stamps the folder, so adding, editing or removing a theme applies right away on Linux and
+within half a second elsewhere. A
 selected theme whose file is gone logs a warning and falls back to `default`. A selected theme
 whose file stops loading (bad JSON, an unknown key, a bad value) leaves the screen alone: the
 reload keeps the theme as it last loaded, or the theme that was active before when the file never
