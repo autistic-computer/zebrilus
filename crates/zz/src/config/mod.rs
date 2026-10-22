@@ -989,10 +989,10 @@ mod tests {
         load_themes(&path, &mut parsed, &Themes::default());
         assert_f32_eq(parsed.config.widget_corner_radius.value, 9.0);
 
-        let mut parsed = parse_config("interface-theme = liquid-glass\n");
+        let mut parsed = parse_config("interface-theme = macos\n");
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(loaded.active.name, "Liquid Glass");
-        assert_f32_eq(parsed.config.widget_corner_radius.value, 25.0);
+        assert_eq!(loaded.active.name, "macOS");
+        assert_f32_eq(parsed.config.widget_corner_radius.value, 24.0);
 
         let mut parsed = parse_config("interface-theme = missing\n");
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
@@ -2438,7 +2438,7 @@ mod tests {
         cx.update(zz_ui::init);
 
         for (theme, accent, tint) in [
-            (Some("liquid-glass"), Some("green"), Some("1")),
+            (Some("macos"), Some("green"), Some("1")),
             (None, Some("#ff8800"), None),
             (None, None, None),
         ] {

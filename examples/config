@@ -46,11 +46,11 @@ pane-margin = 6
 
 # The interface theme: its materials (corners, outlines, shadows, glass), which
 # piece of UI uses which (its roles), and its colors for light and for dark.
-# Two are built in: default and liquid-glass. Any other name selects
+# Two are built in: default and macos. Any other name selects
 # themes/<name>.json next to this file; Settings -> Interface -> Themes -> Save
 # writes the look on screen there as a new theme.
 interface-theme = default
-# interface-theme = liquid-glass
+# interface-theme = macos
 
 # What Settings -> Interface sets over the theme. Each follows the theme until
 # set. Picking a theme in Settings removes widget-corner-radius; the accent

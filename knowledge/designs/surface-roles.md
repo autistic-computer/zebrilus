@@ -475,7 +475,7 @@ then an App tab for the pane settings and the preview around the showcase, which
    kind or group, and whether that is the built-in or this theme's patch. Setting a prop writes
    only what differs into the theme's `roles` patch. Picking a role, group or kind shows only the
    regions that draw it and flashes `Theme.inspect` over its surfaces for about a second. The
-   flash is an inset ring, which glass surfaces do not draw, so under Liquid Glass a glass role
+   flash is an inset ring, which glass surfaces do not draw, so under a glass theme such as macOS a glass role
    (the PiP bar, for one) shows no ring.
 4. **Export**: JSON with only what differs, and Import.
 
