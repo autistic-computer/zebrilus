@@ -30,13 +30,13 @@ use futures::channel::oneshot;
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 use zz_gpui::util::{ResultExt as _, new_std_command};
 
-use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
+use crate::linux::{BusyMarker, LinuxDispatcher, PriorityQueueCalloopReceiver};
 use zz_gpui::{
     Action, ActivityGuard, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle,
     DisplayId, ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
     PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
     PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
-    WindowButtonLayout, WindowParams,
+    WindowButtonLayout, WindowParams, scheduler::MainThreadBusy,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use zz_gpui::{Pixels, Point, px};
@@ -129,6 +129,7 @@ pub(crate) struct LinuxCommon {
     pub(crate) button_layout: WindowButtonLayout,
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
+    pub(crate) main_thread_busy: MainThreadBusy,
     pub(crate) menus: Vec<OwnedMenu>,
     app_name: Option<String>,
     system_notifications: crate::linux::system_notifications::SystemNotificationState,
@@ -168,6 +169,11 @@ impl LinuxCommon {
 
         let dispatcher = Arc::new(LinuxDispatcher::new(main_sender));
         dispatcher.run_main_thread_timers_on(&event_loop.handle());
+        let main_thread_busy = main_receiver.main_thread_busy();
+        event_loop
+            .handle()
+            .insert_source(BusyMarker::new(main_thread_busy.clone()), |_, _, _| {})
+            .expect("Failed to mark main loop activity");
 
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
 
@@ -182,6 +188,7 @@ impl LinuxCommon {
             button_layout: WindowButtonLayout::linux_default(),
             callbacks,
             signal: event_loop.get_signal(),
+            main_thread_busy,
             menus: Vec::new(),
             app_name: None,
             system_notifications: crate::linux::system_notifications::SystemNotificationState::new(
@@ -285,6 +292,13 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn thermal_state(&self) -> ThermalState {
         ThermalState::Nominal
+    }
+
+    fn main_thread_busy(&self) -> Option<MainThreadBusy> {
+        Some(
+            self.inner
+                .with_common(|common| common.main_thread_busy.clone()),
+        )
     }
 
     #[cfg(not(any(feature = "wayland", feature = "x11")))]

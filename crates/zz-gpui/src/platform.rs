@@ -297,6 +297,9 @@ pub trait Platform: 'static {
 
     fn thermal_state(&self) -> ThermalState;
     fn on_thermal_state_change(&self, callback: Box<dyn FnMut()>);
+    fn main_thread_busy(&self) -> Option<crate::scheduler::MainThreadBusy> {
+        None
+    }
     fn prevent_idle_sleep(&self, reason: &str) -> Task<Result<ActivityGuard>>;
 
     /// Sets the application's process-wide identity and user-visible name.
