@@ -289,7 +289,7 @@ impl Element for LiquidGlass {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        content.prepaint(window, cx);
+        window.with_opacity_set_at_paint(|window| content.prepaint(window, cx));
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
 
         let state = window.with_element_state(
@@ -716,6 +716,7 @@ impl Element for GlassGroup {
                     glass.shape.corner_radii,
                     &glass.shadows,
                     glass.corner_smoothing,
+                    false,
                 );
             }
         }

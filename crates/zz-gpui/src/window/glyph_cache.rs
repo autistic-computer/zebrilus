@@ -4,7 +4,7 @@ const GLYPH_SLOT_BITS: u32 = 12;
 
 pub(super) struct GlyphLookupCache {
     slots: Box<[Option<GlyphSlot>]>,
-    frame: u64,
+    atlas_generation: u64,
     font_generation: Option<usize>,
     #[cfg(test)]
     pub(super) lookups: std::cell::Cell<usize>,
@@ -14,14 +14,14 @@ pub(super) struct GlyphLookupCache {
 struct GlyphSlot {
     params: RenderGlyphParams,
     bounds: Bounds<DevicePixels>,
-    tile: Option<(u64, AtlasTile)>,
+    tile: Option<AtlasTile>,
 }
 
 impl Default for GlyphLookupCache {
     fn default() -> Self {
         Self {
             slots: vec![None; 1 << GLYPH_SLOT_BITS].into_boxed_slice(),
-            frame: 0,
+            atlas_generation: 0,
             font_generation: None,
             #[cfg(test)]
             lookups: std::cell::Cell::new(0),
@@ -60,6 +60,19 @@ impl GlyphLookupCache {
         }
     }
 
+    pub(super) fn sync_atlas_generation(&mut self, generation: u64) {
+        if self.atlas_generation != generation {
+            for slot in self.slots.iter_mut().flatten() {
+                slot.tile = None;
+            }
+            self.atlas_generation = generation;
+        }
+    }
+
+    pub(super) fn atlas_generation(&self) -> u64 {
+        self.atlas_generation
+    }
+
     pub(super) fn lookup(
         &self,
         params: &RenderGlyphParams,
@@ -67,11 +80,7 @@ impl GlyphLookupCache {
         #[cfg(test)]
         self.lookups.set(self.lookups.get() + 1);
         match &self.slots[Self::slot(params)] {
-            Some(slot) if slot.params == *params => Some((
-                slot.bounds,
-                slot.tile
-                    .and_then(|(frame, tile)| (frame == self.frame).then_some(tile)),
-            )),
+            Some(slot) if slot.params == *params => Some((slot.bounds, slot.tile)),
             _ => None,
         }
     }
@@ -92,49 +101,19 @@ impl GlyphLookupCache {
         if let Some(slot) = &mut self.slots[Self::slot(params)]
             && slot.params == *params
         {
-            slot.tile = Some((self.frame, tile));
+            slot.tile = Some(tile);
         }
-    }
-
-    pub(super) fn finish_frame(&mut self) {
-        self.frame = self
-            .frame
-            .checked_add(1)
-            .expect("glyph cache frame overflow");
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::GlyphLookupCache;
     use crate::{
-        AppContext as _, AtlasKey, AtlasState, AtlasTextureKind, Bounds, DevicePixels, Empty,
-        FontId, GlyphId, HeadlessAtlas, HeadlessAtlasBackend, NoopTextSystem, PlatformAtlas,
-        RenderGlyphParams, Size, TestAppContext, TextSystem, point, px, size,
+        AtlasKey, AtlasState, AtlasTextureKind, Bounds, DevicePixels, FontId, GlyphId,
+        HeadlessAtlasBackend, NoopTextSystem, RenderGlyphParams, TextSystem, point, px, size,
     };
-    use std::{borrow::Cow, cell::Cell, sync::Arc};
-
-    #[derive(Default)]
-    struct CountingAtlas {
-        atlas: HeadlessAtlas,
-        lookups: Cell<usize>,
-    }
-
-    impl PlatformAtlas for CountingAtlas {
-        fn get_or_insert_with<'a>(
-            &self,
-            key: AtlasKey,
-            build: &mut dyn FnMut() -> anyhow::Result<Option<(Size<DevicePixels>, Cow<'a, [u8]>)>>,
-        ) -> anyhow::Result<Option<crate::AtlasTile>> {
-            self.lookups.set(self.lookups.get() + 1);
-            self.atlas.get_or_insert_with(key, build)
-        }
-
-        fn remove(&self, key: &AtlasKey) {
-            self.atlas.remove(key);
-        }
-    }
+    use std::{borrow::Cow, sync::Arc};
 
     fn glyph(glyph_id: u32) -> RenderGlyphParams {
         RenderGlyphParams {
@@ -229,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn atlas_clear_between_frames_requires_a_fresh_tile() {
+    fn atlas_generation_change_requires_a_fresh_tile() {
         let params = glyph(7);
         let mut atlas = AtlasState::new(HeadlessAtlasBackend::default());
         let mut build = || Ok(Some((bounds(5).size, Cow::Owned(vec![0; 140]))));
@@ -246,8 +225,10 @@ mod tests {
         assert_eq!(cache.lookup(&params), Some((bounds(5), Some(tile))));
         cache.insert_tile(&glyph(8), tile);
         assert_eq!(cache.lookup(&glyph(8)), None);
-        cache.finish_frame();
+        cache.sync_atlas_generation(atlas.generation());
+        assert_eq!(cache.lookup(&params), Some((bounds(5), Some(tile))));
         atlas.clear(|_| {});
+        cache.sync_atlas_generation(atlas.generation());
         assert_eq!(cache.lookup(&params), Some((bounds(5), None)));
         let new_tile = atlas
             .get_or_insert_with(AtlasKey::Glyph(params.clone()), &mut build)
@@ -279,62 +260,9 @@ mod tests {
         let mut cache = GlyphLookupCache::default();
         cache.sync_font_generation(0);
         cache.insert_bounds(&glyph(7), Bounds::default());
-        cache.finish_frame();
+        cache.sync_atlas_generation(1);
         assert_eq!(cache.lookup(&glyph(7)), Some((Bounds::default(), None)));
         cache.sync_font_generation(1);
         assert_eq!(cache.lookup(&glyph(7)), None);
-    }
-
-    #[zz_gpui::test]
-    fn completed_window_draw_expires_the_tile_epoch(cx: &mut TestAppContext) {
-        let window = cx.add_window(|_, _| Empty);
-        cx.update_window(window.into(), |_, window, cx| {
-            let params = glyph(7);
-            let mut atlas = AtlasState::new(HeadlessAtlasBackend::default());
-            let tile = atlas
-                .get_or_insert_with(AtlasKey::Glyph(params.clone()), &mut || {
-                    Ok(Some((bounds(5).size, Cow::Owned(vec![0; 140]))))
-                })
-                .unwrap()
-                .unwrap();
-            window
-                .glyph_lookup_cache
-                .get_mut()
-                .insert_bounds(&params, bounds(5));
-            window
-                .glyph_lookup_cache
-                .get_mut()
-                .insert_tile(&params, tile);
-            window.draw(cx).clear(cx);
-            assert_eq!(
-                window.glyph_lookup_cache.borrow().lookup(&params),
-                Some((bounds(5), None))
-            );
-        })
-        .unwrap();
-    }
-
-    #[zz_gpui::test]
-    fn shared_tile_lookup_reuses_within_a_frame_and_observes_retirement(cx: &mut TestAppContext) {
-        let window = cx.add_window(|_, _| Empty);
-        cx.update_window(window.into(), |_, window, cx| {
-            let atlas = Arc::new(CountingAtlas::default());
-            window.sprite_atlas = atlas.clone();
-            let params = glyph(7);
-            let tile = window.get_or_insert_glyph_tile(&params).unwrap();
-            assert_eq!(window.get_or_insert_glyph_tile(&params).unwrap(), tile);
-            assert_eq!(atlas.lookups.get(), 1);
-            window.draw(cx).clear(cx);
-            atlas.remove(&AtlasKey::Glyph(params.clone()));
-            let next_tile = window.get_or_insert_glyph_tile(&params).unwrap();
-            assert_ne!(next_tile, tile);
-            assert_eq!(atlas.lookups.get(), 2);
-            assert_eq!(window.get_or_insert_glyph_tile(&params).unwrap(), next_tile);
-            assert_eq!(atlas.lookups.get(), 2);
-            window.text_system().add_fonts(Vec::new()).unwrap();
-            assert_eq!(window.get_or_insert_glyph_tile(&params).unwrap(), next_tile);
-            assert_eq!(atlas.lookups.get(), 3);
-        })
-        .unwrap();
     }
 }

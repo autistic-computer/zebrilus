@@ -3445,7 +3445,7 @@ impl AppView {
         } else if let Some(picker) = self.pickers.get(&pane) {
             Some(PaneContent {
                 view: AnyView::from(picker.clone()),
-                cached: false,
+                cached: true,
                 inactive_style: PaneInactiveStyle::Surface,
                 covers_frame: false,
             })
@@ -3479,7 +3479,7 @@ impl AppView {
         } else {
             self.agents.get(&pane).map(|agent| PaneContent {
                 view: AnyView::from(agent.clone()),
-                cached: false,
+                cached: true,
                 inactive_style: PaneInactiveStyle::Surface,
                 covers_frame: false,
             })
@@ -4576,7 +4576,11 @@ impl Render for AppView {
             .collect::<Vec<_>>()
         };
         if let Some(palette) = &self.command_palette {
-            overlays.push(palette.clone().into_any_element());
+            overlays.push(
+                AnyView::from(palette.clone())
+                    .cached(StyleRefinement::default().absolute().inset_0())
+                    .into_any_element(),
+            );
         }
         if let Some(menu) = self.menu_overlay(canvas_origin, window, cx) {
             overlays.push(menu);

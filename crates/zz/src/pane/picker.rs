@@ -168,7 +168,10 @@ impl PanePickerView {
     pub(crate) fn set_window_corners(&mut self, corners: WindowCorners, cx: &mut Context<Self>) {
         if self.window_corners != corners {
             self.window_corners = corners;
-            cx.notify();
+            let view = cx.weak_entity();
+            cx.defer(move |cx| {
+                view.update(cx, |_, cx| cx.notify()).ok();
+            });
         }
     }
 

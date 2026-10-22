@@ -25,6 +25,8 @@ const INITIAL_INSTANCE_DATA_SIZE: u64 = 2 * 1024 * 1024;
 
 const INSTANCE_TEXTURE_TEXEL_SIZE: u64 = 16;
 
+const PATH_TEXTURE_GRANULARITY: u32 = 256;
+
 /// Shader variant for backends with storage buffer support: the shared shader
 /// logic plus the storage-buffer instance transport.
 const STORAGE_BUFFER_SHADERS: &str = concat!(
@@ -59,6 +61,39 @@ fn instance_part<T>(instances: &[T]) -> (&[u8], u64) {
     (bytes, (std::mem::size_of::<T>() as u64).max(1))
 }
 
+fn path_raster_bounds(scene: &Scene, size: Size<DevicePixels>) -> Option<Bounds<DevicePixels>> {
+    fn union_paths(scene: &Scene, union: &mut Option<Bounds<ScaledPixels>>) {
+        for path in &scene.paths {
+            let bounds = path.clipped_bounds();
+            *union = Some(union.map_or(bounds, |union| union.union(&bounds)));
+        }
+        for layer in &scene.shader_layers {
+            union_paths(&layer.scene, union);
+        }
+    }
+    let mut union = None;
+    union_paths(scene, &mut union);
+    let union = union?;
+    let left = union.origin.x.0.floor().max(0.0);
+    let top = union.origin.y.0.floor().max(0.0);
+    let right = (union.origin.x.0 + union.size.width.0)
+        .ceil()
+        .min(size.width.0 as f32);
+    let bottom = (union.origin.y.0 + union.size.height.0)
+        .ceil()
+        .min(size.height.0 as f32);
+    (right > left && bottom > top).then(|| Bounds {
+        origin: Point {
+            x: DevicePixels(left as i32),
+            y: DevicePixels(top as i32),
+        },
+        size: Size {
+            width: DevicePixels((right - left) as i32),
+            height: DevicePixels((bottom - top) as i32),
+        },
+    })
+}
+
 fn least_common_multiple(left: u64, right: u64) -> u64 {
     let mut first = left;
     let mut second = right;
@@ -82,7 +117,8 @@ struct GlobalParams {
     window_mask_size: [f32; 2],
     window_mask_radii: [f32; 4],
     clip_window_shadows: u32,
-    _window_mask_pad: [u32; 3],
+    _window_mask_pad: u32,
+    path_origin: [f32; 2],
 }
 
 #[repr(C)]
@@ -267,6 +303,7 @@ struct WgpuResources {
     path_intermediate_view: Option<wgpu::TextureView>,
     path_msaa_texture: Option<wgpu::Texture>,
     path_msaa_view: Option<wgpu::TextureView>,
+    path_bounds: Option<Bounds<DevicePixels>>,
     shader_layers: ShaderLayerResources,
     /// Created when a scene first paints glass.
     glass: Option<GlassResources>,
@@ -1571,6 +1608,7 @@ impl WgpuRendererCore {
                 path_intermediate_view: None,
                 path_msaa_texture: None,
                 path_msaa_view: None,
+                path_bounds: None,
                 shader_layers,
                 glass: None,
             },
@@ -1618,19 +1656,28 @@ impl WgpuRendererCore {
         &mut self.resources
     }
 
-    /// Path rendering goes through an intermediate texture that must match the frame
-    /// target's dimensions, so the textures are keyed by size and rebuilt on mismatch.
-    fn ensure_intermediate_textures(&mut self, size: Size<DevicePixels>) {
-        let width = size.width.0 as u32;
-        let height = size.height.0 as u32;
-        if self
+    fn ensure_intermediate_textures(
+        &mut self,
+        needed: Size<DevicePixels>,
+        frame: Size<DevicePixels>,
+    ) -> [f32; 2] {
+        let current = self
             .resources
             .path_intermediate_texture
             .as_ref()
-            .is_some_and(|texture| texture.width() == width && texture.height() == height)
-        {
-            return;
+            .map_or((0, 0), |texture| (texture.width(), texture.height()));
+        let needed = (needed.width.0 as u32, needed.height.0 as u32);
+        if current.0 >= needed.0 && current.1 >= needed.1 {
+            return [current.0 as f32, current.1 as f32];
         }
+        let grow = |needed: u32, current: u32, frame: i32| {
+            needed
+                .next_multiple_of(PATH_TEXTURE_GRANULARITY)
+                .min((frame as u32).max(needed))
+                .max(current)
+        };
+        let width = grow(needed.0, current.0, frame.width.0);
+        let height = grow(needed.1, current.1, frame.height.0);
 
         let format = self.target_format;
         let path_sample_count = self.rendering_params.path_sample_count;
@@ -1652,6 +1699,7 @@ impl WgpuRendererCore {
         .unwrap_or((None, None));
         resources.path_msaa_texture = path_msaa_texture;
         resources.path_msaa_view = path_msaa_view;
+        [width as f32, height as f32]
     }
 
     fn render_frame(
@@ -1674,7 +1722,7 @@ impl WgpuRendererCore {
             self.max_texture_size
         );
 
-        self.atlas.before_frame();
+        self.atlas.before_frame(&mut self.resources.upload_encoder);
 
         let gamma_params = GammaParams {
             gamma_ratios: self.rendering_params.gamma_ratios,
@@ -1683,6 +1731,14 @@ impl WgpuRendererCore {
             is_bgr: self.is_bgr as u32,
             _pad: 0,
         };
+
+        let path_bounds = path_raster_bounds(scene, size);
+        let path_viewport =
+            path_bounds.map(|bounds| self.ensure_intermediate_textures(bounds.size, size));
+        self.resources.path_bounds = path_bounds;
+        let path_origin = path_bounds.map_or([0.0; 2], |bounds| {
+            [bounds.origin.x.0 as f32, bounds.origin.y.0 as f32]
+        });
 
         let window_mask = scene.window_corner_mask.unwrap_or_default();
         let globals = GlobalParams {
@@ -1701,9 +1757,11 @@ impl WgpuRendererCore {
                 window_mask.corner_radii.bottom_left.0,
             ],
             clip_window_shadows: self.clip_window_shadows as u32,
-            _window_mask_pad: [0; 3],
+            _window_mask_pad: 0,
+            path_origin,
         };
         let path_globals = GlobalParams {
+            viewport_size: path_viewport.unwrap_or(globals.viewport_size),
             premultiplied_alpha: 0,
             ..globals
         };
@@ -1855,7 +1913,7 @@ impl WgpuRendererCore {
 
                     drop(pass);
                     let rasterized =
-                        self.draw_paths_to_intermediate(encoder, paths, size, instance_offset)?;
+                        self.draw_paths_to_intermediate(encoder, paths, instance_offset)?;
 
                     pass = begin_pass(
                         encoder,
@@ -2427,7 +2485,6 @@ impl WgpuRendererCore {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         paths: &[Path<ScaledPixels>],
-        size: Size<DevicePixels>,
         instance_offset: &mut u64,
     ) -> Result<bool> {
         let mut vertices = Vec::new();
@@ -2441,11 +2498,9 @@ impl WgpuRendererCore {
             }));
         }
 
-        if vertices.is_empty() {
+        if vertices.is_empty() || self.resources.path_bounds.is_none() {
             return Ok(false);
         }
-
-        self.ensure_intermediate_textures(size);
 
         let vertex_binding = self.write_instance_binding(instance_offset, &vertices)?;
 
@@ -4706,6 +4761,1355 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
                     percentile(&times, 0.95).as_secs_f64() * 1e6,
                 );
             }
+            Ok(())
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    mod overdraw {
+        use super::*;
+        use std::{borrow::Cow, collections::HashMap, time::Instant};
+        use zz_gpui::{
+            AtlasKey, AtlasTile, PlatformAtlas, PlatformHeadlessRenderer, RenderSvgParams, Scene,
+            TransformationMatrix, WindowCornerMask, hsla, point,
+        };
+
+        const WIDTH: f32 = 1920.0;
+        const HEIGHT: f32 = 1200.0;
+        const SCALE: f32 = 1.25;
+        const GLYPH_WIDTH: i32 = 9;
+        const GLYPH_HEIGHT: i32 = 18;
+
+        fn rect(x: f32, y: f32, width: f32, height: f32) -> Bounds<ScaledPixels> {
+            Bounds {
+                origin: Point {
+                    x: x.into(),
+                    y: y.into(),
+                },
+                size: Size {
+                    width: width.into(),
+                    height: height.into(),
+                },
+            }
+        }
+
+        fn viewport() -> ContentMask<ScaledPixels> {
+            ContentMask {
+                bounds: rect(0.0, 0.0, WIDTH, HEIGHT),
+            }
+        }
+
+        fn chrome_color() -> Hsla {
+            hsla(0.6, 0.1, 0.12, 1.0)
+        }
+
+        fn ring_color() -> Hsla {
+            hsla(0.0, 0.0, 1.0, 0.12)
+        }
+
+        fn fill(
+            bounds: Bounds<ScaledPixels>,
+            radius: f32,
+            color: Hsla,
+            content_mask: ContentMask<ScaledPixels>,
+        ) -> Quad {
+            Quad {
+                bounds,
+                content_mask,
+                background: color.into(),
+                corner_radii: Corners::all(radius.into()),
+                corner_smoothing: 4.0,
+                ..Default::default()
+            }
+        }
+
+        fn interior(bounds: Bounds<ScaledPixels>, radius: f32, width: f32) -> Bounds<ScaledPixels> {
+            let (left, top) = (bounds.left().0, bounds.top().0);
+            let (right, bottom) = (bounds.right().0, bounds.bottom().0);
+            let band = |horizontal: f32, vertical: f32| {
+                Bounds::from_corners(
+                    point(
+                        ScaledPixels(left + horizontal + 1.0),
+                        ScaledPixels(top + vertical + 1.0),
+                    ),
+                    point(
+                        ScaledPixels(right - horizontal - 1.0),
+                        ScaledPixels(bottom - vertical - 1.0),
+                    ),
+                )
+            };
+            let area = |bounds: &Bounds<ScaledPixels>| {
+                bounds.size.width.0.max(0.0) * bounds.size.height.0.max(0.0)
+            };
+            let horizontal_band = band(width, width.max(radius));
+            let vertical_band = band(width.max(radius), width);
+            if area(&horizontal_band) >= area(&vertical_band) {
+                horizontal_band
+            } else {
+                vertical_band
+            }
+        }
+
+        fn around<P: Into<zz_gpui::Primitive>>(
+            scene: &mut Scene,
+            outer: Bounds<ScaledPixels>,
+            content_mask: ContentMask<ScaledPixels>,
+            inner: Bounds<ScaledPixels>,
+            primitive: impl Fn(ContentMask<ScaledPixels>) -> P,
+        ) {
+            let strips = [
+                Bounds::from_corners(outer.origin, point(outer.right(), inner.top())),
+                Bounds::from_corners(point(outer.left(), inner.bottom()), outer.bottom_right()),
+                Bounds::from_corners(point(outer.left(), inner.top()), inner.bottom_left()),
+                Bounds::from_corners(inner.top_right(), point(outer.right(), inner.bottom())),
+            ];
+            for strip in strips {
+                let bounds = content_mask.bounds.intersect(&strip);
+                if !bounds.is_empty() {
+                    scene.insert_primitive(primitive(ContentMask { bounds }));
+                }
+            }
+        }
+
+        fn border(
+            scene: &mut Scene,
+            bounds: Bounds<ScaledPixels>,
+            radius: f32,
+            width: f32,
+            color: Hsla,
+            content_mask: ContentMask<ScaledPixels>,
+        ) {
+            let quad = Quad {
+                bounds,
+                content_mask,
+                background: hsla(0.0, 0.0, 0.0, 0.0).into(),
+                border_color: color,
+                corner_radii: Corners::all(radius.into()),
+                border_widths: Edges::all(width.into()),
+                corner_smoothing: 4.0,
+                ..Default::default()
+            };
+            let inner = interior(bounds, radius, width);
+            if inner.is_empty() {
+                scene.insert_primitive(quad);
+                return;
+            }
+            around(scene, bounds, content_mask, inner, |content_mask| Quad {
+                content_mask,
+                ..quad
+            });
+        }
+
+        fn glyph(
+            bounds: Bounds<ScaledPixels>,
+            content_mask: Bounds<ScaledPixels>,
+            color: Hsla,
+            tile: AtlasTile,
+        ) -> MonochromeSprite {
+            MonochromeSprite {
+                order: 0,
+                pad: 0,
+                bounds,
+                content_mask: ContentMask {
+                    bounds: content_mask,
+                },
+                color,
+                tile,
+                transformation: TransformationMatrix::unit(),
+            }
+        }
+
+        fn faded_glyph(
+            scene: &mut Scene,
+            bounds: Bounds<ScaledPixels>,
+            clip: Bounds<ScaledPixels>,
+            color: Hsla,
+            tile: AtlasTile,
+            (opaque, gone): (f32, f32),
+        ) {
+            let left = bounds.left().0.max(clip.left().0);
+            let right = bounds.right().0.min(clip.right().0);
+            let (ramp_start, ramp_end) = (opaque.min(gone), opaque.max(gone));
+            let fades_out = opaque < gone;
+            let column = |from: f32, to: f32| {
+                Bounds::from_corners(
+                    point(ScaledPixels(from), clip.top()),
+                    point(ScaledPixels(to), clip.bottom()),
+                )
+            };
+            if right <= ramp_start || left >= ramp_end {
+                if (right <= ramp_start) == fades_out {
+                    scene.insert_primitive(glyph(bounds, clip, color, tile));
+                }
+                return;
+            }
+            if fades_out && left < ramp_start {
+                scene.insert_primitive(glyph(bounds, column(left, ramp_start), color, tile));
+            }
+            let stop = right.min(ramp_end);
+            let mut x = left.max(ramp_start).floor();
+            while x < stop {
+                let next = x + 1.0;
+                let opacity = (x + 0.5 - gone) / (opaque - gone);
+                scene.insert_primitive(glyph(
+                    bounds,
+                    column(x.max(left), next.min(stop)),
+                    color.opacity(opacity),
+                    tile,
+                ));
+                x = next;
+            }
+            if !fades_out && right > ramp_end {
+                scene.insert_primitive(glyph(bounds, column(ramp_end, right), color, tile));
+            }
+        }
+
+        fn floating_chrome() -> (Bounds<ScaledPixels>, f32) {
+            let inset = 12.0 * SCALE;
+            (
+                rect(inset, inset, WIDTH - 2.0 * inset, HEIGHT - 2.0 * inset),
+                13.5 * SCALE,
+            )
+        }
+
+        fn window_mask() -> WindowCornerMask {
+            let (chrome, radius) = floating_chrome();
+            WindowCornerMask {
+                bounds: chrome,
+                corner_radii: Corners::all(radius.into()),
+                corner_smoothing: 4.0,
+            }
+        }
+
+        fn shadow_under_opaque_fill(
+            scene: &mut Scene,
+            shadow: Shadow,
+            fill_bounds: Bounds<ScaledPixels>,
+            radius: f32,
+            split: bool,
+        ) {
+            let hidden = interior(fill_bounds, radius, 0.0).intersect(&shadow.content_mask.bounds);
+            let hole = Bounds::from_corners(
+                point(hidden.left().ceil(), hidden.top().ceil()),
+                point(hidden.right().floor(), hidden.bottom().floor()),
+            )
+            .intersect(&shadow.bounds.dilate(ScaledPixels(-1.0)));
+            if split && !hole.is_empty() {
+                around(
+                    scene,
+                    shadow.content_mask.bounds,
+                    shadow.content_mask,
+                    hole,
+                    |content_mask| Shadow {
+                        content_mask,
+                        ..shadow
+                    },
+                );
+            } else {
+                scene.insert_primitive(shadow);
+            }
+        }
+
+        fn frame_floating(split_shadow: bool) -> Scene {
+            let (chrome, radius) = floating_chrome();
+            let mut scene = Scene::default();
+            let shadow = Shadow {
+                order: 0,
+                blur_radius: (6.0 * SCALE).into(),
+                bounds: chrome,
+                corner_radii: Corners::all(radius.into()),
+                content_mask: viewport(),
+                color: hsla(0.0, 0.0, 0.0, 0.4),
+                element_bounds: chrome,
+                element_corner_radii: Corners::all(radius.into()),
+                inset: 0,
+                corner_smoothing: 4.0,
+            };
+            shadow_under_opaque_fill(&mut scene, shadow, chrome, radius, split_shadow);
+            scene.insert_primitive(fill(chrome, radius, chrome_color(), viewport()));
+            border(&mut scene, chrome, radius, 1.0, ring_color(), viewport());
+            scene.finish();
+            scene.window_corner_mask = Some(window_mask());
+            scene
+        }
+
+        fn frame_tiled() -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            border(
+                &mut scene,
+                viewport().bounds,
+                0.0,
+                0.0,
+                ring_color(),
+                viewport(),
+            );
+            scene.finish();
+            scene
+        }
+
+        fn bordered() -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            let gap = 8.0 * SCALE;
+            let (pane_width, pane_height) = ((WIDTH - 3.0 * gap) / 2.0, (HEIGHT - 3.0 * gap) / 2.0);
+            for index in 0..4 {
+                let (column, row) = ((index % 2) as f32, (index / 2) as f32);
+                let pane = rect(
+                    (gap + column * (pane_width + gap)).round(),
+                    (gap + row * (pane_height + gap)).round(),
+                    pane_width.round(),
+                    pane_height.round(),
+                );
+                let radius = 10.0 * SCALE;
+                scene.insert_primitive(fill(pane, radius, hsla(0.6, 0.1, 0.16, 1.0), viewport()));
+                border(&mut scene, pane, radius, 1.0, ring_color(), viewport());
+            }
+            for row in 0..12 {
+                for column in 0..16 {
+                    let control = rect(
+                        40.0 + column as f32 * 115.0,
+                        60.0 + row as f32 * 90.0,
+                        100.0,
+                        40.0,
+                    );
+                    let radius = 6.0 * SCALE;
+                    scene.insert_primitive(fill(
+                        control,
+                        radius,
+                        hsla(0.6, 0.1, 0.22, 1.0),
+                        viewport(),
+                    ));
+                    border(
+                        &mut scene,
+                        control,
+                        radius,
+                        1.0,
+                        hsla(0.0, 0.0, 1.0, 0.2),
+                        viewport(),
+                    );
+                }
+            }
+            scene.finish();
+            scene
+        }
+
+        fn sidebar(tile: AtlasTile, faded: bool) -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            scene.insert_primitive(fill(
+                rect(0.0, 0.0, 300.0, HEIGHT),
+                0.0,
+                hsla(0.6, 0.1, 0.16, 1.0),
+                viewport(),
+            ));
+            let gone = 284.0;
+            let fade = (gone - 28.0 * SCALE, gone);
+            let color = hsla(0.0, 0.0, 0.9, 1.0);
+            for row in 0..40 {
+                let top = row as f32 * 30.0;
+                let clip = rect(0.0, top, gone, 30.0);
+                for index in 0..34 {
+                    let bounds = rect(
+                        16.0 + index as f32 * 10.0,
+                        top + 6.0,
+                        GLYPH_WIDTH as f32,
+                        GLYPH_HEIGHT as f32,
+                    );
+                    if faded {
+                        faded_glyph(&mut scene, bounds, clip, color, tile, fade);
+                    } else {
+                        scene.insert_primitive(glyph(bounds, clip, color, tile));
+                    }
+                }
+            }
+            scene.finish();
+            scene
+        }
+
+        fn glyph_grid(tile: AtlasTile, masked: bool) -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            let color = hsla(0.3, 0.6, 0.7, 1.0);
+            for row in 0..60 {
+                for column in 0..200 {
+                    let bounds = rect(
+                        (column as f32 * 9.6).floor(),
+                        row as f32 * 20.0 + 1.0,
+                        GLYPH_WIDTH as f32,
+                        GLYPH_HEIGHT as f32,
+                    );
+                    scene.insert_primitive(glyph(bounds, viewport().bounds, color, tile));
+                }
+            }
+            scene.finish();
+            if masked {
+                scene.window_corner_mask = Some(window_mask());
+            }
+            scene
+        }
+
+        fn glyph_tile(renderer: &WgpuHeadlessRenderer) -> anyhow::Result<AtlasTile> {
+            let size = Size {
+                width: DevicePixels(GLYPH_WIDTH),
+                height: DevicePixels(GLYPH_HEIGHT),
+            };
+            let bytes: Vec<u8> = (0..GLYPH_HEIGHT)
+                .flat_map(|y| (0..GLYPH_WIDTH).map(move |x| ((x * 37 + y * 11) % 256) as u8))
+                .collect();
+            renderer
+                .core
+                .atlas
+                .get_or_insert_with(
+                    AtlasKey::Svg(RenderSvgParams {
+                        path: "overdraw_glyph".into(),
+                        size,
+                    }),
+                    &mut || Ok(Some((size, Cow::Owned(bytes.clone())))),
+                )?
+                .ok_or_else(|| anyhow::anyhow!("no glyph tile"))
+        }
+
+        fn scenes(tile: AtlasTile) -> Vec<(&'static str, Scene)> {
+            let mut empty = Scene::default();
+            empty.finish();
+            vec![
+                ("clear", empty),
+                ("frame_floating", frame_floating(true)),
+                ("frame_tiled", frame_tiled()),
+                ("bordered", bordered()),
+                ("sidebar_faded", sidebar(tile, true)),
+                ("sidebar_clipped", sidebar(tile, false)),
+                ("glyph_grid", glyph_grid(tile, false)),
+                ("glyph_grid_masked", glyph_grid(tile, true)),
+            ]
+        }
+
+        fn gpu_render_ns() -> Option<u64> {
+            let mut clients = HashMap::new();
+            for entry in std::fs::read_dir("/proc/self/fdinfo").ok()? {
+                let Ok(text) = std::fs::read_to_string(entry.ok()?.path()) else {
+                    continue;
+                };
+                let field = |name: &str| {
+                    text.lines()
+                        .find_map(|line| line.strip_prefix(name))
+                        .and_then(|value| {
+                            value
+                                .trim()
+                                .trim_end_matches("ns")
+                                .trim()
+                                .parse::<u64>()
+                                .ok()
+                        })
+                };
+                if let (Some(client), Some(render)) =
+                    (field("drm-client-id:"), field("drm-engine-render:"))
+                {
+                    clients.insert(client, render);
+                }
+            }
+            (!clients.is_empty()).then(|| clients.values().sum())
+        }
+
+        fn time_scene(
+            renderer: &mut WgpuHeadlessRenderer,
+            scene: &Scene,
+            frames: u32,
+        ) -> anyhow::Result<(f64, Option<f64>)> {
+            let size = device_size(WIDTH as i32, HEIGHT as i32);
+            renderer.render(scene, size)?;
+            renderer
+                .context
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())?;
+            let gpu_start = gpu_render_ns();
+            let start = Instant::now();
+            for _ in 0..frames {
+                renderer.render(scene, size)?;
+            }
+            renderer
+                .context
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())?;
+            let wall = start.elapsed().as_secs_f64() * 1000.0 / f64::from(frames);
+            let gpu = gpu_start
+                .zip(gpu_render_ns())
+                .map(|(start, end)| (end - start) as f64 / 1e6 / f64::from(frames));
+            Ok((wall, gpu))
+        }
+
+        fn env_u32(name: &str, default: u32) -> u32 {
+            std::env::var(name)
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default)
+        }
+
+        fn spread(mut values: Vec<f64>) -> String {
+            values.sort_by(f64::total_cmp);
+            format!(
+                "median={:.4} min={:.4} max={:.4}",
+                values[values.len() / 2],
+                values[0],
+                values[values.len() - 1]
+            )
+        }
+
+        fn polychrome_tile(renderer: &WgpuHeadlessRenderer) -> anyhow::Result<AtlasTile> {
+            let size = Size {
+                width: DevicePixels(12),
+                height: DevicePixels(12),
+            };
+            let bytes: Vec<u8> = (0..12)
+                .flat_map(|y| {
+                    (0..12).flat_map(move |x| {
+                        [(x * 21) as u8, (y * 21) as u8, ((x + y) * 9) as u8, 255]
+                    })
+                })
+                .collect();
+            renderer
+                .core
+                .atlas
+                .get_or_insert_with(
+                    AtlasKey::Image(zz_gpui::RenderImageParams {
+                        image_id: zz_gpui::ImageId(9001),
+                        frame_index: 0,
+                    }),
+                    &mut || Ok(Some((size, Cow::Owned(bytes.clone())))),
+                )?
+                .ok_or_else(|| anyhow::anyhow!("no image tile"))
+        }
+
+        fn clip_cases(
+            mono: AtlasTile,
+            poly: AtlasTile,
+        ) -> Vec<(
+            &'static str,
+            Box<dyn Fn(ContentMask<ScaledPixels>) -> zz_gpui::Primitive>,
+        )> {
+            let accent = hsla(0.1, 0.9, 0.6, 0.9);
+            let shadow = move |bounds, radius: f32, blur: f32, inset| {
+                move |content_mask| {
+                    Shadow {
+                        order: 0,
+                        blur_radius: ScaledPixels(blur),
+                        bounds,
+                        corner_radii: Corners::all(radius.into()),
+                        content_mask,
+                        color: accent,
+                        element_bounds: rect(16.0, 8.0, 64.0, 48.0),
+                        element_corner_radii: Corners::all(ScaledPixels(12.0)),
+                        inset,
+                        corner_smoothing: 4.0,
+                    }
+                    .into()
+                }
+            };
+            let sprite = move |bounds, transformation| {
+                move |content_mask| {
+                    MonochromeSprite {
+                        order: 0,
+                        pad: 0,
+                        bounds,
+                        content_mask,
+                        color: hsla(0.5, 0.8, 0.7, 1.0),
+                        tile: mono,
+                        transformation,
+                    }
+                    .into()
+                }
+            };
+            let underline = move |wavy: bool| {
+                move |content_mask| {
+                    Underline {
+                        order: 0,
+                        pad: 0,
+                        bounds: rect(6.0, 30.0, 84.0, 8.0),
+                        content_mask,
+                        color: accent,
+                        thickness: ScaledPixels(2.0),
+                        wavy: wavy.into(),
+                    }
+                    .into()
+                }
+            };
+            vec![
+                (
+                    "rounded bordered gradient quad",
+                    Box::new(|content_mask| {
+                        Quad {
+                            bounds: rect(8.0, 6.0, 80.0, 52.0),
+                            content_mask,
+                            background: linear_gradient(
+                                30.0,
+                                linear_color_stop(hsla(0.0, 0.8, 0.5, 1.0), 0.0),
+                                linear_color_stop(hsla(0.6, 0.8, 0.5, 0.6), 1.0),
+                            ),
+                            border_color: hsla(0.3, 0.9, 0.7, 0.8),
+                            corner_radii: Corners::all(ScaledPixels(12.0)),
+                            border_widths: Edges::all(ScaledPixels(3.0)),
+                            corner_smoothing: 4.0,
+                            ..Default::default()
+                        }
+                        .into()
+                    }),
+                ),
+                (
+                    "dashed border",
+                    Box::new(|content_mask| {
+                        Quad {
+                            border_style: BorderStyle::Dashed,
+                            bounds: rect(10.0, 8.0, 76.0, 48.0),
+                            content_mask,
+                            background: hsla(0.0, 0.0, 0.0, 0.0).into(),
+                            border_color: hsla(0.8, 0.9, 0.7, 1.0),
+                            corner_radii: Corners::all(ScaledPixels(10.0)),
+                            border_widths: Edges::all(ScaledPixels(2.0)),
+                            corner_smoothing: 2.0,
+                            ..Default::default()
+                        }
+                        .into()
+                    }),
+                ),
+                (
+                    "blurred drop shadow",
+                    Box::new(shadow(rect(24.0, 16.0, 48.0, 32.0), 10.0, 6.0, 0)),
+                ),
+                (
+                    "sharp-cornered drop shadow",
+                    Box::new(shadow(rect(24.0, 16.0, 48.0, 32.0), 1.0, 8.0, 0)),
+                ),
+                (
+                    "inset shadow",
+                    Box::new(shadow(rect(24.0, 16.0, 48.0, 32.0), 8.0, 6.0, 1)),
+                ),
+                (
+                    "glyph",
+                    Box::new(sprite(
+                        rect(40.0, 20.0, GLYPH_WIDTH as f32, GLYPH_HEIGHT as f32),
+                        TransformationMatrix::unit(),
+                    )),
+                ),
+                (
+                    "stretched glyph",
+                    Box::new(sprite(
+                        rect(20.0, 6.0, 54.0, 50.0),
+                        TransformationMatrix::unit(),
+                    )),
+                ),
+                (
+                    "translated glyph",
+                    Box::new(sprite(
+                        rect(20.0, 6.0, 40.0, 40.0),
+                        TransformationMatrix::unit()
+                            .translate(point(ScaledPixels(9.0), ScaledPixels(5.0))),
+                    )),
+                ),
+                (
+                    "rotated glyph",
+                    Box::new(sprite(
+                        rect(30.0, 12.0, 36.0, 36.0),
+                        TransformationMatrix::unit()
+                            .translate(point(ScaledPixels(48.0), ScaledPixels(30.0)))
+                            .rotate(zz_gpui::radians(0.4))
+                            .translate(point(ScaledPixels(-48.0), ScaledPixels(-30.0))),
+                    )),
+                ),
+                (
+                    "rounded image",
+                    Box::new(move |content_mask| {
+                        PolychromeSprite {
+                            order: 0,
+                            pad: 0,
+                            grayscale: false.into(),
+                            opacity: 0.9,
+                            bounds: rect(30.0, 12.0, 36.0, 36.0),
+                            content_mask,
+                            corner_radii: Corners::all(ScaledPixels(8.0)),
+                            corner_smoothing: 4.0,
+                            pad2: 0,
+                            tile: poly,
+                        }
+                        .into()
+                    }),
+                ),
+                ("underline", Box::new(underline(false))),
+                ("wavy underline", Box::new(underline(true))),
+            ]
+        }
+
+        #[test]
+        fn splitting_the_window_shadow_around_its_opaque_chrome_keeps_pixels() -> anyhow::Result<()>
+        {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let size = device_size(WIDTH as i32, HEIGHT as i32);
+            let whole = frame_floating(false);
+            let split = frame_floating(true);
+            assert_eq!(whole.shadows.len(), 1);
+            assert_eq!(split.shadows.len(), 4);
+            let whole = renderer.render_scene_to_image(&whole, size)?;
+            let split = renderer.render_scene_to_image(&split, size)?;
+            assert!(whole.as_raw() == split.as_raw());
+
+            let size = device_size(160, 120);
+            let card = rect(40.0, 30.0, 80.0, 50.0);
+            let mask = ContentMask {
+                bounds: rect(0.0, 0.0, 160.0, 120.0),
+            };
+            for (offset, blur, radius) in [
+                ((0.0, 0.0), 2.0, 12.0),
+                ((0.0, 4.0), 8.0, 12.0),
+                ((6.0, -3.0), 20.0, 0.0),
+                ((-2.0, 2.0), 0.0, 8.0),
+            ] {
+                let render = |renderer: &mut WgpuHeadlessRenderer, split| {
+                    let mut scene = Scene::default();
+                    let bounds = Bounds {
+                        origin: point(
+                            card.origin.x + ScaledPixels(offset.0),
+                            card.origin.y + ScaledPixels(offset.1),
+                        ),
+                        size: card.size,
+                    };
+                    let shadow = Shadow {
+                        order: 0,
+                        blur_radius: ScaledPixels(blur),
+                        bounds,
+                        corner_radii: Corners::all(ScaledPixels(radius)),
+                        content_mask: mask,
+                        color: hsla(0.7, 0.8, 0.6, 0.8),
+                        element_bounds: card,
+                        element_corner_radii: Corners::all(ScaledPixels(radius)),
+                        inset: 0,
+                        corner_smoothing: 4.0,
+                    };
+                    shadow_under_opaque_fill(&mut scene, shadow, card, radius, split);
+                    let shadows = scene.shadows.len();
+                    scene.insert_primitive(fill(card, radius, hsla(0.1, 0.5, 0.5, 1.0), mask));
+                    scene.finish();
+                    anyhow::Ok((shadows, renderer.render_scene_to_image(&scene, size)?))
+                };
+                let (_, whole) = render(&mut renderer, false)?;
+                let (shadows, split) = render(&mut renderer, true)?;
+                assert_eq!(shadows, 4, "{offset:?} {blur} {radius}");
+                assert!(
+                    whole.as_raw() == split.as_raw(),
+                    "{offset:?} {blur} {radius}"
+                );
+            }
+            Ok(())
+        }
+
+        #[test]
+        fn clipping_keeps_pixels_inside_the_mask_and_clears_the_rest() -> anyhow::Result<()> {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let size = device_size(96, 64);
+            let mono = glyph_tile(&renderer)?;
+            let poly = polychrome_tile(&renderer)?;
+            let masks = [
+                rect(20.0, 10.0, 40.0, 30.0),
+                rect(0.0, 0.0, 48.0, 64.0),
+                rect(50.0, 30.0, 46.0, 34.0),
+                rect(33.0, 0.0, 1.0, 64.0),
+                rect(0.0, 27.0, 96.0, 1.0),
+                rect(30.25, 14.75, 20.375, 17.125),
+            ];
+            for (name, primitive) in clip_cases(mono, poly) {
+                let render = |renderer: &mut WgpuHeadlessRenderer, bounds| {
+                    let mut scene = Scene::default();
+                    scene.insert_primitive(primitive(ContentMask { bounds }));
+                    scene.finish();
+                    renderer.render_scene_to_image(&scene, size)
+                };
+                let unclipped = render(&mut renderer, rect(0.0, 0.0, 96.0, 64.0))?;
+                assert!(
+                    unclipped.pixels().any(|pixel| pixel.0 != BLACK),
+                    "{name} drew nothing"
+                );
+                for mask in masks {
+                    let clipped = render(&mut renderer, mask)?;
+                    for (x, y, pixel) in clipped.enumerate_pixels() {
+                        let center = (x as f32 + 0.5, y as f32 + 0.5);
+                        let inside = (mask.left().0..mask.right().0).contains(&center.0)
+                            && (mask.top().0..mask.bottom().0).contains(&center.1);
+                        let expected = if inside {
+                            unclipped.get_pixel(x, y).0
+                        } else {
+                            BLACK
+                        };
+                        assert_eq!(
+                            pixel.0, expected,
+                            "{name} clipped to {mask:?} at ({x}, {y})"
+                        );
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        #[test]
+        #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_overdraw -- --ignored --nocapture"]
+        fn bench_overdraw() -> anyhow::Result<()> {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            println!("overdraw adapter {:?}", renderer.context.adapter.get_info());
+            let tile = glyph_tile(&renderer)?;
+            let scenes = scenes(tile);
+            let size = device_size(WIDTH as i32, HEIGHT as i32);
+            if let Some(directory) = std::env::var_os("OVERDRAW_DUMP") {
+                for (name, scene) in &scenes {
+                    let image = renderer.render_scene_to_image(scene, size)?;
+                    std::fs::write(
+                        std::path::Path::new(&directory).join(format!("{name}.rgba")),
+                        image.as_raw(),
+                    )?;
+                }
+            }
+            let frames = env_u32("OVERDRAW_FRAMES", 240);
+            let repeats = env_u32("OVERDRAW_REPEATS", 7);
+            let mut samples = vec![Vec::new(); scenes.len()];
+            for _ in 0..repeats {
+                for ((_, scene), samples) in scenes.iter().zip(&mut samples) {
+                    samples.push(time_scene(&mut renderer, scene, frames)?);
+                }
+            }
+            for ((name, scene), samples) in scenes.iter().zip(samples) {
+                let wall = samples.iter().map(|(wall, _)| *wall).collect();
+                let gpu: Vec<f64> = samples.iter().filter_map(|(_, gpu)| *gpu).collect();
+                println!(
+                    "overdraw scene={name} quads={} shadows={} sprites={} frames={frames} repeats={repeats} gpu_ms {} wall_ms {}",
+                    scene.quads.len(),
+                    scene.shadows.len(),
+                    scene.monochrome_sprites.len(),
+                    if gpu.is_empty() {
+                        "unavailable".to_string()
+                    } else {
+                        spread(gpu)
+                    },
+                    spread(wall),
+                );
+            }
+            Ok(())
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    mod paths {
+        use super::*;
+        use std::time::Instant;
+        use zz_gpui::{
+            Background, DevicePixels, PathBuilder, Pixels, PlatformHeadlessRenderer, Scene, hsla,
+            point, px,
+        };
+
+        const SCALE: f32 = 1.25;
+
+        fn logical(x: f32, y: f32, width: f32, height: f32) -> Bounds<Pixels> {
+            Bounds {
+                origin: point(px(x), px(y)),
+                size: Size {
+                    width: px(width),
+                    height: px(height),
+                },
+            }
+        }
+
+        fn insert_path(
+            scene: &mut Scene,
+            mut path: zz_gpui::Path<Pixels>,
+            color: impl Into<Background>,
+            mask: Bounds<Pixels>,
+        ) {
+            path.content_mask = ContentMask { bounds: mask };
+            path.color = color.into();
+            scene.insert_primitive(path.scale(SCALE));
+        }
+
+        fn insert_quad(
+            scene: &mut Scene,
+            bounds: Bounds<Pixels>,
+            background: impl Into<Background>,
+        ) {
+            let bounds = bounds.scale(SCALE);
+            scene.insert_primitive(Quad {
+                order: 0,
+                border_style: BorderStyle::Solid,
+                bounds,
+                content_mask: ContentMask { bounds },
+                background: background.into(),
+                border_color: zz_gpui::transparent_black(),
+                corner_radii: Corners::default(),
+                border_widths: Edges::default(),
+                corner_smoothing: 2.0,
+                pad: [0; 3],
+            });
+        }
+
+        fn rectangle(bounds: Bounds<Pixels>) -> zz_gpui::Path<Pixels> {
+            let mut path = PathBuilder::fill();
+            path.move_to(bounds.origin);
+            path.line_to(bounds.top_right());
+            path.line_to(bounds.bottom_right());
+            path.line_to(bounds.bottom_left());
+            path.close();
+            path.build().expect("rectangle path")
+        }
+
+        fn ring(
+            scene: &mut Scene,
+            center: Point<Pixels>,
+            size: f32,
+            progress: f32,
+            mask: Bounds<Pixels>,
+        ) {
+            let stroke = 2.0;
+            let radius = px((size - stroke) / 2.0);
+            let mut track = PathBuilder::stroke(px(stroke));
+            track.move_to(point(center.x + radius, center.y));
+            track.arc_to(
+                point(radius, radius),
+                px(0.0),
+                false,
+                true,
+                point(center.x - radius, center.y),
+            );
+            track.arc_to(
+                point(radius, radius),
+                px(0.0),
+                false,
+                true,
+                point(center.x + radius, center.y),
+            );
+            track.close();
+            insert_path(
+                scene,
+                track.build().expect("ring track"),
+                hsla(0.0, 0.0, 0.4, 1.0),
+                mask,
+            );
+            let mut fill = PathBuilder::stroke(px(stroke));
+            fill.move_to(point(center.x, center.y - radius));
+            let angle = -std::f32::consts::FRAC_PI_2 + progress * std::f32::consts::TAU;
+            fill.arc_to(
+                point(radius, radius),
+                px(0.0),
+                progress > 0.5,
+                true,
+                point(
+                    center.x + radius * angle.cos(),
+                    center.y + radius * angle.sin(),
+                ),
+            );
+            insert_path(
+                scene,
+                fill.build().expect("ring fill"),
+                hsla(0.0, 0.0, 0.9, 1.0),
+                mask,
+            );
+        }
+
+        fn rounded_corner(
+            scene: &mut Scene,
+            cell: Bounds<Pixels>,
+            right: bool,
+            down: bool,
+            mask: Bounds<Pixels>,
+        ) {
+            let stroke = px(1.0);
+            let center = cell.center();
+            let radius = cell.size.width.min(cell.size.height) * 0.5;
+            let vertical = if down { 1.0 } else { -1.0 };
+            let horizontal = if right { 1.0 } else { -1.0 };
+            let vertical_edge = if down { cell.bottom() } else { cell.top() };
+            let horizontal_edge = if right { cell.right() } else { cell.left() };
+            let mut path = PathBuilder::stroke(stroke);
+            path.move_to(point(center.x, vertical_edge));
+            path.line_to(point(center.x, center.y + radius * vertical));
+            path.cubic_bezier_to(
+                point(center.x + radius * horizontal, center.y),
+                point(center.x, center.y + radius * 0.25 * vertical),
+                point(center.x + radius * 0.25 * horizontal, center.y),
+            );
+            path.line_to(point(horizontal_edge, center.y));
+            insert_path(
+                scene,
+                path.build().expect("rounded corner"),
+                hsla(0.55, 0.3, 0.7, 1.0),
+                mask,
+            );
+        }
+
+        fn window_scene(width: f32, height: f32, paths: &str) -> Scene {
+            let window = logical(0.0, 0.0, width, height);
+            let mut scene = Scene::default();
+            insert_quad(&mut scene, window, hsla(0.6, 0.1, 0.12, 1.0));
+            for row in 0..40 {
+                insert_quad(
+                    &mut scene,
+                    logical(260.0, 40.0 + row as f32 * 22.0, 1000.0, 18.0),
+                    hsla(0.6, 0.1, 0.16 + row as f32 * 0.002, 1.0),
+                );
+            }
+            if paths.contains("ring") {
+                ring(
+                    &mut scene,
+                    point(px(width - 60.0), px(height - 40.0)),
+                    16.0,
+                    0.37,
+                    window,
+                );
+            }
+            if paths.contains("corners") {
+                let (left, top, right, bottom) = (240.0, 24.0, 1240.0, 924.0);
+                let pane = logical(left, top, right - left, bottom - top);
+                let (cell_width, cell_height) = (8.0, 18.0);
+                for (x, y, right, down) in [
+                    (left, top, true, true),
+                    (right - cell_width, top, false, true),
+                    (left, bottom - cell_height, true, false),
+                    (right - cell_width, bottom - cell_height, false, false),
+                ] {
+                    rounded_corner(
+                        &mut scene,
+                        logical(x, y, cell_width, cell_height),
+                        right,
+                        down,
+                        pane,
+                    );
+                }
+            }
+            scene.finish();
+            scene
+        }
+
+        fn path_texture_bytes(renderer: &WgpuHeadlessRenderer) -> u64 {
+            let resources = &renderer.core.resources;
+            [
+                resources.path_intermediate_texture.as_ref(),
+                resources.path_msaa_texture.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|texture| {
+                u64::from(texture.width())
+                    * u64::from(texture.height())
+                    * u64::from(texture.sample_count())
+                    * 4
+            })
+            .sum()
+        }
+
+        fn drm_usage() -> (u64, u64, u64) {
+            let mut seen = std::collections::HashSet::new();
+            let mut usage = (0, 0, 0);
+            let Ok(entries) = std::fs::read_dir("/proc/self/fdinfo") else {
+                return usage;
+            };
+            for entry in entries.flatten() {
+                let Ok(text) = std::fs::read_to_string(entry.path()) else {
+                    continue;
+                };
+                let field = |name: &str| {
+                    text.lines().find_map(|line| {
+                        let value = line.strip_prefix(name)?.trim();
+                        let mut parts = value.split_whitespace();
+                        let number: u64 = parts.next()?.parse().ok()?;
+                        Some(match parts.next() {
+                            Some("MiB") => number * 1024,
+                            _ => number,
+                        })
+                    })
+                };
+                let Some(client) = field("drm-client-id:") else {
+                    continue;
+                };
+                if !seen.insert(client) {
+                    continue;
+                }
+                usage.0 += field("drm-engine-render:").unwrap_or(0);
+                usage.1 += field("drm-total-system0:").unwrap_or(0);
+                usage.2 += field("drm-resident-system0:").unwrap_or(0);
+            }
+            usage
+        }
+
+        #[test]
+        #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_paths -- --ignored --nocapture"]
+        fn bench_paths() -> anyhow::Result<()> {
+            let target = Size {
+                width: DevicePixels(1920),
+                height: DevicePixels(1200),
+            };
+            let (width, height) = (1920.0 / SCALE, 1200.0 / SCALE);
+            let scenes = std::env::var("ZZ_BENCH_PATHS").unwrap_or("none,ring,corners".into());
+            let frames: u32 = std::env::var("ZZ_BENCH_FRAMES")
+                .ok()
+                .and_then(|frames| frames.parse().ok())
+                .unwrap_or(600);
+            for name in scenes.split(',') {
+                let scene = window_scene(width, height, name);
+                let mut renderer = WgpuHeadlessRenderer::new()?;
+                renderer.render_scene_to_image(&scene, target)?;
+                let (gpu_before, _, _) = drm_usage();
+                let start = Instant::now();
+                for _ in 0..frames {
+                    renderer.render_scene(&scene, target)?;
+                }
+                renderer.render_scene_to_image(&scene, target)?;
+                let wall = start.elapsed().as_secs_f64() * 1000.0 / f64::from(frames + 1);
+                let (gpu_after, total_kib, resident_kib) = drm_usage();
+                let gpu = (gpu_after - gpu_before) as f64 / 1e6 / f64::from(frames + 1);
+                println!(
+                    "bench_paths scene={name} frames={frames} wall_ms_per_frame={wall:.3} gpu_ms_per_frame={gpu:.3} path_texture_bytes={} drm_total_kib={total_kib} drm_resident_kib={resident_kib}",
+                    path_texture_bytes(&renderer),
+                );
+            }
+            Ok(())
+        }
+
+        #[test]
+        #[ignore = "dump: ZZ_PATH_DUMP=<dir> cargo test -p zz-gpui-platform --all-features dump_path_scenes -- --ignored"]
+        fn dump_path_scenes() -> anyhow::Result<()> {
+            let directory = std::path::PathBuf::from(std::env::var("ZZ_PATH_DUMP")?);
+            std::fs::create_dir_all(&directory)?;
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let target = Size {
+                width: DevicePixels(1920),
+                height: DevicePixels(1200),
+            };
+            for name in ["ring", "corners", "ring,corners"] {
+                let scene = window_scene(1920.0 / SCALE, 1200.0 / SCALE, name);
+                let image = renderer.render_scene_to_image(&scene, target)?;
+                std::fs::write(
+                    directory.join(format!("{}.rgba", name.replace(',', "-"))),
+                    image.as_raw(),
+                )?;
+            }
+            Ok(())
+        }
+
+        fn render(scene: &Scene, width: i32, height: i32) -> anyhow::Result<image::RgbaImage> {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            renderer.render_scene_to_image(
+                scene,
+                Size {
+                    width: DevicePixels(width),
+                    height: DevicePixels(height),
+                },
+            )
+        }
+
+        fn assert_images_match(left: &image::RgbaImage, right: &image::RgbaImage, tolerance: u8) {
+            assert_eq!(left.dimensions(), right.dimensions());
+            for (x, y, pixel) in left.enumerate_pixels() {
+                let other = right.get_pixel(x, y).0;
+                assert!(
+                    pixel
+                        .0
+                        .iter()
+                        .zip(other)
+                        .all(|(left, right)| left.abs_diff(right) <= tolerance),
+                    "pixel ({x}, {y}): {:?} != {other:?}",
+                    pixel.0
+                );
+            }
+        }
+
+        fn canvas() -> Bounds<Pixels> {
+            logical(0.0, 0.0, 192.0, 128.0)
+        }
+
+        #[test]
+        fn filled_path_rectangles_match_quads() -> anyhow::Result<()> {
+            let red = hsla(0.0, 1.0, 0.5, 1.0);
+            let gradient = zz_gpui::linear_gradient(
+                90.0,
+                zz_gpui::linear_color_stop(hsla(0.6, 1.0, 0.5, 1.0), 0.0),
+                zz_gpui::linear_color_stop(hsla(0.1, 1.0, 0.5, 1.0), 1.0),
+            );
+            let rectangles = [
+                (logical(4.8, 9.6, 20.0, 8.0), Background::from(red)),
+                (logical(100.0, 64.0, 48.0, 40.0), gradient),
+            ];
+            let mut paths = Scene::default();
+            let mut quads = Scene::default();
+            for (bounds, background) in rectangles {
+                insert_path(&mut paths, rectangle(bounds), background, canvas());
+                insert_quad(&mut quads, bounds, background);
+            }
+            paths.finish();
+            quads.finish();
+            assert_images_match(&render(&paths, 200, 150)?, &render(&quads, 200, 150)?, 1);
+            Ok(())
+        }
+
+        #[test]
+        fn paths_draw_the_same_pixels_wherever_they_sit() -> anyhow::Result<()> {
+            let gradient = zz_gpui::linear_gradient(
+                45.0,
+                zz_gpui::linear_color_stop(hsla(0.3, 1.0, 0.5, 1.0), 0.0),
+                zz_gpui::linear_color_stop(hsla(0.8, 1.0, 0.5, 0.6), 1.0),
+            );
+            let draw = |dx: f32, dy: f32| {
+                let mut scene = Scene::default();
+                let at = |x: f32, y: f32| point(px(x + dx), px(y + dy));
+                ring(&mut scene, at(12.0, 12.0), 16.0, 0.7, canvas());
+                insert_quad(
+                    &mut scene,
+                    logical(8.0 + dx, 8.0 + dy, 4.0, 30.0),
+                    hsla(0.0, 0.0, 1.0, 0.5),
+                );
+                let mut wedge = PathBuilder::fill();
+                wedge.move_to(at(16.0, 20.0));
+                wedge.curve_to(at(44.0, 36.0), at(40.0, 16.0));
+                wedge.line_to(at(20.0, 40.0));
+                wedge.close();
+                insert_path(
+                    &mut scene,
+                    wedge.build().expect("wedge"),
+                    gradient,
+                    logical(0.0 + dx, 0.0 + dy, 36.0, 34.0),
+                );
+                scene.finish();
+                render(&scene, 240, 160)
+            };
+            let near = draw(0.0, 0.0)?;
+            let far = draw(128.0, 64.0)?;
+            let (shift_x, shift_y) = (160, 80);
+            let mut drawn = 0;
+            for y in 0..60 {
+                for x in 0..60 {
+                    let pixel = near.get_pixel(x, y).0;
+                    assert_eq!(
+                        pixel,
+                        far.get_pixel(x + shift_x, y + shift_y).0,
+                        "pixel ({x}, {y})"
+                    );
+                    drawn += usize::from(pixel != [0, 0, 0, 255]);
+                }
+            }
+            assert!(drawn > 200, "only {drawn} pixels were drawn");
+            Ok(())
+        }
+
+        #[test]
+        fn paths_stay_inside_their_content_mask() -> anyhow::Result<()> {
+            let white = hsla(0.0, 0.0, 1.0, 1.0);
+            let mut scene = Scene::default();
+            insert_path(
+                &mut scene,
+                rectangle(logical(8.0, 8.0, 80.0, 60.0)),
+                white,
+                logical(24.0, 16.0, 40.0, 24.0),
+            );
+            scene.finish();
+            let image = render(&scene, 120, 100)?;
+            for (x, y) in image
+                .enumerate_pixels()
+                .filter(|(_, _, pixel)| pixel.0 != [0, 0, 0, 255])
+                .map(|(x, y, _)| (x, y))
+            {
+                assert!(
+                    (30..80).contains(&x) && (20..50).contains(&y),
+                    "pixel ({x}, {y}) is outside the mask"
+                );
+            }
+            assert_eq!(image.get_pixel(40, 30).0, [255, 255, 255, 255]);
+            Ok(())
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    mod atlas_upload {
+        use super::*;
+        use std::borrow::Cow;
+        use std::time::{Duration, Instant};
+        use zz_gpui::{
+            AtlasKey, DevicePixels, FontId, GlyphId, PlatformAtlas, PlatformHeadlessRenderer,
+            RenderGlyphParams, Scene, point, px,
+        };
+
+        fn median(samples: &mut [Duration]) -> f64 {
+            samples.sort_unstable();
+            samples[samples.len() / 2].as_secs_f64() * 1e3
+        }
+
+        fn spread(samples: &[Duration]) -> String {
+            format!(
+                "{:.3}-{:.3}",
+                samples[0].as_secs_f64() * 1e3,
+                samples[samples.len() - 1].as_secs_f64() * 1e3
+            )
+        }
+
+        #[test]
+        #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_atlas_upload_burst -- --ignored --nocapture"]
+        fn bench_atlas_upload_burst() -> anyhow::Result<()> {
+            let glyphs: u32 = std::env::var("ZZ_BENCH_GLYPHS")
+                .ok()
+                .and_then(|glyphs| glyphs.parse().ok())
+                .unwrap_or(2000);
+            let bursts = 30;
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            let target = Size {
+                width: DevicePixels(4),
+                height: DevicePixels(4),
+            };
+            renderer.render_scene_to_image(&Scene::default(), target)?;
+            let atlas = renderer.core.atlas.clone();
+            let (mut insert, mut submit, mut finish) = (Vec::new(), Vec::new(), Vec::new());
+            for burst in 0..bursts {
+                let start = Instant::now();
+                for index in 0..glyphs {
+                    let width = 6 + (index % 9) as i32;
+                    let height = 12 + (index % 11) as i32;
+                    let size = Size {
+                        width: DevicePixels(width),
+                        height: DevicePixels(height),
+                    };
+                    let params = RenderGlyphParams {
+                        font_id: FontId(burst),
+                        glyph_id: GlyphId(index),
+                        font_size: px(13.0),
+                        subpixel_variant: point(0, 0),
+                        scale_factor: 1.25,
+                        is_emoji: false,
+                        subpixel_rendering: false,
+                        font_smoothing: false,
+                        font_smoothing_strength: 0,
+                        synthetic_bold: false,
+                        synthetic_italic: false,
+                    };
+                    atlas.get_or_insert_with(AtlasKey::Glyph(params), &mut || {
+                        Ok(Some((
+                            size,
+                            Cow::Owned(vec![index as u8; (width * height) as usize]),
+                        )))
+                    })?;
+                }
+                let inserted = Instant::now();
+                renderer.render_scene(&Scene::default(), target)?;
+                let submitted = Instant::now();
+                renderer
+                    .context
+                    .device
+                    .poll(wgpu::PollType::wait_indefinitely())?;
+                let finished = Instant::now();
+                if burst >= 5 {
+                    insert.push(inserted - start);
+                    submit.push(submitted - inserted);
+                    finish.push(finished - inserted);
+                }
+            }
+            println!(
+                "bench_atlas_upload_burst glyphs={glyphs} bursts={} median_ms insert={:.3} flush_submit={:.3} until_idle={:.3} | spread flush_submit={} until_idle={}",
+                insert.len(),
+                median(&mut insert),
+                median(&mut submit),
+                median(&mut finish),
+                spread(&submit),
+                spread(&finish),
+            );
             Ok(())
         }
     }

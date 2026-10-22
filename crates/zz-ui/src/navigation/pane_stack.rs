@@ -554,12 +554,14 @@ impl Element for UnderTiles {
         &mut self,
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         (): &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.child.prepaint(window, cx);
+        window.with_text_fade(Some(self.fade(bounds)), |window| {
+            self.child.prepaint(window, cx);
+        });
     }
 
     fn paint(
@@ -572,9 +574,15 @@ impl Element for UnderTiles {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let gone = bounds.left() + self.reach;
-        window.with_text_fade(Some((gone + crate::LABEL_FADE, gone)), |window| {
+        window.with_text_fade(Some(self.fade(bounds)), |window| {
             self.child.paint(window, cx);
         });
+    }
+}
+
+impl UnderTiles {
+    fn fade(&self, bounds: Bounds<Pixels>) -> (Pixels, Pixels) {
+        let gone = bounds.left() + self.reach;
+        (gone + crate::LABEL_FADE, gone)
     }
 }

@@ -945,6 +945,14 @@ impl Background {
             BackgroundTag::Checkerboard => self.solid.is_transparent(),
         }
     }
+
+    pub(crate) fn is_opaque(&self) -> bool {
+        match self.tag {
+            BackgroundTag::Solid => self.solid.is_opaque(),
+            BackgroundTag::LinearGradient => self.colors.iter().all(|c| c.color.is_opaque()),
+            BackgroundTag::PatternSlash | BackgroundTag::Checkerboard => false,
+        }
+    }
 }
 
 impl From<Hsla> for Background {

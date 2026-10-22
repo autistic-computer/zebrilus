@@ -49,6 +49,7 @@ pub(crate) struct TestWindowState {
     frame_wake_count: Rc<Cell<usize>>,
     #[cfg(test)]
     draw_count: usize,
+    frame_delay: Option<std::time::Duration>,
     frame_scheduled: bool,
     frame_callback_pending: bool,
     input_handler: Option<PlatformInputHandler>,
@@ -125,6 +126,7 @@ impl TestWindow {
             frame_wake_count: Rc::new(Cell::new(0)),
             #[cfg(test)]
             draw_count: 0,
+            frame_delay: None,
             frame_scheduled: false,
             frame_callback_pending: false,
             input_handler: None,
@@ -274,6 +276,10 @@ impl TestWindow {
     #[cfg(test)]
     pub(crate) fn draw_count(&self) -> usize {
         self.0.lock().draw_count
+    }
+
+    pub fn frame_delay(&self) -> Option<std::time::Duration> {
+        self.0.lock().frame_delay
     }
 
     /// Returns how many times this window's frame waker has been invoked.
@@ -512,6 +518,11 @@ impl PlatformWindow for TestWindow {
         if !state.frame_callback_pending {
             state.frame_scheduled = true;
         }
+    }
+
+    fn schedule_frame_after(&self, delay: std::time::Duration) {
+        self.0.lock().frame_delay = Some(delay);
+        self.schedule_frame();
     }
 
     fn on_input(&self, callback: Box<dyn FnMut(crate::PlatformInput) -> DispatchEventResult>) {

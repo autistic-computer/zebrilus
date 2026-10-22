@@ -24,19 +24,19 @@ use ashpd::{
     },
     enumflags2::BitFlags,
 };
-use calloop::{LoopSignal, channel::Sender};
+use calloop::{EventLoop, LoopSignal, channel::Sender};
 use futures::channel::oneshot;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 use zz_gpui::util::{ResultExt as _, new_std_command};
 
-use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
+use crate::linux::{BusyMarker, LinuxDispatcher, PriorityQueueCalloopReceiver};
 use zz_gpui::{
     Action, ActivityGuard, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle,
     DisplayId, ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
     PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
     PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
-    WindowButtonLayout, WindowParams,
+    WindowButtonLayout, WindowParams, scheduler::MainThreadBusy,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use zz_gpui::{Pixels, Point, px};
@@ -129,6 +129,7 @@ pub(crate) struct LinuxCommon {
     pub(crate) button_layout: WindowButtonLayout,
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
+    pub(crate) main_thread_busy: MainThreadBusy,
     pub(crate) menus: Vec<OwnedMenu>,
     app_name: Option<String>,
     system_notifications: crate::linux::system_notifications::SystemNotificationState,
@@ -141,8 +142,8 @@ pub(crate) struct LinuxCommon {
 }
 
 impl LinuxCommon {
-    pub fn new(
-        signal: LoopSignal,
+    pub fn new<Data: 'static>(
+        event_loop: &EventLoop<'static, Data>,
     ) -> (
         Self,
         PriorityQueueCalloopReceiver<RunnableVariant>,
@@ -167,6 +168,12 @@ impl LinuxCommon {
         let callbacks = PlatformHandlers::default();
 
         let dispatcher = Arc::new(LinuxDispatcher::new(main_sender));
+        dispatcher.run_main_thread_timers_on(&event_loop.handle());
+        let main_thread_busy = main_receiver.main_thread_busy();
+        event_loop
+            .handle()
+            .insert_source(BusyMarker::new(main_thread_busy.clone()), |_, _, _| {})
+            .expect("Failed to mark main loop activity");
 
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
 
@@ -180,7 +187,8 @@ impl LinuxCommon {
             auto_hide_scrollbars: false,
             button_layout: WindowButtonLayout::linux_default(),
             callbacks,
-            signal,
+            signal: event_loop.get_signal(),
+            main_thread_busy,
             menus: Vec::new(),
             app_name: None,
             system_notifications: crate::linux::system_notifications::SystemNotificationState::new(
@@ -286,6 +294,13 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         ThermalState::Nominal
     }
 
+    fn main_thread_busy(&self) -> Option<MainThreadBusy> {
+        Some(
+            self.inner
+                .with_common(|common| common.main_thread_busy.clone()),
+        )
+    }
+
     #[cfg(not(any(feature = "wayland", feature = "x11")))]
     fn prevent_idle_sleep(&self, reason: &str) -> Task<Result<ActivityGuard>> {
         Task::ready(Err(anyhow!(
@@ -317,6 +332,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         on_finish_launching();
 
         LinuxClient::run(&self.inner);
+        crate::linux::stop_main_thread_timers();
 
         let quit = self
             .inner

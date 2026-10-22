@@ -837,6 +837,69 @@ fn tab_accepts_completion_without_leaving_the_palette(cx: &mut TestAppContext) {
     assert!(cx.update(|window, cx| palette.read(cx).focus(cx).is_focused(window)));
 }
 
+struct OverlayHost {
+    palette: Entity<CommandPaletteView>,
+    cached: bool,
+}
+
+impl Render for OverlayHost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let overlay = if self.cached {
+            zz_gpui::AnyView::from(self.palette.clone())
+                .cached(zz_gpui::StyleRefinement::default().absolute().inset_0())
+                .into_any_element()
+        } else {
+            self.palette.clone().into_any_element()
+        };
+        zz_gpui::div()
+            .relative()
+            .flex()
+            .size_full()
+            .child(zz_gpui::div().flex_1())
+            .child(overlay)
+    }
+}
+
+#[zz_gpui::test]
+fn a_cached_palette_covers_the_same_area_as_an_inline_one(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let mut covered = Vec::new();
+    for unified in [true, false] {
+        for cached in [false, true] {
+            let (backend, _) = backend(offline_tree());
+            let (_, cx) = cx.add_window_view(move |window, cx| {
+                let palette = cx.new(|cx| {
+                    let mut palette = CommandPaletteView::new_unified(
+                        backend,
+                        Some(PaletteMode::Command),
+                        window,
+                        cx,
+                    );
+                    if !unified {
+                        palette.unified = None;
+                    }
+                    palette
+                });
+                palette.read(cx).focus(cx).focus(window, cx);
+                let host = cx.new(|_| OverlayHost { palette, cached });
+                Root::new(host, window, cx)
+            });
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+            let bounds = cx
+                .debug_bounds("command-palette-overlay")
+                .expect("the palette overlay is drawn");
+            let viewport = cx.update(|window, _| window.viewport_size());
+            assert_eq!(bounds.size, viewport, "unified={unified}, cached={cached}");
+            covered.push(bounds);
+        }
+    }
+    assert_eq!(covered[0], covered[1]);
+    assert_eq!(covered[2], covered[3]);
+}
+
 #[test]
 fn unicode_scalar_cursor_conversion_is_boundary_safe() {
     assert_eq!(byte_index_for_char("aα界", 0), Some(0));

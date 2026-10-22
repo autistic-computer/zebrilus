@@ -1,15 +1,22 @@
 use calloop::{
-    EventLoop, PostAction,
+    EventLoop, LoopHandle, PostAction,
     channel::{self, Sender},
     timer::TimeoutAction,
 };
 use zz_gpui::util::ResultExt;
 
-use std::{mem::MaybeUninit, thread, time::Duration};
+use std::{
+    cell::RefCell,
+    mem::MaybeUninit,
+    rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
+    thread,
+    time::Duration,
+};
 
 use zz_gpui::{
     PlatformDispatcher, Priority, PriorityQueueReceiver, PriorityQueueSender, RunnableVariant,
-    profiler,
+    profiler, scheduler::MainThreadBusy,
 };
 
 struct TimerAfter {
@@ -18,6 +25,7 @@ struct TimerAfter {
 }
 
 pub(crate) struct LinuxDispatcher {
+    id: u64,
     main_sender: PriorityQueueCalloopSender<RunnableVariant>,
     timer_sender: Sender<TimerAfter>,
     background_sender: PriorityQueueSender<RunnableVariant>,
@@ -26,6 +34,48 @@ pub(crate) struct LinuxDispatcher {
 }
 
 const MIN_THREADS: usize = 2;
+
+static NEXT_DISPATCHER_ID: AtomicU64 = AtomicU64::new(0);
+
+struct MainLoopTimers {
+    dispatcher: u64,
+    arm: Rc<dyn Fn(Duration, RunnableVariant)>,
+}
+
+thread_local! {
+    static MAIN_LOOP_TIMERS: RefCell<Option<MainLoopTimers>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn stop_main_thread_timers() {
+    MAIN_LOOP_TIMERS.set(None);
+}
+
+fn run_runnable(runnable: RunnableVariant) {
+    let location = runnable.metadata().location;
+    let spawned = runnable.metadata().spawned;
+    profiler::update_running_task(spawned, location);
+    runnable.run();
+    profiler::save_task_timing();
+}
+
+fn arm_timer<Data>(
+    handle: &LoopHandle<'static, Data>,
+    duration: Duration,
+    runnable: RunnableVariant,
+) {
+    let mut runnable = Some(runnable);
+    handle
+        .insert_source(
+            calloop::timer::Timer::from_duration(duration),
+            move |_, _, _| {
+                if let Some(runnable) = runnable.take() {
+                    run_runnable(runnable);
+                }
+                TimeoutAction::Drop
+            },
+        )
+        .expect("Failed to start timer");
+}
 
 impl LinuxDispatcher {
     pub fn new(main_sender: PriorityQueueCalloopSender<RunnableVariant>) -> Self {
@@ -40,11 +90,7 @@ impl LinuxDispatcher {
                     .name(format!("Worker-{i}"))
                     .spawn(move || {
                         for runnable in receiver.iter() {
-                            let location = runnable.metadata().location;
-                            let spawned = runnable.metadata().spawned;
-                            profiler::update_running_task(spawned, location);
-                            runnable.run();
-                            profiler::save_task_timing();
+                            run_runnable(runnable);
                         }
                     })
                     .unwrap()
@@ -69,22 +115,7 @@ impl LinuxDispatcher {
                             signal.stop();
                         }
                         if let channel::Event::Msg(timer) = e {
-                            let mut runnable = Some(timer.runnable);
-                            timer_handle
-                                .insert_source(
-                                    calloop::timer::Timer::from_duration(timer.duration),
-                                    move |_, _, _| {
-                                        if let Some(runnable) = runnable.take() {
-                                            let location = runnable.metadata().location;
-                                            let spawned = runnable.metadata().spawned;
-                                            profiler::update_running_task(spawned, location);
-                                            runnable.run();
-                                            profiler::save_task_timing();
-                                        }
-                                        TimeoutAction::Drop
-                                    },
-                                )
-                                .expect("Failed to start timer");
+                            arm_timer(&timer_handle, timer.duration, timer.runnable);
                         }
                     })
                     .expect("Failed to start timer thread");
@@ -96,11 +127,50 @@ impl LinuxDispatcher {
         background_threads.push(timer_thread);
 
         Self {
+            id: NEXT_DISPATCHER_ID.fetch_add(1, Ordering::Relaxed),
             main_sender,
             timer_sender,
             background_sender,
             _background_threads: background_threads,
             main_thread_id: thread::current().id(),
+        }
+    }
+
+    pub(crate) fn run_main_thread_timers_on<Data: 'static>(
+        &self,
+        handle: &LoopHandle<'static, Data>,
+    ) {
+        let handle = handle.clone();
+        MAIN_LOOP_TIMERS.set(Some(MainLoopTimers {
+            dispatcher: self.id,
+            arm: Rc::new(move |duration, runnable| arm_timer(&handle, duration, runnable)),
+        }));
+    }
+
+    fn arm_on_main_loop(
+        &self,
+        duration: Duration,
+        runnable: RunnableVariant,
+    ) -> Option<RunnableVariant> {
+        if !self.is_main_thread() {
+            return Some(runnable);
+        }
+        let arm = MAIN_LOOP_TIMERS
+            .try_with(|timers| {
+                timers
+                    .borrow()
+                    .as_ref()
+                    .filter(|timers| timers.dispatcher == self.id)
+                    .map(|timers| timers.arm.clone())
+            })
+            .ok()
+            .flatten();
+        match arm {
+            Some(arm) => {
+                arm(duration, runnable);
+                None
+            }
+            None => Some(runnable),
         }
     }
 }
@@ -133,6 +203,9 @@ impl PlatformDispatcher for LinuxDispatcher {
     }
 
     fn dispatch_after(&self, duration: Duration, runnable: RunnableVariant) {
+        let Some(runnable) = self.arm_on_main_loop(duration, runnable) else {
+            return;
+        };
         if let Err(err) = self.timer_sender.send(TimerAfter { duration, runnable }) {
             // The timer thread has shut down. Dropping a scheduled runnable cancels its task
             // and makes the next poll of any awaiter panic. Leaking leaves the task pending,
@@ -164,19 +237,74 @@ impl PlatformDispatcher for LinuxDispatcher {
     }
 }
 
+pub(crate) struct BusyMarker(MainThreadBusy);
+
+impl BusyMarker {
+    pub(crate) fn new(busy: MainThreadBusy) -> Self {
+        Self(busy)
+    }
+}
+
+impl calloop::EventSource for BusyMarker {
+    type Event = ();
+    type Metadata = ();
+    type Ret = ();
+    type Error = std::convert::Infallible;
+
+    const NEEDS_EXTRA_LIFECYCLE_EVENTS: bool = true;
+
+    fn process_events<F>(
+        &mut self,
+        _readiness: calloop::Readiness,
+        _token: calloop::Token,
+        _callback: F,
+    ) -> Result<PostAction, Self::Error>
+    where
+        F: FnMut(Self::Event, &mut Self::Metadata) -> Self::Ret,
+    {
+        Ok(PostAction::Continue)
+    }
+
+    fn register(
+        &mut self,
+        _poll: &mut calloop::Poll,
+        _token_factory: &mut calloop::TokenFactory,
+    ) -> calloop::Result<()> {
+        Ok(())
+    }
+
+    fn reregister(
+        &mut self,
+        _poll: &mut calloop::Poll,
+        _token_factory: &mut calloop::TokenFactory,
+    ) -> calloop::Result<()> {
+        Ok(())
+    }
+
+    fn unregister(&mut self, _poll: &mut calloop::Poll) -> calloop::Result<()> {
+        Ok(())
+    }
+
+    fn before_sleep(&mut self) -> calloop::Result<Option<(calloop::Readiness, calloop::Token)>> {
+        self.0.leave();
+        Ok(None)
+    }
+
+    fn before_handle_events(&mut self, _events: calloop::EventIterator<'_>) {
+        self.0.enter();
+    }
+}
+
 pub struct PriorityQueueCalloopSender<T> {
     sender: PriorityQueueSender<T>,
     ping: calloop::ping::Ping,
+    busy: MainThreadBusy,
 }
 
 impl<T> PriorityQueueCalloopSender<T> {
-    fn new(tx: PriorityQueueSender<T>, ping: calloop::ping::Ping) -> Self {
-        Self { sender: tx, ping }
-    }
-
     fn send(&self, priority: Priority, item: T) -> Result<(), zz_gpui::queue::SendError<T>> {
         let res = self.sender.send(priority, item);
-        if res.is_ok() {
+        if res.is_ok() && self.busy.queue() {
             self.ping.ping();
         }
         res
@@ -192,23 +320,32 @@ impl<T> Drop for PriorityQueueCalloopSender<T> {
 pub struct PriorityQueueCalloopReceiver<T> {
     receiver: PriorityQueueReceiver<T>,
     source: calloop::ping::PingSource,
-    ping: calloop::ping::Ping,
+    busy: MainThreadBusy,
 }
 
 impl<T> PriorityQueueCalloopReceiver<T> {
     pub fn new() -> (PriorityQueueCalloopSender<T>, Self) {
         let (ping, source) = calloop::ping::make_ping().expect("Failed to create a Ping.");
+        let busy = MainThreadBusy::new();
 
         let (tx, rx) = PriorityQueueReceiver::new();
 
         (
-            PriorityQueueCalloopSender::new(tx, ping.clone()),
+            PriorityQueueCalloopSender {
+                sender: tx,
+                ping,
+                busy: busy.clone(),
+            },
             Self {
                 receiver: rx,
                 source,
-                ping,
+                busy,
             },
         )
+    }
+
+    pub(crate) fn main_thread_busy(&self) -> MainThreadBusy {
+        self.busy.clone()
     }
 }
 
@@ -246,45 +383,30 @@ impl<T> calloop::EventSource for PriorityQueueCalloopReceiver<T> {
     where
         F: FnMut(Self::Event, &mut Self::Metadata) -> Self::Ret,
     {
-        let mut clear_readiness = false;
         let mut disconnected = false;
 
         let action = self
             .source
             .process_events(readiness, token, |(), &mut ()| {
-                let mut is_empty = true;
-
+                self.busy.dequeue();
                 let receiver = self.receiver.clone();
                 for runnable in receiver.try_iter() {
                     match runnable {
-                        Ok(r) => {
-                            callback(Event::Msg(r), &mut ());
-                            is_empty = false;
-                        }
-                        Err(_) => {
-                            disconnected = true;
-                        }
+                        Ok(r) => callback(Event::Msg(r), &mut ()),
+                        Err(_) => disconnected = true,
                     }
                 }
 
                 if disconnected {
                     callback(Event::Closed, &mut ());
                 }
-
-                if is_empty {
-                    clear_readiness = true;
-                }
             })
             .map_err(ChannelError)?;
 
         if disconnected {
             Ok(PostAction::Remove)
-        } else if clear_readiness {
-            Ok(action)
         } else {
-            // Re-notify the ping source so we can try again.
-            self.ping.ping();
-            Ok(PostAction::Continue)
+            Ok(action)
         }
     }
 
@@ -312,6 +434,339 @@ impl<T> calloop::EventSource for PriorityQueueCalloopReceiver<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        collections::BTreeMap,
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+    use zz_gpui::{BackgroundExecutor, ForegroundExecutor};
+
+    type Switches = BTreeMap<String, (u64, u64)>;
+
+    fn context_switches() -> Switches {
+        let main_tid = unsafe { libc::gettid() };
+        let mut by_name = Switches::new();
+        for task in std::fs::read_dir("/proc/self/task").unwrap().flatten() {
+            let path = task.path();
+            let Ok(status) = std::fs::read_to_string(path.join("status")) else {
+                continue;
+            };
+            let tid: i32 = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.parse().ok())
+                .unwrap_or_default();
+            let name = if tid == main_tid {
+                "main".to_owned()
+            } else {
+                let comm = std::fs::read_to_string(path.join("comm")).unwrap_or_default();
+                comm.trim()
+                    .trim_end_matches(|c: char| c.is_ascii_digit())
+                    .trim_end_matches('-')
+                    .to_owned()
+            };
+            let field = |key: &str| -> u64 {
+                status
+                    .lines()
+                    .find_map(|line| line.strip_prefix(key))
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or_default()
+            };
+            let entry = by_name.entry(name).or_default();
+            entry.0 += field("voluntary_ctxt_switches:");
+            entry.1 += field("nonvoluntary_ctxt_switches:");
+        }
+        by_name
+    }
+
+    fn process_cpu() -> Duration {
+        let mut usage = MaybeUninit::<libc::rusage>::zeroed();
+        unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
+        let usage = unsafe { usage.assume_init() };
+        let micros = |time: libc::timeval| {
+            Duration::from_secs(time.tv_sec as u64) + Duration::from_micros(time.tv_usec as u64)
+        };
+        micros(usage.ru_utime) + micros(usage.ru_stime)
+    }
+
+    fn report(label: &str, ops: u32, wall: Duration, cpu: Duration, before: &Switches) {
+        let after = context_switches();
+        let mut total = 0;
+        let mut rows = Vec::new();
+        for (name, (voluntary, involuntary)) in &after {
+            let (voluntary0, involuntary0) = before.get(name).copied().unwrap_or_default();
+            let delta = voluntary - voluntary0 + involuntary - involuntary0;
+            if delta > 0 {
+                total += delta;
+                rows.push(format!("{name}={:.2}", delta as f64 / f64::from(ops)));
+            }
+        }
+        println!(
+            "{label}: ops={ops} wall_ns_per_op={:.0} cpu_ns_per_op={:.0} switches_per_op={:.2} [{}]",
+            wall.as_nanos() as f64 / f64::from(ops),
+            cpu.as_nanos() as f64 / f64::from(ops),
+            total as f64 / f64::from(ops),
+            rows.join(" ")
+        );
+    }
+
+    fn main_loop() -> (EventLoop<'static, ()>, Arc<LinuxDispatcher>) {
+        let event_loop = EventLoop::<()>::try_new().unwrap();
+        let handle = event_loop.handle();
+        let (sender, receiver) = PriorityQueueCalloopReceiver::new();
+        let dispatcher = Arc::new(LinuxDispatcher::new(sender));
+        dispatcher.run_main_thread_timers_on(&handle);
+        handle
+            .insert_source(BusyMarker::new(receiver.main_thread_busy()), |_, _, _| {})
+            .unwrap();
+        handle
+            .insert_source(receiver, {
+                let handle = handle.clone();
+                move |event, _, _: &mut ()| {
+                    if let Event::Msg(runnable) = event {
+                        handle.insert_idle(|_| {
+                            runnable.run();
+                        });
+                    }
+                }
+            })
+            .unwrap();
+        (event_loop, dispatcher)
+    }
+
+    fn run_bench(
+        label: &str,
+        ops: u32,
+        body: impl AsyncFnOnce(ForegroundExecutor, BackgroundExecutor) + 'static,
+    ) {
+        let (mut event_loop, dispatcher) = main_loop();
+        let foreground = ForegroundExecutor::new(dispatcher.clone());
+        let background = BackgroundExecutor::new(dispatcher.clone());
+        let signal = event_loop.get_signal();
+        thread::sleep(Duration::from_millis(50));
+        let before = context_switches();
+        let cpu = process_cpu();
+        let started = Instant::now();
+        foreground
+            .spawn({
+                let foreground = foreground.clone();
+                async move {
+                    body(foreground, background).await;
+                    signal.stop();
+                }
+            })
+            .detach();
+        event_loop.run(None, &mut (), |_| {}).unwrap();
+        report(label, ops, started.elapsed(), process_cpu() - cpu, &before);
+        stop_main_thread_timers();
+        drop(dispatcher);
+    }
+
+    #[test]
+    #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --lib bench_dispatch -- --ignored --nocapture --test-threads=1"]
+    fn bench_dispatch_timer_ticks() {
+        const TICKS: u32 = 200;
+        run_bench(
+            "main_thread_timer_tick",
+            TICKS,
+            async move |_, background: BackgroundExecutor| {
+                for _ in 0..TICKS {
+                    background.timer(Duration::from_millis(2)).await;
+                }
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --lib bench_dispatch -- --ignored --nocapture --test-threads=1"]
+    fn bench_dispatch_runnable_round_trips() {
+        const OPS: u32 = 20_000;
+        run_bench(
+            "main_thread_spawn_await",
+            OPS,
+            async move |foreground: ForegroundExecutor, _| {
+                for _ in 0..OPS {
+                    foreground.spawn(async {}).await;
+                }
+            },
+        );
+        run_bench(
+            "background_round_trip",
+            OPS,
+            async move |_, background: BackgroundExecutor| {
+                for _ in 0..OPS {
+                    background.spawn(async {}).await;
+                }
+            },
+        );
+    }
+
+    fn thread_recording_runnable(
+        sender: std::sync::mpsc::Sender<thread::ThreadId>,
+    ) -> RunnableVariant {
+        let (runnable, task) = async_task::Builder::new()
+            .metadata(zz_gpui::RunnableMeta::new_with_callers_location())
+            .spawn(
+                move |_| async move {
+                    sender.send(thread::current().id()).ok();
+                },
+                |_| {},
+            );
+        task.detach();
+        runnable
+    }
+
+    #[test]
+    fn main_thread_timers_fire_on_the_main_loop() {
+        let mut event_loop = EventLoop::<()>::try_new().unwrap();
+        let (sender, _receiver) = PriorityQueueCalloopReceiver::new();
+        let dispatcher = LinuxDispatcher::new(sender);
+        dispatcher.run_main_thread_timers_on(&event_loop.handle());
+        let (fired, fired_on) = std::sync::mpsc::channel();
+        dispatcher.dispatch_after(Duration::from_millis(1), thread_recording_runnable(fired));
+        assert!(fired_on.recv_timeout(Duration::from_millis(50)).is_err());
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut ())
+            .unwrap();
+        assert_eq!(fired_on.try_recv(), Ok(thread::current().id()));
+        stop_main_thread_timers();
+    }
+
+    #[test]
+    fn timers_off_a_running_main_loop_use_the_timer_thread() {
+        let event_loop = EventLoop::<()>::try_new().unwrap();
+        let (sender, _receiver) = PriorityQueueCalloopReceiver::new();
+        let attached = Arc::new(LinuxDispatcher::new(sender));
+        attached.run_main_thread_timers_on(&event_loop.handle());
+        let (sender, _receiver) = PriorityQueueCalloopReceiver::new();
+        let detached = LinuxDispatcher::new(sender);
+        let (fired, fired_on) = std::sync::mpsc::channel();
+        let (fired_after_stop, fired_after_stop_on) = std::sync::mpsc::channel();
+
+        detached.dispatch_after(
+            Duration::from_millis(1),
+            thread_recording_runnable(fired.clone()),
+        );
+        let timer_thread = fired_on.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(timer_thread, thread::current().id());
+
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                attached.dispatch_after(Duration::from_millis(1), thread_recording_runnable(fired));
+            });
+        });
+        let timer_thread = fired_on.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(timer_thread, thread::current().id());
+
+        stop_main_thread_timers();
+        attached.dispatch_after(
+            Duration::from_millis(1),
+            thread_recording_runnable(fired_after_stop),
+        );
+        let timer_thread = fired_after_stop_on
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert_ne!(timer_thread, thread::current().id());
+    }
+
+    #[test]
+    fn busy_marker_is_idle_only_while_the_loop_polls() {
+        let mut event_loop = EventLoop::<()>::try_new().unwrap();
+        let busy = MainThreadBusy::new();
+        event_loop
+            .handle()
+            .insert_source(BusyMarker::new(busy.clone()), |_, _, _| {})
+            .unwrap();
+        let in_callback = Rc::new(std::cell::Cell::new(Duration::ZERO));
+        event_loop
+            .handle()
+            .insert_source(
+                calloop::timer::Timer::from_duration(Duration::from_millis(1)),
+                {
+                    let busy = busy.clone();
+                    let in_callback = in_callback.clone();
+                    move |_, _, _| {
+                        thread::sleep(Duration::from_millis(30));
+                        in_callback.set(busy.busy_for());
+                        TimeoutAction::Drop
+                    }
+                },
+            )
+            .unwrap();
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut ())
+            .unwrap();
+        assert!(in_callback.get() >= Duration::from_millis(30));
+
+        let watcher = thread::spawn({
+            let busy = busy.clone();
+            move || {
+                thread::sleep(Duration::from_millis(50));
+                busy.busy_for()
+            }
+        });
+        event_loop
+            .dispatch(Some(Duration::from_millis(200)), &mut ())
+            .unwrap();
+        assert_eq!(watcher.join().unwrap(), Duration::ZERO);
+        assert!(busy.busy_for() < Duration::from_millis(50));
+    }
+
+    #[test]
+    fn main_thread_work_waiting_in_the_queue_counts_as_busy() {
+        let mut event_loop = EventLoop::<()>::try_new().unwrap();
+        let (sender, receiver) = PriorityQueueCalloopReceiver::new();
+        let busy = receiver.main_thread_busy();
+        event_loop
+            .handle()
+            .insert_source(receiver, |_, _, _| {})
+            .unwrap();
+        busy.leave();
+        assert_eq!(busy.busy_for(), Duration::ZERO);
+
+        sender.send(Priority::Medium, ()).unwrap();
+        thread::sleep(Duration::from_millis(30));
+        assert!(busy.busy_for() >= Duration::from_millis(30));
+
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut ())
+            .unwrap();
+        assert_eq!(busy.busy_for(), Duration::ZERO);
+    }
+
+    #[test]
+    fn a_drained_batch_leaves_the_loop_asleep() {
+        let mut event_loop = EventLoop::<u32>::try_new().unwrap();
+        let (tx, rx) = PriorityQueueCalloopReceiver::new();
+        event_loop
+            .handle()
+            .insert_source(rx, |event, _, received: &mut u32| {
+                if let Event::Msg(()) = event {
+                    *received += 1;
+                }
+            })
+            .unwrap();
+        for _ in 0..3 {
+            tx.send(Priority::Medium, ()).unwrap();
+        }
+        let mut received = 0;
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut received)
+            .unwrap();
+        assert_eq!(received, 3);
+
+        let started = Instant::now();
+        event_loop
+            .dispatch(Some(Duration::from_millis(50)), &mut received)
+            .unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(40));
+
+        tx.send(Priority::Medium, ()).unwrap();
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut received)
+            .unwrap();
+        assert_eq!(received, 4);
+    }
 
     #[test]
     fn dispatcher_threads_exit_when_owner_drops() {

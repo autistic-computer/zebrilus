@@ -218,6 +218,42 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct CountingDispatcher {
+        dispatched: std::sync::atomic::AtomicUsize,
+        timers: parking_lot::Mutex<Vec<RunnableVariant>>,
+    }
+
+    impl PlatformDispatcher for CountingDispatcher {
+        fn is_main_thread(&self) -> bool {
+            true
+        }
+        fn dispatch(&self, _runnable: RunnableVariant, _priority: Priority) {
+            self.dispatched.fetch_add(1, Ordering::SeqCst);
+        }
+        fn dispatch_on_main_thread(&self, _runnable: RunnableVariant, _priority: Priority) {
+            self.dispatched.fetch_add(1, Ordering::SeqCst);
+        }
+        fn dispatch_after(&self, _duration: Duration, runnable: RunnableVariant) {
+            self.timers.lock().push(runnable);
+        }
+        fn spawn_realtime(&self, _f: Box<dyn FnOnce() + Send>) {}
+    }
+
+    #[test]
+    fn awaiting_a_timer_dispatches_nothing_but_the_timer() {
+        let dispatcher = Arc::new(CountingDispatcher::default());
+        let background = crate::BackgroundExecutor::new(dispatcher.clone());
+        let mut timer = background.timer(Duration::from_millis(5));
+        let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+        assert!(Pin::new(&mut timer).poll(&mut cx).is_pending());
+        let runnable = dispatcher.timers.lock().pop().expect("the timer was armed");
+        assert!(dispatcher.timers.lock().is_empty());
+        runnable.run();
+        assert!(Pin::new(&mut timer).poll(&mut cx).is_ready());
+        assert_eq!(dispatcher.dispatched.load(Ordering::SeqCst), 0);
+    }
+
     #[test]
     fn dedicated_executor_tasks_share_one_thread() {
         let background =

@@ -36,7 +36,42 @@ function f(t){c.width=innerWidth;c.height=innerHeight;x.fillStyle='#e0a040';
 for(let i=0;i<40;i++){x.beginPath();x.arc((Math.sin(t/700+i)*0.45+0.5)*c.width,(i+0.5)*c.height/40,12,0,7);x.fill()}
 requestAnimationFrame(f)}requestAnimationFrame(f)</script></body></html>"""
 
-SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome", "browser"]
+AGENT_AWK = r"""
+function request_id(line) {
+  if (match(line, /"id":"[^"]*"/)) {
+    return substr(line, RSTART + 5, RLENGTH - 5)
+  }
+  if (match(line, /"id":[0-9]+/)) {
+    return substr(line, RSTART + 5, RLENGTH - 5)
+  }
+  return "null"
+}
+/"method":"initialize"/ {
+  printf "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"zz-frames\",\"version\":\"1\"}}}\n", request_id($0)
+  fflush()
+  next
+}
+/"method":"session\/new"/ {
+  printf "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"sessionId\":\"zz-frames\"}}\n", request_id($0)
+  fflush()
+  next
+}
+/"method":"session\/prompt"/ {
+  id = request_id($0)
+  for (i = 1; i <= items; i++) {
+    if (i % 5 == 0) {
+      printf "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"zz-frames\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call-%d\",\"title\":\"read crates/zz/src/chunk_%d.rs\",\"kind\":\"read\",\"status\":\"completed\"}}}\n", i, i
+    } else {
+      printf "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"zz-frames\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Step %d reads the **stream** output, checks `frames.py` and keeps going while the terminal next to it prints line after line of colored text.\\n\\n\"}}}}\n", i
+    }
+  }
+  printf "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"stopReason\":\"end_turn\"}}\n", id
+  fflush()
+  next
+}
+"""
+
+SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome", "agent", "browser"]
 DEFAULT_SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome"]
 FOREIGN = tuple(p for p in os.environ.get("ZZ_FRAMES_FOREIGN", "").split(":") if p)
 QUIET = ("bench/perf/run.py", "bench/perf/gate.py", "compat/run.sh", "bench/run.sh")
@@ -57,6 +92,13 @@ class HeldBuilds:
                 os.unlink(HOLD)
             except FileNotFoundError:
                 pass
+
+
+def awk_command():
+    version = subprocess.run(["awk", "-W", "version"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    if (version.stdout + version.stderr).startswith("mawk"):
+        return "awk -W interactive"
+    return "awk"
 
 
 def noise(own=()):
@@ -151,6 +193,114 @@ def clock(value):
     return seconds
 
 
+RAPL = ("intel-rapl:0", "intel-rapl:0:0", "intel-rapl:0:1")
+
+
+class Power:
+    def __init__(self, duration):
+        self.duration = duration
+        self.perf = None
+        self.energy0 = None
+
+    @staticmethod
+    def energy():
+        paths = [f"/sys/class/powercap/{d}/energy_uj" for d in RAPL]
+        out = subprocess.run(["sudo", "-n", "cat", *paths], capture_output=True, text=True)
+        if out.returncode != 0:
+            return None
+        return [int(v) for v in out.stdout.split()]
+
+    def start(self):
+        self.energy0 = self.energy()
+        self.perf = subprocess.Popen(
+            ["sudo", "-n", "perf", "stat", "-x,", "-a", "-e", "i915/rcs0-busy/", "--", "sleep", str(self.duration)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+    def stop(self, elapsed):
+        out = {}
+        energy1 = self.energy()
+        if self.energy0 and energy1:
+            for name, d, e0, e1 in zip(("package", "core", "uncore"), RAPL, self.energy0, energy1):
+                if e1 < e0:
+                    e1 += int(Path(f"/sys/class/powercap/{d}/max_energy_range_uj").read_text())
+                out[f"{name}_w"] = (e1 - e0) / 1e6 / elapsed
+        if self.perf:
+            _, err = self.perf.communicate()
+            self.perf = None
+            for line in err.splitlines():
+                fields = line.split(",")
+                if len(fields) > 2 and "rcs0-busy" in fields[2] and fields[0].replace(".", "").isdigit():
+                    out["gpu_busy_pct"] = 100 * float(fields[0]) / 1e9 / self.duration
+        return out
+
+    def discard(self):
+        if self.perf is None:
+            return
+        if self.perf.poll() is None:
+            subprocess.run(["sudo", "-n", "kill", "-TERM", str(self.perf.pid)], capture_output=True)
+        self.perf.communicate()
+        self.perf = None
+
+
+def thread_switches(pid):
+    found = {}
+    if not LINUX:
+        return found
+    try:
+        tids = os.listdir(f"/proc/{pid}/task")
+    except OSError:
+        return found
+    for tid in tids:
+        try:
+            status = Path(f"/proc/{pid}/task/{tid}/status").read_text()
+            name = Path(f"/proc/{pid}/task/{tid}/comm").read_text().strip()
+        except OSError:
+            continue
+        fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+        if tid == str(pid):
+            name = "main"
+        found[tid] = (name.rstrip("0123456789").rstrip("-"), int(fields["voluntary_ctxt_switches"]))
+    return found
+
+
+def wakeups(before, after, elapsed):
+    by_name = defaultdict(int)
+    for tid, (name, count) in after.items():
+        by_name[name] += count - before.get(tid, (name, 0))[1]
+    total = sum(by_name.values())
+    return {
+        "gui_wakeups_per_s": total / elapsed,
+        "gui_wakeups_by_thread": {k: round(v / elapsed, 2) for k, v in sorted(by_name.items(), key=lambda kv: -kv[1]) if v},
+    }
+
+
+def gpu_usage(pid):
+    clients = {}
+    try:
+        fds = os.listdir(f"/proc/{pid}/fdinfo")
+    except OSError:
+        return None
+    for fd in fds:
+        try:
+            text = Path(f"/proc/{pid}/fdinfo/{fd}").read_text()
+        except OSError:
+            continue
+        if "drm-engine-render:" not in text:
+            continue
+        fields = dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+        client = fields.get("drm-client-id", fd).strip()
+        render = int(fields["drm-engine-render"].split()[0])
+        resident = fields.get("drm-resident-system0", "0 KiB").split()
+        scale = {"KiB": 1024, "MiB": 1024 * 1024, "GiB": 1024**3}.get(resident[1] if len(resident) > 1 else "", 1)
+        clients[client] = (render, int(resident[0]) * scale)
+    if not clients:
+        return None
+    return sum(r for r, _ in clients.values()), sum(m for _, m in clients.values())
+
+
 def footprint(pid):
     if LINUX:
         for line in Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines():
@@ -167,7 +317,9 @@ def footprint(pid):
 
 
 class Run:
-    def __init__(self, app, out_dir, label, warmup, duration, rate, extra_env=None, config=None, display=None):
+    def __init__(self, app, out_dir, label, warmup, duration, rate, extra_env=None, config=None, display=None, refresh=120, power=False):
+        self.refresh = refresh
+        self.power = power
         self.extra_env = extra_env or {}
         self.config = config
         self.display = display
@@ -241,7 +393,7 @@ class Run:
         command = [str(self.binary), "--socket", str(self.socket), "app"]
         if LINUX:
             w, h = (str(v) for v in self.size)
-            command = ["gamescope", "--backend", "headless", "-W", w, "-H", h, "-w", w, "-h", h, "-r", "120", "--expose-wayland", "--", *command]
+            command = ["gamescope", "--backend", "headless", "-W", w, "-H", h, "-w", w, "-h", h, "-r", str(self.refresh), "--expose-wayland", "--", *command]
         self.gui = subprocess.Popen(
             command,
             env=env,
@@ -327,6 +479,24 @@ class Run:
             for i in range(24):
                 self.zz("new-session", "-d", "-s", f"s{i:02d}")
             self.zz("new-window", "-t", f"{self.session}:", "-n", "chrome", self.stream_cmd())
+        elif scenario == "agent":
+            adapter = self.root / "agent.awk"
+            adapter.write_text(AGENT_AWK)
+            command = f"{awk_command()} -v items=60 -f {adapter}"
+            self.zz("set-option", "-g", "experimental-agent-pane", "on")
+            self.zz("set-option", "-g", "--", "agent-command", command)
+            self.zz("set-option", "-g", "--", "agent-claude-code-command", command)
+            self.zz("new-window", "-t", f"{self.session}:", "-n", "agent", self.stream_cmd())
+            stream = self.zz("display-message", "-t", f"{self.session}:agent", "-p", "#{pane_id}")
+            before = set(self.zz("list-panes", "-t", f"{self.session}:agent", "-F", "#{pane_id}").splitlines())
+            self.zz("split-window", "-h", "--kind", "picker", "-t", stream)
+            after = set(self.zz("list-panes", "-t", f"{self.session}:agent", "-F", "#{pane_id}").splitlines())
+            agent = (after - before).pop()
+            self.zz("select-pane-kind", "-t", agent, "agent")
+            reply = self.zz("agent-send", "--wait", "--timeout", "25", "-t", agent, "walk through the stream")
+            if "Step 59" not in reply:
+                raise RuntimeError(f"the agent turn did not finish: {reply[-200:]!r}")
+            self.zz("select-pane", "-t", stream)
         self.zz("kill-window", "-t", previous)
         if scenario == "chrome":
             self.zz("command-prompt", "-b", "-C", "-t", self.client)
@@ -396,20 +566,39 @@ class Run:
         commands = 0
         self.drive(scenario, warm_until)
         main0, total0, threads0 = thread_times(self.gui_pid)
+        gpu0 = gpu_usage(self.gui_pid) if LINUX else None
+        switches0 = thread_switches(self.gui_pid)
         daemon0 = thread_times(self.daemon_pid)[1]
+        power = Power(self.duration) if self.power else None
         t0 = time.time_ns()
+        if power:
+            power.start()
         noisy = []
         end = time.time() + self.duration
-        while time.time() < end:
-            commands += self.drive(scenario, min(end, time.time() + 2))
-            noisy += noise((self.gui.pid,))
-            if self.freeze_for_gate():
-                return None
+        finished = False
+        try:
+            while time.time() < end:
+                commands += self.drive(scenario, min(end, time.time() + 2))
+                noisy += noise((self.gui.pid,))
+                if self.freeze_for_gate():
+                    return None
+            finished = True
+        finally:
+            if power and not finished:
+                power.discard()
         t1 = time.time_ns()
         main1, total1, threads1 = thread_times(self.gui_pid)
+        gpu1 = gpu_usage(self.gui_pid) if LINUX else None
+        switches1 = thread_switches(self.gui_pid)
         daemon1 = thread_times(self.daemon_pid)[1]
         elapsed = (t1 - t0) / 1e9
+        power = power.stop(elapsed) if power else {}
+        if gpu0 and gpu1:
+            power["gpu_ms_per_s"] = (gpu1[0] - gpu0[0]) / 1e6 / elapsed
+            power["gpu_resident"] = gpu1[1]
         return {
+            **power,
+            **(wakeups(switches0, switches1, elapsed) if switches1 else {}),
             "scenario": scenario,
             "t0_ns": t0,
             "t1_ns": t1,
@@ -490,13 +679,20 @@ def summarize_frames(frames_path, window):
 METRICS = [
     ("gui_main_cpu_pct", "main%"),
     ("gui_total_cpu_pct", "gui%"),
+    ("gui_wakeups_per_s", "wakeups/s"),
     ("frames", "frames"),
     ("draw_cpu_us_med", "draw_us"),
+    ("views_rendered_med", "views"),
+    ("layout_nodes_med", "layout_nodes"),
     ("request_layout_us_med", "layout_us"),
     ("prepaint_us_med", "prepaint_us"),
     ("paint_us_med", "paint_us"),
     ("scene_finish_us_med", "finish_us"),
     ("present_submit_us_med", "submit_us"),
+    ("gpu_ms_per_s", "gpu_ms/s"),
+    ("package_w", "package_W"),
+    ("uncore_w", "uncore_W"),
+    ("gpu_busy_pct", "gpu_busy%"),
 ]
 
 
@@ -534,6 +730,16 @@ def summarize(argv):
                     delta = f"{100 * (med - base_med) / base_med:+.1f}%"
                 cells.append(f"{med:.2f} {delta} [{min(values):.2f}-{max(values):.2f}]".rjust(32))
             print(f"{scenario:<9} " + "  ".join(cells))
+    print("\nwakeups/s by thread (median)")
+    for scenario in SCENARIOS:
+        for label in labels:
+            runs = [r["gui_wakeups_by_thread"] for r in groups[(label, scenario)] if "gui_wakeups_by_thread" in r]
+            if not runs:
+                continue
+            names = sorted({n for run in runs for n in run})
+            meds = {n: statistics.median([run.get(n, 0) for run in runs]) for n in names}
+            top = sorted(meds.items(), key=lambda kv: -kv[1])[:8]
+            print(f"{scenario:<9} {label:>12}  " + "  ".join(f"{n}={v:.1f}" for n, v in top))
 
 
 
@@ -554,6 +760,8 @@ def main():
     parser.add_argument("--repeat-offset", type=int, default=0)
     parser.add_argument("--config", help="zz config file every run starts with")
     parser.add_argument("--display-uuid", help="display the window opens on (lowercase CGDisplay UUID)")
+    parser.add_argument("--refresh", type=int, default=120, help="Linux gamescope refresh rate")
+    parser.add_argument("--power", action="store_true", help="Linux: RAPL package watts and i915 render busy, needs passwordless sudo")
     args = parser.parse_args()
     apps = []
     envs = {}
@@ -570,7 +778,9 @@ def main():
     for repeat in range(args.repeat_offset, args.repeat_offset + args.repeats):
         order = apps if repeat % 2 == 0 else list(reversed(apps))
         for label, app in order:
-            run = Run(app, out, label, args.warmup, args.duration, args.rate, envs[label], args.config, args.display_uuid)
+            run = Run(
+                app, out, label, args.warmup, args.duration, args.rate, envs[label], args.config, args.display_uuid, args.refresh, args.power
+            )
             run.quiet_wait = args.quiet_wait
             frames = None if args.no_recorder else out / f"frames-{label}-{repeat}.jsonl"
             try:

@@ -211,13 +211,15 @@ const HEAP_TRIM_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1
     reason = "glibc keeps pages freed by Mesa and other C libraries inside its heap until malloc_trim returns them"
 )]
 fn start_heap_trim(cx: &mut App) {
-    cx.spawn(async move |cx| {
-        loop {
-            cx.background_executor().timer(HEAP_TRIM_INTERVAL).await;
-            unsafe { libc::malloc_trim(0) };
-        }
-    })
-    .detach();
+    let executor = cx.background_executor().clone();
+    cx.background_executor()
+        .spawn(async move {
+            loop {
+                executor.timer(HEAP_TRIM_INTERVAL).await;
+                unsafe { libc::malloc_trim(0) };
+            }
+        })
+        .detach();
 }
 
 fn run_app(
