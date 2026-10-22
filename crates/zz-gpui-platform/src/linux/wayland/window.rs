@@ -4,6 +4,7 @@ use std::{
     ptr::NonNull,
     rc::Rc,
     sync::{Arc, LazyLock},
+    time::Duration,
 };
 
 use calloop::ping::Ping;
@@ -31,6 +32,7 @@ use wayland_protocols::{
 use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
 
+use crate::linux::wayland::client::FRAME_RETRY_INTERVAL;
 use crate::linux::wayland::{display::WaylandDisplay, serial::SerialKind};
 use crate::linux::{Globals, Output, WaylandClientStatePtr, get_window};
 use crate::wgpu::{CompositorGpuHint, WgpuRenderer, WgpuSurfaceConfig, wgpu};
@@ -746,6 +748,7 @@ enum FrameLoop {
     Unconfigured,
     Ticking,
     RescheduleRequested,
+    RescheduleAfter(Duration),
     PresentationFailed,
     AwaitingCallback,
     Scheduled,
@@ -988,16 +991,21 @@ impl WaylandWindowStatePtr {
             let surface_id = state.surface.id();
             let client = state.client.clone();
             drop(state);
-            client.schedule_frame_retry(&surface_id);
+            client.schedule_frame_retry(&surface_id, FRAME_RETRY_INTERVAL);
             return;
         }
 
-        if frame_loop == FrameLoop::RescheduleRequested || state.redraw_requested {
+        let retry = match frame_loop {
+            FrameLoop::RescheduleAfter(delay) => Some(delay),
+            FrameLoop::RescheduleRequested => Some(FRAME_RETRY_INTERVAL),
+            _ => state.redraw_requested.then_some(FRAME_RETRY_INTERVAL),
+        };
+        if let Some(delay) = retry {
             self.frame_loop.set(FrameLoop::RetryScheduled);
             let surface_id = state.surface.id();
             let client = state.client.clone();
             drop(state);
-            client.schedule_frame_retry(&surface_id);
+            client.schedule_frame_retry(&surface_id, delay);
             return;
         }
 
@@ -1041,6 +1049,14 @@ impl WaylandWindowStatePtr {
             // A wake is already armed: a ping or retry timer is in flight, or a
             // presented buffer guarantees a compositor frame callback.
             _ => {}
+        }
+    }
+
+    pub fn schedule_frame_after(&self, delay: Duration) {
+        if self.frame_loop.get() == FrameLoop::Ticking {
+            self.frame_loop.set(FrameLoop::RescheduleAfter(delay));
+        } else {
+            self.schedule_frame();
         }
     }
 
@@ -2048,6 +2064,10 @@ impl PlatformWindow for WaylandWindow {
 
     fn schedule_frame(&self) {
         self.0.schedule_frame();
+    }
+
+    fn schedule_frame_after(&self, delay: Duration) {
+        self.0.schedule_frame_after(delay);
     }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {

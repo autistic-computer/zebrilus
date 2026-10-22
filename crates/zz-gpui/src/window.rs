@@ -1886,49 +1886,52 @@ impl Window {
                 let force_render =
                     mem::take(&mut deferred_force_render) || request_frame_options.force_render;
 
-                let thermal_state = handle
-                    .update(&mut cx, |_, _, cx| cx.thermal_state())
-                    .log_err();
-
+                let has_frame_work = force_render
+                    || invalidator.is_dirty()
+                    || !next_frame_callbacks.borrow().is_empty();
                 // Throttle frame rate based on conditions:
                 // - Thermal pressure (Serious/Critical): cap to ~60fps
                 // - Inactive window (not focused): cap to ~30fps to save energy
-                let min_frame_interval = if request_frame_options.require_presentation
-                    || (!force_render
-                        && !invalidator.is_dirty()
-                        && next_frame_callbacks.borrow().is_empty())
-                {
-                    None
-                } else if !active.get() && !input_rate_tracker.borrow_mut().is_high_rate() {
-                    inactive_frame_interval
-                } else if let Some(ThermalState::Critical | ThermalState::Serious) = thermal_state {
-                    Some(Duration::from_micros(16667))
-                } else {
-                    None
-                };
+                let min_frame_interval =
+                    if request_frame_options.require_presentation || !has_frame_work {
+                        None
+                    } else if !active.get() && !input_rate_tracker.borrow_mut().is_high_rate() {
+                        inactive_frame_interval
+                    } else if let Some(ThermalState::Critical | ThermalState::Serious) = handle
+                        .update(&mut cx, |_, _, cx| cx.thermal_state())
+                        .log_err()
+                    {
+                        Some(Duration::from_micros(16667))
+                    } else {
+                        None
+                    };
 
                 let now = Instant::now();
-                if let Some(min_interval) = min_frame_interval {
-                    if let Some(last_frame) = last_frame_time.get()
-                        && now.duration_since(last_frame) < min_interval
-                    {
-                        // Don't lose a pending forced render to throttling.
-                        deferred_force_render |= force_render;
-                        // Deferred by throttling: ask demand-driven platforms to retry.
-                        handle
-                            .update(&mut cx, |_, window, _| {
-                                window.platform_window.schedule_frame();
-                            })
-                            .log_err();
-                        // The demand that entered this branch (a deferred forced
-                        // render or pending next-frame callbacks) is still
-                        // unserved; platforms that stop requesting frames for
-                        // idle windows need a wakeup to deliver the retry.
-                        invalidator.wake_platform();
-                        return;
-                    }
+                let wait = min_frame_interval
+                    .zip(last_frame_time.get())
+                    .and_then(|(min_interval, last_frame)| {
+                        min_interval.checked_sub(now.duration_since(last_frame))
+                    })
+                    .filter(|wait| !wait.is_zero());
+                if let Some(wait) = wait {
+                    // Don't lose a pending forced render to throttling.
+                    deferred_force_render |= force_render;
+                    // Deferred by throttling: ask demand-driven platforms to retry.
+                    handle
+                        .update(&mut cx, |_, window, _| {
+                            window.platform_window.schedule_frame_after(wait);
+                        })
+                        .log_err();
+                    // The demand that entered this branch (a deferred forced
+                    // render or pending next-frame callbacks) is still
+                    // unserved; platforms that stop requesting frames for
+                    // idle windows need a wakeup to deliver the retry.
+                    invalidator.wake_platform();
+                    return;
                 }
-                last_frame_time.set(Some(now));
+                if has_frame_work {
+                    last_frame_time.set(Some(now));
+                }
 
                 let pending_next_frame_callbacks = next_frame_callbacks.take();
                 if !pending_next_frame_callbacks.is_empty() {
@@ -9517,6 +9520,7 @@ mod tests {
             .unwrap()
         });
         let test_window = cx.test_window(window.into());
+        window.update(cx, |_, window, _| window.refresh()).unwrap();
         test_window.simulate_frame_request(RequestFrameOptions::default());
         let initial_draws = test_window.draw_count();
         for _ in 0..120 {
@@ -9550,6 +9554,43 @@ mod tests {
         window
             .update(cx, |_, window, _| assert!(!window.invalidator.is_dirty()))
             .unwrap();
+    }
+
+    #[zz_gpui::test]
+    fn inactive_throttle_asks_for_the_frame_when_it_is_due(cx: &mut TestAppContext) {
+        cx.update(|cx| cx.mode = crate::app::GpuiMode::Production);
+        let interval = Duration::from_secs(3600);
+        let window = cx.update(|cx| {
+            cx.open_window(
+                WindowOptions {
+                    inactive_frame_interval: Some(interval),
+                    ..Default::default()
+                },
+                |_, cx| cx.new(|_| EmptyView),
+            )
+            .unwrap()
+        });
+        let test_window = cx.test_window(window.into());
+        window.update(cx, |_, window, _| window.refresh()).unwrap();
+        let draws = test_window.draw_count();
+        let started = super::Instant::now();
+        test_window.simulate_frame_request(RequestFrameOptions::default());
+        assert_eq!(test_window.draw_count(), draws + 1);
+        assert_eq!(test_window.frame_delay(), None);
+
+        let idle_gap = Duration::from_millis(20);
+        std::thread::sleep(idle_gap);
+        test_window.simulate_frame_request(RequestFrameOptions::default());
+        assert_eq!(test_window.frame_delay(), None);
+
+        window.update(cx, |_, window, _| window.refresh()).unwrap();
+        test_window.simulate_frame_request(RequestFrameOptions::default());
+        assert_eq!(test_window.draw_count(), draws + 1);
+        let delay = test_window
+            .frame_delay()
+            .expect("a throttled frame must say when it is due");
+        assert!(delay <= interval - idle_gap);
+        assert!(delay >= interval - started.elapsed());
     }
 
     #[zz_gpui::test]
