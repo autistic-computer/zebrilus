@@ -86,6 +86,10 @@ impl PlatformAtlas for DirectXAtlas {
     fn remove(&self, key: &AtlasKey) {
         self.0.lock().remove(key);
     }
+
+    fn generation(&self) -> u64 {
+        self.0.lock().generation()
+    }
 }
 
 impl AtlasBackend for DirectXAtlasTextures {
