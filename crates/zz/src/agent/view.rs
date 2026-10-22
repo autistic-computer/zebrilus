@@ -522,7 +522,58 @@ pub(crate) struct AgentView {
     last_history_query: String,
     directory_catalog: Option<Entity<DirectoryCatalog>>,
     window_corners: WindowCorners,
+    chrome: AgentPaneChrome,
     _subscriptions: Vec<Subscription>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentPaneChrome {
+    connected: bool,
+    attached_host: HostId,
+    title: String,
+    active: bool,
+    can_drag: bool,
+    floats: bool,
+}
+
+impl AgentPaneChrome {
+    #[cfg(test)]
+    fn detached() -> Self {
+        Self {
+            connected: false,
+            attached_host: HostId::LOCAL,
+            title: String::new(),
+            active: false,
+            can_drag: false,
+            floats: false,
+        }
+    }
+
+    fn read(mux: &MuxClient, pane: PaneId) -> Self {
+        let snapshot = mux.snapshot();
+        let connected = mux.is_connected();
+        let windows = || {
+            snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+        };
+        Self {
+            connected,
+            attached_host: mux.attached_host(),
+            title: windows()
+                .find_map(|window| window.panes.get(&pane))
+                .map_or_else(|| "New session".to_owned(), |pane| pane.title.clone()),
+            active: windows().any(|window| window.active_pane == pane),
+            can_drag: connected
+                && windows().any(|window| {
+                    window.panes.contains_key(&pane)
+                        && window.zoomed_pane.is_none()
+                        && window.panes.len() > 1
+                }),
+            floats: zz_client::floating::pane_floats(&snapshot, pane),
+        }
+    }
 }
 
 impl AgentView {
@@ -606,6 +657,14 @@ impl AgentView {
                 cx.notify();
             }
         });
+        let chrome = AgentPaneChrome::read(mux.read(cx), pane);
+        let mux_observer = cx.observe(&mux, |view, mux, cx| {
+            let chrome = AgentPaneChrome::read(mux.read(cx), view.pane);
+            if view.chrome != chrome {
+                view.chrome = chrome;
+                cx.notify();
+            }
+        });
         Self {
             pane,
             mux,
@@ -646,12 +705,14 @@ impl AgentView {
             last_history_query: String::new(),
             directory_catalog: None,
             window_corners: WindowCorners::NONE,
+            chrome,
             _subscriptions: vec![
                 input_observer,
                 timeline_store_observer,
                 input_subscription,
                 history_input_subscription,
                 controller_observer,
+                mux_observer,
             ],
         }
     }
@@ -663,7 +724,7 @@ impl AgentView {
     pub(crate) fn set_window_corners(&mut self, corners: WindowCorners, cx: &mut Context<Self>) {
         if self.window_corners != corners {
             self.window_corners = corners;
-            cx.notify();
+            Self::notify_after_draw(cx);
         }
     }
 
@@ -674,8 +735,17 @@ impl AgentView {
         self.visible = visible;
         if visible {
             let controller = self.controller.clone();
-            self.synchronize_controller(&controller, cx);
+            if self.synchronize_controller(&controller, cx) {
+                Self::notify_after_draw(cx);
+            }
         }
+    }
+
+    fn notify_after_draw(cx: &mut Context<Self>) {
+        let view = cx.weak_entity();
+        cx.defer(move |cx| {
+            view.update(cx, |_, cx| cx.notify()).ok();
+        });
     }
 
     fn on_mouse_down(&mut self, _: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -2010,7 +2080,7 @@ impl AgentView {
         agent_model_picker(
             ("agent-model-picker", self.pane.0),
             (
-                format!("{:?}", self.mux.read(cx).attached_host()),
+                format!("{:?}", self.chrome.attached_host),
                 state.cwd.clone(),
             ),
             state.provider,
@@ -2833,34 +2903,20 @@ impl Render for AgentView {
         self.stick.set_bottom_padding(COMPOSER_OUTER_PADDING);
         self.drive_stick(window, cx);
         let view = cx.entity();
-        let can_drag = self.mux.read(cx).is_connected()
-            && self
-                .mux
-                .read(cx)
-                .snapshot()
-                .sessions
-                .iter()
-                .flat_map(|session| &session.windows)
-                .any(|window| {
-                    window.panes.contains_key(&self.pane)
-                        && window.zoomed_pane.is_none()
-                        && window.panes.len() > 1
-                });
-        let title = self
-            .mux
-            .read(cx)
-            .snapshot()
-            .sessions
-            .iter()
-            .flat_map(|session| &session.windows)
-            .find_map(|window| window.panes.get(&self.pane))
-            .map_or_else(|| "New session".to_owned(), |pane| pane.title.clone());
+        let AgentPaneChrome {
+            connected,
+            title,
+            active,
+            can_drag,
+            floats,
+            ..
+        } = self.chrome.clone();
         let mux = self.mux.clone();
         let pane = self.pane;
         let title_editor = agent_thread_title_editor(
             ("agent-thread-title", pane.0),
             &title,
-            self.mux.read(cx).is_connected(),
+            connected,
             move |title, cx| {
                 mux.read(cx).execute(CommandInvocation::new(
                     "select-pane",
@@ -2875,7 +2931,6 @@ impl Render for AgentView {
             window,
             cx,
         );
-        let floats = zz_client::floating::pane_floats(&self.mux.read(cx).snapshot(), pane);
         let close_mux = self.mux.clone();
         let header_controls = agent_pane_title(
             state.provider,
@@ -2897,19 +2952,14 @@ impl Render for AgentView {
                 .map(|(action, icon, label)| {
                     let mux = self.mux.clone();
                     let action = *action;
-                    pane_header_icon_button(
-                        (*label, pane.0),
-                        icon.clone(),
-                        mux.read(cx).is_connected(),
-                        cx,
-                    )
-                    .tooltip(*label)
-                    .on_click(move |_, _, cx| {
-                        for command in action.commands(pane) {
-                            mux.read(cx).execute(command);
-                        }
-                        cx.stop_propagation();
-                    })
+                    pane_header_icon_button((*label, pane.0), icon.clone(), connected, cx)
+                        .tooltip(*label)
+                        .on_click(move |_, _, cx| {
+                            for command in action.commands(pane) {
+                                mux.read(cx).execute(command);
+                            }
+                            cx.stop_propagation();
+                        })
                 }),
         );
         let view = cx.entity();
@@ -2952,13 +3002,7 @@ impl Render for AgentView {
             .on_key_down(cx.listener(Self::on_key_down))
             .map(|pane| {
                 pane.child(agent_pane_header(
-                    self.mux
-                        .read(cx)
-                        .snapshot()
-                        .sessions
-                        .iter()
-                        .flat_map(|session| &session.windows)
-                        .any(|window| window.active_pane == self.pane),
+                    active,
                     header_controls,
                     self.render_status(&state, &view, cx),
                     header_actions,
@@ -3930,6 +3974,7 @@ mod completion_tests {
                 last_history_query: String::new(),
                 directory_catalog: None,
                 window_corners: WindowCorners::NONE,
+                chrome: AgentPaneChrome::detached(),
                 _subscriptions: Vec::new(),
             }
         });
@@ -4031,6 +4076,7 @@ mod completion_tests {
                 last_history_query: String::new(),
                 directory_catalog: None,
                 window_corners: WindowCorners::NONE,
+                chrome: AgentPaneChrome::detached(),
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);
@@ -5326,6 +5372,128 @@ mod tests {
         assert!(
             Arc::ptr_eq(&images[0], &image),
             "the bytes should travel by handle, not by clone, so zz_gpui decodes them once"
+        );
+    }
+
+    fn titled_pane_snapshot(generation: u64, title: &str) -> zz_protocol::MuxSnapshot {
+        let pane = PaneId(7);
+        let other = PaneId(8);
+        let pane_snapshot = |id: PaneId, title: &str| zz_protocol::PaneSnapshot {
+            id,
+            title: title.to_owned(),
+            kind: zz_protocol::PaneKindSnapshot::Terminal,
+            synchronized_input: false,
+            bell: false,
+            dead: false,
+            dead_status: None,
+            border_colour: None,
+            active_border_colour: None,
+            border_status_text: String::new(),
+            mode: None,
+            status: None,
+            summary: zz_protocol::PaneSummary::default(),
+        };
+        zz_protocol::MuxSnapshot {
+            generation,
+            focused_window: Some(zz_protocol::WindowId(0)),
+            sessions: vec![zz_protocol::SessionSnapshot {
+                id: zz_protocol::SessionId(0),
+                name: "zz".to_owned(),
+                active_window: zz_protocol::WindowId(0),
+                windows: vec![zz_protocol::WindowSnapshot {
+                    id: zz_protocol::WindowId(0),
+                    index: 0,
+                    name: "zz".to_owned(),
+                    automatic_rename: true,
+                    active_pane: other,
+                    zoomed_pane: None,
+                    layout: zz_protocol::LayoutNode::Pane(pane),
+                    panes: [
+                        (pane, pane_snapshot(pane, title)),
+                        (other, pane_snapshot(other, "other")),
+                    ]
+                    .into_iter()
+                    .collect(),
+                    layout_dump: String::new(),
+                    visible_layout_dump: String::new(),
+                    status_label: String::new(),
+                    activity: false,
+                    silence: false,
+                    pane_border_status: zz_protocol::PaneBorderStatus::Off,
+                    pane_border_lines: zz_protocol::PaneBorderLines::Single,
+                    pane_border_indicators: zz_protocol::PaneBorderIndicators::Colour,
+                    pane_order: Vec::new(),
+                    pane_z_order: Vec::new(),
+                    floating: Vec::new(),
+                    modal: None,
+                    sx: 0,
+                    sy: 0,
+                }],
+                viewers: Vec::new(),
+            }],
+        }
+    }
+
+    #[zz_gpui::test]
+    fn the_cached_pane_redraws_when_the_mux_changes_what_it_shows(
+        cx: &mut zz_gpui::TestAppContext,
+    ) {
+        use std::{cell::Cell, rc::Rc};
+
+        cx.update(zz_ui::init);
+        let mux = cx.update(|cx| {
+            cx.new(|cx| {
+                MuxClient::new(
+                    Err(zz_daemon_client::DaemonError::Thread("test client".into())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            })
+        });
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let controller =
+                cx.new(|_| AgentController::new(crate::config::AgentConfig::default()));
+            AgentView::new(
+                PaneId(7),
+                &AgentDescriptor::default(),
+                controller,
+                mux.clone(),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let notified = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            let notified = Rc::clone(&notified);
+            cx.observe(&view, move |_, _| notified.set(notified.get() + 1))
+        });
+        let attach = |snapshot, cx: &mut zz_gpui::VisualTestContext| {
+            mux.update(cx, |mux, cx| {
+                mux.attach_snapshot_for_test(zz_protocol::SessionId(0), snapshot, cx);
+            });
+            cx.run_until_parked();
+        };
+
+        attach(titled_pane_snapshot(1, "first"), cx);
+        assert_eq!(notified.get(), 1);
+        assert_eq!(
+            view.read_with(cx, |view, _| view.chrome.title.clone()),
+            "first"
+        );
+
+        attach(titled_pane_snapshot(2, "first"), cx);
+        assert_eq!(
+            notified.get(),
+            1,
+            "an unrelated mux change left the pane alone"
+        );
+
+        attach(titled_pane_snapshot(3, "renamed"), cx);
+        assert_eq!(notified.get(), 2);
+        assert_eq!(
+            view.read_with(cx, |view, _| view.chrome.title.clone()),
+            "renamed"
         );
     }
 }
