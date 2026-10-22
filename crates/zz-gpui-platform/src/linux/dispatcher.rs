@@ -1,11 +1,18 @@
 use calloop::{
-    EventLoop, PostAction,
+    EventLoop, LoopHandle, PostAction,
     channel::{self, Sender},
     timer::TimeoutAction,
 };
 use zz_gpui::util::ResultExt;
 
-use std::{mem::MaybeUninit, thread, time::Duration};
+use std::{
+    cell::RefCell,
+    mem::MaybeUninit,
+    rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
+    thread,
+    time::Duration,
+};
 
 use zz_gpui::{
     PlatformDispatcher, Priority, PriorityQueueReceiver, PriorityQueueSender, RunnableVariant,
@@ -18,6 +25,7 @@ struct TimerAfter {
 }
 
 pub(crate) struct LinuxDispatcher {
+    id: u64,
     main_sender: PriorityQueueCalloopSender<RunnableVariant>,
     timer_sender: Sender<TimerAfter>,
     background_sender: PriorityQueueSender<RunnableVariant>,
@@ -26,6 +34,48 @@ pub(crate) struct LinuxDispatcher {
 }
 
 const MIN_THREADS: usize = 2;
+
+static NEXT_DISPATCHER_ID: AtomicU64 = AtomicU64::new(0);
+
+struct MainLoopTimers {
+    dispatcher: u64,
+    arm: Rc<dyn Fn(Duration, RunnableVariant)>,
+}
+
+thread_local! {
+    static MAIN_LOOP_TIMERS: RefCell<Option<MainLoopTimers>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn stop_main_thread_timers() {
+    MAIN_LOOP_TIMERS.set(None);
+}
+
+fn run_runnable(runnable: RunnableVariant) {
+    let location = runnable.metadata().location;
+    let spawned = runnable.metadata().spawned;
+    profiler::update_running_task(spawned, location);
+    runnable.run();
+    profiler::save_task_timing();
+}
+
+fn arm_timer<Data>(
+    handle: &LoopHandle<'static, Data>,
+    duration: Duration,
+    runnable: RunnableVariant,
+) {
+    let mut runnable = Some(runnable);
+    handle
+        .insert_source(
+            calloop::timer::Timer::from_duration(duration),
+            move |_, _, _| {
+                if let Some(runnable) = runnable.take() {
+                    run_runnable(runnable);
+                }
+                TimeoutAction::Drop
+            },
+        )
+        .expect("Failed to start timer");
+}
 
 impl LinuxDispatcher {
     pub fn new(main_sender: PriorityQueueCalloopSender<RunnableVariant>) -> Self {
@@ -40,11 +90,7 @@ impl LinuxDispatcher {
                     .name(format!("Worker-{i}"))
                     .spawn(move || {
                         for runnable in receiver.iter() {
-                            let location = runnable.metadata().location;
-                            let spawned = runnable.metadata().spawned;
-                            profiler::update_running_task(spawned, location);
-                            runnable.run();
-                            profiler::save_task_timing();
+                            run_runnable(runnable);
                         }
                     })
                     .unwrap()
@@ -69,22 +115,7 @@ impl LinuxDispatcher {
                             signal.stop();
                         }
                         if let channel::Event::Msg(timer) = e {
-                            let mut runnable = Some(timer.runnable);
-                            timer_handle
-                                .insert_source(
-                                    calloop::timer::Timer::from_duration(timer.duration),
-                                    move |_, _, _| {
-                                        if let Some(runnable) = runnable.take() {
-                                            let location = runnable.metadata().location;
-                                            let spawned = runnable.metadata().spawned;
-                                            profiler::update_running_task(spawned, location);
-                                            runnable.run();
-                                            profiler::save_task_timing();
-                                        }
-                                        TimeoutAction::Drop
-                                    },
-                                )
-                                .expect("Failed to start timer");
+                            arm_timer(&timer_handle, timer.duration, timer.runnable);
                         }
                     })
                     .expect("Failed to start timer thread");
@@ -96,11 +127,50 @@ impl LinuxDispatcher {
         background_threads.push(timer_thread);
 
         Self {
+            id: NEXT_DISPATCHER_ID.fetch_add(1, Ordering::Relaxed),
             main_sender,
             timer_sender,
             background_sender,
             _background_threads: background_threads,
             main_thread_id: thread::current().id(),
+        }
+    }
+
+    pub(crate) fn run_main_thread_timers_on<Data: 'static>(
+        &self,
+        handle: &LoopHandle<'static, Data>,
+    ) {
+        let handle = handle.clone();
+        MAIN_LOOP_TIMERS.set(Some(MainLoopTimers {
+            dispatcher: self.id,
+            arm: Rc::new(move |duration, runnable| arm_timer(&handle, duration, runnable)),
+        }));
+    }
+
+    fn arm_on_main_loop(
+        &self,
+        duration: Duration,
+        runnable: RunnableVariant,
+    ) -> Option<RunnableVariant> {
+        if !self.is_main_thread() {
+            return Some(runnable);
+        }
+        let arm = MAIN_LOOP_TIMERS
+            .try_with(|timers| {
+                timers
+                    .borrow()
+                    .as_ref()
+                    .filter(|timers| timers.dispatcher == self.id)
+                    .map(|timers| timers.arm.clone())
+            })
+            .ok()
+            .flatten();
+        match arm {
+            Some(arm) => {
+                arm(duration, runnable);
+                None
+            }
+            None => Some(runnable),
         }
     }
 }
@@ -133,6 +203,9 @@ impl PlatformDispatcher for LinuxDispatcher {
     }
 
     fn dispatch_after(&self, duration: Duration, runnable: RunnableVariant) {
+        let Some(runnable) = self.arm_on_main_loop(duration, runnable) else {
+            return;
+        };
         if let Err(err) = self.timer_sender.send(TimerAfter { duration, runnable }) {
             // The timer thread has shut down. Dropping a scheduled runnable cancels its task
             // and makes the next poll of any awaiter panic. Leaking leaves the task pending,
@@ -393,6 +466,7 @@ mod tests {
         let handle = event_loop.handle();
         let (sender, receiver) = PriorityQueueCalloopReceiver::new();
         let dispatcher = Arc::new(LinuxDispatcher::new(sender));
+        dispatcher.run_main_thread_timers_on(&handle);
         handle
             .insert_source(receiver, {
                 let handle = handle.clone();
@@ -432,6 +506,7 @@ mod tests {
             .detach();
         event_loop.run(None, &mut (), |_| {}).unwrap();
         report(label, ops, started.elapsed(), process_cpu() - cpu, &before);
+        stop_main_thread_timers();
         drop(dispatcher);
     }
 
@@ -472,6 +547,74 @@ mod tests {
                 }
             },
         );
+    }
+
+    fn thread_recording_runnable(
+        sender: std::sync::mpsc::Sender<thread::ThreadId>,
+    ) -> RunnableVariant {
+        let (runnable, task) = async_task::Builder::new()
+            .metadata(zz_gpui::RunnableMeta::new_with_callers_location())
+            .spawn(
+                move |_| async move {
+                    sender.send(thread::current().id()).ok();
+                },
+                |_| {},
+            );
+        task.detach();
+        runnable
+    }
+
+    #[test]
+    fn main_thread_timers_fire_on_the_main_loop() {
+        let mut event_loop = EventLoop::<()>::try_new().unwrap();
+        let (sender, _receiver) = PriorityQueueCalloopReceiver::new();
+        let dispatcher = LinuxDispatcher::new(sender);
+        dispatcher.run_main_thread_timers_on(&event_loop.handle());
+        let (fired, fired_on) = std::sync::mpsc::channel();
+        dispatcher.dispatch_after(Duration::from_millis(1), thread_recording_runnable(fired));
+        assert!(fired_on.recv_timeout(Duration::from_millis(50)).is_err());
+        event_loop
+            .dispatch(Some(Duration::from_secs(5)), &mut ())
+            .unwrap();
+        assert_eq!(fired_on.try_recv(), Ok(thread::current().id()));
+        stop_main_thread_timers();
+    }
+
+    #[test]
+    fn timers_off_a_running_main_loop_use_the_timer_thread() {
+        let event_loop = EventLoop::<()>::try_new().unwrap();
+        let (sender, _receiver) = PriorityQueueCalloopReceiver::new();
+        let attached = Arc::new(LinuxDispatcher::new(sender));
+        attached.run_main_thread_timers_on(&event_loop.handle());
+        let (sender, _receiver) = PriorityQueueCalloopReceiver::new();
+        let detached = LinuxDispatcher::new(sender);
+        let (fired, fired_on) = std::sync::mpsc::channel();
+        let (fired_after_stop, fired_after_stop_on) = std::sync::mpsc::channel();
+
+        detached.dispatch_after(
+            Duration::from_millis(1),
+            thread_recording_runnable(fired.clone()),
+        );
+        let timer_thread = fired_on.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(timer_thread, thread::current().id());
+
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                attached.dispatch_after(Duration::from_millis(1), thread_recording_runnable(fired));
+            });
+        });
+        let timer_thread = fired_on.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(timer_thread, thread::current().id());
+
+        stop_main_thread_timers();
+        attached.dispatch_after(
+            Duration::from_millis(1),
+            thread_recording_runnable(fired_after_stop),
+        );
+        let timer_thread = fired_after_stop_on
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert_ne!(timer_thread, thread::current().id());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::{BackgroundExecutor, Task};
+use crate::{BackgroundExecutor, Timer};
 use std::{
     env,
     ffi::OsStr,
@@ -94,7 +94,7 @@ pub struct WithTimeout<T> {
     #[pin]
     future: T,
     #[pin]
-    timer: Task<()>,
+    timer: Timer,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -170,7 +170,7 @@ pub(crate) fn ceil_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::TestAppContext;
+    use crate::{Task, TestAppContext};
 
     use super::*;
 
