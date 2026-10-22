@@ -4,7 +4,7 @@ title: zz-gpui
 description: zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 resource: crates/zz-gpui/Cargo.toml
 tags: [zz-gpui, gpui, reference, vendored]
-timestamp: 2026-10-20T00:00:00Z
+timestamp: 2026-10-22T00:00:00Z
 ---
 
 # Overview
@@ -285,6 +285,21 @@ cap deferred is due. The Wayland window arms its retry timer for exactly that de
 fixed 16.67 ms, which landed the default 33.3 ms cap at about 24 fps instead of 30. Only frame
 requests that draw, run next-frame callbacks or force a render restart the cap's clock. Other
 platforms keep the default, which calls `schedule_frame`.
+
+Interaction no longer refreshes the whole window (2026-10-22). Clicks, active styles, tooltips and
+interactive text invalidate only the view that painted the element (`Window::invalidate_view`).
+Focus, input modality and drag-over styles are recorded as reads while a view renders
+(`InputRead` in `window.rs`: `is_focused`, `contains_focused`, `within_focused`, `focused`,
+`last_input_was_keyboard`/`touch`, the drag-over hit test); the reads are replayed with a reused
+view, and a focus, modality or drag change re-renders only views whose answer changed. A drag
+still refreshes once, on its first frame. A cached view that misses its cache no longer forces
+its nested cached views to render: the cache key holds rem size, element opacity and text fade
+next to bounds, content mask and text style, divs apply opacity in prepaint as well as paint,
+liquid glass content always misses (its opacity is known only at paint), and views inside a
+glass group still render with the group. A reused view replays its accessibility nodes, focus
+ids, bounds and `on_a11y_action` listeners from the previous frame's tree. Tests live in
+`window/invalidation_tests.rs`; `crates/zz-gpui-platform/benches/invalidation.rs` measures a
+nine-pane window.
 
 The web backend hosts several windows per page through `WindowOptions::mount`, mirrors each
 window's accessibility tree into ARIA elements, and installs a `globalThis.zzGpui` automation API;
