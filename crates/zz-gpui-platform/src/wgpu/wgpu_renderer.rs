@@ -1722,7 +1722,7 @@ impl WgpuRendererCore {
             self.max_texture_size
         );
 
-        self.atlas.before_frame();
+        self.atlas.before_frame(&mut self.resources.upload_encoder);
 
         let gamma_params = GammaParams {
             gamma_ratios: self.rendering_params.gamma_ratios,
