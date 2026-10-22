@@ -36,7 +36,42 @@ function f(t){c.width=innerWidth;c.height=innerHeight;x.fillStyle='#e0a040';
 for(let i=0;i<40;i++){x.beginPath();x.arc((Math.sin(t/700+i)*0.45+0.5)*c.width,(i+0.5)*c.height/40,12,0,7);x.fill()}
 requestAnimationFrame(f)}requestAnimationFrame(f)</script></body></html>"""
 
-SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome", "browser"]
+AGENT_AWK = r"""
+function request_id(line) {
+  if (match(line, /"id":"[^"]*"/)) {
+    return substr(line, RSTART + 5, RLENGTH - 5)
+  }
+  if (match(line, /"id":[0-9]+/)) {
+    return substr(line, RSTART + 5, RLENGTH - 5)
+  }
+  return "null"
+}
+/"method":"initialize"/ {
+  printf "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"zz-frames\",\"version\":\"1\"}}}\n", request_id($0)
+  fflush()
+  next
+}
+/"method":"session\/new"/ {
+  printf "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"sessionId\":\"zz-frames\"}}\n", request_id($0)
+  fflush()
+  next
+}
+/"method":"session\/prompt"/ {
+  id = request_id($0)
+  for (i = 1; i <= items; i++) {
+    if (i % 5 == 0) {
+      printf "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"zz-frames\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call-%d\",\"title\":\"read crates/zz/src/chunk_%d.rs\",\"kind\":\"read\",\"status\":\"completed\"}}}\n", i, i
+    } else {
+      printf "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"zz-frames\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Step %d reads the **stream** output, checks `frames.py` and keeps going while the terminal next to it prints line after line of colored text.\\n\\n\"}}}}\n", i
+    }
+  }
+  printf "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"stopReason\":\"end_turn\"}}\n", id
+  fflush()
+  next
+}
+"""
+
+SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome", "agent", "browser"]
 DEFAULT_SCENARIOS = ["idle", "stream", "grid", "scroll", "sidebar", "chrome"]
 FOREIGN = tuple(p for p in os.environ.get("ZZ_FRAMES_FOREIGN", "").split(":") if p)
 QUIET = ("bench/perf/run.py", "bench/perf/gate.py", "compat/run.sh", "bench/run.sh")
@@ -57,6 +92,13 @@ class HeldBuilds:
                 os.unlink(HOLD)
             except FileNotFoundError:
                 pass
+
+
+def awk_command():
+    version = subprocess.run(["awk", "-W", "version"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    if (version.stdout + version.stderr).startswith("mawk"):
+        return "awk -W interactive"
+    return "awk"
 
 
 def noise(own=()):
@@ -428,6 +470,24 @@ class Run:
             for i in range(24):
                 self.zz("new-session", "-d", "-s", f"s{i:02d}")
             self.zz("new-window", "-t", f"{self.session}:", "-n", "chrome", self.stream_cmd())
+        elif scenario == "agent":
+            adapter = self.root / "agent.awk"
+            adapter.write_text(AGENT_AWK)
+            command = f"{awk_command()} -v items=60 -f {adapter}"
+            self.zz("set-option", "-g", "experimental-agent-pane", "on")
+            self.zz("set-option", "-g", "--", "agent-command", command)
+            self.zz("set-option", "-g", "--", "agent-claude-code-command", command)
+            self.zz("new-window", "-t", f"{self.session}:", "-n", "agent", self.stream_cmd())
+            stream = self.zz("display-message", "-t", f"{self.session}:agent", "-p", "#{pane_id}")
+            before = set(self.zz("list-panes", "-t", f"{self.session}:agent", "-F", "#{pane_id}").splitlines())
+            self.zz("split-window", "-h", "--kind", "picker", "-t", stream)
+            after = set(self.zz("list-panes", "-t", f"{self.session}:agent", "-F", "#{pane_id}").splitlines())
+            agent = (after - before).pop()
+            self.zz("select-pane-kind", "-t", agent, "agent")
+            reply = self.zz("agent-send", "--wait", "--timeout", "25", "-t", agent, "walk through the stream")
+            if "Step 59" not in reply:
+                raise RuntimeError(f"the agent turn did not finish: {reply[-200:]!r}")
+            self.zz("select-pane", "-t", stream)
         self.zz("kill-window", "-t", previous)
         if scenario == "chrome":
             self.zz("command-prompt", "-b", "-C", "-t", self.client)
@@ -607,6 +667,8 @@ METRICS = [
     ("gui_wakeups_per_s", "wakeups/s"),
     ("frames", "frames"),
     ("draw_cpu_us_med", "draw_us"),
+    ("views_rendered_med", "views"),
+    ("layout_nodes_med", "layout_nodes"),
     ("request_layout_us_med", "layout_us"),
     ("prepaint_us_med", "prepaint_us"),
     ("paint_us_med", "paint_us"),
