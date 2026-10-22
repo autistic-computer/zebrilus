@@ -275,6 +275,12 @@ uses to show macOS browser frames on a native layer under the window (see
 display link after three vsyncs without frame demand, restarting it through `schedule_frame`
 and a new `frame_waker`, the same contract `zz_gpui_platform::web` uses for `requestAnimationFrame`.
 
+`PlatformWindow::schedule_frame_after` tells the platform when a frame that the inactive-window
+cap deferred is due. The Wayland window arms its retry timer for exactly that delay instead of a
+fixed 16.67 ms, which landed the default 33.3 ms cap at about 24 fps instead of 30. Only frame
+requests that draw, run next-frame callbacks or force a render restart the cap's clock. Other
+platforms keep the default, which calls `schedule_frame`.
+
 The web backend hosts several windows per page through `WindowOptions::mount`, mirrors each
 window's accessibility tree into ARIA elements, and installs a `globalThis.zzGpui` automation API;
 see [zz-gpui web windows for agents](/references/zz-gpui-web-agents.md).

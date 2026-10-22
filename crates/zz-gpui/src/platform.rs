@@ -996,6 +996,9 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn on_button_layout_changed(&self, _callback: Box<dyn FnMut()>) {}
     fn draw(&self, scene: &Scene);
     fn schedule_frame(&self) {}
+    fn schedule_frame_after(&self, _delay: Duration) {
+        self.schedule_frame();
+    }
     /// Whether GPUI re-presents the last frame for a second after fast input,
     /// which keeps a variable refresh rate display from lowering its rate
     /// between input events. Each of those frames encodes the whole scene. A
