@@ -2061,10 +2061,29 @@ fn clone_file(source: &Path, target: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(unix)]
+fn remove_dead_tmux_shims(root: &Path) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let pid = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_prefix("zz-tmux-shim-"))
+            .and_then(|rest| rest.split_once('-'))
+            .and_then(|(pid, _)| pid.parse::<u32>().ok());
+        if pid.is_some_and(|pid| pid != std::process::id() && !crate::pid_alive(pid)) {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+#[cfg(unix)]
 impl TmuxShimGuard {
     fn install(executable: PathBuf, pin: bool) -> std::io::Result<Self> {
         use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
 
+        remove_dead_tmux_shims(&std::env::temp_dir());
         let directory = loop {
             let sequence = TMUX_SHIM_SEQUENCE.fetch_add(1, Ordering::Relaxed);
             let directory = std::env::temp_dir()
@@ -88728,6 +88747,31 @@ set-option -g @alias-mixed-next yes
         let directory = shim.directory.clone();
         drop(shim);
         assert!(!directory.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shim_folders_of_dead_daemons_are_removed_and_live_ones_kept() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let mut child = std::process::Command::new("true")
+            .spawn()
+            .expect("spawn true");
+        let dead = child.id();
+        child.wait().expect("wait for true");
+        let own = std::process::id();
+        let names = [
+            format!("zz-tmux-shim-{dead}-1"),
+            format!("zz-tmux-shim-{own}-1"),
+            "zz-tmux-shim-notes".to_owned(),
+        ];
+        for name in &names {
+            fs::create_dir(root.path().join(name)).expect("create shim folder");
+            fs::write(root.path().join(name).join("zz"), b"").expect("write shim file");
+        }
+        remove_dead_tmux_shims(root.path());
+        assert!(!root.path().join(&names[0]).exists());
+        assert!(root.path().join(&names[1]).exists());
+        assert!(root.path().join(&names[2]).exists());
     }
 
     #[cfg(unix)]
