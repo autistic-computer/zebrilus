@@ -4709,4 +4709,496 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             Ok(())
         }
     }
+
+    #[cfg(target_os = "linux")]
+    mod overdraw {
+        use super::*;
+        use std::{borrow::Cow, collections::HashMap, time::Instant};
+        use zz_gpui::{
+            AtlasKey, AtlasTile, PlatformAtlas, PlatformHeadlessRenderer, RenderSvgParams, Scene,
+            TransformationMatrix, WindowCornerMask, hsla, point,
+        };
+
+        const WIDTH: f32 = 1920.0;
+        const HEIGHT: f32 = 1200.0;
+        const SCALE: f32 = 1.25;
+        const GLYPH_WIDTH: i32 = 9;
+        const GLYPH_HEIGHT: i32 = 18;
+
+        fn rect(x: f32, y: f32, width: f32, height: f32) -> Bounds<ScaledPixels> {
+            Bounds {
+                origin: Point {
+                    x: x.into(),
+                    y: y.into(),
+                },
+                size: Size {
+                    width: width.into(),
+                    height: height.into(),
+                },
+            }
+        }
+
+        fn viewport() -> ContentMask<ScaledPixels> {
+            ContentMask {
+                bounds: rect(0.0, 0.0, WIDTH, HEIGHT),
+            }
+        }
+
+        fn chrome_color() -> Hsla {
+            hsla(0.6, 0.1, 0.12, 1.0)
+        }
+
+        fn ring_color() -> Hsla {
+            hsla(0.0, 0.0, 1.0, 0.12)
+        }
+
+        fn fill(
+            bounds: Bounds<ScaledPixels>,
+            radius: f32,
+            color: Hsla,
+            content_mask: ContentMask<ScaledPixels>,
+        ) -> Quad {
+            Quad {
+                bounds,
+                content_mask,
+                background: color.into(),
+                corner_radii: Corners::all(radius.into()),
+                corner_smoothing: 4.0,
+                ..Default::default()
+            }
+        }
+
+        fn border(
+            scene: &mut Scene,
+            bounds: Bounds<ScaledPixels>,
+            radius: f32,
+            width: f32,
+            color: Hsla,
+            content_mask: ContentMask<ScaledPixels>,
+        ) {
+            let quad = Quad {
+                bounds,
+                content_mask,
+                background: hsla(0.0, 0.0, 0.0, 0.0).into(),
+                border_color: color,
+                corner_radii: Corners::all(radius.into()),
+                border_widths: Edges::all(width.into()),
+                corner_smoothing: 4.0,
+                ..Default::default()
+            };
+            let (left, top) = (bounds.left().0, bounds.top().0);
+            let (right, bottom) = (bounds.right().0, bounds.bottom().0);
+            let band = |horizontal: f32, vertical: f32| {
+                Bounds::from_corners(
+                    point(
+                        ScaledPixels(left + horizontal + 1.0),
+                        ScaledPixels(top + vertical + 1.0),
+                    ),
+                    point(
+                        ScaledPixels(right - horizontal - 1.0),
+                        ScaledPixels(bottom - vertical - 1.0),
+                    ),
+                )
+            };
+            let area = |bounds: &Bounds<ScaledPixels>| {
+                bounds.size.width.0.max(0.0) * bounds.size.height.0.max(0.0)
+            };
+            let horizontal_band = band(width, width.max(radius));
+            let vertical_band = band(width.max(radius), width);
+            let inner = if area(&horizontal_band) >= area(&vertical_band) {
+                horizontal_band
+            } else {
+                vertical_band
+            };
+            if inner.is_empty() {
+                scene.insert_primitive(quad);
+                return;
+            }
+            let strips = [
+                Bounds::from_corners(bounds.origin, point(bounds.right(), inner.top())),
+                Bounds::from_corners(point(bounds.left(), inner.bottom()), bounds.bottom_right()),
+                Bounds::from_corners(point(bounds.left(), inner.top()), inner.bottom_left()),
+                Bounds::from_corners(inner.top_right(), point(bounds.right(), inner.bottom())),
+            ];
+            for strip in strips {
+                let mask = content_mask.bounds.intersect(&strip);
+                if !mask.is_empty() {
+                    scene.insert_primitive(Quad {
+                        content_mask: ContentMask { bounds: mask },
+                        ..quad
+                    });
+                }
+            }
+        }
+
+        fn glyph(
+            bounds: Bounds<ScaledPixels>,
+            content_mask: Bounds<ScaledPixels>,
+            color: Hsla,
+            tile: AtlasTile,
+        ) -> MonochromeSprite {
+            MonochromeSprite {
+                order: 0,
+                pad: 0,
+                bounds,
+                content_mask: ContentMask {
+                    bounds: content_mask,
+                },
+                color,
+                tile,
+                transformation: TransformationMatrix::unit(),
+            }
+        }
+
+        fn faded_glyph(
+            scene: &mut Scene,
+            bounds: Bounds<ScaledPixels>,
+            clip: Bounds<ScaledPixels>,
+            color: Hsla,
+            tile: AtlasTile,
+            (opaque, gone): (f32, f32),
+        ) {
+            let left = bounds.left().0.max(clip.left().0);
+            let right = bounds.right().0.min(clip.right().0);
+            let (ramp_start, ramp_end) = (opaque.min(gone), opaque.max(gone));
+            let fades_out = opaque < gone;
+            let column = |from: f32, to: f32| {
+                Bounds::from_corners(
+                    point(ScaledPixels(from), clip.top()),
+                    point(ScaledPixels(to), clip.bottom()),
+                )
+            };
+            if right <= ramp_start || left >= ramp_end {
+                if (right <= ramp_start) == fades_out {
+                    scene.insert_primitive(glyph(bounds, clip, color, tile));
+                }
+                return;
+            }
+            if fades_out && left < ramp_start {
+                scene.insert_primitive(glyph(bounds, column(left, ramp_start), color, tile));
+            }
+            let stop = right.min(ramp_end);
+            let mut x = left.max(ramp_start).floor();
+            while x < stop {
+                let next = x + 1.0;
+                let opacity = (x + 0.5 - gone) / (opaque - gone);
+                scene.insert_primitive(glyph(
+                    bounds,
+                    column(x.max(left), next.min(stop)),
+                    color.opacity(opacity),
+                    tile,
+                ));
+                x = next;
+            }
+            if !fades_out && right > ramp_end {
+                scene.insert_primitive(glyph(bounds, column(ramp_end, right), color, tile));
+            }
+        }
+
+        fn floating_chrome() -> (Bounds<ScaledPixels>, f32) {
+            let inset = 12.0 * SCALE;
+            (
+                rect(inset, inset, WIDTH - 2.0 * inset, HEIGHT - 2.0 * inset),
+                13.5 * SCALE,
+            )
+        }
+
+        fn window_mask() -> WindowCornerMask {
+            let (chrome, radius) = floating_chrome();
+            WindowCornerMask {
+                bounds: chrome,
+                corner_radii: Corners::all(radius.into()),
+                corner_smoothing: 4.0,
+            }
+        }
+
+        fn frame_floating() -> Scene {
+            let (chrome, radius) = floating_chrome();
+            let mut scene = Scene::default();
+            scene.insert_primitive(Shadow {
+                order: 0,
+                blur_radius: (6.0 * SCALE).into(),
+                bounds: chrome,
+                corner_radii: Corners::all(radius.into()),
+                content_mask: viewport(),
+                color: hsla(0.0, 0.0, 0.0, 0.4),
+                element_bounds: chrome,
+                element_corner_radii: Corners::all(radius.into()),
+                inset: 0,
+                corner_smoothing: 4.0,
+            });
+            scene.insert_primitive(fill(chrome, radius, chrome_color(), viewport()));
+            border(&mut scene, chrome, radius, 1.0, ring_color(), viewport());
+            scene.finish();
+            scene.window_corner_mask = Some(window_mask());
+            scene
+        }
+
+        fn frame_tiled() -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            border(
+                &mut scene,
+                viewport().bounds,
+                0.0,
+                0.0,
+                ring_color(),
+                viewport(),
+            );
+            scene.finish();
+            scene
+        }
+
+        fn bordered() -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            let gap = 8.0 * SCALE;
+            let (pane_width, pane_height) = ((WIDTH - 3.0 * gap) / 2.0, (HEIGHT - 3.0 * gap) / 2.0);
+            for index in 0..4 {
+                let (column, row) = ((index % 2) as f32, (index / 2) as f32);
+                let pane = rect(
+                    (gap + column * (pane_width + gap)).round(),
+                    (gap + row * (pane_height + gap)).round(),
+                    pane_width.round(),
+                    pane_height.round(),
+                );
+                let radius = 10.0 * SCALE;
+                scene.insert_primitive(fill(pane, radius, hsla(0.6, 0.1, 0.16, 1.0), viewport()));
+                border(&mut scene, pane, radius, 1.0, ring_color(), viewport());
+            }
+            for row in 0..12 {
+                for column in 0..16 {
+                    let control = rect(
+                        40.0 + column as f32 * 115.0,
+                        60.0 + row as f32 * 90.0,
+                        100.0,
+                        40.0,
+                    );
+                    let radius = 6.0 * SCALE;
+                    scene.insert_primitive(fill(
+                        control,
+                        radius,
+                        hsla(0.6, 0.1, 0.22, 1.0),
+                        viewport(),
+                    ));
+                    border(
+                        &mut scene,
+                        control,
+                        radius,
+                        1.0,
+                        hsla(0.0, 0.0, 1.0, 0.2),
+                        viewport(),
+                    );
+                }
+            }
+            scene.finish();
+            scene
+        }
+
+        fn sidebar(tile: AtlasTile, faded: bool) -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            scene.insert_primitive(fill(
+                rect(0.0, 0.0, 300.0, HEIGHT),
+                0.0,
+                hsla(0.6, 0.1, 0.16, 1.0),
+                viewport(),
+            ));
+            let gone = 284.0;
+            let fade = (gone - 28.0 * SCALE, gone);
+            let color = hsla(0.0, 0.0, 0.9, 1.0);
+            for row in 0..40 {
+                let top = row as f32 * 30.0;
+                let clip = rect(0.0, top, gone, 30.0);
+                for index in 0..34 {
+                    let bounds = rect(
+                        16.0 + index as f32 * 10.0,
+                        top + 6.0,
+                        GLYPH_WIDTH as f32,
+                        GLYPH_HEIGHT as f32,
+                    );
+                    if faded {
+                        faded_glyph(&mut scene, bounds, clip, color, tile, fade);
+                    } else {
+                        scene.insert_primitive(glyph(bounds, clip, color, tile));
+                    }
+                }
+            }
+            scene.finish();
+            scene
+        }
+
+        fn glyph_grid(tile: AtlasTile, masked: bool) -> Scene {
+            let mut scene = Scene::default();
+            scene.insert_primitive(fill(viewport().bounds, 0.0, chrome_color(), viewport()));
+            let color = hsla(0.3, 0.6, 0.7, 1.0);
+            for row in 0..60 {
+                for column in 0..200 {
+                    let bounds = rect(
+                        (column as f32 * 9.6).floor(),
+                        row as f32 * 20.0 + 1.0,
+                        GLYPH_WIDTH as f32,
+                        GLYPH_HEIGHT as f32,
+                    );
+                    scene.insert_primitive(glyph(bounds, viewport().bounds, color, tile));
+                }
+            }
+            scene.finish();
+            if masked {
+                scene.window_corner_mask = Some(window_mask());
+            }
+            scene
+        }
+
+        fn glyph_tile(renderer: &WgpuHeadlessRenderer) -> anyhow::Result<AtlasTile> {
+            let size = Size {
+                width: DevicePixels(GLYPH_WIDTH),
+                height: DevicePixels(GLYPH_HEIGHT),
+            };
+            let bytes: Vec<u8> = (0..GLYPH_HEIGHT)
+                .flat_map(|y| (0..GLYPH_WIDTH).map(move |x| ((x * 37 + y * 11) % 256) as u8))
+                .collect();
+            renderer
+                .core
+                .atlas
+                .get_or_insert_with(
+                    AtlasKey::Svg(RenderSvgParams {
+                        path: "overdraw_glyph".into(),
+                        size,
+                    }),
+                    &mut || Ok(Some((size, Cow::Owned(bytes.clone())))),
+                )?
+                .ok_or_else(|| anyhow::anyhow!("no glyph tile"))
+        }
+
+        fn scenes(tile: AtlasTile) -> Vec<(&'static str, Scene)> {
+            let mut empty = Scene::default();
+            empty.finish();
+            vec![
+                ("clear", empty),
+                ("frame_floating", frame_floating()),
+                ("frame_tiled", frame_tiled()),
+                ("bordered", bordered()),
+                ("sidebar_faded", sidebar(tile, true)),
+                ("sidebar_clipped", sidebar(tile, false)),
+                ("glyph_grid", glyph_grid(tile, false)),
+                ("glyph_grid_masked", glyph_grid(tile, true)),
+            ]
+        }
+
+        fn gpu_render_ns() -> Option<u64> {
+            let mut clients = HashMap::new();
+            for entry in std::fs::read_dir("/proc/self/fdinfo").ok()? {
+                let Ok(text) = std::fs::read_to_string(entry.ok()?.path()) else {
+                    continue;
+                };
+                let field = |name: &str| {
+                    text.lines()
+                        .find_map(|line| line.strip_prefix(name))
+                        .and_then(|value| {
+                            value
+                                .trim()
+                                .trim_end_matches("ns")
+                                .trim()
+                                .parse::<u64>()
+                                .ok()
+                        })
+                };
+                if let (Some(client), Some(render)) =
+                    (field("drm-client-id:"), field("drm-engine-render:"))
+                {
+                    clients.insert(client, render);
+                }
+            }
+            (!clients.is_empty()).then(|| clients.values().sum())
+        }
+
+        fn time_scene(
+            renderer: &mut WgpuHeadlessRenderer,
+            scene: &Scene,
+            frames: u32,
+        ) -> anyhow::Result<(f64, Option<f64>)> {
+            let size = device_size(WIDTH as i32, HEIGHT as i32);
+            renderer.render(scene, size)?;
+            renderer
+                .context
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())?;
+            let gpu_start = gpu_render_ns();
+            let start = Instant::now();
+            for _ in 0..frames {
+                renderer.render(scene, size)?;
+            }
+            renderer
+                .context
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())?;
+            let wall = start.elapsed().as_secs_f64() * 1000.0 / f64::from(frames);
+            let gpu = gpu_start
+                .zip(gpu_render_ns())
+                .map(|(start, end)| (end - start) as f64 / 1e6 / f64::from(frames));
+            Ok((wall, gpu))
+        }
+
+        fn env_u32(name: &str, default: u32) -> u32 {
+            std::env::var(name)
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default)
+        }
+
+        fn spread(mut values: Vec<f64>) -> String {
+            values.sort_by(f64::total_cmp);
+            format!(
+                "median={:.4} min={:.4} max={:.4}",
+                values[values.len() / 2],
+                values[0],
+                values[values.len() - 1]
+            )
+        }
+
+        #[test]
+        #[ignore = "benchmark: cargo test -p zz-gpui-platform --all-features --release bench_overdraw -- --ignored --nocapture"]
+        fn bench_overdraw() -> anyhow::Result<()> {
+            let mut renderer = WgpuHeadlessRenderer::new()?;
+            println!("overdraw adapter {:?}", renderer.context.adapter.get_info());
+            let tile = glyph_tile(&renderer)?;
+            let scenes = scenes(tile);
+            let size = device_size(WIDTH as i32, HEIGHT as i32);
+            if let Some(directory) = std::env::var_os("OVERDRAW_DUMP") {
+                for (name, scene) in &scenes {
+                    let image = renderer.render_scene_to_image(scene, size)?;
+                    std::fs::write(
+                        std::path::Path::new(&directory).join(format!("{name}.rgba")),
+                        image.as_raw(),
+                    )?;
+                }
+            }
+            let frames = env_u32("OVERDRAW_FRAMES", 240);
+            let repeats = env_u32("OVERDRAW_REPEATS", 7);
+            let mut samples = vec![Vec::new(); scenes.len()];
+            for _ in 0..repeats {
+                for ((_, scene), samples) in scenes.iter().zip(&mut samples) {
+                    samples.push(time_scene(&mut renderer, scene, frames)?);
+                }
+            }
+            for ((name, scene), samples) in scenes.iter().zip(samples) {
+                let wall = samples.iter().map(|(wall, _)| *wall).collect();
+                let gpu: Vec<f64> = samples.iter().filter_map(|(_, gpu)| *gpu).collect();
+                println!(
+                    "overdraw scene={name} quads={} shadows={} sprites={} frames={frames} repeats={repeats} gpu_ms {} wall_ms {}",
+                    scene.quads.len(),
+                    scene.shadows.len(),
+                    scene.monochrome_sprites.len(),
+                    if gpu.is_empty() {
+                        "unavailable".to_string()
+                    } else {
+                        spread(gpu)
+                    },
+                    spread(wall),
+                );
+            }
+            Ok(())
+        }
+    }
 }
