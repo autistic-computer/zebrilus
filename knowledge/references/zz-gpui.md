@@ -122,7 +122,12 @@ Five fixes from building the iPhone client (`67e9cbc` to `01d7c9a`):
 - `PlatformWindow::keeps_presenting_after_input` (default true) lets a platform skip re-presenting
   the last frame for a second after fast input, which Zed does to keep ProMotion Macs from
   lowering their refresh rate. The iOS window returns false: its display link asks for its rate
-  itself, and each present encoded the whole scene again.
+  itself, and each present encoded the whole scene again. The Wayland and X11 windows return false
+  too: the compositor owns the refresh rate, Mutter allows VRR on an output only while a
+  fullscreen, unobscured surface covers it, and no Wayland protocol tells a client whether VRR is
+  on. In the `frame_pacing` example's input mode under headless GNOME Shell on an Iris Plus G7,
+  the 1.5 s after a 0.5 s scroll burst went from 60 commits and 102 GPU ms/s to 1 commit and
+  2 GPU ms/s.
 - `Window::end_touch_momentum` ends the touch fling a scroll listener swallowed. The next tick
   closes the stream with a zero-delta `Ended`. The pager calls it after a release it handled, and
   `coast_guard` calls it for sheets and the swipe back, so the display link can pause instead of

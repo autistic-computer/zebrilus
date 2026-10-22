@@ -1004,7 +1004,8 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// between input events. Each of those frames encodes the whole scene. A
     /// platform whose frame source asks for its refresh rate directly, as an
     /// iOS display link does with its preferred frame rate range, can return
-    /// false.
+    /// false, and so can one whose compositor owns the refresh rate, as on
+    /// Wayland and X11.
     fn keeps_presenting_after_input(&self) -> bool {
         true
     }
