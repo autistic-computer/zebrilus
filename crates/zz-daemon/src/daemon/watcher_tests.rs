@@ -34,7 +34,7 @@ fn start(
     shared
         .watcher_tx
         .register(
-            Watcher::terminal(pane, terminal, false),
+            Watcher::terminal(pane, terminal),
             terminal.events(),
             VecDeque::new(),
         )

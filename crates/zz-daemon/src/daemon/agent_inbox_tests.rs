@@ -1,25 +1,51 @@
 use super::super::agent_publisher::Publisher;
+use super::super::tests::take_reliable_messages;
 use super::*;
 
-fn fixture() -> (Arc<Shared>, AgentInbox, PaneId) {
+struct Fixture {
+    shared: Arc<Shared>,
+    inbox: AgentInbox,
+    pane: PaneId,
+    mailbox: Arc<OutboundMailbox>,
+}
+
+fn fixture() -> Fixture {
     let shared = Arc::new(Shared::new(1));
+    let mailbox = OutboundMailbox::new();
+    let (client, _) =
+        shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
     let mut context = ExecutionContext::default();
-    {
-        let mut inner = shared.inner.lock();
-        for command in [
-            CommandInvocation::new("new-session", ["-s", "agent-inbox"]),
-            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            CommandInvocation::new("split-window", ["--kind", "picker"]),
-            CommandInvocation::new("select-pane-kind", ["agent"]),
-        ] {
-            inner
-                .engine
-                .execute(&mut context, &command)
-                .expect("mux setup");
-        }
-    }
+    shared
+        .inner
+        .lock()
+        .engine
+        .execute(
+            &mut context,
+            &CommandInvocation::new("new-session", ["-s", "agent-inbox"]),
+        )
+        .expect("mux setup");
+    shared
+        .attach(client, context.session.expect("session"))
+        .expect("attach");
+    take_reliable_messages(&mailbox);
     let inbox = AgentInbox::new(&shared);
-    (shared, inbox, context.pane.expect("agent pane"))
+    Fixture {
+        shared,
+        inbox,
+        pane: context.pane.expect("terminal pane"),
+        mailbox,
+    }
+}
+
+fn spec() -> AgentPaneSpec {
+    AgentPaneSpec {
+        provider: zz_protocol::AgentProvider::Codex,
+        cwd: PathBuf::from("/"),
+        resume_session: None,
+        auto_approve: None,
+        workspace: AgentWorkspaceEnvironment::default(),
+        lens: None,
+    }
 }
 
 fn runtime(shared: &Arc<Shared>, pane: PaneId) -> (Publisher, Arc<AgentRuntime>, u64) {
@@ -31,147 +57,118 @@ fn runtime(shared: &Arc<Shared>, pane: PaneId) -> (Publisher, Arc<AgentRuntime>,
         None,
     ));
     runtime.set_runner_factory(Box::new(|_| Box::new(|_| Box::pin(std::future::pending()))));
-    assert!(runtime.open(pane, shared.agent_pane_spec(pane).expect("pane spec")));
+    assert!(runtime.open(pane, spec()));
     let generation = runtime.pane_generation(pane).expect("generation");
     *shared.agent.lock() = Some(Arc::clone(&runtime));
     (publisher, runtime, generation)
 }
 
+fn titled(title: &str) -> AgentPaneWire {
+    AgentPaneWire {
+        title: Some(title.to_owned()),
+        ..AgentPaneWire::default()
+    }
+}
+
+fn published_titles(fixture: &Fixture) -> Vec<String> {
+    take_reliable_messages(&fixture.mailbox)
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::AgentState { pane, state },
+                ..
+            }) if pane == fixture.pane => state.title,
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn retired_runtime_incarnation_messages_are_dropped() {
-    let (shared, mut inbox, pane) = fixture();
-    let (old, retired, generation) = runtime(&shared, pane);
-    {
-        let _inner = shared.inner.lock();
-        old.publish_agent_state(
-            generation,
-            pane,
-            AgentPaneWire {
-                phase: zz_protocol::AgentConnectionPhase::Running,
-                title: Some("retired state".into()),
-                ..AgentPaneWire::default()
-            },
-        );
-        old.title_agent_pane(generation, pane, "retired title".into());
-        old.adopt_agent_session(
-            generation,
-            pane,
-            AgentProvider::Codex,
-            "retired-session".into(),
-            None,
-        );
-    }
-    let (current, live, generation) = runtime(&shared, pane);
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let (old, retired, generation) = runtime(&fixture.shared, pane);
+    old.publish_agent_state(generation, pane, titled("retired state"));
+    let (current, live, generation) = runtime(&fixture.shared, pane);
     retired.shutdown();
-    inbox.turn(&shared);
-    {
-        let inner = shared.inner.lock();
-        assert_ne!(
-            inner.engine.state.pane(pane).unwrap().title,
-            "retired title"
-        );
-        let PaneKind::Agent(agent) = &inner.engine.state.pane(pane).unwrap().kind else {
-            panic!("agent pane");
-        };
-        assert_ne!(agent.session_id.as_deref(), Some("retired-session"));
-        assert_ne!(
-            inner
-                .agent_states
-                .get(&pane)
-                .and_then(|state| state.title.as_deref()),
-            Some("retired state")
-        );
-    }
-    current.publish_agent_state(
-        generation,
-        pane,
-        AgentPaneWire {
-            phase: zz_protocol::AgentConnectionPhase::Running,
-            title: Some("current state".into()),
-            ..AgentPaneWire::default()
-        },
-    );
-    inbox.turn(&shared);
-    assert_eq!(
-        shared.inner.lock().agent_states[&pane].title.as_deref(),
-        Some("current state")
-    );
+    fixture.inbox.turn(&fixture.shared);
+    assert!(!published_titles(&fixture).contains(&"retired state".to_owned()));
+    current.publish_agent_state(generation, pane, titled("current state"));
+    fixture.inbox.turn(&fixture.shared);
+    assert_eq!(published_titles(&fixture), ["current state"]);
     live.shutdown();
 }
 
 #[test]
-fn restarted_pane_generation_messages_are_dropped() {
-    let (shared, mut inbox, pane) = fixture();
-    let (publisher, runtime, old_generation) = runtime(&shared, pane);
-    publisher.title_agent_pane(old_generation, pane, "retired title".into());
-    publisher.publish_agent_state(
-        old_generation,
-        pane,
-        AgentPaneWire {
-            title: Some("retired state".into()),
-            ..AgentPaneWire::default()
-        },
-    );
-    assert!(runtime.restart(pane, shared.agent_pane_spec(pane).unwrap()));
+fn reopened_pane_generation_messages_are_dropped() {
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let (publisher, runtime, old_generation) = runtime(&fixture.shared, pane);
+    publisher.publish_agent_state(old_generation, pane, titled("retired state"));
+    runtime.close(pane);
+    assert!(runtime.open(pane, spec()));
     let generation = runtime.pane_generation(pane).unwrap();
     assert_ne!(generation, old_generation);
-    inbox.turn(&shared);
-    assert_ne!(
-        shared.inner.lock().engine.state.pane(pane).unwrap().title,
-        "retired title"
-    );
-    assert_ne!(
-        shared
-            .inner
-            .lock()
-            .agent_states
-            .get(&pane)
-            .and_then(|state| state.title.as_deref()),
-        Some("retired state")
-    );
-    publisher.title_agent_pane(generation, pane, "current title".into());
-    inbox.turn(&shared);
-    assert_eq!(
-        shared.inner.lock().engine.state.pane(pane).unwrap().title,
-        "current title"
-    );
+    fixture.inbox.turn(&fixture.shared);
+    assert!(!published_titles(&fixture).contains(&"retired state".to_owned()));
+    publisher.publish_agent_state(generation, pane, titled("current state"));
+    fixture.inbox.turn(&fixture.shared);
+    assert!(published_titles(&fixture).contains(&"current state".to_owned()));
     runtime.shutdown();
 }
 
 #[test]
 fn agent_inbox_bounds_each_turn_and_keeps_the_next_wake() {
-    let (shared, mut inbox, pane) = fixture();
-    let (publisher, runtime, generation) = runtime(&shared, pane);
-    inbox.turn(&shared);
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let (publisher, runtime, generation) = runtime(&fixture.shared, pane);
+    fixture.inbox.turn(&fixture.shared);
+    take_reliable_messages(&fixture.mailbox);
     for index in 0..=DRAIN_BURST {
-        publisher.publish_agent_state(
-            generation,
-            pane,
-            AgentPaneWire {
-                title: Some(index.to_string()),
-                ..AgentPaneWire::default()
-            },
-        );
+        publisher.publish_agent_state(generation, pane, titled(&index.to_string()));
     }
-    inbox.turn(&shared);
+    fixture.inbox.turn(&fixture.shared);
     assert_eq!(
-        shared.inner.lock().agent_states[&pane].title.as_deref(),
+        published_titles(&fixture).last().map(String::as_str),
         Some((DRAIN_BURST - 1).to_string().as_str())
     );
-    assert!(shared.agent_tx.pending.load(Ordering::Acquire));
-    inbox.turn(&shared);
-    assert_eq!(
-        shared.inner.lock().agent_states[&pane].title.as_deref(),
-        Some(DRAIN_BURST.to_string().as_str())
-    );
-    assert!(!shared.agent_tx.pending.load(Ordering::Acquire));
+    assert!(fixture.shared.agent_tx.pending.load(Ordering::Acquire));
+    fixture.inbox.turn(&fixture.shared);
+    assert_eq!(published_titles(&fixture), [DRAIN_BURST.to_string()]);
+    assert!(!fixture.shared.agent_tx.pending.load(Ordering::Acquire));
+    runtime.shutdown();
+}
+
+#[test]
+fn messages_for_a_pane_that_is_no_longer_a_terminal_are_dropped() {
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let (publisher, runtime, generation) = runtime(&fixture.shared, pane);
+    fixture.inbox.turn(&fixture.shared);
+    take_reliable_messages(&fixture.mailbox);
+    fixture
+        .shared
+        .inner
+        .lock()
+        .engine
+        .state
+        .pane_mut(pane)
+        .unwrap()
+        .kind = PaneKind::Picker {
+        inherit_cwd_from: None,
+    };
+    publisher.publish_agent_state(generation, pane, titled("not a terminal"));
+    fixture.inbox.turn(&fixture.shared);
+    assert!(published_titles(&fixture).is_empty());
     runtime.shutdown();
 }
 
 #[cfg(unix)]
 #[test]
 fn a_shell_hook_keeps_the_agent_inbox_running() {
-    let (shared, mut inbox, pane) = fixture();
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let shared = Arc::clone(&fixture.shared);
     let (publisher, runtime, generation) = runtime(&shared, pane);
     shared
         .execute(
@@ -188,73 +185,23 @@ fn a_shell_hook_keeps_the_agent_inbox_running() {
     let waker = Arc::new(mio::Waker::new(poll.registry(), mio::Token(1)).unwrap());
     let mut timers = timers::LoopTimers::new(&shared, &waker);
     let _jobs = pipe_jobs::Driver::new(&shared);
-    inbox.hooks.push_back(
+    fixture.inbox.hooks.push_back(
         PendingHookEvent::live_pane("pane-mode-changed", pane, &shared.inner.lock().engine)
             .expect("live hook pane"),
     );
-    inbox.turn(&shared);
-    publisher.title_agent_pane(generation, pane, "while hook waits".into());
+    fixture.inbox.turn(&shared);
+    take_reliable_messages(&fixture.mailbox);
+    publisher.publish_agent_state(generation, pane, titled("while hook waits"));
     timers.turn(&shared, &waker).unwrap();
     assert!(!timers.hooks.is_empty());
-    inbox.turn(&shared);
-    assert_eq!(
-        shared.inner.lock().engine.state.pane(pane).unwrap().title,
-        "while hook waits"
-    );
+    fixture.inbox.turn(&shared);
+    assert!(published_titles(&fixture).contains(&"while hook waits".to_owned()));
     let deadline = Instant::now() + Duration::from_secs(2);
     while !timers.hooks.is_empty() {
         timers.turn(&shared, &waker).unwrap();
         assert!(Instant::now() < deadline, "hook did not finish");
-        inbox.turn(&shared);
+        fixture.inbox.turn(&shared);
         thread::sleep(Duration::from_millis(1));
-    }
-    runtime.shutdown();
-}
-
-#[test]
-fn agent_status_reaches_the_pane_from_the_current_generation_only() {
-    let (shared, mut inbox, pane) = fixture();
-    let (publisher, runtime, generation) = runtime(&shared, pane);
-    inbox.turn(&shared);
-    let opened = shared
-        .inner
-        .lock()
-        .engine
-        .state
-        .pane(pane)
-        .map(|pane| (pane.status.clone(), pane.summary.changed_at));
-    assert_eq!(
-        opened.map(|(status, changed_at)| (
-            status.map(|status| (status.state, status.app)),
-            changed_at
-        )),
-        Some((Some((PaneStatusState::Idle, "codex".to_owned())), 0))
-    );
-    let status = |state, message: &str| PaneStatus {
-        state,
-        kind: None,
-        progress: None,
-        app: "codex".to_owned(),
-        title: String::new(),
-        message: message.to_owned(),
-    };
-    publisher.publish_agent_status(generation, pane, status(PaneStatusState::Working, ""));
-    publisher.publish_agent_status(generation, pane, status(PaneStatusState::Done, "shipped"));
-    publisher.publish_agent_status(
-        generation.wrapping_add(1),
-        pane,
-        status(PaneStatusState::Error, "stale"),
-    );
-    inbox.turn(&shared);
-    {
-        let inner = shared.inner.lock();
-        let pane = inner.engine.state.pane(pane).expect("agent pane");
-        assert_eq!(
-            pane.status.as_ref(),
-            Some(&status(PaneStatusState::Done, "shipped"))
-        );
-        assert!(pane.summary.unseen);
-        assert!(pane.summary.changed_at > 0);
     }
     runtime.shutdown();
 }

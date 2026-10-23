@@ -17,11 +17,10 @@ use crate::pane_frame::{
 use crate::{
     AgentSessionOpKind, BrowserCommand, Event, EventPayload, MAX_AGENT_IMAGE_FORMAT_BYTES,
     MAX_AGENT_OPTION_BYTES, MAX_AGENT_PROMPT_BYTES, MAX_AGENT_PROMPT_IMAGES,
-    MAX_AGENT_RESULT_BYTES, MAX_AGENT_SEND_BYTES, MAX_AGENT_SESSION_DIRECTORIES,
-    MAX_AGENT_SESSION_ID_BYTES, MAX_AGENT_UPDATES_BYTES, MAX_ARTIFACT_BYTES, MAX_GUI_TEXT_BYTES,
-    MAX_PASTE_UPLOAD_BYTES, MAX_PASTE_UPLOAD_CHUNK_BYTES, MAX_PASTE_UPLOAD_EXTENSION_BYTES,
-    PROTOCOL_VERSION, PaneId, PasteUploadPurpose, PastedImageFormat, ProtocolMessage,
-    agent_update_batch_bytes,
+    MAX_AGENT_RESULT_BYTES, MAX_AGENT_SESSION_DIRECTORIES, MAX_AGENT_SESSION_ID_BYTES,
+    MAX_AGENT_UPDATES_BYTES, MAX_ARTIFACT_BYTES, MAX_GUI_TEXT_BYTES, MAX_PASTE_UPLOAD_BYTES,
+    MAX_PASTE_UPLOAD_CHUNK_BYTES, MAX_PASTE_UPLOAD_EXTENSION_BYTES, PROTOCOL_VERSION, PaneId,
+    PasteUploadPurpose, PastedImageFormat, ProtocolMessage, agent_update_batch_bytes,
     framing::{
         Lane, MAX_ENCODED_FRAME_BYTES, ProtocolError, begin_enveloped_into, decode_enveloped,
         finish_enveloped_in_place, read_enveloped_into,
@@ -579,16 +578,6 @@ fn validate_control_message(message: &ProtocolMessage) -> Result<(), ProtocolErr
                 "startup configuration causes must total at most {MAX_STARTUP_CONFIG_CAUSES_BYTES} bytes"
             )));
         }
-    }
-    if let ProtocolMessage::Event(Event {
-        payload: EventPayload::AgentCommand { command, .. },
-        ..
-    }) = message
-        && command.text().len() > MAX_AGENT_SEND_BYTES
-    {
-        return Err(ProtocolError::InvalidGuiRequest(format!(
-            "agent payload must be at most {MAX_AGENT_SEND_BYTES} bytes"
-        )));
     }
     if let ProtocolMessage::Event(Event {
         payload:
@@ -1960,38 +1949,6 @@ mod tests {
         let encoded = encode_protocol_message(&message).expect("encode");
         assert_eq!(encoded[4], Lane::Control as u8);
         assert_eq!(decode_protocol_frame(&encoded).expect("decode"), message);
-    }
-
-    #[test]
-    fn agent_commands_round_trip_and_reject_oversized_payloads() {
-        let message = ProtocolMessage::Event(Event {
-            sequence: 102,
-            payload: EventPayload::AgentCommand {
-                pane: PaneId(3),
-                request_id: 77,
-                command: crate::AgentCommand::ComposerAppend {
-                    text: "review this diff".to_owned(),
-                },
-            },
-        });
-        let encoded = encode_protocol_message(&message).expect("encode");
-        assert_eq!(encoded[4], Lane::Control as u8);
-        assert_eq!(decode_protocol_frame(&encoded).expect("decode"), message);
-
-        let oversized = ProtocolMessage::Event(Event {
-            sequence: 103,
-            payload: EventPayload::AgentCommand {
-                pane: PaneId(3),
-                request_id: 78,
-                command: crate::AgentCommand::Prompt {
-                    text: "x".repeat(MAX_AGENT_SEND_BYTES + 1),
-                },
-            },
-        });
-        assert!(matches!(
-            encode_protocol_message(&oversized),
-            Err(ProtocolError::InvalidGuiRequest(_))
-        ));
     }
 
     fn agent_state_fixture() -> crate::AgentPaneWire {

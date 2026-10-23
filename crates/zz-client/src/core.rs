@@ -4,7 +4,7 @@ use std::{
 };
 
 use zz_protocol::{
-    AgentCommand, AgentPaneWire, BrowserCommand, ChooseBufferSearchState, ChooseBufferState,
+    AgentPaneWire, BrowserCommand, ChooseBufferSearchState, ChooseBufferState,
     ChooseTreeSearchState, ChooseTreeState, ChooserPresentation, ClientExitAction,
     ClientMessageKind, ClientView, ClipboardProducer, CommandPromptState, CommandResponse,
     ConfirmState, DisplayPanesState, Event, EventPayload, KeyBindingSnapshot, KeyTableSnapshot,
@@ -172,11 +172,6 @@ pub enum CoreEvent {
     OpenUri {
         pane: PaneId,
         uri: String,
-    },
-    AgentCommand {
-        pane: PaneId,
-        request_id: u64,
-        command: AgentCommand,
     },
     BrowserCommand {
         pane: PaneId,
@@ -1126,17 +1121,6 @@ impl ClientCore {
             }
             EventPayload::OpenUri { pane, uri } => {
                 self.events.push_back(CoreEvent::OpenUri { pane, uri });
-            }
-            EventPayload::AgentCommand {
-                pane,
-                request_id,
-                command,
-            } => {
-                self.events.push_back(CoreEvent::AgentCommand {
-                    pane,
-                    request_id,
-                    command,
-                });
             }
             EventPayload::BrowserCommand { pane, command } => {
                 self.events

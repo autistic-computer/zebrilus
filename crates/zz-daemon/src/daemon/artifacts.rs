@@ -956,23 +956,18 @@ mod tests {
     #[cfg(feature = "agent")]
     #[test]
     fn read_only_artifact_replies_do_not_submit_or_consume_the_reply_gap() {
-        use crate::agent::fixture::{Behavior, fixture_runner};
-
         let shared = Arc::new(Shared::new(1));
-        let (pane, token) = {
+        let token = {
             let mut inner = shared.inner.lock();
             let (_, _, pane) = inner.engine.state.create_session("artifact-reply").unwrap();
-            inner.engine.state.pane_mut(pane).unwrap().kind =
-                PaneKind::Agent(zz_protocol::AgentDescriptor::default());
-            let token = inner
+            inner
                 .artifacts
                 .register(
                     ArtifactRoot::Inline(Arc::from(&b"hi"[..])),
                     Some(pane),
                     true,
                 )
-                .unwrap();
-            (pane, token)
+                .unwrap()
         };
         let mailbox = OutboundMailbox::new();
         let (client, _) = shared.register_subscribed(ClientKind::Interactive, None, None, mailbox);
@@ -985,25 +980,6 @@ mod tests {
                 &CommandInvocation::new("attach-session", ["-r", "-t", "artifact-reply"]),
             )
             .unwrap();
-        let runtime = shared.build_agent_runtime(None).unwrap();
-        runtime.set_runner_factory(Box::new(|spec| {
-            fixture_runner(
-                spec.provider,
-                Behavior::Hang,
-                zz_protocol::AgentAutoApprove::Off,
-                true,
-            )
-        }));
-        assert!(runtime.open(pane, shared.agent_pane_spec(pane).unwrap()));
-        let ready = Instant::now() + Duration::from_secs(5);
-        while !runtime
-            .wire_state(pane)
-            .is_some_and(|state| state.phase == zz_protocol::AgentConnectionPhase::Ready)
-        {
-            assert!(Instant::now() < ready, "agent did not become ready");
-            thread::sleep(Duration::from_millis(2));
-        }
-
         shared.reply_from_artifact(client, &token, "blocked");
         assert!(
             shared
@@ -1015,10 +991,6 @@ mod tests {
                 .replied
                 .is_none()
         );
-        assert_eq!(
-            runtime.wire_state(pane).unwrap().phase,
-            zz_protocol::AgentConnectionPhase::Ready
-        );
         shared
             .execute(
                 client,
@@ -1028,14 +1000,6 @@ mod tests {
             )
             .unwrap();
         shared.reply_from_artifact(client, &token, "allowed");
-        let running = Instant::now() + Duration::from_secs(5);
-        while !runtime
-            .wire_state(pane)
-            .is_some_and(|state| state.phase == zz_protocol::AgentConnectionPhase::Running)
-        {
-            assert!(Instant::now() < running, "writable reply was not submitted");
-            thread::sleep(Duration::from_millis(2));
-        }
         assert!(
             shared
                 .inner
@@ -1046,7 +1010,6 @@ mod tests {
                 .replied
                 .is_some()
         );
-        runtime.shutdown();
     }
 
     #[test]

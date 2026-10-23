@@ -23,7 +23,6 @@ use crate::agent::{
     claude::{ClaudeCommand, run_claude_runtime},
     codex::{CodexCommand, run_codex_runtime},
     environment::{AgentWorkspaceEnvironment, warm_adapter_cache},
-    feed::{FeedSpec, run_subagent_feed},
     git_summary,
     journal::AgentJournal,
     runtime::{AgentSpawnConfig, RuntimeCommand, RuntimeControl, run_agent_runtime},
@@ -50,7 +49,6 @@ pub(crate) type AgentStreamSink =
 pub(crate) enum HostCommand {
     Prompt(QueuedPrompt),
     Cancel,
-    SetAutoApprove(AgentAutoApprove),
     /// Hand the queued prompts back so the composer can refill.
     Unqueue,
     RespondPermission {
@@ -89,10 +87,6 @@ pub(crate) enum HostCommand {
     },
     StopTask {
         task_id: String,
-    },
-    InterruptThread {
-        thread_id: String,
-        turn_id: String,
     },
 }
 
@@ -247,8 +241,15 @@ pub(crate) struct AgentPaneSpec {
     pub(crate) resume_session: Option<String>,
     pub(crate) auto_approve: Option<AgentAutoApprove>,
     pub(crate) workspace: AgentWorkspaceEnvironment,
-    pub(crate) feed: Option<FeedSpec>,
+    pub(crate) lens: Option<LensSpec>,
 }
+
+#[cfg(unix)]
+pub(crate) use crate::agent::lens::LensSpec;
+
+#[cfg(not(unix))]
+#[derive(Clone, Debug)]
+pub(crate) enum LensSpec {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AgentConnectionPhase {
@@ -320,7 +321,7 @@ impl AgentPaneState {
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self::new(&AgentPaneSpec {
-            feed: None,
+            lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -348,7 +349,6 @@ struct PaneHandle {
     prompts: Sender<QueuedPrompt>,
     close: Sender<()>,
     state: Arc<Mutex<AgentPaneState>>,
-    auto_approve: Arc<Mutex<AgentAutoApprove>>,
     thread: JoinHandle<()>,
 }
 
@@ -469,9 +469,10 @@ impl AgentHost {
         {
             return self.open_with(pane, generation, spec, runner);
         }
-        if let Some(feed) = spec.feed.clone() {
+        #[cfg(unix)]
+        if let Some(lens) = spec.lens.clone() {
             let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(run_subagent_feed(feed, channels))
+                Box::pin(crate::agent::lens::run_lens(lens, channels))
             });
             return self.open_with(pane, generation, spec, runner);
         }
@@ -518,10 +519,9 @@ impl AgentHost {
         if panes.contains_key(&pane) {
             return false;
         }
-        let auto_approve = Arc::new(Mutex::new(
+        let runtime_auto_approve = Arc::new(Mutex::new(
             spec.auto_approve.unwrap_or(self.config.lock().auto_approve),
         ));
-        let runtime_auto_approve = Arc::clone(&auto_approve);
         let state = Arc::new(Mutex::new(AgentPaneState::new(&spec)));
         let pane_state = Arc::clone(&state);
         let sink = Arc::clone(&self.sink);
@@ -569,7 +569,6 @@ impl AgentHost {
                 prompts: prompt_tx,
                 close: close_tx,
                 state,
-                auto_approve,
                 thread,
             },
         );
@@ -581,10 +580,6 @@ impl AgentHost {
         let Some(handle) = panes.get(&pane) else {
             return Err(command);
         };
-        if let HostCommand::SetAutoApprove(tier) = command {
-            *handle.auto_approve.lock() = tier;
-            return Ok(());
-        }
         if let HostCommand::Prompt(prompt) = command {
             return handle
                 .prompts
@@ -620,14 +615,6 @@ impl AgentHost {
         let handle = self.registry.panes.lock().remove(&pane)?;
         handle.close.close();
         Some(handle.thread)
-    }
-
-    pub(crate) fn auto_approve(&self, pane: PaneId) -> Option<AgentAutoApprove> {
-        self.registry
-            .panes
-            .lock()
-            .get(&pane)
-            .map(|handle| *handle.auto_approve.lock())
     }
 
     pub(crate) fn snapshot_state(&self, pane: PaneId) -> Option<AgentPaneState> {
@@ -951,7 +938,6 @@ impl PanePump {
         match command {
             HostCommand::Prompt(prompt) => self.prompt(prompt),
             HostCommand::Cancel => self.cancel(),
-            HostCommand::SetAutoApprove(_) => {}
             HostCommand::Unqueue => self.reclaim_queue(),
             HostCommand::RespondPermission { response } => match response {
                 PermissionResponse::Exact {
@@ -1004,9 +990,6 @@ impl PanePump {
             }
             HostCommand::StopTask { task_id } => {
                 self.send(RuntimeCommand::StopTask { task_id });
-            }
-            HostCommand::InterruptThread { thread_id, turn_id } => {
-                self.send(RuntimeCommand::InterruptThread { thread_id, turn_id });
             }
             HostCommand::Authenticate { method_id } => {
                 if !self.send(RuntimeCommand::Authenticate { method_id }) {
@@ -2006,7 +1989,7 @@ mod tests {
                 pane,
                 1,
                 AgentPaneSpec {
-                    feed: None,
+                    lens: None,
                     provider: AgentProvider::Codex,
                     cwd: PathBuf::from("/"),
                     resume_session: None,
@@ -2038,7 +2021,7 @@ mod tests {
             );
             let pane = PaneId(7);
             let spec = AgentPaneSpec {
-                feed: None,
+                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: cwd.unwrap_or_else(|| PathBuf::from("/")),
                 resume_session,
@@ -2376,7 +2359,7 @@ mod tests {
                     pane,
                     1,
                     AgentPaneSpec {
-                        feed: None,
+                        lens: None,
                         provider,
                         cwd: directory.path().to_owned(),
                         resume_session: None,
@@ -2866,45 +2849,6 @@ mod tests {
     }
 
     #[test]
-    fn a_live_auto_approve_change_answers_the_next_execute_tool() {
-        let fixture = Fixture::open(
-            Behavior::AskKindedPermission(ToolKind::Execute),
-            AgentAutoApprove::Reads,
-        );
-        fixture.wait_for_session();
-        let first = fixture.prompt_waiting("first");
-        fixture.recorder.wait("the permission request", |payload| {
-            matches!(payload, AgentStreamPayload::PermissionRequested { .. })
-        });
-        let request_id = fixture.state().pending_permissions[0].request_id;
-        fixture.command(HostCommand::RespondPermission {
-            response: PermissionResponse::Exact {
-                request_id,
-                option_id: Some("allow".to_owned()),
-            },
-        });
-        assert!(first.recv_timeout(DEADLINE).unwrap().is_ok());
-        fixture.command(HostCommand::SetAutoApprove(AgentAutoApprove::All));
-        assert_eq!(
-            fixture.host.auto_approve(fixture.pane),
-            Some(AgentAutoApprove::All)
-        );
-        let second = fixture.prompt_waiting("second");
-        assert!(second.recv_timeout(DEADLINE).unwrap().is_ok());
-        assert_eq!(
-            fixture
-                .recorder
-                .payloads()
-                .iter()
-                .filter(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. }))
-                .count(),
-            1
-        );
-        assert!(fixture.state().pending_permissions.is_empty());
-        fixture.close();
-    }
-
-    #[test]
     fn the_reads_tier_answers_a_read_tool_daemon_side() {
         let fixture = Fixture::open(
             Behavior::AskKindedPermission(ToolKind::Read),
@@ -3289,7 +3233,7 @@ mod tests {
     fn a_new_agent_session_reset_reclaims_prompts_still_in_the_mailbox() {
         let recorder = Recorder::default();
         let spec = AgentPaneSpec {
-            feed: None,
+            lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -3495,7 +3439,7 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
-                feed: None,
+                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
@@ -3570,7 +3514,7 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
-                feed: None,
+                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,

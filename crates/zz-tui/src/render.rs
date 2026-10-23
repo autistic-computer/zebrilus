@@ -2957,13 +2957,6 @@ fn placeholder_text(kind: &PaneKindSnapshot) -> (&'static str, String) {
     match kind {
         PaneKindSnapshot::Picker => ("Pane picker", "choose a pane in the zz app".to_owned()),
         PaneKindSnapshot::Browser(browser) => ("Browser", browser.url().to_owned()),
-        PaneKindSnapshot::Agent(agent) => (
-            "Agent",
-            agent.cwd.as_ref().map_or_else(
-                || agent.provider.label().to_owned(),
-                |cwd| format!("{} · {}", agent.provider.label(), cwd.display()),
-            ),
-        ),
         PaneKindSnapshot::Editor(editor) => (
             "Editor",
             editor.path.clone().unwrap_or_else(|| editor.cwd.clone()),

@@ -254,54 +254,30 @@ fn a_new_turn_drops_a_stale_unseen() {
 }
 
 #[test]
-fn opening_never_stamps_and_agent_panes_finish_only_on_done() {
+fn opening_never_stamps_and_idle_after_work_is_unseen() {
     let mut inner = ServerState::default();
-    let (_, _, terminal) = inner.engine.state.create_session("opens").expect("session");
-    let mut context = ExecutionContext::for_pane(&inner.engine.state, terminal).expect("context");
-    for command in [
-        CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-        CommandInvocation::new("split-window", ["--kind", "picker"]),
-        CommandInvocation::new("select-pane-kind", ["agent"]),
-    ] {
-        inner
-            .engine
-            .execute(&mut context, &command)
-            .expect("agent setup");
-    }
-    let agent = context.pane.expect("agent pane");
-
-    for pane in [terminal, agent] {
-        assert!(apply_pane_status(
-            &mut inner,
-            pane,
-            Some(status(PaneStatusState::Idle, "")),
-            10
-        ));
-        assert_eq!(summary(&inner, pane), PaneSummary::default());
-        apply_pane_status(
-            &mut inner,
-            pane,
-            Some(status(PaneStatusState::Working, "")),
-            20,
-        );
-        apply_pane_status(
-            &mut inner,
-            pane,
-            Some(status(PaneStatusState::Idle, "partial")),
-            30,
-        );
-        assert_eq!(summary(&inner, pane).changed_at, 30);
-    }
-    assert!(summary(&inner, terminal).unseen);
-    assert!(!summary(&inner, agent).unseen);
-
+    let (_, _, pane) = inner.engine.state.create_session("opens").expect("session");
+    assert!(apply_pane_status(
+        &mut inner,
+        pane,
+        Some(status(PaneStatusState::Idle, "")),
+        10
+    ));
+    assert_eq!(summary(&inner, pane), PaneSummary::default());
     apply_pane_status(
         &mut inner,
-        agent,
-        Some(status(PaneStatusState::Done, "")),
-        40,
+        pane,
+        Some(status(PaneStatusState::Working, "")),
+        20,
     );
-    assert!(summary(&inner, agent).unseen);
+    apply_pane_status(
+        &mut inner,
+        pane,
+        Some(status(PaneStatusState::Idle, "partial")),
+        30,
+    );
+    assert_eq!(summary(&inner, pane).changed_at, 30);
+    assert!(summary(&inner, pane).unseen);
 }
 
 #[test]
@@ -390,43 +366,6 @@ fn agent_state_mirror_covers_terminals_without_7501() {
     set("working");
     assert_eq!(read().0, None);
     shared.inner.lock().program_status_panes.remove(&pane);
-
-    let agent = {
-        let mut inner = shared.inner.lock();
-        for command in [
-            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            CommandInvocation::new("split-window", ["--kind", "picker"]),
-            CommandInvocation::new("select-pane-kind", ["agent"]),
-        ] {
-            inner
-                .engine
-                .execute(&mut context, &command)
-                .expect("agent setup");
-        }
-        context.pane.expect("agent pane")
-    };
-    assert!(matches!(
-        shared
-            .inner
-            .lock()
-            .engine
-            .state
-            .pane(agent)
-            .map(|pane| &pane.kind),
-        Some(PaneKind::Agent(_))
-    ));
-    run(
-        &shared,
-        &[
-            "set-option",
-            "-p",
-            "-t",
-            &agent.to_string(),
-            "@agent_state",
-            "working",
-        ],
-    );
-    assert_eq!(pane_status(&shared.inner.lock(), agent), None);
 }
 
 #[test]
@@ -473,18 +412,15 @@ fn shell_marks_reach_terminal_panes_only() {
     let mut inner = ServerState::default();
     let (_, _, terminal) = inner.engine.state.create_session("marks").expect("session");
     let mut context = ExecutionContext::for_pane(&inner.engine.state, terminal).expect("context");
-    let agent = {
-        for command in [
-            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            CommandInvocation::new("split-window", ["--kind", "picker"]),
-            CommandInvocation::new("select-pane-kind", ["agent"]),
-        ] {
-            inner
-                .engine
-                .execute(&mut context, &command)
-                .expect("agent setup");
-        }
-        context.pane.expect("agent pane")
+    let browser = {
+        inner
+            .engine
+            .execute(
+                &mut context,
+                &CommandInvocation::new("split-window", ["--kind", "browser"]),
+            )
+            .expect("browser setup");
+        context.pane.expect("browser pane")
     };
     let mark = |kind, start, end, status| ShellMark {
         kind,
@@ -539,10 +475,10 @@ fn shell_marks_reach_terminal_panes_only() {
 
     assert!(!note_shell_mark(
         &mut inner,
-        agent,
+        browser,
         &mark(ShellMarkKind::CommandFinished, 7, 9, Some(0))
     ));
-    assert_eq!(summary(&inner, agent), PaneSummary::default());
+    assert_eq!(summary(&inner, browser), PaneSummary::default());
 }
 
 #[test]
@@ -1087,41 +1023,6 @@ fn a_stalled_location_leaves_the_helper_pool_free() {
         shared.inner.lock().locations.jobs.is_empty()
     });
     shared.request_shutdown();
-}
-
-#[cfg(all(unix, feature = "agent"))]
-#[test]
-fn agent_panes_locate_their_descriptor_cwd() {
-    let scratch = tempfile::tempdir().expect("temp dir");
-    let repo = scratch.path().join("agent-repo");
-    git_repo(&repo, "ref: refs/heads/agents\n");
-    let expected = resolve_location("", &repo, daemon_home());
-    let shared = Arc::new(Shared::new(1));
-    let agent = {
-        let mut inner = shared.inner.lock();
-        let mut context = ExecutionContext::default();
-        let cwd = repo.display().to_string();
-        for command in [
-            CommandInvocation::new("new-session", ["-d", "-s", "agent-cwd"]),
-            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            CommandInvocation::new("split-window", ["--kind", "picker"]),
-            CommandInvocation::new("select-pane-kind", ["-c", cwd.as_str(), "agent"]),
-        ] {
-            inner
-                .engine
-                .execute(&mut context, &command)
-                .expect("agent setup");
-        }
-        context.pane.expect("agent pane")
-    };
-    let location = || {
-        let summary = summary(&shared.inner.lock(), agent);
-        (summary.cwd, summary.repo, summary.branch)
-    };
-
-    shared.apply_agent_status(agent, status(PaneStatusState::Working, ""));
-    wait_until("the agent location", || location() == expected);
-    assert_eq!(location().2, "agents");
 }
 
 #[cfg(unix)]
