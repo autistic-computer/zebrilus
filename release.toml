@@ -15,3 +15,10 @@ search = '(?m)(name = "zz-(?:app|client|daemon-client|gpui-kit|protocol|terminal
 replace = '${1}{{version}}'
 exactly = 7
 prerelease = true
+
+[[pre-release-replacements]]
+file = "../../clients/storybook/Cargo.lock"
+search = '(?m)(name = "zz-(?:client|gpui-kit|protocol|terminal|ui)"\nversion = ")[^"]+'
+replace = '${1}{{version}}'
+exactly = 5
+prerelease = true
