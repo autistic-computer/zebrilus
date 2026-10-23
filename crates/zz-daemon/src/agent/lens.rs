@@ -33,6 +33,7 @@ const LOCATE: Duration = Duration::from_secs(1);
 const CODEX_LOCATE: Duration = Duration::from_secs(5);
 const ROLLOUT_DAYS: usize = 7;
 const SETTLE: Duration = Duration::from_secs(5);
+const IDLE_GRACE: Duration = Duration::from_secs(2);
 const TAIL_BYTES: u64 = 8 * 1024 * 1024;
 const READ_LIMIT: u64 = 4 * 1024 * 1024;
 const PERMISSION_PROMPT: &str = "permission prompt";
@@ -528,6 +529,7 @@ struct Turn {
     id: u64,
     sent: Instant,
     busy: bool,
+    idle_since: Option<Instant>,
     cancelled: bool,
 }
 
@@ -695,7 +697,12 @@ impl Lens {
         }
         let settled = self.turn.as_mut().is_some_and(|turn| {
             turn.busy |= status.busy;
-            finished || (!status.busy && (turn.busy || turn.sent.elapsed() >= SETTLE))
+            if status.busy {
+                turn.idle_since = None;
+                return finished;
+            }
+            let idle = *turn.idle_since.get_or_insert_with(Instant::now);
+            finished || (turn.busy && idle.elapsed() >= IDLE_GRACE) || turn.sent.elapsed() >= SETTLE
         });
         if settled {
             payloads.extend(self.settle(false));
@@ -828,6 +835,7 @@ impl Lens {
                     id: turn_id,
                     sent: Instant::now(),
                     busy: false,
+                    idle_since: None,
                     cancelled: false,
                 });
                 Vec::new()
@@ -1127,6 +1135,13 @@ mod tests {
         })
     }
 
+    fn turn_duration(uuid: &str, parent: &str) -> Value {
+        json!({
+            "type": "system", "subtype": "turn_duration", "uuid": uuid, "parentUuid": parent,
+            "isSidechain": false, "durationMs": 1200,
+        })
+    }
+
     fn texts(payloads: &[AgentStreamPayload], kind: &str) -> Vec<String> {
         payloads
             .iter()
@@ -1211,7 +1226,17 @@ mod tests {
         claudes.record("idle", "");
         let idle = lens.tick();
         assert!(idle.contains(&AgentStreamPayload::Activity { busy: false }));
-        assert!(idle.iter().any(|payload| matches!(
+        assert!(
+            !idle
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::PromptFinished { .. })),
+            "idle before the transcript lands keeps the turn open"
+        );
+        claudes.line(&answer("a1", "u1", "all green"));
+        claudes.line(&turn_duration("d1", "a1"));
+        let done = lens.tick();
+        assert!(texts(&done, "agent_message_chunk").contains(&"all green".to_owned()));
+        assert!(done.iter().any(|payload| matches!(
             payload,
             AgentStreamPayload::PromptFinished { turn_id: 3, outcome: AgentPromptOutcome::Finished { stop_reason } }
                 if stop_reason == "end_turn"
@@ -1321,6 +1346,7 @@ mod tests {
             "{torn:?}"
         );
         claudes.record("idle", "");
+        claudes.line(&turn_duration("d1", "u1"));
         assert!(lens.tick().iter().any(|payload| matches!(
             payload,
             AgentStreamPayload::PromptFinished { turn_id: 3, .. }
