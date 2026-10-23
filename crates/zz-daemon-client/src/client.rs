@@ -1841,6 +1841,18 @@ impl InteractiveClient {
         }
     }
 
+    /// Whether an embedded ssh connection mirrors the host's listening
+    /// localhost ports onto this device. Off until turned on, so a client
+    /// holding several hosts forwards only the one on screen.
+    pub fn set_loopback_discovery(&self, enabled: bool) {
+        #[cfg(target_os = "ios")]
+        if let Some(forward) = &self.russh_forward {
+            forward.set_loopback_discovery(enabled);
+        }
+        #[cfg(not(target_os = "ios"))]
+        let _ = enabled;
+    }
+
     pub fn forward_loopback(&self, port: u16) -> io::Result<()> {
         if port == 0 {
             return Err(io::Error::new(

@@ -4,6 +4,8 @@ mod authentication;
 #[cfg(target_os = "ios")]
 mod browser_pane;
 mod compact;
+#[cfg(target_os = "ios")]
+mod fleet;
 mod floating;
 mod hosts;
 mod picker;
@@ -131,11 +133,14 @@ pub fn session_from_url(url: &str) -> Option<String> {
 
 pub struct AppShell {
     connection: Entity<Connection>,
+    _connection_subscriptions: [Subscription; 2],
+    #[cfg(target_os = "ios")]
+    fleet: Vec<(Entity<Connection>, Subscription)>,
     connection_status: String,
     connected: bool,
     idle_guard: Option<zz_gpui::Task<()>>,
     #[cfg(target_os = "ios")]
-    auth_prompt_id: Option<u64>,
+    auth_prompt_id: Option<(zz_gpui::EntityId, u64)>,
     #[cfg(target_os = "ios")]
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
@@ -187,6 +192,140 @@ pub struct AppShell {
     _subscriptions: Vec<Subscription>,
 }
 
+fn watch_connection(
+    connection: &Entity<Connection>,
+    window: &mut Window,
+    cx: &mut Context<AppShell>,
+) -> [Subscription; 2] {
+    let observer = cx.observe(connection, |this, connection, cx| {
+        let connection = connection.read(cx);
+        if this.connected != connection.connected || this.connection_status != connection.status {
+            this.connected = connection.connected;
+            this.connection_status.clone_from(&connection.status);
+            this.sync_idle_guard(cx);
+            cx.notify();
+        }
+    });
+    let events = cx.subscribe_in(
+        connection,
+        window,
+        |this, connection, event: &zz_client::CoreEvent, window, cx| {
+            match event {
+                zz_client::CoreEvent::ViewportChanged { pane, .. } => {
+                    if this.waiting_panes.remove(pane) {
+                        cx.notify();
+                    }
+                    return;
+                }
+                zz_client::CoreEvent::StatusChanged | zz_client::CoreEvent::AgentUpdates { .. } => {
+                    return;
+                }
+                zz_client::CoreEvent::AgentStateChanged { pane, attention } => {
+                    if *attention == Some(zz_client::AgentAttentionEdge::Done)
+                        && (!window.is_window_active() || this.focused_pane != Some(*pane))
+                    {
+                        this.unseen_agents.insert(*pane);
+                    }
+                }
+                zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. } => {
+                    #[cfg(target_os = "ios")]
+                    if matches!(event, zz_client::CoreEvent::HelloReceived) {
+                        this.remember_host(cx);
+                    }
+                    if matches!(event, zz_client::CoreEvent::HelloReceived) {
+                        this.flat.clock = zz_client::window_summary::DaemonClock::from_hello(
+                            connection.read(cx).core.server_clock(),
+                            unix_seconds(),
+                        );
+                    }
+                    if matches!(event, zz_client::CoreEvent::Attached { .. }) {
+                        connection.update(cx, Connection::set_color_scheme);
+                    }
+                    if matches!(event, zz_client::CoreEvent::Attached { .. }) {
+                        this.prompt_revision = this.prompt_revision.wrapping_add(1).max(1);
+                        this.chooser_revision = this.chooser_revision.wrapping_add(1).max(1);
+                    }
+                    this.focused_pane = None;
+                    this.compact.reset_attachment();
+                    this.waiting_panes.clear();
+                    this.output_terminal = None;
+                    this.set_split_drag(None);
+                    this.pane_drag = None;
+                    this.pane_layout_override = None;
+                }
+                zz_client::CoreEvent::SnapshotChanged => {
+                    if this.split_drag.is_some_and(|state| {
+                        state.committed_generation.is_some_and(|generation| {
+                            generation < connection.read(cx).core.snapshot().generation
+                        })
+                    }) {
+                        this.set_split_drag(None);
+                    }
+                }
+                zz_client::CoreEvent::ClientMessage {
+                    kind,
+                    text,
+                    duration_ms,
+                    message_id,
+                    ..
+                } => {
+                    use zz_ui::{WindowExt as _, notification::Notification};
+                    let notification = match kind {
+                        zz_protocol::ClientMessageKind::Info => Notification::info(text.clone()),
+                        zz_protocol::ClientMessageKind::Success => {
+                            Notification::success(text.clone())
+                        }
+                        zz_protocol::ClientMessageKind::Warning => {
+                            Notification::warning(text.clone())
+                        }
+                        zz_protocol::ClientMessageKind::Error => Notification::error(text.clone()),
+                    };
+                    let notification = match duration_ms {
+                        Some(0) => notification.autohide(false),
+                        Some(duration) => notification
+                            .autohide_after(std::time::Duration::from_millis(u64::from(*duration))),
+                        None => notification,
+                    };
+                    let notification = if let Some(id) = message_id {
+                        notification.key(format!("web-message-{id}"))
+                    } else {
+                        notification
+                    };
+                    window.push_notification(notification, cx);
+                }
+                zz_client::CoreEvent::ClientMessageCleared { message_id } => {
+                    use zz_ui::WindowExt as _;
+                    window.dismiss_notification(&format!("web-message-{message_id}"), cx);
+                }
+                zz_client::CoreEvent::CommandResponse(zz_protocol::CommandResponse::Error {
+                    ..
+                }) => {
+                    this.set_split_drag(None);
+                    this.pane_layout_override = None;
+                }
+                zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
+                zz_client::CoreEvent::CommandPromptChanged => {
+                    this.prompt_revision = this.prompt_revision.wrapping_add(1).max(1);
+                }
+                zz_client::CoreEvent::ChooseTreeChanged => {
+                    this.chooser_revision = this.chooser_revision.wrapping_add(1).max(1);
+                }
+                zz_client::CoreEvent::MenuChanged => {
+                    this.menu_selection = connection
+                        .read(cx)
+                        .core
+                        .menu()
+                        .and_then(|menu| menu.selected)
+                        .map(|index| index as usize);
+                }
+                _ => {}
+            }
+            cx.notify();
+        },
+    );
+    [observer, events]
+}
+
 impl AppShell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let connection = cx.new(Connection::new);
@@ -210,137 +349,7 @@ impl AppShell {
             }
         });
         let key_events = cx.intercept_keystrokes(key_listener);
-        let observer = cx.observe(&connection, |this, connection, cx| {
-            let connection = connection.read(cx);
-            if this.connected != connection.connected || this.connection_status != connection.status
-            {
-                this.connected = connection.connected;
-                this.connection_status.clone_from(&connection.status);
-                this.sync_idle_guard(cx);
-                cx.notify();
-            }
-        });
-        let events = cx.subscribe_in(
-            &connection,
-            window,
-            |this, connection, event: &zz_client::CoreEvent, window, cx| {
-                match event {
-                    zz_client::CoreEvent::ViewportChanged { pane, .. } => {
-                        if this.waiting_panes.remove(pane) {
-                            cx.notify();
-                        }
-                        return;
-                    }
-                    zz_client::CoreEvent::StatusChanged
-                    | zz_client::CoreEvent::AgentUpdates { .. } => return,
-                    zz_client::CoreEvent::AgentStateChanged { pane, attention } => {
-                        if *attention == Some(zz_client::AgentAttentionEdge::Done)
-                            && (!window.is_window_active() || this.focused_pane != Some(*pane))
-                        {
-                            this.unseen_agents.insert(*pane);
-                        }
-                    }
-                    zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. } => {
-                        #[cfg(target_os = "ios")]
-                        if matches!(event, zz_client::CoreEvent::HelloReceived) {
-                            this.remember_host(cx);
-                        }
-                        if matches!(event, zz_client::CoreEvent::HelloReceived) {
-                            this.flat.clock = zz_client::window_summary::DaemonClock::from_hello(
-                                connection.read(cx).core.server_clock(),
-                                unix_seconds(),
-                            );
-                        }
-                        if matches!(event, zz_client::CoreEvent::Attached { .. }) {
-                            connection.update(cx, Connection::set_color_scheme);
-                        }
-                        if matches!(event, zz_client::CoreEvent::Attached { .. }) {
-                            this.prompt_revision = this.prompt_revision.wrapping_add(1).max(1);
-                            this.chooser_revision = this.chooser_revision.wrapping_add(1).max(1);
-                        }
-                        this.focused_pane = None;
-                        this.compact.reset_attachment();
-                        this.waiting_panes.clear();
-                        this.output_terminal = None;
-                        this.set_split_drag(None);
-                        this.pane_drag = None;
-                        this.pane_layout_override = None;
-                    }
-                    zz_client::CoreEvent::SnapshotChanged => {
-                        if this.split_drag.is_some_and(|state| {
-                            state.committed_generation.is_some_and(|generation| {
-                                generation < connection.read(cx).core.snapshot().generation
-                            })
-                        }) {
-                            this.set_split_drag(None);
-                        }
-                    }
-                    zz_client::CoreEvent::ClientMessage {
-                        kind,
-                        text,
-                        duration_ms,
-                        message_id,
-                        ..
-                    } => {
-                        use zz_ui::{WindowExt as _, notification::Notification};
-                        let notification = match kind {
-                            zz_protocol::ClientMessageKind::Info => {
-                                Notification::info(text.clone())
-                            }
-                            zz_protocol::ClientMessageKind::Success => {
-                                Notification::success(text.clone())
-                            }
-                            zz_protocol::ClientMessageKind::Warning => {
-                                Notification::warning(text.clone())
-                            }
-                            zz_protocol::ClientMessageKind::Error => {
-                                Notification::error(text.clone())
-                            }
-                        };
-                        let notification = match duration_ms {
-                            Some(0) => notification.autohide(false),
-                            Some(duration) => notification.autohide_after(
-                                std::time::Duration::from_millis(u64::from(*duration)),
-                            ),
-                            None => notification,
-                        };
-                        let notification = if let Some(id) = message_id {
-                            notification.key(format!("web-message-{id}"))
-                        } else {
-                            notification
-                        };
-                        window.push_notification(notification, cx);
-                    }
-                    zz_client::CoreEvent::ClientMessageCleared { message_id } => {
-                        use zz_ui::WindowExt as _;
-                        window.dismiss_notification(&format!("web-message-{message_id}"), cx);
-                    }
-                    zz_client::CoreEvent::CommandResponse(
-                        zz_protocol::CommandResponse::Error { .. },
-                    ) => {
-                        this.set_split_drag(None);
-                        this.pane_layout_override = None;
-                    }
-                    zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
-                    zz_client::CoreEvent::CommandPromptChanged => {
-                        this.prompt_revision = this.prompt_revision.wrapping_add(1).max(1);
-                    }
-                    zz_client::CoreEvent::ChooseTreeChanged => {
-                        this.chooser_revision = this.chooser_revision.wrapping_add(1).max(1);
-                    }
-                    zz_client::CoreEvent::MenuChanged => {
-                        this.menu_selection = connection
-                            .read(cx)
-                            .core
-                            .menu()
-                            .and_then(|menu| menu.selected)
-                            .map(|index| index as usize);
-                    }
-                    _ => {}
-                }
-                cx.notify();
-            },
-        );
+        let connection_subscriptions = watch_connection(&connection, window, cx);
         let preferences = settings::Preferences::load();
         let appearance_view = cx.weak_entity();
         let appearance_observer = window.observe_window_appearance(move |window, cx| {
@@ -349,15 +358,20 @@ impl AppShell {
             });
         });
         let activation_observer = cx.observe_window_activation(window, |this, window, cx| {
-            this.connection.update(cx, |connection, cx| {
-                connection.set_focused(window.is_window_active(), cx);
-            });
+            let active = window.is_window_active();
+            for connection in this.host_connections() {
+                connection.update(cx, |connection, cx| connection.set_focused(active, cx));
+            }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
         #[cfg(target_os = "ios")]
         let hosts = hosts::Hosts::new(window, cx);
-        let this = Self {
+        #[cfg_attr(not(target_os = "ios"), allow(unused_mut))]
+        let mut this = Self {
             connection,
+            _connection_subscriptions: connection_subscriptions,
+            #[cfg(target_os = "ios")]
+            fleet: Vec::new(),
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
@@ -415,15 +429,11 @@ impl AppShell {
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
             compact: compact::CompactState::default(),
-            _subscriptions: vec![
-                key_events,
-                observer,
-                events,
-                appearance_observer,
-                activation_observer,
-            ],
+            _subscriptions: vec![key_events, appearance_observer, activation_observer],
         };
         this.connection.update(cx, Connection::start);
+        #[cfg(target_os = "ios")]
+        this.reconnect_saved_hosts(window, cx);
         this.preferences.apply(&this.connection, window, cx);
         #[cfg(target_os = "ios")]
         cx.set_menus(this.menus());
@@ -442,6 +452,13 @@ impl AppShell {
                 std::future::pending::<()>().await;
             })
         });
+    }
+
+    pub(super) fn host_connections(&self) -> Vec<Entity<Connection>> {
+        let attached = std::iter::once(self.connection.clone());
+        #[cfg(target_os = "ios")]
+        let attached = attached.chain(self.fleet.iter().map(|(connection, _)| connection.clone()));
+        attached.collect()
     }
 
     fn send_input(&self, input: InputMessage, cx: &mut App) {

@@ -235,6 +235,7 @@ pub struct Connection {
     commands: HashMap<u64, String>,
     remembered_session: Option<SessionId>,
     attaching: bool,
+    background: bool,
     retry_default: bool,
     focused: bool,
     color_scheme: Option<zz_terminal::TerminalColorScheme>,
@@ -285,6 +286,7 @@ impl Connection {
             commands: HashMap::new(),
             remembered_session: None,
             attaching: false,
+            background: false,
             retry_default: false,
             focused: true,
             color_scheme: None,
@@ -492,12 +494,93 @@ impl Connection {
 
     #[cfg(target_os = "ios")]
     pub fn connect_to(&mut self, endpoint: String, cx: &mut Context<Self>) {
+        self.dial(endpoint, false, cx);
+    }
+
+    #[cfg(target_os = "ios")]
+    fn dial(&mut self, endpoint: String, background: bool, cx: &mut Context<Self>) {
         if self.endpoint.as_deref() != Some(endpoint.as_str()) {
             self.remembered_session = None;
         }
         self.endpoint = Some(endpoint);
+        self.background = background;
         self.resume = false;
         self.reconnect(cx);
+    }
+
+    /// Connects to `endpoint` without attaching: the host's sessions,
+    /// windows and panes arrive, but no terminal output, until
+    /// [`Self::bring_forward`].
+    #[cfg(target_os = "ios")]
+    pub fn connect_background(&mut self, endpoint: String, cx: &mut Context<Self>) {
+        self.dial(endpoint, true, cx);
+    }
+
+    /// Whether a connection is on its way: signing in, or waiting to retry.
+    #[must_use]
+    pub fn busy_or_connecting(&self) -> bool {
+        #[cfg(target_os = "ios")]
+        {
+            self.busy()
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            !self.connected
+        }
+    }
+
+    #[must_use]
+    pub fn background(&self) -> bool {
+        self.background
+    }
+
+    #[must_use]
+    pub fn remembered_session(&self) -> Option<SessionId> {
+        self.remembered_session.or_else(|| {
+            self.core
+                .snapshot()
+                .sessions
+                .first()
+                .map(|session| session.id)
+        })
+    }
+
+    /// Detaches and keeps only the host's tree, for a host that is
+    /// connected but not on screen.
+    pub fn send_to_background(&mut self, cx: &mut Context<Self>) {
+        if self.background {
+            return;
+        }
+        self.background = true;
+        #[cfg(target_os = "ios")]
+        if let Some(client) = &self.client {
+            client.set_loopback_discovery(false);
+        }
+        if self.connected {
+            self.attaching = false;
+            self.send(ProtocolMessage::Detach, cx);
+            self.status = "Connected".into();
+        }
+        cx.notify();
+    }
+
+    /// Attaches to `session`, or to the session it was last on.
+    pub fn bring_forward(&mut self, session: Option<SessionId>, cx: &mut Context<Self>) {
+        let was_background = std::mem::replace(&mut self.background, false);
+        #[cfg(target_os = "ios")]
+        if let Some(client) = &self.client {
+            client.set_loopback_discovery(true);
+        }
+        if let Some(session) = session {
+            self.remembered_session = Some(session);
+        }
+        if self.connected && (was_background || session.is_some()) {
+            let target = self
+                .remembered_session
+                .map_or_else(String::new, |id| id.to_string());
+            self.attach_target(target, cx);
+        }
+        cx.notify();
     }
 
     #[cfg(target_os = "ios")]
@@ -585,9 +668,12 @@ impl Connection {
                         |id| id.to_string(),
                     )
                 });
-                self.attaching = true;
-                let mut native =
-                    crate::transport::Connection::connect(endpoint, Some(target), true);
+                self.attaching = !self.background;
+                let mut native = crate::transport::Connection::connect(
+                    endpoint,
+                    (!self.background).then_some(target),
+                    true,
+                );
                 let ready = native.ready.take();
                 self.native = Some(native);
                 self.reader = ready.map(|mut ready| {
@@ -821,7 +907,10 @@ impl Connection {
                     );
                     #[cfg(target_os = "ios")]
                     let target = self.pending_session.take().unwrap_or(target);
-                    if !self.attaching {
+                    if self.background {
+                        self.status = "Connected".into();
+                        self.send(ProtocolMessage::Resync, cx);
+                    } else if !self.attaching {
                         self.attach_target(target, cx);
                     }
                 }
@@ -968,6 +1057,10 @@ impl Connection {
                     }),
                     cx,
                 ),
+                CoreEvent::Detached { .. } if self.background => {
+                    self.history.clear();
+                    self.status = "Connected".into();
+                }
                 CoreEvent::Detached { .. } => {
                     self.history.clear();
                     self.status = "Detached".into();
@@ -1000,6 +1093,7 @@ impl Connection {
             match event {
                 crate::transport::Event::Connected(client) => {
                     self.resume = true;
+                    client.set_loopback_discovery(!self.background);
                     let hello = client.server_hello().clone();
                     self.client = Some(client);
                     self.receive(ProtocolMessage::ServerHello(Box::new(hello)), cx);

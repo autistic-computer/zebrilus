@@ -5,11 +5,17 @@ use super::AppShell;
 
 impl AppShell {
     pub(super) fn sync_authentication(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(prompt) = self.connection.read(cx).pending_auth_prompt().cloned() else {
+        let Some((connection, prompt)) =
+            self.host_connections().into_iter().find_map(|connection| {
+                let prompt = connection.read(cx).pending_auth_prompt().cloned()?;
+                Some((connection, prompt))
+            })
+        else {
             self.auth_prompt_id = None;
             return;
         };
-        if self.auth_prompt_id == Some(prompt.id)
+        let key = (connection.entity_id(), prompt.id);
+        if self.auth_prompt_id == Some(key)
             || window
                 .root::<Root>()
                 .flatten()
@@ -17,8 +23,12 @@ impl AppShell {
         {
             return;
         }
-        self.auth_prompt_id = Some(prompt.id);
-        let connection = self.connection.clone();
+        self.auth_prompt_id = Some(key);
+        let host = connection
+            .read(cx)
+            .endpoint()
+            .map_or_else(|| "host".to_owned(), super::hosts::host_title);
+        let sign_in = format!("Sign in to {host}");
         let input = (prompt.kind == zz_daemon_client::AskpassPromptKind::Secret)
             .then(|| cx.new(|cx| InputState::new(window, cx)));
         let focus = input.as_ref().map(|input| input.focus_handle(cx));
@@ -29,7 +39,7 @@ impl AppShell {
                 let answer = input.clone();
                 zz_ui::feedback::ssh_text_prompt_dialog(
                     dialog,
-                    "Sign in to host",
+                    sign_in.clone(),
                     &prompt.text,
                     input,
                     prompt.echo,

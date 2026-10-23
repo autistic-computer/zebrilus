@@ -6,10 +6,13 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
+    button::{Button, ButtonVariants as _},
     compact::{
-        ArrowPad, KeyRow, PageDot, PillLabel, PillPlacement, PopoverKey, PopoverKeyItem,
-        PopoverKeyTap, ToolKeys, WhichKeyList, compact_floating_bar, compact_floating_pill,
-        compact_hud, compact_pane_header, page_dots,
+        ArrowPad, HostState, KeyRow, OVERVIEW_CARD_GAP, PageDot, PillLabel, PillPlacement,
+        PopoverKey, PopoverKeyItem, PopoverKeyTap, ToolKeys, WhichKeyList, compact_bar_button,
+        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
+        compact_pane_header, overview_card, overview_choice_row, overview_host_empty,
+        overview_host_row, overview_section_heading, overview_session_heading, page_dots,
     },
     pane::pane_header_icon_button,
     v_flex,
@@ -66,6 +69,18 @@ pub const STORY: Story = Story {
             name: "Bindings list",
             summary: "WhichKeyList: the prefix table as a touch list, grouped, your own keys in the accent color.",
             build: |_, cx| stateless(bindings, cx),
+        },
+        Section {
+            id: "overview",
+            name: "Overview",
+            summary: "One host per page: its sessions inline, each with its windows' cards, and the host pill that pages hosts with one dot per host. + in the bar makes a new window; a host that is not connected shows why and one thing to do.",
+            build: |_, cx| stateless(overview, cx),
+        },
+        Section {
+            id: "drawers",
+            name: "Hosts and New drawers",
+            summary: "The rows of the drawers the overview bar opens: every host with its state, and what + makes.",
+            build: |_, cx| stateless(drawers, cx),
         },
         Section {
             id: "screen",
@@ -185,6 +200,248 @@ fn dots(_: &mut Window, cx: &mut App) -> AnyElement {
                 cx,
             ),
         )
+        .into_any_element()
+}
+
+fn host_bar(id: &'static str, title: &str, meta: &str, page: usize, cx: &App) -> AnyElement {
+    let placement = placement();
+    let pill = compact_floating_pill(
+        id,
+        PillLabel {
+            icon: IconName::Server,
+            title: title.to_owned().into(),
+            meta: meta.to_owned().into(),
+            warning: false,
+        },
+        page_dots(
+            &[(0..3).map(|index| dot(index == page, false)).collect()],
+            cx,
+        ),
+        &placement,
+        cx,
+    );
+    let new = compact_bar_button(format!("{id}-new"), IconName::Plus);
+    let settings = compact_bar_button(format!("{id}-settings"), IconName::Settings);
+    compact_floating_bar(pill, &placement, cx)
+        .child(compact_floating_group([new, settings], &placement, cx))
+        .into_any_element()
+}
+
+fn card(id: &'static str, icon: IconName, title: &str, current: bool, cx: &App) -> AnyElement {
+    let muted = cx.theme().foreground.muted();
+    let preview = div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_color(muted)
+        .child(zz_ui::Icon::new(icon.clone()).size(px(20.0)))
+        .into_any_element();
+    overview_card(
+        id,
+        format!("{id}-press"),
+        icon,
+        title.to_owned(),
+        Some(preview),
+        current,
+        false,
+        cx,
+    )
+    .into_any_element()
+}
+
+fn host_page(cx: &App) -> impl IntoElement {
+    let row = |cards: Vec<AnyElement>| {
+        div()
+            .flex()
+            .gap(px(OVERVIEW_CARD_GAP))
+            .px(px(16.0))
+            .py(px(2.0))
+            .children(cards)
+    };
+    v_flex()
+        .pb(px(8.0))
+        .child(overview_session_heading("zz", cx))
+        .child(overview_section_heading(1, "daemon", Some("~/dev/zz"), cx))
+        .child(row(vec![
+            card(
+                "overview-cargo",
+                IconName::SquareTerminal,
+                "cargo test",
+                true,
+                cx,
+            ),
+            card("overview-agent", IconName::Bot, "perf audit", false, cx),
+        ]))
+        .child(overview_section_heading(
+            2,
+            "site",
+            Some("~/dev/zz/site/src/content/docs/guides"),
+            cx,
+        ))
+        .child(row(vec![card(
+            "overview-site",
+            IconName::Globe,
+            "localhost:4321",
+            false,
+            cx,
+        )]))
+        .child(overview_session_heading("scratch", cx))
+        .child(overview_section_heading(1, "notes", None, cx))
+        .child(row(vec![card(
+            "overview-notes",
+            IconName::SquareTerminal,
+            "nvim",
+            false,
+            cx,
+        )]))
+}
+
+fn empty_page(cx: &App, action: AnyElement, detail: &str) -> impl IntoElement {
+    div().h(px(320.0)).child(overview_host_empty(
+        "alienware",
+        detail.to_owned(),
+        Some(action),
+        cx,
+    ))
+}
+
+fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    states()
+        .columns(2)
+        .state(
+            "a connected host",
+            phone(
+                v_flex()
+                    .child(host_page(cx))
+                    .child(host_bar("overview-bar-macbook", "macbook", "2 sessions", 0, cx)),
+                cx,
+            ),
+        )
+        .state(
+            "a host that is not connected",
+            phone(
+                v_flex()
+                    .child(empty_page(
+                        cx,
+                        Button::new("overview-connect").label("Connect").into_any_element(),
+                        "fabri@alienware is not connected. Your other hosts stay connected while it signs in.",
+                    ))
+                    .child(host_bar(
+                        "overview-bar-alienware",
+                        "alienware",
+                        "Not connected",
+                        2,
+                        cx,
+                    )),
+                cx,
+            ),
+        )
+        .state(
+            "signing in",
+            phone(
+                v_flex()
+                    .child(empty_page(
+                        cx,
+                        Button::new("overview-cancel")
+                            .label("Cancel")
+                            .ghost()
+                            .into_any_element(),
+                        "Connecting…",
+                    ))
+                    .child(host_bar("overview-bar-ubuntu", "ubuntu", "Connecting…", 1, cx)),
+                cx,
+            ),
+        )
+        .into_any_element()
+}
+
+fn drawers(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    let muted = cx.theme().foreground.muted();
+    let hosts = v_flex()
+        .p(px(8.0))
+        .child(overview_host_row(
+            "drawer-macbook",
+            HostState::Connected,
+            "macbook",
+            "2 sessions",
+            true,
+            cx,
+        ))
+        .child(overview_host_row(
+            "drawer-xps",
+            HostState::Connected,
+            "xps",
+            "1 session",
+            false,
+            cx,
+        ))
+        .child(
+            overview_host_row(
+                "drawer-ubuntu",
+                HostState::Connecting,
+                "ubuntu",
+                "Connecting…",
+                false,
+                cx,
+            )
+            .child(Button::new("drawer-ubuntu-cancel").label("Cancel").ghost()),
+        )
+        .child(
+            overview_host_row(
+                "drawer-alienware",
+                HostState::Offline,
+                "alienware",
+                "Not connected",
+                false,
+                cx,
+            )
+            .child(Button::new("drawer-alienware-connect").label("Connect")),
+        );
+    let new = v_flex()
+        .p(px(8.0))
+        .child(
+            div()
+                .px(px(12.0))
+                .pb(px(8.0))
+                .text_size(px(13.0))
+                .text_color(muted)
+                .child("Opens as a new window in zz on macbook."),
+        )
+        .child(overview_choice_row(
+            "drawer-terminal",
+            Some(zz_ui::Icon::new(IconName::SquareTerminal)),
+            "Terminal",
+            "A shell in the current folder",
+            cx,
+        ))
+        .child(overview_choice_row(
+            "drawer-agent",
+            Some(zz_ui::Icon::new(IconName::Bot)),
+            "Agent",
+            "Claude Code or Codex in the current folder",
+            cx,
+        ))
+        .child(overview_choice_row(
+            "drawer-browser",
+            Some(zz_ui::Icon::new(IconName::Globe)),
+            "Browser",
+            "A web page on macbook, localhost included",
+            cx,
+        ))
+        .child(overview_choice_row(
+            "drawer-session",
+            Some(zz_ui::Icon::new(IconName::Layers)),
+            "New session",
+            "Its own set of windows on macbook",
+            cx,
+        ));
+    states()
+        .columns(2)
+        .state("hosts", phone(hosts, cx))
+        .state("new", phone(new, cx))
         .into_any_element()
 }
 

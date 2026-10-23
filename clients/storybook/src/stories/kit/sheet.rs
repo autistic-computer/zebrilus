@@ -3,8 +3,10 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _,
-    compact::{bottom_sheet, sheet_action, sheet_close, sheet_option},
-    h_flex, v_flex,
+    compact::{
+        BottomSheet, bottom_sheet, sheet_action, sheet_close, sheet_detail_row, sheet_option,
+    },
+    h_flex, roles, v_flex,
 };
 
 use crate::story::Framed as _;
@@ -18,21 +20,24 @@ pub const STORY: Story = Story {
     sections: &[Section {
         id: "bottom-sheet",
         name: "Bottom sheet",
-        summary: "Two phone-sized frames: a picker with a checked option and an action row, and a short sheet of commands.",
+        summary: "Phone-sized frames, each sheet 8pt in from the sides and resting on a 34pt bottom safe area: a picker with a checked option and an action row, a short sheet of commands, and choices that each say what they do.",
         build: |_, cx| stateless(sheets, cx),
     }],
 };
 
 const LANGUAGES: [&str; 5] = ["English", "Deutsch", "Español", "Português", "Français"];
 
-fn phone(content: impl IntoElement, sheet: impl IntoElement, cx: &App) -> impl IntoElement {
+const SCREEN_RADIUS: f32 = 55.0;
+const SAFE_BOTTOM: f32 = 34.0;
+
+fn phone(content: impl IntoElement, sheet: BottomSheet, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     div()
         .relative()
         .w(px(390.0))
         .h(px(600.0))
         .overflow_hidden()
-        .rounded(px(28.0))
+        .rounded(px(SCREEN_RADIUS))
         .framed(cx)
         .bg(theme.surface(Elevation::Panel).fill)
         .child(content)
@@ -72,7 +77,7 @@ fn sheets(_: &mut Window, cx: &mut App) -> AnyElement {
                 "Add a language",
                 cx,
             )),
-        px(0.0),
+        px(SAFE_BOTTOM),
         |_, _| {},
     );
     let commands = bottom_sheet(
@@ -95,12 +100,60 @@ fn sheets(_: &mut Window, cx: &mut App) -> AnyElement {
                 "Close pane",
                 cx,
             )),
-        px(0.0),
+        px(SAFE_BOTTOM),
+        |_, _| {},
+    );
+    let muted = cx.theme().foreground.muted();
+    let choices = bottom_sheet(
+        "new-sheet",
+        "New",
+        [sheet_close("new-close").into_any_element()],
+        v_flex()
+            .list_inset(cx)
+            .pb(px(8.0))
+            .child(
+                div()
+                    .px(px(12.0))
+                    .pb(px(10.0))
+                    .text_size(px(13.0))
+                    .line_height(px(18.0))
+                    .text_color(muted)
+                    .child("Opens as a new window in zz on macbook."),
+            )
+            .child(sheet_detail_row(
+                "new-terminal",
+                roles::PHONE_ROW,
+                Some(Icon::new(IconName::SquareTerminal)),
+                "Terminal",
+                "A shell in the current folder",
+                cx,
+            ))
+            .child(sheet_detail_row(
+                "new-agent",
+                roles::PHONE_ROW,
+                Some(Icon::new(IconName::Bot)),
+                "Agent",
+                "Claude Code or Codex in the current folder",
+                cx,
+            ))
+            .child(sheet_detail_row(
+                "new-browser",
+                roles::PHONE_ROW,
+                Some(Icon::new(IconName::Globe)),
+                "Browser",
+                "A web page on macbook, localhost included",
+                cx,
+            )),
+        px(SAFE_BOTTOM),
         |_, _| {},
     );
     states()
         .columns(2)
         .state("picker", phone(backdrop("Settings", cx), picker, cx))
         .state("commands", phone(backdrop("work", cx), commands, cx))
+        .state(
+            "choices with a line",
+            phone(backdrop("zz", cx), choices, cx),
+        )
         .into_any_element()
 }

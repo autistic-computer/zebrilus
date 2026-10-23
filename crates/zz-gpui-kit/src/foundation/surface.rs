@@ -810,6 +810,13 @@ impl SurfaceRole {
         ..Kind::Floating.knobs()
     });
 
+    pub const DRAWER: Self = Self::under(
+        &Self::SHEET,
+        "drawer",
+        "Drawers",
+        "Sheets a touch screen opens in place of a dropdown, resting above the bottom safe area",
+    );
+
     pub const TOAST: Self = Self::new(
         "toast",
         Kind::Floating,
@@ -938,6 +945,18 @@ impl SurfaceRole {
 
     pub const KEYCAP: Self = Self::new("keycap", Kind::Label, "Keycaps", "Key hints");
 
+    pub const ICON_TILE: Self = Self::new(
+        "icon-tile",
+        Kind::Label,
+        "Icon tiles",
+        "The tile behind the icon that leads a sheet row, and the icon's ink",
+    )
+    .with(StylePatch::EMPTY.outline(false).ink(Ink::Rest))
+    .with_knobs(Knobs {
+        ink: Ink::ALL,
+        ..Kind::Label.knobs()
+    });
+
     /// The handle a sheet or a bar is dragged by, filled with ink.
     pub const GRABBER: Self = Self::under(
         &Self::BADGE,
@@ -949,7 +968,7 @@ impl SurfaceRole {
 
     /// The roles the kit itself names: every kind and the groups within
     /// them.
-    pub const KIT: [Self; 26] = [
+    pub const KIT: [Self; 28] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
         Kind::Pane.role(),
@@ -958,6 +977,7 @@ impl SurfaceRole {
         Self::POPOVER,
         Self::DIALOG,
         Self::SHEET,
+        Self::DRAWER,
         Self::TOAST,
         Self::TOOLTIP,
         Kind::Button.role(),
@@ -974,6 +994,7 @@ impl SurfaceRole {
         Kind::Label.role(),
         Self::BADGE,
         Self::KEYCAP,
+        Self::ICON_TILE,
         Self::GRABBER,
         Kind::Rule.role(),
     ];
