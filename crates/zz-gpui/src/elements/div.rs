@@ -3538,6 +3538,8 @@ impl Interactivity {
                     if *scroll_offset != old_scroll_offset {
                         window.claim_scroll(key);
                         cx.notify(current_view);
+                    } else if !delta_x.is_zero() || !delta_y.is_zero() {
+                        window.pin_scroll();
                     }
                 }
             });
