@@ -934,6 +934,8 @@ impl StateInner {
         };
         if new_scroll_top != old_scroll_top {
             window.claim_scroll(key);
+        } else if delta.y != px(0.) {
+            window.pin_scroll();
         }
 
         if self.alignment == ListAlignment::Bottom && new_scroll_top == scroll_max {

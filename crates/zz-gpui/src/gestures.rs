@@ -863,7 +863,7 @@ impl TouchGestureRecognizer {
                         Point::default(),
                         TouchPhase::Ended,
                     )));
-                    true
+                    !momentum.ended
                 } else {
                     false
                 };

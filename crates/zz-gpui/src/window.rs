@@ -1391,6 +1391,7 @@ pub struct Window {
     focus_lost_path: SmallVec<[FocusId; 8]>,
     default_prevented: bool,
     scroll_latch: Option<(ScrollKey, Instant)>,
+    scroll_pinned: bool,
     mouse_position: Point<Pixels>,
     mouse_hit_test: HitTest,
     modifiers: Modifiers,
@@ -2274,6 +2275,7 @@ impl Window {
             focus_lost_path: SmallVec::new(),
             default_prevented: true,
             scroll_latch: None,
+            scroll_pinned: false,
             mouse_position,
             mouse_hit_test: HitTest::default(),
             modifiers,
@@ -3594,6 +3596,14 @@ impl Window {
         if self.scroll_latch.is_none() {
             self.scroll_latch = Some((key, Instant::now()));
         }
+    }
+
+    /// Records that a scroll container took the scroll wheel event being dispatched but
+    /// could not move, because it is pinned at its edge. A touch fling step that pins a
+    /// container and moves none ends the fling, so the next touch is a tap instead of a
+    /// catch of a fling the content no longer shows.
+    pub fn pin_scroll(&mut self) {
+        self.scroll_pinned = true;
     }
 
     /// Determine whether the given action is available along the dispatch path to the currently focused element.
@@ -6982,7 +6992,12 @@ impl Window {
     fn schedule_touch_momentum_tick(&mut self) {
         self.on_next_frame(|window, cx| {
             if let Some(gesture) = window.touch_gestures.tick_momentum() {
+                window.default_prevented = false;
+                window.scroll_pinned = false;
                 window.dispatch_recognized_touch_gesture(gesture, cx);
+                if window.scroll_pinned && !window.default_prevented {
+                    window.touch_gestures.end_momentum();
+                }
             }
             if window.touch_gestures.has_momentum() {
                 window.schedule_touch_momentum_tick();
@@ -11089,6 +11104,56 @@ mod tests {
             seen.borrow()[release_events..],
             [(TouchPhase::Ended, px(0.))],
             "the fling closes with one zero-delta Ended"
+        );
+    }
+
+    #[zz_gpui::test]
+    fn a_fling_into_a_pinned_edge_ends_so_the_next_tap_clicks(cx: &mut TestAppContext) {
+        struct EdgeView(Rc<Cell<usize>>);
+        impl Render for EdgeView {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let clicks = self.0.clone();
+                div().id("scroller").size_full().overflow_x_scroll().child(
+                    div()
+                        .id("target")
+                        .w(px(4000.))
+                        .h_full()
+                        .on_click(move |_, _, _| clicks.set(clicks.get() + 1)),
+                )
+            }
+        }
+
+        let clicks = Rc::new(Cell::new(0));
+        let window = cx.add_window({
+            let clicks = clicks.clone();
+            move |_, _| EdgeView(clicks)
+        });
+        let fling = TouchId(1);
+        dispatch_touch(window, cx, fling, TouchPhase::Started, 100.);
+        for step in 1..=5 {
+            std::thread::sleep(Duration::from_millis(4));
+            dispatch_touch(
+                window,
+                cx,
+                fling,
+                TouchPhase::Moved,
+                100. + step as f32 * 40.,
+            );
+        }
+        dispatch_touch(window, cx, fling, TouchPhase::Ended, 300.);
+        window
+            .update(cx, |_, window, cx| {
+                window.simulate_next_frame(cx);
+            })
+            .unwrap();
+
+        let tap = TouchId(2);
+        dispatch_touch(window, cx, tap, TouchPhase::Started, 200.);
+        dispatch_touch(window, cx, tap, TouchPhase::Ended, 200.);
+        assert_eq!(
+            clicks.get(),
+            1,
+            "a fling that cannot move the content is over, so a touch after it is a tap"
         );
     }
 
