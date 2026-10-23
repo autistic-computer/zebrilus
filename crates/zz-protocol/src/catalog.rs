@@ -665,6 +665,7 @@ static PINNED_TMUX_USAGE_OVERRIDES: &[(&str, &str)] = &[
 pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "events",
     "agent-catalog",
+    "providers",
     "new-agent-session",
     "capture-pane",
     "capturep",
@@ -808,6 +809,7 @@ pub static INTERNAL_COMMAND_NAMES: &[&str] = &[
     "set-editor-path",
     "select-pane-kind",
     "agent-catalog",
+    "providers",
 ];
 
 pub static NATIVE_COMMAND_NAMES: &[&str] = &[
@@ -826,6 +828,7 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "inspect",
     "list-hosts",
     "new-agent-session",
+    "providers",
     "reload-config",
     "restart-agent-pane",
     "run-pane",
@@ -945,6 +948,19 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         usage: "[-t target-pane] provider request-id",
         options: &[CommandOptionSpec::value("-t", Pane, "target agent pane")],
         positionals: &[FreeForm, FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "providers",
+        aliases: &[],
+        description: "Check, update, or install the coding-agent CLIs on this host; the answer arrives on the client event stream, not stdout",
+        usage: "[-u provider]",
+        options: &[CommandOptionSpec::value(
+            "-u",
+            FreeForm,
+            "update or install claude-code or codex",
+        )],
+        positionals: &[],
         variadic: None,
     },
     CommandSpec {

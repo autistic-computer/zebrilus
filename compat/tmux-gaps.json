@@ -332,6 +332,7 @@
         "native-command:inspect",
         "native-command:list-hosts",
         "native-command:new-agent-session",
+        "native-command:providers",
         "native-command:reload-config",
         "native-command:restart-agent-pane",
         "native-command:run-pane",

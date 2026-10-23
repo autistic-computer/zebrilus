@@ -816,6 +816,8 @@ struct HostConnection {
     ssh_auth_declined: bool,
     color_scheme_sent: Option<TerminalColorScheme>,
     background_core: ClientCore,
+    providers: Option<zz_protocol::ProvidersReport>,
+    providers_requested: bool,
 }
 
 impl HostConnection {
@@ -845,6 +847,8 @@ impl HostConnection {
             ssh_auth_declined: false,
             color_scheme_sent: None,
             background_core: ClientCore::new(),
+            providers: None,
+            providers_requested: false,
         }
     }
 
@@ -923,6 +927,8 @@ impl HostConnection {
             ssh_auth_declined: false,
             color_scheme_sent: None,
             background_core: ClientCore::new(),
+            providers: None,
+            providers_requested: false,
         })
     }
 
@@ -3123,6 +3129,44 @@ impl MuxClient {
         }
     }
 
+    pub(crate) fn host_providers(&self, host: HostId) -> Option<&zz_protocol::ProvidersReport> {
+        self.connections.get(&host)?.providers.as_ref()
+    }
+
+    pub(crate) fn providers_unrequested(&self) -> bool {
+        self.connections.values().any(|connection| {
+            matches!(connection.state, HostState::Connected) && !connection.providers_requested
+        })
+    }
+
+    pub(crate) fn request_providers(&mut self, force: bool) {
+        let hosts = self
+            .connections
+            .iter_mut()
+            .filter(|(_, connection)| {
+                matches!(connection.state, HostState::Connected)
+                    && (force || !connection.providers_requested)
+            })
+            .map(|(host, connection)| {
+                connection.providers_requested = true;
+                *host
+            })
+            .collect::<Vec<_>>();
+        for host in hosts {
+            self.execute_on_host(
+                host,
+                CommandInvocation::new("providers", Vec::<String>::new()),
+            );
+        }
+    }
+
+    pub(crate) fn update_provider(&self, host: HostId, provider: zz_protocol::AgentProvider) {
+        self.execute_on_host(
+            host,
+            CommandInvocation::new("providers", ["-u", provider.as_str()]),
+        );
+    }
+
     pub fn new_session(&self, host: HostId) {
         let Some(connection) = self.connections.get(&host) else {
             log::warn!("cannot create a session on unknown fleet host {host:?}");
@@ -4096,6 +4140,16 @@ impl MuxClient {
 
     fn handle_message(&mut self, host: HostId, message: ProtocolMessage, cx: &mut Context<Self>) {
         let message = match message {
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::Providers(report),
+                ..
+            }) => {
+                if let Some(connection) = self.connections.get_mut(&host) {
+                    connection.providers = Some(report);
+                }
+                cx.notify();
+                return;
+            }
             ProtocolMessage::Batch(batch) => {
                 match batch.messages() {
                     Ok(messages) => {
@@ -4552,7 +4606,8 @@ impl MuxClient {
             | CoreEvent::HelloReceived
             | CoreEvent::ViewportChanged { .. }
             | CoreEvent::StatusChanged
-            | CoreEvent::CommandOutputChanged => {}
+            | CoreEvent::CommandOutputChanged
+            | CoreEvent::ProvidersChanged => {}
             CoreEvent::OpenPathPicker { pane, start_dir } => {
                 cx.emit(PathPickerUpdate::Open { pane, start_dir });
             }

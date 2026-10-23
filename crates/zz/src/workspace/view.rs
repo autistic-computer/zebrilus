@@ -5238,6 +5238,7 @@ mod tests {
             | CoreEvent::AgentStateChanged { .. }
             | CoreEvent::AgentLagged { .. }
             | CoreEvent::AgentSessions { .. }
+            | CoreEvent::ProvidersChanged
             | CoreEvent::Message(_) => None,
         }
     }
