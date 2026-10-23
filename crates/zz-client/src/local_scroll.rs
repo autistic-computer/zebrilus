@@ -268,6 +268,7 @@ impl LocalScrollState {
             coverage_start,
             local
                 .map_or(server_offset, |local| local.reach(server_offset))
+                .saturating_add(below_rows(retained))
                 .min(maximum_offset),
         );
         let follow = daemon_follow_offset(
@@ -371,7 +372,7 @@ impl LocalScrollState {
             step.effects.push(LocalScrollEffect::ScrollToOffset(target));
             return step;
         }
-        if target > server_offset {
+        if target > server_offset.saturating_add(below_rows(retained)) {
             step.redraw = self.clear();
             step.effects.push(LocalScrollEffect::ScrollToOffset(target));
             return step;
@@ -484,6 +485,10 @@ impl LocalScrollState {
             (f64::from(target) * height - sub_row).max(0.0) as f32,
         )
     }
+}
+
+fn below_rows(retained: &RetainedTerminalViewport) -> u32 {
+    u32::try_from(retained.below.len()).unwrap_or(u32::MAX)
 }
 
 fn push_prefetch(target: u32, retained: &RetainedTerminalViewport, step: &mut LocalScrollStep) {
@@ -714,6 +719,38 @@ mod tests {
             .unwrap();
         assert_eq!(state.target(), Some(990));
         assert!(step.effects.contains(&LocalScrollEffect::Prefetch(990)));
+    }
+
+    #[test]
+    fn scrolling_down_runs_locally_through_the_rows_below_and_stops_at_the_last_one_held() {
+        let mut retained = scrolled_back(200);
+        retained.viewport.scrollbar.offset = 900;
+        retained.below.rows = scrolled_back(30).history.rows;
+        let now = Instant::now();
+        let mut state = LocalScrollState::new(retained.history_invalidations);
+
+        let step = state
+            .scroll_by_pixels(-200.0, 20.0, &retained, now)
+            .unwrap();
+        assert_eq!((state.target(), state.sub_row()), (Some(910), 0.0));
+        assert!(matches!(
+            step.effects[..],
+            [
+                LocalScrollEffect::ScrollToOffset(912),
+                LocalScrollEffect::Sync(_)
+            ]
+        ));
+        state.scroll_by_pixels(-1000.0, 20.0, &retained, now);
+        assert_eq!((state.target(), state.sub_row()), (Some(930), 0.0));
+        state.scroll_by_pixels(-20.0, 20.0, &retained, now);
+        assert_eq!(state.target(), Some(930));
+
+        assert!(state.cancel());
+        state.scroll_by_rows(25, &retained, now);
+        assert_eq!(state.target(), Some(925));
+        let step = state.scroll_by_rows(10, &retained, now);
+        assert_eq!(state.target(), None);
+        assert_eq!(step.effects, [LocalScrollEffect::ScrollToOffset(935)]);
     }
 
     fn settle_toward_newer(

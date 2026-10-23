@@ -248,8 +248,9 @@ pub struct RetainedTerminalViewport {
     /// view of history.
     pub below: HistoryRing,
     pub history_scrollbar: ScrollbarState,
-    /// Bumped on every live-patch ring mutation or drop. A `HistoryChunk` applies
-    /// only when this still matches the value snapshotted at request time.
+    /// Bumped when a live patch may have shifted the ring's absolute rows, or
+    /// dropped the ring. A `HistoryChunk` applies only when this still matches
+    /// the value snapshotted at request time.
     pub history_mutations: u64,
     /// Bumped only when the ring is dropped, which is what retires the
     /// local-scroll overlay.
@@ -312,7 +313,7 @@ pub fn apply_history_chunk(
     retained: &mut RetainedTerminalViewport,
     start: u32,
     total: u32,
-    offset: u32,
+    _offset: u32,
     columns: u16,
     rows: Vec<Vec<PackedCell>>,
     dictionary: TerminalDictionary,
@@ -329,7 +330,6 @@ pub fn apply_history_chunk(
     };
     if columns != retained.viewport.columns
         || total != retained.history_scrollbar.total
-        || offset != retained.history_scrollbar.offset
         || end != front
         || !history_chunk_is_valid(columns, &rows, &dictionary)
     {
@@ -410,6 +410,101 @@ fn rows_leaving_below(
     Some(leaving)
 }
 
+fn glyph_key(cell: PackedCell, dictionary: &TerminalDictionary) -> (u32, &[u8]) {
+    let glyph = cell.glyph();
+    if glyph & GRAPHEME_TABLE_BIT == 0 {
+        return (glyph, &[]);
+    }
+    let index = (glyph & !GRAPHEME_TABLE_BIT) as usize;
+    let bytes = dictionary
+        .grapheme_offsets
+        .get(index)
+        .zip(dictionary.grapheme_offsets.get(index + 1))
+        .and_then(|(&start, &end)| dictionary.grapheme_bytes.get(start as usize..end as usize))
+        .unwrap_or_default();
+    (GRAPHEME_TABLE_BIT, bytes)
+}
+
+fn rows_match(
+    row: &[PackedCell],
+    dictionary: &TerminalDictionary,
+    other: &[PackedCell],
+    other_dictionary: &TerminalDictionary,
+) -> bool {
+    row.len() == other.len()
+        && row.iter().zip(other).all(|(&cell, &other)| {
+            cell.flags() == other.flags()
+                && dictionary.styles.get(usize::from(cell.style_id()))
+                    == other_dictionary.styles.get(usize::from(other.style_id()))
+                && glyph_key(cell, dictionary) == glyph_key(other, other_dictionary)
+        })
+}
+
+fn reanchor_history(
+    retained: &mut RetainedTerminalViewport,
+    cells: &[PackedCell],
+    dictionary: &Arc<TerminalDictionary>,
+    from: u32,
+    to: u32,
+    next_row_revision: &mut u64,
+) -> bool {
+    let columns = usize::from(retained.viewport.columns);
+    let rows = usize::from(retained.viewport.rows);
+    let history = retained.history.len();
+    let Some(start) = u32::try_from(history)
+        .ok()
+        .and_then(|history| to.checked_add(history)?.checked_sub(from))
+        .and_then(|start| usize::try_from(start).ok())
+    else {
+        return false;
+    };
+    let old_row = |row: usize| cells.get(row * columns..(row + 1) * columns);
+    let held = |index: usize| match index.checked_sub(history) {
+        None => retained
+            .history
+            .rows
+            .get(index)
+            .map(|row| (&*row.cells, &*row.dictionary)),
+        Some(index) if index < rows => old_row(index).map(|row| (row, dictionary.as_ref())),
+        Some(index) => retained
+            .below
+            .rows
+            .get(index - rows)
+            .map(|row| (&*row.cells, &*row.dictionary)),
+    };
+    let matches = rows != 0
+        && (0..retained.viewport.rows).all(|row| {
+            retained
+                .viewport
+                .row(row)
+                .zip(held(start + usize::from(row)))
+                .is_some_and(|(current, (cached, cached_dictionary))| {
+                    rows_match(
+                        current,
+                        &retained.viewport.dictionary,
+                        cached,
+                        cached_dictionary,
+                    )
+                })
+        });
+    if !matches {
+        return false;
+    }
+    let mut held = std::mem::take(&mut retained.history.rows);
+    held.extend((0..rows).filter_map(old_row).map(|cells| HistoryRow {
+        cells: Box::from(cells),
+        dictionary: Arc::clone(dictionary),
+        revision: allocate_row_revision(next_row_revision),
+    }));
+    held.append(&mut retained.below.rows);
+    let mut below = held.split_off(start);
+    retained.history.rows = held;
+    retained.history.enforce_cap();
+    retained.below.rows = below.split_off(rows);
+    retained.below.rows.truncate(retained.below.limit);
+    true
+}
+
 fn shift_rows(revisions: &mut [u64], scroll: i16) {
     let rows = revisions.len();
     let shift = isize::from(scroll);
@@ -441,6 +536,20 @@ pub fn apply_retained_patch(
         && patch.generation != patch.base_generation;
     let resized = patch.columns != retained.viewport.columns;
     let mut invalidate_history = resized || total_delta.is_none() || full_row_replacement;
+    let coordinates_kept = total_delta == Some(0)
+        && u32::try_from(shift)
+            .is_ok_and(|shift| next_scrollbar.offset.abs_diff(previous_scrollbar.offset) == shift);
+    let jumped_from = (scroll == 0
+        && !resized
+        && total_delta == Some(0)
+        && previous_scrollbar.offset != next_scrollbar.offset
+        && !patch.changed_rows.is_empty())
+    .then(|| {
+        (
+            Arc::clone(&retained.viewport.cells),
+            Arc::clone(&retained.viewport.dictionary),
+        )
+    });
     let mut departing_rows = Vec::new();
 
     if !invalidate_history {
@@ -493,7 +602,19 @@ pub fn apply_retained_patch(
         retained.revision_scratch.clear();
         return Err(error);
     }
+    let reanchored = jumped_from.is_some_and(|(cells, dictionary)| {
+        reanchor_history(
+            retained,
+            &cells,
+            &dictionary,
+            previous_scrollbar.offset,
+            next_scrollbar.offset,
+            next_row_revision,
+        )
+    });
+    invalidate_history &= !reanchored;
     match leaving_below {
+        _ if reanchored => {}
         Some(Some(rows)) => {
             for row in rows.into_iter().rev() {
                 retained.below.rows.push_front(row);
@@ -530,11 +651,12 @@ pub fn apply_retained_patch(
             retained.history.rows.pop_front();
         }
         retained.history.enforce_cap();
-        retained.history_mutations = retained.history_mutations.wrapping_add(1);
     } else if scroll > 0 {
         for _ in 0..shift {
             retained.history.rows.pop_back();
         }
+    }
+    if !invalidate_history && scroll != 0 && !coordinates_kept {
         retained.history_mutations = retained.history_mutations.wrapping_add(1);
     }
     if let Some(dictionary) = outgoing_dictionary {
@@ -1596,5 +1718,108 @@ mod tests {
         let patch = TerminalViewport::diff(&retained.viewport, &live).unwrap();
         apply_retained_patch(&mut retained, patch, &mut next_revision).unwrap();
         assert!(retained.below.is_empty());
+    }
+
+    fn ids(range: std::ops::Range<u32>) -> Vec<u32> {
+        range.collect()
+    }
+
+    fn jump(retained: &mut RetainedTerminalViewport, rows: &[u32], offset: u32, next: &mut u64) {
+        let generation = retained.viewport.generation + 1;
+        let landing = history_fixture_viewport(rows, generation, 30, offset);
+        let patch = TerminalViewport::diff(&retained.viewport, &landing).unwrap();
+        assert_eq!(patch.scroll, 0);
+        apply_retained_patch(retained, patch, next).unwrap();
+    }
+
+    #[test]
+    fn a_jump_inside_the_held_rows_keeps_the_ring_and_the_chunk_in_flight() {
+        let pane = PaneId(7);
+        let mut next_revision = 1;
+        let mut retained = new_retained_viewport(
+            history_fixture_viewport(&ids(26..30), 1, 30, 26),
+            &mut next_revision,
+        );
+        let dictionary = retained.viewport.dictionary.as_ref().clone();
+        assert!(apply_history_chunk(
+            &mut retained,
+            6,
+            30,
+            26,
+            1,
+            chunk_rows(&ids(6..26)),
+            dictionary.clone(),
+            &mut next_revision,
+        ));
+        let mut pacer = HistoryPacer::default();
+        assert_eq!(
+            pacer.request(pane, None, 600, Some(&retained), Instant::now()),
+            Some((0, 6))
+        );
+
+        jump(&mut retained, &ids(10..14), 10, &mut next_revision);
+        assert_eq!(retained_history_ids(&retained), ids(6..10));
+        assert_eq!(retained_below_ids(&retained), ids(14..30));
+        assert_eq!(retained.history_invalidations, 0);
+        assert_eq!(
+            pacer.chunk_arrived(pane, Some(retained.history_mutations)),
+            (true, HistoryFollowUp::Backfill)
+        );
+        assert!(apply_history_chunk(
+            &mut retained,
+            0,
+            30,
+            26,
+            1,
+            chunk_rows(&ids(0..6)),
+            dictionary,
+            &mut next_revision,
+        ));
+        assert_eq!(retained_history_ids(&retained), ids(0..10));
+        assert_eq!(
+            history_request_range(&retained, MAX_HISTORY_ROWS, Some(10)),
+            None
+        );
+
+        jump(&mut retained, &ids(20..24), 20, &mut next_revision);
+        assert_eq!(retained_history_ids(&retained), ids(0..20));
+        assert_eq!(retained_below_ids(&retained), ids(24..30));
+        assert_eq!(retained.history_invalidations, 0);
+
+        let back = history_fixture_viewport(&ids(18..22), retained.viewport.generation + 1, 30, 18);
+        let patch = TerminalViewport::diff(&retained.viewport, &back).unwrap();
+        assert_eq!(patch.scroll, 2);
+        apply_retained_patch(&mut retained, patch, &mut next_revision).unwrap();
+        assert_eq!(retained_history_ids(&retained), ids(0..18));
+        assert_eq!(retained.history_mutations, 0);
+    }
+
+    #[test]
+    fn a_jump_that_misses_or_leaves_the_held_rows_drops_the_ring() {
+        for (front, landing) in [(0, ids(110..114)), (20, ids(10..14))] {
+            let mut next_revision = 1;
+            let mut retained = new_retained_viewport(
+                history_fixture_viewport(&ids(26..30), 1, 30, 26),
+                &mut next_revision,
+            );
+            let dictionary = retained.viewport.dictionary.as_ref().clone();
+            assert!(apply_history_chunk(
+                &mut retained,
+                front,
+                30,
+                26,
+                1,
+                chunk_rows(&ids(front..26)),
+                dictionary,
+                &mut next_revision,
+            ));
+            jump(&mut retained, &landing, 10, &mut next_revision);
+            assert!(retained.history.is_empty());
+            assert_eq!(retained.history_invalidations, 1);
+            assert_eq!(
+                history_request_range(&retained, MAX_HISTORY_ROWS, Some(10)),
+                Some((6, 4))
+            );
+        }
     }
 }
