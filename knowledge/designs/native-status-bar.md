@@ -64,7 +64,7 @@ height, with its width sized to its contents.
 Window pills are 26px high and vertically centered inside the titlebar, a pane header tall (36px) plus the pane margin above and below it, leaving at least 5px at both edges. They
 start at 240px wide regardless of the title and shrink together only when the window strip runs
 out of room; titles truncate within the remaining space. Their pane deck is the shared
-`navigation::pane_stack` at its 20px size: the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each cut out of the one behind by a 1.5px ring in the ground's color, 5px apart, so it is never
+`navigation::pane_stack` at its 20px size: the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each tile outlined on its own (a hairline outside and a rim inside, white in light mode), 5px apart, so it is never
 wider than 30px and carries no count. The ring follows the pill's hover fill. Pointing at the deck
 opens every pane, focused first, in a row of tiles drawn on the pill, the window name hidden
 under them and fading back in past them; tooltips there show the pane

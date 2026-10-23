@@ -46,7 +46,7 @@ pub const STORY: Story = Story {
         Section {
             id: "pane-deck",
             name: "Pane deck",
-            summary: "status_pane_deck draws a window's panes as a packed fan: the focused pane in front with its glyph, at most two blank tiles behind it, each cut out of the one behind by a ring in the chip's color. Point at it to open every pane in a row and click one to focus it; a disconnected deck still opens but selects nothing.",
+            summary: "status_pane_deck draws a window's panes as a packed fan: the focused pane in front with its glyph, at most two blank tiles behind it, each with its own outline, so the one in front reads against the one behind. Point at it to open every pane in a row and click one to focus it; a disconnected deck still opens but selects nothing.",
             build: |_, cx| stateless(pane_deck, cx),
         },
         Section {

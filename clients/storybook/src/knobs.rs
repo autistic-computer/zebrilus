@@ -333,6 +333,17 @@ impl Knobs {
                         }
                     }
                 }
+                "surfaces" => {
+                    knobs.materials.bright_surfaces = match value {
+                        "darker" => false,
+                        "brighter" => true,
+                        _ => {
+                            return Err(format!(
+                                "surfaces must be darker or brighter, not {value}"
+                            ));
+                        }
+                    }
+                }
                 "font" => {
                     let family = decode(value);
                     knobs.materials.font = (!family.is_empty()).then(|| family.into());
@@ -489,6 +500,14 @@ pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_js
             "flat"
         } else {
             "lift"
+        }),
+    );
+    knobs.insert(
+        "surfaces".to_owned(),
+        serde_json::json!(if materials.bright_surfaces {
+            "brighter"
+        } else {
+            "darker"
         }),
     );
     knobs.insert(

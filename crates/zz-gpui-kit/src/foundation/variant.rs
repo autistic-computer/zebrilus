@@ -7,7 +7,7 @@ use zz_gpui::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
 use super::{
     Colorize as _, Theme,
-    color::{faint_weight, muted_weight, readable_on},
+    color::{faint_weight, muted_weight, raised_bright, readable_on},
 };
 
 /// What a widget means, which picks its color.
@@ -302,13 +302,24 @@ impl Theme {
         }
     }
 
+    /// `color` raised `level` elevation steps the way this theme's surfaces
+    /// rise: away from its own lightness, or toward white in light mode
+    /// when they rise bright.
+    pub fn raise(&self, color: Hsla, level: u8) -> Hsla {
+        if self.bright_surfaces {
+            raised_bright(color, level)
+        } else {
+            color.raised(level)
+        }
+    }
+
     /// The ground of a surface at `elevation`: the window, or the window's
     /// fill raised one step for a panel and two for a popover.
     pub fn surface(&self, elevation: Elevation) -> Ground {
         let fill = match elevation {
             Elevation::Window => return self.ground(),
-            Elevation::Panel => self.background.raised(1),
-            Elevation::Popover => self.background.raised(2),
+            Elevation::Panel => self.raise(self.background, 1),
+            Elevation::Popover => self.raise(self.background, 2),
         };
         Ground {
             fill,

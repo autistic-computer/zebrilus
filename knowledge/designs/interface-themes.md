@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "Interface themes: materials, roles and colors in one file"
-description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default and macOS ship built in. Settings draws the theme with an accent and a background tint over it, and saves the result as a theme; the 34 old palette presets, the color and material presets, Flat/Modern/Full, the chrome color overrides, the nine-key look and the per-material keys are gone."
+description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default, macOS and Yaru ship built in. Settings draws the theme with an accent and a background tint over it, and saves the result as a theme; the 34 old palette presets, the color and material presets, Flat/Modern/Full, the chrome color overrides, the nine-key look and the per-material keys are gone."
 status: Built
 resource: crates/zz-ui/src/interface_theme.rs
 tags:
@@ -10,7 +10,7 @@ tags:
 - design-system
 - configuration
 - design-plan
-timestamp: 2026-10-22T00:00:00Z
+timestamp: 2026-10-23T00:00:00Z
 ---
 
 # Why
@@ -28,7 +28,7 @@ The editor palettes were made for syntax colors and gave six roots; everything e
 A theme (`InterfaceTheme`) is one object:
 
 - `name`: what Settings calls it;
-- `materials`: the `Materials`, every value that is not a color, defined once: `radius`, `smoothing` (the corner every role follows unless the theme sets its own), `picked-smoothing` (only the roles the theme sets `smoothing` for curve that way; the rest draw circular corners), `outline` (the width of every outline; 0 draws none), `picked-outlines` (only the roles the theme turns `outline` on for draw it), `row-inset`, `primary` (`foreground` or `accent`), `flat-highlights` (a lift washes a step deeper instead of rising), `highlight-strength` (how far a tint or lift washes from the resting fill; 1 is the built-in), `font`, `glass`, `picked-shadows` (only the roles the theme gives a `shadow` cast one), and the two shadows `contact` and `float`, each `y`, `blur`, `spread` and `strength`;
+- `materials`: the `Materials`, every value that is not a color, defined once: `radius`, `smoothing` (the corner every role follows unless the theme sets its own), `picked-smoothing` (only the roles the theme sets `smoothing` for curve that way; the rest draw circular corners), `outline` (the width of every outline; 0 draws none), `picked-outlines` (only the roles the theme turns `outline` on for draw it), `row-inset`, `primary` (`foreground` or `accent`), `flat-highlights` (a lift washes a step deeper instead of rising), `bright-surfaces` (cards, panes and floating surfaces rise toward white in light mode instead of darkening), `highlight-strength` (how far a tint or lift washes from the resting fill; 1 is the built-in), `font`, `glass`, `picked-shadows` (only the roles the theme gives a `shadow` cast one), and the two shadows `contact` and `float`, each `y`, `blur`, `spread` and `strength`;
 - `roles`: how the theme changes each kit kind and each zz role, by id, as a patch of the seven style props (`fill`, `outline`, `shadow`, `shape`, `smoothing`, `hover`, `selected`); what it leaves out draws as built in. The model is in [surface roles](/designs/surface-roles.md);
 - `light` and `dark`: a `ThemeColors` each, the six roots plus `on-accent` (text on an accent fill) and `shadow-color` (the ink of every drop shadow).
 
@@ -44,6 +44,7 @@ A file can leave keys out: materials fall back to `Materials::default()` (Defaul
 |---|---|---|
 | Default | 24px corners, 0.75px outlines, both shadows at their built-in geometry, no glass, foreground primary, 5px row inset; no role patches, so every piece draws as its kind's built-in | neutral planes `#fcfcfc` / `#18181a`, near-black and near-white ink, a blue accent `#3d6df2` / `#6b8cff`, status colors that read on both planes |
 | macOS | 24px corners, 0.5px outlines, 5px row inset, accent primary, glass (blur 20, bezel 3, refraction 4, tint `#ffffff8c`, light from above) on chrome buttons, selected tabs and sidebar entries and floating surfaces, contact and float shadows, 38 role patches | `#f5f5f7` / `#242424` planes, `#1d1d1f` / `#f5f5f7` ink, accent `#006fe8` / `#0a84ff`, the system green, orange and red darkened in light to pass the 3:1 floor |
+| Yaru | 16px circular corners, 1px outlines only where picked, 6px row inset, accent primary, bright surfaces, highlight strength 0.8, the platform font, no glass; buttons and fields tinted with no outline or shadow, quiet, icon and chrome buttons and menu items unfilled, rows, sidebar entries and tabs tinted on hover and when selected, menus and cards outlined with a soft shadow, 21 role patches | Yaru's `#fafafa` / `#2c2c2c` planes, `#3d3d3d` / `#f7f7f7` ink, Ubuntu orange (`#e95420`, darkened to `#d6421d` in light the way Yaru's build tunes it for white text), Yaru's green, yellow and red, moved in lightness where they missed the 3:1 floor |
 
 There are no color or material presets: a theme's materials and palettes are its own, and Settings
 colors the interface with the accent and the tint below. A test holds every built-in to contrast floors in both modes: foreground 7:1 on the window and a popover, accent and status colors 3:1, text on the accent 3:1.
@@ -110,6 +111,7 @@ The web and iOS clients pick their theme themselves and never take the host's. T
 - **Pane opacity and window blur stay two settings (2026-10-15).** Folding them into one transparency setting was considered and not done: `pane-background-opacity` also decides how much a terminal's own background shows over the chrome while the window is opaque, so merging it into blur would change how every terminal looks. Superseded on 2026-10-18: `pane-background-opacity` is gone, panes always show the window behind them, and only PiPs keep an opacity, `pip-background-opacity`.
 - **Themes only, Liquid Glass built in (2026-10-15).** Styles and themes side by side confused people: two strips that both changed the corners, the glass and the shadows. Settings' Style row and `interface-style` went the same day they arrived, the material presets behind them with them, and zz bundles finished themes instead, each one's materials, roles and colors made together in the theme creator. Liquid Glass is the first, drawn in macOS 27's own colors. `interface-style` was never released with its preset meaning, so it is simply retired again.
 - **Liquid Glass removed (2026-10-22).** Default and macOS are the built-ins. A config or saved preference that names `liquid-glass` loads Default, as for any theme that is not found.
+- **Yaru built in (2026-10-23).** Ubuntu's GNOME look, from Yaru's and libadwaita's stylesheets. In light, GNOME's menus and cards are white over a `#fafafa` window, while zz raised every light surface toward black, so a theme could not draw them; the `bright-surfaces` material added the same day lets a theme raise them toward white, and Yaru turns it on.
 - **Nine look keys, not seventeen (2026-10-13).** Shadow strength, the share controls cast and elevation became one choice, `shadows`. Outline strength and outline width became `outline`, a width. Corner smoothing became the constant `CORNER_SMOOTHING` (4) that every window draws with. Density, control fill, divider strength and animation speed are gone, so control heights, fills, rules and transitions no longer change per theme.
 - **Materials and roles instead of a look (2026-10-13, same day).** A global look could not put glass on toolbar buttons and flat fills on the chips under them. `shadows`, `selection` and `field` became role props (`shadow`, `selected`, a field role's `fill` and `outline`), the shadows became two materials with their own geometry, and `look` became `materials` plus `roles`. Unreleased, so there is no migration: a file with `look` stops loading until rewritten. See [surface roles](/designs/surface-roles.md).
 - **`interface-theme` keeps `theme-mode`.** The mode stays its own setting, as in the apps themes imitate.

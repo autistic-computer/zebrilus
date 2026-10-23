@@ -180,6 +180,25 @@ pub(super) fn tint(color: Hsla, hue: f32, intensity: f32) -> Hsla {
     color.mix_oklab(tinted.opacity(color.a), 1.0 - intensity.clamp(0.0, 1.0))
 }
 
+/// `color` raised `level` steps toward white: a light color as far in
+/// lightness as [`Colorize::raised`] would darken it, stopping at white, and
+/// a dark one the way `raised` already lightens it.
+pub(super) fn raised_bright(color: Hsla, level: u8) -> Hsla {
+    if color.l < 0.5 {
+        return color.raised(level);
+    }
+    let lightness = oklab_lightness(color);
+    let room = 1.0 - lightness;
+    if room <= f32::EPSILON {
+        return color;
+    }
+    let amount = ((lightness - oklab_lightness(color.raised(level))) / room).clamp(0.0, 1.0);
+    Hsla {
+        a: color.a,
+        ..color.mix_oklab(hsla(0., 0., 1., 1.), 1.0 - amount)
+    }
+}
+
 /// Presentation transforms on a color. Each is a function of the receiver's
 /// own lightness and the theme contrast, moving it toward whichever contrast
 /// pole it is further from, so one rule covers light mode, dark mode and
