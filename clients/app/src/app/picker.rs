@@ -5,8 +5,8 @@ use zz_gpui::{
 };
 use zz_protocol::PaneId;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _,
-    compact::{bottom_sheet, close_sheet, compact_bar_button, sheet_row},
+    Icon, IconName, StyledExt as _,
+    compact::{bottom_sheet, close_sheet, sheet_close, sheet_row},
     pane::{pane_picker_row, pane_picker_surface},
     roles,
 };
@@ -59,7 +59,6 @@ impl PanePicker {
         if self.sheet_closed {
             return None;
         }
-        let muted = cx.theme().foreground.muted();
         let id = self.sheet_id();
         let rows = CHOICES
             .iter()
@@ -70,7 +69,7 @@ impl PanePicker {
                 sheet_row(
                     ("pane-picker-option", index),
                     roles::PHONE_ROW,
-                    Some(Icon::new(icon.clone()).text_color(muted)),
+                    Some(Icon::new(icon.clone())),
                     *title,
                     cx,
                 )
@@ -81,7 +80,7 @@ impl PanePicker {
                 .into_any_element()
             })
             .collect::<Vec<_>>();
-        let close = compact_bar_button("pane-picker-close", IconName::Xmark).on_click({
+        let close = sheet_close("pane-picker-close").on_click({
             let id = id.clone();
             move |_, _, cx| close_sheet(id.clone(), cx)
         });
@@ -115,6 +114,7 @@ impl PanePicker {
                     });
                 },
             )
+            .surface_role(roles::NEW_PANE_DRAWER)
             .header_role(roles::PHONE_BAR)
             .into_any_element(),
         )

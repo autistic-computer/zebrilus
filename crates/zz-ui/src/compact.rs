@@ -30,19 +30,20 @@ pub use morph::{
     mini_pill_width, pill_bounds, pill_corner,
 };
 pub use overview::{
-    OVERVIEW_CARD_GAP, OVERVIEW_CARD_HEIGHT, OVERVIEW_CARD_WIDTH, overview_add_tile, overview_card,
-    overview_count, overview_section_heading,
+    HostState, OVERVIEW_CARD_GAP, OVERVIEW_CARD_HEIGHT, OVERVIEW_CARD_WIDTH, host_state_dot,
+    overview_card, overview_choice_row, overview_count, overview_host_empty, overview_host_row,
+    overview_section_heading, overview_session_heading,
 };
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
 pub use popover_key::{
     PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords,
 };
 pub use sticky::{StickyModifier, StickyModifiers};
-pub use swipe_back::{SwipeBack, swipe_back, yield_back_swipe};
+pub use swipe_back::{SwipeBack, claim_back_swipe, swipe_back, yield_back_swipe};
 pub use web_time::Instant;
 pub use which_key_list::WhichKeyList;
 pub use zz_gpui_kit::dismissal::coast_guard;
 pub use zz_gpui_kit::sheet::{
-    BottomSheet, bottom_sheet, close_sheet, floating_sheet, sheet_action, sheet_close, sheet_inset,
-    sheet_option, sheet_row,
+    BottomSheet, bottom_sheet, close_sheet, floating_sheet, sheet_action, sheet_close,
+    sheet_detail_row, sheet_inset, sheet_option, sheet_row,
 };

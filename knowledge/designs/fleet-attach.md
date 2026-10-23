@@ -212,14 +212,16 @@ Recorded so later phases inherit intent, ordered roughly by expected sequence.
   headless zz in `~/.local/bin` on a host that lacks one. Shape (b), daemons relaying for their
   local clients, stays rejected with the daemon-to-daemon non-goal below. `ZZ_SOCKET` and
   `ZZ_PANE` in an agent's environment still name its own machine.
-- **Mobile thin clients**: scene streaming makes a phone client a rasterizer, not a port . the
-  protocol crate is renderer-neutral and postcard is embedded-friendly, so a client is QUIC dial
-  + terminal-codec decoder + Metal/Skia rasterizer + a keyboard. Daemon holds all state; a client
-  killed by the OS just re-attaches (`Resync` is the recovery primitive). Natural first tier is
-  the read-only viewer from the [degraded clients](/designs/scene-streaming-remote.md) ladder .
-  glance at agents from a phone . then interactive. Browser panes fit as-is: "renderer is always
-  local" means WKWebView restoring the same durable facts. Hard prerequisite: M1 (mobile cannot
-  sanely manage `ssh -L`).
+- **Mobile thin clients**: built over in-process ssh (russh), not QUIC. The iOS client
+  (`clients/app/src/app/fleet.rs`) follows this design's own model: one connection per saved host,
+  the host on screen attached and the rest connected without attaching, holding only their tree
+  (`Connection::send_to_background` detaches, `bring_forward` attaches again; a connection that
+  never attached sends `Resync` after the hello). Switching host forgets every pane-, window- and
+  session-keyed view, since each daemon numbers its own. Only the host on screen mirrors its
+  localhost ports onto the phone (`InteractiveClient::set_loopback_discovery`), so two hosts never
+  race for the same port. The overview shows one host per page, paged by swiping the pill; hosts
+  the user was on reconnect at launch from `hosts.json`'s `connected` list. The web client stays
+  on its one gateway.
 - **Remote browser egress (M5)**: today a remote session's browser pane renders in the client's
   CEF, so its connections originate from the client machine and host-internal URLs
   (`localhost:3000`, VPN'd dashboards) fail. M5 adds an optional SOCKS/CONNECT tunnel over a

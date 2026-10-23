@@ -17,6 +17,7 @@ use zz_ui::{
 };
 
 use super::{AppShell, settings::with_control};
+#[cfg(not(target_os = "ios"))]
 use crate::connection::Connection;
 
 #[cfg(target_os = "ios")]
@@ -30,6 +31,7 @@ const DESCRIPTION: &str =
 #[serde(default)]
 pub(super) struct SavedHosts {
     endpoints: Vec<String>,
+    connected: Vec<String>,
 }
 
 #[cfg(any(target_os = "ios", test))]
@@ -38,17 +40,42 @@ impl SavedHosts {
         &self.endpoints
     }
 
-    pub(super) fn most_recent(&self) -> Option<&str> {
-        self.endpoints.first().map(String::as_str)
+    /// The hosts to reconnect at launch, the one last on screen first.
+    pub(super) fn connected(&self) -> &[String] {
+        &self.connected
     }
 
-    pub(super) fn touch(&mut self, endpoint: &str) {
-        self.endpoints.retain(|saved| saved != endpoint);
-        self.endpoints.insert(0, endpoint.to_owned());
+    pub(super) fn most_recent(&self) -> Option<&str> {
+        self.connected
+            .first()
+            .or_else(|| self.endpoints.first())
+            .map(String::as_str)
+    }
+
+    pub(super) fn add(&mut self, endpoint: &str) {
+        if !self.endpoints.iter().any(|saved| saved == endpoint) {
+            self.endpoints.push(endpoint.to_owned());
+        }
+    }
+
+    pub(super) fn mark_connected(&mut self, endpoint: &str, on_screen: bool) {
+        self.add(endpoint);
+        let known = self.connected.iter().any(|saved| saved == endpoint);
+        if on_screen {
+            self.connected.retain(|saved| saved != endpoint);
+            self.connected.insert(0, endpoint.to_owned());
+        } else if !known {
+            self.connected.push(endpoint.to_owned());
+        }
+    }
+
+    pub(super) fn mark_disconnected(&mut self, endpoint: &str) {
+        self.connected.retain(|saved| saved != endpoint);
     }
 
     pub(super) fn remove(&mut self, endpoint: &str) {
         self.endpoints.retain(|saved| saved != endpoint);
+        self.mark_disconnected(endpoint);
     }
 
     fn load_from(directory: &std::path::Path) -> Self {
@@ -59,7 +86,7 @@ impl SavedHosts {
         if let Ok(endpoint) = std::fs::read_to_string(directory.join("endpoint"))
             && !endpoint.trim().is_empty()
         {
-            hosts.touch(endpoint.trim());
+            hosts.add(endpoint.trim());
         }
         hosts
     }
@@ -127,9 +154,9 @@ pub(super) fn host_title(endpoint: &str) -> String {
 
 #[cfg(target_os = "ios")]
 pub(super) struct Hosts {
-    saved: SavedHosts,
-    destination: Entity<InputState>,
-    error: Option<SharedString>,
+    pub(super) saved: SavedHosts,
+    pub(super) destination: Entity<InputState>,
+    pub(super) error: Option<SharedString>,
     _destination_events: Subscription,
 }
 
@@ -141,8 +168,8 @@ impl Hosts {
             &destination,
             window,
             |this: &mut AppShell, _, event: &InputEvent, window, cx| {
-                if matches!(event, InputEvent::PressEnter { .. }) {
-                    this.add_host(window, cx);
+                if matches!(event, InputEvent::PressEnter { .. }) && this.add_host(window, cx) {
+                    this.compact.close_add_host();
                 }
             },
         );
@@ -178,7 +205,7 @@ impl AppShell {
     pub(super) fn remember_host(&mut self, cx: &mut Context<Self>) {
         if let Some(endpoint) = self.connection.read(cx).endpoint() {
             let endpoint = endpoint.to_owned();
-            self.hosts.saved.touch(&endpoint);
+            self.hosts.saved.mark_connected(&endpoint, true);
             self.hosts.saved.save();
         }
     }
@@ -197,7 +224,7 @@ impl AppShell {
     }
 
     #[cfg(target_os = "ios")]
-    fn add_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn add_host(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let value = self.hosts.destination.read(cx).value().to_string();
         let endpoint = destination_endpoint(&value).and_then(|endpoint| {
             zz_daemon_client::Endpoint::parse(&endpoint)
@@ -210,44 +237,53 @@ impl AppShell {
                 self.hosts
                     .destination
                     .update(cx, |input, cx| input.set_value("", window, cx));
-                self.hosts.saved.touch(&endpoint);
-                self.hosts.saved.save();
-                self.connection
-                    .update(cx, |connection, cx| connection.connect_to(endpoint, cx));
+                self.hosts.saved.add(&endpoint);
+                self.connect_host(endpoint, window, cx);
                 super::settings::finish_field(window, cx);
+                cx.notify();
+                true
             }
-            Err(error) => self.hosts.error = Some(error.into()),
+            Err(error) => {
+                self.hosts.error = Some(error.into());
+                cx.notify();
+                false
+            }
         }
-        cx.notify();
     }
 
     #[cfg(target_os = "ios")]
     fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
-        let connection = self.connection.read(cx);
-        let current = connection.endpoint().map(ToOwned::to_owned);
-        let connected = connection.connected;
-        let busy = connection.busy();
-        let status = if connected {
-            "Connected".to_owned()
-        } else {
-            connection.status.clone()
-        };
         let muted = cx.theme().foreground.muted();
+        let nothing_attached = self.connection.read(cx).endpoint().is_none();
         self.hosts
             .saved
             .endpoints()
             .iter()
             .enumerate()
             .map(|(index, endpoint)| {
-                let active = current.as_deref() == Some(endpoint.as_str());
-                let color = if !active {
-                    muted
-                } else if connected {
-                    cx.theme().success
-                } else if busy {
-                    cx.theme().warning
-                } else {
-                    cx.theme().danger
+                let state = self.host_connection(endpoint, cx).map(|connection| {
+                    let connection = connection.read(cx);
+                    (
+                        connection.connected,
+                        connection.busy(),
+                        !connection.background(),
+                        if connection.connected {
+                            "Connected".to_owned()
+                        } else {
+                            connection.status.clone()
+                        },
+                    )
+                });
+                let (connected, busy, on_screen) = state
+                    .as_ref()
+                    .map_or((false, false, false), |(connected, busy, on_screen, _)| {
+                        (*connected, *busy, *on_screen)
+                    });
+                let color = match &state {
+                    None => muted,
+                    Some(_) if connected => cx.theme().success,
+                    Some(_) if busy => cx.theme().warning,
+                    Some(_) => cx.theme().danger,
                 };
                 let icon = if endpoint.starts_with("ssh://") {
                     IconName::Globe
@@ -256,7 +292,7 @@ impl AppShell {
                 };
                 let entry = SettingEntry::new(host_title(endpoint), endpoint.clone())
                     .title_icon(Icon::new(icon).text_color(color))
-                    .when(active, |entry| {
+                    .when_some(state.as_ref(), |entry, (.., status)| {
                         entry.child(status_line(
                             status.clone(),
                             if connected || busy {
@@ -266,26 +302,33 @@ impl AppShell {
                             },
                         ))
                     });
-                let action = if active && (connected || busy) {
+                let target = endpoint.clone();
+                let action = if connected && !on_screen {
+                    Button::new(("hosts-open", index))
+                        .label("Open")
+                        .on(settings_card_ground(cx))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.switch_host(&target, None, None, window, cx);
+                            this.settings = None;
+                            cx.notify();
+                        }))
+                } else if connected || busy {
                     Button::new(("hosts-disconnect", index))
                         .label(if connected { "Disconnect" } else { "Cancel" })
                         .on(settings_card_ground(cx))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.connection.update(cx, Connection::disconnect);
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.disconnect_host(&target, window, cx);
                         }))
                 } else {
-                    let endpoint = endpoint.clone();
                     Button::new(("hosts-connect", index))
                         .when(
-                            index == 0 && current.is_none(),
+                            index == 0 && nothing_attached,
                             zz_ui::button::ButtonVariants::primary,
                         )
                         .label("Connect")
                         .on(settings_card_ground(cx))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            let endpoint = endpoint.clone();
-                            this.connection
-                                .update(cx, |connection, cx| connection.connect_to(endpoint, cx));
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.connect_host(target.clone(), window, cx);
                         }))
                 };
                 let removed = endpoint.clone();
@@ -294,7 +337,8 @@ impl AppShell {
                     .icon(IconName::Xmark)
                     .tooltip("Remove host")
                     .on(settings_card_ground(cx))
-                    .on_click(cx.listener(move |this, _, _, cx| {
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.disconnect_host(&removed, window, cx);
                         this.hosts.saved.remove(&removed);
                         this.hosts.saved.save();
                         cx.notify();
@@ -380,9 +424,9 @@ impl AppShell {
                             })
                             .label("Connect")
                             .on(settings_card_ground(cx))
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.add_host(window, cx)),
-                            ),
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.add_host(window, cx);
+                            })),
                     ),
                 narrow,
             ))
@@ -395,22 +439,24 @@ impl AppShell {
                     Button::new("hosts-copy-ssh-key")
                         .label("Copy")
                         .on(settings_card_ground(cx))
-                        .on_click(
-                    |_, window, cx| {
-                        use zz_ui::{WindowExt as _, notification::Notification};
-                        let notification = match zz_daemon_client::ios_ssh_public_key() {
-                            Ok(key) => {
-                                cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(key));
-                                Notification::success("SSH key copied.")
-                            }
-                            Err(error) => Notification::error(error.to_string()),
-                        };
-                        window.push_notification(notification, cx);
-                    },
-                )),
+                        .on_click(|_, window, cx| copy_ssh_key(window, cx)),
+                ),
                 narrow,
             ))
     }
+}
+
+#[cfg(target_os = "ios")]
+pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut zz_gpui::App) {
+    use zz_ui::{WindowExt as _, notification::Notification};
+    let notification = match zz_daemon_client::ios_ssh_public_key() {
+        Ok(key) => {
+            cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(key));
+            Notification::success("SSH key copied.")
+        }
+        Err(error) => Notification::error(error.to_string()),
+    };
+    window.push_notification(notification, cx);
 }
 
 fn status_line(text: impl Into<zz_gpui::SharedString>, color: zz_gpui::Hsla) -> impl IntoElement {
@@ -463,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn recent_hosts_come_first_and_the_old_endpoint_file_seeds_the_list() {
+    fn hosts_keep_their_order_and_the_one_on_screen_reconnects_first() {
         let directory = std::env::temp_dir().join(format!(
             "zz-thin-hosts-{}-{}",
             std::process::id(),
@@ -477,14 +523,20 @@ mod tests {
         std::fs::write(directory.join("endpoint"), "ssh://me@old\n").unwrap();
         let mut hosts = SavedHosts::load_from(&directory);
         assert_eq!(hosts.endpoints(), ["ssh://me@old"]);
-        hosts.touch("ssh://me@new");
-        hosts.touch("ssh://me@other");
-        hosts.touch("ssh://me@new");
+        assert_eq!(hosts.most_recent(), Some("ssh://me@old"));
+        hosts.mark_connected("ssh://me@new", true);
+        hosts.mark_connected("ssh://me@other", false);
+        hosts.add("ssh://me@new");
         assert_eq!(
             hosts.endpoints(),
-            ["ssh://me@new", "ssh://me@other", "ssh://me@old"]
+            ["ssh://me@old", "ssh://me@new", "ssh://me@other"]
         );
+        assert_eq!(hosts.connected(), ["ssh://me@new", "ssh://me@other"]);
+        hosts.mark_connected("ssh://me@other", true);
+        hosts.mark_connected("ssh://me@new", false);
+        assert_eq!(hosts.connected(), ["ssh://me@other", "ssh://me@new"]);
         hosts.remove("ssh://me@other");
+        assert_eq!(hosts.connected(), ["ssh://me@new"]);
         hosts.save_to(&directory).unwrap();
         std::fs::write(directory.join("endpoint"), "ssh://me@ignored").unwrap();
         let restored = SavedHosts::load_from(&directory);

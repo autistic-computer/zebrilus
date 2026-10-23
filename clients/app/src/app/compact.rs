@@ -75,10 +75,13 @@ pub(super) struct CompactState {
     keyboard_moving: bool,
     extra_height: Pixels,
     pub(super) overview: bool,
-    sessions: bool,
+    hosts_sheet: bool,
+    new_sheet: bool,
+    add_host: bool,
+    host_pager: Pager,
+    host_scrolls: BTreeMap<usize, ScrollHandle>,
     overview_reveal: bool,
-    overview_scroll: ScrollHandle,
-    overview_rows: BTreeMap<WindowId, ScrollHandle>,
+    overview_rows: BTreeMap<(usize, WindowId), ScrollHandle>,
     lift: Lift,
     morph: PillSpring,
     collapse: PillSpring,
@@ -92,6 +95,15 @@ pub(super) struct CompactState {
 }
 
 impl CompactState {
+    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    pub(super) fn forget_panes(&mut self) {
+        self.notice = None;
+        self.landing = None;
+        self.cards.borrow_mut().clear();
+        self.overview_rows.clear();
+        self.host_scrolls.clear();
+    }
+
     pub(super) fn reset_attachment(&mut self) {
         self.preview = None;
         self.zoom_intent = None;
@@ -99,7 +111,18 @@ impl CompactState {
         self.previous = None;
         self.bindings =
             std::env::var("ZZ_GPUI_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
-        self.sessions = false;
+        self.close_sheets();
+    }
+
+    pub(super) fn close_sheets(&mut self) {
+        self.hosts_sheet = false;
+        self.new_sheet = false;
+        self.add_host = false;
+    }
+
+    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    pub(super) fn close_add_host(&mut self) {
+        self.add_host = false;
     }
 }
 
@@ -1347,13 +1370,20 @@ impl AppShell {
             .child(pager_area)
             .child(bottom);
         let content = if open {
-            if self.compact.sessions {
-                sheets.push(self.overview_sessions_sheet(safe_bottom, cx));
+            if self.compact.hosts_sheet {
+                sheets.push(self.overview_hosts_sheet(safe_bottom, cx));
+            }
+            if self.compact.new_sheet {
+                sheets.push(self.overview_new_sheet(safe_bottom, cx));
+            }
+            #[cfg(target_os = "ios")]
+            if self.compact.add_host {
+                sheets.push(self.overview_add_host_sheet(safe_bottom, cx));
             }
             let view = cx.weak_entity();
             swipe_back(
                 "overview-swipe-back",
-                self.compact_overview(&model, top_inset, &placement, cx),
+                self.compact_overview(&model, top_inset, &placement, window, cx),
                 move |_, cx| {
                     let _ = view.update(cx, AppShell::close_overview);
                 },
@@ -1511,6 +1541,7 @@ impl AppShell {
                 });
             },
         )
+        .surface_role(roles::BINDINGS_DRAWER)
         .header_role(roles::PHONE_BAR)
         .into_any_element()
     }

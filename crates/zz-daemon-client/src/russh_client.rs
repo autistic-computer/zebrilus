@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicU16, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
         mpsc as std_mpsc,
     },
     thread,
@@ -117,6 +117,8 @@ pub(crate) struct RusshForward {
 struct BrowserForwarding {
     socks_port: Arc<AtomicU16>,
     loopback: Mutex<Option<LoopbackForward<TofuHandler>>>,
+    discover: AtomicBool,
+    rediscover: tokio::sync::Notify,
 }
 
 impl RusshForward {
@@ -133,6 +135,8 @@ impl RusshForward {
         let browser = Arc::new(BrowserForwarding {
             socks_port: Arc::new(AtomicU16::new(0)),
             loopback: Mutex::new(None),
+            discover: AtomicBool::new(false),
+            rediscover: tokio::sync::Notify::new(),
         });
         let worker_browser = Arc::clone(&browser);
 
@@ -219,6 +223,14 @@ impl RusshForward {
             .ensure(port)
     }
 
+    pub(crate) fn set_loopback_discovery(&self, enabled: bool) {
+        self.browser.discover.store(enabled, Ordering::Release);
+        if !enabled && let Some(loopback) = self.browser.loopback.lock().as_mut() {
+            loopback.clear();
+        }
+        self.browser.rediscover.notify_one();
+    }
+
     pub(crate) fn shutdown(&self) {
         self.browser.loopback.lock().take();
         self.browser.socks_port.store(0, Ordering::Release);
@@ -266,9 +278,11 @@ async fn run_tunnel(
     };
     let session = Arc::new(session);
     let mut loopback = LoopbackForward::new(Arc::clone(&session));
-    match discover_loopback_ports(&session).await {
-        Ok(ports) => loopback.reconcile(&ports),
-        Err(error) => log::debug!("Cannot discover host localhost ports: {error}"),
+    if browser.discover.load(Ordering::Acquire) {
+        match discover_loopback_ports(&session).await {
+            Ok(ports) => loopback.reconcile(&ports),
+            Err(error) => log::debug!("Cannot discover host localhost ports: {error}"),
+        }
     }
     let socks =
         match SocksForward::start(Arc::clone(&session), Arc::clone(&browser.socks_port)).await {
@@ -320,7 +334,13 @@ async fn run_tunnel(
     };
     let inventory = async {
         loop {
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::select! {
+                () = tokio::time::sleep(Duration::from_secs(5)) => {}
+                () = browser.rediscover.notified() => {}
+            }
+            if !browser.discover.load(Ordering::Acquire) {
+                continue;
+            }
             match discover_loopback_ports(&session).await {
                 Ok(ports) => {
                     if let Some(loopback) = browser.loopback.lock().as_mut() {

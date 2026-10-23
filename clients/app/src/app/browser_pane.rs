@@ -20,8 +20,8 @@ use zz_ui::{
     },
     button::{Button, ButtonVariants as _},
     compact::{
-        bottom_sheet, close_sheet, compact_bar_button, compact_tabs_button, floating_sheet,
-        sheet_inset, sheet_row,
+        bottom_sheet, close_sheet, compact_tabs_button, floating_sheet, sheet_close, sheet_inset,
+        sheet_row,
     },
     input::{InputEvent, InputState},
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
@@ -982,7 +982,7 @@ impl BrowserPane {
         let new_tab = sheet_row(
             ("ios-browser-new-tab", self.pane.0),
             roles::PHONE_ROW,
-            Some(Icon::new(IconName::Plus).text_color(muted)),
+            Some(Icon::new(IconName::Plus)),
             "New tab",
             cx,
         )
@@ -991,7 +991,7 @@ impl BrowserPane {
             close_sheet(opened.clone(), cx);
         }));
         let closed = sheet.clone();
-        let close = compact_bar_button(("ios-browser-tabs-close", self.pane.0), IconName::Xmark)
+        let close = sheet_close(("ios-browser-tabs-close", self.pane.0))
             .on_click(move |_, _, cx| close_sheet(closed.clone(), cx));
         let dismiss = cx.weak_entity();
         floating_sheet(
@@ -1020,6 +1020,7 @@ impl BrowserPane {
                     });
                 },
             )
+            .surface_role(roles::TABS_DRAWER)
             .header_role(roles::PHONE_BAR),
             window,
         )

@@ -10,9 +10,9 @@ use zz_gpui::{
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, StyledExt as _, Surface,
-    SurfaceRole, Tone,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, Shape, StyledExt as _,
+    Surface, SurfaceRole, Tone,
+    button::Button,
     foundation::{muted_on, row_radius, row_surface},
     h_flex,
 };
@@ -20,10 +20,14 @@ use crate::{
 const ENTER: Duration = Duration::from_millis(240);
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 5.0;
-const HEADER_HEIGHT: f32 = 44.0;
-const PADDING_X: f32 = 16.0;
-const CLOSE: f32 = 40.0;
-const OPTION_HEIGHT: f32 = 44.0;
+const HEADER_HEIGHT: f32 = 60.0;
+const PADDING_X: f32 = 20.0;
+const CLOSE: f32 = 36.0;
+const OPTION_HEIGHT: f32 = 52.0;
+const DETAIL_HEIGHT: f32 = 64.0;
+const TILE: f32 = 40.0;
+const TILE_ROW_HEIGHT: f32 = 56.0;
+const TILE_ROUNDING: f32 = 0.28;
 const MAX_HEIGHT: f32 = 0.85;
 const FLOAT_MARGIN: f32 = 8.0;
 const RISE: f32 = 0.3;
@@ -147,11 +151,11 @@ pub fn floating_sheet(sheet: impl IntoElement, window: &Window) -> AnyElement {
 /// The close button at the right of a sheet's header.
 pub fn sheet_close(id: impl Into<ElementId>) -> Button {
     Button::new(id)
-        .ghost()
         .compact()
         .tab_stop(false)
         .size(px(CLOSE))
-        .child(Icon::new(IconName::Xmark).size(px(18.0)))
+        .rounded_full()
+        .child(Icon::new(IconName::Xmark).size(px(16.0)))
 }
 
 /// One choice in a picker sheet: the desktop menu row at touch height, with
@@ -162,40 +166,35 @@ pub fn sheet_option(
     checked: bool,
     cx: &App,
 ) -> Stateful<Div> {
-    sheet_row(
+    option_row(
         id,
         SurfaceRole::MENU_ITEM,
-        checked.then(|| Icon::new(IconName::Check)),
+        Lead::Check(checked),
         label.into(),
         cx,
     )
 }
 
 /// A command at the end of a picker sheet, like "New session": an option row
-/// with a muted icon where the check would be.
+/// with its icon on a tile where the check would be.
 pub fn sheet_action(
     id: impl Into<ElementId>,
     icon: IconName,
     label: impl Into<SharedString>,
     cx: &App,
 ) -> Stateful<Div> {
-    let muted = muted_on(
-        &cx.theme().layer(SurfaceRole::MENU_ITEM, PaintState::Rest),
-        cx,
-    );
-    sheet_row(
+    option_row(
         id,
         SurfaceRole::MENU_ITEM,
-        Some(Icon::new(icon).text_color(muted)),
+        Lead::Tile(Box::new(Icon::new(icon))),
         label.into(),
         cx,
     )
 }
 
 /// A row of a picker sheet drawn as `role`, a row role: the list row of a
-/// pane's own lists at touch height, `slot` in front where an option shows
-/// its check, then the label. Touch rows show the row's press as the finger
-/// lands.
+/// pane's own lists at touch height, `slot`'s icon on a tile in front, then
+/// the label. Touch rows show the row's press as the finger lands.
 pub fn sheet_row(
     id: impl Into<ElementId>,
     role: SurfaceRole,
@@ -203,9 +202,110 @@ pub fn sheet_row(
     label: impl IntoElement,
     cx: &App,
 ) -> Stateful<Div> {
+    option_row(
+        id,
+        role,
+        slot.map_or(Lead::Empty, |icon| Lead::Tile(Box::new(icon))),
+        label,
+        cx,
+    )
+}
+
+/// A sheet row that says what its choice does: `slot`'s icon on a tile in
+/// front, the label, and `detail` muted under it, at the height two lines
+/// need.
+pub fn sheet_detail_row(
+    id: impl Into<ElementId>,
+    role: SurfaceRole,
+    slot: Option<Icon>,
+    label: impl Into<SharedString>,
+    detail: impl IntoElement,
+    cx: &App,
+) -> Stateful<Div> {
+    let layer = cx.theme().layer(role, PaintState::Rest);
+    let muted = muted_on(&layer, cx);
+    row_shell(id, role, px(DETAIL_HEIGHT), cx)
+        .children(slot.map(|icon| icon_tile(icon, TILE, &layer, cx)))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(1.0))
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_size(px(16.0))
+                        .line_height(px(21.0))
+                        .child(label.into()),
+                )
+                .child(
+                    div()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_size(px(13.0))
+                        .line_height(px(17.0))
+                        .text_color(muted)
+                        .child(detail),
+                ),
+        )
+}
+
+enum Lead {
+    Empty,
+    Check(bool),
+    Tile(Box<Icon>),
+}
+
+fn option_row(
+    id: impl Into<ElementId>,
+    role: SurfaceRole,
+    lead: Lead,
+    label: impl IntoElement,
+    cx: &App,
+) -> Stateful<Div> {
+    let layer = cx.theme().layer(role, PaintState::Rest);
+    let height = if matches!(lead, Lead::Tile(_)) {
+        TILE_ROW_HEIGHT
+    } else {
+        OPTION_HEIGHT
+    };
+    let lead = match lead {
+        Lead::Empty => None,
+        Lead::Check(checked) => Some(
+            div()
+                .flex()
+                .flex_none()
+                .w(px(20.0))
+                .children(checked.then(|| Icon::new(IconName::Check).size(px(18.0))))
+                .into_any_element(),
+        ),
+        Lead::Tile(icon) => Some(icon_tile(*icon, TILE, &layer, cx).into_any_element()),
+    };
+    row_shell(id, role, px(height), cx).children(lead).child(
+        div()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .text_size(px(16.0))
+            .child(label),
+    )
+}
+
+fn row_shell(
+    id: impl Into<ElementId>,
+    role: SurfaceRole,
+    height: Pixels,
+    cx: &App,
+) -> Stateful<Div> {
     let id = id.into();
     let layer = cx.theme().layer(role, PaintState::Rest);
-    let height = px(OPTION_HEIGHT);
     row_surface(
         h_flex().id(id.clone()).flex_none().h(height),
         role,
@@ -215,7 +315,7 @@ pub fn sheet_row(
     )
     .relative()
     .w_full()
-    .gap(px(10.0))
+    .gap(px(12.0))
     .px(px(12.0))
     .cursor_pointer()
     .child(crate::touch::instant_press_highlight(
@@ -223,23 +323,28 @@ pub fn sheet_row(
         cx.theme().layer(role, PaintState::Active).fill,
         crate::touch::PressCorners::Row(row_radius(&layer, height)),
     ))
-    .child(
-        div()
-            .flex()
-            .flex_none()
-            .w(px(16.0))
-            .children(slot.map(|icon| icon.size(px(16.0)))),
-    )
-    .child(
-        div()
-            .flex_1()
-            .min_w_0()
-            .overflow_hidden()
-            .whitespace_nowrap()
-            .text_ellipsis()
-            .text_size(px(15.0))
-            .child(label),
-    )
+}
+
+/// An icon centered on a tile drawn as [`SurfaceRole::ICON_TILE`], so a
+/// row's icons line up with each other and with the labels beside them.
+fn icon_tile(icon: Icon, size: f32, layer: &Layer, cx: &App) -> Div {
+    let theme = cx.theme();
+    let role = SurfaceRole::ICON_TILE;
+    let tile = theme.layer(Surface::new(role).on(layer.ground), PaintState::Rest);
+    let radius = match theme.style(role).shape {
+        Shape::Square => px(0.0),
+        Shape::Round => px(size * TILE_ROUNDING),
+        Shape::Pill => px(size / 2.0),
+    };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(size))
+        .layer(&tile)
+        .rounded(radius)
+        .child(icon.size(px(size / 2.0)))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -395,7 +500,7 @@ impl RenderOnce for BottomSheet {
         let enter = ENTER;
         let margin = px(FLOAT_MARGIN);
         let rest = self.bottom_inset.max(margin);
-        let sheet = self.surface_role.unwrap_or(SurfaceRole::SHEET);
+        let sheet = self.surface_role.unwrap_or(SurfaceRole::DRAWER);
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
             fill: theme
@@ -492,7 +597,7 @@ impl RenderOnce for BottomSheet {
                     .gap(px(8.0))
                     .h(px(HEADER_HEIGHT))
                     .pl(px(PADDING_X))
-                    .pr(px(8.0))
+                    .pr(px(14.0))
                     .surface(header, cx)
                     .child(
                         div()
@@ -501,9 +606,9 @@ impl RenderOnce for BottomSheet {
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .text_size(px(17.0))
-                            .line_height(px(22.0))
-                            .font_semibold()
+                            .text_size(px(24.0))
+                            .line_height(px(30.0))
+                            .font_bold()
                             .child(self.title),
                     )
                     .children(self.actions),
@@ -749,9 +854,10 @@ mod tests {
         let (_, cx) = host(300.0, cx);
         let rest = panel(cx);
         let grip = point(rest.center().x, rest.top() + px(20.0));
-        pan(cx, grip, &[(0, TouchPhase::Started, -80.0)]);
+        let drag = 80.0;
+        pan(cx, grip, &[(0, TouchPhase::Started, -drag)]);
         let lifted = rest.top() - panel(cx).top();
-        assert!(lifted > px(0.0) && lifted < px(40.0), "{lifted:?}");
+        assert!(lifted > px(0.0) && lifted < px(drag * 0.6), "{lifted:?}");
         pan(cx, grip, &[(300, TouchPhase::Ended, 0.0)]);
         settle(cx);
         assert_eq!(panel(cx).top(), rest.top());

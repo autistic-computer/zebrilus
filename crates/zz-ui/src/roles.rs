@@ -434,6 +434,42 @@ pub const PICKER: SurfaceRole = SurfaceRole::under(
     "Pickers",
     "Agent history, the file picker, choose-tree and choose-buffer",
 );
+pub const HOSTS_DRAWER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DRAWER,
+    "drawer.hosts",
+    "Hosts drawer",
+    "Every host in the phone overview, with how each is connected",
+);
+pub const NEW_DRAWER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DRAWER,
+    "drawer.new",
+    "New drawer",
+    "What the phone overview's + makes: a terminal, agent, browser or session",
+);
+pub const ADD_HOST_DRAWER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DRAWER,
+    "drawer.add-host",
+    "Add host drawer",
+    "The ssh destination field and Connect button for a new host",
+);
+pub const NEW_PANE_DRAWER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DRAWER,
+    "drawer.new-pane",
+    "New pane drawer",
+    "What a new pane on the phone becomes: terminal, agent or browser",
+);
+pub const TABS_DRAWER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DRAWER,
+    "drawer.tabs",
+    "Tabs drawer",
+    "A phone browser pane's tabs",
+);
+pub const BINDINGS_DRAWER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DRAWER,
+    "drawer.bindings",
+    "Bindings drawer",
+    "Every key binding on the phone, each sent when picked",
+);
 pub const PICKER_NOTICE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
     "picker.notice",
@@ -490,6 +526,12 @@ const ZZ: &[SurfaceRole] = &[
     PALETTE,
     FIND_BAR,
     PICKER,
+    HOSTS_DRAWER,
+    NEW_DRAWER,
+    ADD_HOST_DRAWER,
+    NEW_PANE_DRAWER,
+    TABS_DRAWER,
+    BINDINGS_DRAWER,
     INLINE_PANEL,
     FLOATING_PANE,
     PIP,

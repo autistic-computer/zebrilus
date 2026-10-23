@@ -20,7 +20,7 @@ const TILE_INSET: f32 = 8.0;
 const PILL_GAP: f32 = 8.0;
 const PILL_INSET: f32 = 8.0;
 const PILL_INSET_MIN: f32 = 16.0;
-const PILL_INSET_MAX: f32 = 36.0;
+const PILL_INSET_MAX: f32 = 20.0;
 const INK_SWITCH: f32 = 1.25;
 
 /// The radius of a corner set `gap` inside one of `radius`, so the two
@@ -34,9 +34,10 @@ pub(super) fn concentric(radius: Pixels, gap: Pixels) -> Pixels {
 }
 
 /// Where the floating pill sits. On a screen with rounded corners it sits in
-/// from the sides and the bottom by one distance and rounds by the screen's
-/// radius less that distance, so its corners run concentric with the
-/// screen's; elsewhere it clears the safe area and keeps its role's corners.
+/// from the sides and the bottom by one distance, at most 20pt so the bar
+/// spans the screen, and rounds by the screen's radius less that distance,
+/// following the screen's corners; elsewhere it clears the safe area and
+/// keeps its role's corners.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PillPlacement {
     pub inset: Pixels,

@@ -130,12 +130,14 @@ a row) is either a kind itself, a group the kit names, or one of zz's places, wh
 or in a group (`SurfaceRole::under`). The kit's groups (`SurfaceRole::KIT` holds them with the
 kinds):
 
-- floating: `popover` (menus and popovers), `dialog`, `sheet`, `toast`, `tooltip`;
+- floating: `popover` (menus and popovers), `dialog`, `sheet` with `drawer` in it (every touch
+  bottom sheet, resting above the bottom safe area), `toast`, `tooltip`;
 - button: `icon-button` with `icon-button.flat` in it, `button.quiet`, and `menu-item`, the rows
   you press in menus, palettes, pickers and dropdowns;
 - item: `row`, `tab`, `tile`;
 - field: `field.multiline`;
-- label: `badge` with `grabber` in it, `keycap`.
+- label: `badge` with `grabber` in it, `keycap`, `icon-tile` (the tile that leads a sheet row; its
+  ink is the icon's color, rest by default).
 
 So `chrome.button` is in `icon-button`, which is in `button`; `palette` is in `popover`, which is
 in `floating`; `pane.chip` is in `floating` directly. A role resolves the way author CSS beats the browser's defaults
@@ -416,6 +418,7 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 | `phone.card` | tile | overview pane cards | `ui/compact/overview.rs:28` | |
 | `phone.add` | tile | the New pane tile that ends each overview row, as big as a card | `ui/compact/overview.rs:101` | shared `phone.card` with the live cards and was narrower than them; split out |
 | `phone.row` | menu-item | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `ui/compact/which_key_list.rs:54`, `ui/settings.rs:222` | four corner rules; fixed, one role |
+| `drawer.hosts`, `drawer.new`, `drawer.add-host`, `drawer.new-pane`, `drawer.tabs`, `drawer.bindings` | drawer | each phone drawer, so a theme can set one's corner smoothing apart from the rest | `app/app/compact/overview.rs`, `app/app/picker.rs`, `app/app/browser_pane.rs`, `app/app/compact.rs` | no way to tune one drawer apart from the rest; macOS sets `drawer` smoothing 2 |
 | `grabber` | badge | sheet grabbers | `ui/compact/bar.rs:46`, `kit/sheet.rs:376` | two sizes and colors |
 
 ### Overlays

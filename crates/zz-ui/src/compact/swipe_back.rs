@@ -20,7 +20,7 @@ type Back = Rc<dyn Fn(&mut Window, &mut App)>;
 type Backdrop = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
 
 #[derive(Default)]
-struct HorizontalScrollers(HashMap<ElementId, (Hitbox, ScrollHandle)>);
+struct HorizontalScrollers(HashMap<ElementId, (Hitbox, Option<ScrollHandle>)>);
 
 impl Global for HorizontalScrollers {}
 
@@ -35,7 +35,24 @@ pub fn yield_back_swipe(id: impl Into<ElementId>, scroll: &ScrollHandle) -> impl
         move |_, hitbox, _, cx| {
             cx.default_global::<HorizontalScrollers>()
                 .0
-                .insert(id, (hitbox, scroll));
+                .insert(id, (hitbox, Some(scroll)));
+        },
+    )
+    .absolute()
+    .inset_0()
+}
+
+/// Keeps every horizontal pan that starts on an element for the element, as
+/// the overview's pill keeps its swipe between hosts. Place it like
+/// [`yield_back_swipe`].
+pub fn claim_back_swipe(id: impl Into<ElementId>) -> impl IntoElement {
+    let id = id.into();
+    canvas(
+        |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+        move |_, hitbox, _, cx| {
+            cx.default_global::<HorizontalScrollers>()
+                .0
+                .insert(id, (hitbox, None));
         },
     )
     .absolute()
@@ -46,7 +63,10 @@ fn scroller_takes(start: Point<Pixels>, window: &Window, cx: &App) -> bool {
     cx.try_global::<HorizontalScrollers>()
         .is_some_and(|scrollers| {
             scrollers.0.values().any(|(hitbox, scroll)| {
-                scroll.offset().x < px(0.0) && hitbox.is_hovered_at(start, window)
+                scroll
+                    .as_ref()
+                    .is_none_or(|scroll| scroll.offset().x < px(0.0))
+                    && hitbox.is_hovered_at(start, window)
             })
         })
 }

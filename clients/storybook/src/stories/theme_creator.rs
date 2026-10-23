@@ -18,10 +18,11 @@ use zz_ui::{
         unified_command_palette_input,
     },
     compact::{
-        ArrowDirection, PillLabel, ToolKeys, WhichKeyList, arrow_pad_bubble, bottom_sheet,
-        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
-        compact_hud, compact_pane_header, overview_add_tile, overview_card, overview_count,
-        overview_section_heading, page_dots, sheet_row,
+        ArrowDirection, BottomSheet, HostState, PillLabel, ToolKeys, WhichKeyList,
+        arrow_pad_bubble, bottom_sheet, compact_bar_button, compact_floating_bar,
+        compact_floating_group, compact_floating_pill, compact_hud, compact_pane_header,
+        overview_card, overview_choice_row, overview_count, overview_host_row,
+        overview_section_heading, page_dots, sheet_close, sheet_row,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -143,6 +144,19 @@ pub const STORY: Story = Story {
             summary: "The phone: a terminal page with a HUD, the key row's prefix menu and arrow pad, the bindings list, the overview's pane cards and the sessions sheet.",
             build: Phone::view,
         },
+        Section {
+            id: "drawers",
+            name: "Drawers",
+            summary: "Every drawer on the phone, each its own role under Drawers, resting on the phone's bottom safe area.",
+            build: |window, cx| {
+                stateful(
+                    window,
+                    cx,
+                    |window, cx| cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
+                    drawers,
+                )
+            },
+        },
     ],
 };
 
@@ -173,6 +187,9 @@ const PHONE_LINES: [&str; 3] = [
     "~/dev/zz main* > ",
 ];
 const PHONE_SHEET_HEIGHT: f32 = 460.0;
+const SCREEN_RADIUS: f32 = 55.0;
+const SAFE_BOTTOM: f32 = 34.0;
+const DRAWER_SCREEN_HEIGHT: f32 = 480.0;
 const PHONE_PAGE_HEIGHT: f32 = 190.0;
 const KEYS_PAGE_HEIGHT: f32 = 470.0;
 const CARD_LINES: [&str; 6] = [
@@ -904,7 +921,7 @@ impl Phone {
         ));
         let sections = OVERVIEW.iter().map(|(index, name, panes)| {
             v_flex()
-                .child(overview_section_heading(name, panes.len(), cx))
+                .child(overview_section_heading(*index, name, None, cx))
                 .child(
                     h_flex()
                         .gap(px(zz_ui::compact::OVERVIEW_CARD_GAP))
@@ -925,11 +942,6 @@ impl Phone {
                                     cx,
                                 )
                             },
-                        ))
-                        .child(overview_add_tile(
-                            ("showcase-overview-add", *index as usize),
-                            ("showcase-overview-add-press", *index as usize),
-                            cx,
                         )),
                 )
         });
@@ -951,7 +963,7 @@ impl Phone {
                 sheet_row(
                     ("showcase-session-option", ix),
                     zz_ui::roles::PHONE_ROW,
-                    attached.then(|| zz_ui::Icon::new(IconName::Check)),
+                    Some(zz_ui::Icon::new(IconName::Layers)),
                     *name,
                     cx,
                 )
@@ -962,6 +974,13 @@ impl Phone {
                         .text_color(muted)
                         .child(overview_count(*windows, "window")),
                 )
+                .when(*attached, |row| {
+                    row.child(
+                        zz_ui::Icon::new(IconName::Check)
+                            .size(px(18.0))
+                            .text_color(theme.accent),
+                    )
+                })
             });
         let sheet = bottom_sheet(
             "showcase-sessions-sheet",
@@ -979,7 +998,7 @@ impl Phone {
                 .child(sheet_row(
                     "showcase-new-session",
                     zz_ui::roles::PHONE_ROW,
-                    Some(zz_ui::Icon::new(IconName::Plus).text_color(muted)),
+                    Some(zz_ui::Icon::new(IconName::Plus)),
                     "New session",
                     cx,
                 )),
@@ -1016,6 +1035,242 @@ impl Render for Phone {
         )
     }
 }
+
+fn drawer_screen(id: &'static str, sheet: BottomSheet, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    div()
+        .id(id)
+        .relative()
+        .w_full()
+        .max_w(px(PHONE_WIDTH))
+        .h(px(DRAWER_SCREEN_HEIGHT))
+        .overflow_hidden()
+        .rounded(px(SCREEN_RADIUS))
+        .framed(cx)
+        .bg(theme.surface(Elevation::Panel).fill)
+        .child(
+            v_flex()
+                .p(px(24.0))
+                .gap_2()
+                .text_size(px(13.0))
+                .text_color(theme.foreground.muted())
+                .children(PHONE_LINES.map(|line| div().child(line))),
+        )
+        .child(sheet)
+        .into_any_element()
+}
+
+fn drawer(
+    id: &'static str,
+    title: &'static str,
+    role: zz_ui::SurfaceRole,
+    content: impl IntoElement,
+) -> BottomSheet {
+    bottom_sheet(
+        id,
+        title,
+        [sheet_close((id, 0_usize)).into_any_element()],
+        content,
+        px(SAFE_BOTTOM),
+        |_, _| {},
+    )
+    .surface_role(role)
+    .header_role(zz_ui::roles::PHONE_BAR)
+}
+
+fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
+    use zz_ui::roles;
+    let cx: &App = cx;
+    let muted = cx.theme().foreground.muted();
+    let list = || v_flex().list_inset(cx).pb(px(8.0));
+    let rule = || {
+        div()
+            .mx(px(12.0))
+            .my(px(4.0))
+            .rule_on(roles::LIST_RULE, zz_ui::Edge::Top, cx)
+    };
+    let plus = |id: &'static str, label: &'static str| {
+        sheet_row(
+            id,
+            roles::PHONE_ROW,
+            Some(zz_ui::Icon::new(IconName::Plus)),
+            label,
+            cx,
+        )
+    };
+    let hosts = list()
+        .child(overview_host_row(
+            "drawer-host-macbook",
+            HostState::Connected,
+            "macbook",
+            "2 sessions",
+            true,
+            cx,
+        ))
+        .child(overview_host_row(
+            "drawer-host-xps",
+            HostState::Connected,
+            "xps",
+            "1 session",
+            false,
+            cx,
+        ))
+        .child(
+            overview_host_row(
+                "drawer-host-alienware",
+                HostState::Offline,
+                "alienware",
+                "Not connected",
+                false,
+                cx,
+            )
+            .child(Button::new("drawer-host-connect").label("Connect")),
+        )
+        .child(rule())
+        .child(plus("drawer-host-add", "Add host"));
+    let new = list()
+        .child(
+            div()
+                .px(px(12.0))
+                .pb(px(10.0))
+                .text_size(px(13.0))
+                .text_color(muted)
+                .child("Opens as a new window in zz on macbook."),
+        )
+        .children(PANES.map(|(id, icon, title, detail)| {
+            overview_choice_row(id, Some(zz_ui::Icon::new(icon)), title, detail, cx)
+        }));
+    let add_host = v_flex()
+        .gap(px(12.0))
+        .px(px(16.0))
+        .pb(px(16.0))
+        .child(
+            h_flex()
+                .gap(px(8.0))
+                .child(div().flex_1().min_w_0().child(Input::new(destination)))
+                .child(
+                    Button::new("drawer-add-host-connect")
+                        .primary()
+                        .label("Connect"),
+                ),
+        )
+        .child(
+            div()
+                .text_size(px(13.0))
+                .text_color(muted)
+                .child("user@host, or user@host:port. Hosts you are on stay connected."),
+        );
+    let new_pane = list().children(PANES.map(|(id, icon, title, _)| {
+        sheet_row(
+            id,
+            roles::PHONE_ROW,
+            Some(zz_ui::Icon::new(icon)),
+            title,
+            cx,
+        )
+    }));
+    let tabs = list()
+        .children(TABS.iter().enumerate().map(|(ix, (title, host))| {
+            sheet_row(
+                ("drawer-tab", ix),
+                roles::PHONE_ROW,
+                (ix == 0).then(|| zz_ui::Icon::new(IconName::Check)),
+                *title,
+                cx,
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_size(px(13.0))
+                    .text_color(muted)
+                    .child(*host),
+            )
+        }))
+        .child(rule())
+        .child(plus("drawer-tab-new", "New tab"));
+    let rows: Arc<[_]> = binding_rows().iter().take(5).cloned().collect();
+    let bindings = drawer(
+        "drawer-bindings",
+        "All bindings",
+        roles::BINDINGS_DRAWER,
+        WhichKeyList::new(rows),
+    );
+    tiles(
+        window,
+        vec![
+            vec![
+                drawer_screen(
+                    "drawer-screen-hosts",
+                    drawer("drawer-hosts", "Hosts", roles::HOSTS_DRAWER, hosts),
+                    cx,
+                ),
+                drawer_screen(
+                    "drawer-screen-new",
+                    drawer("drawer-new", "New", roles::NEW_DRAWER, new),
+                    cx,
+                ),
+            ],
+            vec![
+                drawer_screen(
+                    "drawer-screen-add-host",
+                    drawer(
+                        "drawer-add-host",
+                        "Add host",
+                        roles::ADD_HOST_DRAWER,
+                        add_host,
+                    ),
+                    cx,
+                ),
+                drawer_screen(
+                    "drawer-screen-new-pane",
+                    drawer(
+                        "drawer-new-pane",
+                        "New pane",
+                        roles::NEW_PANE_DRAWER,
+                        new_pane,
+                    ),
+                    cx,
+                ),
+            ],
+            vec![
+                drawer_screen(
+                    "drawer-screen-tabs",
+                    drawer("drawer-tabs", "Tabs", roles::TABS_DRAWER, tabs),
+                    cx,
+                ),
+                drawer_screen("drawer-screen-bindings", bindings, cx),
+            ],
+        ],
+    )
+    .into_any_element()
+}
+
+const PANES: [(&str, IconName, &str, &str); 3] = [
+    (
+        "drawer-terminal",
+        IconName::SquareTerminal,
+        "Terminal",
+        "A shell in the current folder",
+    ),
+    (
+        "drawer-agent",
+        IconName::Bot,
+        "Agent",
+        "Claude Code or Codex in the current folder",
+    ),
+    (
+        "drawer-browser",
+        IconName::Globe,
+        "Browser",
+        "A web page on macbook, localhost included",
+    ),
+];
+
+const TABS: [(&str, &str); 3] = [
+    ("zz docs", "zzmux.sh"),
+    ("localhost:5173", "localhost"),
+    ("Issues", "github.com"),
+];
 
 fn phone_frame(id: &'static str, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
     let theme = cx.theme();
