@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use zz_gpui::{
-    AnyElement, App, Context, Entity, IntoElement, SharedString, Subscription, TextInputMode,
-    Window, canvas, div, prelude::*, px,
+    AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
+    TextInputMode, Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _, Theme, ThemeMode,
@@ -18,6 +18,7 @@ use zz_ui::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, appearance_page,
             appearance_page_items, contrast_slider, corner_radius_slider, percent_slider,
             picker_tile, theme_preview, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
+            zoom_slider,
         },
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
         settings_preview, settings_reset_button, settings_scroll_column,
@@ -214,6 +215,7 @@ pub(super) struct Controls {
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
     host_prefix: Entity<SelectState<Vec<SettingsSelectItem>>>,
+    zoom: FocusHandle,
     /// Whether the Interface page lists the knobs under Advanced.
     advanced: bool,
     _subscriptions: Vec<Subscription>,
@@ -379,6 +381,7 @@ impl Controls {
             terminal_font,
             palette_layout,
             host_prefix,
+            zoom: cx.focus_handle(),
             advanced: false,
             _subscriptions: subscriptions,
         }
@@ -618,12 +621,18 @@ impl AppShell {
                     })
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Description))
                     .collect::<Vec<_>>();
+                let zoom = &self.settings_controls.zoom;
+                let row_focus = items
+                    .iter()
+                    .map(|item| matches!(item, AppearancePageItem::UiZoom).then(|| zoom.clone()))
+                    .collect::<Vec<_>>();
                 let view = cx.entity();
                 return appearance_page(items, move |item, position, _, cx| {
                     view.update(cx, |this, cx| {
                         this.appearance_item(item, position, narrow, cx)
                     })
                 })
+                .row_focus(row_focus)
                 .into_any_element();
             }
             SettingsSection::Panes => {
@@ -907,10 +916,9 @@ impl AppShell {
             }
             AppearancePageItem::UiZoom => {
                 let view = cx.entity().downgrade();
-                let slider = percent_slider(
-                    "settings-zoom",
-                    "UI zoom",
+                let slider = zoom_slider(
                     self.preferences.zoom,
+                    &self.settings_controls.zoom,
                     move |zoom, window, cx| {
                         let _ = view.update(cx, |this, cx| {
                             this.preferences.zoom = zoom;
@@ -920,12 +928,9 @@ impl AppShell {
                     },
                     cx,
                 );
+                let (title, description) = item.text().unwrap_or_default();
                 with_control(
-                    SettingEntry::new(
-                        "UI zoom",
-                        "Scales application text, icons, and controls as a percentage of the default.",
-                    )
-                    .title_actions(
+                    SettingEntry::new(title, description).title_actions(
                         settings_reset_button(
                             "settings-zoom-reset",
                             "Reset UI zoom to 100%",

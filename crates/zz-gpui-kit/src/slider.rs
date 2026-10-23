@@ -20,6 +20,7 @@ use crate::{
 
 type ChangeHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 type ValueHandler = Rc<dyn Fn(f32, &mut Window, &mut App)>;
+type ReleaseHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 type Display = Rc<dyn Fn(f32) -> SharedString>;
 
 pub(crate) const THUMB: f32 = 16.0;
@@ -176,6 +177,8 @@ pub struct Slider {
     track: Vec<Hsla>,
     display: Option<Display>,
     inline: bool,
+    commit_on_release: bool,
+    focus: Option<FocusHandle>,
     on_change: ValueHandler,
 }
 
@@ -199,8 +202,33 @@ impl Slider {
             track: Vec::new(),
             display: None,
             inline: false,
+            commit_on_release: false,
+            focus: None,
             on_change: Rc::new(on_change),
         }
+    }
+
+    /// Moves the thumb and the shown value while the thumb is dragged, but
+    /// reports the value to `on_change` once, when the drag lets go. For values
+    /// that relayout the window under the pointer, like UI zoom.
+    #[must_use]
+    pub fn commit_on_release(mut self) -> Self {
+        self.commit_on_release = true;
+        self
+    }
+
+    /// Focuses `focus` instead of the slider's own handle, so its owner can
+    /// tell the slider is in use. Opening the touch sheet focuses it too.
+    #[must_use]
+    pub fn track_focus(mut self, focus: &FocusHandle) -> Self {
+        self.focus = Some(focus.clone());
+        self
+    }
+
+    fn focus(&self, drag: &Entity<Drag>, cx: &App) -> FocusHandle {
+        self.focus
+            .clone()
+            .unwrap_or_else(|| drag.read(cx).focus.clone())
     }
 
     #[must_use]
@@ -394,6 +422,7 @@ impl Slider {
             PaintState::Rest
         };
         let opener = drag.clone();
+        let opener_focus = self.focus(&drag, cx);
         let trigger = field_chrome(
             field_text(
                 h_flex()
@@ -423,7 +452,10 @@ impl Slider {
                 .px(px(PREVIEW_THUMB / 2.0))
                 .child(self.rail(fraction, PREVIEW_TRACK, PREVIEW_THUMB, false, cx)),
         )
-        .on_click(move |_, _, cx| opener.update(cx, |drag, cx| drag.set_sheet(true, cx)));
+        .on_click(move |_, window, cx| {
+            opener_focus.focus(window, cx);
+            opener.update(cx, |drag, cx| drag.set_sheet(true, cx));
+        });
         let sheet = open.then(|| self.sheet(drag, shown, window, cx));
         div().w_full().child(trigger).children(sheet)
     }
@@ -469,20 +501,39 @@ impl Slider {
         let scale = self.scale;
         let thumb = thumb(cx);
         let coarse = CoarsePointer::get(cx);
-        let focus = drag.read(cx).focus.clone();
+        let focus = self.focus(&drag, cx);
         let focused = focus.is_focused(window);
         let value = scale.snap(drag.read(cx).live.unwrap_or(self.value));
         let rail = self.rail(scale.fraction(value), TRACK, thumb, focused, cx);
         let on_change = self.on_change;
+        let deferred = self.commit_on_release;
+        let committed = scale.snap(self.value);
         let emit: ValueHandler = Rc::new({
             let drag = drag.clone();
+            let on_change = Rc::clone(&on_change);
             move |next, window, cx| {
                 let previous = drag.update(cx, |drag, cx| {
                     cx.notify();
                     drag.live.replace(next)
                 });
-                if previous != Some(next) {
+                if !deferred && previous != Some(next) {
                     on_change(next, window, cx);
+                }
+            }
+        });
+        let release: ReleaseHandler = Rc::new({
+            let drag = drag.clone();
+            move |window, cx| {
+                let live = drag.update(cx, |drag, cx| {
+                    drag.touch = false;
+                    cx.notify();
+                    drag.live.take()
+                });
+                if deferred
+                    && let Some(live) = live
+                    && live != committed
+                {
+                    on_change(live, window, cx);
                 }
             }
         });
@@ -497,9 +548,11 @@ impl Slider {
             {
                 let drag = drag.clone();
                 let emit = Rc::clone(&emit);
+                let release = Rc::clone(&release);
                 move |_, hitbox, window, _| {
                     let moved = drag.clone();
                     let mouse_emit = Rc::clone(&emit);
+                    let mouse_release = Rc::clone(&release);
                     window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
                         let Drag {
                             bounds,
@@ -513,17 +566,15 @@ impl Slider {
                         if event.pressed_button == Some(MouseButton::Left) {
                             mouse_emit(scale.at(event.position.x, bounds, thumb), window, cx);
                         } else {
-                            moved.update(cx, |drag, _| drag.live = None);
+                            mouse_release(window, cx);
                         }
                     });
                     let released = drag.clone();
-                    window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                    let up_release = Rc::clone(&release);
+                    window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
                         let Drag { live, touch, .. } = *released.read(cx);
                         if phase.bubble() && live.is_some() && !touch {
-                            released.update(cx, |drag, cx| {
-                                drag.live = None;
-                                cx.notify();
-                            });
+                            up_release(window, cx);
                         }
                     });
                     window.on_mouse_event(move |event: &TouchDragEvent, phase, window, cx| {
@@ -546,11 +597,7 @@ impl Slider {
                                 emit(scale.at(event.position.x, bounds, thumb), window, cx);
                             }
                             TouchPhase::Ended | TouchPhase::Cancelled if touch => {
-                                drag.update(cx, |drag, cx| {
-                                    drag.touch = false;
-                                    drag.live = None;
-                                    cx.notify();
-                                });
+                                release(window, cx);
                             }
                             TouchPhase::Moved | TouchPhase::Ended | TouchPhase::Cancelled => {}
                         }
@@ -561,7 +608,7 @@ impl Slider {
         .absolute()
         .inset_0();
         let key_emit = Rc::clone(&emit);
-        let key_drag = drag.clone();
+        let key_release = Rc::clone(&release);
         div()
             .id(self.id)
             .role(Role::Slider)
@@ -591,7 +638,7 @@ impl Slider {
                 };
                 cx.stop_propagation();
                 key_emit(next, window, cx);
-                key_drag.update(cx, |drag, _| drag.live = None);
+                key_release(window, cx);
             })
             .on_mouse_down(MouseButton::Left, move |event, window, cx| {
                 focus.focus(window, cx);
@@ -614,25 +661,29 @@ mod tests {
     struct SliderTest {
         value: Rc<RefCell<f32>>,
         changes: Rc<RefCell<Vec<f32>>>,
+        commit_on_release: bool,
     }
 
     impl Render for SliderTest {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let value = Rc::clone(&self.value);
             let changes = Rc::clone(&self.changes);
-            div().w(px(216.0)).child(
-                Slider::new(
-                    "test-slider",
-                    "Hue",
-                    *self.value.borrow(),
-                    0.0..=360.0,
-                    move |next, _, _| {
-                        *value.borrow_mut() = next;
-                        changes.borrow_mut().push(next);
-                    },
-                )
-                .step(1.0),
+            let slider = Slider::new(
+                "test-slider",
+                "Hue",
+                *self.value.borrow(),
+                0.0..=360.0,
+                move |next, _, _| {
+                    *value.borrow_mut() = next;
+                    changes.borrow_mut().push(next);
+                },
             )
+            .step(1.0);
+            div().w(px(216.0)).child(if self.commit_on_release {
+                slider.commit_on_release()
+            } else {
+                slider
+            })
         }
     }
 
@@ -643,7 +694,11 @@ mod tests {
         let changes = Rc::new(RefCell::new(Vec::new()));
         let (_, cx) = cx.add_window_view({
             let (value, changes) = (Rc::clone(&value), Rc::clone(&changes));
-            move |_, _| SliderTest { value, changes }
+            move |_, _| SliderTest {
+                value,
+                changes,
+                commit_on_release: false,
+            }
         });
         let cx: &mut VisualTestContext = cx;
         let draw = |cx: &mut VisualTestContext| {
@@ -699,7 +754,11 @@ mod tests {
         let changes = Rc::new(RefCell::new(Vec::new()));
         let (_, cx) = cx.add_window_view({
             let (value, changes) = (Rc::clone(&value), Rc::clone(&changes));
-            move |_, _| SliderTest { value, changes }
+            move |_, _| SliderTest {
+                value,
+                changes,
+                commit_on_release: false,
+            }
         });
         let cx: &mut VisualTestContext = cx;
         let draw = |cx: &mut VisualTestContext| {
@@ -727,6 +786,63 @@ mod tests {
         touch(cx, TouchPhase::Moved, 12.0, 0.0);
         assert_eq!(*value.borrow(), 360.0);
         assert_eq!(*changes.borrow(), [180.0, 360.0]);
+    }
+
+    #[zz_gpui::test]
+    fn a_slider_that_commits_on_release_reports_once_the_drag_lets_go(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let value = Rc::new(RefCell::new(0.0));
+        let changes = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let (value, changes) = (Rc::clone(&value), Rc::clone(&changes));
+            move |_, _| SliderTest {
+                value,
+                changes,
+                commit_on_release: true,
+            }
+        });
+        let cx: &mut VisualTestContext = cx;
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+        };
+        let touch = |cx: &mut VisualTestContext, phase, x: f32| {
+            cx.simulate_event(TouchDragEvent {
+                phase,
+                start_position: point(px(108.0), px(12.0)),
+                position: point(px(x), px(12.0)),
+            });
+            draw(cx);
+        };
+        draw(cx);
+        cx.simulate_event(MouseDownEvent {
+            position: point(px(108.0), px(12.0)),
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+            first_mouse: false,
+        });
+        draw(cx);
+        assert!(changes.borrow().is_empty());
+        cx.simulate_event(MouseUpEvent {
+            position: point(px(108.0), px(12.0)),
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+        });
+        draw(cx);
+        assert_eq!(*changes.borrow(), [180.0]);
+        cx.simulate_keystrokes("left");
+        draw(cx);
+        assert_eq!(*changes.borrow(), [180.0, 179.0]);
+        touch(cx, TouchPhase::Started, 108.0);
+        touch(cx, TouchPhase::Moved, 160.0);
+        touch(cx, TouchPhase::Moved, 400.0);
+        assert_eq!(*changes.borrow(), [180.0, 179.0]);
+        touch(cx, TouchPhase::Ended, 400.0);
+        assert_eq!(*changes.borrow(), [180.0, 179.0, 360.0]);
     }
 
     #[test]
