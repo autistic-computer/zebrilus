@@ -178,15 +178,14 @@ impl AgentRuntime {
     ) -> bool {
         let _lifecycle = self.lifecycle.lock();
         let queued = QueuedPrompt { prompt, waiter };
-        let sent = match self.host.command(pane, HostCommand::Prompt(queued)) {
+        match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
             Err(HostCommand::Prompt(mut queued)) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 self.fanout.reclaim_prompt(pane, queued.prompt)
             }
             Err(_) => unreachable!(),
-        };
-        sent
+        }
     }
 
     pub(crate) fn prewarm(&self) {

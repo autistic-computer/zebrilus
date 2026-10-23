@@ -2,8 +2,9 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _,
     UniformListScrollHandle, Window, div, prelude::*, px,
 };
+use zz_protocol::AgentProvider;
 use zz_ui::{
-    ActiveTheme as _, IconName,
+    ActiveTheme as _,
     input::InputState,
     pane::{PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface},
     shell::{app_connection_state, app_shell_surface, app_titlebar_strip, app_workspace_surface},
@@ -11,7 +12,7 @@ use zz_ui::{
 
 use super::{
     browser::browser_pane,
-    fixtures::{BUILD, TerminalPane, gap, placeholder_pane, stateful},
+    fixtures::{BUILD, CLAUDE, TerminalPane, gap, stateful},
     status_bar::{Bar, titlebar},
     tree::{TreeState, chrome_controls, host_only, sidebar, tree_list, workspace_tree},
 };
@@ -27,7 +28,7 @@ pub const STORY: Story = Story {
         Section {
             id: "app",
             name: "App",
-            summary: "app_shell_surface with a terminal, an agent and a browser pane. With the sidebar open the status bar goes away; with it hidden the status bar takes the titlebar and the canvas drops its top margin.",
+            summary: "app_shell_surface with a terminal, Claude Code in a terminal with its lens toggle, and a browser pane. With the sidebar open the status bar goes away; with it hidden the status bar takes the titlebar and the canvas drops its top margin.",
             build: |window, cx| stateful(window, cx, Shell::new, app),
         },
         Section {
@@ -76,16 +77,10 @@ fn canvas(
         .active(true)
         .gaps(gaps)
         .render("shell-terminal", Vec::new(), cx);
-    let agent = placeholder_pane(
-        "shell-agent",
-        IconName::Claude,
-        "Review sidebar",
-        "Agent pane content",
-        false,
-        gaps,
-        Vec::new(),
-        cx,
-    );
+    let agent = TerminalPane::new(2, "Review sidebar", CLAUDE)
+        .gaps(gaps)
+        .lens(AgentProvider::ClaudeCode)
+        .render("shell-agent", Vec::new(), cx);
     let browser = browser_pane("shell-browser", address, false, gaps, window, cx);
     let right = pane_split_surface(
         "shell-right",

@@ -1,14 +1,22 @@
 ---
 type: Design Plan
 title: Agent turn machine . one owner for "a turn is running"
-description: "One pure state machine in the daemon decides whether an Agent pane's turn is running, waiting, cancelling or done, from a small set of facts the Claude and Codex drivers report. It replaces the six turn flags spread over the drivers, the host, the fanout lane and the desktop client. zz-machine holds the shape (transition, decision, wake time from the state). The Claude and Codex drivers run it and replay their recordings through it in tests; the host, fanout lane and clients mirror the turn events instead of deriving their own."
-status: Built (2026-10-21; drivers run the machine, host, fanout and clients mirror it; shared client dispatcher and timeline turn boundaries next)
+description: "One pure state machine in the daemon decides whether a native driver's turn is running, waiting, cancelling or done, from a small set of facts the Claude and Codex drivers report. It replaces the six turn flags spread over the drivers, the host, the fanout lane and the desktop client. zz-machine holds the shape (transition, decision, wake time from the state). The Claude and Codex drivers run it and replay their recordings through it in tests; the host, fanout lane and clients mirror the turn events instead of deriving their own."
+status: Built (2026-10-21; drivers run the machine, host, fanout and clients mirror it; shared client dispatcher and timeline turn boundaries next; parked 2026-10-23, when the Agent pane that ran the drivers was removed; the lens does not use the machine)
 resource: crates/zz-daemon/src/agent/turn.rs
 tags:
 - agent
 - design-plan
-timestamp: 2026-10-21T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
+
+**Status 2026-10-23.** The Agent pane is gone ([agent lens](/designs/agent-lens.md)). The machine
+stays in `agent/turn.rs` and the Claude and Codex drivers still run it, but no pane opens a driver
+now; it waits for the lead chat. The lens runner (`agent/lens.rs`) does not use it: it settles a
+turn from Claude's session record (`busy`, `idle`, `waiting`) and transcript, or Codex's
+`task_started` and `task_complete` lines. Where this page says "pane", read the driver-backed Agent
+pane that existed until then. The subagent feed and its `external_turn` in the fanout lane, and the
+sidebar status record for agent panes, were removed the same day.
 
 # Why
 

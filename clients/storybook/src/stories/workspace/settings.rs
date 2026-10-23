@@ -221,13 +221,6 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 )
                 .child(
                     SettingEntry::new(
-                        "Agent panes",
-                        "Allow creating agent panes on this client.",
-                    )
-                    .control(Switch::new("agents").checked(false)),
-                )
-                .child(
-                    SettingEntry::new(
                         "UI zoom",
                         "Scales application text, icons, and controls as a percentage of the default.",
                     )
@@ -529,8 +522,6 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 pane_entry("Pane gaps", "Separate panes with spacing and borders.")
                     .title_actions(settings_reset_button("gaps-reset", "Reset to default", gaps))
                     .control(Switch::new("gaps").checked(gaps)),
-                pane_entry("Agent panes", "Allow creating agent panes on this client.")
-                    .control(Switch::new("agents").checked(true)),
             ],
             [
                 pane_entry(

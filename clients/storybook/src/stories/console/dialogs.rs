@@ -146,7 +146,7 @@ pub const STORY: Story = Story {
         Section {
             id: "inline-alerts",
             name: "Inline alerts",
-            summary: "inline_alert, the failure a pane shows in place instead of a modal: the alert dialog's layout on the popover surface, with the main action last on the right. The browser, editor and agent panes all use it.",
+            summary: "inline_alert, the failure a pane shows in place instead of a modal: the alert dialog's layout on the popover surface, with the main action last on the right. The browser and editor panes and the agent lens all use it.",
             build: |_, cx| stateless(inline_alerts, cx),
         },
     ],

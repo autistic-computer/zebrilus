@@ -1,5 +1,7 @@
 use std::ops::Range;
 
+use agent_client_protocol_schema::v1::{AvailableCommand, AvailableCommandInput};
+
 const MAX_COMPLETION_RESULTS: usize = 64;
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
@@ -7,6 +9,41 @@ pub struct AgentCommand {
     pub name: String,
     pub description: String,
     pub input_hint: Option<String>,
+}
+
+pub fn agent_command_model(command: AvailableCommand) -> AgentCommand {
+    let input_hint = command.input.and_then(|input| match input {
+        AvailableCommandInput::Unstructured(input) => Some(input.hint),
+        _ => None,
+    });
+    AgentCommand {
+        name: command.name,
+        description: command.description,
+        input_hint,
+    }
+}
+
+pub const MAX_RENDERED_ERROR_BYTES: usize = 1024;
+
+pub fn rendered_error(error: &str) -> String {
+    let mut rendered = String::with_capacity(MAX_RENDERED_ERROR_BYTES);
+    let mut truncated = false;
+    for character in error.trim().chars() {
+        let character = if character.is_control() && !matches!(character, '\n' | '\t') {
+            '�'
+        } else {
+            character
+        };
+        if rendered.len().saturating_add(character.len_utf8()) > MAX_RENDERED_ERROR_BYTES - 3 {
+            truncated = true;
+            break;
+        }
+        rendered.push(character);
+    }
+    if truncated {
+        rendered.push('…');
+    }
+    rendered
 }
 
 const ZZ_COMMAND_DESCRIPTIONS: [(&str, &str, Option<&str>); 5] = [

@@ -11,7 +11,7 @@ use crate::{
     kbd::Keycap, picker::muted_on, pulse::pulse_phase, roles, v_flex,
 };
 
-pub use zz_client::agent_config::{MAX_RENDERED_ERROR_BYTES, rendered_error};
+pub use zz_client::agent_completion::{MAX_RENDERED_ERROR_BYTES, rendered_error};
 
 pub fn welcome_state(cx: &App) -> Div {
     v_flex()

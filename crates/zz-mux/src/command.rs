@@ -28603,24 +28603,21 @@ mod tests {
             .expect("picker split");
         let picker = context.pane.expect("picker pane");
 
-        for (kind, flag, option) in [(
-            "editor",
-            "experimental-editor-pane",
-            MuxOptionKey::ExperimentalEditorPane,
-        )] {
-            assert_eq!(engine.mux_option_value(option), "off");
-            assert!(matches!(
-                engine.execute(
-                    &mut context,
-                    &command("select-pane-kind", &["-t", &picker.to_string(), kind]),
-                ),
-                Err(ServerError::InvalidCommand(message)) if message.contains(flag)
-            ));
-            assert!(matches!(
-                engine.state.pane(picker).map(|pane| &pane.kind),
-                Some(PaneKind::Picker { .. })
-            ));
-        }
+        assert_eq!(
+            engine.mux_option_value(MuxOptionKey::ExperimentalEditorPane),
+            "off"
+        );
+        assert!(matches!(
+            engine.execute(
+                &mut context,
+                &command("select-pane-kind", &["-t", &picker.to_string(), "editor"]),
+            ),
+            Err(ServerError::InvalidCommand(message)) if message.contains("experimental-editor-pane")
+        ));
+        assert!(matches!(
+            engine.state.pane(picker).map(|pane| &pane.kind),
+            Some(PaneKind::Picker { .. })
+        ));
 
         engine
             .execute(

@@ -6,7 +6,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use serde_json::{Value, json};
@@ -31,6 +31,7 @@ use crate::agent::{
 const POLL: Duration = Duration::from_millis(250);
 const LOCATE: Duration = Duration::from_secs(1);
 const CODEX_LOCATE: Duration = Duration::from_secs(5);
+const ROLLOUT_DAYS: usize = 7;
 const SETTLE: Duration = Duration::from_secs(5);
 const TAIL_BYTES: u64 = 8 * 1024 * 1024;
 const READ_LIMIT: u64 = 4 * 1024 * 1024;
@@ -192,11 +193,11 @@ impl Claude {
         }
     }
 
-    fn locate(&mut self, pane: PaneId, pane_pid: Option<u32>) -> Option<Found> {
+    fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
         let files = self.files.as_ref()?;
         let mut records = claude_peers::read_records_in(&files.registry).ok()?;
         records.retain(|record| record.zz.is_none());
-        let record = claude_peers::record_for_pane(&records, &pane.to_string(), pane_pid)?.clone();
+        let record = claude_peers::record_in_pane(&records, pane_pid?)?.clone();
         let cwd = PathBuf::from(&record.cwd);
         let path = sessions::session_file(&files.config, &cwd, &record.session_id);
         let session = record.session_id.clone();
@@ -211,22 +212,25 @@ impl Claude {
     fn status(&mut self) -> Option<Status> {
         let files = self.files.as_ref()?;
         let pid = self.record.as_ref()?.pid;
-        let record = std::fs::read(files.registry.join(format!("{pid}.json")))
+        let fresh = std::fs::read(files.registry.join(format!("{pid}.json")))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<PeerRecord>(&bytes).ok())
             .filter(|record| record.pid == pid);
-        let Some(record) = record else {
-            self.record = None;
-            return Some(Status::default());
-        };
-        let status = Status {
+        match fresh {
+            Some(record) => self.record = Some(record),
+            None if crate::pid_alive(pid) => {}
+            None => {
+                self.record = None;
+                return Some(Status::default());
+            }
+        }
+        let record = self.record.as_ref()?;
+        Some(Status {
             busy: matches!(record.status.as_str(), "busy" | "waiting"),
             waiting: (record.status == "waiting")
                 .then(|| record.waiting_for.clone())
                 .filter(|why| !why.is_empty()),
-        };
-        self.record = Some(record);
-        Some(status)
+        })
     }
 
     fn load(&mut self, path: PathBuf, cwd: &Path) -> Vec<Value> {
@@ -319,18 +323,13 @@ struct Codex {
 impl Codex {
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
         self.pid = codex_queue::codex_pid(pane_pid?);
-        let (path, meta) = open_files(self.pid?)
+        let pid = self.pid?;
+        let (path, meta) = open_files(pid)
             .into_iter()
-            .filter(|path| {
-                path.extension()
-                    .is_some_and(|extension| extension == "jsonl")
-                    && path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| name.starts_with("rollout-"))
-            })
+            .filter(|path| is_rollout(path))
             .filter_map(|path| RolloutMeta::read(&path).map(|meta| (path, meta)))
-            .find(|(_, meta)| meta.parent.is_none())?;
+            .find(|(_, meta)| meta.parent.is_none())
+            .or_else(|| newest_rollout(&codex_sessions()?, pid))?;
         Some(Found {
             session: meta.thread,
             path,
@@ -391,6 +390,61 @@ impl Codex {
     }
 }
 
+fn is_rollout(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension == "jsonl")
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("rollout-"))
+}
+
+fn codex_sessions() -> Option<PathBuf> {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+        .map(|home| home.join("sessions"))
+}
+
+fn subdirectories(path: &Path) -> Vec<PathBuf> {
+    let mut directories = std::fs::read_dir(path)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
+    directories.sort();
+    directories
+}
+
+fn newest_rollout(sessions: &Path, pid: u32) -> Option<(PathBuf, RolloutMeta)> {
+    let cwd =
+        std::fs::canonicalize(zz_daemon_client::process_info::working_directory(pid)?).ok()?;
+    let since = SystemTime::now().checked_sub(zz_daemon_client::process_info::running_for(pid)?)?;
+    let mut days = subdirectories(sessions)
+        .iter()
+        .flat_map(|year| subdirectories(year))
+        .flat_map(|month| subdirectories(&month))
+        .collect::<Vec<_>>();
+    days.sort();
+    days.into_iter()
+        .rev()
+        .take(ROLLOUT_DAYS)
+        .flat_map(|day| std::fs::read_dir(day).into_iter().flatten().flatten())
+        .map(|entry| entry.path())
+        .filter(|path| is_rollout(path))
+        .filter_map(|path| Some((std::fs::metadata(&path).ok()?.modified().ok()?, path)))
+        .filter(|(modified, _)| *modified >= since)
+        .filter_map(|(modified, path)| RolloutMeta::read(&path).map(|meta| (modified, path, meta)))
+        .filter(|(_, _, meta)| {
+            meta.parent.is_none()
+                && std::fs::canonicalize(&meta.cwd).is_ok_and(|session| session == cwd)
+        })
+        .max_by_key(|(modified, _, _)| *modified)
+        .map(|(_, path, meta)| (path, meta))
+}
+
 #[cfg(target_os = "linux")]
 fn open_files(pid: u32) -> Vec<PathBuf> {
     std::fs::read_dir(format!("/proc/{pid}/fd"))
@@ -419,14 +473,14 @@ fn open_files(pid: u32) -> Vec<PathBuf> {
 }
 
 enum Source {
-    Claude(Claude),
-    Codex(Codex),
+    Claude(Box<Claude>),
+    Codex(Box<Codex>),
 }
 
 impl Source {
-    fn locate(&mut self, pane: PaneId, pane_pid: Option<u32>) -> Option<Found> {
+    fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
         match self {
-            Self::Claude(claude) => claude.locate(pane, pane_pid),
+            Self::Claude(claude) => claude.locate(pane_pid),
             Self::Codex(codex) => codex.locate(pane_pid),
         }
     }
@@ -480,6 +534,7 @@ struct Turn {
 struct Permission {
     request_id: u64,
     tool: Option<String>,
+    answerable: bool,
     answered: bool,
 }
 
@@ -503,9 +558,9 @@ impl Lens {
     fn new(spec: LensSpec, permission_ids: Arc<AtomicU64>) -> Self {
         let source = match spec.provider {
             AgentProvider::ClaudeCode => {
-                Source::Claude(Claude::new(ClaudeFiles::from_environment()))
+                Source::Claude(Box::new(Claude::new(ClaudeFiles::from_environment())))
             }
-            AgentProvider::Codex => Source::Codex(Codex::default()),
+            AgentProvider::Codex => Source::Codex(Box::default()),
         };
         Self::with_source(spec, source, permission_ids)
     }
@@ -547,7 +602,7 @@ impl Lens {
 
     fn locate(&mut self, opening: bool) -> Vec<AgentStreamPayload> {
         self.next_locate = Instant::now() + self.source.every();
-        let found = self.source.locate(self.spec.pane, self.spec.io.pid());
+        let found = self.source.locate(self.spec.io.pid());
         let Some(found) = found else {
             return if opening {
                 vec![
@@ -613,7 +668,7 @@ impl Lens {
         };
         let read = self.source.read();
         if read.reload {
-            if let Some(found) = self.source.locate(self.spec.pane, self.spec.io.pid()) {
+            if let Some(found) = self.source.locate(self.spec.io.pid()) {
                 self.session = Some(String::new());
                 payloads.extend(self.reload(found, false));
             }
@@ -662,15 +717,28 @@ impl Lens {
             };
         };
         let mut payloads = Vec::new();
+        let answerable = why == PERMISSION_PROMPT;
         if let Some(permission) = &self.permission {
-            if !permission.answered || permission.tool == tool {
+            let upgrade =
+                answerable && !permission.answered && permission.tool.is_none() && tool.is_some();
+            let same = !permission.answered || permission.tool.is_none() || permission.tool == tool;
+            if !upgrade && same {
                 return payloads;
+            }
+            if upgrade {
+                payloads.push(AgentStreamPayload::PermissionResolved {
+                    request_id: permission.request_id,
+                    canceled: true,
+                });
             }
             self.permission = None;
         }
         let request_id = self.permission_ids.fetch_add(1, Ordering::Relaxed);
-        let answerable = why == PERMISSION_PROMPT;
         let pending = self.source.pending_tool().filter(|_| answerable);
+        let answers = json!([
+            option(ALLOW, "Allow", "allow_once"),
+            option(DENY, "Deny", "reject_once"),
+        ]);
         let (tool_call, options) = if let Some((id, name, input)) = pending {
             let info = claude_translate::tool_info(name, input, &self.cwd);
             let mut call = json!({
@@ -689,12 +757,15 @@ impl Lens {
                 fields.remove("rawInput");
                 fields.remove("content");
             }
+            (call, answers)
+        } else if answerable {
             (
-                call,
-                json!([
-                    option(ALLOW, "Allow", "allow_once"),
-                    option(DENY, "Deny", "reject_once"),
-                ]),
+                json!({
+                    "toolCallId": format!("lens-permission-{request_id}"),
+                    "title": "Claude Code asks for permission; the terminal shows what for",
+                    "kind": "other",
+                }),
+                answers,
             )
         } else {
             (
@@ -709,6 +780,7 @@ impl Lens {
         self.permission = Some(Permission {
             request_id,
             tool: pending.map(|(id, _, _)| id.clone()),
+            answerable,
             answered: false,
         });
         payloads.push(AgentStreamPayload::PermissionRequested {
@@ -781,7 +853,7 @@ impl Lens {
         else {
             return Vec::new();
         };
-        if permission.tool.is_none() {
+        if !permission.answerable {
             return Vec::new();
         }
         let keys: &[&str] = if option_id == Some(ALLOW) {
@@ -983,8 +1055,6 @@ mod tests {
                     "pid": pid,
                     "sessionId": SESSION,
                     "cwd": self.cwd(),
-                    "tmux": "zz:@1.%7",
-                    "messagingSocketPath": "/tmp/cc-socks/none.sock",
                     "updatedAt": SystemTimeMs::now(),
                     "status": status,
                     "waitingFor": waiting_for,
@@ -1010,10 +1080,10 @@ mod tests {
             };
             Lens::with_source(
                 spec,
-                Source::Claude(Claude::new(Some(ClaudeFiles {
+                Source::Claude(Box::new(Claude::new(Some(ClaudeFiles {
                     registry: self.root.path().join("registry"),
                     config: self.root.path().join("config"),
-                }))),
+                })))),
                 Arc::new(AtomicU64::new(1)),
             )
         }
@@ -1221,6 +1291,79 @@ mod tests {
     }
 
     #[test]
+    fn a_record_caught_mid_write_keeps_the_turn_running() {
+        let claudes = Claudes::new();
+        let mut lens = claudes.lens();
+        lens.open();
+        lens.command(RuntimeCommand::Prompt {
+            turn_id: 3,
+            prompt: AgentPrompt {
+                text: "hello".to_owned(),
+                ..AgentPrompt::default()
+            },
+        });
+        claudes.record("busy", "");
+        assert!(
+            lens.tick()
+                .contains(&AgentStreamPayload::Activity { busy: true })
+        );
+        let pid = std::process::id();
+        std::fs::write(
+            claudes.root.path().join(format!("registry/{pid}.json")),
+            "{\"pid\"",
+        )
+        .unwrap();
+        let torn = lens.tick();
+        assert!(
+            !torn
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::PromptFinished { .. })),
+            "{torn:?}"
+        );
+        claudes.record("idle", "");
+        assert!(lens.tick().iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PromptFinished { turn_id: 3, .. }
+        )));
+    }
+
+    #[test]
+    fn a_permission_prompt_answers_before_its_tool_call_and_upgrades_once_it_shows() {
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "touch a file"));
+        let mut lens = claudes.lens();
+        lens.open();
+        claudes.record("waiting", PERMISSION_PROMPT);
+        let early = lens.tick();
+        let Some(placeholder) = early.iter().find_map(|payload| match payload {
+            AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call,
+                options,
+                ..
+            } if tool_call["toolCallId"] == format!("lens-permission-{request_id}")
+                && options[0]["optionId"] == ALLOW =>
+            {
+                Some(*request_id)
+            }
+            _ => None,
+        }) else {
+            panic!("{early:?}");
+        };
+        claudes.line(&tool_use("a1", "u1", "toolu_1", "touch probe.txt"));
+        let upgraded = lens.tick();
+        assert!(upgraded.contains(&AgentStreamPayload::PermissionResolved {
+            request_id: placeholder,
+            canceled: true,
+        }));
+        assert!(upgraded.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PermissionRequested { tool_call, .. }
+                if tool_call["toolCallId"] == "toolu_1"
+        )));
+    }
+
+    #[test]
     fn any_other_wait_shows_a_card_only_the_terminal_can_answer() {
         let claudes = Claudes::new();
         claudes.line(&prompt("u1", None, "plan it"));
@@ -1255,6 +1398,30 @@ mod tests {
                     canceled: false
                 })
         );
+    }
+
+    #[test]
+    fn a_codex_whose_app_server_holds_the_rollout_finds_its_newest_top_level_one() {
+        let sessions = tempfile::tempdir().unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        let rollout = |day: &str, name: &str, cwd: &Path, parent: Option<&str>| {
+            let directory = sessions.path().join(day);
+            std::fs::create_dir_all(&directory).unwrap();
+            let path = directory.join(format!("rollout-{name}.jsonl"));
+            let meta = json!({ "type": "session_meta", "payload": {
+                "id": name, "cwd": cwd, "parent_thread_id": parent,
+            } });
+            std::fs::write(&path, format!("{meta}\n")).unwrap();
+            std::thread::sleep(Duration::from_millis(20));
+            path
+        };
+        rollout("2026/10/22", "older", &cwd, None);
+        let newest = rollout("2026/10/23", "mine", &cwd, None);
+        rollout("2026/10/23", "child", &cwd, Some("mine"));
+        rollout("2026/10/23", "elsewhere", Path::new("/"), None);
+        let (path, meta) = newest_rollout(sessions.path(), std::process::id()).unwrap();
+        assert_eq!(path, newest);
+        assert_eq!(meta.thread, "mine");
     }
 
     #[test]

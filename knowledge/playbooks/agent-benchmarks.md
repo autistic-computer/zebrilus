@@ -4,7 +4,7 @@ title: Agent benchmarks
 description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, and what a fresh user's Claude Code and Codex get; harness layout, prerequisites, results, and traps."
 resource: bench/agents/browser/matrix.sh
 tags: [agents, browser, cdp, benchmark, skill, agent-browser, playwright-mcp, chrome-devtools-mcp]
-timestamp: 2026-10-21T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # What the benchmarks answer
@@ -164,7 +164,10 @@ Haiku passes everything on both products but spends 1.7x the tokens on Rex.
 # Fresh user (2026-10-21)
 
 `bench/agents/fresh/` asks what a new user's Claude Code and Codex get from zz 0.21.0 with nothing
-else installed (see `bench/agents/README.md`). Haiku 5.5 and gpt-6-luna, 8 tasks, 2 reps, 119 runs:
+else installed (see `bench/agents/README.md`). Haiku 5.5 and gpt-6-luna, 8 tasks, 2 reps, 119 runs.
+The agent pane rows below were measured on the Agent pane kind, which was removed on 2026-10-23;
+Claude Code and Codex now run only in terminal panes, with the [agent lens](/concepts/agent-lens.md)
+drawn over them. Those rows are history and cannot be rerun.
 
 | Setup | Claude | Codex |
 | --- | --- | --- |

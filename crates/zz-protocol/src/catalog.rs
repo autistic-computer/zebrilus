@@ -918,7 +918,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         aliases: &[],
         description: "Load a provider catalog for GUI pickers; the answer arrives on the client event stream, not stdout",
         usage: "[-t target-pane] provider request-id",
-        options: &[CommandOptionSpec::value("-t", Pane, "target agent pane")],
+        options: &[CommandOptionSpec::value("-t", Pane, "target pane")],
         positionals: &[FreeForm, FreeForm],
         variadic: None,
     },
@@ -954,7 +954,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "agent-send",
         aliases: &[],
-        description: "Send text to an agent pane",
+        description: "Send text to Claude Code or Codex in a terminal pane",
         usage: "[-t target-pane] [--submit] [--wait] [--notify] [--progress] [--timeout seconds] [--on-block wait|fail|allow|deny] [--json] [--final] [--context context] [text ...]",
         options: &[
             CommandOptionSpec::value("-t", Pane, "target pane"),
@@ -965,7 +965,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             CommandOptionSpec::flag("--wait", "submit, then print the turn's reply"),
             CommandOptionSpec::flag(
                 "--notify",
-                "submit, then post the turn's reply back to the calling agent pane",
+                "submit, then paste the turn's reply into the calling terminal pane",
             ),
             CommandOptionSpec::flag(
                 "--json",
@@ -1000,7 +1000,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         description: "Answer a pending permission and print the selected option ID",
         usage: "[-t target-pane] [--allow] [--deny] [--option option-id] [request-id]",
         options: &[
-            CommandOptionSpec::value("-t", Pane, "target agent pane"),
+            CommandOptionSpec::value("-t", Pane, "terminal pane with an open agent lens"),
             CommandOptionSpec::flag("--allow", "allow, preferring allow-once"),
             CommandOptionSpec::flag("--deny", "reject the request"),
             CommandOptionSpec::value("--option", FreeForm, "exact permission option ID"),
@@ -1011,7 +1011,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "send-last-output",
         aliases: &[],
-        description: "Send a terminal's last command and output to an agent pane",
+        description: "Draft a terminal's last command and output into the window's agent",
         usage: "[-t target-pane]",
         options: &[CommandOptionSpec::value("-t", Pane, "target terminal pane")],
         positionals: &[],

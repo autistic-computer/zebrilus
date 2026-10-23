@@ -129,14 +129,6 @@ fn sheets(_: &mut Window, cx: &mut App) -> AnyElement {
                 cx,
             ))
             .child(sheet_detail_row(
-                "new-agent",
-                roles::PHONE_ROW,
-                Some(Icon::new(IconName::Bot)),
-                "Agent",
-                "Claude Code or Codex in the current folder",
-                cx,
-            ))
-            .child(sheet_detail_row(
                 "new-browser",
                 roles::PHONE_ROW,
                 Some(Icon::new(IconName::Globe)),

@@ -892,7 +892,7 @@ impl PanePump {
                 PaneInput::Command(HostCommand::NewSession {
                     reply: Some(reply), ..
                 }) => {
-                    reply.try_send(Err("agent pane closed".to_owned()));
+                    reply.try_send(Err("agent closed".to_owned()));
                 }
                 _ => {}
             }
@@ -1376,7 +1376,7 @@ impl PanePump {
                     .is_err()
                 {
                     queued.settle(Err(AgentTurnFailure::Failed(
-                        "agent pane is not accepting commands".to_owned(),
+                        "agent is not accepting commands".to_owned(),
                     )));
                     return;
                 }
@@ -1674,7 +1674,7 @@ impl PanePump {
         self.new_session_pending = false;
         if let Some(reply) = self.session_waiter.take() {
             let result = if result.is_ok() && self.close.is_closed() {
-                Err("agent pane closed".to_owned())
+                Err("agent closed".to_owned())
             } else {
                 result
             };
@@ -1687,7 +1687,7 @@ impl PanePump {
             return;
         }
         self.closing = true;
-        self.settle_session_change(Err("agent pane closed".to_owned()));
+        self.settle_session_change(Err("agent closed".to_owned()));
         self.resolve_pending_permissions();
         self.reclaim_dispatched_prompt(AgentTurnFailure::Closed);
         self.reclaim_queue();

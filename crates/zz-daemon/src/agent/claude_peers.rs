@@ -338,17 +338,33 @@ pub(crate) fn record_for_pane_with_parents<'a>(
     })
 }
 
-fn descends_from(mut pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> bool {
-    for _ in 0..64 {
+fn descends_from(pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> bool {
+    depth_below(pid, root, parent_of).is_some()
+}
+
+fn depth_below(mut pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> Option<usize> {
+    for depth in 0..64 {
         if pid == root {
-            return true;
+            return Some(depth);
         }
         match parent_of(pid) {
             Some(parent) if parent != pid && parent != 0 => pid = parent,
-            _ => return false,
+            _ => return None,
         }
     }
-    false
+    None
+}
+
+pub(crate) fn record_in_pane(records: &[PeerRecord], pane_pid: u32) -> Option<&PeerRecord> {
+    records
+        .iter()
+        .filter(|record| pid_alive(record.pid))
+        .filter_map(|record| {
+            depth_below(record.pid, pane_pid, zz_daemon_client::process_info::parent)
+                .map(|depth| (depth, record))
+        })
+        .min_by_key(|(depth, _)| *depth)
+        .map(|(_, record)| record)
 }
 
 pub(crate) fn pane_process_ids(parents: &[(u32, u32)], pane_pid: u32) -> Vec<u32> {
@@ -1158,6 +1174,27 @@ mod tests {
             Some(me)
         );
         assert!(record_for_pane(&own, "%0", None).is_none());
+    }
+
+    #[test]
+    fn the_lens_finds_the_claude_nearest_the_pane_without_a_tmux_field() {
+        let me = std::process::id();
+        let parent = std::os::unix::process::parent_id();
+        let record = |pid| PeerRecord {
+            pid,
+            updated_at: now_ms(),
+            ..PeerRecord::default()
+        };
+        let records = [record(me), record(parent)];
+        assert_eq!(
+            record_in_pane(&records, parent).map(|record| record.pid),
+            Some(parent)
+        );
+        assert_eq!(
+            record_in_pane(&records, me).map(|record| record.pid),
+            Some(me)
+        );
+        assert!(record_in_pane(&records[..1], parent.saturating_add(1_000_000)).is_none());
     }
 
     #[test]

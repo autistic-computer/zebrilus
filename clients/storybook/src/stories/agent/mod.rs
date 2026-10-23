@@ -4,7 +4,7 @@ pub(super) mod cards;
 mod chrome;
 mod composer;
 mod fixtures;
-pub(super) mod pane;
+pub(super) mod lens;
 mod timeline;
 mod transcript;
 
@@ -12,21 +12,15 @@ pub const STORIES: &[Story] = &[STORY];
 
 const STORY: Story = Story {
     id: "agent",
-    name: "Agent pane",
+    name: "Agent lens",
     group: "Agent",
-    summary: "Every piece of the agent pane, from the header down to the composer, in the states zz draws it in. Each piece is built from the same zz-ui calls the app makes, fed with fixed transcripts.",
+    summary: "A terminal running Claude Code or Codex shows a lens toggle in its header; the lens draws the session's timeline and a composer in place of the cells, and the toggle brings the terminal back. Every piece of the lens in the states zz draws it in, built from the same zz-ui calls the app makes and fed with fixed transcripts.",
     sections: &[
         Section {
-            id: "header",
-            name: "Header",
-            summary: "The 34px bar: provider, session title, status pill, split, drag and close. Actions on an inactive pane appear on hover.",
-            build: chrome::headers,
-        },
-        Section {
-            id: "status-pill",
-            name: "Status pill",
-            summary: "What the header says about the agent process. Running and Stopping spin; Exited can offer Restart.",
-            build: chrome::status_pills,
+            id: "lens-toggle",
+            name: "Lens toggle",
+            summary: "terminal_pane_header with a PaneLens: the agent's mark before the pane actions, lit while the lens is open. It stays on an inactive pane, where the actions wait for the pointer.",
+            build: lens::toggles,
         },
         Section {
             id: "user-message",
@@ -97,7 +91,7 @@ const STORY: Story = Story {
         Section {
             id: "composer-controls",
             name: "Composer controls",
-            summary: "The pieces of the composer on their own: action button, attach, mode and model pickers, context meter, git summary and working directory.",
+            summary: "The pieces of the composer on their own: action button, attach, context meter and git summary.",
             build: composer::controls,
         },
         Section {
@@ -127,7 +121,7 @@ const STORY: Story = Story {
         Section {
             id: "empty-states",
             name: "Empty states",
-            summary: "What the pane shows before the first message: the welcome, waiting and failure messages, and the error card.",
+            summary: "What the lens shows before the first message: the welcome, waiting and failure messages, and the error card.",
             build: chrome::empty_states,
         },
         Section {
@@ -137,10 +131,16 @@ const STORY: Story = Story {
             build: chrome::jump,
         },
         Section {
-            id: "full-pane",
-            name: "Full pane",
-            summary: "The pieces together as zz lays out an agent pane: a conversation with a turn still running, the plan and a background task above the composer.",
-            build: pane::full_pane,
+            id: "lens",
+            name: "Lens",
+            summary: "The pieces together under the terminal header. Click the toggle to switch between the lens and the terminal it reads; the terminal process stays the source of truth.",
+            build: lens::panes,
+        },
+        Section {
+            id: "lens-approval",
+            name: "Lens approval",
+            summary: "A Claude Code permission prompt becomes a card above the composer whose answers are the keys the TUI takes. Codex records nothing while its dialog is up, so its lens has no card.",
+            build: lens::approvals,
         },
     ],
 };

@@ -7,20 +7,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(any(feature = "editor-pane", test))]
 use fff_search::FilePickerOptions;
 use fff_search::{FilePicker, FuzzySearchOptions, PaginationArgs, QueryParser};
 use ignore::WalkBuilder;
-#[cfg(any(feature = "editor-pane", test))]
 use zz_gpui::{
     App, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent, MouseButton,
     Render, ScrollStrategy, Subscription, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
 use zz_gpui::{Context, SharedString, Task};
-#[cfg(any(feature = "editor-pane", test))]
 use zz_ui::command::palette_shortcut_hint;
-#[cfg(any(feature = "editor-pane", test))]
 use zz_ui::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, IconName, StyledExt as _, h_flex,
     input::{InputEvent, InputState, MoveDown, MoveUp},
@@ -35,25 +31,16 @@ const DIRECTORY_SCAN_DEPTH: usize = 8;
 const DIRECTORY_SCAN_BUDGET: Duration = Duration::from_secs(5);
 const DIRECTORY_BATCH_SIZE: usize = 64;
 
-#[cfg(any(feature = "editor-pane", test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FilePickerMode {
-    #[cfg_attr(
-        not(feature = "editor-pane"),
-        allow(
-            dead_code,
-            reason = "only the editor pane constructs a file-mode picker"
-        )
-    )]
     Files,
     #[cfg_attr(
         not(test),
-        allow(dead_code, reason = "the agent picker uses DirectoryCatalog directly")
+        allow(dead_code, reason = "only tests open a folder-mode picker")
     )]
     Directories,
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 impl FilePickerMode {
     const fn icon(self) -> IconName {
         match self {
@@ -70,12 +57,7 @@ impl FilePickerMode {
     }
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 #[derive(Clone, Debug)]
-#[cfg_attr(
-    not(feature = "editor-pane"),
-    allow(dead_code, reason = "only the editor pane consumes picker events")
-)]
 pub(crate) enum FilePickerEvent {
     Selected(PathBuf),
     Dismissed,
@@ -94,28 +76,6 @@ fn entry_prior(depth: usize, is_workspace: bool) -> u32 {
         WORKSPACE_PRIOR + shallowness
     } else {
         shallowness
-    }
-}
-
-#[cfg(all(target_os = "macos", feature = "agent-pane"))]
-fn home_directory() -> Option<PathBuf> {
-    let home = objc2_foundation::NSHomeDirectory().to_string();
-    (!home.is_empty()).then(|| PathBuf::from(home))
-}
-
-#[cfg(all(not(target_os = "macos"), feature = "agent-pane"))]
-fn home_directory() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .filter(|home| !home.is_empty())
-        .map(PathBuf::from)
-}
-
-#[cfg(feature = "agent-pane")]
-pub(crate) fn directory_picker_root(fallback: &Path) -> PathBuf {
-    match home_directory() {
-        Some(home) if fallback.starts_with(&home) => home,
-        _ => fallback.parent().unwrap_or(fallback).to_path_buf(),
     }
 }
 
@@ -210,7 +170,6 @@ struct PickerIndex {
 }
 
 impl PickerIndex {
-    #[cfg(any(feature = "editor-pane", test))]
     fn files(root: &Path) -> Result<Self, String> {
         std::fs::read_dir(root)
             .map_err(|error| format!("Cannot read {}: {error}", root.display()))?;
@@ -281,136 +240,12 @@ impl PickerIndex {
     }
 }
 
-#[cfg(feature = "agent-pane")]
-pub(crate) struct DirectoryCatalog {
-    index: Arc<PickerIndex>,
-    pub(crate) entries: Vec<(SharedString, PathBuf)>,
-    pub(crate) scanning: bool,
-    pub(crate) limited: bool,
-    pub(crate) error: Option<SharedString>,
-    query: String,
-    generation: u64,
-    _walk: Task<()>,
-    _rank: Task<()>,
-}
-
-#[cfg(feature = "agent-pane")]
-impl DirectoryCatalog {
-    pub(crate) fn new(root: PathBuf, cx: &mut Context<Self>) -> Self {
-        let (sender, receiver) = async_channel::bounded(8);
-        cx.background_executor()
-            .spawn(async move {
-                let result = scan_directories(
-                    &root,
-                    DIRECTORY_SCAN_LIMIT,
-                    DIRECTORY_SCAN_BUDGET,
-                    &|| sender.is_closed(),
-                    &mut |batch| {
-                        sender
-                            .send_blocking(ScanMessage::Directories(batch))
-                            .is_ok()
-                    },
-                );
-                sender.send_blocking(ScanMessage::Finished(result)).ok();
-            })
-            .detach();
-        let walk = cx.spawn(async move |catalog, cx| {
-            while let Ok(message) = receiver.recv().await {
-                if catalog
-                    .update(cx, |catalog, cx| {
-                        match message {
-                            ScanMessage::Directories(batch) => {
-                                let mut directories = catalog.index.directories.clone();
-                                directories.extend(batch);
-                                catalog.index = Arc::new(PickerIndex {
-                                    picker: None,
-                                    directories,
-                                });
-                                catalog.rank(cx);
-                            }
-                            ScanMessage::Finished(result) => {
-                                catalog.scanning = false;
-                                match result {
-                                    Ok(limited) => catalog.limited = limited,
-                                    Err(error) => catalog.error = Some(error.into()),
-                                }
-                            }
-                            #[cfg(any(feature = "editor-pane", test))]
-                            ScanMessage::Files(_) => {}
-                        }
-                        cx.notify();
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
-        Self {
-            index: Arc::new(PickerIndex {
-                picker: None,
-                directories: Vec::new(),
-            }),
-            entries: Vec::new(),
-            scanning: true,
-            limited: false,
-            error: None,
-            query: String::new(),
-            generation: 0,
-            _walk: walk,
-            _rank: Task::ready(()),
-        }
-    }
-
-    pub(crate) fn search(&mut self, query: &str, cx: &mut Context<Self>) {
-        query.clone_into(&mut self.query);
-        self.entries.clear();
-        self.rank(cx);
-        cx.notify();
-    }
-
-    fn rank(&mut self, cx: &mut Context<Self>) {
-        self.generation = self.generation.wrapping_add(1);
-        let generation = self.generation;
-        let index = self.index.clone();
-        let query = self.query.clone();
-        let ranking = cx.background_executor().spawn(async move {
-            let mut entries = index
-                .search(&query)
-                .into_iter()
-                .map(|entry| (entry.relative, entry.absolute.to_path_buf()))
-                .collect::<Vec<_>>();
-            let typed = PathBuf::from(query.trim());
-            if typed.is_absolute()
-                && typed.is_dir()
-                && !entries.iter().any(|(_, path)| *path == typed)
-            {
-                entries.insert(0, (typed.display().to_string().into(), typed));
-            }
-            entries
-        });
-        self._rank = cx.spawn(async move |catalog, cx| {
-            let entries = ranking.await;
-            catalog
-                .update(cx, |catalog, cx| {
-                    if catalog.generation == generation {
-                        catalog.entries = entries;
-                        cx.notify();
-                    }
-                })
-                .ok();
-        });
-    }
-}
-
 enum ScanMessage {
     Directories(Vec<PickerEntry>),
-    #[cfg(any(feature = "editor-pane", test))]
     Files(Arc<PickerIndex>),
     Finished(Result<bool, String>),
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 fn preserved_selection(entries: &[PickerEntry], preferred: Option<&Path>) -> Option<usize> {
     preferred
         .and_then(|path| {
@@ -421,7 +256,6 @@ fn preserved_selection(entries: &[PickerEntry], preferred: Option<&Path>) -> Opt
         .or_else(|| (!entries.is_empty()).then_some(0))
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 fn validate_selection(path: &Path, mode: FilePickerMode) -> Result<(), String> {
     let metadata = std::fs::metadata(path)
         .map_err(|error| format!("Cannot open {}: {error}", path.display()))?;
@@ -442,7 +276,6 @@ fn validate_selection(path: &Path, mode: FilePickerMode) -> Result<(), String> {
     }
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 pub(crate) struct FilePickerView {
     mode: FilePickerMode,
     input: Entity<InputState>,
@@ -463,7 +296,6 @@ pub(crate) struct FilePickerView {
     _subscriptions: Vec<Subscription>,
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 impl FilePickerView {
     pub(crate) fn new(
         mode: FilePickerMode,
@@ -800,17 +632,14 @@ impl FilePickerView {
     }
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 impl EventEmitter<FilePickerEvent> for FilePickerView {}
 
-#[cfg(any(feature = "editor-pane", test))]
 impl Focusable for FilePickerView {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.focus(cx)
     }
 }
 
-#[cfg(any(feature = "editor-pane", test))]
 impl Render for FilePickerView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.focus(cx);
@@ -1215,34 +1044,5 @@ mod tests {
                 assert!(!picker.rows.is_empty());
             });
         });
-    }
-
-    #[cfg(feature = "agent-pane")]
-    #[test]
-    #[ignore = "measures folder discovery against the real home directory"]
-    fn real_home_directory_discovery() {
-        let root = home_directory().unwrap();
-        let start = Instant::now();
-        let mut first = None;
-        let mut count = 0;
-        let limited = scan_directories(
-            &root,
-            DIRECTORY_SCAN_LIMIT,
-            DIRECTORY_SCAN_BUDGET,
-            &|| false,
-            &mut |batch| {
-                first.get_or_insert_with(|| start.elapsed());
-                count += batch.len();
-                true
-            },
-        )
-        .unwrap();
-        eprintln!(
-            "first batch: {:?}; total: {:?}; folders: {count}; limited: {limited}",
-            first.unwrap(),
-            start.elapsed()
-        );
-        assert!(count > 0);
-        assert!(start.elapsed() < DIRECTORY_SCAN_BUDGET + Duration::from_secs(2));
     }
 }

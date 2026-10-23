@@ -1,16 +1,29 @@
 ---
 type: Design Plan
 title: Daemon-owned agent runtime
-description: The agent pane's ACP adapter runtime moved from the GUI into the daemon — daemon-spawned adapter children, a daemon-side journal with replay-then-tail attach, a dedicated coalescing outbound lane, and clients reduced to viewports — so agent runs survive client detach and every client kind can render them.
-status: Shipped
+description: "The agent pane's ACP adapter runtime moved from the GUI into the daemon: daemon-spawned adapter children, a daemon-side journal with replay-then-tail attach, a dedicated coalescing outbound lane, and clients reduced to viewports, so agent runs survive client detach and every client kind can render them. Since 2026-10-23 the Agent pane is gone and the runner on this host and fanout is the agent lens over terminal panes."
+status: Shipped (2026-08-17); Agent pane parts removed 2026-10-23, host, fanout and journal kept for the agent lens
 tags:
 - agent
 - acp
 - daemon
 - protocol
 - persistence
-timestamp: 2026-08-17T00:00:00-03:00
+resource: crates/zz-daemon/src/agent/fanout.rs
+timestamp: 2026-10-23T00:00:00-03:00
 ---
+
+> **Status 2026-10-23.** The Agent pane kind is gone ([agent lens design](/designs/agent-lens.md)).
+> What this page built still runs: `agent::host` (one `zz-agent-{n}` thread per pane), the
+> fanout lane, the replay ring, the journal and the `Agent*` wire messages. The only runner a
+> production daemon opens on it is the lens runtime (`agent/lens.rs`), keyed by a terminal pane
+> running Claude Code or Codex and opened by `AgentReplay` or `agent-send --wait`
+> ([agent lens](/concepts/agent-lens.md)). The ACP runtime and the native drivers stay in the source
+> for the lead chat, but no pane opens them. Removed with the pane: `AgentDescriptor`, the
+> `experimental-agent-pane` option, `set-agent-provider`, `restart-agent-pane` and the
+> `AgentPaneRestart` effect, `EventPayload::AgentCommand` (`ComposerAppend`), the
+> `agent-working-directory` key, daemon pane titling and status records, and
+> `crates/zz-daemon/tests/agent_soak.rs`. The rest of this page is the 2026-08 record.
 
 Claude Code panes no longer use the ACP adapter: the daemon drives the `claude` CLI directly
 through the same runner path ([native agent drivers](/designs/native-agent-drivers.md)). Everything
@@ -188,15 +201,17 @@ and consumes the stream vocabulary `zz-daemon`'s crate root re-exports).
   permission-hardening helpers now living in `zz-daemon::user_data` and re-exported for the
   GUI's preferences file.
 - `experimental-agent-pane` flipping off with live children: existing panes keep running
-  (option gates materialization, not execution), matching browser-pane behavior.
+  (option gates materialization, not execution), matching browser-pane behavior. (Removed
+  2026-10-23 with the option.)
 - The workspace identity survives the move: the spawn config is built once per daemon
   (`agent_spawn_config`, socket only), and the per-pane `ZZ_PANE`/`ZZ_SESSION` identity rides
   `AgentPaneSpec.workspace`, merged over the config at spawn
   (`AgentWorkspaceEnvironment::adopt_pane_identity`), so an agent can still address itself.
-- `set-agent-provider` emits an `AgentPaneRestart` effect after it updates the descriptor and clears
-  the provider-bound session ID. The Retry action emits the same restart through
-  `restart-agent-pane`. The daemon resolves the current descriptor after it drops the mux lock,
-  closes the old host, and opens the replacement under a new generation.
+- `set-agent-provider` emitted an `AgentPaneRestart` effect after it updated the descriptor and
+  cleared the provider-bound session ID. The Retry action emitted the same restart through
+  `restart-agent-pane`. The daemon resolved the current descriptor after it dropped the mux lock,
+  closed the old host, and opened the replacement under a new generation. (All three were removed
+  2026-10-23.)
 
 # Client changes
 
@@ -232,7 +247,8 @@ and consumes the stream vocabulary `zz-daemon`'s crate root re-exports).
    release bundle built from main and from this branch, same machine, frontmost window, AC
    power. The mailbox drain-order change is the only shared-path touch and must show inside
    run-to-run noise.
-2. Agent streaming soak: `crates/zz-daemon/tests/agent_soak.rs` drives a fake ACP adapter
+2. Agent streaming soak (the test file was deleted 2026-10-23 with the Agent pane; the numbers
+   below are the 2026-08-14 record): `crates/zz-daemon/tests/agent_soak.rs` drove a fake ACP adapter
    through the daemon into a headless `InteractiveClient`, asserting convergence and printing
    throughput and daemon CPU time; `agent_stream_soak` is `#[ignore]`d (it runs for minutes)
    and `agent_stream_soak_slow_client` covers the lag-and-replay path. Numbers land here.
@@ -271,5 +287,5 @@ condvars when no pane has work (pinned by host tests), so an idle daemon schedul
 - JSON blobs on the wire forfeit wire-level introspection beyond byte caps; the journal and
   client reducer already speak exactly this shape.
 - The daemon grows its first data directory; scoped to `agent-journal`.
-- `request_from_gui`'s lowest-ClientId pick still routes `ComposerAppend`; prompts no longer
-  depend on it.
+- `request_from_gui`'s lowest-ClientId pick still routed `ComposerAppend`; prompts no longer
+  depended on it. (`ComposerAppend` was removed 2026-10-23; only `capture-browser` still asks a GUI.)

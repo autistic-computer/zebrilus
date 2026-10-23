@@ -1,11 +1,9 @@
 pub mod composer;
 pub mod controls;
-pub mod history;
 pub mod presentation;
 pub mod question;
 pub mod slash;
 pub mod tasks;
-pub mod title;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -4265,114 +4263,6 @@ fn css_color(color: Hsla) -> String {
         channel(rgba.g),
         channel(rgba.b)
     )
-}
-
-/// The agent pane's chrome bar: `leading` and `trailing` pinned to each end.
-/// The bar owns only the height, the inset, and the rule beneath it.
-pub fn agent_pane_header(
-    active: bool,
-    leading: impl IntoElement,
-    status: Option<AnyElement>,
-    trailing: impl IntoElement,
-    show_separator: bool,
-    cx: &App,
-) -> impl IntoElement {
-    h_flex()
-        .id("agent-pane-header")
-        .group("agent-pane-header")
-        .w_full()
-        .h(cx.theme().pane_header_height())
-        .flex_none()
-        .items_center()
-        .justify_between()
-        .gap_3()
-        .px(px(CHROME_GAP))
-        .surface(crate::roles::PANE_HEADER, cx)
-        .when(show_separator, |header| {
-            header.rule_on(crate::roles::BAR_RULE, Edge::Bottom, cx)
-        })
-        .child(
-            div()
-                .flex()
-                .flex_1()
-                .min_w_0()
-                .items_center()
-                .overflow_hidden()
-                .child(leading),
-        )
-        .children(status)
-        .child(
-            h_flex()
-                .flex_none()
-                .when(!active, |actions| {
-                    actions
-                        .invisible()
-                        .group_hover("agent-pane-header", zz_gpui::Styled::visible)
-                })
-                .child(trailing),
-        )
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentPaneStatus {
-    Running,
-    Stopping,
-    Waiting,
-    Exited,
-    Offline,
-}
-
-pub fn agent_status_pill(
-    id: impl Into<ElementId>,
-    status: AgentPaneStatus,
-    phase: f32,
-    restart: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    cx: &App,
-) -> Stateful<Div> {
-    let theme = cx.theme();
-    let (icon, label, tone, quiet) = match status {
-        AgentPaneStatus::Running => (None, "Running", Tone::Neutral, false),
-        AgentPaneStatus::Stopping => (None, "Stopping", Tone::Neutral, true),
-        AgentPaneStatus::Waiting => (
-            Some(IconName::TriangleAlert),
-            "Waiting for you",
-            Tone::Warning,
-            false,
-        ),
-        AgentPaneStatus::Exited => (Some(IconName::CircleX), "Exited", Tone::Danger, false),
-        AgentPaneStatus::Offline => (None, "Offline", Tone::Neutral, true),
-    };
-    let paint = theme.paint(tone, Emphasis::Soft);
-    let icon = match status {
-        AgentPaneStatus::Running | AgentPaneStatus::Stopping => Some(spinner(phase)),
-        _ => icon.map(Icon::new),
-    };
-    let badge = Badge::new(label)
-        .tone(tone)
-        .surface_role(crate::roles::AGENT_STATUS)
-        .when_some(icon, Badge::icon)
-        .when(quiet, |badge| {
-            badge.text_color(paint.muted_at(PaintState::Rest))
-        })
-        .when_some(restart, |badge, restart| {
-            badge.child(
-                div()
-                    .id("agent-status-restart")
-                    .debug_selector(|| "agent-status-restart".to_owned())
-                    .pl_1p5()
-                    .ml_0p5()
-                    .rule_on(crate::roles::LIST_RULE, Edge::Left, cx)
-                    .text_color(paint.text)
-                    .cursor_pointer()
-                    .child("Restart")
-                    .on_click(move |_, window, cx| restart(window, cx)),
-            )
-        });
-    div()
-        .id(id)
-        .debug_selector(|| "agent-status-pill".to_owned())
-        .flex_none()
-        .child(badge)
 }
 
 #[cfg(test)]

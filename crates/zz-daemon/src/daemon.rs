@@ -17407,11 +17407,16 @@ impl Shared {
                     .open_agent_runtime()
                     .and_then(|runtime| runtime.wire_state(_pane));
                 let lensed = lens.is_some();
-                let permission = lens
-                    .and_then(|state| state.pending_permission)
-                    .map_or(serde_json::Value::Null, |permission| {
-                        agent_permission_json(&permission)
-                    });
+                let pending = lens.and_then(|state| state.pending_permission);
+                if let Some(pending) = &pending {
+                    values.insert(
+                        "agent_pending_permission".to_owned(),
+                        serde_json::Value::String(pending.request_id.to_string()),
+                    );
+                }
+                let permission = pending.map_or(serde_json::Value::Null, |permission| {
+                    agent_permission_json(&permission)
+                });
                 (lensed, permission)
             };
             #[cfg(not(feature = "agent"))]
@@ -48113,8 +48118,9 @@ impl StatusFactSelection {
                     selection.full = true;
                     return selection;
                 }
-                "pane_kind" | "browser_url" => selection.mux = true,
-                "agent_state" | "agent_pending_permission" => selection.mux = true,
+                "pane_kind" | "browser_url" | "agent_state" | "agent_pending_permission" => {
+                    selection.mux = true;
+                }
                 "pane_search_string"
                 | "history_size"
                 | "cursor_x"
@@ -122892,7 +122898,7 @@ bind - split-window -v -c "#{pane_current_path}"
             }) {
                 assert!(
                     Instant::now() < deadline,
-                    "opening the runtime did not publish the agent pane state"
+                    "opening the runtime did not publish the agent state"
                 );
                 thread::sleep(Duration::from_millis(5));
             }

@@ -271,7 +271,13 @@ fn host_page(cx: &App) -> impl IntoElement {
                 true,
                 cx,
             ),
-            card("overview-agent", IconName::Bot, "perf audit", false, cx),
+            card(
+                "overview-claude",
+                IconName::SquareTerminal,
+                "perf audit",
+                false,
+                cx,
+            ),
         ]))
         .child(overview_section_heading(
             2,
@@ -415,13 +421,6 @@ fn drawers(_: &mut Window, cx: &mut App) -> AnyElement {
             Some(zz_ui::Icon::new(IconName::SquareTerminal)),
             "Terminal",
             "A shell in the current folder",
-            cx,
-        ))
-        .child(overview_choice_row(
-            "drawer-agent",
-            Some(zz_ui::Icon::new(IconName::Bot)),
-            "Agent",
-            "Claude Code or Codex in the current folder",
             cx,
         ))
         .child(overview_choice_row(

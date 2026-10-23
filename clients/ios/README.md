@@ -151,27 +151,27 @@ the native transport, key translation, and UIKit backend.
 
 ## Panes
 
-- Terminal and Agent panes use the web client's working pane entities. Each pane
+- Terminal panes and the agent lens use the web client's working pane entities. Each pane
   keeps its own input focus, viewport, and content state.
-- Split right or bottom from the header, then choose Terminal, Agent, or Browser. Close
+- Split right or bottom from the header, then choose Terminal or Browser. Close
   removes the pane through the daemon. Drag a divider to resize the split.
 - A zoomed pane has an Exit zoom control. Drag a header grip to split or swap panes;
   the preview animates to the drop target. Mouse and touch divider drags update the daemon.
 - Hardware keys, search, copy/paste, terminal images, mouse tracking, and
   scrollback use the shared terminal implementation. Swipe to scroll; long-press
   and drag to select text.
-- Agent panes include the transcript, composer, permissions, provider/model
-  controls, a combined project/conversation picker, and queued prompt feedback.
-  Plans, permissions, and structured tool output use the shared transcript reducer.
-  Code blocks use the native syntax highlighter. Command-V attaches a PNG or JPEG
-  from the pasteboard; there is no image picker button.
+- A terminal running Claude Code or Codex shows a lens button in its header. The lens
+  swaps the terminal for the agent's transcript, a composer that types into the TUI,
+  Claude permission cards, and queued prompt feedback. Plans, permissions, and
+  structured tool output use the shared transcript reducer. Code blocks use the native
+  syntax highlighter.
 - Browser panes use native WebKit with tabs, an address field, back/forward, and reload.
   SSH connections route page traffic through the host; `localhost` addresses reach
   the host's loopback servers through port forwarding. Cookies and site storage
   persist separately for each host and browser profile on the iPad. They do not
   share the desktop browser's login or live page state.
   The element picker copies context and a cropped screenshot for pasting into an
-  Agent pane. Tap the picker, then tap a page element; Cancel exits without copying.
+  agent. Tap the picker, then tap a page element; Cancel exits without copying.
 - Existing Editor panes explain that file contents are not yet shared by the daemon.
   Editor does not appear in the new-pane picker.
 
@@ -312,7 +312,7 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   saved choices survive upgrades. System appearance follows live iOS changes;
   pinned modes also update the native status bar.
 - **Panes:** live preview, gaps, background opacity, inactive opacity, selected
-  glow, margin, corner radius, border width, and whether new Agent panes are offered.
+  glow, margin, corner radius, and border width.
   Frame controls apply with gaps.
 - **Terminal:** a live preview, local font family, and text scale. Host colors,
   cursor, and padding remain visible as host-owned settings.
@@ -325,8 +325,7 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
 
 The page omits desktop-only options and controls for unsupported pane kinds. iPhone also
 leaves out Panes and Status bar (the phone shell shows one pane without gaps or frames and
-has its own bottom bar), UI zoom, and Match system text size; its Agent panes switch moves to
-System.
+has its own bottom bar), UI zoom, and Match system text size.
 Interface and pane preferences are saved atomically in the app container
 at `Library/Application Support/zz-gpui/preferences.json` and restored on launch.
 Touch controls work without a keyboard; numeric values open a decimal pad and hex colors
@@ -392,7 +391,7 @@ saved by this example.
   above it in the layout, which keeps its button on top for taps.
 
 The standalone example displays one active terminal pane. The main app supports
-multiple terminal and agent panes; full mux overlays remain a later step.
+multiple terminal panes with the agent lens; full mux overlays remain a later step.
 
 ## Verification
 

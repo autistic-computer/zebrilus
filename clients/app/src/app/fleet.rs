@@ -161,7 +161,7 @@ impl AppShell {
     /// ids: the next host numbers its own from the same counters.
     fn reset_host_state(&mut self) {
         self.terminals.clear();
-        self.agents.clear();
+        self.lenses.clear();
         self.browsers.clear();
         self.pickers.clear();
         self.waiting_panes.clear();

@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
 description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 60 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
-status: Built (2026-10-13)
+status: Built (2026-10-13; agent pane rows updated for the lens 2026-10-23)
 resource: crates/zz-gpui-kit/src/foundation/surface.rs
 tags:
 - ui
@@ -365,6 +365,12 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 | `pane.picker` | menu-item | Terminal, Browser, Editor and Agent in a freshly split pane | `ui/pane.rs` (`pane_picker_row`) | drew as plain `menu-item` until 10-16, so styling it restyled every menu; its own role since |
 
 ### Agent pane
+
+The Agent pane was removed on 2026-10-23; these roles now style the agent lens over a Claude Code
+or Codex terminal ([agent lens](/designs/agent-lens.md)). The lens has no status pill and no
+pickers, so `agent_status_pill` and the composer pickers are deleted, and `agent.status` and
+`agent.picker` stay registered, unused, so saved themes still load. The agent history picker
+(`ui/agent/history.rs`) went too; `picker.notice` keeps its role with no user left in zz-ui.
 
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
