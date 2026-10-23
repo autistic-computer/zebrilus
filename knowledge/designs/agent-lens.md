@@ -73,7 +73,9 @@ process; it reads files.
 Claude's session record carries `status` (`busy`, `idle`, `waiting`) and, while waiting,
 `waitingFor`. The runtime turns those into `Activity` events, so the host phase follows the TUI
 whether the turn came from the lens, from typing in the terminal, or from a peer message. The
-transcript's `system` / `turn_duration` line marks a finished turn. Codex uses `task_started` and
+transcript's `system` / `turn_duration` line marks a finished turn. Claude marks its record idle
+before the last transcript lines reach the disk, so idle alone ends a lens turn only after two
+seconds without `turn_duration` (an interrupted turn). Codex uses `task_started` and
 `task_complete`.
 
 ## Input
