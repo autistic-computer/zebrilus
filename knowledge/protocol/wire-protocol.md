@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v112)
+title: zz wire protocol (v113)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-10-20T20:00:00-03:00
+timestamp: 2026-10-23T19:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 112`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 113`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (112) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (113) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -994,11 +994,24 @@ and for every other pane kind, and `#[serde(default)]`. It decodes bounded at
 drops longer entries and keeps the first 32. Clients map it to an icon with
 `zz_client::program::resolve`, so new icons work against an older v112 daemon.
 
+v112 shipped in zz 0.21.0. v113 appends `EventPayload::Providers(ProvidersReport)`, the answer to
+the internal `providers [-u provider]` command behind Settings > Providers. The daemon finds
+Claude Code and Codex on its own host (login-shell PATH plus `~/.local/bin`), reads their
+`--version`, asks `downloads.claude.ai` and the npm registry through `curl` for the newest release,
+and with `-u` runs the vendor's updater (`claude update`, `codex update`, `brew upgrade --cask` for
+Homebrew installs, the vendor install script when missing). `ProvidersReport { checking, providers }`
+holds one `ProviderStatus { provider, path, version, latest, task }` per CLI, where `task` is `Idle`,
+`Running { output }` (the updater's latest line) or `Failed { message }` (its last lines, at most
+`MAX_PROVIDER_TEXT_BYTES`). The daemon sends the whole report on every change to each client that
+asked.
+
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 112`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 113`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v113 requires updated clients and daemon together, including the daemon on every ssh host.
+  v112 shipped in zz 0.21.0; v113 appends `EventPayload::Providers`.
 - v112 requires updated clients and daemon together, including the daemon on every ssh host.
   v111 shipped in zz 0.20.0; v112 appends `PaneSummary.process`.
 - v111 requires updated clients and daemon together, including the daemon on every ssh host.

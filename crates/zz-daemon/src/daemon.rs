@@ -73,6 +73,7 @@ mod terminal_requests;
 mod watchers;
 pub use exec::exec_resume_kind;
 pub(crate) mod path_listing;
+mod providers;
 use zz_daemon_client::{
     DaemonError, DaemonIdentityGuard, default_mux_config, diagnostic_elapsed_us, diagnostic_timer,
     discover_tmux_config, home_directory, mux_config_write_path, terminal_colour_count,
@@ -4582,6 +4583,7 @@ const INSPECT_EVENTS: &[&str] = &[
 enum DaemonCommandDispatch {
     Events,
     AgentCatalog,
+    Providers,
     CapturePane,
     RunShell,
     IfShell,
@@ -4616,6 +4618,7 @@ enum DaemonCommandDispatch {
 const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("events", DaemonCommandDispatch::Events),
     ("agent-catalog", DaemonCommandDispatch::AgentCatalog),
+    ("providers", DaemonCommandDispatch::Providers),
     ("capture-pane", DaemonCommandDispatch::CapturePane),
     ("capturep", DaemonCommandDispatch::CapturePane),
     ("run-shell", DaemonCommandDispatch::RunShell),
@@ -4742,6 +4745,7 @@ struct SharedServer {
     agent_effects: Mutex<()>,
     #[cfg(feature = "agent")]
     agent_catalog_pending: Mutex<BTreeSet<(ClientId, PaneId, AgentProvider)>>,
+    providers: Mutex<providers::Providers>,
     #[cfg(feature = "agent")]
     agent_stopped: AtomicBool,
     #[cfg(all(feature = "agent", unix))]
@@ -5708,6 +5712,7 @@ impl Shared {
             agent_effects: Mutex::new(()),
             #[cfg(feature = "agent")]
             agent_catalog_pending: Mutex::new(BTreeSet::new()),
+            providers: Mutex::new(providers::Providers::default()),
             #[cfg(feature = "agent")]
             agent_stopped: AtomicBool::new(false),
             #[cfg(all(feature = "agent", unix))]
@@ -8479,6 +8484,7 @@ impl Shared {
                     DaemonCommandDispatch::AgentCatalog => {
                         self.agent_catalog(client, context, &command.args)
                     }
+                    DaemonCommandDispatch::Providers => self.providers(client, &command.args),
                     DaemonCommandDispatch::CapturePane => {
                         self.capture_pane(client, context, canonical, &command.args)
                     }
