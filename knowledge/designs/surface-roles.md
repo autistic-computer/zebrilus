@@ -9,7 +9,7 @@ tags:
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-23T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -58,6 +58,7 @@ Everything painted is a surface. A surface has a role. A role picks materials.
 | `row-inset` | how far list rows sit in from their list's edges; 0 makes them square bands that touch |
 | `primary` | what a prominent fill paints: `foreground` or `accent` |
 | `flat-highlights` | whether a `lift` highlight stays flat: it washes one step deeper (selected 0.16 where a tint is 0.12) and draws no outline or shadow; other highlights are unchanged |
+| `bright-surfaces` | whether cards, panes and floating surfaces rise toward white in light mode, as far in Oklab lightness as they would otherwise darken and stopping at white, so a `#fafafa` window gets white menus and cards the way GNOME draws them; their grounds (`Theme::surface`) rise the same way, and dark mode rises lighter either way |
 | `highlight-strength` | how far a `tint` or `lift` highlight washes from the resting fill, alpha-premultiplied: 1 is the built-in step, 0 none (a lift still draws its outline and shadow), 2 twice as far; 1 when left out |
 | `font` | the interface font family, or none for the platform's; a family the machine lacks draws in the platform's (Inter in the storybook) |
 | `glass` | `null`, a glass preset name, or a preset with the fields it changes |

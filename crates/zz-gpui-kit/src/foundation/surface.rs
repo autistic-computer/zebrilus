@@ -1336,7 +1336,7 @@ impl Theme {
             let rest = match fill {
                 Fill::None => self.transparent,
                 Fill::Tint => base.washed(step),
-                Fill::Solid | Fill::Glass => base.raised(step),
+                Fill::Solid | Fill::Glass => self.raise(base, step),
             };
             let over = |level: u8| match fill {
                 Fill::None => base.washed(level),
@@ -1398,7 +1398,7 @@ impl Theme {
             ),
             Highlight::Accent => (paint.selected, paint.selected_text),
             Highlight::Glass if kind.is_control() => (soft.opaque().fill, paint.text),
-            Highlight::Glass => (base.raised(step), paint.text),
+            Highlight::Glass => (self.raise(base, step), paint.text),
             Highlight::None | Highlight::Ring | Highlight::Bar | Highlight::Edge => {
                 (paint.fill, paint.text)
             }
@@ -1636,6 +1636,35 @@ mod tests {
             theme.layer(SurfaceRole::TILE, PaintState::Hover).fill,
             theme.layer(SurfaceRole::TILE, PaintState::Rest).fill,
             "a surface that does not highlight stays bare"
+        );
+    }
+
+    #[test]
+    fn bright_surfaces_rise_toward_white_in_light_mode_only() {
+        let fills = |colors: &ThemeColor, bright: bool| {
+            let mut theme = Theme::from(colors);
+            theme.bright_surfaces = bright;
+            let lightness = |role| oklab_lightness(theme.layer(role, PaintState::Rest).fill);
+            (
+                oklab_lightness(theme.background),
+                lightness(SurfaceRole::POPOVER),
+                lightness(Kind::Card.role()),
+                oklab_lightness(theme.surface(Elevation::Popover).fill),
+            )
+        };
+        let mut light = (*ThemeColor::light()).clone();
+        light.background = zz_gpui::hsla(0., 0., 0.98, 1.);
+
+        let (window, menu, card, ground) = fills(&light, false);
+        assert!(menu < window && card < window && ground < window);
+        let (window, menu, card, ground) = fills(&light, true);
+        assert!(menu > window && card > window, "light surfaces brighten");
+        assert!((ground - menu).abs() < 1e-3, "a menu's ground is its fill");
+
+        assert_eq!(
+            fills(&ThemeColor::dark(), true),
+            fills(&ThemeColor::dark(), false),
+            "dark surfaces rise lighter either way"
         );
     }
 

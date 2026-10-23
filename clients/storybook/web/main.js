@@ -30,7 +30,7 @@ const SHADOW_KNOBS = [
     "float-spread",
     "float-strength",
 ];
-const MATERIAL_KNOBS = ["name", "radius", "smoothing", "smoothed", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "highlight-strength", "font"];
+const MATERIAL_KNOBS = ["name", "radius", "smoothing", "smoothed", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "surfaces", "highlight-strength", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],
@@ -762,6 +762,7 @@ function shuffle() {
     for (const name of SHUFFLED) pick(name);
     setKnobValue("primary", Math.random() < 0.5 ? "foreground" : "accent");
     setKnobValue("highlights", Math.random() < 0.5 ? "lift" : "flat");
+    setKnobValue("surfaces", Math.random() < 0.5 ? "darker" : "brighter");
     const glasses = ["theme", "off", ...Object.keys(glassPresets)];
     setKnobValue("glass", glasses[Math.floor(Math.random() * glasses.length)]);
     resetGlassSliders();

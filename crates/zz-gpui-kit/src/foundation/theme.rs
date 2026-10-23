@@ -124,6 +124,10 @@ pub struct Theme {
     /// Whether highlights stay flat: a lift draws its wash a step deeper
     /// instead of the outline and shadow that raise it.
     pub flat_highlights: bool,
+    /// Whether cards, panes and floating surfaces rise toward white in light
+    /// mode, the way GNOME draws them, instead of darkening. Dark mode rises
+    /// lighter either way.
+    pub bright_surfaces: bool,
     /// How far a tint or lift highlight washes from the resting fill: 1 is
     /// the built-in step, 0 none, 2 twice as far.
     pub highlight_strength: f32,
@@ -504,6 +508,7 @@ impl From<&ThemeColor> for Theme {
             row_inset: px(4.0),
             primary: PrimaryStyle::Foreground,
             flat_highlights: false,
+            bright_surfaces: false,
             highlight_strength: 1.0,
             glass: None,
             styles: HashMap::default(),

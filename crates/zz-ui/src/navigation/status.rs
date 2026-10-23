@@ -82,14 +82,7 @@ pub fn status_window(
         state.connected,
         ground,
         cx,
-    )
-    .map(|deck| {
-        if hovers {
-            deck.group_hover_ground(group.clone(), hovered.fill)
-        } else {
-            deck
-        }
-    });
+    );
     let item = workspace_status_window(id.clone(), name, tooltip, state, deck, cx)
         .group(group.clone())
         .pr(workspace_row_action_gap())

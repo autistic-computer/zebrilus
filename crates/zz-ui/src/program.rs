@@ -106,10 +106,10 @@ impl Lit {
     #[must_use]
     pub fn shadows(&self) -> Vec<BoxShadow> {
         let zero = Pixels::ZERO;
-        let (contact, ring) = if self.dark {
-            (0.4, Hsla::white().alpha(0.12 * self.strength))
+        let (contact, edge, ring, width) = if self.dark {
+            (0.4, 0.5, Hsla::white().alpha(0.12 * self.strength), 0.75)
         } else {
-            (0.2, Hsla::black().alpha(0.08 * self.strength))
+            (0.2, 0.18, Hsla::white().alpha(0.8 * self.strength), 0.5)
         };
         vec![
             shadow(
@@ -120,13 +120,20 @@ impl Lit {
                 false,
             ),
             shadow(
+                zero,
+                zero,
+                self.unit(width),
+                Hsla::black().alpha(edge * self.strength),
+                false,
+            ),
+            shadow(
                 self.unit(1.0),
                 zero,
                 zero,
                 Hsla::white().alpha(0.3 * self.strength),
                 true,
             ),
-            shadow(zero, zero, self.unit(0.75), ring, true),
+            shadow(zero, zero, self.unit(width), ring, true),
         ]
     }
 }

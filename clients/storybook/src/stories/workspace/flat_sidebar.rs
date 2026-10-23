@@ -60,7 +60,7 @@ pub const STORY: Story = Story {
         Section {
             id: "stacks",
             name: "Tile stacks",
-            summary: "flat_tile_stack for one to five panes on the rest, hover, current and selected grounds. The active pane's tile leads with its glyph; up to two blank tiles fan out behind it, 7px apart, each cut out of the one behind by a ring in the row's color. Point at a stack to open every pane in a row.",
+            summary: "flat_tile_stack for one to five panes on the rest, hover, current and selected grounds. The active pane's tile leads with its glyph; up to two blank tiles fan out behind it, 7px apart, each with its own outline, so the one in front reads against the one behind. Point at a stack to open every pane in a row.",
             build: |_, cx| stateless(stacks, cx),
         },
         Section {

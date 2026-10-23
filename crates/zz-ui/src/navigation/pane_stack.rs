@@ -21,7 +21,6 @@ use crate::{
 pub type StackAction = Rc<dyn Fn(&mut Window, &mut App)>;
 
 const RESTING: usize = 3;
-const RING: f32 = 1.5;
 const OPEN_DURATION: Duration = Duration::from_millis(160);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,14 +88,6 @@ pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     (radius - (around - tile) / 2.0).max(theme.radius * 0.25)
 }
 
-fn grow(radius: Pixels, by: f32) -> Pixels {
-    if radius == FULL_CORNER_RADIUS {
-        radius
-    } else {
-        radius + px(by)
-    }
-}
-
 #[derive(Clone, Copy, Default)]
 struct Pointer {
     stack: bool,
@@ -117,7 +108,6 @@ pub struct PaneStack {
     size: StackSize,
     ground: Ground,
     radius: Pixels,
-    hover: Option<(SharedString, Hsla)>,
     dimmed: f32,
     beside: Option<(AnyElement, Pixels)>,
     room: usize,
@@ -137,7 +127,6 @@ impl PaneStack {
             size,
             ground,
             radius,
-            hover: None,
             dimmed: 0.0,
             beside: None,
             room: RESTING,
@@ -158,12 +147,6 @@ impl PaneStack {
     #[must_use]
     pub fn beside(mut self, content: impl IntoElement, gap: Pixels) -> Self {
         self.beside = Some((content.into_any_element(), gap));
-        self
-    }
-
-    #[must_use]
-    pub fn group_hover_ground(mut self, group: impl Into<SharedString>, fill: Hsla) -> Self {
-        self.hover = Some((group.into(), fill));
         self
     }
 
@@ -252,7 +235,7 @@ impl PaneStack {
         }
     }
 
-    fn resting(&self, slot: usize, shown: usize, layer: &Layer, dark: bool, colors: bool) -> Div {
+    fn resting(&self, slot: usize, layer: &Layer, dark: bool, colors: bool) -> Div {
         let size = self.size;
         let front = self.tiles.first().filter(|_| slot == 0);
         let tile = if let Some(program) = front.and_then(|front| front.program).filter(|_| colors) {
@@ -270,27 +253,10 @@ impl PaneStack {
                 .when(layer.glass.is_none(), |tile| {
                     tile.bg(Lit::background(layer.fill))
                 })
-                .when(front.is_some(), |tile| {
-                    tile.shadow(self.lit(dark, self.dimmed).shadows())
-                })
+                .shadow(self.lit(dark, self.dimmed).shadows())
                 .children(front.map(|front| glyph(front, size.glyph(), self.dim(layer.text))))
         };
-        let left = px(slot as f32 * size.step());
-        if slot + 1 == shown {
-            return tile.absolute().left(left).top_0();
-        }
-        div()
-            .absolute()
-            .left(left - px(RING))
-            .top(px(-RING))
-            .p(px(RING))
-            .rounded(grow(self.radius, RING))
-            .corner_smoothing(layer.smoothing)
-            .bg(self.ground.fill)
-            .when_some(self.hover.clone(), |ring, (group, fill)| {
-                ring.group_hover(group, move |style| style.bg(fill))
-            })
-            .child(tile)
+        tile.absolute().left(px(slot as f32 * size.step())).top_0()
     }
 
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
@@ -436,7 +402,7 @@ impl RenderOnce for PaneStack {
         let shown = self.tiles.len().clamp(1, RESTING);
         let resting = cx.theme().layer(
             Surface::new(roles::PANE_STACK).on(self.ground),
-            PaintState::Hover,
+            PaintState::Rest,
         );
         let size = self.size;
         let width = size.width(shown);
@@ -470,13 +436,7 @@ impl RenderOnce for PaneStack {
             })
             .when(!open, |stack| {
                 stack.children((0..shown).rev().map(|slot| {
-                    self.resting(
-                        slot,
-                        shown,
-                        &resting,
-                        cx.theme().is_dark(),
-                        program_colors(cx),
-                    )
+                    self.resting(slot, &resting, cx.theme().is_dark(), program_colors(cx))
                 }))
             })
             .children(row);

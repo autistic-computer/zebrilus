@@ -131,8 +131,8 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
-| `interface-theme` | `default` | `default`, `macos`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
-| `widget-corner-radius` | from the theme (`24` in Default and macOS) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
+| `interface-theme` | `default` | `default`, `macos`, `yaru`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
+| `widget-corner-radius` | from the theme (`24` in Default and macOS, `16` in Yaru) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
 | `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active floating pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
 | `chrome-tint` | `0` | `0..=1` | How far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
 | `chrome-tint-hue` | `260` | `0..=360` | The hue the tint leans toward, in Oklch degrees; `260` is a cool blue. Settings shows it as Tint |
@@ -280,13 +280,15 @@ import show the same message. `look`, the nine-key format from earlier on 2026-1
 the same way, so a theme file written for it loads only once it is rewritten as `materials` and
 `roles`.
 
-Two themes ship from `crates/zz-ui/themes/`: Default (`default.json`) and macOS
-(`macos.json`). Liquid Glass was removed on 2026-10-22; a config that still names
+Three themes ship from `crates/zz-ui/themes/`: Default (`default.json`), macOS
+(`macos.json`) and Yaru (`yaru.json`). Liquid Glass was removed on 2026-10-22; a config that still names
 `liquid-glass` loads Default, like any theme that is not found. macOS uses the existing material settings
 for macOS-style glass: chrome buttons, selected tabs and sidebar entries, popovers, dialogs and
 other floating surfaces, with directional glass lighting, contact and float shadows, and light and
 dark palettes. Content cards, sidebar rows, code blocks, tooltips, pane chips and ordinary
-buttons use plain fills. The JSON
+buttons use plain fills. Yaru draws Ubuntu's GNOME look: libadwaita's tinted buttons and
+fields with no outline, outlined menus and cards with soft shadows, circular corners and Yaru's
+orange. The JSON
 files hold each theme's current colors, material values, and role overrides.
 
 Run `just storybook macos` on macOS 27 with its SDK to compare the macOS theme in zz-ui against native
@@ -345,7 +347,7 @@ applies as usual. A broken file that is not selected keeps its last good version
 only logs a warning. When zz starts with a broken selected file there is nothing to keep, so it
 draws `default` and says so in the same toast once the window opens.
 
-Settings > Interface > Themes shows the built-in Default and macOS and then the saved themes as tiles.
+Settings > Interface > Themes shows the built-in Default, macOS and Yaru and then the saved themes as tiles.
 Save writes the look on screen (`config::shown_theme`: the theme with its radius,
 accent and tint keys) and an explicit UI font to the first free `themes/theme-N.json` and selects
 it, so nothing on screen changes and the theme can be edited further in that file. Before it

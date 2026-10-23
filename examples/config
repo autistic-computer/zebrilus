@@ -46,7 +46,7 @@ pane-margin = 6
 
 # The interface theme: its materials (corners, outlines, shadows, glass), which
 # piece of UI uses which (its roles), and its colors for light and for dark.
-# Two are built in: default and macos. Any other name selects
+# Three are built in: default, macos and yaru. Any other name selects
 # themes/<name>.json next to this file; Settings -> Interface -> Themes -> Save
 # writes the look on screen there as a new theme.
 interface-theme = default

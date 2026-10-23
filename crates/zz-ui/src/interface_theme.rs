@@ -43,6 +43,10 @@ pub struct Materials {
     /// instead, with no outline or shadow.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub flat_highlights: bool,
+    /// Cards, panes and floating surfaces rise toward white in light mode
+    /// instead of darkening.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bright_surfaces: bool,
     /// How far a tint or lift highlight washes from the resting fill: 1 is
     /// the built-in step, 0 none.
     pub highlight_strength: f32,
@@ -76,6 +80,7 @@ impl Default for Materials {
             row_inset: 4.0,
             primary: PrimaryStyle::Foreground,
             flat_highlights: false,
+            bright_surfaces: false,
             highlight_strength: 1.0,
             font: None,
             glass: None,
@@ -96,6 +101,7 @@ impl Materials {
         theme.row_inset = px(self.row_inset);
         theme.primary = self.primary;
         theme.flat_highlights = self.flat_highlights;
+        theme.bright_surfaces = self.bright_surfaces;
         theme.highlight_strength = self.highlight_strength.max(0.0);
         if let Some(font) = &self.font {
             theme.font_family = font.clone();
@@ -417,6 +423,7 @@ fn with_spelling_hint(message: String) -> String {
 const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
     ("default", include_str!("../themes/default.json")),
     ("macos", include_str!("../themes/macos.json")),
+    ("yaru", include_str!("../themes/yaru.json")),
 ];
 
 static BUILTINS: LazyLock<Vec<(&'static str, InterfaceTheme)>> = LazyLock::new(|| {
