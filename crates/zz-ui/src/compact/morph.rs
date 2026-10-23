@@ -347,7 +347,10 @@ mod tests {
         let mini = pill_bounds(0.0, width, px(120.0), &placement);
         assert_eq!(mini.size, size(px(120.0), px(COMPACT_MINI_PILL_HEIGHT)));
         assert_eq!(mini.center().x, width / 2.0);
-        assert_eq!(placement.zone() - mini.bottom(), px(34.0 - MINI_DROP));
+        assert_eq!(
+            placement.zone() - mini.bottom(),
+            placement.bottom - px(MINI_DROP)
+        );
         assert!(mini.bottom() > full.bottom());
 
         let wide = pill_bounds(0.0, width, px(600.0), &placement);
