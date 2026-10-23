@@ -60,7 +60,7 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
-        pane::{embedded_pane, feed_pane},
+        lens,
     },
     console::{
         phone::{binding_rows, close, groups, key_row, placement, tool_keys},
@@ -99,7 +99,7 @@ pub const STORY: Story = Story {
         Section {
             id: "flat",
             name: "Flat sidebar",
-            summary: "The flat sidebar beside an agent pane and two terminals.",
+            summary: "The flat sidebar beside Claude Code with its lens open and two terminals.",
             build: Flat::view,
         },
         Section {
@@ -111,7 +111,7 @@ pub const STORY: Story = Story {
         Section {
             id: "pip",
             name: "PiP",
-            summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and a subagent feed.",
+            summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and Claude Code with its lens open.",
             build: Pip::view,
         },
         Section {
@@ -278,7 +278,7 @@ struct Flat {
 impl Flat {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
         let flat = cx.new(|_| Live::new(None));
-        let agent = embedded_pane(window, cx);
+        let agent = lens::tiled(window, cx);
         cx.new(|_| Self { flat, agent }).into()
     }
 }
@@ -358,13 +358,13 @@ impl Flat {
 }
 
 struct Pip {
-    feed: AnyView,
+    lens: AnyView,
 }
 
 impl Pip {
-    fn view(_: &mut Window, cx: &mut App) -> AnyView {
-        let feed = feed_pane(cx);
-        cx.new(|_| Self { feed }).into()
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        let lens = lens::floating_claude(window, cx);
+        cx.new(|_| Self { lens }).into()
     }
 }
 
@@ -400,7 +400,6 @@ impl Render for Pip {
             cx,
         ))
         .content_inset(px(8.0), px(16.0));
-        let feed = PipSurface::new("showcase-pip-feed", self.feed.clone());
         v_flex().w_full().gap(px(GAP)).child(
             div()
                 .id("showcase-pip")
@@ -429,7 +428,7 @@ impl Render for Pip {
                         .top(px(32.0))
                         .w(px(380.0))
                         .h(px(320.0))
-                        .child(feed),
+                        .child(self.lens.clone()),
                 ),
         )
     }
@@ -1245,18 +1244,12 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
     .into_any_element()
 }
 
-const PANES: [(&str, IconName, &str, &str); 3] = [
+const PANES: [(&str, IconName, &str, &str); 2] = [
     (
         "drawer-terminal",
         IconName::SquareTerminal,
         "Terminal",
         "A shell in the current folder",
-    ),
-    (
-        "drawer-agent",
-        IconName::Bot,
-        "Agent",
-        "Claude Code or Codex in the current folder",
     ),
     (
         "drawer-browser",

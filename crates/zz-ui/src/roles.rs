@@ -136,7 +136,7 @@ pub const PANE_HEADER: SurfaceRole = SurfaceRole::new(
     "pane.header",
     Kind::Bar,
     "Pane headers",
-    "The title row of terminal and agent panes, and the browser's tabs and toolbar",
+    "The title row of terminal panes, and the browser's tabs and toolbar",
 )
 .with_knobs(Knobs::FIXED);
 pub const PANE_HEADER_BUTTON: SurfaceRole = SurfaceRole::under(
@@ -201,13 +201,13 @@ pub const AGENT_STATUS: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
     "agent.status",
     "Agent status",
-    "Running, Waiting for you and Exited in an agent pane's header",
+    "Unused since the agent pane became a lens; kept so saved themes still load",
 );
 pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "agent.bubble",
     Kind::Card,
     "Message bubbles",
-    "Your messages in the agent pane",
+    "Your messages in the agent lens",
 );
 pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
@@ -232,7 +232,7 @@ pub const AGENT_PICKER: SurfaceRole = SurfaceRole::new(
     "agent.picker",
     Kind::Field,
     "Agent pickers",
-    "The mode, model and folder pickers under the composer",
+    "Unused since the composer lost its pickers; kept so saved themes still load",
 )
 .with(
     P.fill(Fill::None)

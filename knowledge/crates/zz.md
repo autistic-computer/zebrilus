@@ -1,10 +1,10 @@
 ---
 type: Rust Crate
 title: zz crate (the GPUI client)
-description: The long-lived GPUI desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser, and native Agent panes.
+description: The long-lived GPUI desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal and Chromium browser panes plus the agent lens over terminals running Claude Code or Codex.
 resource: crates/zz/src/lib.rs
 tags: [gpui, crate, client, terminal, browser, agent, ui]
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -16,7 +16,7 @@ never a `cli` it finds in a `bin` directory.
 It never owns mux state itself: it holds a socket/named-pipe connection to the daemon
 (`zz_daemon_client::InteractiveClient`, wrapped by `mux::client::MuxClient`), a set of local Chromium
 sessions (`zz_browser::BrowserRuntime`, wrapped by `browser::controller::BrowserController`), and
-and a viewport onto the daemon's ACP runtimes (`agent::AgentController`), then reconciles them against
+and a viewport onto the daemon's agent lens runtimes (`agent::AgentController`), then reconciles them against
 `zz_protocol::MuxSnapshot` on every render. It also owns
 the CEF *subprocess* entrypoints: `zz` itself re-execs as a renderer/GPU/utility subprocess
 (detected via `--type=`), and a tiny sibling binary (`zz_helper`) is that subprocess executable
@@ -31,13 +31,13 @@ notifications unrelated to mux structure also skip the full tree projection.
 
 The crate's job is narrow and mechanical by design: turn `MuxSnapshot` + protocol events into a
 tree of stable GPUI entities (`Entity<PanePickerView>` / `Entity<TerminalView>` /
-`Entity<BrowserView>` / `Entity<AgentView>`, one per `PaneId`,
+`Entity<BrowserView>`, one per `PaneId`, plus an `Entity<AgentView>` for each terminal whose lens is open,
 created once and retained across re-renders) and two custom `zz_gpui::Element` implementations
 (`TerminalElement`, `BrowserElement`) that do the per-frame painting. All tmux-compatible
 parsing, layout math, and session/window/pane lifecycle live in [`zz-mux`](/crates/zz-mux.md) and
 [`zz-daemon`](/crates/zz-daemon.md); this crate renders, forwards input, and owns the GUI-scoped CEF
-runtimes whose durable identity comes from daemon snapshots. Agent panes are no longer in that set:
-the daemon spawns and owns the ACP child, and this crate reduces the stream it publishes.
+runtimes whose durable identity comes from daemon snapshots. The agent lens is not in that set: the
+daemon reads the CLI's transcript and this crate reduces the stream it publishes.
 
 # Process modes (`main.rs` / `lib.rs`)
 
@@ -76,8 +76,8 @@ the daemon spawns and owns the ACP child, and this crate reduces the stream it p
    empty. It boots CEF (`zz_browser::bootstrap`), builds `MuxClient` +
    `BrowserController` + `AgentController`, opens the one native window (`AppShell` → `AppView`),
    restores its last usable bounds through `window/state.rs`, and wires window close / app-quit to
-   both shutdown paths so CEF drains its message loop before the process exits. ACP sessions are not
-   in that teardown any more . they belong to the daemon and keep running.
+   both shutdown paths so CEF drains its message loop before the process exits. Agent sessions are not
+   in that teardown: Claude Code and Codex run in daemon-owned terminals and keep running.
 
 `ZZ_SOCKET` supplies the implicit zz endpoint. `TMUX` remains compatibility metadata and never
 selects transport. A tmux-compatible CLI command with `TMUX` but no `ZZ_SOCKET` or explicit socket
@@ -192,11 +192,11 @@ the platform's user configuration roots into GPUI globals. `ConfigKey` identifie
 switches, geometry, theme choices, font family, browser controls, and `chrome-*` palette overrides.
 `AppConfig` stays `Copy`;
 the string-valued browser shortcut is published through `BrowserConfig`, and the interface font
-through `UiFontConfig`. One
-app-owned Agent key remains . an optional absolute `agent-working-directory` . because the three
-adapter keys (`agent-command`, `agent-claude-code-command`, `agent-auto-approve`) became mux options
-when the ACP runtime moved into the daemon; the parser recognizes them and partitions them into the
-daemon set. The file also retains ordered raw entries for the supported
+through `UiFontConfig`. The three
+agent adapter keys (`agent-command`, `agent-claude-code-command`, `agent-auto-approve`) are mux
+options; the parser recognizes them and partitions them into the daemon set.
+`experimental-agent-pane` and `agent-working-directory` were removed and now load with a "was
+removed" diagnostic. The file also retains ordered raw entries for the supported
 daemon-owned appearance and mux surface. Local knobs carry `Default`/`Override` provenance. The
 complete daemon-owned entry vector crosses the wire on connect and every poll change, including an
 empty vector that restores donor/default values.
@@ -253,7 +253,7 @@ unsupported compositors retain opaque app paint instead of exposing an unblurred
 `background-opacity` remains terminal-local: the client paints the terminal color at that alpha over
 an opaque app-pane base. `1` shows the terminal background, while lower values mix toward the app
 surface without exposing compositor blur. Ghostty's `background-blur` is ignored; the app-level
-switch above is the only native blur request. The pane picker, Agent, Editor, Browser shell, waiting
+switch above is the only native blur request. The pane picker, agent lens, Editor, Browser shell, waiting
 state, and terminal cover the native backdrop. Browser blank, loading, error, and toolbar states
 share that surface; Chromium page frames retain their own pixels.
 
@@ -373,8 +373,9 @@ its PTYs and running agent turns continue.
 built:
 
 - Walks the attached session's active-window pane map and builds `wanted_pickers` /
-  `wanted_terminals` / `wanted_browsers` / `wanted_agents` (`BTreeSet<PaneId>`) from
-  `PaneKindSnapshot::{Picker, Terminal, Browser, Agent}`.
+  `wanted_terminals` / `wanted_browsers` / `wanted_editors` (`BTreeSet<PaneId>`) from
+  `PaneKindSnapshot::{Picker, Terminal, Browser, Editor}`, plus `wanted_agents` for the terminals
+  whose lens this client has open (`lensed_panes`).
 - For every wanted pane not yet present in `self.pickers` / `self.terminals` / `self.browsers` /
   `self.agents`,
   creates the
@@ -382,9 +383,10 @@ built:
   alive across re-renders and layout changes: **the entity is keyed by `PaneId`, never recreated
   while the pane exists.**
 - `PanePickerView` owns only a GPUI focus handle and the local row selection. Arrow keys or
-  `hjkl` cycle Terminal/Browser/Agent; Enter issues `select-pane-kind`, after which reconciliation
+  `hjkl` cycle Terminal/Browser/Editor; Enter issues `select-pane-kind`, after which reconciliation
   drops the picker and focuses the newly materialized entity under the same `PaneId`. Plain
-  `t`/`b`/`a` activate those choices directly, while Escape issues `kill-pane` for the still-empty
+  `t`/`b`/`e` activate those choices directly (Browser only when CEF is available, Editor only when
+  `experimental-editor-pane` is on), while Escape issues `kill-pane` for the still-empty
   pane. Clicking its background issues `select-pane` before taking GPUI focus, keeping the mux-active
   state and inactive surface treatment synchronized. The picker presents compact, headerless,
   full-width washed rows with visible key badges.
@@ -411,10 +413,11 @@ built:
   / `take_browser_commands`) and applies them to the matching entity.
 - Retains only wanted terminals; for browsers no longer wanted, tells `BrowserController::close_pane`
   before dropping the entity, so the CEF session closes with the GPUI view.
-- Gives `AgentController` the Agent-pane set from every daemon session, not only the currently
-  attached one, and asks the daemon for a replay when a pane goes live. Dropping an inactive
-  `AgentView` costs nothing . the ACP session is the daemon's. Removing the real daemon pane is what
-  closes the route and stops that pane's provider process.
+- Keeps the lens toggle per client in `AppView::lenses`. A terminal header shows the toggle when
+  `window_summary::pane_agent` finds `claude` or `codex` in the pane's process list; opening it
+  creates the pane's `AgentView` (`ensure_lens_view`) and asks the daemon for a replay, which opens
+  the lens runtime there. A lens closes when its pane goes or the CLI is no longer the foreground
+  program. See [agent lens](/concepts/agent-lens.md).
 - Computes browser visibility per frame (`BrowserView::set_visible`): a browser is only visible if
   its window is the active window, it isn't hidden by zoom, and it isn't covered by command-output,
   choose-tree, or choose-buffer overlays; invisible CEF sessions stop consuming paint bandwidth.
@@ -431,7 +434,7 @@ nested T-junctions. Gapped layouts draw each pane's frame and fill in glass from
 the glint and fresnel glow painted in the accent on the active pane, and a hairline stands in
 where the window cannot sample its backdrop or the theme has no glass.
 `pane-inactive-opacity` controls the retained strength of inactive content from `0` to `1`, with
-`1` disabling dimming. Native picker, editor, Agent, and waiting surfaces use the inverse as a
+`1` disabling dimming. Native picker, editor, agent lens, and waiting surfaces use the inverse as a
 theme-background scrim. Terminal panes apply the factor to glyphs and decorations only. Browser
 panes apply it to the toolbar only, leaving terminal backgrounds and Chromium page pixels unchanged.
 Surface scrims sit above pane content and below overlays, so `SYNC`, the waiting placeholder, and
@@ -607,7 +610,7 @@ returned `ChromeAction`, which may stay local or send a protocol command.
 - Terminal keys and committed text resolve the daemon's root key table. Browser page input uses a
   separate surface route that skips root bindings and passes directly through the synchronized
   sink resolver.
-- Local text widgets (Agent composer, address bar, sidebar fields) can't round-trip, so
+- Local text widgets (lens composer, address bar, sidebar fields) can't round-trip, so
   `mux/prefix.rs` installs one capture-phase interceptor at the workspace-window root. It claims
   exactly the canonical prefix chord (plus every key while the daemon reports the sequence armed
   via `EventPayload::PrefixArmed`) and forwards them as ordinary key input with the active pane as
@@ -674,8 +677,8 @@ imports reload the page.
   The strip is `Theme::title_bar_height()`: a pane header (36px) with the pane margin above and
   below it, 52px with gaps at the default 8px margin and 36px with flush panes, so the lights, the
   sidebar's buttons and the status bar share the pane headers' centre line. Settings and the
-  sidebar toggle are `Button::compact_icon` buttons, like sidebar row actions and the Agent and
-  browser panes, with the 0.5px optical drop, sized up to 32px buttons with 17px glyphs (from 28
+  sidebar toggle are `Button::compact_icon` buttons, like sidebar row actions and the terminal and
+  browser pane headers, with the 0.5px optical drop, sized up to 32px buttons with 17px glyphs (from 28
   and 15; `WORKSPACE_CHROME_BUTTON_SIZE` in `zz_ui::navigation`). The toggle changes chrome mode
   and opens no menu.
   `status_bar.rs` renders native session, window, Agent, host, update, and clock items from
@@ -772,7 +775,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz-cli/src/control_mode.rs` | `-C` preparation and command loop, direct and per-child guard framing, source events, deferred output/exit ordering, sticky return status |
 | `crates/zz-cli/src/fleet.rs` | `zz fleet add <name> <ssh-destination>` / `list` / `remove` . each one config-file edit, plus `install [--restart-daemon] <name>`, which runs install.sh on the host over ssh, sharing `Endpoint::parse` and `config::validate_fleet_host` with the GUI dialog |
 | `crates/zz/src/macos_app.rs` | macOS application/window actions, native app menu, and standard command-key bindings |
-| `crates/zz/src/config/mod.rs` | Platform-aware bounded `zz/config` discovery/parsing, `host-<name>` fleet entries and their add/remove/republish helpers, the client-side ACP working directory, ordered daemon overrides (the three agent adapter keys among them), per-knob provenance, and comment-preserving atomic edits |
+| `crates/zz/src/config/mod.rs` | Platform-aware bounded `zz/config` discovery/parsing, `host-<name>` fleet entries and their add/remove/republish helpers, ordered daemon overrides (the three agent adapter keys among them), per-knob provenance, and comment-preserving atomic edits |
 | `crates/zz/src/keymap.rs` | Bridges `ChromeKeymap` defaults and `chrome-keybind`/`chrome-unbind` overrides into GPUI bindings and action resolution |
 | `crates/zz/src/config/settings.rs` | Root-managed native settings dialog with local and Terminal appearance controls, plus a compact full-file `zz/mux.conf` editor, explicit Save, and confirmed tmux import |
 | `crates/zz/src/app_shell.rs` | `AppShell` . root application surface: floating window controls (non-macOS), dialog/notification layers, hosts `AppView` and the Linux client frame |
@@ -782,10 +785,9 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/window/state.rs` | Versioned main-window bounds persistence with display-aware validation, clamping, debounce, and atomic writes |
 | `crates/zz/src/pane/layout.rs` | Normalized pane geometry for tmux-style active separator segments, including T-junction adjacency and live drag overrides |
 | `crates/zz/src/workspace/view.rs` | `AppView` . pane reconciliation, recursive layout rendering, split-drag resize, pane indicators, zoom, browser metadata forwarding, and overlay hosting |
-| `crates/zz/src/pane/picker.rs` | Headerless row-style Terminal/Browser/Agent pane picker with direct key badges, arrow/Vim navigation, click/Enter activation, and Escape close |
-| `crates/zz/src/agent/controller.rs` | The client half of an Agent pane: the stream reducer over `zz_daemon::AgentStreamPayload`, per-pane replay cursors, capability-gated history listing, transactional load/new switching, close/delete, command/config discovery, sticky-setting reconciliation, and every user gesture turned into an `AgentRequest` on the wire |
-| `crates/zz/src/agent/preferences.rs` | Bounded versioned client-owned store for provider/agent/workspace-scoped model, effort, and permission selections |
-| `crates/zz/src/agent/view.rs` | Stable native Agent pane entity with provider and searchable virtualized history controls, live timeline, slash completion, sticky dynamic permission/model/effort controls, polished auto-growing composer, cancel, approval/auth actions, errors, and session status |
+| `crates/zz/src/pane/picker.rs` | Headerless row-style Terminal/Browser/Editor pane picker with direct key badges, arrow/Vim navigation, click/Enter activation, and Escape close |
+| `crates/zz/src/agent/controller.rs` | The client half of the agent lens: the stream reducer over `zz_daemon::AgentStreamPayload`, per-pane replay cursors, and every user gesture turned into an `AgentRequest` on the wire (behind the `agent-pane` cargo feature; `agent/stub.rs` stands in without it) |
+| `crates/zz/src/agent/view.rs` | The lens body for one terminal pane: live timeline, slash completion, composer, cancel, permission cards, and errors |
 | `crates/zz/src/workspace/new_session.rs` | Zero-session which-key panel: the New session and Settings rows that work from an empty workspace, then the prefix bindings that need a session, with click and Enter activation; with no host, the Connect to a computer screen. It resolves the keys and wires focus; `zz_ui::shell::empty_workspace*` draws it, so the storybook can too |
 | `crates/zz/src/mux/client.rs` | `MuxClient` . host-keyed `HostConnection` map (client `Arc`, reader thread + depth-1 channel, per-host state/snapshot), delegates non-frame protocol reduction to `ClientCore`, intercepts the retained terminal hot path, drains core effects into GPUI state, and owns `HistoryRing`, remote connect machinery, cross-host attach, and generation-guarded reconnect backoff |
 | `crates/zz/src/mux/hosts.rs` | `HostId`/`HostRegistry`/`HostState` (including `Reconnecting { attempt }`) . fleet host identity from `host-*` config entries, `local` pinned at id 0, retained-host range for a removed-but-attached host |
@@ -807,7 +809,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/command/palette.rs` | Desktop `PaletteBackend` for zz-ui's `CommandPaletteView`: multi-host tree, config settings, and mux activation |
 | `crates/zz/src/command/completion.rs` | Token-aware command, option, enum, history, and live-target completion ranking |
 | `crates/zz/src/diagnostics/mod.rs` | `--verbose` logging, panic hook, process/app-state samplers, process-role classification |
-| `crates/zz/src/file_picker.rs` | Feature-gated fuzzy path picker shared by Agent and Editor panes |
+| `crates/zz/src/file_picker.rs` | Fuzzy path picker for Editor panes, behind the `editor-pane` feature |
 | `crates/zz/src/user_data.rs` | Platform user-data location and user-only file/directory permission policy |
 | `crates/zz/src/bin/zz_helper.rs` | CEF subprocess entrypoint binary |
 | `crates/zz-cli/src/lib.rs` | Shared CLI dispatch, daemon spawning, and terminal attach; its `zz_cli` binary occupies the bundle's `cli` slot |

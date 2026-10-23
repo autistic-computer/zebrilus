@@ -19,7 +19,6 @@ pub struct Preferences {
     pub animations: bool,
     pub animation_speed: f32,
     pub gaps: bool,
-    pub agent_enabled: bool,
     pub dark: bool,
     #[serde(default)]
     pub mode: Option<String>,
@@ -60,7 +59,6 @@ impl Default for Preferences {
             animations: true,
             animation_speed: interface_theme::DEFAULT_ANIMATION_SPEED,
             gaps: false,
-            agent_enabled: true,
             dark: true,
             mode: Some("system".into()),
             theme: None,

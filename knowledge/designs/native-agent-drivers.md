@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Native agent drivers
-description: Agent panes drive each vendor's own protocol from the daemon. Claude Code runs over stream-json and its control protocol, Codex over a private `codex app-server` per pane, and ACP stays for the agents that speak it natively, all emitting the stream the shared reducer already renders.
-status: In progress (Claude Code and Codex drivers, zz commands, question cards, the task tray and subagent steps landed 2026-10-07; the minimal pane with one trace line per turn landed 2026-10-08; the Changes pane and orchestration remain)
+description: The daemon's native drivers speak each vendor's own protocol (they drove the Agent pane until it was removed on 2026-10-23). Claude Code runs over stream-json and its control protocol, Codex over a private `codex app-server` per pane, and ACP stays for the agents that speak it natively, all emitting the stream the shared reducer already renders.
+status: Parked (Claude Code and Codex drivers, zz commands, question cards, the task tray and subagent steps landed 2026-10-07; the minimal pane with one trace line per turn landed 2026-10-08; the Agent pane that ran them was removed 2026-10-23 and nothing opens a driver until the lead chat)
 resource: crates/zz-daemon/src/agent/claude/mod.rs
 tags:
 - agent
@@ -10,8 +10,18 @@ tags:
 - codex
 - acp
 - daemon
-timestamp: 2026-10-07T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
+
+**Status 2026-10-23.** The Agent pane is gone ([agent lens](/designs/agent-lens.md)). The drivers,
+translators and the [turn machine](/designs/agent-turn-machine.md) stay in the source for the lead
+chat, but no pane opens a driver now: `AgentHost::open` runs the lens runner when the spec carries a
+`LensSpec`, and `Shared::open_lens` (`crates/zz-daemon/src/daemon/lens.rs`) is the only production
+caller. Claude Code and Codex run as their own TUIs in terminal panes, and the lens reads their
+transcripts with the translators this page describes (`claude::translate`, `codex::translate`,
+`codex/rollout.rs`). Everything below is the record of the pane those drivers served;
+`restart-agent-pane`, the text projection, the subagent PiP feeds and `agent-send --notify` from an
+agent pane went with it.
 
 # Why
 
@@ -38,8 +48,8 @@ vendor's own apps use ([survey](/research/2026-10-06-native-agent-drivers-survey
 
 The driver boundary is the existing `PaneRunner` in `crates/zz-daemon/src/agent/host.rs`. A runner
 takes `RuntimeCommand` and `RuntimeControl` and emits `AgentStreamPayload`. The Claude runner keeps
-the ACP runtime's contract, so the host queue, fanout, journal, text projection, hooks, and all
-four clients work unchanged.
+the ACP runtime's contract, so the host queue, fanout, journal, text projection (deleted
+2026-10-23), hooks, and all four clients work unchanged.
 
 Transcript atoms stay ACP `SessionUpdate` JSON. It is a published schema with tolerant decoding,
 and `zz-client/src/agent_transcript.rs` already renders it for every client. The lag was in the
@@ -93,7 +103,7 @@ updates, `sessions.rs` reads Claude's own session files.
 
 Verified live on 2026-10-07 through a private daemon and `zz_cli`: a plain reply, a tool turn that
 edited files, an `AskUserQuestion` answered with `agent-respond`, and `restart-agent-pane` resuming
-the session with its memory.
+the session with its memory (`restart-agent-pane` was removed with the Agent pane on 2026-10-23).
 
 # zz commands
 
@@ -250,7 +260,8 @@ Claude driver. One `codex app-server` child per pane over stdio, as the other ap
 - **Sessions.** `thread/list` filtered by cwd.
 
 Verified live on 2026-10-07 with Codex 0.159.0: a plain reply, a turn with two approvals and both
-file changes applied, `restart-agent-pane` resuming the thread with its memory, and `/fork`.
+file changes applied, `restart-agent-pane` (removed 2026-10-23) resuming the thread with its memory,
+and `/fork`.
 
 # Tested versions
 
@@ -268,11 +279,13 @@ Codex. The drivers have not been run against older versions.
 
 1. The Changes pane: a pane type for a session's diffs that the trace's edit steps open.
 2. Orchestration: PiP panes and a decision on in-session tools. Claude subagents and Codex children
-   already float as watch-only PiP feeds ([PiP panes](/designs/pip-panes.md#subagent-feeds)). The
-   groundwork is in:
-   `agent-send --notify` submits to another agent pane and, when that turn ends, posts the reply
+   floated as watch-only PiP feeds from 2026-10-18 until they were removed with the Agent pane on
+   2026-10-23 ([PiP panes](/designs/pip-panes.md#subagent-feeds-removed-2026-10-23)). The
+   groundwork was in:
+   `agent-send --notify` submitted to another agent pane and, when that turn ended, posted the reply
    back into the calling agent pane as a prompt queued behind its own turn (t3code's async
-   completion, over the CLI agents already use). Both vendors can also host tools without a
+   completion, over the CLI agents already use). Since 2026-10-23 `--notify` goes through the
+   target terminal's lens and posts the reply back into the calling terminal pane. Both vendors can also host tools without a
    process: Claude through `sdkMcpServers` and `mcp_message` control requests, Codex through
    `dynamicTools` on `thread/start` and `item/tool/call`.
 3. Keep-up: a weekly diff of `sdk.d.ts` and the Codex schema against the tested versions above.

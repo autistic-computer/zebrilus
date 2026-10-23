@@ -2,13 +2,13 @@
 type: Design Plan
 title: PiP panes . every float, thrown to one of nine places
 description: "In the GUI clients every floating pane that is not modal draws as a PiP: the pane in a card that casts the float shadow, with the same header as a tiled pane, tile back and zoom in place of the splits. Drag the title to throw it, iOS style, onto one of the nine places move-pane -P names. PiPs on one place fan out so each header shows, and they slide off the side edge, 60 px left showing, while a tiled pane has focus. Underneath it stays a tmux 3.8 float with no new flag, state or wire."
-status: Built (2026-10-18; desktop, web and iPad; Claude and Codex subagent feeds built)
+status: Built (2026-10-18; desktop, web and iPad; the Claude and Codex subagent feeds were removed 2026-10-23 with the Agent pane)
 resource: crates/zz-ui/src/pip.rs
 tags:
 - ui
 - floating-panes
 - design-plan
-timestamp: 2026-10-18T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Rulings (fabrico, 2026-10-18)
@@ -49,10 +49,12 @@ role under `pane.float`, which casts the theme's float shadow (Materials in the 
 20% black, so on a dark pane the default reads faintly.
 
 The header is the pane's own header, the one a tiled pane draws (`pane_header` and
-`terminal_pane_header`, `agent_pane_header`, the browser's `BrowserHeader`), with
+`terminal_pane_header`, the browser's `BrowserHeader`), with
 `pane_header_actions(floats)` swapping Split bottom, Split right and Float for Tile back
-(`join-pane -s %N -t %N`) and Zoom (`resize-pane -Z`). The title keeps its X, an agent keeps its
-rename, and a browser keeps its tabs on the one header row. `TerminalPaneAction::commands` holds
+(`join-pane -s %N -t %N`) and Zoom (`resize-pane -Z`). The title keeps its X and a browser keeps
+its tabs on the one header row. (The Agent pane header, with its rename, was removed on
+2026-10-23; a terminal running Claude Code or Codex keeps the terminal header and its lens toggle,
+see [agent lens](/designs/agent-lens.md).) `TerminalPaneAction::commands` holds
 the commands every client sends.
 
 - **Terminals** (and pickers and editors, which have no header of their own) get the header in the
@@ -60,7 +62,8 @@ the commands every client sends.
   under it inset by the border cells, so the PTY never resizes. Desktop reuses the pane's cached
   `TerminalHeaderView`. A borderless float has no border row, so there the header shows over the
   content's top edge while pointed at.
-- **Agents and browsers** draw their own header and fill the card. While floating they round their
+- **Browsers** draw their own header and fill the card (Agent panes did too until they were removed
+  on 2026-10-23). While floating they round their
   corners to `pip_content_radius`, the pane radius inside the card's border, so their opaque fill
   lines up with the card's rounded border under glass themes instead of leaving a crescent of glass
   at each corner.
@@ -125,8 +128,7 @@ somewhere else without telling tmux.
 - **Stashing.** When the window's active pane changes to a tiled pane, every PiP it had slides past
   the nearer side edge until 60 px of it show, content and all; a pile keeps its fan. Clicking that
   strip, or focusing the PiP any other way, brings it back. A new PiP, closing the focused pane, and
-  switching windows stash nothing, so a subagent feed opened beside the pane you type in stays in
-  view.
+  switching windows stash nothing, so a PiP opened beside the pane you type in stays in view.
 
 `PipStage` only places the targets; `PaneMotion` springs every change, and a held PiP follows the
 pointer. The stash lives in each client, so a reload or another client shows the PiPs in place.
@@ -145,7 +147,7 @@ settles, so the daemon sees one resize, not one a frame.
 
 # Clients
 
-Every tiled pane's header (terminal, agent, browser) has a Float button (`picture-in-picture`) after
+Every tiled pane's header (terminal, browser) has a Float button (`picture-in-picture`) after
 Split bottom and Split right. It sends `break-pane -W -x 33% -y 33% -s %N`, then
 `move-pane -t %N -P bottom-right` (`float_pane_commands` in `zz_client::floating`), so the pane
 becomes a PiP a third of the window's size in the bottom-right corner. `prefix @` and the pane menu
@@ -161,100 +163,28 @@ still work.
   `grab_pip` for the mouse and `touch_pip` for a touch on the title (`touch_pane_drag` hands a
   floating pane to it). The landing ends when the snapshot shows the float at its place, or a
   second later.
-- **Storybook**: Workspace → Panes → PiP shows a terminal PiP, a borderless one, an agent pane and a
-  subagent feed as PiPs, a stashed PiP and a pile of two. The `pip-opacity` knob sets
-  `Theme::pip_opacity`. The theme creator's PiP section puts a
-  terminal PiP and a feed PiP over tiled panes, so `pane.pip` can be tuned and inspected.
+- **Storybook**: Workspace → Panes → PiP shows a terminal PiP, a borderless one, a stashed PiP and
+  a pile of two. The `pip-opacity` knob sets `Theme::pip_opacity`. The theme creator's PiP section
+  puts a terminal PiP over tiled panes, so `pane.pip` can be tuned and inspected. As of 2026-10-23
+  both stories still also draw the removed agent pane and subagent feed as PiPs; the storybook is
+  due a lens story in their place ([agent lens](/designs/agent-lens.md)).
 
-# Subagent feeds
+# Subagent feeds (removed 2026-10-23)
 
-When Claude Code or Codex starts subagents, zz floats a PiP over its pane that follows them. This
-works for a zz Agent pane and for the `claude` or `codex` TUI in a terminal pane. The PiP is a
-watch-only agent pane fed from files the agent already writes. The agent's own session, tools and
-prompt cache are not touched.
-
-`crates/zz-daemon/src/agent/feed.rs` is the vendor-neutral part: a `FeedSource` per vendor reports
-each child's heading, new updates and phase (running, done, stopped), and `Feed` turns that into the
-agent stream. `crates/zz-daemon/src/daemon/subagent_feeds.rs` finds the parents and owns the floats:
-a `zz-subagents` worker thread wakes every second while a Claude or Codex pane exists, and posts what
-it found to the loop.
-
-## Claude Code
-
-- **Finding them:** a Claude Agent pane gives its session id from the runtime's wire state. A
-  terminal pane running `claude` gives it through the peer record
-  (`claude_peers::record_for_pane`). The worker finds `<projects>/<slug>/<session>/subagents/` and
-  lists the subagents that are running.
-- **Running or done** (`crates/zz-daemon/src/agent/claude/subagents.rs`, `Completions`): the parent
-  transcript decides, read incrementally from its last 8 MiB.
-  - A background subagent is done when its `<task-notification>` arrives with a status:
-    `completed` is done, any other status is stopped.
-  - A foreground one is done when its Agent call gets a tool_result.
-  - `finished` or `stoppedByUser` in `agent-<id>.meta.json`, and an interrupt line, settle it at
-    once.
-  - When the parent transcript can't be read, an `end_turn` line is the fallback. A subagent that
-    ends its turn while its own background shell runs is still running.
-- **Lines:** each `agent-<id>.jsonl` line runs through the Claude translator
-  (`Translator::sidechain_entry`), so steps, thoughts and answers render like any Claude turn. The
-  heading is `<type> · <description>` from `agent-<id>.meta.json`.
-- **Stop:** `HostCommand::StopTask` to the parent, which becomes Claude's `stop_task` with the agent
-  id.
-
-## Codex
-
-- **Finding them** (`crates/zz-daemon/src/agent/codex/children.rs`): Codex writes every thread to
-  `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*-<thread>.jsonl`. A child's first line is its
-  `session_meta`: `parent_thread_id`, `session_id` (the root thread), `agent_path`,
-  `agent_nickname`, `agent_role` and `subagent_history_start_ordinal`. `running_children` reads the
-  newest two day folders and groups the running children by root thread.
-- **Parents:** a Codex Agent pane gives its thread id from the runtime's wire state. The `codex` TUI
-  can't be asked for its thread, so a terminal pane whose process tree runs a `codex` binary
-  (`pane_runs_codex`) takes the root whose `cwd` matches its own, when it is the only codex TUI in
-  that folder and no Agent pane owns that root.
-- **Running or done:** the child's own `task_started`, `task_complete` and `turn_aborted` lines after
-  its start ordinal.
-- **Lines:** the rollout's `item_completed` items (commands, messages, reasoning) are reshaped into
-  app-server items and run through the Codex translator (`Translator::history_item`). The heading is
-  `<role or nickname> · <agent path>`, for example `Pauli · daemon reader a`.
-- **Stop:** `HostCommand::InterruptThread` to the parent, which sends Codex's `turn/interrupt` with
-  the child's thread and running turn on the pane's app-server connection.
-
-## Both
-
-- **The float:** `new-pane -d --kind agent -T Subagents` at the parent's top-right corner, 64x18
-  outer cells, with pane option `@zz-subagents=%<parent>`.
-  - `agent_pane_spec` reads that option and hands the pane a `FeedSpec`. `AgentHost::open` then runs
-    `run_subagent_feed` instead of an agent process.
-  - The float closes 5 s after the last subagent finishes, and when its parent goes.
-  - A float you close stays closed until a new subagent starts.
-  - Feed floats the daemon no longer tracks, for example after a restart, are closed.
-- **The feed** (`Feed`): one turn per subagent.
-  - Each turn is headed by a user bubble with the child's heading, then its lines.
-  - Turns stay whole: finished subagents come first, in the order they finished, and the subagent
-    being followed is last, so its updates stream into the live turn.
-  - When a subagent finishes while another is followed, the feed replays its timeline as
-    `SessionSwitched` so the finished turn lands above the live one. It then re-sends
-    `Activity { busy }` so the live turn stays live.
-  - The subagents still running are the pane's task tray (`TasksChanged`), and `Activity` drives the
-    Running status. A terminal parent has no channel to stop through, so its feed sends no tray.
-- **Watch-only:** the feed's Ready carries `AgentSessionCapabilities { watch: true }`. It is JSON on
-  the agent stream, appended in wire v109 ([wire protocol](/protocol/wire-protocol.md)). Desktop and web/iOS draw the task tray and errors in place
-  of the composer. A prompt that reaches the feed anyway is refused.
-- **Feeds stay off the peer bus.** They can't take a prompt.
-
-Verified live on 2026-10-18 against a throwaway daemon and the web client:
-- Claude Code 2.1.302 on Haiku: a `claude` TUI in a terminal pane and a Claude Agent pane each
-  started subagents, and the float opened at the parent's corner. It showed each subagent's heading,
-  a live trace with its latest thought, its answer, and the running count. It kept a finished turn
-  above the live one, and closed 5 s after the last subagent finished. Stop on a subagent stopped it.
-- Codex on GPT-6-Luna: a Codex Agent pane and a `codex` TUI in a terminal pane each spawned two
-  children, and each got its own float with the children's commands. Stop on one child of the Agent
-  pane wrote `turn_aborted` to its rollout and dropped it from the tray while the other kept going.
+From 2026-10-18 to 2026-10-23, when Claude Code or Codex started subagents, the daemon floated a
+watch-only agent pane over the parent (`new-pane -d --kind agent -T Subagents`, pane option
+`@zz-subagents=%<parent>`) and fed it from the files the CLI writes: Claude's
+`<session>/subagents/agent-<id>.jsonl` and Codex's child rollouts under `$CODEX_HOME/sessions/`.
+The float closed 5 s after the last subagent finished, and its task tray could stop a child. It
+was a watch-only agent pane, so it went with the Agent pane kind in fc9503ece: `agent/feed.rs`,
+`agent/claude/subagents.rs`, `agent/codex/children.rs` and `daemon/subagent_feeds.rs` are
+deleted, and the `watch` flag on `AgentSessionCapabilities` (wire v109) is no longer set by
+anything. The Codex rollout reader the lens uses now lives in `agent/codex/rollout.rs`. Showing
+subagent activity inside the lens is a follow-up in the [agent lens](/designs/agent-lens.md)
+design.
 
 # Not done
 
-- Two `codex` TUIs in the same folder get no feed, since nothing outside Codex says which root is
-  whose.
 - A stashed PiP that was thrown off the edge keeps tmux's focus, so keys still reach it.
 - iOS native browser views follow the snapshot place, so a stashed browser PiP's page stays in view
   on iPad.

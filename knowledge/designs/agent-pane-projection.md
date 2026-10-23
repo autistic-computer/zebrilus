@@ -1,15 +1,22 @@
 ---
 type: Design Plan
 title: Agent pane text projection
-description: Every Agent pane owns a PTY-free shadow TerminalSession fed with a text projection of its transcript (prompt between OSC 133 A/B and C, reply as output, D plus BEL at turn end), so capture-pane, show-last-output, pipe-pane, and activity/bell alerts work on agent panes with no new verbs; clients never see its frames.
-status: Shipped
+description: "Removed 2026-10-23 with the Agent pane. Every Agent pane owned a PTY-free shadow TerminalSession fed with a text projection of its transcript (prompt between OSC 133 A/B and C, reply as output, D plus BEL at turn end), so capture-pane, show-last-output, pipe-pane, and activity/bell alerts worked on agent panes with no new verbs. Agents now run in real terminal panes, which the tmux read verbs already cover."
+status: Superseded (2026-10-23; removed with the Agent pane, see designs/agent-lens.md)
 tags:
 - agent
 - terminal
 - tmux-compat
 - daemon
-timestamp: 2026-08-26T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
+
+> **Superseded 2026-10-23.** The Agent pane is gone, and this projection went with it: the shadow
+> terminal, `PaneLane::project` and `AgentPublisher::feed_agent_pane_text` were deleted in
+> `fc9503ece`. Claude Code and Codex now run in ordinary terminal panes, so `capture-pane`,
+> `show-last-output`, `pipe-pane` and the bell work on them as on any terminal, and the GUI draws an
+> [agent lens](/concepts/agent-lens.md) over them ([design](/designs/agent-lens.md)). The rest of
+> this page is history.
 
 # Why
 
@@ -75,6 +82,6 @@ grammar work on an Agent pane too.
 
 # Related
 
-- [Agent pane](/concepts/agent-pane.md)
+- [Agent lens](/concepts/agent-lens.md) and its [design](/designs/agent-lens.md)
 - [Daemon-owned agent runtime](/designs/agent-daemon-runtime.md)
 - [tmux superset roadmap](/designs/tmux-superset-roadmap.md)

@@ -208,7 +208,7 @@ const PANES: &[TreeRow] = &[
         "%14",
         "claude",
         "Reviewing the diff",
-        ChooserPaneKind::Agent,
+        ChooserPaneKind::Terminal,
         true,
         true,
     ),

@@ -1,6 +1,9 @@
 #![cfg_attr(not(target_family = "wasm"), allow(dead_code))]
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 
 use zz_client::agent_completion::AgentCommand;
 use zz_client::{
@@ -9,8 +12,8 @@ use zz_client::{
 };
 use zz_gpui::{Context, EventEmitter};
 use zz_protocol::{
-    CommandInvocation, CommandRequest, CommandResponse, InputMessage, PaneId, ProtocolMessage,
-    ServerError, SessionId,
+    AgentProvider, CommandInvocation, CommandRequest, CommandResponse, InputMessage, PaneId,
+    ProtocolMessage, ServerError, SessionId,
 };
 
 #[cfg(target_os = "ios")]
@@ -226,6 +229,7 @@ pub struct Connection {
     pub connected: bool,
     pub agent_events: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     agent_cursors: HashMap<PaneId, AgentCursor>,
+    agent_lenses: BTreeSet<PaneId>,
     terminal_images: crate::terminal_images::TerminalImages,
     pasted_images: crate::terminal_images::PastedImages,
     prefix_cancel_pending: Option<u64>,
@@ -277,6 +281,7 @@ impl Connection {
             connected: false,
             agent_events: HashMap::new(),
             agent_cursors: HashMap::new(),
+            agent_lenses: BTreeSet::new(),
             terminal_images: crate::terminal_images::TerminalImages::default(),
             pasted_images: crate::terminal_images::PastedImages::default(),
             prefix_cancel_pending: None,
@@ -296,6 +301,62 @@ impl Connection {
             reader: None,
             #[cfg(target_family = "wasm")]
             retry: None,
+        }
+    }
+
+    #[must_use]
+    pub fn terminal_agent(&self, pane: PaneId) -> Option<AgentProvider> {
+        self.core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&pane))
+            .and_then(zz_client::window_summary::pane_agent)
+    }
+
+    #[must_use]
+    pub fn agent_lens_open(&self, pane: PaneId) -> bool {
+        self.agent_lenses.contains(&pane)
+    }
+
+    pub fn open_agent_lens(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        if !self.agent_lenses.insert(pane) {
+            return;
+        }
+        self.forget_agent_stream(pane);
+        self.request_agent_replay(pane, cx);
+        cx.notify();
+    }
+
+    pub fn close_agent_lens(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        if self.agent_lenses.remove(&pane) {
+            self.forget_agent_stream(pane);
+            cx.notify();
+        }
+    }
+
+    fn forget_agent_stream(&mut self, pane: PaneId) {
+        self.agent_events.remove(&pane);
+        self.agent_cursors.remove(&pane);
+    }
+
+    fn replay_agent_lenses(&mut self, cx: &mut Context<Self>) {
+        for pane in self.agent_lenses.clone() {
+            self.request_agent_replay(pane, cx);
+        }
+    }
+
+    fn close_stale_agent_lenses(&mut self) {
+        let stale = self
+            .agent_lenses
+            .iter()
+            .copied()
+            .filter(|pane| self.terminal_agent(*pane).is_none())
+            .collect::<Vec<_>>();
+        for pane in stale {
+            self.agent_lenses.remove(&pane);
+            self.forget_agent_stream(pane);
         }
     }
 
@@ -910,6 +971,7 @@ impl Connection {
                     if self.background {
                         self.status = "Connected".into();
                         self.send(ProtocolMessage::Resync, cx);
+                        self.replay_agent_lenses(cx);
                     } else if !self.attaching {
                         self.attach_target(target, cx);
                     }
@@ -923,6 +985,8 @@ impl Connection {
                     self.pasted_images.clear();
                     self.agent_events.clear();
                     self.agent_cursors.clear();
+                    self.close_stale_agent_lenses();
+                    self.replay_agent_lenses(cx);
                     self.send(
                         ProtocolMessage::Input(InputMessage::ClientFocus {
                             focused: self.focused,
@@ -1009,16 +1073,12 @@ impl Connection {
                     }
                     _ => {}
                 },
-                CoreEvent::AgentStateChanged { pane, .. } => {
-                    if !self.agent_cursors.contains_key(pane) {
-                        self.request_agent_replay(*pane, cx);
-                    }
-                }
+                CoreEvent::SnapshotChanged => self.close_stale_agent_lenses(),
                 CoreEvent::AgentUpdates {
                     pane,
                     first_seq,
                     items,
-                } => {
+                } if self.agent_lenses.contains(pane) => {
                     let cursor = self.agent_cursors.entry(*pane).or_default();
                     let journal = self.agent_events.entry(*pane).or_default();
                     let (replay, invalid) = cursor.apply(journal, *first_seq, items);
@@ -1041,22 +1101,15 @@ impl Connection {
                         );
                     }
                 }
-                CoreEvent::AgentLagged { pane, .. } => {
+                CoreEvent::AgentLagged { pane, .. } if self.agent_lenses.contains(pane) => {
                     self.request_agent_replay(*pane, cx);
                 }
                 CoreEvent::PaneRemoved { pane } => {
                     self.history.forget(*pane);
                     self.pasted_images.remove_pane(*pane);
-                    self.agent_events.remove(pane);
-                    self.agent_cursors.remove(pane);
+                    self.agent_lenses.remove(pane);
+                    self.forget_agent_stream(*pane);
                 }
-                CoreEvent::AgentCommand { request_id, .. } => self.send(
-                    ProtocolMessage::GuiResponse(zz_protocol::GuiResponse::Error {
-                        request_id: *request_id,
-                        message: "This action requires the desktop client.".into(),
-                    }),
-                    cx,
-                ),
                 CoreEvent::Detached { .. } if self.background => {
                     self.history.clear();
                     self.status = "Connected".into();
@@ -2022,5 +2075,123 @@ mod tests {
         });
         cx.run_until_parked();
         assert_eq!(notified.get(), 1);
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[zz_gpui::test]
+    fn an_agent_stream_is_kept_only_while_its_lens_is_open(cx: &mut zz_gpui::TestAppContext) {
+        use zz_gpui::AppContext as _;
+        use zz_protocol::{
+            AgentProvider, Event, EventPayload, LayoutNode, MuxSnapshot, PaneId, PaneKindSnapshot,
+            PaneSnapshot, PaneSummary, SessionId, SessionSnapshot, WindowId, WindowSnapshot,
+        };
+
+        let pane = PaneId(1);
+        let snapshot = |generation, program: &str| MuxSnapshot {
+            generation,
+            sessions: vec![SessionSnapshot {
+                id: SessionId(1),
+                name: "test".into(),
+                active_window: WindowId(1),
+                viewers: Vec::new(),
+                windows: vec![WindowSnapshot {
+                    id: WindowId(1),
+                    index: 0,
+                    name: "test".into(),
+                    automatic_rename: true,
+                    active_pane: pane,
+                    zoomed_pane: None,
+                    layout: LayoutNode::Pane(pane),
+                    panes: [(
+                        pane,
+                        PaneSnapshot {
+                            id: pane,
+                            title: "test".into(),
+                            kind: PaneKindSnapshot::Terminal,
+                            synchronized_input: false,
+                            bell: false,
+                            dead: false,
+                            dead_status: None,
+                            border_colour: None,
+                            active_border_colour: None,
+                            border_status_text: String::new(),
+                            mode: None,
+                            status: None,
+                            summary: PaneSummary {
+                                process: vec![program.to_owned()],
+                                ..PaneSummary::default()
+                            },
+                        },
+                    )]
+                    .into(),
+                    layout_dump: String::new(),
+                    visible_layout_dump: String::new(),
+                    status_label: String::new(),
+                    activity: false,
+                    silence: false,
+                    pane_border_status: zz_protocol::PaneBorderStatus::default(),
+                    pane_border_lines: zz_protocol::PaneBorderLines::default(),
+                    pane_border_indicators: zz_protocol::PaneBorderIndicators::default(),
+                    pane_order: vec![pane],
+                    pane_z_order: vec![pane],
+                    floating: Vec::new(),
+                    modal: None,
+                    sx: 0,
+                    sy: 0,
+                }],
+            }],
+            focused_window: Some(WindowId(1)),
+        };
+        let event = |sequence, payload| ProtocolMessage::Event(Event { sequence, payload });
+        let updates = |seq| EventPayload::AgentUpdates {
+            pane,
+            first_seq: seq,
+            items: vec![blob(seq)],
+        };
+        let connection = cx.new(super::Connection::new);
+        let sent = connection.update(cx, |connection, _| connection.record_input_for_test());
+        let replays = || {
+            sent.borrow()
+                .iter()
+                .filter(|message| {
+                    matches!(
+                        message,
+                        ProtocolMessage::AgentReplay { pane: target, from_seq: 0 } if *target == pane
+                    )
+                })
+                .count()
+        };
+        connection.update(cx, |connection, cx| {
+            connection.handle_message_for_test(
+                event(1, EventPayload::Snapshot(snapshot(1, "claude"))),
+                cx,
+            );
+            assert_eq!(
+                connection.terminal_agent(pane),
+                Some(AgentProvider::ClaudeCode)
+            );
+            connection.handle_message_for_test(event(2, updates(1)), cx);
+            assert!(!connection.agent_events.contains_key(&pane));
+
+            connection.open_agent_lens(pane, cx);
+            assert!(connection.agent_lens_open(pane));
+            assert_eq!(replays(), 1);
+            connection.handle_message_for_test(event(3, updates(1)), cx);
+            assert_eq!(connection.agent_events[&pane].len(), 1);
+
+            connection.close_agent_lens(pane, cx);
+            connection.handle_message_for_test(event(4, updates(2)), cx);
+            assert!(!connection.agent_events.contains_key(&pane));
+
+            connection.open_agent_lens(pane, cx);
+            assert_eq!(replays(), 2, "a reopened lens replays from the start");
+            connection.handle_message_for_test(event(5, updates(1)), cx);
+            assert_eq!(connection.agent_events[&pane].len(), 1);
+
+            connection
+                .handle_message_for_test(event(6, EventPayload::Snapshot(snapshot(2, "zsh"))), cx);
+            assert!(!connection.agent_lens_open(pane));
+            assert!(!connection.agent_events.contains_key(&pane));
+        });
     }
 }

@@ -83,7 +83,7 @@ pub(super) fn facts_from(
         });
         for window in &session.windows {
             for pane in window.panes.values() {
-                if matches!(pane.kind, PaneKindSnapshot::Agent(_))
+                if matches!(pane.kind, PaneKindSnapshot::Terminal)
                     && attention(pane.id) == Some(AgentAttentionStatus::NeedsInput)
                 {
                     facts.attention.push(Attention {
@@ -178,9 +178,8 @@ mod tests {
     fn snapshot_facts_include_sessions_and_only_agents_needing_input() {
         use std::collections::BTreeMap;
         use zz_protocol::{
-            AgentDescriptor, LayoutNode, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus,
-            PaneSnapshot, PaneSummary, SessionId, SessionSnapshot, SessionViewer, WindowId,
-            WindowSnapshot,
+            LayoutNode, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneSnapshot,
+            PaneSummary, SessionId, SessionSnapshot, SessionViewer, WindowId, WindowSnapshot,
         };
 
         let pane = |id, title: &str, kind| PaneSnapshot {
@@ -199,16 +198,8 @@ mod tests {
             summary: PaneSummary::default(),
         };
         let terminal = pane(1, "Shell", PaneKindSnapshot::Terminal);
-        let approval = pane(
-            2,
-            "Review",
-            PaneKindSnapshot::Agent(AgentDescriptor::default()),
-        );
-        let working = pane(
-            3,
-            "Build",
-            PaneKindSnapshot::Agent(AgentDescriptor::default()),
-        );
+        let approval = pane(2, "Review", PaneKindSnapshot::Terminal);
+        let working = pane(3, "Build", PaneKindSnapshot::Terminal);
         let window = WindowSnapshot {
             id: WindowId(1),
             index: 7,
@@ -252,12 +243,10 @@ mod tests {
             }],
             focused_window: None,
         };
-        let attention = |pane| {
-            Some(if pane == PaneId(3) {
-                AgentAttentionStatus::Working
-            } else {
-                AgentAttentionStatus::NeedsInput
-            })
+        let attention = |pane| match pane {
+            PaneId(2) => Some(AgentAttentionStatus::NeedsInput),
+            PaneId(3) => Some(AgentAttentionStatus::Working),
+            _ => None,
         };
         let facts = facts_from(Some(&snapshot), attention, true).expect("snapshot facts");
         assert_eq!(

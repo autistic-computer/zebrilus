@@ -4,7 +4,7 @@ title: Mux snapshots (snapshot.rs)
 description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-10-20T20:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -63,9 +63,8 @@ deserializer so hostile nesting is rejected before it can exhaust the receiving 
 | `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `repo: String`, `branch: String`, `process: Vec<String>` |
 | `ShellCommand` | `Running` \| `Finished(u8)` |
 | `PaneMode` | `Clock { .. }` \| `Switch { .. }` \| `Customize { .. }` \| `Panes { .. }` |
-| `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Agent(AgentDescriptor)` \| `Editor(EditorDescriptor)` |
+| `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Editor(EditorDescriptor)` |
 | `BrowserDescriptor` | `tabs: Vec<String>`, `active_tab: usize`, `profile: String` |
-| `AgentDescriptor` | `provider: AgentProvider`, `cwd: Option<PathBuf>`, `session_id: Option<String>` |
 | `EditorDescriptor` | `path: Option<String>`, `cwd: String` |
 
 Every field after `activity` on `WindowSnapshot`, and after `active_border_colour` on
@@ -114,7 +113,7 @@ described under [pane status, summary and time](#pane-status-summary-and-time).
 
 `Picker` is a durable, runtime-free pane state used by the native split-window --kind picker flow. It occupies a real
 layout leaf and survives GUI detach/reattach, but the daemon owns no PTY and the GUI owns no CEF
-session for it. `select-pane-kind` with `terminal`, `browser`, `agent`, or `editor` materializes the
+session for it. `select-pane-kind` with `terminal`, `browser`, or `editor` materializes the
 same `PaneId` and advances the snapshot generation.
 
 `Editor(EditorDescriptor)` is the daemon-owned restore metadata for an Editor pane: the open file's
@@ -123,20 +122,15 @@ dirty state stay GUI-local. Both paths are validated on deserialization as absol
 `MAX_EDITOR_PATH_BYTES` (16 KiB), and free of control characters, so a hostile descriptor cannot
 become mux state.
 
-`Agent(AgentDescriptor)` stores a bounded built-in `AgentProvider` (`Codex` or `ClaudeCode`) without
-transporting provider-specific ACP payloads. The daemon captures the donor terminal's live working
-directory when a picker becomes an Agent pane, then updates the descriptor with the ACP session's
-absolute cwd and opaque session ID. The daemon owns the adapter process, retained runtime state,
-and journal. Prompts, messages, tool calls, permissions, credentials, and provider-specific payloads
-travel through the separate Agent protocol lanes rather than the mux snapshot.
+There is no agent pane kind (v113). Claude Code and Codex run in `Terminal` panes; a client reads
+`summary.process` to decide which terminals get the [agent lens](/concepts/agent-lens.md). The
+lens timeline, prompts and permissions travel on the agent lane, never in the mux snapshot.
 
 ## Pane status, summary and time
 
 `PaneSnapshot.status` is one attention record per pane, whoever reported it:
 
 - a terminal that speaks OSC 7501 gets its headline record ([program status](/terminal/program-status.md));
-- an Agent pane gets the record the daemon's agent fanout computes from its phase, pending
-  permission and last turn ([Native Agent pane](/concepts/agent-pane.md));
 - any other terminal pane gets its `@agent_state` option mirrored into a record (`working`,
   `blocked`, `needs-approval` as Blocked/Permission, `needs-input` as Blocked/Question, `failed` or
   `error`, `done`, and `idle` or `starting`, which only replace an existing record), so the Claude
@@ -164,32 +158,30 @@ moves on an event, never on output bytes:
 start time) or finish (the `D` mark's end time), a bell latch going from false to true, and pane
 death. Output, title writes, a status message, title or progress change within the same state and
 kind, cwd, repo, branch, `@name`, browser navigation and pane creation never stamp it, and neither does a
-pane's first record when it is `Idle` (an Agent pane opening or restoring).
+pane's first record when it is `Idle`.
 
 `unseen` is raised on a status edge into `Done` from anything else, or from `Working` or `Blocked`
 into `Idle` on a terminal pane, unless a focused client attached to the pane's session shows the
 pane's window (`pane_window_seen`; a client that never reported focus counts as focused). The bell
 keeps tmux's rule, the window being current in an attached session, since `#{window_bell_flag}`
 reads it. An edge into `Working` or `Blocked` drops it, so a stale finish does not resurface after
-the next turn. Agent panes report `Done` themselves, so their `Idle` after a cancelled turn raises
-nothing. It clears wherever the bell clears: pane selection, attach, pane input, window activation,
+the next turn. It clears wherever the bell clears: pane selection, attach, pane input, window activation,
 `kill-session -C` and respawn; a client's focus-in also clears it on every pane of the window that
 client shows.
 Because it lives in the daemon, every client on every host sees the same latch. A daemon restart
 clears it and `changed_at`, as it does the bell.
 
 `cwd` comes from the terminal's OSC 7 report, or from the live working directory of the pane's
-foreground process when the shell sends no OSC 7, and from `AgentDescriptor.cwd` for Agent panes.
+foreground process when the shell sends no OSC 7.
 The daemon resolves it and the branch on a location thread of its own, never under the server lock
 and never on the helper pool, so a stat that hangs on a network mount delays only other locations.
 The daemon remembers the last 64 answers by source (the OSC 7 report, or the live path when there
-is none). When a pane moves (its terminal is spawned or an Agent pane opens, the OSC 7 path
+is none). When a pane moves (its terminal is spawned, the OSC 7 path
 changes, or the live path changes on a pane without OSC 7), a remembered answer fills the summary
 at once, from memory, so it rides the publish of the move itself. An answer read in the last 10
 seconds is taken without a job, and every pane that took one is read again 2 seconds after the
 first such take, once per source for the burst; an older answer is shown and read again at once. A
-shell command finishing and a native agent status edge out of `Working`, or while the summary has
-no cwd yet, always read again, so a branch switched from a pane shows up there. A read renews
+shell command finishing always reads again, so a branch switched from a pane shows up there. A read renews
 every remembered answer and every pane summary with the same `cwd`, and sends summary ops only for
 the panes it changes. At most one job per pane is in flight; a
 trigger while one runs drops that job's result, which is neither shown nor remembered, and runs it
@@ -326,8 +318,6 @@ let snapshot = MuxSnapshot {
 
 A browser pane's kind carries its descriptor:
 `PaneKindSnapshot::Browser(BrowserDescriptor { tabs: vec!["https://example.com".into()], active_tab: 0, profile: "default".into() })`.
-An Agent pane carries restore metadata:
-`PaneKindSnapshot::Agent(AgentDescriptor { provider: AgentProvider::Codex, cwd: Some("/workspace".into()), session_id: Some("opaque-session".into()) })`.
 An Editor pane carries the file it reopens:
 `PaneKindSnapshot::Editor(EditorDescriptor { path: Some("/workspace/src/main.rs".into()), cwd: "/workspace".into() })`.
 
@@ -340,4 +330,4 @@ An Editor pane carries the file it reopens:
 - Layout details: [split-pane layout](/concepts/split-pane-layout.md); durability:
   [session persistence](/concepts/session-persistence.md).
 - Cell contents stream separately via [packed terminal lanes](/protocol/terminal-lanes.md).
-- Agent rendering, ACP lifecycle, and restore boundary: [Native Agent pane](/concepts/agent-pane.md).
+- Agent timelines over terminal panes: [agent lens](/concepts/agent-lens.md).

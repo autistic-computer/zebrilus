@@ -8,7 +8,6 @@
 //! thread, a deterministic simulator, or a C caller behind FFI.
 
 pub mod agent_completion;
-pub mod agent_config;
 pub mod agent_output;
 pub mod agent_transcript;
 mod chrome;

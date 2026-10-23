@@ -1,10 +1,10 @@
 ---
 type: Subsystem
 title: Program status (OSC 7501)
-description: How zz reads the Program Status Protocol from pane output, keeps one record per id for each pane, and shows the most urgent record in formats, the tree (whose status record native Agent panes and @agent_state terminals now fill too), @agent_state, and the desktop sidebar.
+description: How zz reads the Program Status Protocol from pane output, keeps one record per id for each pane, and shows the most urgent record in formats, the tree (whose status record @agent_state terminals fill too), @agent_state, and the desktop sidebar.
 resource: crates/zz-terminal/src/program_status.rs
 tags: [osc, osc-7501, program-status, agent-state, sidebar, formats]
-timestamp: 2026-10-17T12:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -58,7 +58,7 @@ lets the reply list `states=` and `kinds=`; zz lists neither, which the spec rea
 states and all three kinds, the set zz takes. The
 reply goes into the pane's `PtyEffects` queue as the filter reads the query, so it stays in
 byte order with libghostty's own replies: a program that sends the query and then DA1 sees our
-answer first. Surfaces without a PTY (agent pane projections and output views) leave
+answer first. Surfaces without a PTY (output views) leave
 `EngineFilter::replies` unset and never answer.
 
 # The headline record
@@ -78,11 +78,12 @@ answer first. Surfaces without a PTY (agent pane projections and output views) l
   `#{pane_status_raw_message}`, the unescaped twins, as with `window_raw_flags`.
   `#{pane_status_reported}` is `1` once the pane has reported since its last full reset.
 - The tree: the daemon's pane watcher copies the headline into `Pane::status`, which rides
-  `PaneSnapshot.status` and `TreeOp::PaneStatus` (wire v108). That record is no longer 7501-only:
-  native Agent panes fill it from the agent fanout ([Native Agent pane](/concepts/agent-pane.md)),
-  and a terminal pane that has not reported gets its `@agent_state` mirrored into it (`working`,
+  `PaneSnapshot.status` and `TreeOp::PaneStatus` (wire v108). That record is not 7501-only: a
+  terminal pane that has not reported gets its `@agent_state` mirrored into it (`working`,
   `blocked`, `needs-approval`, `needs-input`, `failed` or `error`, `done`, `idle` or `starting`),
   so the OSC 9;4 bridge, the Claude peer sampler and user hooks reach every client's tree too.
+  Until 2026-10-23 native Agent panes filled it from the agent fanout as well; that pane kind and
+  its status record are gone, and the [agent lens](/concepts/agent-lens.md) writes no status.
   A pane in `program_status_panes` keeps its 7501 record; the mirror skips it. Every change of
   state or kind stamps `PaneSnapshot.summary.changed_at` and moves the `unseen` latch
   ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)). The formats above keep their
@@ -101,15 +102,15 @@ answer first. Surfaces without a PTY (agent pane projections and output views) l
   `if-shell -F '#{?pane_status_reported,,#{==:#{pane_pid},PID}}' 'set-option … @agent_state …'`,
   so a report that lands while it waits still wins, and a sample taken before `respawn-pane`
   does not land on the new process.
-- Desktop sidebar: every terminal pane feeds the same `AgentAttentionTracker` as Agent panes,
-  idle until it reports. `blocked` and `error` show the needs-input and failed badges and ring the
+- Desktop sidebar: every terminal pane feeds `AgentAttentionTracker` from its tree record
+  (`agent_pane_statuses` in `crates/zz/src/workspace/sidebar.rs`), idle until it reports. `blocked` and `error` show the needs-input and failed badges and ring the
   request chime, even on a pane's first report. `done` rings the completion chime and leaves the
   finished badge until the pane is watched, whether or not the tracker saw `working` first (a
   program can report both between two looks); `working` to `idle` does the same.
   Chimes closer than two seconds apart are dropped, since any program can flip its state as
   fast as it writes. While zz is in the background the same edges post a desktop notification
   named after `app` with `msg` as its body, at most one per pane every two seconds; clicking it
-  selects the pane ([Native Agent pane](/concepts/agent-pane.md)).
+  selects the pane (`crates/zz/src/agent/notify.rs`).
 
 - Flat window list: on desktop, web and iPad, `zz_client::window_summary::pane_attention` turns
   the tree record into a row for any pane kind ([flat sidebar data](/designs/flat-sidebar-data.md)),
@@ -117,6 +118,6 @@ answer first. Surfaces without a PTY (agent pane projections and output views) l
   seen only while a focused client shows its window, so a finish behind another app stays unseen
   until that client focuses back in ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
 
-Not yet covered: the web and iPad session tree, the TUI sidebar, the tray, and the status bar read
-Agent panes only, and only the desktop app notifies. Revision 0.4 dropped the terminfo capability;
+Not yet covered: the web and iPad session tree and the tray read only the agent runtime state of
+panes with an open lens, the TUI sidebar reads none of it, and only the desktop app notifies. Revision 0.4 dropped the terminfo capability;
 programs use the query.

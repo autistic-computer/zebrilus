@@ -4728,7 +4728,7 @@ mod tests {
                 pane,
                 image_ids: Vec::new(),
             }),
-            29
+            28
         );
         for (index, payload) in [
             super::EventPayload::AgentUpdates {
@@ -4750,7 +4750,7 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            assert_eq!(u8::try_from(30 + index).expect("tag"), payload_tag(payload));
+            assert_eq!(u8::try_from(29 + index).expect("tag"), payload_tag(payload));
         }
         assert_eq!(
             payload_tag(super::EventPayload::TimedClientMessage {
@@ -4760,11 +4760,11 @@ mod tests {
                 duration_ms: 0,
                 message_id: 0,
             }),
-            34
+            33
         );
         assert_eq!(
             payload_tag(super::EventPayload::PrefixCancelled { request_id: 0 }),
-            35
+            34
         );
     }
 
@@ -4772,7 +4772,7 @@ mod tests {
     fn recent_mux_options_are_appended_with_their_defaults() {
         assert_eq!(
             postcard::to_stdvec(&MuxOptionKey::HistoryTrickle).expect("history option"),
-            [10]
+            [9]
         );
         assert_eq!(
             MuxOptionKey::from_config_key("history-trickle"),
@@ -4787,7 +4787,7 @@ mod tests {
         );
         assert_eq!(
             postcard::to_stdvec(&MuxOptionKey::AgentAutoApprove).expect("agent option"),
-            [13]
+            [12]
         );
         assert_eq!(
             MuxOptionKey::from_config_key("agent-command"),
@@ -4844,7 +4844,7 @@ mod tests {
             payload: super::EventPayload::RetiredPopup { state: None },
         };
         let event_bytes = postcard::to_stdvec(&event).expect("popup event encodes");
-        assert_eq!(event_bytes[1], 36);
+        assert_eq!(event_bytes[1], 35);
         assert_eq!(
             postcard::from_bytes::<super::Event>(&event_bytes).expect("popup event decodes"),
             event
@@ -4872,8 +4872,8 @@ mod tests {
             );
         }
         for (payload, tag) in [
-            (super::EventPayload::Menu { state: None }, 37),
-            (super::EventPayload::Confirm { state: None }, 38),
+            (super::EventPayload::Menu { state: None }, 36),
+            (super::EventPayload::Confirm { state: None }, 37),
         ] {
             let event = super::Event {
                 sequence: 7,
@@ -4902,28 +4902,28 @@ mod tests {
             payload_tag(super::EventPayload::ControlExit {
                 reason: String::new(),
             }),
-            39
+            38
         );
         assert_eq!(
             payload_tag(super::EventPayload::HookEvent {
                 name: String::new(),
                 variables: std::collections::BTreeMap::new(),
             }),
-            40
+            39
         );
         assert_eq!(
             payload_tag(super::EventPayload::PaneOutput {
                 pane: crate::PaneId(1),
                 bytes: Vec::new(),
             }),
-            41
+            40
         );
         assert_eq!(
             payload_tag(super::EventPayload::PaneOutputState {
                 pane: crate::PaneId(1),
                 paused: false,
             }),
-            42
+            41
         );
         assert_eq!(
             payload_tag(super::EventPayload::PaneOutputAged {
@@ -4931,7 +4931,7 @@ mod tests {
                 age_ms: 0,
                 bytes: Vec::new(),
             }),
-            43
+            42
         );
         assert_eq!(
             payload_tag(super::EventPayload::ControlFlags {
@@ -4940,7 +4940,7 @@ mod tests {
                 no_output: false,
                 new_layouts: false,
             }),
-            44
+            43
         );
         assert_eq!(
             payload_tag(super::EventPayload::SubscriptionChanged {
@@ -4951,7 +4951,7 @@ mod tests {
                 pane: None,
                 value: String::new(),
             }),
-            45
+            44
         );
     }
 
@@ -4960,19 +4960,19 @@ mod tests {
         for (key, tag, name, config_key) in [
             (
                 MuxOptionKey::Mouse,
-                14_u8,
+                13_u8,
                 "mouse",
                 Some(MuxOptionKey::Mouse),
             ),
             (
                 MuxOptionKey::EscapeTime,
-                15,
+                14,
                 "escape-time",
                 Some(MuxOptionKey::EscapeTime),
             ),
             (
                 MuxOptionKey::Prefix2,
-                16,
+                15,
                 "prefix2",
                 Some(MuxOptionKey::Prefix2),
             ),
@@ -5535,7 +5535,7 @@ mod tests {
             payload: message,
         };
         let bytes = postcard::to_stdvec(&event).expect("timed message encodes");
-        assert_eq!(bytes[1], 34);
+        assert_eq!(bytes[1], 33);
         assert_eq!(
             postcard::from_bytes::<super::Event>(&bytes).expect("timed message decodes"),
             event
@@ -5546,7 +5546,7 @@ mod tests {
             payload: super::EventPayload::TimedClientMessageCleared { message_id: 9 },
         };
         let bytes = postcard::to_stdvec(&cleared).expect("cleared encodes");
-        assert_eq!(bytes[1], 46);
+        assert_eq!(bytes[1], 45);
         assert_eq!(
             postcard::from_bytes::<super::Event>(&bytes).expect("cleared decodes"),
             cleared
@@ -5573,7 +5573,7 @@ mod tests {
     }
 
     #[test]
-    fn control_command_guard_holds_wire_tag_forty_seven_and_round_trips_flags() {
+    fn control_command_guard_holds_wire_tag_forty_six_and_round_trips_flags() {
         for flags in [0, 1] {
             let event = super::Event {
                 sequence: 7,
@@ -5585,7 +5585,7 @@ mod tests {
                 },
             };
             let bytes = postcard::to_stdvec(&event).expect("control command guard encodes");
-            assert_eq!(bytes[1], 47);
+            assert_eq!(bytes[1], 46);
             assert_eq!(bytes.last(), Some(&flags));
             assert_eq!(
                 postcard::from_bytes::<super::Event>(&bytes)
@@ -5596,7 +5596,7 @@ mod tests {
     }
 
     #[test]
-    fn control_source_file_holds_wire_tag_forty_eight_and_round_trips_events() {
+    fn control_source_file_holds_wire_tag_forty_seven_and_round_trips_events() {
         for source_event in [
             super::ControlSourceFileEvent::ReadError("Is a directory: source.conf".to_owned()),
             super::ControlSourceFileEvent::Complete,
@@ -5608,7 +5608,7 @@ mod tests {
                 },
             };
             let bytes = postcard::to_stdvec(&event).expect("control source-file event encodes");
-            assert_eq!(bytes[1], 48);
+            assert_eq!(bytes[1], 47);
             assert_eq!(
                 postcard::from_bytes::<super::Event>(&bytes)
                     .expect("control source-file event decodes"),
@@ -5618,7 +5618,7 @@ mod tests {
     }
 
     #[test]
-    fn startup_config_causes_hold_wire_tag_forty_nine_and_round_trip() {
+    fn startup_config_causes_hold_wire_tag_forty_eight_and_round_trip() {
         let event = super::Event {
             sequence: 9,
             payload: super::EventPayload::StartupConfigCauses {
@@ -5626,7 +5626,7 @@ mod tests {
             },
         };
         let bytes = postcard::to_stdvec(&event).expect("startup config causes encode");
-        assert_eq!(bytes[1], 49);
+        assert_eq!(bytes[1], 48);
         assert_eq!(
             postcard::from_bytes::<super::Event>(&bytes).expect("startup config causes decode"),
             event
@@ -5634,7 +5634,7 @@ mod tests {
     }
 
     #[test]
-    fn control_command_output_holds_wire_tag_fifty() {
+    fn control_command_output_holds_wire_tag_forty_nine() {
         let event = super::Event {
             sequence: 10,
             payload: super::EventPayload::ControlCommandOutput {
@@ -5642,7 +5642,7 @@ mod tests {
             },
         };
         let bytes = postcard::to_stdvec(&event).expect("control command output encodes");
-        assert_eq!(bytes[1], 50);
+        assert_eq!(bytes[1], 49);
         assert_eq!(
             postcard::from_bytes::<super::Event>(&bytes).expect("control command output decodes"),
             event
@@ -5781,7 +5781,7 @@ mod tests {
                 },
             };
             let bytes = postcard::to_stdvec(&event).expect("detached event encodes");
-            assert_eq!(bytes[1], 23);
+            assert_eq!(bytes[1], 22);
             assert_eq!(bytes[bytes.len() - 2], tag);
             assert_eq!(bytes.last(), Some(&0));
             assert_eq!(
@@ -5816,7 +5816,7 @@ mod tests {
                 },
             };
             let bytes = postcard::to_stdvec(&event).expect("detached event encodes");
-            assert_eq!(bytes[1], 23);
+            assert_eq!(bytes[1], 22);
             assert_eq!(&bytes[bytes.len() - tail.len()..], tail.as_slice());
             assert_eq!(
                 postcard::from_bytes::<super::Event>(&bytes).expect("detached event decodes"),

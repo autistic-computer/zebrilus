@@ -1,7 +1,7 @@
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Ground,
-    Icon, IconName, InteractiveSurfaceExt as _, Layer, PaintState, Sizable as _, StyledExt as _,
-    Surface, Tone,
+    Icon, IconName, InteractiveSurfaceExt as _, Layer, PaintState, Selectable as _, Sizable as _,
+    StyledExt as _, Surface, Tone,
     button::{Button, ButtonVariants as _},
     roles,
 };
@@ -42,7 +42,6 @@ pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
     match kind {
         zz_protocol::PaneKindSnapshot::Terminal => IconName::SquareTerminal,
         zz_protocol::PaneKindSnapshot::Browser(_) => IconName::Globe,
-        zz_protocol::PaneKindSnapshot::Agent(agent) => agent_provider_icon(agent.provider),
         zz_protocol::PaneKindSnapshot::Editor(_) => IconName::File,
         zz_protocol::PaneKindSnapshot::Picker => IconName::Plus,
     }
@@ -174,6 +173,13 @@ pub enum TerminalPaneAction {
     Tile,
     Zoom,
     Close,
+    Lens,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PaneLens {
+    pub provider: zz_protocol::AgentProvider,
+    pub open: bool,
 }
 
 impl TerminalPaneAction {
@@ -200,6 +206,7 @@ impl TerminalPaneAction {
                 "kill-pane",
                 ["-t".to_owned(), pane.to_string()],
             )],
+            Self::Lens => Vec::new(),
         }
     }
 }
@@ -242,6 +249,7 @@ pub fn terminal_pane_header(
     title: impl Into<SharedString>,
     drag: PaneDragSource,
     floats: bool,
+    lens: Option<PaneLens>,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
@@ -251,22 +259,50 @@ pub fn terminal_pane_header(
         title,
         drag,
         floats,
+        lens,
         on_action,
         cx,
     )
 }
 
+pub fn pane_lens_button(
+    lens: PaneLens,
+    on_toggle: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Button {
+    let label = if lens.open {
+        "Show terminal"
+    } else {
+        "Show agent view"
+    };
+    pane_header_icon_button("pane-lens", agent_provider_icon(lens.provider), true, cx)
+        .debug_selector(|| "pane-lens".into())
+        .selected(lens.open)
+        .when(lens.open, |button| button.text_color(cx.theme().foreground))
+        .tooltip(label)
+        .on_click(move |_, window, cx| {
+            cx.stop_propagation();
+            on_toggle(window, cx);
+        })
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "a header is the sum of these independent pieces"
+)]
 pub fn pane_header(
     icon: IconName,
     active: bool,
     title: impl Into<SharedString>,
     drag: PaneDragSource,
     floats: bool,
+    lens: Option<PaneLens>,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
     let on_action = std::rc::Rc::new(on_action);
     let close = std::rc::Rc::clone(&on_action);
+    let toggle = std::rc::Rc::clone(&on_action);
     let action = |action, icon, label: &'static str| {
         let on_action = std::rc::Rc::clone(&on_action);
         pane_header_icon_button(label, icon, true, cx)
@@ -302,6 +338,13 @@ pub fn pane_header(
                 .on_close(move |window, cx| close(TerminalPaneAction::Close, window, cx)),
             ),
         )
+        .children(lens.map(|lens| {
+            pane_lens_button(
+                lens,
+                move |window, cx| toggle(TerminalPaneAction::Lens, window, cx),
+                cx,
+            )
+        }))
         .child(
             div()
                 .flex()

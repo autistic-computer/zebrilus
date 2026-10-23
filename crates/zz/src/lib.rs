@@ -15,7 +15,7 @@ mod command;
 mod config;
 mod diagnostics;
 mod editor;
-#[cfg(any(feature = "agent-pane", feature = "editor-pane"))]
+#[cfg(feature = "editor-pane")]
 mod file_picker;
 mod hotreload;
 mod keymap;
@@ -52,7 +52,7 @@ use zz_protocol::CommandInvocation;
 use zz_terminal::TerminalColorScheme;
 use zz_ui::{Assets, Root, Theme, ThemeMode};
 
-use agent::{AgentController, AgentPreferences};
+use agent::AgentController;
 use app_shell::AppShell;
 use browser::controller::BrowserController;
 use workspace::AppView;
@@ -268,10 +268,7 @@ fn run_app(
             #[cfg(not(target_os = "macos"))]
             menus::install(cx);
             let controller = cx.new(|cx| BrowserController::new(runtime, cx));
-            let agent_config = config::agent_config(cx);
-            let preferences = AgentPreferences::load_persistent();
-            let agent_controller =
-                cx.new(|_| AgentController::with_preferences(agent_config, preferences));
+            let agent_controller = cx.new(|_| AgentController::new());
             let window_state = window::state::MainWindowState::load_persistent();
 
             cx.on_window_closed(|cx, _window_id| {

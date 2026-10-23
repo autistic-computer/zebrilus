@@ -616,11 +616,7 @@ impl AppShell {
 }
 
 pub(super) fn draws_own_header(kind: &zz_protocol::PaneKindSnapshot) -> bool {
-    match kind {
-        zz_protocol::PaneKindSnapshot::Agent(_) => true,
-        zz_protocol::PaneKindSnapshot::Browser(_) => cfg!(target_os = "ios"),
-        _ => false,
-    }
+    cfg!(target_os = "ios") && matches!(kind, zz_protocol::PaneKindSnapshot::Browser(_))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -5,64 +5,21 @@
 
 use std::sync::Arc;
 
-use zz_gpui::{App, Context, EventEmitter, Task, Window, div, prelude::*};
-use zz_protocol::{AgentDescriptor, AgentProvider, PaneId};
+use zz_gpui::{App, Context, Task, Window, div, prelude::*};
+use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{ActiveTheme as _, Colorize as _};
 
-use crate::{agent::sound::AgentPaneStatus, config::AgentConfig, mux::client::MuxClient};
+use crate::mux::client::MuxClient;
 
-/// Mirrors the real event enum so the workspace subscription match compiles.
-/// Never constructed: the stub controller emits nothing.
-#[allow(dead_code)]
-pub(crate) enum AgentControllerEvent {
-    Provider {
-        pane: PaneId,
-        provider: AgentProvider,
-    },
-    Restart {
-        pane: PaneId,
-    },
-    Title {
-        pane: PaneId,
-        title: Arc<str>,
-    },
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct AgentPreferences;
-
-impl AgentPreferences {
-    pub fn load_persistent() -> Self {
-        Self
-    }
-}
-
+#[derive(Default)]
 pub struct AgentController;
 
-impl EventEmitter<AgentControllerEvent> for AgentController {}
-
 impl AgentController {
-    // Only tests construct a bare controller: view tests that need a sidebar.
-    #[cfg(test)]
-    pub(crate) fn new(_config: AgentConfig) -> Self {
-        Self
-    }
-
-    pub fn with_preferences(_config: AgentConfig, _preferences: AgentPreferences) -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
     pub(crate) fn attach_mux(&mut self, _mux: zz_gpui::Entity<MuxClient>) {}
-
-    pub(crate) fn ensure_pane(
-        &mut self,
-        _pane: PaneId,
-        _descriptor: &AgentDescriptor,
-        _cx: &mut Context<Self>,
-    ) {
-    }
-
-    pub(crate) fn synchronize_config(&mut self, _config: AgentConfig, _cx: &mut Context<Self>) {}
 
     pub(crate) fn retain_panes(
         &mut self,
@@ -71,12 +28,6 @@ impl AgentController {
     ) {
     }
 
-    pub(crate) const fn pane_status(&self, _pane: PaneId) -> Option<AgentPaneStatus> {
-        None
-    }
-
-    pub(crate) fn append_composer(&mut self, _pane: PaneId, _text: &str, _cx: &mut Context<Self>) {}
-
     pub(crate) fn prompt(
         &mut self,
         _pane: PaneId,
@@ -84,7 +35,7 @@ impl AgentController {
         _images: Vec<Arc<zz_gpui::Image>>,
         _cx: &mut Context<Self>,
     ) -> Result<(), Arc<str>> {
-        Err("agent panes are not included in this build".into())
+        Err("the agent lens is not included in this build".into())
     }
 
     pub(crate) fn is_shutting_down(&self) -> bool {
@@ -100,7 +51,6 @@ impl AgentController {
     }
 }
 
-/// Placeholder for an agent pane this build cannot host.
 pub(crate) struct AgentView {
     focus_handle: zz_gpui::FocusHandle,
 }
@@ -108,7 +58,7 @@ pub(crate) struct AgentView {
 impl AgentView {
     pub(crate) fn new(
         _pane: PaneId,
-        _descriptor: &AgentDescriptor,
+        _provider: AgentProvider,
         _controller: zz_gpui::Entity<AgentController>,
         _mux: zz_gpui::Entity<MuxClient>,
         _window: &mut Window,
@@ -141,6 +91,6 @@ impl Render for AgentView {
             .items_center()
             .justify_center()
             .text_color(cx.theme().foreground.muted())
-            .child("Agent panes are not included in this build")
+            .child("The agent lens is not included in this build")
     }
 }

@@ -1,30 +1,28 @@
 ---
 type: Architecture
 title: Process & threading model
-description: How zz splits work across the persistent daemon, GUI and CLI clients, CEF subprocesses, ACP agents, and per-PTY worker threads.
+description: How zz splits work across the persistent daemon, GUI and CLI clients, CEF subprocesses, agent lens runtimes, and per-PTY worker threads.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [architecture, process-model, daemon, threading, ipc]
-timestamp: 2026-09-07T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
 
 zz runs as several cooperating processes rather than one monolith. A single persistent **daemon**
 owns durable multiplexer state and PTYs; **GUI clients** and **CLI clients** attach to it over an
-owner-only local IPC endpoint; the browser runs as its own tree of **CEF subprocesses**, and each
-Agent pane owns an **ACP child process** inside the daemon. The separation lets terminal and agent
-sessions
-survive GUI detach while keeping the mux state a single source of truth.
+owner-only local IPC endpoint; the browser runs as its own tree of **CEF subprocesses**. Claude Code and Codex are ordinary
+terminal processes; the daemon only reads their transcripts for the agent lens. The separation
+lets terminal sessions survive GUI detach while keeping the mux state a single source of truth.
 
 # Processes
 
 | Process | Owns | Lifetime |
 |---------|------|----------|
 | Daemon ([server](/crates/zz-daemon.md)), running from the headless binary (`cli` in a bundle install, `zz` on a headless install) | mux state, PTYs, terminal frame fanout, IPC listener | persistent; survives GUI detach; exits on `kill-server`, or once it has **zero sessions and zero interactive clients**; dies on crash, logout, reboot |
-| GUI client ([app](/crates/zz.md)) | GPUI windows, rendering, local CEF sessions, ACP controller/session reducers | attached to at most one session; a session takes as many clients as devices attach |
+| GUI client ([app](/crates/zz.md)) | GPUI windows, rendering, local CEF sessions, agent lens stream reducers | attached to at most one session; a session takes as many clients as devices attach |
 | CLI client ([headless binary](/crates/zz-cli.md)) | one short-lived command (`list-sessions`, `send-keys`, …) | request/response, then exits |
 | CEF browser process | Chromium main/GPU/renderer/utility (zygote) tree | spawned inside a GUI process; not kept alive without a GUI |
-| ACP agent process | Codex or Claude Code reached over stdio JSON-RPC; one process and ACP session belong to one Agent pane | spawned when the pane appears; replaced on provider/config changes; stopped with the pane or daemon |
 
 The daemon's default exit rule deliberately differs from tmux's `exit-empty`: destroying the last
 session is not enough while a GUI client is still attached, because that client outlives its last
@@ -112,20 +110,19 @@ CEF uses the same executable for every Chromium role. `crates/zz` ships a helper
 dispatches on subprocess type. On Linux, Chromium's user-namespace sandbox stays enabled and only the
 legacy setuid sandbox layer is disabled (no `--no-sandbox`).
 
-# ACP process model
+# Agent lens model
 
-The daemon launches the AI provider. `agent::host::AgentHost` starts one ACP v1 child per Agent
-`PaneId`, on its own `zz-agent-{n}` thread, using the `agent-command` mux option for Codex or
-`agent-claude-code-command` for Claude Code. The daemon snapshot stores the selected provider, the
-session's absolute cwd, and its opaque ID, and the daemon adopts that ID itself when the adapter
-returns one. On reattach, the client asks for a replay from where its reducer stands and then tails;
-daemon-side, a respawned adapter uses `session/load` against the same provider when supported and
-falls back to the journal when it does not. Switching providers deliberately clears the old session
-ID and starts a fresh thread. Pane removal and **daemon** shutdown cancel active turns and permission
-responders before that pane's child is reaped . a GUI quit does neither, which is the point.
+The daemon does not launch an AI provider for any pane. Claude Code and Codex run as the user's own
+CLIs in terminal panes. When a client opens the lens on one, or `agent-send --wait` targets it,
+`agent::host::AgentHost` starts a lens runtime for that terminal's `PaneId` on its own
+`zz-agent-{n}` thread. The runtime starts no process: it tails the CLI's transcript (Claude's session
+jsonl, the rollout Codex holds open), pastes prompts into the terminal, and lives until the pane
+closes. Pane removal and **daemon** shutdown stop it; a GUI quit does neither. The native Claude and
+Codex drivers and the ACP runtime are still in the crate for a later lead chat, but nothing opens
+them. See [agent lens](/concepts/agent-lens.md).
 
-The desktop client keeps only the rendering half: the reducer, view, composer draft, permission
-wizard, and sticky selector preferences. `zz-tui` links only
+The desktop client keeps only the rendering half: the reducer, view, composer draft and permission
+cards. `zz-tui` links only
 [zz-daemon-client](/crates/zz-daemon-client.md), so a build that never hosts a daemon pulls in
 neither the server nor `agent-client-protocol`.
 
@@ -139,10 +136,10 @@ each rendered against that view's own scroll, selection, copy-mode, and search s
 to that view's client. See [PTY worker](/concepts/pty-worker.md) for the ownership boundary between
 server and zz-terminal.
 
-Agent panes use one `zz-agent-{n}` thread per pane to block on the ACP connection and one shared
-`zz-agent-flush` thread to close the fanout's 25 ms coalescing windows. The flusher parks while no
-pane has gathered output. The daemon builds the runtime on the first agent pane, so a daemon that
-never runs an agent spawns none of these threads.
+Agent lenses use one `zz-agent-{n}` thread per lens pane and one shared `zz-agent-flush` thread to
+close the fanout's 25 ms coalescing windows. The flusher parks while no pane has gathered output.
+The daemon builds the runtime on the first lens it opens, so a daemon that never opens one spawns
+none of these threads.
 
 # Related
 

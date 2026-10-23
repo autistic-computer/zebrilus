@@ -3,7 +3,7 @@ use std::rc::Rc;
 use zz_client::{
     program::{Program, resolve},
     window_summary::{
-        PaneTag::{self, Agent, Browser, Editor, Picker, Terminal},
+        PaneTag::{self, Browser, Editor, Picker, Terminal},
         PaneTile, age_label, summarize_host,
     },
 };
@@ -12,10 +12,9 @@ use zz_gpui::{
     ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
 use zz_protocol::{
-    AgentProvider, Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators, PaneBorderLines,
-    PaneBorderStatus, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneStatusKind,
-    PaneStatusState, PaneSummary, SessionId, SessionSnapshot, ShellCommand, SplitId, WindowId,
-    WindowSnapshot,
+    Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId,
+    PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneStatusKind, PaneStatusState, PaneSummary,
+    SessionId, SessionSnapshot, ShellCommand, SplitId, WindowId, WindowSnapshot,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _,
@@ -33,7 +32,7 @@ use zz_ui::{
 };
 
 use super::{
-    fixtures::{agent_kind, browser_kind, editor_kind},
+    fixtures::{browser_kind, editor_kind},
     tree::flat_view_sidebar,
 };
 use crate::story::Framed as _;
@@ -163,11 +162,17 @@ fn pane(id: u64, title: &str, kind: PaneKindSnapshot) -> PaneSnapshot {
 }
 
 fn claude(id: u64, title: &str) -> PaneSnapshot {
-    pane(id, title, agent_kind(AgentProvider::ClaudeCode))
+    agent_cli(id, title, "claude")
 }
 
 fn codex(id: u64, title: &str) -> PaneSnapshot {
-    pane(id, title, agent_kind(AgentProvider::Codex))
+    agent_cli(id, title, "codex")
+}
+
+fn agent_cli(id: u64, title: &str, command: &str) -> PaneSnapshot {
+    let mut pane = terminal(id, title);
+    pane.summary.process = vec![command.to_owned()];
+    pane
 }
 
 fn terminal(id: u64, title: &str) -> PaneSnapshot {
@@ -897,20 +902,6 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             .bg(flat_row_ground(state, cx).fill)
             .child(flat_tile_stack(MACBOOK, WindowId(id), &tiles, state, cx))
     };
-    let cell = |id: u64, tags: &[PaneTag], state: FlatRowState| {
-        let tiles = tags
-            .iter()
-            .map(|tag| {
-                let program = match tag {
-                    Agent(AgentProvider::ClaudeCode) => Some("claude"),
-                    Agent(AgentProvider::Codex) => Some("codex"),
-                    _ => None,
-                };
-                (*tag, program)
-            })
-            .collect::<Vec<_>>();
-        stack_cell(id, &tiles, state)
-    };
     let running = |id: u64, programs: &[&'static str], state: FlatRowState| {
         let tiles = programs
             .iter()
@@ -918,25 +909,26 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             .collect::<Vec<_>>();
         stack_cell(id, &tiles, state)
     };
-    let claude = Agent(AgentProvider::ClaudeCode);
-    let codex = Agent(AgentProvider::Codex);
-    let kinds = [claude, codex, Terminal, Browser, Editor, Picker];
-    let on_every_ground = |id: u64, tags: &[PaneTag]| {
+    let claude = (Terminal, Some("claude"));
+    let codex = (Terminal, Some("codex"));
+    let (terminal, browser, editor) = ((Terminal, None), (Browser, None), (Editor, None));
+    let kinds = [claude, codex, terminal, browser, editor, (Picker, None)];
+    let on_every_ground = |id: u64, tiles: &[(PaneTag, Option<&str>)]| {
         row().children(
             grounds
                 .iter()
                 .enumerate()
-                .map(|(index, state)| cell(id * 10 + index as u64, tags, *state)),
+                .map(|(index, state)| stack_cell(id * 10 + index as u64, tiles, *state)),
         )
     };
     states()
         .state(
-            "one pane, every kind",
+            "one pane: Claude Code and Codex in terminals, then every kind",
             row().children(
                 kinds
                     .iter()
                     .enumerate()
-                    .map(|(index, kind)| cell(index as u64, &[*kind], grounds[0])),
+                    .map(|(index, kind)| stack_cell(index as u64, &[*kind], grounds[0])),
             ),
         )
         .state(
@@ -945,15 +937,15 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .state(
             "two panes: one tile behind",
-            on_every_ground(2, &[Browser, Terminal]),
+            on_every_ground(2, &[browser, terminal]),
         )
         .state(
             "three panes: two tiles behind",
-            on_every_ground(3, &[claude, Terminal, Browser]),
+            on_every_ground(3, &[claude, terminal, browser]),
         )
         .state(
             "five panes: still two behind, all five when open",
-            on_every_ground(5, &[Terminal, codex, Browser, Editor, claude]),
+            on_every_ground(5, &[terminal, codex, browser, editor, claude]),
         )
         .state(
             "terminals running programs: the front tile wears the program",

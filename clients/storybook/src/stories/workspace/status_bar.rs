@@ -19,7 +19,7 @@ use zz_ui::{
 };
 
 use super::{
-    fixtures::{agent_kind, browser_kind, editor_kind, noop, status_pane, workspace_panes},
+    fixtures::{browser_kind, editor_kind, noop, status_pane, workspace_panes},
     tree::chrome_controls,
 };
 use crate::story::Framed as _;
@@ -52,7 +52,7 @@ pub const STORY: Story = Story {
         Section {
             id: "agents",
             name: "Agent activity",
-            summary: "status_agents summarizes every agent pane by the most urgent state: needs input, then failed, then running, then idle.",
+            summary: "status_agents summarizes every terminal running Claude Code or Codex by the most urgent state: needs input, then failed, then running, then idle.",
             build: |_, cx| stateless(agents, cx),
         },
         Section {
@@ -76,16 +76,11 @@ fn window_panes(index: usize) -> Vec<StatusPaneEntry> {
     match index {
         0 => workspace_panes(),
         1 => vec![
-            status_pane(
-                11,
-                "Rework status bar",
-                agent_kind(AgentProvider::Codex),
-                true,
-            ),
+            status_pane(11, "codex", PaneKindSnapshot::Terminal, true),
             status_pane(
                 12,
                 "Fix flaky daemon test",
-                agent_kind(AgentProvider::ClaudeCode),
+                PaneKindSnapshot::Terminal,
                 false,
             ),
         ],
@@ -443,8 +438,6 @@ fn pane_deck(_: &mut Window, cx: &mut App) -> AnyElement {
                 [
                     ("terminal", PaneKindSnapshot::Terminal),
                     ("browser", browser_kind("https://zed.dev")),
-                    ("codex", agent_kind(AgentProvider::Codex)),
-                    ("claude", agent_kind(AgentProvider::ClaudeCode)),
                     ("editor", editor_kind("README.md")),
                     ("picker", PaneKindSnapshot::Picker),
                 ]
@@ -452,7 +445,7 @@ fn pane_deck(_: &mut Window, cx: &mut App) -> AnyElement {
                 .enumerate()
                 .map(|(index, (label, kind))| {
                     deck(
-                        ["kind-0", "kind-1", "kind-2", "kind-3", "kind-4", "kind-5"][index],
+                        ["kind-0", "kind-1", "kind-2", "kind-3"][index],
                         vec![status_pane(index as u64, label, kind, true)],
                         true,
                         cx,
