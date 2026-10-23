@@ -111,7 +111,8 @@ A pane paints no fill of its own: the window shows through it. `theme.pane_color
 
 | Level | Use | From |
 |---|---|---|
-| default | labels, body | the ground's ink (`foreground` on the window) |
+| default | labels, body, and chrome while hovered, selected or current | the ground's ink (`foreground` on the window) |
+| rest | chrome at rest: title bar buttons, window tabs, sidebar rows, host names | a role with `ink: rest` (`layer(.., Rest).text`), or `.rest()` on the window |
 | muted | descriptions, secondary labels | `paint.muted_at(state)`, or `.muted()` on the window |
 | faint | placeholders, hints | `.faint()` |
 | on a fill | text on a solid or selected fill | `paint.text_at(state)` |

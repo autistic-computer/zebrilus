@@ -141,6 +141,21 @@ impl Highlight {
     ];
 }
 
+/// How a surface's text sits at rest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Ink {
+    /// The full ink in every state.
+    Bright,
+    /// A step below the full ink while nothing points at it, the full ink
+    /// when hovered, pressed, selected or current.
+    Rest,
+}
+
+impl Ink {
+    pub const ALL: &'static [Self] = &[Self::Bright, Self::Rest];
+}
+
 /// The treatments a surface takes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Style {
@@ -152,6 +167,7 @@ pub struct Style {
     pub smoothing: Smoothing,
     pub hover: Highlight,
     pub selected: Highlight,
+    pub ink: Ink,
 }
 
 /// Changes to a [`Style`]: what a theme file writes for a kind or a role.
@@ -172,6 +188,8 @@ pub struct StylePatch {
     pub hover: Option<Highlight>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected: Option<Highlight>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ink: Option<Ink>,
 }
 
 impl StylePatch {
@@ -183,6 +201,7 @@ impl StylePatch {
         smoothing: None,
         hover: None,
         selected: None,
+        ink: None,
     };
 
     pub const fn fill(self, fill: Fill) -> Self {
@@ -234,6 +253,13 @@ impl StylePatch {
         }
     }
 
+    pub const fn ink(self, ink: Ink) -> Self {
+        Self {
+            ink: Some(ink),
+            ..self
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         *self == Self::EMPTY
     }
@@ -260,6 +286,9 @@ impl StylePatch {
         if let Some(selected) = self.selected {
             style.selected = selected;
         }
+        if let Some(ink) = self.ink {
+            style.ink = ink;
+        }
     }
 
     /// The patch that turns `from` into `to`, naming only what differs.
@@ -273,6 +302,7 @@ impl StylePatch {
             smoothing: differs(from.smoothing == to.smoothing).then_some(to.smoothing),
             hover: differs(from.hover == to.hover).then_some(to.hover),
             selected: differs(from.selected == to.selected).then_some(to.selected),
+            ink: differs(from.ink == to.ink).then_some(to.ink),
         }
     }
 }
@@ -387,6 +417,7 @@ impl Kind {
                 smoothing: Smoothing::THEME,
                 hover,
                 selected,
+                ink: Ink::Bright,
             }
         }
         use Highlight as H;
@@ -466,6 +497,7 @@ impl Kind {
             smoothing: SMOOTH,
             hover: ALL,
             selected: ALL,
+            ink: Ink::ALL,
             ..SURFACE
         };
         match self {
@@ -496,6 +528,7 @@ impl Kind {
             },
             Self::Field => Knobs {
                 selected: FOCUS,
+                ink: &[],
                 ..CONTROL
             },
             Self::Label => Knobs {
@@ -521,6 +554,7 @@ pub struct Knobs {
     pub smoothing: &'static [Smoothing],
     pub hover: &'static [Highlight],
     pub selected: &'static [Highlight],
+    pub ink: &'static [Ink],
 }
 
 impl Knobs {
@@ -532,6 +566,7 @@ impl Knobs {
         smoothing: &[],
         hover: &[],
         selected: &[],
+        ink: &[],
     };
 
     /// The shapes of a box too big to be a pill.
@@ -546,7 +581,7 @@ impl Knobs {
         }
     }
 
-    fn open(&self) -> [bool; 7] {
+    fn open(&self) -> [bool; 8] {
         [
             !self.fill.is_empty(),
             !self.outline.is_empty(),
@@ -555,6 +590,7 @@ impl Knobs {
             !self.smoothing.is_empty(),
             !self.hover.is_empty(),
             !self.selected.is_empty(),
+            !self.ink.is_empty(),
         ]
     }
 
@@ -570,6 +606,7 @@ impl Knobs {
             smoothing: keep(patch.smoothing, self.smoothing),
             hover: keep(patch.hover, self.hover),
             selected: keep(patch.selected, self.selected),
+            ink: keep(patch.ink, self.ink),
         }
     }
 
@@ -598,6 +635,7 @@ impl Knobs {
             .or_else(|| check("smoothing", patch.smoothing, self.smoothing))
             .or_else(|| check("hover", patch.hover, self.hover))
             .or_else(|| check("selected", patch.selected, self.selected))
+            .or_else(|| check("ink", patch.ink, self.ink))
     }
 }
 
@@ -1113,9 +1151,10 @@ impl Theme {
                 patch.smoothing.is_some(),
                 patch.hover.is_some(),
                 patch.selected.is_some(),
+                patch.ink.is_some(),
             ]
         };
-        let mut held = [false; 7];
+        let mut held = [false; 8];
         for node in role.lineage().take_while(|node| node.id != group.id) {
             let themed = self.styles.get(node.id).copied().unwrap_or_default();
             for (held, themed) in held.iter_mut().zip(named(themed)) {
@@ -1346,6 +1385,12 @@ impl Theme {
         if state == PaintState::Disabled {
             fill_color = paint.fill.opacity(DISABLED);
             text = paint.text_at(PaintState::Disabled);
+        } else if state == PaintState::Rest
+            && style.ink == Ink::Rest
+            && tone == Tone::Neutral
+            && !surface.prominent
+        {
+            text = text.rest();
         }
 
         let edge = if kind.is_control() {
@@ -1913,6 +1958,19 @@ mod tests {
     }
 
     #[test]
+    fn resting_ink_sits_a_step_down_until_pointed_at() {
+        let theme = theme();
+        let bright = Kind::Button.role();
+        let rest = SurfaceRole::new("button.rest", Kind::Button, "Rest", "")
+            .with(StylePatch::EMPTY.ink(Ink::Rest));
+        let text = |role: SurfaceRole, state: PaintState| theme.layer(role, state).text;
+        assert_ne!(text(rest, PaintState::Rest), text(bright, PaintState::Rest));
+        for state in [PaintState::Hover, PaintState::Active, PaintState::Current] {
+            assert_eq!(text(rest, state), text(bright, state), "{state:?}");
+        }
+    }
+
+    #[test]
     fn inspecting_a_kind_rings_every_role_of_it() {
         let mut theme = theme();
         theme.inspect = Some("button".into());
@@ -1938,7 +1996,8 @@ mod tests {
                 .shape(Shape::Pill)
                 .smoothing(Smoothing::THEME)
                 .hover(Highlight::Lift)
-                .selected(Highlight::Lift),
+                .selected(Highlight::Lift)
+                .ink(Ink::Bright),
         );
         assert!(!ringed(&theme, SurfaceRole::QUIET_BUTTON));
     }

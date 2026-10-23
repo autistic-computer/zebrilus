@@ -576,7 +576,7 @@ pub fn material_origin(prop: &str, role: SurfaceRole, materials: &Materials) -> 
 }
 
 /// The props of a [`Style`] in theme-file order.
-pub const PROPS: [&str; 7] = [
+pub const PROPS: [&str; 8] = [
     "fill",
     "outline",
     "shadow",
@@ -584,6 +584,7 @@ pub const PROPS: [&str; 7] = [
     "smoothing",
     "hover",
     "selected",
+    "ink",
 ];
 
 /// The style `role` takes from everything but the theme's patch for it, and
@@ -592,7 +593,7 @@ pub fn inherited(
     role: SurfaceRole,
     roles: &BTreeMap<String, StylePatch>,
     materials: &Materials,
-) -> (Style, [Origin; 7]) {
+) -> (Style, [Origin; 8]) {
     let knobs = role.knobs();
     let mut style = Style {
         smoothing: materials.smoothing,
@@ -601,7 +602,7 @@ pub fn inherited(
     let mut origins = [Origin {
         role: Some(role.kind.role()),
         themed: false,
-    }; 7];
+    }; 8];
     origins[4] = Origin {
         role: None,
         themed: true,
@@ -616,6 +617,7 @@ pub fn inherited(
             patch.smoothing.is_some(),
             patch.hover.is_some(),
             patch.selected.is_some(),
+            patch.ink.is_some(),
         ];
         for (from, named) in origins.iter_mut().zip(named) {
             if named {
@@ -669,6 +671,7 @@ pub fn knobs_json(knobs: zz_ui::Knobs) -> serde_json::Value {
         "smoothing": knobs.smoothing,
         "hover": knobs.hover,
         "selected": knobs.selected,
+        "ink": knobs.ink,
     })
 }
 
@@ -682,6 +685,7 @@ pub fn style_json(style: Style) -> serde_json::Value {
         "smoothing": style.smoothing,
         "hover": style.hover,
         "selected": style.selected,
+        "ink": style.ink,
     })
 }
 
