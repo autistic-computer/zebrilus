@@ -3,7 +3,7 @@ use std::{
     collections::BTreeMap,
     fmt,
     hash::{DefaultHasher, Hasher},
-    path::{Path, PathBuf},
+    path::Path,
     str::FromStr,
 };
 
@@ -230,7 +230,7 @@ impl BrowserDescriptor {
     }
 }
 
-/// The built-in ACP agent backing an Agent pane.
+/// The agent CLI a terminal pane runs under the lens.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AgentProvider {
     #[default]
@@ -276,14 +276,6 @@ impl FromStr for AgentProvider {
             )),
         }
     }
-}
-
-/// Metadata needed to start or restore an ACP session for an Agent pane.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentDescriptor {
-    pub provider: AgentProvider,
-    pub cwd: Option<PathBuf>,
-    pub session_id: Option<String>,
 }
 
 pub const MAX_EDITOR_PATH_BYTES: usize = 16 * 1024;
@@ -359,7 +351,6 @@ pub enum PaneKindSnapshot {
     Picker,
     Terminal,
     Browser(BrowserDescriptor),
-    Agent(AgentDescriptor),
     Editor(EditorDescriptor),
 }
 
@@ -832,7 +823,7 @@ impl postcard::ser_flavors::Flavor for DigestFlavor<'_> {
 mod tests {
     use super::*;
 
-    fn absolute_test_root() -> PathBuf {
+    fn absolute_test_root() -> std::path::PathBuf {
         std::env::current_dir()
             .expect("current test directory")
             .join("target")

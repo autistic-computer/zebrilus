@@ -25,7 +25,7 @@ use crate::{
 
 /// Client and daemon must match this exactly. The handshake rejects any
 /// mismatch instead of negotiating down.
-pub const PROTOCOL_VERSION: u16 = 112;
+pub const PROTOCOL_VERSION: u16 = 113;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
@@ -226,7 +226,6 @@ pub enum MuxOptionKey {
     BufferLimit,
     SynchronizePanes,
     // Postcard tags variants by index: append new keys, never reorder.
-    ExperimentalAgentPane,
     ExperimentalEditorPane,
     HistoryTrickle,
     AgentCommand,
@@ -242,7 +241,7 @@ pub enum MuxOptionKey {
 }
 
 impl MuxOptionKey {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 20] = [
         Self::Prefix,
         Self::ModeKeys,
         Self::HistoryLimit,
@@ -251,7 +250,6 @@ impl MuxOptionKey {
         Self::SetClipboard,
         Self::BufferLimit,
         Self::SynchronizePanes,
-        Self::ExperimentalAgentPane,
         Self::ExperimentalEditorPane,
         Self::HistoryTrickle,
         Self::AgentCommand,
@@ -277,7 +275,6 @@ impl MuxOptionKey {
             Self::SetClipboard => "set-clipboard",
             Self::BufferLimit => "buffer-limit",
             Self::SynchronizePanes => "synchronize-panes",
-            Self::ExperimentalAgentPane => "experimental-agent-pane",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::HistoryTrickle => "history-trickle",
             Self::AgentCommand => "agent-command",
@@ -304,7 +301,6 @@ impl MuxOptionKey {
             "set-clipboard" => Some(Self::SetClipboard),
             "buffer-limit" => Some(Self::BufferLimit),
             "synchronize-panes" => Some(Self::SynchronizePanes),
-            "experimental-agent-pane" => Some(Self::ExperimentalAgentPane),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "history-trickle" => Some(Self::HistoryTrickle),
             "agent-command" => Some(Self::AgentCommand),
@@ -331,7 +327,6 @@ impl MuxOptionKey {
             Self::SetClipboard => "external".to_owned(),
             Self::BufferLimit => "50".to_owned(),
             Self::SynchronizePanes
-            | Self::ExperimentalAgentPane
             | Self::ExperimentalEditorPane
             | Self::FocusFollowsMouse
             | Self::ExtendedKeys
@@ -832,13 +827,6 @@ where
     }
 
     deserializer.deserialize_seq(StatusRowsVisitor)
-}
-
-fn deserialize_agent_send_text<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    deserialize_bounded_text(deserializer, MAX_AGENT_SEND_BYTES)
 }
 
 fn deserialize_gui_text<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -2436,30 +2424,6 @@ pub enum BrowserCommand {
     },
 }
 
-/// Work the daemon asks the GUI to perform on an Agent pane.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AgentCommand {
-    /// Appends `text` to the pane's composer draft for the user to review.
-    ComposerAppend {
-        #[serde(deserialize_with = "deserialize_agent_send_text")]
-        text: String,
-    },
-    /// Submits `text` as an ACP prompt. The GUI errors when the pane is busy.
-    Prompt {
-        #[serde(deserialize_with = "deserialize_agent_send_text")]
-        text: String,
-    },
-}
-
-impl AgentCommand {
-    #[must_use]
-    pub fn text(&self) -> &str {
-        match self {
-            Self::ComposerAppend { text } | Self::Prompt { text } => text,
-        }
-    }
-}
-
 /// One image attached to an agent prompt, in the encoded form the daemon
 /// converts into an ACP content block.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2760,7 +2724,6 @@ pub enum ChooseTreeKind {
 pub enum ChooseTreePaneKind {
     Terminal,
     Browser,
-    Agent,
     Editor,
 }
 
@@ -3556,13 +3519,6 @@ pub enum EventPayload {
         pane: PaneId,
         command: BrowserCommand,
     },
-    /// Composer or prompt work for a GUI-owned Agent pane. The GUI must answer
-    /// `request_id` with a [`GuiResponse`]; a CLI `agent-send` blocks on it.
-    AgentCommand {
-        pane: PaneId,
-        request_id: u64,
-        command: AgentCommand,
-    },
     TerminalUiCommand {
         pane: PaneId,
         command: TerminalUiCommand,
@@ -3909,7 +3865,7 @@ pub enum ProtocolMessage {
     },
     Input(InputMessage),
     Event(Event),
-    /// Reply to an `EventPayload::AgentCommand` or `BrowserCommand::Screenshot`.
+    /// Reply to a `BrowserCommand::Screenshot`.
     GuiResponse(GuiResponse),
     Resync,
     RequestFull {
@@ -5808,7 +5764,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 112);
+        assert_eq!(super::PROTOCOL_VERSION, 113);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),

@@ -47,7 +47,6 @@ fn borrowed<'a>(
     BorrowedFormatHookFacts {
         client_fields: ClientFormatFields::from_inner(inner),
         paste_buffers: &inner.paste_buffers,
-        agent_states: &inner.agent_states,
         terminals: &inner.terminals,
         pane_pipes: &inner.pane_pipes,
         attached: &inner.attached,

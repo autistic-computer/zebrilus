@@ -9,7 +9,6 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
-    path::PathBuf,
     sync::{
         Arc, Weak,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -21,11 +20,10 @@ use std::{
 use agent_client_protocol::schema::v1::SessionUpdate;
 use parking_lot::{Condvar, Mutex};
 use serde_json::Value;
-use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::{
-    AgentAutoApprove, AgentPaneWire, AgentPermissionWire, AgentProvider, ClientId,
-    ClientInstanceId, MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_RESULT_BYTES,
-    MAX_AGENT_UPDATES_BYTES, PaneId, PaneStatus, PaneStatusKind, PaneStatusState,
+    AgentPaneWire, AgentPermissionWire, AgentProvider, ClientId, ClientInstanceId,
+    MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_RESULT_BYTES,
+    MAX_AGENT_UPDATES_BYTES, PaneId,
 };
 
 use crate::agent::{
@@ -35,7 +33,7 @@ use crate::agent::{
     },
     journal::{AgentJournal, JournalEntry},
     runtime::AgentSpawnConfig,
-    stream::{AgentPrompt, AgentPromptOutcome, AgentStreamItem, AgentStreamPayload},
+    stream::{AgentPrompt, AgentStreamItem, AgentStreamPayload},
 };
 
 /// How long items are gathered before one frame leaves. An ACP turn bursts
@@ -46,16 +44,6 @@ const BATCH_WINDOW: Duration = Duration::from_millis(25);
 const MAX_REPLAY_RING_BYTES: usize = 2 * MAX_AGENT_UPDATES_BYTES;
 const MAX_AGENT_FRAME_BYTES: usize = MAX_AGENT_RESULT_BYTES;
 const MAX_RECLAIMED_PROMPTS: usize = MAX_AGENT_QUEUED_PROMPTS + 1;
-/// A derived pane title is the opening words of the first prompt: enough to
-/// tell agent panes apart in the tree without wrapping the pane header.
-const MAX_TITLE_WORDS: usize = 7;
-const MAX_TITLE_CHARS: usize = 48;
-/// The title an agent pane is born with. A pane still wearing it has never
-/// been named — by the user, by a rename, or by an earlier prompt — so it is
-/// the one title the daemon may overwrite.
-const DEFAULT_AGENT_PANE_TITLE: &str = "agent";
-const MAX_REPLY_HEAD_BYTES: usize = 1024;
-const MAX_STATUS_MESSAGE_BYTES: usize = 240;
 
 #[derive(Clone, Default)]
 pub(crate) struct AgentToolCall {
@@ -73,7 +61,6 @@ pub(crate) enum AgentRequestReply {
 /// knows nothing about mailboxes, sessions, or visibility; this is the whole
 /// surface it reaches the daemon through.
 pub(crate) trait AgentPublisher: Send + Sync + 'static {
-    fn barrier(&self, generation: u64, pane: PaneId, reply: crate::daemon::cmdq::Reply<()>);
     /// One coalesced frame to every client the pane is visible to, plus
     /// `also` — the client whose replay produced it, visible or not.
     fn publish_agent_updates(
@@ -99,23 +86,8 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
         also: Option<ClientId>,
     );
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire);
-    fn publish_agent_status(&self, generation: u64, pane: PaneId, status: PaneStatus);
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall);
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply);
-    /// The adapter named the session this pane is now speaking to. The daemon
-    /// owns that metadata, so it lands in the mux state, not just the stream.
-    fn adopt_agent_session(
-        &self,
-        generation: u64,
-        pane: PaneId,
-        provider: AgentProvider,
-        session_id: String,
-        cwd: Option<PathBuf>,
-    );
-    fn title_agent_pane(&self, generation: u64, pane: PaneId, title: String);
-    /// Bytes of the pane's transcript projection — what `capture-pane` and
-    /// `pipe-pane` see for an agent pane.
-    fn feed_agent_pane_text(&self, generation: u64, pane: PaneId, bytes: Vec<u8>);
 }
 
 /// The daemon's handle on the agent runtime: one host, one lane per pane.
@@ -123,7 +95,7 @@ pub(crate) struct AgentRuntime {
     host: AgentHost,
     fanout: Arc<AgentFanout>,
     generation: AtomicU64,
-    publisher: Arc<dyn AgentPublisher>,
+    _publisher: Arc<dyn AgentPublisher>,
     lifecycle: Arc<Mutex<()>>,
 }
 
@@ -153,7 +125,7 @@ impl AgentRuntime {
             host,
             fanout,
             generation: AtomicU64::new(1),
-            publisher: Arc::clone(publisher),
+            _publisher: Arc::clone(publisher),
             lifecycle,
         }
     }
@@ -178,25 +150,6 @@ impl AgentRuntime {
         false
     }
 
-    pub(crate) fn restart(&self, pane: PaneId, spec: AgentPaneSpec) -> bool {
-        let lifecycle = self.lifecycle.lock();
-        let generation = self.generation.fetch_add(1, Ordering::Relaxed);
-        let _ = self.host.close(pane);
-        self.fanout
-            .restart_lane(pane, generation, spec.provider, spec.resume_session.clone());
-        if self.host.open(pane, generation, spec) {
-            let state = self.host.snapshot_state(pane);
-            drop(lifecycle);
-            if let Some(state) = state {
-                self.fanout.accept(pane, generation, &state, None);
-            }
-            true
-        } else {
-            self.fanout.close_lane(pane);
-            false
-        }
-    }
-
     pub(crate) fn close(&self, pane: PaneId) {
         let _lifecycle = self.lifecycle.lock();
         let _ = self.host.close(pane);
@@ -211,8 +164,6 @@ impl AgentRuntime {
         }
     }
 
-    /// Dispatch a prompt and, on the pane's first one, name it after what was
-    /// asked.
     pub(crate) fn prompt(&self, pane: PaneId, prompt: AgentPrompt) -> bool {
         self.prompt_with_waiter(pane, prompt, None)
     }
@@ -226,13 +177,6 @@ impl AgentRuntime {
         waiter: Option<AgentTurnWaiter>,
     ) -> bool {
         let _lifecycle = self.lifecycle.lock();
-        let command = self.fanout.is_zz_command(pane, &prompt.text);
-        let title = if command {
-            None
-        } else {
-            self.fanout.propose_title(pane, &prompt.text)
-        };
-        let text = prompt.text.clone();
         let queued = QueuedPrompt { prompt, waiter };
         let sent = match self.host.command(pane, HostCommand::Prompt(queued)) {
             Ok(()) => true,
@@ -242,20 +186,7 @@ impl AgentRuntime {
             }
             Err(_) => unreachable!(),
         };
-        if !sent {
-            return false;
-        }
-        if !command {
-            self.fanout.remember_prompt(pane, text);
-        }
-        if let (Some(title), Some(publisher), Some(generation)) = (
-            title,
-            self.fanout.publisher.upgrade(),
-            self.pane_generation(pane),
-        ) {
-            publisher.title_agent_pane(generation, pane, title);
-        }
-        true
+        sent
     }
 
     pub(crate) fn prewarm(&self) {
@@ -277,23 +208,11 @@ impl AgentRuntime {
         self.host.config()
     }
 
-    pub(crate) fn auto_approve(&self, pane: PaneId) -> Option<AgentAutoApprove> {
-        self.host.auto_approve(pane)
-    }
-
     /// What a client needs to render the pane without the stream.
     pub(crate) fn wire_state(&self, pane: PaneId) -> Option<AgentPaneWire> {
-        self.fanout.published_state(pane).or_else(|| {
-            self.host
-                .snapshot_state(pane)
-                .map(|state| wire(&state, None))
-        })
-    }
-
-    pub(crate) fn publication_barrier(&self, pane: PaneId, reply: crate::daemon::cmdq::Reply<()>) {
-        if let Some(generation) = self.pane_generation(pane) {
-            self.publisher.barrier(generation, pane, reply);
-        }
+        self.fanout
+            .published_state(pane)
+            .or_else(|| self.host.snapshot_state(pane).map(|state| wire(&state)))
     }
 
     pub(crate) fn pane_generation(&self, pane: PaneId) -> Option<u64> {
@@ -368,8 +287,6 @@ struct PaneLane {
     ring: VecDeque<(u64, Vec<u8>)>,
     ring_bytes: usize,
     session_id: Option<String>,
-    title: Option<String>,
-    titled: bool,
     modes: String,
     config_options: String,
     ready: Option<AgentStreamPayload>,
@@ -379,31 +296,13 @@ struct PaneLane {
     reclaimed: VecDeque<ReclaimedPrompt>,
     reclaimed_bytes: usize,
     next_reclaim_id: u64,
-    pending_prompts: VecDeque<String>,
-    restoring: bool,
-    replayed_turn: bool,
-    prompt_message: Option<String>,
-    reply_message: Option<String>,
-    reply_head: String,
-    turn_end: Option<TurnEnd>,
-    external_turn: bool,
-    status: Option<PaneStatus>,
     tool_calls: BTreeMap<String, AgentToolCall>,
-    tool_line: bool,
     /// Bumped whenever a blob the pane state carries is replaced, so the
     /// per-item comparison never copies a quarter-megabyte of JSON.
     blobs: u64,
     fingerprint: Option<StateFingerprint>,
     state: Option<AgentPaneWire>,
     sync_next_state: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum TurnEnd {
-    Finished,
-    Cancelled,
-    Stopped(String),
-    Failed(String),
 }
 
 #[derive(Clone)]
@@ -413,182 +312,7 @@ struct ReclaimedPrompt {
     prompt: AgentPrompt,
 }
 
-fn push_projected_prompt(bytes: &mut Vec<u8>, prompt: &str) {
-    bytes.extend_from_slice(b"\x1b]133;A\x07> \x1b]133;B\x07");
-    push_projected_text(bytes, prompt);
-    bytes.extend_from_slice(b"\x1b]133;C\x07\r\n");
-}
-
-fn push_reply_head(head: &mut String, text: &str) {
-    let room = MAX_REPLY_HEAD_BYTES.saturating_sub(head.len());
-    head.push_str(&text[..text.floor_char_boundary(room)]);
-}
-
-fn push_projected_text(bytes: &mut Vec<u8>, text: &str) {
-    for (index, line) in text.split('\n').enumerate() {
-        if index > 0 {
-            bytes.extend_from_slice(b"\r\n");
-        }
-        bytes.extend_from_slice(line.as_bytes());
-    }
-}
-
-#[cfg(test)]
-#[path = "../daemon/ctrl_agent_tests.rs"]
-mod ctrl_tests;
-
 impl PaneLane {
-    /// The transcript as terminal bytes: the prompt between OSC 133 `A`/`B`
-    /// and `C` marks, the reply as output, `D` plus a BEL when the turn ends,
-    /// so `show-last-output` and `alert-bell` treat a turn like a command.
-    fn project(&mut self, payload: &AgentStreamPayload) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        match payload {
-            AgentStreamPayload::TurnStarted { .. } => {
-                let prompt = self.pending_prompts.pop_front().unwrap_or_default();
-                push_projected_prompt(&mut bytes, &prompt);
-                self.reply_message = None;
-                self.reply_head.clear();
-                self.turn_end = None;
-                self.external_turn = false;
-            }
-            AgentStreamPayload::SessionReset { restoring } => {
-                bytes.extend_from_slice(b"\x1b[H\x1b[2J\x1b[3J");
-                self.restoring = *restoring;
-                self.replayed_turn = false;
-                self.prompt_message = None;
-                self.reply_message = None;
-                self.reply_head.clear();
-                self.turn_end = None;
-                self.external_turn = false;
-            }
-            AgentStreamPayload::SessionReady { .. }
-            | AgentStreamPayload::SessionSwitched { .. } => {
-                if std::mem::take(&mut self.replayed_turn) {
-                    bytes.extend_from_slice(b"\r\n\x1b]133;D;0\x07");
-                }
-                self.restoring = false;
-                self.prompt_message = None;
-                self.reply_message = None;
-            }
-            AgentStreamPayload::Update { update } => {
-                let kind = update.get("sessionUpdate").and_then(Value::as_str);
-                let message = update
-                    .get("messageId")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-                let text = update
-                    .get("content")
-                    .filter(|content| content.get("type").and_then(Value::as_str) == Some("text"))
-                    .and_then(|content| content.get("text"))
-                    .and_then(Value::as_str);
-                match (kind, text) {
-                    (Some("user_message_chunk"), Some(text)) if self.restoring => {
-                        if message.is_none() || message != self.prompt_message {
-                            if std::mem::take(&mut self.replayed_turn) {
-                                bytes.extend_from_slice(b"\r\n\x1b]133;D;0\x07");
-                            }
-                            push_projected_prompt(&mut bytes, text);
-                            self.replayed_turn = true;
-                            self.reply_message = None;
-                            self.reply_head.clear();
-                        }
-                        self.prompt_message = message;
-                    }
-                    (Some("agent_message_chunk"), Some(text)) => {
-                        if std::mem::take(&mut self.tool_line) {
-                            bytes.extend_from_slice(b"\r\n");
-                        } else if self.reply_message.is_some()
-                            && message.is_some()
-                            && message != self.reply_message
-                        {
-                            bytes.extend_from_slice(b"\r\n\r\n");
-                        }
-                        if message.is_some() && message != self.reply_message {
-                            self.reply_head.clear();
-                        }
-                        push_projected_text(&mut bytes, text);
-                        push_reply_head(&mut self.reply_head, text);
-                        if message.is_some() {
-                            self.reply_message = message;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            AgentStreamPayload::PromptFinished { outcome, .. } => {
-                let status = u8::from(matches!(outcome, AgentPromptOutcome::Failed { .. }));
-                bytes.extend_from_slice(format!("\r\n\x1b]133;D;{status}\x07\x07").as_bytes());
-                self.external_turn = false;
-                self.turn_end = Some(match outcome {
-                    AgentPromptOutcome::Finished { stop_reason } => {
-                        let reason = stop_reason
-                            .as_str()
-                            .map_or_else(|| stop_reason.to_string(), str::to_owned);
-                        match reason.as_str() {
-                            "end_turn" => TurnEnd::Finished,
-                            "cancelled" => TurnEnd::Cancelled,
-                            _ => TurnEnd::Stopped(reason),
-                        }
-                    }
-                    AgentPromptOutcome::Failed { message } => TurnEnd::Failed(message.clone()),
-                });
-            }
-            AgentStreamPayload::Activity { busy } => {
-                if *busy {
-                    if !std::mem::replace(&mut self.external_turn, true) {
-                        self.reply_head.clear();
-                        self.turn_end = None;
-                    }
-                } else if std::mem::take(&mut self.external_turn) {
-                    self.turn_end = Some(TurnEnd::Finished);
-                }
-            }
-            AgentStreamPayload::PermissionRequested { .. } => {
-                bytes.extend_from_slice(b"\r\n[zz] permission requested\r\n\x07");
-            }
-            AgentStreamPayload::PromptsReclaimed { prompts } => {
-                for prompt in prompts {
-                    if let Some(index) = self
-                        .pending_prompts
-                        .iter()
-                        .position(|pending| *pending == prompt.text)
-                    {
-                        self.pending_prompts.remove(index);
-                    }
-                }
-            }
-            _ => {}
-        }
-        if !bytes.is_empty() {
-            self.tool_line = false;
-        }
-        bytes
-    }
-
-    fn project_tool_call(
-        &mut self,
-        payload: &AgentStreamPayload,
-        call: &AgentToolCall,
-        bytes: &mut Vec<u8>,
-    ) {
-        let started = matches!(payload, AgentStreamPayload::Update { update }
-            if update.get("sessionUpdate").and_then(Value::as_str) == Some("tool_call"));
-        let label = match call.status.as_str() {
-            "failed" => "[tool failed]",
-            _ if started => "[tool]",
-            _ => return,
-        };
-        let title = call
-            .title
-            .chars()
-            .filter(|character| !character.is_control())
-            .take(120)
-            .collect::<String>();
-        bytes.extend_from_slice(format!("\r\n{label} {title}").trim_end().as_bytes());
-        self.tool_line = true;
-    }
-
     fn tool_call(&mut self, payload: &AgentStreamPayload) -> Option<AgentToolCall> {
         let AgentStreamPayload::Update { update } = payload else {
             if matches!(
@@ -651,8 +375,6 @@ impl PaneLane {
             ring: VecDeque::new(),
             ring_bytes: 0,
             session_id,
-            title: None,
-            titled: false,
             modes: String::new(),
             config_options: String::new(),
             ready: None,
@@ -662,17 +384,7 @@ impl PaneLane {
             reclaimed: VecDeque::new(),
             reclaimed_bytes: 0,
             next_reclaim_id: 1,
-            pending_prompts: VecDeque::new(),
-            restoring: false,
-            replayed_turn: false,
-            prompt_message: None,
-            reply_message: None,
-            reply_head: String::new(),
-            turn_end: None,
-            external_turn: false,
-            status: None,
             tool_calls: BTreeMap::new(),
-            tool_line: false,
             blobs: 0,
             fingerprint: None,
             state: None,
@@ -712,36 +424,6 @@ impl PaneLane {
         self.batch_bytes = 0;
         let first_seq = self.batch_first_seq;
         split_frames(first_seq, std::mem::take(&mut self.batch))
-    }
-
-    fn restart(&mut self, generation: u64, provider: AgentProvider, session_id: Option<String>) {
-        if self.provider != provider {
-            self.title = None;
-            self.titled = false;
-        }
-        self.generation = generation;
-        self.pending_prompts.clear();
-        self.restoring = false;
-        self.replayed_turn = false;
-        self.prompt_message = None;
-        self.reply_message = None;
-        self.reply_head.clear();
-        self.tool_line = false;
-        self.turn_end = None;
-        self.external_turn = false;
-        self.status = None;
-        self.provider = provider;
-        self.session_id = session_id;
-        self.modes.clear();
-        self.config_options.clear();
-        self.ready = None;
-        self.modes_value = None;
-        self.config_options_value = None;
-        self.turn_id = None;
-        self.blobs = self.blobs.saturating_add(1);
-        self.fingerprint = None;
-        self.state = None;
-        self.sync_next_state = true;
     }
 }
 
@@ -796,23 +478,6 @@ impl AgentFanout {
         self.lanes
             .lock()
             .insert(pane, PaneLane::new(generation, provider, session_id));
-        self.ensure_flusher();
-    }
-
-    fn restart_lane(
-        self: &Arc<Self>,
-        pane: PaneId,
-        generation: u64,
-        provider: AgentProvider,
-        session_id: Option<String>,
-    ) {
-        let mut lanes = self.lanes.lock();
-        if let Some(lane) = lanes.get_mut(&pane) {
-            lane.restart(generation, provider, session_id);
-        } else {
-            lanes.insert(pane, PaneLane::new(generation, provider, session_id));
-        }
-        drop(lanes);
         self.ensure_flusher();
     }
 
@@ -894,10 +559,7 @@ impl AgentFanout {
             HostCommand::SwitchSession { .. } => AgentStreamPayload::SessionSwitchFailed {
                 message: "agent command queue is busy".to_owned(),
             },
-            HostCommand::SetAutoApprove(_)
-            | HostCommand::AnswerQuestion { .. }
-            | HostCommand::StopTask { .. }
-            | HostCommand::InterruptThread { .. } => return false,
+            HostCommand::AnswerQuestion { .. } | HostCommand::StopTask { .. } => return false,
             HostCommand::Prompt(mut queued) => {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 return self.reclaim_prompt(pane, queued.prompt);
@@ -934,9 +596,7 @@ impl AgentFanout {
         let Some(publisher) = self.publisher.upgrade() else {
             return;
         };
-        let mut adoption = None;
         let mut reply = None;
-        let mut projection = Vec::new();
         let mut tool_call = None;
         let mut lanes = self.lanes.lock();
         let Some(lane) = lanes.get_mut(&pane) else {
@@ -955,11 +615,7 @@ impl AgentFanout {
             return;
         }
         if let Some(item) = item {
-            projection = lane.project(&item.payload);
             tool_call = lane.tool_call(&item.payload);
-            if let Some(call) = &tool_call {
-                lane.project_tool_call(&item.payload, call, &mut projection);
-            }
             match &item.payload {
                 AgentStreamPayload::Ready { .. } => {
                     lane.ready = Some(item.payload.clone());
@@ -970,8 +626,6 @@ impl AgentFanout {
                     config_options,
                 } => {
                     if lane.session_id.as_deref() != Some(session_id) {
-                        lane.title = None;
-                        lane.titled = false;
                         lane.turn_id = None;
                     }
                     lane.session_id = Some(session_id.clone());
@@ -980,25 +634,20 @@ impl AgentFanout {
                     lane.modes_value.clone_from(modes);
                     lane.config_options_value.clone_from(config_options);
                     lane.blobs = lane.blobs.saturating_add(1);
-                    adoption = Some((lane.provider, session_id.clone(), None));
                 }
                 AgentStreamPayload::SessionSwitched {
                     session_id,
-                    cwd,
                     modes,
                     config_options,
                     ..
                 } => {
                     lane.turn_id = None;
-                    lane.title = None;
-                    lane.titled = false;
                     lane.session_id = Some(session_id.clone());
                     lane.modes = blob(modes.as_ref());
                     lane.config_options = blob(config_options.as_ref());
                     lane.modes_value.clone_from(modes);
                     lane.config_options_value.clone_from(config_options);
                     lane.blobs = lane.blobs.saturating_add(1);
-                    adoption = Some((lane.provider, session_id.clone(), Some(cwd.clone())));
                 }
                 AgentStreamPayload::ConfigOptionsChanged { config_options, .. } => {
                     lane.config_options = blob(Some(config_options));
@@ -1083,7 +732,6 @@ impl AgentFanout {
             }
         }
         let next_state = lane.refresh_state(state);
-        let next_status = lane.refresh_status(state);
         if lane.sync_next_state
             && let Some(state) = next_state.as_ref()
         {
@@ -1097,57 +745,15 @@ impl AgentFanout {
         }
         drop(lanes);
         self.wake.notify_all();
-        if !projection.is_empty() {
-            publisher.feed_agent_pane_text(generation, pane, projection);
-        }
         if let Some(call) = tool_call {
             publisher.publish_agent_tool_call(generation, pane, call);
         }
         if let Some(reply) = reply {
             publisher.send_agent_reply(generation, pane, reply);
         }
-        if let Some((provider, session_id, cwd)) = adoption {
-            publisher.adopt_agent_session(generation, pane, provider, session_id, cwd);
-        }
         if let Some(next_state) = next_state {
             publisher.publish_agent_state(generation, pane, next_state);
         }
-        if let Some(status) = next_status {
-            publisher.publish_agent_status(generation, pane, status);
-        }
-    }
-
-    /// A prompt is on its way to the pane: the projection echoes it when the
-    /// turn it becomes actually starts, so a queued prompt lands after the
-    /// running turn's output rather than in the middle of it.
-    fn remember_prompt(&self, pane: PaneId, text: String) {
-        if let Some(lane) = self.lanes.lock().get_mut(&pane) {
-            lane.pending_prompts.push_back(text);
-        }
-    }
-
-    fn is_zz_command(&self, pane: PaneId, text: &str) -> bool {
-        agent_verb(text).is_some()
-            && self.lanes.lock().get(&pane).is_some_and(|lane| {
-                matches!(
-                    lane.ready,
-                    Some(AgentStreamPayload::Ready { capabilities, .. }) if capabilities.verbs
-                )
-            })
-    }
-
-    /// Name the pane after its opening prompt, once.
-    fn propose_title(&self, pane: PaneId, prompt: &str) -> Option<String> {
-        let title = derive_pane_title(prompt)?;
-        let mut lanes = self.lanes.lock();
-        let lane = lanes.get_mut(&pane)?;
-        if lane.titled || lane.title.is_some() {
-            return None;
-        }
-        lane.title = Some(title.clone());
-        lane.titled = true;
-        lane.blobs = lane.blobs.saturating_add(1);
-        Some(title)
     }
 
     fn replay(&self, client: ClientId, pane: PaneId, from_seq: u64) {
@@ -1463,7 +1069,7 @@ impl PaneLane {
             return None;
         }
         self.fingerprint = Some(fingerprint);
-        let mut next = wire(state, self.title.as_deref());
+        let mut next = wire(state);
         next.modes.clone_from(&self.modes);
         next.config_options.clone_from(&self.config_options);
         if let Err(error) = next.validate() {
@@ -1478,99 +1084,6 @@ impl PaneLane {
         self.state = Some(next.clone());
         Some(next)
     }
-
-    fn refresh_status(&mut self, state: &AgentPaneState) -> Option<PaneStatus> {
-        let status = agent_status(
-            state,
-            self.provider,
-            self.turn_end.as_ref(),
-            &self.reply_head,
-        );
-        if self.status.as_ref() == Some(&status) {
-            return None;
-        }
-        self.status = Some(status.clone());
-        Some(status)
-    }
-}
-
-fn agent_status(
-    state: &AgentPaneState,
-    provider: AgentProvider,
-    turn_end: Option<&TurnEnd>,
-    reply: &str,
-) -> PaneStatus {
-    let (status, kind, message) = match state.phase {
-        AgentConnectionPhase::Starting | AgentConnectionPhase::Restoring => {
-            (PaneStatusState::Idle, None, String::new())
-        }
-        AgentConnectionPhase::Running | AgentConnectionPhase::Cancelling => {
-            match state.pending_permissions.first() {
-                None => (PaneStatusState::Working, None, String::new()),
-                Some(permission) => match permission.questions.first() {
-                    Some(question) => (
-                        PaneStatusState::Blocked,
-                        Some(PaneStatusKind::Question),
-                        status_excerpt(&question.question),
-                    ),
-                    None => (
-                        PaneStatusState::Blocked,
-                        Some(PaneStatusKind::Permission),
-                        status_excerpt(
-                            permission
-                                .tool_call
-                                .get("title")
-                                .and_then(Value::as_str)
-                                .unwrap_or_default(),
-                        ),
-                    ),
-                },
-            }
-        }
-        AgentConnectionPhase::Ready => match turn_end {
-            Some(TurnEnd::Finished) => (PaneStatusState::Done, None, status_excerpt(reply)),
-            Some(TurnEnd::Stopped(reason)) => (
-                PaneStatusState::Error,
-                None,
-                status_excerpt(&format!("Stopped: {reason}")),
-            ),
-            Some(TurnEnd::Failed(message)) => (
-                PaneStatusState::Error,
-                None,
-                status_excerpt(message.trim().lines().next().unwrap_or_default()),
-            ),
-            Some(TurnEnd::Cancelled) | None => (PaneStatusState::Idle, None, status_excerpt(reply)),
-        },
-        AgentConnectionPhase::Failed | AgentConnectionPhase::Disconnected => (
-            PaneStatusState::Error,
-            None,
-            status_excerpt(
-                state
-                    .error
-                    .as_deref()
-                    .and_then(|error| error.trim().lines().next())
-                    .unwrap_or("the agent disconnected"),
-            ),
-        ),
-    };
-    PaneStatus {
-        state: status,
-        kind,
-        progress: None,
-        app: provider.as_str().to_owned(),
-        title: String::new(),
-        message,
-    }
-}
-
-fn status_excerpt(text: &str) -> String {
-    let mut excerpt = text
-        .trim_start_matches(['"', '\'', '#', '>', '`', '*', ' ', '\t', '\r', '\n'])
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    excerpt.truncate(excerpt.floor_char_boundary(MAX_STATUS_MESSAGE_BYTES));
-    excerpt
 }
 
 /// The one clock the lane runs. Every window it closes is decided under the
@@ -1662,7 +1175,7 @@ fn encode_reply(payload: &AgentStreamPayload) -> Option<String> {
 }
 
 /// The host's pane state as a client renders it.
-fn wire(state: &AgentPaneState, title: Option<&str>) -> AgentPaneWire {
+fn wire(state: &AgentPaneState) -> AgentPaneWire {
     let phase = match state.phase {
         AgentConnectionPhase::Starting | AgentConnectionPhase::Restoring => {
             zz_protocol::AgentConnectionPhase::Starting
@@ -1688,7 +1201,7 @@ fn wire(state: &AgentPaneState, title: Option<&str>) -> AgentPaneWire {
         phase,
         queued_prompts: u32::try_from(state.queued_prompts).unwrap_or(u32::MAX),
         session_id: state.session_id.clone(),
-        title: title.map(ToOwned::to_owned),
+        title: None,
         error: state.error.clone(),
         auth_methods: serde_json::to_string(&state.auth_methods).unwrap_or_default(),
         config_options: String::new(),
@@ -1712,36 +1225,19 @@ fn wire(state: &AgentPaneState, title: Option<&str>) -> AgentPaneWire {
     }
 }
 
-fn derive_pane_title(prompt: &str) -> Option<String> {
-    let first_line = prompt.trim().lines().next().unwrap_or_default();
-    let cleaned = first_line
-        .trim_start_matches(['"', '\'', '#', '>', '`', '*', ' ', '\t'])
-        .trim_end_matches(['"', '\'', '`', '*', ' ', '\t']);
-    let words = cleaned
-        .split_whitespace()
-        .take(MAX_TITLE_WORDS)
-        .collect::<Vec<_>>()
-        .join(" ");
-    let title = words.chars().take(MAX_TITLE_CHARS).collect::<String>();
-    let title = title.trim_end();
-    (!title.is_empty()).then(|| title.to_owned())
-}
-
-/// Whether a pane still wears the title it was created with.
-pub(crate) fn is_default_agent_title(title: &str) -> bool {
-    title == DEFAULT_AGENT_PANE_TITLE
-}
-
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc::{self, Receiver, Sender};
+    use std::{
+        path::PathBuf,
+        sync::mpsc::{self, Receiver, Sender},
+    };
 
     use serde_json::json;
 
     use super::*;
     use crate::agent::{
         fixture::{Behavior, fixture_runner},
-        stream::{AgentImage, AgentSessionCapabilities, AgentSessionSummary},
+        stream::{AgentImage, AgentPromptOutcome, AgentSessionCapabilities, AgentSessionSummary},
     };
 
     const DEADLINE: Duration = Duration::from_secs(5);
@@ -1751,10 +1247,7 @@ mod tests {
         broadcast: Mutex<Vec<(PaneId, u64, Vec<Vec<u8>>, Option<ClientId>)>>,
         direct: Mutex<Vec<(ClientId, PaneId, u64, Vec<Vec<u8>>)>>,
         states: Mutex<Vec<(PaneId, AgentPaneWire)>>,
-        statuses: Mutex<Vec<(PaneId, PaneStatus)>>,
         replies: Mutex<Vec<(ClientId, PaneId, u64, String)>>,
-        sessions: Mutex<Vec<(PaneId, String)>>,
-        titles: Mutex<Vec<(PaneId, String)>>,
         update_gate: Mutex<Option<(Sender<()>, Receiver<()>)>>,
     }
 
@@ -1811,10 +1304,6 @@ mod tests {
     }
 
     impl AgentPublisher for Recorder {
-        fn barrier(&self, _generation: u64, _pane: PaneId, reply: crate::daemon::cmdq::Reply<()>) {
-            reply.try_send(());
-        }
-
         fn publish_agent_updates(
             &self,
             _generation: u64,
@@ -1862,10 +1351,6 @@ mod tests {
             self.states.lock().push((pane, state));
         }
 
-        fn publish_agent_status(&self, _generation: u64, pane: PaneId, status: PaneStatus) {
-            self.statuses.lock().push((pane, status));
-        }
-
         fn publish_agent_tool_call(&self, _generation: u64, _pane: PaneId, _call: AgentToolCall) {}
 
         fn send_agent_reply(&self, _generation: u64, pane: PaneId, reply: AgentRequestReply) {
@@ -1873,23 +1358,6 @@ mod tests {
             let request_id = 0;
             self.replies.lock().push((client, pane, request_id, result));
         }
-
-        fn adopt_agent_session(
-            &self,
-            _generation: u64,
-            pane: PaneId,
-            _provider: AgentProvider,
-            session_id: String,
-            _cwd: Option<PathBuf>,
-        ) {
-            self.sessions.lock().push((pane, session_id));
-        }
-
-        fn title_agent_pane(&self, _generation: u64, pane: PaneId, title: String) {
-            self.titles.lock().push((pane, title));
-        }
-
-        fn feed_agent_pane_text(&self, _generation: u64, _pane: PaneId, _bytes: Vec<u8>) {}
     }
 
     struct Fixture {
@@ -2388,139 +1856,6 @@ mod tests {
     }
 
     #[test]
-    fn restarting_a_lane_keeps_sequences_monotonic_and_drops_the_old_runtime_tail() {
-        let fixture = Fixture::open(None, None);
-        fixture.chunk("before");
-        fixture.recorder.wait_for_items(1);
-
-        fixture
-            .fanout
-            .restart_lane(fixture.pane, 2, AgentProvider::Codex, None);
-        fixture.fanout.accept(
-            fixture.pane,
-            2,
-            &state(AgentConnectionPhase::Starting),
-            None,
-        );
-        fixture.accept_generation(
-            1,
-            AgentStreamPayload::Update {
-                update: json!({ "sessionUpdate": "agent_message_chunk", "content": { "text": "stale" } }),
-            },
-        );
-        fixture.accept_generation(
-            2,
-            AgentStreamPayload::Update {
-                update: json!({ "sessionUpdate": "agent_message_chunk", "content": { "text": "after" } }),
-            },
-        );
-
-        let items = fixture.recorder.wait_for_items(3);
-        assert_eq!(
-            items.iter().filter_map(text_of).collect::<Vec<_>>(),
-            ["before", "after"]
-        );
-        assert_eq!(
-            items.iter().map(|item| item.seq).collect::<Vec<_>>(),
-            [1, 2, 3]
-        );
-        assert!(matches!(
-            items.get(1).map(|item| &item.payload),
-            Some(AgentStreamPayload::StateSynced { state })
-                if state.phase == zz_protocol::AgentConnectionPhase::Starting
-        ));
-    }
-
-    #[test]
-    fn concurrent_restarts_leave_one_live_current_generation() {
-        let recorder = Arc::new(Recorder::default());
-        let publisher: Arc<dyn AgentPublisher> = Arc::<Recorder>::clone(&recorder);
-        let runtime = Arc::new(AgentRuntime::new(
-            &publisher,
-            AgentSpawnConfig::default(),
-            None,
-        ));
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let release_rx = Arc::new(Mutex::new(Some(release_rx)));
-        runtime.set_runner_factory(Box::new(move |spec| {
-            let call = calls.fetch_add(1, Ordering::Relaxed);
-            if call == 1 {
-                entered_tx.send(()).expect("mark first restart");
-                release_rx
-                    .lock()
-                    .take()
-                    .expect("first restart release")
-                    .recv()
-                    .expect("release first restart");
-            }
-            fixture_runner(
-                spec.provider,
-                Behavior::Chunk,
-                zz_protocol::AgentAutoApprove::Off,
-                true,
-            )
-        }));
-        let pane = PaneId(44);
-        let spec = AgentPaneSpec {
-            feed: None,
-            provider: AgentProvider::Codex,
-            cwd: PathBuf::from("/"),
-            resume_session: None,
-            auto_approve: None,
-            workspace: crate::agent::environment::AgentWorkspaceEnvironment::default(),
-        };
-        assert!(runtime.open(pane, spec.clone()));
-
-        let first_runtime = Arc::clone(&runtime);
-        let first_spec = spec.clone();
-        let first = std::thread::spawn(move || first_runtime.restart(pane, first_spec));
-        entered_rx
-            .recv_timeout(DEADLINE)
-            .expect("first restart reached open");
-        let second_runtime = Arc::clone(&runtime);
-        let second_spec = spec.clone();
-        let (second_started_tx, second_started_rx) = std::sync::mpsc::channel();
-        let second = std::thread::spawn(move || {
-            second_started_tx.send(()).expect("mark second restart");
-            second_runtime.restart(pane, second_spec)
-        });
-        second_started_rx
-            .recv_timeout(DEADLINE)
-            .expect("second restart started");
-        std::thread::sleep(Duration::from_millis(20));
-        release_tx.send(()).expect("release restart");
-
-        assert!(first.join().expect("first restart thread"));
-        assert!(second.join().expect("second restart thread"));
-        assert_eq!(runtime.host.pane_count(), 1);
-        assert!(runtime.fanout.lanes.lock().contains_key(&pane));
-        assert!(runtime.prompt(
-            pane,
-            AgentPrompt {
-                owner: ClientInstanceId::default(),
-                text: "probe".to_owned(),
-                images: Vec::new(),
-            },
-        ));
-        let deadline = Instant::now() + DEADLINE;
-        while Instant::now() < deadline {
-            if recorder
-                .payloads()
-                .iter()
-                .filter_map(text_of)
-                .any(|text| text == "turn 0")
-            {
-                runtime.shutdown();
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        }
-        panic!("the surviving runtime did not deliver its prompt");
-    }
-
-    #[test]
     fn opening_an_existing_pane_leaves_its_live_lane_intact() {
         let recorder = Arc::new(Recorder::default());
         let publisher: Arc<dyn AgentPublisher> = Arc::<Recorder>::clone(&recorder);
@@ -2535,7 +1870,7 @@ mod tests {
         }));
         let pane = PaneId(45);
         let spec = AgentPaneSpec {
-            feed: None,
+            lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -2570,86 +1905,6 @@ mod tests {
             std::thread::sleep(Duration::from_millis(2));
         }
         panic!("the original lane stopped delivering after a duplicate open");
-    }
-
-    #[test]
-    fn restarting_a_lane_reclaims_prompts_from_the_retiring_runtime() {
-        let fixture = Fixture::open(None, None);
-        fixture.chunk("before");
-        fixture.recorder.wait_for_items(1);
-
-        fixture
-            .fanout
-            .restart_lane(fixture.pane, 2, AgentProvider::Codex, None);
-        fixture.accept_generation(
-            1,
-            AgentStreamPayload::PromptsReclaimed {
-                prompts: vec![AgentPrompt {
-                    owner: ClientInstanceId::default(),
-                    text: "keep me".to_owned(),
-                    images: Vec::new(),
-                }],
-            },
-        );
-        fixture.accept_generation(
-            1,
-            AgentStreamPayload::Update {
-                update: json!({ "sessionUpdate": "agent_message_chunk", "content": { "text": "stale" } }),
-            },
-        );
-        fixture.accept_generation(
-            2,
-            AgentStreamPayload::Update {
-                update: json!({ "sessionUpdate": "agent_message_chunk", "content": { "text": "after" } }),
-            },
-        );
-
-        let items = fixture.recorder.wait_for_items(4);
-        assert!(items.iter().any(|item| matches!(
-            &item.payload,
-            AgentStreamPayload::PromptsRestored { prompts, .. }
-                if prompts.first().is_some_and(|prompt| prompt.text == "keep me")
-        )));
-        assert_eq!(
-            items.iter().filter_map(text_of).collect::<Vec<_>>(),
-            ["before", "after"]
-        );
-        assert_eq!(
-            items.iter().map(|item| item.seq).collect::<Vec<_>>(),
-            [1, 2, 3, 4]
-        );
-    }
-
-    #[test]
-    fn restarting_a_lane_reclaims_a_near_limit_image() {
-        let fixture = Fixture::open(None, None);
-        fixture
-            .fanout
-            .restart_lane(fixture.pane, 2, AgentProvider::Codex, None);
-        let image_bytes = zz_protocol::MAX_AGENT_PROMPT_BYTES - 1024;
-        fixture.accept_generation(
-            1,
-            AgentStreamPayload::PromptsReclaimed {
-                prompts: vec![AgentPrompt {
-                    owner: ClientInstanceId::default(),
-                    text: "keep the screenshot".to_owned(),
-                    images: vec![crate::agent::stream::AgentImage {
-                        format: "image/png".to_owned(),
-                        data: vec![7; image_bytes],
-                    }],
-                }],
-            },
-        );
-
-        let items = fixture.recorder.wait_for_items(1);
-        assert!(items.iter().any(|item| matches!(
-            &item.payload,
-            AgentStreamPayload::PromptsRestored { prompts, .. }
-                if prompts.first().is_some_and(|prompt|
-                    prompt.text == "keep the screenshot"
-                        && prompt.images.first().is_some_and(|image| image.data.len() == image_bytes)
-                )
-        )));
     }
 
     #[test]
@@ -2846,55 +2101,6 @@ mod tests {
     }
 
     #[test]
-    fn the_first_prompt_names_the_pane_and_later_ones_leave_it_alone() {
-        let fixture = Fixture::open(None, None);
-
-        assert_eq!(
-            fixture.fanout.propose_title(
-                fixture.pane,
-                "  # Fix the flaky reconcile test  \nand then some"
-            ),
-            Some("Fix the flaky reconcile test".to_owned())
-        );
-        assert_eq!(
-            fixture.fanout.propose_title(fixture.pane, "and again"),
-            None
-        );
-        assert_eq!(derive_pane_title("   \n"), None);
-    }
-
-    #[test]
-    fn switching_provider_allows_the_new_conversation_to_name_the_pane() {
-        let fixture = Fixture::open(None, None);
-        assert!(
-            fixture
-                .fanout
-                .propose_title(fixture.pane, "old provider turn")
-                .is_some()
-        );
-
-        fixture
-            .fanout
-            .restart_lane(fixture.pane, 2, AgentProvider::ClaudeCode, None);
-        assert_eq!(
-            fixture
-                .fanout
-                .propose_title(fixture.pane, "new provider turn"),
-            Some("new provider turn".to_owned())
-        );
-
-        fixture
-            .fanout
-            .restart_lane(fixture.pane, 3, AgentProvider::ClaudeCode, None);
-        assert_eq!(
-            fixture
-                .fanout
-                .propose_title(fixture.pane, "same provider retry"),
-            None
-        );
-    }
-
-    #[test]
     fn the_pane_state_is_published_only_when_something_a_client_renders_moves() {
         let fixture = Fixture::open(None, Some("s-1"));
         fixture.chunk("a");
@@ -2930,16 +2136,6 @@ mod tests {
         );
     }
 
-    fn reply_chunk(message: &str, text: &str) -> AgentStreamPayload {
-        AgentStreamPayload::Update {
-            update: json!({
-                "sessionUpdate": "agent_message_chunk",
-                "messageId": message,
-                "content": { "type": "text", "text": text },
-            }),
-        }
-    }
-
     fn finished(reason: &str) -> AgentStreamPayload {
         AgentStreamPayload::PromptFinished {
             turn_id: 1,
@@ -2947,130 +2143,6 @@ mod tests {
                 stop_reason: json!(reason),
             },
         }
-    }
-
-    fn recorded_statuses(
-        fixture: &Fixture,
-    ) -> Vec<(PaneStatusState, Option<PaneStatusKind>, String)> {
-        fixture
-            .recorder
-            .statuses
-            .lock()
-            .iter()
-            .map(|(_, status)| (status.state, status.kind, status.message.clone()))
-            .collect()
-    }
-
-    #[test]
-    fn statuses_move_on_edges_not_chunks() {
-        let fixture = Fixture::open(None, Some("s-1"));
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Running,
-            AgentStreamPayload::TurnStarted { turn_id: 1 },
-        );
-        for index in 0..50 {
-            accept_in(
-                &fixture,
-                AgentConnectionPhase::Running,
-                reply_chunk("m-1", &format!("## Fixed  part {index}\n")),
-            );
-        }
-        accept_in(&fixture, AgentConnectionPhase::Ready, finished("end_turn"));
-
-        let statuses = recorded_statuses(&fixture);
-        assert_eq!(statuses.len(), 2, "{statuses:?}");
-        assert_eq!(statuses[0], (PaneStatusState::Working, None, String::new()));
-        assert_eq!(statuses[1].0, PaneStatusState::Done);
-        assert!(
-            statuses[1].2.starts_with("Fixed part 0 ## Fixed part 1 ##"),
-            "{:?}",
-            statuses[1].2
-        );
-        assert!(statuses[1].2.len() <= MAX_STATUS_MESSAGE_BYTES);
-        assert!(
-            fixture
-                .recorder
-                .statuses
-                .lock()
-                .iter()
-                .all(|(pane, status)| *pane == fixture.pane && status.app == "codex")
-        );
-    }
-
-    #[test]
-    fn permission_and_question_block_with_their_label() {
-        let fixture = Fixture::open(None, Some("s-1"));
-        let mut blocked = state(AgentConnectionPhase::Running);
-        blocked
-            .pending_permissions
-            .push(crate::agent::host::AgentPendingPermission {
-                request_id: 7,
-                tool_call: json!({ "title": "Run   `cargo test`" }),
-                options: json!([]),
-                questions: Vec::new(),
-            });
-        fixture.fanout.accept(fixture.pane, 1, &blocked, None);
-        blocked.pending_permissions[0] = crate::agent::host::AgentPendingPermission {
-            request_id: 8,
-            tool_call: json!({}),
-            options: json!([]),
-            questions: vec![crate::agent::stream::AgentQuestion {
-                id: "branch".to_owned(),
-                question: "Which branch?".to_owned(),
-                ..crate::agent::stream::AgentQuestion::default()
-            }],
-        };
-        fixture.fanout.accept(fixture.pane, 1, &blocked, None);
-        fixture
-            .fanout
-            .accept(fixture.pane, 1, &state(AgentConnectionPhase::Running), None);
-
-        assert_eq!(
-            recorded_statuses(&fixture),
-            [
-                (
-                    PaneStatusState::Blocked,
-                    Some(PaneStatusKind::Permission),
-                    "Run `cargo test`".to_owned()
-                ),
-                (
-                    PaneStatusState::Blocked,
-                    Some(PaneStatusKind::Question),
-                    "Which branch?".to_owned()
-                ),
-                (PaneStatusState::Working, None, String::new()),
-            ]
-        );
-    }
-
-    #[test]
-    fn failure_message_is_cut_to_the_wire_bound() {
-        let fixture = Fixture::open(None, Some("s-1"));
-        let mut failed = state(AgentConnectionPhase::Failed);
-        failed.error = Some(format!("{}\nsecond line", "é".repeat(150 * 1024)));
-        fixture.fanout.accept(fixture.pane, 1, &failed, None);
-        fixture.fanout.accept(
-            fixture.pane,
-            1,
-            &state(AgentConnectionPhase::Disconnected),
-            None,
-        );
-
-        let statuses = recorded_statuses(&fixture);
-        assert_eq!(statuses.len(), 2);
-        assert_eq!(statuses[0].0, PaneStatusState::Error);
-        assert!(!statuses[0].2.is_empty());
-        assert!(statuses[0].2.len() <= zz_protocol::MAX_PANE_STATUS_MESSAGE_BYTES);
-        assert!(statuses[0].2.chars().all(|character| character == 'é'));
-        assert_eq!(
-            statuses[1],
-            (
-                PaneStatusState::Error,
-                None,
-                "the agent disconnected".to_owned()
-            )
-        );
     }
 
     fn replays_a_running_turn(fixture: &Fixture) -> bool {
@@ -3096,149 +2168,5 @@ mod tests {
         assert!(replays_a_running_turn(&fixture));
         accept_in(&fixture, AgentConnectionPhase::Ready, finished("end_turn"));
         assert!(!replays_a_running_turn(&fixture));
-    }
-
-    #[test]
-    fn a_failed_turn_leaves_an_error_status_with_its_message() {
-        let fixture = Fixture::open(None, Some("s-1"));
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Running,
-            AgentStreamPayload::TurnStarted { turn_id: 1 },
-        );
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Ready,
-            AgentStreamPayload::PromptFinished {
-                turn_id: 1,
-                outcome: AgentPromptOutcome::Failed {
-                    message: "usage limit reached\ntry later".to_owned(),
-                },
-            },
-        );
-        assert_eq!(
-            recorded_statuses(&fixture).last(),
-            Some(&(
-                PaneStatusState::Error,
-                None,
-                "usage limit reached".to_owned()
-            ))
-        );
-    }
-
-    #[test]
-    fn turn_endings_pick_done_idle_or_error() {
-        let fixture = Fixture::open(None, Some("s-1"));
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Running,
-            AgentStreamPayload::TurnStarted { turn_id: 1 },
-        );
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Running,
-            reply_chunk("m-1", "partial"),
-        );
-        accept_in(&fixture, AgentConnectionPhase::Ready, finished("cancelled"));
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Running,
-            AgentStreamPayload::TurnStarted { turn_id: 2 },
-        );
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Ready,
-            finished("max_tokens"),
-        );
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Ready,
-            AgentStreamPayload::Activity { busy: false },
-        );
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Running,
-            AgentStreamPayload::Activity { busy: true },
-        );
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Running,
-            reply_chunk("m-2", "background"),
-        );
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Ready,
-            AgentStreamPayload::Activity { busy: false },
-        );
-        for (phase, busy) in [
-            (AgentConnectionPhase::Running, true),
-            (AgentConnectionPhase::Running, true),
-            (AgentConnectionPhase::Ready, false),
-        ] {
-            accept_in(&fixture, phase, AgentStreamPayload::Activity { busy });
-        }
-
-        assert_eq!(
-            recorded_statuses(&fixture),
-            [
-                (PaneStatusState::Working, None, String::new()),
-                (PaneStatusState::Idle, None, "partial".to_owned()),
-                (PaneStatusState::Working, None, String::new()),
-                (
-                    PaneStatusState::Error,
-                    None,
-                    "Stopped: max_tokens".to_owned()
-                ),
-                (PaneStatusState::Working, None, String::new()),
-                (PaneStatusState::Done, None, "background".to_owned()),
-                (PaneStatusState::Working, None, String::new()),
-                (PaneStatusState::Done, None, String::new()),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_restored_session_publishes_its_last_reply_once() {
-        let fixture = Fixture::open(None, Some("s-1"));
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Restoring,
-            AgentStreamPayload::SessionReset { restoring: true },
-        );
-        for (message, reply) in [("m-1", "first reply"), ("m-2", "last reply")] {
-            accept_in(
-                &fixture,
-                AgentConnectionPhase::Restoring,
-                AgentStreamPayload::Update {
-                    update: json!({
-                        "sessionUpdate": "user_message_chunk",
-                        "messageId": format!("u-{message}"),
-                        "content": { "type": "text", "text": "prompt" },
-                    }),
-                },
-            );
-            accept_in(
-                &fixture,
-                AgentConnectionPhase::Restoring,
-                reply_chunk(message, reply),
-            );
-        }
-        accept_in(
-            &fixture,
-            AgentConnectionPhase::Ready,
-            AgentStreamPayload::SessionReady {
-                session_id: "s-1".to_owned(),
-                modes: None,
-                config_options: None,
-            },
-        );
-
-        assert_eq!(
-            recorded_statuses(&fixture),
-            [
-                (PaneStatusState::Idle, None, String::new()),
-                (PaneStatusState::Idle, None, "last reply".to_owned()),
-            ]
-        );
     }
 }

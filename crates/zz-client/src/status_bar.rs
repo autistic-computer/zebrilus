@@ -1,6 +1,9 @@
 use zz_protocol::{AgentProvider, MuxSnapshot, PaneId, PaneKindSnapshot, SessionId, WindowId};
 
-use crate::navigation::{ordered_panes, pane_label};
+use crate::{
+    navigation::{ordered_panes, pane_label},
+    window_summary::pane_agent,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StatusBarSettings {
@@ -84,33 +87,20 @@ impl StatusBarModel {
                     let bell = panes.iter().any(|pane| pane.bell);
                     if settings.show_agents {
                         agents.extend(panes.iter().filter_map(|pane| {
-                            let PaneKindSnapshot::Agent(agent) = &pane.kind else {
-                                return None;
-                            };
+                            let provider = pane_agent(pane)?;
                             (!pane.dead).then(|| StatusBarAgent {
                                 id: pane.id,
                                 label: pane_label(pane),
                                 window_name: window.name.clone(),
-                                provider: agent.provider,
+                                provider,
                             })
                         }));
                     }
-                    let active_agent = window.panes.get(&window.active_pane).and_then(|pane| {
-                        if let PaneKindSnapshot::Agent(agent) = &pane.kind {
-                            Some((pane, agent.provider))
-                        } else {
-                            None
-                        }
-                    });
-                    let agent_provider = active_agent.map(|(_, provider)| provider).or_else(|| {
-                        panes.iter().find_map(|pane| {
-                            if let PaneKindSnapshot::Agent(agent) = &pane.kind {
-                                Some(agent.provider)
-                            } else {
-                                None
-                            }
-                        })
-                    });
+                    let agent_provider = window
+                        .panes
+                        .get(&window.active_pane)
+                        .and_then(pane_agent)
+                        .or_else(|| panes.iter().find_map(|pane| pane_agent(pane)));
                     StatusBarWindow {
                         id: window.id,
                         index: window.index,
@@ -120,10 +110,7 @@ impl StatusBarModel {
                             .get(&window.active_pane)
                             .filter(|pane| {
                                 window.automatic_rename
-                                    && matches!(
-                                        pane.kind,
-                                        PaneKindSnapshot::Agent(_) | PaneKindSnapshot::Browser(_)
-                                    )
+                                    && matches!(pane.kind, PaneKindSnapshot::Browser(_))
                             })
                             .map_or_else(|| window.name.clone(), pane_label),
                         active: focused_window == Some(window.id),
@@ -166,8 +153,7 @@ impl StatusBarModel {
 #[cfg(test)]
 mod tests {
     use zz_protocol::{
-        AgentDescriptor, LayoutNode, PaneId, PaneSnapshot, PaneSummary, SessionSnapshot,
-        WindowSnapshot,
+        LayoutNode, PaneId, PaneSnapshot, PaneSummary, SessionSnapshot, WindowSnapshot,
     };
 
     use super::*;
@@ -188,6 +174,18 @@ mod tests {
             status: None,
             summary: PaneSummary::default(),
         }
+    }
+
+    fn agent(id: u64, provider: AgentProvider, dead: bool) -> PaneSnapshot {
+        let mut pane = pane(id, PaneKindSnapshot::Terminal, false, dead);
+        pane.summary.process = vec![
+            match provider {
+                AgentProvider::ClaudeCode => "/usr/local/bin/claude",
+                AgentProvider::Codex => "/usr/local/bin/codex",
+            }
+            .to_owned(),
+        ];
+        pane
     }
 
     fn window(
@@ -237,12 +235,7 @@ mod tests {
                     true,
                     vec![
                         pane(100, PaneKindSnapshot::Terminal, true, false),
-                        pane(
-                            101,
-                            PaneKindSnapshot::Agent(AgentDescriptor::default()),
-                            false,
-                            true,
-                        ),
+                        agent(101, AgentProvider::Codex, true),
                     ],
                 ),
                 window(
@@ -250,12 +243,7 @@ mod tests {
                     1,
                     "agent",
                     false,
-                    vec![pane(
-                        110,
-                        PaneKindSnapshot::Agent(AgentDescriptor::default()),
-                        false,
-                        false,
-                    )],
+                    vec![agent(110, AgentProvider::Codex, false)],
                 ),
             ],
             viewers: Vec::new(),
@@ -269,12 +257,7 @@ mod tests {
                 0,
                 "other-agent",
                 false,
-                vec![pane(
-                    200,
-                    PaneKindSnapshot::Agent(AgentDescriptor::default()),
-                    false,
-                    false,
-                )],
+                vec![agent(200, AgentProvider::Codex, false)],
             )],
             viewers: Vec::new(),
         };
@@ -409,27 +392,12 @@ mod tests {
     }
 
     #[test]
-    fn automatic_agent_labels_follow_session_titles_and_provider_changes() {
+    fn agent_terminals_keep_their_window_name_and_report_their_provider() {
         let mut snapshot = snapshot();
-        for (title, provider, label) in [
-            ("Fix titlebar", AgentProvider::Codex, "Fix titlebar"),
-            (
-                "  Review changes  ",
-                AgentProvider::ClaudeCode,
-                "Review changes",
-            ),
-            ("agent", AgentProvider::ClaudeCode, "New session"),
-            ("", AgentProvider::Codex, "New session"),
-        ] {
-            let pane = snapshot.sessions[0].windows[1]
+        for provider in [AgentProvider::Codex, AgentProvider::ClaudeCode] {
+            snapshot.sessions[0].windows[1]
                 .panes
-                .get_mut(&PaneId(110))
-                .unwrap();
-            pane.title = title.to_owned();
-            pane.kind = PaneKindSnapshot::Agent(AgentDescriptor {
-                provider,
-                ..AgentDescriptor::default()
-            });
+                .insert(PaneId(110), agent(110, provider, false));
             let model = StatusBarModel::from_snapshot(
                 &snapshot,
                 Some(SessionId(1)),
@@ -438,10 +406,10 @@ mod tests {
             );
 
             assert_eq!(model.windows[1].name, "agent");
-            assert_eq!(model.windows[1].label, label);
+            assert_eq!(model.windows[1].label, "agent");
             assert_eq!(model.windows[1].agent_provider, Some(provider));
             assert_eq!(model.agents[0].id, PaneId(110));
-            assert_eq!(model.agents[0].label, label);
+            assert_eq!(model.agents[0].label, "pane-110");
             assert_eq!(model.agents[0].provider, provider);
         }
     }
@@ -449,20 +417,11 @@ mod tests {
     #[test]
     fn mixed_window_prefers_the_active_agent_and_keeps_terminal_window_names() {
         let mut snapshot = snapshot();
-        snapshot.sessions[0].windows[0].panes.insert(
-            PaneId(102),
-            pane(
-                102,
-                PaneKindSnapshot::Agent(AgentDescriptor {
-                    provider: AgentProvider::ClaudeCode,
-                    ..AgentDescriptor::default()
-                }),
-                false,
-                false,
-            ),
-        );
+        snapshot.sessions[0].windows[0]
+            .panes
+            .insert(PaneId(102), agent(102, AgentProvider::ClaudeCode, false));
         for (active_pane, label, provider) in [
-            (102, "pane-102", AgentProvider::ClaudeCode),
+            (102, "shell", AgentProvider::ClaudeCode),
             (100, "shell", AgentProvider::Codex),
         ] {
             snapshot.sessions[0].windows[0].active_pane = PaneId(active_pane);
@@ -573,7 +532,7 @@ mod tests {
         assert!(model.agents.is_empty());
         assert_eq!(model.host_name, None);
         assert!(!model.show_update);
-        assert_eq!(model.windows[1].label, "pane-110");
+        assert_eq!(model.windows[1].label, "agent");
     }
 
     #[test]

@@ -1664,15 +1664,6 @@ fn handle_core_event(
             Ok(ProtocolOutcome::Exit(exit))
         }
         CoreEvent::ServerStopping => Ok(ProtocolOutcome::Exit(TuiExit::ServerExited)),
-        CoreEvent::AgentCommand { request_id, .. } => {
-            client
-                .send_gui_response(GuiResponse::Error {
-                    request_id,
-                    message: "agent commands require the zz app".to_owned(),
-                })
-                .map_err(|error| error.to_string())?;
-            Ok(ProtocolOutcome::None)
-        }
         CoreEvent::Clipboard {
             producer,
             target,

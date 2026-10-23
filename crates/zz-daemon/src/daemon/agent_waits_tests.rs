@@ -16,8 +16,7 @@ fn native_agent() -> (Arc<Shared>, Arc<AgentRuntime>, PaneId) {
     let mut context = ExecutionContext::default();
     for command in [
         CommandInvocation::new("new-session", ["-d", "-s", "e18"]),
-        CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-        CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
+        CommandInvocation::new("split-window", ["-v"]),
     ] {
         shared
             .execute(
@@ -29,14 +28,7 @@ fn native_agent() -> (Arc<Shared>, Arc<AgentRuntime>, PaneId) {
             .unwrap();
     }
     let pane = context.pane.unwrap();
-    shared
-        .execute(
-            ClientId(99),
-            ClientKind::Interactive,
-            &mut context,
-            &CommandInvocation::new("select-pane-kind", ["-t", &pane.to_string(), "agent"]),
-        )
-        .unwrap();
+    assert!(shared.open_test_agent(pane));
     let deadline = Instant::now() + Duration::from_secs(5);
     while !runtime
         .wire_state(pane)
@@ -61,18 +53,11 @@ fn twenty_parked_agent_waits_add_zero_command_workers() {
                 ClientId(99),
                 ClientKind::Interactive,
                 &mut context,
-                &CommandInvocation::new("split-window", ["--kind", "picker", "-h"]),
+                &CommandInvocation::new("split-window", ["-h"]),
             )
             .unwrap();
         let next = context.pane.unwrap();
-        shared
-            .execute(
-                ClientId(99),
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("select-pane-kind", ["-t", &next.to_string(), "agent"]),
-            )
-            .unwrap();
+        assert!(shared.open_test_agent(next));
         panes.push(next);
     }
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -100,7 +85,15 @@ fn twenty_parked_agent_waits_add_zero_command_workers() {
             let pane = panes[index as usize / 4];
             let command = CommandInvocation::new(
                 "agent-send",
-                ["-t", &pane.to_string(), "--wait", "--timeout", "0", "hello"],
+                [
+                    "-t",
+                    &pane.to_string(),
+                    "--wait",
+                    "--final",
+                    "--timeout",
+                    "0",
+                    "hello",
+                ],
             );
             assert!(wait_queue::can_run_inline(
                 &shared,
@@ -164,6 +157,7 @@ fn agent_wait_timeout_leaves_the_native_turn_running() {
                 "-t",
                 &pane.to_string(),
                 "--wait",
+                "--final",
                 "--timeout",
                 "0.05",
                 "hello",
@@ -280,50 +274,4 @@ fn gui_reply_from_another_client_preserves_the_owner_request() {
         },
     );
     assert_eq!(response.try_recv().unwrap(), Ok("owner".to_owned()));
-}
-
-#[test]
-fn gui_delivery_failure_keeps_the_original_error_after_queue_resume() {
-    let shared = Arc::new(Shared::new(1822));
-    let mailbox = OutboundMailbox::new();
-    let (client, _) =
-        shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
-    let mut context = ExecutionContext::default();
-    shared
-        .execute(
-            client,
-            ClientKind::Command,
-            &mut context,
-            &CommandInvocation::new("new-session", ["-d", "-s", "e18-gui"]),
-        )
-        .unwrap();
-    let pane = context.pane.unwrap();
-    shared.attach(client, context.session.unwrap()).unwrap();
-    mailbox.close();
-    let item = shared.command_item(None);
-    item.command_item.as_ref().unwrap().lock().loop_wait = true;
-    let mut result = item.request_from_gui(pane, str::to_owned, |request_id| {
-        EventPayload::AgentCommand {
-            pane,
-            request_id,
-            command: AgentCommand::ComposerAppend {
-                text: "hello".to_owned(),
-            },
-        }
-    });
-    shared.terminal_requests.turn(&shared);
-    let item = item.command_item.as_ref().unwrap().lock();
-    let state = item
-        .pending_wait
-        .as_ref()
-        .unwrap()
-        .terminal
-        .as_ref()
-        .unwrap();
-    assert!(state.continuation.ready());
-    state.apply(&mut result);
-    assert!(
-        matches!(result, Err(DaemonError::Server(ServerError::PaneNotAttached(target))) if target == pane)
-    );
-    assert!(shared.inner.lock().pending_gui_requests.is_empty());
 }

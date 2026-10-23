@@ -45,13 +45,14 @@ pub(crate) struct PeerRecord {
     pub(crate) status: String,
     pub(crate) updated_at: u64,
     pub(crate) status_updated_at: u64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(crate) waiting_for: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) zz: Option<Value>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PeerKind {
-    Agent,
     Terminal,
     Daemon,
 }
@@ -82,7 +83,7 @@ pub(crate) fn read_records() -> io::Result<Vec<PeerRecord>> {
     read_records_in(&registry_dir()?)
 }
 
-fn read_records_in(directory: &Path) -> io::Result<Vec<PeerRecord>> {
+pub(crate) fn read_records_in(directory: &Path) -> io::Result<Vec<PeerRecord>> {
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -354,10 +355,6 @@ pub(crate) fn pane_process_ids(parents: &[(u32, u32)], pane_pid: u32) -> Vec<u32
     let mut pids = descendants_by_depth(parents, pane_pid);
     pids.insert(0, pane_pid);
     pids
-}
-
-pub(crate) fn peer_name(pane: &str, name: Option<&str>) -> String {
-    name.map_or_else(|| format!("zz-{pane}"), str::to_owned)
 }
 
 fn uuid_v4() -> io::Result<String> {
@@ -651,7 +648,7 @@ fn env_marks_pane(environment: impl Iterator<Item = Vec<u8>>, pane: &str) -> boo
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
+pub(crate) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
     let mut parents = Vec::new();
     for entry in fs::read_dir("/proc")? {
         let entry = entry?;
@@ -699,7 +696,7 @@ fn adapter_pid(pane: &str) -> io::Result<u32> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(super) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
+pub(crate) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
     let output = Command::new("ps")
         .args(["-axo", "pid=,ppid="])
         .output_unmasked()?;
@@ -809,8 +806,8 @@ impl PeerInbox {
             status: "idle".to_owned(),
             updated_at: now,
             status_updated_at: now,
+            waiting_for: String::new(),
             zz: Some(match metadata.kind {
-                PeerKind::Agent => json!({"pane": metadata.pane, "kind":"agent"}),
                 PeerKind::Terminal => json!({"pane": metadata.pane, "kind":"terminal"}),
                 PeerKind::Daemon => json!({"daemon":true}),
             }),
@@ -1267,12 +1264,6 @@ mod tests {
             trimmed_proc_start(b"  Thu Sep 10 12:46:03 2026\n"),
             "Thu Sep 10 12:46:03 2026"
         );
-    }
-
-    #[test]
-    fn peer_name_uses_the_option_or_pane_fallback() {
-        assert_eq!(peer_name("%3", Some("researcher")), "researcher");
-        assert_eq!(peer_name("%3", None), "zz-%3");
     }
 
     #[test]

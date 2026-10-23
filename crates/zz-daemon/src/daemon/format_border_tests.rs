@@ -752,10 +752,6 @@ struct ChangingModeCount {
 }
 
 impl crate::status::FormatFactSource for ChangingModeCount {
-    fn agent_states(&self) -> &BTreeMap<PaneId, zz_protocol::AgentPaneWire> {
-        &self.facts.agent_states
-    }
-
     fn terminals(&self) -> &BTreeMap<PaneId, Arc<TerminalSession>> {
         &self.facts.terminals
     }

@@ -87,12 +87,12 @@ pub(super) fn apply_pane_status(
     status: Option<PaneStatus>,
     now: u64,
 ) -> bool {
-    let Some((previous, reports_done)) = inner.engine.state.pane(pane).map(|pane| {
-        (
-            status_edge(pane.status.as_ref()),
-            matches!(pane.kind, PaneKind::Agent(_)),
-        )
-    }) else {
+    let Some(previous) = inner
+        .engine
+        .state
+        .pane(pane)
+        .map(|pane| status_edge(pane.status.as_ref()))
+    else {
         return false;
     };
     let next = status_edge(status.as_ref());
@@ -110,7 +110,7 @@ pub(super) fn apply_pane_status(
         (
             Some(PaneStatusState::Working | PaneStatusState::Blocked),
             Some(PaneStatusState::Idle),
-        ) if !reports_done => Some(!pane_window_seen(inner, pane)),
+        ) => Some(!pane_window_seen(inner, pane)),
         (previous, Some(PaneStatusState::Done)) if previous != Some(PaneStatusState::Done) => {
             Some(!pane_window_seen(inner, pane))
         }
@@ -711,7 +711,6 @@ fn location_source(inner: &ServerState, pane: PaneId) -> Option<LocationSource> 
                 })
                 .unwrap_or_default(),
         ),
-        PaneKind::Agent(agent) => Some((String::new(), agent.cwd.clone().unwrap_or_default())),
         _ => None,
     }
 }
