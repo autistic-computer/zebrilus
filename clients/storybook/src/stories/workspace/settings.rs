@@ -2,8 +2,8 @@ use std::sync::{Arc, LazyLock};
 
 use zz_client::StatusBarSettings;
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _, Window,
-    div, prelude::*, px,
+    AnyElement, App, AppContext as _, Entity, FocusHandle, IntoElement, ParentElement as _,
+    Styled as _, Window, div, prelude::*, px,
 };
 use zz_ui::{
     ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, Sizable as _, StylePatch,
@@ -25,6 +25,7 @@ use zz_ui::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, contrast_slider,
             corner_radius_slider, interface_theme_preview, picker_tile, theme_preview,
             themes_strip, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
+            zoom_slider,
         },
         panes_page,
         panes_preview::PanesPreview,
@@ -97,6 +98,7 @@ struct Controls {
     choice: Entity<SelectState<Vec<SettingsSelectItem>>>,
     font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     accent: Entity<ColorPickerState>,
+    zoom: FocusHandle,
 }
 
 impl Controls {
@@ -124,6 +126,7 @@ impl Controls {
             choice,
             font,
             accent,
+            zoom: cx.focus_handle(),
         }
     }
 
@@ -472,6 +475,12 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         cx,
                     ),
                 ))
+                .child(entry(AppearancePageItem::UiZoom).control(zoom_slider(
+                    1.0,
+                    &controls.zoom,
+                    |_, _, _| {},
+                    cx,
+                )))
                 .child(
                     entry(AppearancePageItem::WindowBackgroundOpacity)
                         .control(window_opacity_slider(0.0, |_, _, _| {}, cx)),

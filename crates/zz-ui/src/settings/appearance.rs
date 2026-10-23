@@ -8,7 +8,8 @@ use crate::slider::Slider;
 use crate::{ActiveTheme as _, Colorize as _, StyledExt as _, ThemeColor, ThemeMode};
 use std::{rc::Rc, sync::Arc};
 use zz_gpui::{
-    AnyElement, App, Entity, IntoElement, ScrollHandle, SharedString, Window, div, prelude::*, px,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ScrollHandle, SharedString, Window, div,
+    prelude::*, px,
 };
 
 const THEME_PREVIEW_WIDTH: f32 = 84.0;
@@ -117,6 +118,10 @@ impl AppearancePageItem {
             Self::AnimationSpeed => (
                 "Animation speed",
                 "How fast the interface moves, from 25% (slow and smooth) to 200% (snappy).",
+            ),
+            Self::UiZoom => (
+                "UI zoom",
+                "Scales application text, icons, and controls as a percentage of the default.",
             ),
             _ => return None,
         })
@@ -475,12 +480,36 @@ pub fn percent_slider(
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> zz_gpui::Div {
+    value_slider(percent(id, label, value, on_change), cx)
+}
+
+/// UI zoom as a [`percent_slider`] that applies once the drag lets go:
+/// zooming while dragging rescales the slider under the finger. `focus` is
+/// the row's handle; its touch sheet holds it, so the settings list keeps the
+/// row, and the sheet, painted when the new zoom moves it off screen.
+pub fn zoom_slider(
+    value: f32,
+    focus: &FocusHandle,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
     value_slider(
-        Slider::new(id, label, value, 0.5..=3.0, on_change)
-            .step(0.05)
-            .display(|value| format!("{:.0}%", value * 100.0).into()),
+        percent("settings-zoom", "UI zoom", value, on_change)
+            .commit_on_release()
+            .track_focus(focus),
         cx,
     )
+}
+
+fn percent(
+    id: &'static str,
+    label: &'static str,
+    value: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+) -> Slider {
+    Slider::new(id, label, value, 0.5..=3.0, on_change)
+        .step(0.05)
+        .display(|value| format!("{:.0}%", value * 100.0).into())
 }
 
 fn value_slider(slider: Slider, cx: &App) -> zz_gpui::Div {
