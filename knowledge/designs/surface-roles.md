@@ -82,6 +82,7 @@ the mode sets it, 0 casts nothing; the float shadow draws the contact shadow und
 | `smoothing` | `2`, `2.5`, `3`, `3.5`, `4`, `5` | the superellipse exponent its rounded corners follow: `2` is a circular arc, `4` the continuous corner every window draws with, higher turns the corner tighter. Open wherever `shape` is; a pill always ends in half circles whatever its smoothing. Unset, a role takes the `smoothing` material, or `2` under `picked-smoothing` |
 | `hover` | `none`, `tint`, `lift`, `accent`, `ring`, `bar`, `glass` | what pointing at it adds; press is the same highlight one wash deeper |
 | `selected` | the same seven, and `edge` on fields | how "this is the current, chosen or on one" shows |
+| `ink` | `bright`, `rest` | how its text sits: `bright` is the full ink in every state; `rest` is a step below it until hovered, pressed, selected or current, so pointing at it always brightens it. Open on buttons and items. The title bar's buttons and window tabs and the sidebar's rows take `rest` |
 
 The highlights: `tint` is a wash a step deeper than the fill; `lift` is that wash plus the outline
 and a contact shadow, as if the surface rose; `accent` fills with the accent and its text; `ring`

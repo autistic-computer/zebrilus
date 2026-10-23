@@ -3,7 +3,7 @@
 //! built-in look differs from that group's, so the Default theme draws zz
 //! as it always has; a theme file changes any of them by id.
 
-use zz_gpui_kit::{Fill, Highlight, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
+use zz_gpui_kit::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
 
 const P: StylePatch = StylePatch::EMPTY;
 
@@ -27,13 +27,15 @@ pub const CHROME_BUTTON: SurfaceRole = SurfaceRole::under(
     "chrome.button",
     "Chrome buttons",
     "Icon buttons on the window chrome: sidebar toggle, settings, list view, search, window overflow",
-);
+)
+.with(P.ink(Ink::Rest));
 pub const WINDOW_TAB: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "titlebar.window-tab",
     "Window tabs",
     "One pill per window in the title bar",
-);
+)
+.with(P.ink(Ink::Rest));
 pub const STATUS_CHIP: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
     "titlebar.status-chip",
@@ -66,13 +68,15 @@ pub const SIDEBAR_ROW: SurfaceRole = SurfaceRole::under(
     "sidebar.row",
     "Sidebar rows",
     "Tree rows for hosts, sessions, windows and panes, and the Settings sections",
-);
+)
+.with(P.ink(Ink::Rest));
 pub const SIDEBAR_ENTRY: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ROW,
     "sidebar.entry",
     "Sidebar entries",
     "Two-line window rows in the flat sidebar",
-);
+)
+.with(P.ink(Ink::Rest));
 pub const SIDEBAR_CURSOR: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ROW,
     "sidebar.cursor",

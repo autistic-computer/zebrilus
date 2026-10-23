@@ -62,6 +62,7 @@ const RAISE_STEP: f32 = 0.04;
 const EDGE_WEIGHT: f32 = 0.14;
 const HOVER: f32 = 0.06;
 const ACTIVE: f32 = 0.12;
+const REST: f32 = 0.15;
 const MUTED: f32 = 0.35;
 const FAINT: f32 = 0.55;
 const READABLE_ON_LIGHTNESS: f32 = 0.7;
@@ -92,6 +93,10 @@ pub fn contrast() -> f32 {
 
 fn scaled(value: f32) -> f32 {
     (value * contrast()).clamp(0.0, 1.0)
+}
+
+pub(super) fn rest_weight() -> f32 {
+    (REST / contrast()).clamp(0.0, 1.0)
 }
 
 pub(super) fn muted_weight() -> f32 {
@@ -194,6 +199,10 @@ pub trait Colorize: Sized {
 
     /// The pressed form of this color: twice [`Colorize::hover`].
     fn active(&self) -> Self;
+
+    /// Chrome text at rest: a step toward the contrast pole, so pointing at
+    /// it can brighten it to this color. On `foreground`, the resting ink.
+    fn rest(&self) -> Self;
 
     /// De-emphasized text: this color pulled most of the way toward its
     /// contrast pole. On `foreground`, the muted body color.
@@ -370,6 +379,10 @@ impl Colorize for Hsla {
 
     fn active(&self) -> Self {
         toward_contrast(*self, scaled(ACTIVE))
+    }
+
+    fn rest(&self) -> Self {
+        toward_contrast(*self, rest_weight())
     }
 
     fn muted(&self) -> Self {

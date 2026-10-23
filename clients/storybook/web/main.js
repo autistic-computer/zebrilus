@@ -53,6 +53,7 @@ const PROPS = [
     ["smoothing", "Smoothing"],
     ["hover", "Hover"],
     ["selected", "Selected"],
+    ["ink", "Ink"],
 ];
 const HASH_LIMIT = 2000;
 const STORED_ROLES = "zz-storybook-roles";

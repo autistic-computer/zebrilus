@@ -30,7 +30,7 @@ pub use styled::{
 };
 pub(crate) use surface::restyle;
 pub use surface::{
-    Edge, Fill, Highlight, InteractiveSurfaceExt, Kind, Knobs, Layer, Shadow, ShadowMaterial,
+    Edge, Fill, Highlight, Ink, InteractiveSurfaceExt, Kind, Knobs, Layer, Shadow, ShadowMaterial,
     Shape, Smoothing, StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole, drawn_roles,
     note_drawn_roles,
 };

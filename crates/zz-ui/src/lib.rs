@@ -16,9 +16,9 @@ pub use zz_gpui_kit::code_editor;
 pub use zz_gpui_kit::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
     Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill, Ground, Highlight, Icon,
-    IconName, IndexPath, InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt, Kind,
-    Knobs, Layer, MACOS_TRAFFIC_LIGHT_SPAN, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint,
-    PaintExt, PaintState, PrimaryStyle, ROOT_KEY_CONTEXT, RULE_WIDTH, Root, ScrollbarShow,
+    IconName, IndexPath, Ink, InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt,
+    Kind, Knobs, Layer, MACOS_TRAFFIC_LIGHT_SPAN, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT,
+    Paint, PaintExt, PaintState, PrimaryStyle, ROOT_KEY_CONTEXT, RULE_WIDTH, Root, ScrollbarShow,
     Selectable, Shadow, ShadowMaterial, Shape, Side, Sizable, Size, Smoothing, StatefulSurfaceExt,
     Style, StylePatch, StyledExt, Surface, SurfaceRole, TITLE_BAR_HEIGHT, Theme, ThemeColor,
     ThemeMode, TitleBar, Tone, UiZoom, WindowControls, WindowExt, cubic_ease, drawn_roles,

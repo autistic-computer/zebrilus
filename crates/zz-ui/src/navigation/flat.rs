@@ -15,8 +15,8 @@ use zz_gpui::{
 use zz_protocol::{AgentProvider, PaneId, SessionId, WindowId};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, PaintState, Shape,
-    Sizable as _, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Highlight, Icon, IconName, PaintState,
+    Shape, Sizable as _, StyledExt as _, Surface, Tone,
     button::Button,
     command::PaletteHostId,
     h_flex,
@@ -262,13 +262,17 @@ impl RowInk {
         let theme = cx.theme();
         let (surface, paint_state) = state.surface();
         let layer = theme.layer(surface, paint_state);
+        let lit = matches!(
+            paint_state,
+            PaintState::Selected | PaintState::Current | PaintState::Focused
+        );
         Self {
             ground: layer.ground,
             text: layer.text,
             muted: theme
                 .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
                 .muted_at(PaintState::Rest),
-            plain: layer.text != theme.ground().ink,
+            plain: lit && theme.style(surface.role).selected == Highlight::Accent,
             dimmed: state.dimmed,
         }
     }
@@ -770,7 +774,11 @@ pub fn flat_host_header(
         .h(px(HOST_HEIGHT))
         .px(header_inset(cx))
         .gap(px(HOST_SPACING))
-        .text_color(theme.foreground)
+        .text_color(if hovered {
+            theme.foreground
+        } else {
+            theme.foreground.rest()
+        })
         .text_size(px(HOST_NAME_SIZE))
         .line_height(px(HOST_LINE))
         .font_semibold()

@@ -574,6 +574,11 @@ pub fn workspace_tree_row(
     } else {
         PaintState::Rest
     };
+    let foreground = cx.theme().foreground;
+    let ink = cx
+        .theme()
+        .layer(Surface::new(roles::SIDEBAR_ROW).on(ground), lit)
+        .text;
     let fill = workspace_row_fill(
         &id,
         roles::SIDEBAR_ROW,
@@ -587,10 +592,9 @@ pub fn workspace_tree_row(
         .pr(workspace_tree_trailing_inset(cx))
         .group(row_group)
         .children(fill)
-        .text_color(if connected {
-            cx.theme().foreground
-        } else {
-            cx.theme().foreground.muted()
+        .text_color(if connected { ink } else { foreground.muted() })
+        .when(connected, |row| {
+            row.hover(move |row| row.text_color(foreground))
         })
         .when(active, crate::StyledExt::font_medium)
         .when(clickable, zz_gpui::Styled::cursor_pointer)
