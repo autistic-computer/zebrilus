@@ -390,18 +390,19 @@ mod tests {
 
     #[test]
     fn the_pill_runs_concentric_with_rounded_screen_corners() {
-        let placement = PillPlacement::new(Some(px(55.0)), px(34.0));
-        assert_eq!(placement.inset, px(27.0));
+        let placement = PillPlacement::new(Some(px(44.0)), px(34.0));
+        assert_eq!(placement.inset, px(16.0));
         assert_eq!(placement.bottom, placement.inset);
         assert_eq!(placement.radius, Some(px(28.0)));
 
         let wide = PillPlacement::new(Some(px(62.0)), px(34.0));
-        assert_eq!(wide.inset, px(34.0));
-        assert_eq!(wide.radius, Some(px(28.0)));
+        assert_eq!(wide.inset, px(PILL_INSET_MAX));
+        assert_eq!(wide.bottom, wide.inset);
+        assert_eq!(wide.radius, Some(px(62.0 - PILL_INSET_MAX)));
 
         let wider = PillPlacement::new(Some(px(80.0)), px(34.0));
         assert_eq!(wider.inset, px(PILL_INSET_MAX));
-        assert_eq!(wider.radius, Some(px(44.0)));
+        assert_eq!(wider.radius, Some(px(80.0 - PILL_INSET_MAX)));
 
         let square = PillPlacement::new(None, px(20.0));
         assert_eq!(square.inset, px(PILL_INSET));
