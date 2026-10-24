@@ -11,9 +11,9 @@ use zz_ui::{
     ActiveTheme as _, Ground, PaintState,
     agent::{
         chat::{
-            ChatBubble, ChatComposer, ChatSection, ChatSender, ChatSplitDrag, LEAD_PALETTE_HINTS,
-            Receipt, chat_button, chat_header, chat_seen, chat_split_height, chat_thread,
-            lead_palette_body,
+            ChatBubble, ChatComposer, ChatSection, ChatSender, ChatSplitDrag, ChatTyping,
+            LEAD_PALETTE_HINTS, Receipt, chat_button, chat_header, chat_seen, chat_split_height,
+            chat_thread, lead_palette_body,
         },
         controls::{composer_action, composer_action_button},
     },
@@ -55,7 +55,7 @@ pub const STORY: Story = Story {
         Section {
             id: "messages",
             name: "Messages",
-            summary: "ChatBubble on the sidebar's ground. One tick: zz has it. Two: typed into the lead's pane. Two in the accent: the lead started a turn on it. The time and ticks keep the bubble's corner; a last line that would run into them wraps first.",
+            summary: "ChatBubble on the sidebar's ground. One tick: zz has it. Two: typed into the lead's pane. Two in the accent: the lead started a turn on it. The time and ticks keep the bubble's corner; a last line that would run into them wraps first. While the lead works, ChatTyping takes the place of its answer: three dots that rise in turn, and its latest steps in the words its CLI gives them (a Bash call's description, the plan item in progress), the newest beside the dots.",
             build: |_, cx| stateless(messages, cx),
         },
         Section {
@@ -79,7 +79,7 @@ pub const STORY: Story = Story {
         Section {
             id: "titlebar",
             name: "In titlebar mode",
-            summary: "With the sidebar hidden, the title bar's chat button opens the command palette in Lead mode: the Lead pill in the input, the thread under it with the same fade, an approval waiting on you, and Lead mode's keys in the footer. Click the scrim to close it and the button to open it again; the button carries a dot while something waits.",
+            summary: "With the sidebar hidden, the title bar's chat button opens the command palette in Lead mode: the Lead pill in the input, the thread under it with the same fade, an approval waiting on you, and Lead mode's keys in the footer. In either layout, > typed into an empty palette switches to Lead mode too. Click the scrim to close it and the button to open it again; the button carries a dot while something waits.",
             build: |window, cx| cx.new(|cx| TitlebarChat::new(window, cx)).into(),
         },
     ],
@@ -146,8 +146,23 @@ fn conversation(scope: &'static str, ground: Ground, cx: &App) -> Vec<AnyElement
             .sender(clairvo())
             .on(ground)
             .into_any_element(),
+        ChatBubble::mine(id(5), "commit the sprite sheet", "9:44")
+            .receipt(Receipt::Read)
+            .on(ground)
+            .into_any_element(),
+        ChatTyping::new(id(6))
+            .steps(COMMIT_STEPS)
+            .on(ground)
+            .into_any_element(),
     ]
 }
+
+const COMMIT_STEPS: [&str; 4] = [
+    "Committing the sprite sheet",
+    "Show dirty files",
+    "Reading atlas.rs",
+    "Write the commit message",
+];
 
 fn column(content: impl IntoElement, cx: &App) -> AnyElement {
     div()
@@ -208,6 +223,38 @@ fn messages(_: &mut Window, cx: &mut App) -> AnyElement {
                         .into_any_element(),
                     chat_seen(&[agentbound()], cx),
                 ]),
+                cx,
+            ),
+        )
+        .state(
+            "the lead at work, before its first step",
+            column(
+                chat_thread([
+                    ChatBubble::mine("typing-sent", "commit this", "9:44")
+                        .receipt(Receipt::Read)
+                        .into_any_element(),
+                    ChatTyping::new("typing-dots").into_any_element(),
+                ]),
+                cx,
+            ),
+        )
+        .state(
+            "the lead at work: its last three steps, the newest beside the dots",
+            column(
+                chat_thread([ChatTyping::new("typing-steps")
+                    .steps(COMMIT_STEPS)
+                    .into_any_element()]),
+                cx,
+            ),
+        )
+        .state(
+            "a long step is cut to one line",
+            column(
+                chat_thread([ChatTyping::new("typing-long")
+                    .steps([
+                        "Run the whole browser suite with the GPU tests on lavapipe and report the failures",
+                    ])
+                    .into_any_element()]),
                 cx,
             ),
         )

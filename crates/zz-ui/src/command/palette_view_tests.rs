@@ -561,6 +561,28 @@ fn unified_palette_modes_targets_and_backspace_keep_input_focus(cx: &mut TestApp
         );
         assert!(cx.update(|window, cx| palette.read(cx).focus(cx).is_focused(window)));
     }
+    cx.simulate_input(LEAD_PREFIX);
+    cx.run_until_parked();
+    assert_eq!(
+        palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string()),
+        LEAD_PREFIX
+    );
+    cx.simulate_keystrokes("backspace");
+    cx.run_until_parked();
+    let lead = Rc::new(std::cell::Cell::new(false));
+    let heard = lead.clone();
+    cx.update(|_, cx| {
+        cx.subscribe(&palette, move |_, event: &CommandPaletteEvent, _| {
+            heard.set(matches!(event, CommandPaletteEvent::Lead));
+        })
+        .detach();
+        palette.update(cx, |palette, cx| palette.offer_lead(true, cx));
+    });
+    cx.simulate_input(LEAD_PREFIX);
+    cx.run_until_parked();
+    assert!(lead.get());
+    assert!(palette.read_with(cx, |palette, cx| palette.input.read(cx).value().is_empty()));
+    palette.update(cx, |palette, cx| palette.offer_lead(false, cx));
     cx.update(|window, cx| {
         palette.update(cx, |palette, cx| {
             palette.unified.as_mut().unwrap().host = Some(LOCAL);

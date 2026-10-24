@@ -11,7 +11,7 @@ pub use palette_model::{
     PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost,
     PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
 };
-pub use palette_view::{CommandPaletteEvent, CommandPaletteView, PaletteBackend};
+pub use palette_view::{CommandPaletteEvent, CommandPaletteView, LEAD_PREFIX, PaletteBackend};
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, PaintState, Sizable as _, StyledExt as _,
