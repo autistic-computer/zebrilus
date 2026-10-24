@@ -9,6 +9,7 @@ mod fleet;
 mod floating;
 mod hosts;
 mod picker;
+mod providers;
 mod settings;
 mod sidebar;
 mod status_bar;

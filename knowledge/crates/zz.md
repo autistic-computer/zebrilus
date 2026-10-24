@@ -202,8 +202,8 @@ complete daemon-owned entry vector crosses the wire on connect and every poll ch
 empty vector that restores donor/default values.
 
 The settings view is a route in the main window opened with `Cmd+,` on macOS or `Ctrl+,`
-elsewhere. `SettingsSection::ALL` is ten pages, titled Interface, Status bar, Editor, Panes, Multiplexer,
-Browser, Terminal, Hosts, System, About:
+elsewhere. `SettingsSection::ALL` is eleven pages, titled Interface, Status bar, Editor, Panes, Multiplexer,
+Browser, Terminal, Hosts, Providers, System, About:
 
 | Section | Contents |
 |---------|----------|
@@ -215,6 +215,7 @@ Browser, Terminal, Hosts, System, About:
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Full-file Ghostty-compatible configuration editor with Save and Import Ghostty |
 | Hosts | Configured `host-<name>` machines, live connection state, Remove, and an inline Add host form |
+| Providers | Claude Code and Codex on each connected host: installed and newest version, Update or Install through the vendor's own updater, its progress line and error |
 | System | Daemon (`quit-daemon-on-exit`), Experimental pane gates |
 | About | Version, build identity, and project links |
 

@@ -1736,6 +1736,7 @@ fn handle_core_event(
         | CoreEvent::AgentStateChanged { .. }
         | CoreEvent::AgentLagged { .. }
         | CoreEvent::AgentSessions { .. }
+        | CoreEvent::ProvidersChanged
         | CoreEvent::Message(_) => Ok(ProtocolOutcome::None),
     }
 }

@@ -328,6 +328,7 @@
         "native-command:import-tmux-config",
         "native-command:inspect",
         "native-command:list-hosts",
+        "native-command:providers",
         "native-command:reload-config",
         "native-command:run-pane",
         "native-command:select-pane-kind",
