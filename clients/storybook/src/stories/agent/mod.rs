@@ -1,7 +1,7 @@
 use crate::story::{Section, Story};
 
 pub(super) mod cards;
-mod chat;
+pub(super) mod chat;
 mod chrome;
 mod composer;
 mod fixtures;

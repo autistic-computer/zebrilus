@@ -85,7 +85,7 @@ pub const STORY: Story = Story {
     ],
 };
 
-fn lead_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<InputState> {
+pub(crate) fn lead_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<InputState> {
     let value = value.to_owned();
     cx.new(|cx| {
         InputState::new(window, cx)
@@ -94,7 +94,7 @@ fn lead_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<InputSta
     })
 }
 
-fn bottom_scroll() -> ScrollHandle {
+pub(crate) fn bottom_scroll() -> ScrollHandle {
     let scroll = ScrollHandle::new();
     scroll.scroll_to_bottom();
     scroll
@@ -376,20 +376,73 @@ fn window_frame(content: impl IntoElement, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-pub(crate) struct SidebarChat {
+/// The lead chat as it sits under a sidebar's list, holding the split you
+/// drag. [`with_lead`] puts it under a list in a column that moves it.
+pub(crate) struct SidebarLead {
     input: Entity<InputState>,
-    list: ScrollHandle,
     thread: ScrollHandle,
     height: Option<Pixels>,
+}
+
+impl SidebarLead {
+    pub(crate) fn new(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        let input = lead_input("", window, cx);
+        cx.new(|_| Self {
+            input,
+            thread: bottom_scroll(),
+            height: None,
+        })
+    }
+}
+
+impl Render for SidebarLead {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ground = cx.theme().ground();
+        ChatSection::new(
+            chat_header(&lead(), "xps", None, cx),
+            chat_thread(conversation("lead-sidebar", ground, cx)),
+            composer("lead-sidebar", &self.input, false, Some(ground), cx),
+            &self.thread,
+            workspace_sidebar_fade(ground, cx),
+        )
+        .height(self.height)
+    }
+}
+
+/// `list` over the lead chat, in a column that moves the split as you drag.
+pub(crate) fn with_lead(
+    id: &'static str,
+    list: impl IntoElement,
+    lead: &Entity<SidebarLead>,
+) -> AnyElement {
+    let split = lead.clone();
+    div()
+        .id(id)
+        .flex()
+        .flex_col()
+        .size_full()
+        .min_h(px(0.0))
+        .on_drag_move::<ChatSplitDrag>(move |event: &DragMoveEvent<ChatSplitDrag>, _, cx| {
+            split.update(cx, |lead, cx| {
+                lead.height = Some(chat_split_height(event.event.position.y, event.bounds));
+                cx.notify();
+            });
+        })
+        .child(list)
+        .child(lead.clone())
+        .into_any_element()
+}
+
+pub(crate) struct SidebarChat {
+    list: ScrollHandle,
+    lead: Entity<SidebarLead>,
 }
 
 impl SidebarChat {
     fn new(window: &mut Window, cx: &mut App) -> Self {
         Self {
-            input: lead_input("", window, cx),
             list: ScrollHandle::new(),
-            thread: bottom_scroll(),
-            height: None,
+            lead: SidebarLead::new(window, cx),
         }
     }
 }
@@ -398,29 +451,6 @@ impl Render for SidebarChat {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ground = cx.theme().ground();
         let fade = workspace_sidebar_fade(ground, cx);
-        let column = div()
-            .id("lead-sidebar-column")
-            .flex()
-            .flex_col()
-            .size_full()
-            .min_h(px(0.0))
-            .on_drag_move::<ChatSplitDrag>(cx.listener(
-                |this, event: &DragMoveEvent<ChatSplitDrag>, _, cx| {
-                    this.height = Some(chat_split_height(event.event.position.y, event.bounds));
-                    cx.notify();
-                },
-            ))
-            .child(list(&self.list, fade, cx))
-            .child(
-                ChatSection::new(
-                    chat_header(&lead(), "xps", None, cx),
-                    chat_thread(conversation("lead-sidebar", ground, cx)),
-                    composer("lead-sidebar", &self.input, false, Some(ground), cx),
-                    &self.thread,
-                    fade,
-                )
-                .height(self.height),
-            );
         window_frame(
             app_shell_surface(
                 "lead-sidebar-shell",
@@ -433,7 +463,11 @@ impl Render for SidebarChat {
                         sidebar_top_controls(true),
                         cx,
                     ),
-                    column,
+                    with_lead(
+                        "lead-sidebar-column",
+                        list(&self.list, fade, cx),
+                        &self.lead,
+                    ),
                     ground,
                     true,
                     cx,
@@ -468,37 +502,47 @@ impl TitlebarChat {
     }
 
     fn palette(&self, cx: &App) -> AnyElement {
-        let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
-        let pills = [PalettePill::Host {
-            label: "xps".into(),
-            status: PaletteStatus::Online,
-        }]
-        .into_iter()
-        .chain(
-            Program::by_id("claude").map(|program| PalettePill::Program {
-                label: "Lead".into(),
-                program,
-            }),
-        );
-        let ask = permission(
-            "lead-ask",
-            "Atlas tests wants to run sudo pacman -S vulkan-swrast",
-            None,
-            &[("Yes", Some(true)), ("No, tell it what to do", Some(false))],
-            0,
-            true,
-            cx,
-        );
-        CommandPaletteSurface::new(unified_command_palette_input(&self.input, pills, cx), 1)
-            .rows(lead_palette_body(
-                chat_thread(conversation("lead-palette", layer.ground, cx)),
-                Some(ask),
-                &self.thread,
-                layer.ground.fill,
-            ))
-            .hints(LEAD_PALETTE_HINTS)
-            .into_any_element()
+        lead_palette(&self.input, &self.thread, cx)
     }
+}
+
+/// The command palette in Lead mode: the Lead pill in the input, the thread
+/// under it and an approval waiting on you.
+pub(crate) fn lead_palette(
+    input: &Entity<InputState>,
+    thread: &ScrollHandle,
+    cx: &App,
+) -> AnyElement {
+    let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
+    let pills = [PalettePill::Host {
+        label: "xps".into(),
+        status: PaletteStatus::Online,
+    }]
+    .into_iter()
+    .chain(
+        Program::by_id("claude").map(|program| PalettePill::Program {
+            label: "Lead".into(),
+            program,
+        }),
+    );
+    let ask = permission(
+        "lead-ask",
+        "Atlas tests wants to run sudo pacman -S vulkan-swrast",
+        None,
+        &[("Yes", Some(true)), ("No, tell it what to do", Some(false))],
+        0,
+        true,
+        cx,
+    );
+    CommandPaletteSurface::new(unified_command_palette_input(input, pills, cx), 1)
+        .rows(lead_palette_body(
+            chat_thread(conversation("lead-palette", layer.ground, cx)),
+            Some(ask),
+            thread,
+            layer.ground.fill,
+        ))
+        .hints(LEAD_PALETTE_HINTS)
+        .into_any_element()
 }
 
 impl Render for TitlebarChat {

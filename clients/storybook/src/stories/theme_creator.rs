@@ -8,7 +8,7 @@ use zz_gpui::{
 use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
-    agent::agent_jump_to_bottom_button,
+    agent::{agent_jump_to_bottom_button, chat::chat_button},
     badge::Badge,
     browser::{BrowserHeader, browser_recent_row, browser_start_surface},
     button::{Button, ButtonVariants as _},
@@ -29,6 +29,7 @@ use zz_ui::{
     interface_theme::{ThemeModeSetting, pinned_theme_mode},
     kbd::Kbd,
     menu::PopupMenu,
+    navigation::workspace_chat_button,
     notification::Notification,
     overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
     pane::{
@@ -60,6 +61,7 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
+        chat::{SidebarLead, bottom_scroll, lead_input, lead_palette},
         lens,
     },
     console::{
@@ -93,14 +95,20 @@ pub const STORY: Story = Story {
         Section {
             id: "workspace",
             name: "Workspace",
-            summary: "The window with the tree sidebar, and the status bar.",
+            summary: "The window with the tree sidebar, and the title bar as it reads with the sidebar hidden, its chat button dotted while the lead chat waits on you.",
             build: Workspace::view,
         },
         Section {
             id: "flat",
             name: "Flat sidebar",
-            summary: "The flat sidebar beside Claude Code with its lens open and two terminals.",
+            summary: "The flat sidebar with the lead chat under it, beside Claude Code with its lens open and two terminals. Drag the line over the chat to move the split.",
             build: Flat::view,
+        },
+        Section {
+            id: "lens",
+            name: "Lens",
+            summary: "The agent lens over two terminals, each toggle lit while its lens is open: Claude Code at a plan approval, whose card offers Show terminal, and Codex before its first prompt.",
+            build: Lens::view,
         },
         Section {
             id: "panes",
@@ -129,7 +137,7 @@ pub const STORY: Story = Story {
         Section {
             id: "floating",
             name: "Floating",
-            summary: "Menus, the palette, a dialog, toasts and which-key over the backdrop.",
+            summary: "Menus, the palette and its Lead mode, a dialog, toasts and which-key over the backdrop.",
             build: Floating::view,
         },
         Section {
@@ -170,6 +178,7 @@ const PLATE_PADDING: f32 = 20.0;
 const WHICH_KEY_HEIGHT: f32 = 300.0;
 const PANES_HEIGHT: f32 = 250.0;
 const PIP_HEIGHT: f32 = 420.0;
+const LENS_HEIGHT: f32 = 420.0;
 const PHONE_WIDTH: f32 = 390.0;
 const START_HEIGHT: f32 = 300.0;
 const START_PAGE_HEIGHT: f32 = 220.0;
@@ -277,7 +286,8 @@ struct Flat {
 
 impl Flat {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let flat = cx.new(|_| Live::new(None));
+        let lead = SidebarLead::new(window, cx);
+        let flat = cx.new(|_| Live::new(None).lead(lead));
         let agent = lens::tiled(window, cx);
         cx.new(|_| Self { flat, agent }).into()
     }
@@ -354,6 +364,62 @@ impl Flat {
                 Vec::new(),
             ))
             .into_any_element()
+    }
+}
+
+struct Lens {
+    plans: AnyView,
+    first: AnyView,
+}
+
+impl Lens {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        let plans = lens::tiled_plans(window, cx);
+        let first = lens::tiled_first(window, cx);
+        cx.new(|_| Self { plans, first }).into()
+    }
+}
+
+impl Render for Lens {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let gaps = crate::pane().gaps;
+        let plans = pane_surface(
+            "showcase-lens-plans",
+            self.plans.clone(),
+            Vec::new(),
+            chrome(true, true, gaps, cx),
+            cx,
+        );
+        let first = pane_surface(
+            "showcase-lens-first",
+            self.first.clone(),
+            Vec::new(),
+            chrome(false, true, gaps, cx),
+            cx,
+        );
+        div()
+            .id("showcase-lens")
+            .w_full()
+            .h(px(LENS_HEIGHT))
+            .overflow_hidden()
+            .rounded(cx.theme().radius)
+            .framed(cx)
+            .bg(cx.theme().background)
+            .p(gap(gaps))
+            .child(pane_split_surface(
+                "showcase-lens-split",
+                PaneSplitAxis::Horizontal,
+                0.5,
+                false,
+                gaps,
+                gap(gaps),
+                None,
+                None,
+                plans,
+                first,
+                div().absolute(),
+                cx,
+            ))
     }
 }
 
@@ -632,6 +698,8 @@ struct Floating {
     pane_menu: Entity<PopupMenu>,
     view_menu: Entity<PopupMenu>,
     search: Entity<InputState>,
+    lead: Entity<InputState>,
+    lead_thread: zz_gpui::ScrollHandle,
     toasts: [Entity<Notification>; 2],
     tooltip: Entity<Tooltip>,
 }
@@ -656,10 +724,13 @@ impl Floating {
             ),
         ];
         let tooltip = cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None));
+        let lead = lead_input("", window, cx);
         cx.new(|_| Self {
             pane_menu,
             view_menu,
             search,
+            lead,
+            lead_thread: bottom_scroll(),
             toasts,
             tooltip,
         })
@@ -740,6 +811,11 @@ impl Render for Floating {
         let menus = plate("showcase-menus", self.pane_menu.clone(), cx);
         let view = plate("showcase-view-menu", self.view_menu.clone(), cx);
         let palette = plate("showcase-palette", self.palette(cx), cx);
+        let lead = plate(
+            "showcase-lead-palette",
+            lead_palette(&self.lead, &self.lead_thread, cx),
+            cx,
+        );
         let dialog = plate("showcase-dialog", dialog(cx), cx);
         let toasts = plate(
             "showcase-toasts",
@@ -763,7 +839,7 @@ impl Render for Floating {
             .gap(px(GAP))
             .child(tiles(
                 window,
-                vec![vec![menus], vec![view, toasts], vec![palette, dialog]],
+                vec![vec![menus, lead], vec![view, toasts], vec![palette, dialog]],
             ))
             .child(which_key)
     }
@@ -1311,13 +1387,19 @@ fn status_bar(cx: &App) -> AnyElement {
         .rounded(cx.theme().radius)
         .framed(cx)
         .bg(cx.theme().background)
-        .child(titlebar(
-            &Bar {
-                gaps: crate::pane().gaps,
-                ..Bar::FULL
-            },
-            cx,
-        ))
+        .child(
+            titlebar(
+                &Bar {
+                    gaps: crate::pane().gaps,
+                    ..Bar::FULL
+                },
+                cx,
+            )
+            .child(chat_button(
+                workspace_chat_button("showcase-chat"),
+                Some(cx.theme().warning),
+            )),
+        )
         .into_any_element()
 }
 
@@ -1576,7 +1658,9 @@ fn reading(cx: &App) -> AnyElement {
         highlight_theme: Arc::clone(&cx.theme().highlight_theme),
         is_dark: cx.theme().is_dark(),
         ..TextViewStyle::default()
-    };
+    }
+    .code_role(zz_ui::roles::CODE)
+    .figure_role(zz_ui::roles::FIGURE);
     card("showcase-reading", cx)
         .child(heading(
             "Reading",

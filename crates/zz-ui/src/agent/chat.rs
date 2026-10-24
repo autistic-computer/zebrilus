@@ -524,7 +524,7 @@ impl RenderOnce for ChatSection {
                     .relative()
                     .flex_none()
                     .mx(px(16.0))
-                    .rule_on(roles::LIST_RULE, Edge::Top, cx)
+                    .rule_on(roles::CHAT_RULE, Edge::Top, cx)
                     .child(
                         div()
                             .id("chat-split")

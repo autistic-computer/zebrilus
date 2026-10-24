@@ -26,7 +26,7 @@ pub const CHROME_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "chrome.button",
     "Chrome buttons",
-    "Icon buttons on the window chrome: sidebar toggle, settings, list view, search, window overflow",
+    "Icon buttons on the window chrome: sidebar toggle, settings, list view, search, the lead chat, window overflow",
 )
 .with(P.ink(Ink::Rest));
 pub const WINDOW_TAB: SurfaceRole = SurfaceRole::under(
@@ -40,7 +40,7 @@ pub const STATUS_CHIP: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
     "titlebar.status-chip",
     "Status chips",
-    "Running agents, the update offer and the host name in the title bar",
+    "The update offer and the host name in the title bar",
 )
 .with(P.selected(Highlight::Tint))
 .with_knobs(Kind::Label.knobs().pressable());
@@ -246,7 +246,7 @@ pub const AGENT_SEND: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "agent.send",
     "Send",
-    "Send, queue and stop in the composer",
+    "Send, queue and stop in the lens composer and the lead chat",
 )
 .with(
     P.fill(Fill::Solid)
@@ -296,7 +296,7 @@ pub const AGENT_OPTION: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "agent.option",
     "Answer options",
-    "The choices in question and permission cards",
+    "The choices in question and permission cards, and Show terminal in the lens",
 );
 pub const AGENT_JUMP: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
@@ -314,7 +314,7 @@ pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
     "inline-panel",
     Kind::Floating,
     "Inline panels",
-    "Panels raised inside a pane: question cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
+    "Panels raised inside a pane or the lead chat: question and approval cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
 )
 .with_knobs(SurfaceRole::DIALOG.knobs());
 
@@ -453,7 +453,7 @@ pub const PALETTE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::POPOVER,
     "palette",
     "Command palette",
-    "The command palette and the path picker",
+    "The command palette, its Lead mode and the path picker",
 );
 pub const PICKER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DIALOG,
@@ -535,6 +535,12 @@ pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
     "Tree guides",
     "The lines that join a tree's children",
 );
+pub const CHAT_RULE: SurfaceRole = SurfaceRole::new(
+    "rule.chat",
+    Kind::Rule,
+    "Chat split",
+    "The line over the lead chat in the sidebar, dragged to resize it",
+);
 
 /// zz's own roles, after the kit's. The theme creator lists every role
 /// under its kind and group, in this order.
@@ -611,6 +617,7 @@ const ZZ: &[SurfaceRole] = &[
     SPLIT_RULE,
     LIST_RULE,
     TREE_RULE,
+    CHAT_RULE,
 ];
 
 /// Every role a theme file may name: the kit's kinds and groups, then zz's.
