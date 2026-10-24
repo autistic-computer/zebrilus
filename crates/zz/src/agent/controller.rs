@@ -326,6 +326,8 @@ pub struct AgentController {
     pending_images: BTreeMap<PaneId, Vec<Arc<Image>>>,
     retained_panes: BTreeSet<PaneId>,
     shutting_down: bool,
+    /// Sends go to the lead's host instead of the attached one.
+    lead: bool,
 }
 
 impl Default for AgentController {
@@ -344,6 +346,16 @@ impl AgentController {
             pending_images: BTreeMap::new(),
             retained_panes: BTreeSet::new(),
             shutting_down: false,
+            lead: false,
+        }
+    }
+
+    /// The controller of the lead agent's one pane, which may live on any
+    /// host: its requests ride [`MuxClient::send_lead_request`].
+    pub(crate) fn for_lead() -> Self {
+        Self {
+            lead: true,
+            ..Self::new()
         }
     }
 
@@ -640,9 +652,14 @@ impl AgentController {
     }
 
     fn send(&self, pane: PaneId, request: AgentRequest, cx: &App) -> bool {
-        self.mux
-            .as_ref()
-            .is_some_and(|mux| mux.read(cx).send_agent_request(pane, request))
+        self.mux.as_ref().is_some_and(|mux| {
+            let mux = mux.read(cx);
+            if self.lead {
+                mux.send_lead_request(request)
+            } else {
+                mux.send_agent_request(pane, request)
+            }
+        })
     }
 
     /// Apply one batch of stream items, in seq order, to the pane's reducer.

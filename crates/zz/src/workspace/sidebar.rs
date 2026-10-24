@@ -1,4 +1,6 @@
 mod flat;
+#[cfg(feature = "agent-pane")]
+mod lead;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -182,10 +184,13 @@ pub struct WorkspaceSidebar {
     banners: AttentionBanners<(HostId, PaneId)>,
     flat: bool,
     flat_view: flat::FlatView,
+    #[cfg(feature = "agent-pane")]
+    lead: lead::LeadSection,
 }
 
 impl WorkspaceSidebar {
     pub(crate) fn new(mux: Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
+        let local_hostname = sidebar_hostname(sysinfo::System::host_name().as_deref());
         let mut observed_revision = SidebarRevision::for_mux(mux.read(cx));
         cx.observe(&mux, move |sidebar, mux, cx| {
             let revision = SidebarRevision::for_mux(mux.read(cx));
@@ -198,6 +203,8 @@ impl WorkspaceSidebar {
         })
         .detach();
         Self {
+            #[cfg(feature = "agent-pane")]
+            lead: lead::LeadSection::new(mux.clone(), local_hostname.clone(), cx),
             mux,
             tree_model: Rc::new(MuxTreeModel::default()),
             tree_revision: None,
@@ -215,7 +222,7 @@ impl WorkspaceSidebar {
             settings: None,
             slideover: false,
             width: SIDEBAR_DEFAULT_WIDTH,
-            local_hostname: sidebar_hostname(sysinfo::System::host_name().as_deref()),
+            local_hostname,
             badges: Rc::new(BTreeMap::new()),
             tracker: AgentAttentionTracker::default(),
             banners: AttentionBanners::default(),
@@ -905,6 +912,12 @@ impl Render for WorkspaceSidebar {
             self.render_flat_navigation(&sidebar, cx)
         } else {
             self.render_navigation(&sidebar, attached_host, attached, window, cx)
+        };
+        #[cfg(feature = "agent-pane")]
+        let navigation = if settings_route {
+            navigation
+        } else {
+            self.with_lead_chat(navigation, window, cx)
         };
         let controls = (!settings_route).then(|| {
             workspace_sidebar_controls(

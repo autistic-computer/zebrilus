@@ -58,6 +58,9 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> Self {
         let sidebar = workspace.read(cx).sidebar();
+        #[cfg(feature = "agent-pane")]
+        cx.observe(&sidebar.read(cx).lead_chat(), |_, _, cx| cx.notify())
+            .detach();
         let mux = workspace.read(cx).mux();
         crate::menus::observe_mux(&mux, cx);
         cx.subscribe(&sidebar, |_, _, _: &SidebarModeChanged, cx| cx.notify())
@@ -257,6 +260,36 @@ impl AppShell {
         })
     }
 
+    /// The lead chat's button at the title bar's end while there is a lead:
+    /// it opens the palette in Lead mode, dotted while something waits there.
+    #[cfg(feature = "agent-pane")]
+    fn render_chat_button(&self, cx: &App) -> Option<AnyElement> {
+        let chat = self.sidebar.read(cx).lead_chat();
+        let chat = chat.read(cx);
+        chat.lead()?;
+        let workspace = self.workspace.clone();
+        Some(
+            zz_ui::agent::chat::chat_button(
+                zz_ui::navigation::workspace_chat_button("gui-status-chat")
+                    .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| {
+                        cx.stop_propagation();
+                    })
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        workspace
+                            .update(cx, |workspace, cx| workspace.open_lead_palette(window, cx));
+                    }),
+                chat.attention(cx),
+            )
+            .into_any_element(),
+        )
+    }
+
+    #[cfg(not(feature = "agent-pane"))]
+    fn render_chat_button(&self, _: &App) -> Option<AnyElement> {
+        None
+    }
+
     fn render_status_bar(&self, window: &mut Window, cx: &mut App) -> AnyElement {
         let width = workspace_chrome_controls_width_for(1, window);
         let controls = WorkspaceSidebar::render_controls(&self.sidebar, cx.theme().ground(), cx);
@@ -264,6 +297,7 @@ impl AppShell {
             &self.mux,
             controls.map(|controls| (controls, width)),
             Some(self.window_controls().into_any_element()),
+            self.render_chat_button(cx),
             window,
             cx,
         );
