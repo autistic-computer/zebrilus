@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "../../..");
 const out = process.argv[2] ?? join(root, "target/icon-sheet/zz-icons.html");
 
-const sets = [JSON.parse(readFileSync(join(root, "crates/zz-gpui-kit/src/icon/mac.json"), "utf8"))];
+const sets = [JSON.parse(readFileSync(join(root, "crates/zz-gpui-kit/src/icon/solar.json"), "utf8"))];
 const set = sets[0];
 const renderer = readFileSync(join(here, "glyph.js"), "utf8");
 const template = readFileSync(join(here, "sheet.html"), "utf8");

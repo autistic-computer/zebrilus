@@ -741,31 +741,31 @@ fn render_row(
     };
     let mut actions = Vec::new();
     let add = match target {
-        Target::Host => Some(("New session", "new-session", Vec::new())),
+        Target::Host => Some((
+            IconName::LayersPlus,
+            "New session",
+            "new-session",
+            Vec::new(),
+        )),
         Target::Session(session) => Some((
+            IconName::WindowPlus,
             "New window",
             "new-window",
             vec!["-t".into(), session.to_string()],
         )),
         _ => None,
     };
-    if let Some((label, command, args)) = add {
+    if let Some((icon, label, command, args)) = add {
         let connection = connection.clone();
         actions.push(
-            workspace_tree_action_button(
-                format!("web-tree-add-{id}"),
-                IconName::Plus,
-                label,
-                disabled,
-                cx,
-            )
-            .on_click(move |_, _, cx| {
-                connection.update(cx, |connection, cx| {
-                    connection.command(command, args.clone(), cx);
-                });
-                cx.stop_propagation();
-            })
-            .into_any_element(),
+            workspace_tree_action_button(format!("web-tree-add-{id}"), icon, label, disabled, cx)
+                .on_click(move |_, _, cx| {
+                    connection.update(cx, |connection, cx| {
+                        connection.command(command, args.clone(), cx);
+                    });
+                    cx.stop_propagation();
+                })
+                .into_any_element(),
         );
     }
 

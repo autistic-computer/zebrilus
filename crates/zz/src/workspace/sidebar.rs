@@ -1628,7 +1628,7 @@ fn render_new_session_action(host: HostId, runtime: &TreeRowRuntime, cx: &App) -
     let mux = runtime.mux.clone();
     workspace_tree_action_button(
         format!("sidebar-new-session-{}", TreeNode::Host(host).tree_id()),
-        IconName::Plus,
+        IconName::LayersPlus,
         "New session",
         !connected,
         cx,
@@ -1666,7 +1666,7 @@ fn render_new_window_action(
             "sidebar-new-window-{}",
             TreeNode::Target(host, TreeTarget::Session(session)).tree_id()
         ),
-        IconName::Plus,
+        IconName::WindowPlus,
         "New window",
         !connected,
         cx,
