@@ -220,7 +220,7 @@ Kit widgets on the model:
 | tmux display-menu | a popover menu; neutral · ghost rows; literal tmux colours override |
 | Display-panes chip | `pane.display-panes`: glass with the float shadow; accent ring when active or pointed at |
 | Pane status badge, pane overlay lines | `pane.chip`: floating, with a contact shadow, and the focus ring when focused |
-| Agent status (Running, Waiting for you, Exited) | `agent.status`: a badge in the agent pane's header |
+| Agent status (Running, Waiting for you, Exited) | `agent.status`: was a badge in the agent pane's header; the header went with the Agent pane on 2026-10-23 ([agent lens](/designs/agent-lens.md)) and the role stays registered, unused |
 | Status dot (bell, activity, agent state, host) | `navigation::status_dot`: one 6px dot in the state's color; a working agent is the muted ink |
 | A pane's failure (browser, editor, agent) | `inline_alert`: the `inline-panel` role in the alert layout; primary · solid Try again last |
 

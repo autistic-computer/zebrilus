@@ -3574,18 +3574,14 @@ fn an_unattached_tree_client_sees_another_sessions_agent_finish() {
     let mut context = ExecutionContext::default();
     let pane = {
         let mut inner = shared.inner.lock();
-        for command in [
-            CommandInvocation::new("new-session", ["-d", "-s", "elsewhere"]),
-            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            CommandInvocation::new("split-window", ["--kind", "picker"]),
-            CommandInvocation::new("select-pane-kind", ["agent"]),
-        ] {
-            inner
-                .engine
-                .execute(&mut context, &command)
-                .expect("agent setup");
-        }
-        context.pane.expect("agent pane")
+        inner
+            .engine
+            .execute(
+                &mut context,
+                &CommandInvocation::new("new-session", ["-d", "-s", "elsewhere"]),
+            )
+            .expect("agent setup");
+        context.pane.expect("agent terminal")
     };
     let (client, mailbox) = compact_registered(
         &shared,
@@ -3600,16 +3596,18 @@ fn an_unattached_tree_client_sees_another_sessions_agent_finish() {
     shared.send_compact_state(client, &mailbox, true);
     reliable_children(&mailbox);
 
-    shared.apply_agent_status(
+    pane_summary::apply_pane_status(
+        &mut shared.inner.lock(),
         pane,
-        PaneStatus {
+        Some(PaneStatus {
             state: PaneStatusState::Done,
             kind: None,
             progress: None,
             app: "codex".to_owned(),
             title: String::new(),
             message: "All tests pass".to_owned(),
-        },
+        }),
+        unix_timestamp(),
     );
     shared.publish_snapshot_state();
     let ops = reliable_children(&mailbox)

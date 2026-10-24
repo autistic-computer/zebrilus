@@ -275,7 +275,7 @@ installation, or restart of the user's running daemon was performed.
 
 # Related
 
-- [Native Agent pane](/concepts/agent-pane.md)
+- [Agent lens](/concepts/agent-lens.md) (the Agent pane this page tested was removed on 2026-10-23)
 - [Daemon-owned PTY worker](/concepts/pty-worker.md)
 - [Terminal engine](/crates/zz-terminal.md)
 - [Terminal frames](/concepts/terminal-frame.md)

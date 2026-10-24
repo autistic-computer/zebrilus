@@ -7,8 +7,8 @@ use std::{
 use zz_client::completion::{CompletionSuggestion, PaneKindAvailability};
 use zz_gpui::SharedString;
 use zz_protocol::{
-    ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, MuxSnapshot, PaneId,
-    PaneKindSnapshot, SessionId, WindowId, command_specs,
+    ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, PaneId, SessionId, WindowId,
+    command_specs,
 };
 
 use super::{PalettePill, PaletteRow, PaletteStatus};
@@ -405,12 +405,7 @@ impl UnifiedPalette {
             .map(|spec| spec.usage)
     }
 
-    pub fn rebuild_window_chooser(
-        &mut self,
-        state: &ChooseTreeState,
-        query: &str,
-        snapshot: &MuxSnapshot,
-    ) {
+    pub fn rebuild_window_chooser(&mut self, state: &ChooseTreeState, query: &str) {
         let query = query.trim();
         let tree = self.grouped && query.is_empty();
         let mut session_name = String::new();
@@ -449,7 +444,7 @@ impl UnifiedPalette {
                     }
                     (session_name.clone(), window_active, IconName::PanelsTopLeft)
                 }
-                ChooseTreeTarget::Pane(pane) => (
+                ChooseTreeTarget::Pane(_) => (
                     [session_name.as_str(), window_name.as_str()]
                         .into_iter()
                         .filter(|name| !name.is_empty())
@@ -459,18 +454,6 @@ impl UnifiedPalette {
                     match item.pane_kind {
                         Some(zz_protocol::ChooseTreePaneKind::Terminal) => IconName::SquareTerminal,
                         Some(zz_protocol::ChooseTreePaneKind::Browser) => IconName::Globe,
-                        Some(zz_protocol::ChooseTreePaneKind::Agent) => snapshot
-                            .sessions
-                            .iter()
-                            .flat_map(|session| &session.windows)
-                            .find_map(|window| window.panes.get(&pane))
-                            .and_then(|pane| match &pane.kind {
-                                PaneKindSnapshot::Agent(agent) => {
-                                    Some(crate::pane::agent_provider_icon(agent.provider))
-                                }
-                                _ => None,
-                            })
-                            .unwrap_or(IconName::Bot),
                         Some(zz_protocol::ChooseTreePaneKind::Editor) => IconName::File,
                         None => IconName::Plus,
                     },
@@ -863,7 +846,6 @@ pub(crate) fn target_kind(spec: &CommandSpec) -> Option<CommandValueKind> {
             | "capture-pane"
             | "respawn-pane"
             | "respawn-window"
-            | "restart-agent-pane"
     ) {
         return None;
     }

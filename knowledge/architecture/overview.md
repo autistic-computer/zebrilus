@@ -1,27 +1,27 @@
 ---
 type: Architecture
 title: zz system overview
-description: zz multiplexes terminal, Chromium browser, and Agent panes over a persistent daemon shared by desktop, web, mobile GPUI, and terminal clients.
+description: zz multiplexes terminal and Chromium browser panes, with an agent lens over terminals running Claude Code or Codex, over a persistent daemon shared by desktop, web, mobile GPUI, and terminal clients.
 resource: crates/zz/src/lib.rs
 tags: [architecture, overview, gpui, multiplexer, daemon]
-timestamp: 2026-08-31T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
 
 `zz` is a multiplexer with GPUI desktop and web clients, an experimental GPUI iOS client, and a
-raw-terminal client over one persistent daemon. Its model contains three pane surfaces:
+raw-terminal client over one persistent daemon. Its model contains these pane surfaces:
 
 - a **live local terminal** powered by `libghostty-vt` and a daemon-owned PTY worker
   (see [zz-terminal](/crates/zz-terminal.md));
 - a **Chromium browser** powered by CEF Alloy off-screen rendering (OSR), composited as a GPUI image
   (see [zz-browser](/crates/zz-browser.md));
-- a native **Agent pane** backed by a **daemon-owned** Codex or Claude Code ACP process, with
-  streaming Markdown, Mermaid, reasoning, plans, structured tool activity, slash skills/commands,
-  dynamic permission, model, and effort controls, cancellation, and agent-owned session replay (see
-  [Agent pane](/concepts/agent-pane.md)). The Agent pane is compiled into default builds and gated
-  at runtime by `experimental-agent-pane`; the Editor pane is still compiled out behind the
-  `editor-pane` cargo feature as well as `experimental-editor-pane`.
+- an **agent lens** over a terminal pane whose foreground program is Claude Code or Codex: the
+  header gets a toggle that swaps the cell grid for the agent timeline of that same pane, read by the
+  daemon from the transcript the CLI writes, with a composer that types into the CLI (see
+  [agent lens](/concepts/agent-lens.md)). There is no agent pane kind;
+- an Editor pane, compiled out behind the `editor-pane` cargo feature as well as
+  `experimental-editor-pane`.
 
 The browser is **not** a native child window. CEF publishes frames into a one-slot mailbox; the
 default path is a shared GPU texture (Linux wgpu `external_texture`, macOS Metal-IOSurface
@@ -38,17 +38,16 @@ focused window, while the layout tree, pane focus, and PTYs stay shared. Closing
 detaches that client without stopping terminal processes; see
 [session persistence](/concepts/session-persistence.md). Browser panes
 restore their last URL and zz [profile](/browser/profile.md) when a GUI reattaches, and transient
-Chromium state does not survive without a GUI. Agent panes are the other way round: the daemon owns
-the ACP adapter child the same way it owns a PTY, so a turn keeps running with every window closed,
-and a reattaching client replays the transcript out of the daemon's journal and tails the live
-stream.
+Chromium state does not survive without a GUI. An agent CLI is a terminal process, so its turn keeps
+running with every window closed, and a client that opens the lens again gets the timeline rebuilt
+from the CLI's own transcript.
 
 # Design pillars
 
 | Pillar | What it means | Where |
 |--------|---------------|-------|
 | tmux-familiar UX | prefix key tables, a `.tmux.conf` subset, stable target IDs, `send-keys` | [mux](/crates/zz-mux.md), [tmux compat](/tmux/tmux-compat.md) |
-| Heterogeneous panes | terminal, browser, and Agent panes are uniform for layout/focus/targeting/lifecycle | [split-pane layout](/concepts/split-pane-layout.md) |
+| Heterogeneous panes | terminal, browser, picker, and editor panes are uniform for layout/focus/targeting/lifecycle | [split-pane layout](/concepts/split-pane-layout.md) |
 | Renderer-free core | mux state machine has no UI/renderer dependency | [mux](/crates/zz-mux.md) |
 | Persistent daemon | PTYs + mux state outlive GUI detach; every device attaches to one session at once | [session persistence](/concepts/session-persistence.md) |
 | Portable transport | Unix-domain socket on Linux/macOS, named pipe on Windows, OpenSSH forwarding on desktop, and `zz proxy` over in-process SSH on iOS | [fleet attach](/designs/fleet-attach.md) |
@@ -60,12 +59,12 @@ stream.
 |-------|------|
 | [zz-protocol](/crates/zz-protocol.md) | stable IDs, versioned length-prefixed control protocol, packed terminal lanes |
 | [zz-mux](/crates/zz-mux.md) | renderer-free state machine: layouts, targets, commands, key tables, `.tmux.conf` |
-| [zz-daemon](/crates/zz-daemon.md) | persistent daemon: mux state, PTYs, ACP adapter children, frame and agent-stream fanout, the listening socket, attachment |
+| [zz-daemon](/crates/zz-daemon.md) | persistent daemon: mux state, PTYs, agent lens runtimes, frame and agent-stream fanout, the listening socket, attachment |
 | [zz-daemon-client](/crates/zz-daemon-client.md) | the client half every client links: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, the shared transport |
 | [zz-terminal](/crates/zz-terminal.md) | per-PTY child + libghostty on a worker thread; publishes terminal frames |
 | [zz-browser](/crates/zz-browser.md) | CEF init, subprocess dispatch, request context, input translation, frame mailboxes |
 | [zz-client](/crates/zz-client.md) | sans-IO protocol reduction and client-local chrome key tables shared by client shells |
-| [zz](/crates/zz.md) | long-lived GPUI mux client; reconciles layouts; hosts terminal and CEF runtimes and the Agent pane's viewport |
+| [zz](/crates/zz.md) | long-lived GPUI mux client; reconciles layouts; hosts terminal and CEF runtimes and the agent lens viewport |
 | `zz-gpui`, `zz-gpui-macros`, `zz-gpui-platform` | zz-gpui, our GPUI: the core with Zed's utility code folded in, its macros, and every platform backend (iOS's UIKit one included) as a module per target |
 | `zz-gpui-kit` | widget kit on zz-gpui: theme, primitives, widgets, icons; no zz dependencies |
 | `zz-ui` | zz's application UI on zz-gpui-kit, shared by the desktop and thin clients |
@@ -98,6 +97,6 @@ on iPhone and iPad simulators; physical-device validation remains outstanding.
 
 - [Process model](/architecture/process-model.md) . daemon, GUI client, CEF subprocesses, PTY workers.
 - [Data flow](/architecture/data-flow.md) . how frames and input move end to end.
-- [Agent pane](/concepts/agent-pane.md) . provider-bound ACP processes, session routing, streaming
-  reducer, dynamic composer controls, approvals, and restore boundary.
+- [Agent lens](/concepts/agent-lens.md) . the agent timeline over a terminal running Claude Code
+  or Codex: lens runtime, agent stream, input, and approvals.
 - [Design plans](/designs/index.md) . feature plans and decision records.

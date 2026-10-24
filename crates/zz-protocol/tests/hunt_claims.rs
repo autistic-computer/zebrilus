@@ -15,11 +15,11 @@ fn payload(frame: &[u8]) -> &[u8] {
 
 #[test]
 fn protocol_version_on_this_commit_is_one_hundred_and_seven() {
-    assert_eq!(PROTOCOL_VERSION, 112);
+    assert_eq!(PROTOCOL_VERSION, 113);
 }
 
 #[test]
-fn command_output_keeps_event_tag_eleven_and_carries_its_output_id() {
+fn command_output_keeps_event_tag_ten_and_carries_its_output_id() {
     let event = Event {
         sequence: 0,
         payload: EventPayload::CommandOutput {
@@ -29,7 +29,7 @@ fn command_output_keeps_event_tag_eleven_and_carries_its_output_id() {
         },
     };
     let bytes = postcard::to_stdvec(&event).expect("encode command output");
-    assert_eq!(bytes, [0, 11, 3, 7, 0]);
+    assert_eq!(bytes, [0, 10, 3, 7, 0]);
     assert_eq!(
         postcard::from_bytes::<Event>(&bytes).expect("decode command output"),
         event
@@ -90,28 +90,28 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
         event_tag(EventPayload::ControlExit {
             reason: String::new(),
         }),
-        39
+        38
     );
     assert_eq!(
         event_tag(EventPayload::HookEvent {
             name: String::new(),
             variables: BTreeMap::new(),
         }),
-        40
+        39
     );
     assert_eq!(
         event_tag(EventPayload::PaneOutput {
             pane,
             bytes: Vec::new(),
         }),
-        41
+        40
     );
     assert_eq!(
         event_tag(EventPayload::PaneOutputState {
             pane,
             paused: false,
         }),
-        42
+        41
     );
     assert_eq!(
         event_tag(EventPayload::PaneOutputAged {
@@ -119,7 +119,7 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
             age_ms: 0,
             bytes: Vec::new(),
         }),
-        43
+        42
     );
     assert_eq!(
         event_tag(EventPayload::ControlFlags {
@@ -128,7 +128,7 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
             no_output: false,
             new_layouts: false,
         }),
-        44
+        43
     );
     assert_eq!(
         event_tag(EventPayload::SubscriptionChanged {
@@ -139,7 +139,7 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
             pane: None,
             value: String::new(),
         }),
-        45
+        44
     );
     for flags in [0, 1] {
         let event = Event {
@@ -152,7 +152,7 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
             },
         };
         let bytes = postcard::to_stdvec(&event).expect("encode control command guard");
-        assert_eq!(bytes, [0, 47, 0, 0, 0, flags]);
+        assert_eq!(bytes, [0, 46, 0, 0, 0, flags]);
         assert_eq!(
             postcard::from_bytes::<Event>(&bytes).expect("decode control command guard"),
             event
@@ -169,7 +169,7 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
             },
         };
         let bytes = postcard::to_stdvec(&event).expect("encode control source-file event");
-        assert_eq!(bytes[1], 48);
+        assert_eq!(bytes[1], 47);
         assert_eq!(
             postcard::from_bytes::<Event>(&bytes).expect("decode control source-file event"),
             event
@@ -182,7 +182,7 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
         },
     };
     let bytes = postcard::to_stdvec(&startup_causes).expect("encode startup config causes");
-    assert_eq!(bytes[1], 49);
+    assert_eq!(bytes[1], 48);
     assert_eq!(
         postcard::from_bytes::<Event>(&bytes).expect("decode startup config causes"),
         startup_causes
@@ -194,7 +194,7 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
         },
     };
     let bytes = postcard::to_stdvec(&command_output).expect("encode control command output");
-    assert_eq!(bytes[1], 50);
+    assert_eq!(bytes[1], 49);
     assert_eq!(
         postcard::from_bytes::<Event>(&bytes).expect("decode control command output"),
         command_output
@@ -258,8 +258,8 @@ fn target_lookup_errors_use_tmux_wording() {
 }
 
 #[test]
-fn mux_option_key_has_twenty_one_daemon_owned_keys() {
-    assert_eq!(MuxOptionKey::ALL.len(), 21);
+fn mux_option_key_has_twenty_daemon_owned_keys() {
+    assert_eq!(MuxOptionKey::ALL.len(), 20);
     assert!(MuxOptionKey::ALL.contains(&MuxOptionKey::HistoryTrickle));
     assert!(MuxOptionKey::ALL.contains(&MuxOptionKey::Prefix2));
     assert!(MuxOptionKey::ALL.contains(&MuxOptionKey::FocusFollowsMouse));
@@ -332,7 +332,7 @@ fn dark_interactive_hello_encodes_version_instance_and_process_id_as_varints() {
     assert_eq!(
         frame,
         [
-            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00, 0x70, 0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x00, 0x00, 0x71, 0x00, 0x00, 0x00, 0x00,
             0x01, 0x01, 0x00, 0x00, 0x00, 0x07,
         ]
     );

@@ -45,13 +45,14 @@ pub(crate) struct PeerRecord {
     pub(crate) status: String,
     pub(crate) updated_at: u64,
     pub(crate) status_updated_at: u64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(crate) waiting_for: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) zz: Option<Value>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PeerKind {
-    Agent,
     Terminal,
     Daemon,
 }
@@ -82,7 +83,7 @@ pub(crate) fn read_records() -> io::Result<Vec<PeerRecord>> {
     read_records_in(&registry_dir()?)
 }
 
-fn read_records_in(directory: &Path) -> io::Result<Vec<PeerRecord>> {
+pub(crate) fn read_records_in(directory: &Path) -> io::Result<Vec<PeerRecord>> {
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -337,27 +338,39 @@ pub(crate) fn record_for_pane_with_parents<'a>(
     })
 }
 
-fn descends_from(mut pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> bool {
-    for _ in 0..64 {
+fn descends_from(pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> bool {
+    depth_below(pid, root, parent_of).is_some()
+}
+
+fn depth_below(mut pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> Option<usize> {
+    for depth in 0..64 {
         if pid == root {
-            return true;
+            return Some(depth);
         }
         match parent_of(pid) {
             Some(parent) if parent != pid && parent != 0 => pid = parent,
-            _ => return false,
+            _ => return None,
         }
     }
-    false
+    None
+}
+
+pub(crate) fn record_in_pane(records: &[PeerRecord], pane_pid: u32) -> Option<&PeerRecord> {
+    records
+        .iter()
+        .filter(|record| pid_alive(record.pid))
+        .filter_map(|record| {
+            depth_below(record.pid, pane_pid, zz_daemon_client::process_info::parent)
+                .map(|depth| (depth, record))
+        })
+        .min_by_key(|(depth, _)| *depth)
+        .map(|(_, record)| record)
 }
 
 pub(crate) fn pane_process_ids(parents: &[(u32, u32)], pane_pid: u32) -> Vec<u32> {
     let mut pids = descendants_by_depth(parents, pane_pid);
     pids.insert(0, pane_pid);
     pids
-}
-
-pub(crate) fn peer_name(pane: &str, name: Option<&str>) -> String {
-    name.map_or_else(|| format!("zz-{pane}"), str::to_owned)
 }
 
 fn uuid_v4() -> io::Result<String> {
@@ -651,7 +664,7 @@ fn env_marks_pane(environment: impl Iterator<Item = Vec<u8>>, pane: &str) -> boo
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
+pub(crate) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
     let mut parents = Vec::new();
     for entry in fs::read_dir("/proc")? {
         let entry = entry?;
@@ -699,7 +712,7 @@ fn adapter_pid(pane: &str) -> io::Result<u32> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(super) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
+pub(crate) fn process_parents() -> io::Result<Vec<(u32, u32)>> {
     let output = Command::new("ps")
         .args(["-axo", "pid=,ppid="])
         .output_unmasked()?;
@@ -809,8 +822,8 @@ impl PeerInbox {
             status: "idle".to_owned(),
             updated_at: now,
             status_updated_at: now,
+            waiting_for: String::new(),
             zz: Some(match metadata.kind {
-                PeerKind::Agent => json!({"pane": metadata.pane, "kind":"agent"}),
                 PeerKind::Terminal => json!({"pane": metadata.pane, "kind":"terminal"}),
                 PeerKind::Daemon => json!({"daemon":true}),
             }),
@@ -1164,6 +1177,27 @@ mod tests {
     }
 
     #[test]
+    fn the_lens_finds_the_claude_nearest_the_pane_without_a_tmux_field() {
+        let me = std::process::id();
+        let parent = std::os::unix::process::parent_id();
+        let record = |pid| PeerRecord {
+            pid,
+            updated_at: now_ms(),
+            ..PeerRecord::default()
+        };
+        let records = [record(me), record(parent)];
+        assert_eq!(
+            record_in_pane(&records, parent).map(|record| record.pid),
+            Some(parent)
+        );
+        assert_eq!(
+            record_in_pane(&records, me).map(|record| record.pid),
+            Some(me)
+        );
+        assert!(record_in_pane(&records[..1], parent.saturating_add(1_000_000)).is_none());
+    }
+
+    #[test]
     fn pane_lookup_walks_parents_only_for_matching_candidates() {
         let lookups = std::cell::Cell::new(0);
         let parent_of = |pid| {
@@ -1267,12 +1301,6 @@ mod tests {
             trimmed_proc_start(b"  Thu Sep 10 12:46:03 2026\n"),
             "Thu Sep 10 12:46:03 2026"
         );
-    }
-
-    #[test]
-    fn peer_name_uses_the_option_or_pane_fallback() {
-        assert_eq!(peer_name("%3", Some("researcher")), "researcher");
-        assert_eq!(peer_name("%3", None), "zz-%3");
     }
 
     #[test]

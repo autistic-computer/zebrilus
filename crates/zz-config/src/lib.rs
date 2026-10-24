@@ -16,12 +16,11 @@ use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{
     HostEntry, RejectedHost, atomic_write, configured_fleet_hosts, validate_fleet_host,
 };
-use zz_protocol::{ConfigOverrideEntry, MAX_GUI_TEXT_BYTES, MuxOptionKey};
+use zz_protocol::{ConfigOverrideEntry, MuxOptionKey};
 use zz_terminal::{
     AppearanceColor, AppearanceConfigKey, CellHeightAdjustment, Color, CursorBlinkPolicy,
     CursorStyle, TerminalAppearance,
 };
-pub mod agent_preferences;
 pub mod file_options;
 pub mod import;
 pub mod keymap;
@@ -80,30 +79,7 @@ pub const DEFAULT_EDITOR_LINE_NUMBERS: bool = true;
 pub const DEFAULT_EDITOR_RELATIVE_LINE_NUMBERS: bool = true;
 pub const DEFAULT_EDITOR_SOFT_WRAP: bool = true;
 pub const DEFAULT_EDITOR_VIM_MODE: bool = true;
-pub const DEFAULT_EXPERIMENTAL_AGENT_PANE: bool = true;
 pub const DEFAULT_EXPERIMENTAL_EDITOR_PANE: bool = false;
-
-/// The one agent key the client still owns: the adapter commands and the
-/// auto-approve flag are mux options now, because the daemon spawns the
-/// adapter. This one feeds pane creation, which is a client concern.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AgentConfigKey {
-    WorkingDirectory,
-}
-
-impl AgentConfigKey {
-    pub fn parse(key: &str) -> Option<Self> {
-        match key {
-            "agent-working-directory" => Some(Self::WorkingDirectory),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct AgentConfig {
-    pub working_directory: Option<PathBuf>,
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigKey {
@@ -129,7 +105,6 @@ pub enum ConfigKey {
     StatusUpdate,
     FlatSidebar,
     ProgramColors,
-    ExperimentalAgentPane,
     ExperimentalEditorPane,
     PaneGaps,
     PipBackgroundOpacity,
@@ -181,7 +156,6 @@ impl ConfigKey {
             Self::StatusUpdate => "status-update",
             Self::FlatSidebar => "flat-sidebar",
             Self::ProgramColors => "program-colors",
-            Self::ExperimentalAgentPane => "experimental-agent-pane",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
             Self::PipBackgroundOpacity => "pip-background-opacity",
@@ -233,7 +207,6 @@ impl ConfigKey {
             "status-update" => Some(Self::StatusUpdate),
             "flat-sidebar" => Some(Self::FlatSidebar),
             "program-colors" => Some(Self::ProgramColors),
-            "experimental-agent-pane" => Some(Self::ExperimentalAgentPane),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
             "pip-background-opacity" => Some(Self::PipBackgroundOpacity),
@@ -299,7 +272,6 @@ impl ConfigKey {
             | Self::StatusUpdate
             | Self::FlatSidebar
             | Self::ProgramColors
-            | Self::ExperimentalAgentPane
             | Self::ExperimentalEditorPane
             | Self::PaneGaps
             | Self::EditorLineNumbers
@@ -456,7 +428,6 @@ pub struct AppConfig {
     pub status_update: ConfigValue<bool>,
     pub flat_sidebar: ConfigValue<bool>,
     pub program_colors: ConfigValue<bool>,
-    pub experimental_agent_pane: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
     pub pip_background_opacity: ConfigValue<f32>,
@@ -507,7 +478,6 @@ impl Default for AppConfig {
             status_update: ConfigValue::from_default(status_bar.show_update),
             flat_sidebar: ConfigValue::from_default(false),
             program_colors: ConfigValue::from_default(true),
-            experimental_agent_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_AGENT_PANE),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
             pip_background_opacity: ConfigValue::from_default(DEFAULT_PIP_BACKGROUND_OPACITY),
@@ -561,7 +531,6 @@ impl AppConfig {
             ConfigKey::StatusUpdate => Some(&mut self.status_update),
             ConfigKey::FlatSidebar => Some(&mut self.flat_sidebar),
             ConfigKey::ProgramColors => Some(&mut self.program_colors),
-            ConfigKey::ExperimentalAgentPane => Some(&mut self.experimental_agent_pane),
             ConfigKey::ExperimentalEditorPane => Some(&mut self.experimental_editor_pane),
             ConfigKey::PaneGaps => Some(&mut self.pane_gaps),
             ConfigKey::EditorLineNumbers => Some(&mut self.editor_line_numbers),
@@ -609,7 +578,6 @@ pub struct ParsedConfig {
     pub ui_font: UiFontConfig,
     /// The saved theme `interface-theme` names, when it names one.
     pub theme: Option<String>,
-    pub agent: AgentConfig,
     pub hosts: Vec<HostEntry>,
     pub rejected_hosts: Vec<RejectedHost>,
     pub daemon_entries: Vec<ConfigOverrideEntry>,
@@ -898,15 +866,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if let Some(agent_key) = AgentConfigKey::parse(key) {
-            if let Some(diagnostic) =
-                apply_agent_key(&mut parsed.agent, agent_key, key, value, line_number)
-            {
-                parsed.diagnostics.push(diagnostic);
-            }
-            continue;
-        }
-
         if matches!(key, CHROME_KEYBIND_KEY | CHROME_UNBIND_KEY) {
             let entry = if key == CHROME_KEYBIND_KEY {
                 keymap::parse_bind(value)
@@ -966,6 +925,16 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if RETIRED_AGENT_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!(
+                    "`{key}` was removed: run Claude Code or Codex in a terminal pane and open its lens from the pane header"
+                ),
+            });
+            continue;
+        }
+
         if RETIRED_PANE_KEYS.contains(&key) {
             let instead = match key {
                 "pane-corner-radius" => "pane corners follow `widget-corner-radius`",
@@ -1000,10 +969,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         };
 
-        if matches!(
-            key,
-            ConfigKey::ExperimentalAgentPane | ConfigKey::ExperimentalEditorPane
-        ) {
+        if matches!(key, ConfigKey::ExperimentalEditorPane) {
             parsed
                 .daemon_entries
                 .push((key.as_str().to_owned(), value.to_owned()));
@@ -1192,7 +1158,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::AutoRestartStaleDaemon
             | ConfigKey::CheckForUpdates
             | ConfigKey::StatusBadges
-            | ConfigKey::ExperimentalAgentPane
             | ConfigKey::ExperimentalEditorPane
             | ConfigKey::PaneGaps
             | ConfigKey::EditorLineNumbers
@@ -1261,38 +1226,6 @@ pub fn remove_fleet_host_at(path: &Path, name: &str) -> io::Result<bool> {
         removed = true;
     }
     Ok(removed)
-}
-
-pub fn apply_agent_key(
-    agent: &mut AgentConfig,
-    agent_key: AgentConfigKey,
-    key: &str,
-    value: &str,
-    line_number: usize,
-) -> Option<ConfigDiagnostic> {
-    let invalid = |message: &str| {
-        Some(ConfigDiagnostic {
-            line: line_number,
-            message: format!("invalid `{key}`: {message}"),
-        })
-    };
-    let string_value = || parse_config_string(value);
-    match agent_key {
-        AgentConfigKey::WorkingDirectory => match string_value() {
-            Ok(value) => {
-                let path = PathBuf::from(value);
-                if !path.is_absolute() {
-                    return invalid("expected an absolute path");
-                }
-                if path.as_os_str().as_encoded_bytes().len() > MAX_GUI_TEXT_BYTES {
-                    return invalid("path exceeds the wire byte limit");
-                }
-                agent.working_directory = Some(path);
-            }
-            Err(message) => return invalid(&message),
-        },
-    }
-    None
 }
 
 pub fn apply_theme_key(
@@ -1543,6 +1476,9 @@ pub const RETIRED_PANE_KEYS: [&str; 4] = [
     "pane-background-opacity",
 ];
 
+/// Agent pane keys an older zz read. Parsing reports them and otherwise ignores them.
+pub const RETIRED_AGENT_KEYS: [&str; 2] = ["experimental-agent-pane", "agent-working-directory"];
+
 /// Status bar keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_STATUS_KEYS: [&str; 1] = ["status-show-session"];
 
@@ -1553,7 +1489,7 @@ pub fn is_app_config_key(key: &str) -> bool {
         || RETIRED_STATUS_KEYS.contains(&key)
         || RETIRED_LOOK_KEYS.contains(&key)
         || RETIRED_MATERIAL_KEYS.contains(&key)
-        || AgentConfigKey::parse(key).is_some()
+        || RETIRED_AGENT_KEYS.contains(&key)
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
 }
@@ -2008,7 +1944,7 @@ pub fn config_overrides_for_host(
         .filter(|(key, _)| {
             !matches!(
                 MuxOptionKey::from_config_key(key),
-                Some(MuxOptionKey::ExperimentalAgentPane | MuxOptionKey::ExperimentalEditorPane)
+                Some(MuxOptionKey::ExperimentalEditorPane)
             )
         })
         .collect()
@@ -2426,21 +2362,19 @@ mod tests {
     }
 
     #[test]
-    fn agent_panes_default_on_and_allow_an_explicit_off_override() {
-        assert!(AppConfig::default().experimental_agent_pane.value);
+    fn retired_agent_pane_keys_are_reported_and_ignored() {
+        let parsed = parse_config(
+            "experimental-agent-pane = off\nagent-working-directory = \"/work\"\n",
+            "monospace",
+        );
+        assert!(parsed.daemon_entries.is_empty());
+        assert_eq!(parsed.diagnostics.len(), 2);
         assert!(
-            parse_config("", "monospace")
-                .config
-                .experimental_agent_pane
-                .value
+            parsed
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.message.contains("was removed"))
         );
-        let parsed = parse_config("experimental-agent-pane = off\n", "monospace");
-        assert!(!parsed.config.experimental_agent_pane.value);
-        assert_eq!(
-            parsed.daemon_entries,
-            [("experimental-agent-pane".to_owned(), "off".to_owned())]
-        );
-        assert!(parsed.diagnostics.is_empty());
     }
 
     #[test]

@@ -1456,8 +1456,7 @@ impl SettingsView {
                     SettingEntry::new(
                         "Claude Code and Codex",
                         "Add a startup hook and a short skill to their settings in your home \
-                         folder, so the ones you start in a terminal pane know they run in zz. \
-                         Agent panes need nothing.",
+                         folder, so the ones you start in a terminal pane know they run in zz.",
                     )
                     .control(
                         Button::new("settings-agent-setup")
@@ -1503,19 +1502,6 @@ impl SettingsView {
                                      palette, CLI); editor panes that are already open keep \
                                      working.",
                                     resolved.experimental_editor_pane,
-                                    cx,
-                                ))
-                            })
-                            .when(cfg!(feature = "agent-pane"), |group| {
-                                group.child(Self::boolean_setting(
-                                    ConfigKey::ExperimentalAgentPane,
-                                    "Agent pane",
-                                    "Offer the Agent pane in the pane picker. Enabled by \
-                                     default. Turning this off \
-                                     blocks new agent panes everywhere (picker, command \
-                                     palette, CLI); agent panes that are already open keep \
-                                     running.",
-                                    resolved.experimental_agent_pane,
                                     cx,
                                 ))
                             }),
@@ -2585,7 +2571,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::StatusUpdate
         | ConfigKey::FlatSidebar
         | ConfigKey::ProgramColors
-        | ConfigKey::ExperimentalAgentPane
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps
         | ConfigKey::EditorLineNumbers

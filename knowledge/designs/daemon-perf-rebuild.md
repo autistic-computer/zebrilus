@@ -1400,6 +1400,7 @@ Scope:
    `spawned_server_id`), `stored_default_client_command`, the kill-server path; crates/zz
    `config/mod.rs` `local_command_client`; daemon, zz-client simulator and `agent_soak.rs` tests
    that run many commands per connection (still one client identity per connection).
+   (`agent_soak.rs` was deleted on 2026-10-23 with the Agent pane.)
 8. zz-cli lib.rs: one Exec per invocation; delete the prepare round trip and per-command
    `CommandRequest` loop (`prepare_cli_command_chain`, `execute_prepared_command`,
    `execute_command_chain`). `ExecResume` drives the attach/TUI decision. Cold start:
@@ -1432,7 +1433,8 @@ Gate vs PANE JSON: `cli.cpu.display.p1` <= 0.25 ms, `.p20` <= 0.40 ms; `cli.wall
 1.10x tmux; sockproxy: 1 frame up, 1 write down per single `display-message` (<= 6 KB up, <= 200 B
 down); thread count back to baseline after 500 CLI commands; `cold.wall.new_session` <= 22 ms;
 `spawn.cpu.kill_pane` <= 0.8 ms; throughput unchanged. Tests: workspace tests,
-`crates/zz-daemon/tests/{clients,overlay,signal_shutdown,agent_soak}.rs`, zz-cli cold-start
+`crates/zz-daemon/tests/{clients,overlay,signal_shutdown,agent_soak}.rs` (`agent_soak.rs` deleted
+2026-10-23), zz-cli cold-start
 provenance, daemon-upgrade mismatch tests, the concurrency tests in item 4, repeated-Exec and
 `expect_server_id` tests. Compat: `compat/run.sh`, `packaged-cli.sh`, `startup-diagnostics.sh`,
 `tui-client-commands.sh`, `tui-command-streams.sh`, control-mode fixtures.
@@ -2443,7 +2445,8 @@ As built on `perf/ctrl`, 2026-09-30:
 - Broad validation exposed an existing cold-start agent projection bug: SessionReset
   dropped text queued before readiness. The projection now retains that text until its
   turn and clears it on explicit restart or reclaim. The original capture assertion and
-  new cold/reset/reclaim/restart proofs pass.
+  new cold/reset/reclaim/restart proofs pass. (The agent projection was deleted on 2026-10-23
+  with the Agent pane; see [agent lens](/designs/agent-lens.md).)
 
 The tree-delta, eager-facts, read-only-skip and TUI-coalesce knobs that rolled these back
 were deleted at the start of wave 4.

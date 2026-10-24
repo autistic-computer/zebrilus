@@ -372,6 +372,18 @@ fn chain_entries(path: &Path) -> Vec<Value> {
         .collect()
 }
 
+pub(crate) fn chain_tail(text: &str) -> Vec<Value> {
+    let entries = lines(text)
+        .filter(|entry| {
+            matches!(
+                entry["type"].as_str(),
+                Some("user" | "assistant" | "progress" | "system" | "attachment")
+            ) && entry["uuid"].is_string()
+        })
+        .collect::<Vec<_>>();
+    chain(&entries, None).into_iter().cloned().collect()
+}
+
 fn chain<'a>(entries: &'a [Value], until: Option<&str>) -> Vec<&'a Value> {
     let by_uuid = entries
         .iter()

@@ -63,7 +63,7 @@ impl RenderOnce for PanesPreview {
             }))
         };
         let terminal = pane(0_usize, terminal_sample(cx));
-        let agent = pane(1_usize, agent_sample(cx));
+        let agent = pane(1_usize, lens_sample(cx));
         let browser = pane(2_usize, browser_sample(radius, cx));
         let horizontal_highlight = match selected {
             0 => PaneSplitHighlight::new(0.0, 1.0, PaneSplitSide::First, cx.theme().accent),
@@ -197,7 +197,7 @@ fn terminal_sample(cx: &App) -> zz_gpui::Div {
         )
 }
 
-fn agent_sample(cx: &App) -> zz_gpui::Div {
+fn lens_sample(cx: &App) -> zz_gpui::Div {
     let paint = field_paint(crate::roles::AGENT_COMPOSER, cx);
     let composer = div()
         .flex_none()
@@ -208,7 +208,7 @@ fn agent_sample(cx: &App) -> zz_gpui::Div {
         .flex()
         .items_center();
     sample_surface()
-        .child(sample_header(IconName::Bot, "Agent", cx))
+        .child(sample_header(IconName::Claude, "claude", cx))
         .child(
             div()
                 .flex_1()

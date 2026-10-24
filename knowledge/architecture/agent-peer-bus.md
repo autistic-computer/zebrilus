@@ -1,16 +1,16 @@
 ---
 type: Architecture
 title: Agent peer bus
-description: How the daemon exchanges prompts between Agent panes and local Claude Code sessions through Claude Code's peer registry and Unix inbox sockets.
+description: How the daemon exchanges prompts between named terminal panes and local Claude Code sessions through Claude Code's peer registry and Unix inbox sockets.
 resource: crates/zz-daemon/src/agent/claude_peers.rs
-tags: [architecture, agent, messaging, claude-code, acp]
-timestamp: 2026-10-20T12:00:00-03:00
+tags: [architecture, agent, messaging, claude-code]
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 The daemon joins Claude Code's local peer protocol in two directions. You can target a terminal
-pane running Claude Code with `agent-send`, and Claude Code can discover and message an
-[Agent pane](/concepts/agent-pane.md) or a named terminal pane through `ListAgents` and
-`SendMessage`.
+pane running Claude Code with `agent-send`, and Claude Code can discover and message a named
+terminal pane through `ListAgents` and `SendMessage`. Until 2026-10-23 an Agent pane registered as a
+peer too; that pane kind is gone ([agent lens](/designs/agent-lens.md)).
 
 The [agent messaging survey](/research/2026-09-10-agent-messaging-survey.md) records live probes
 with Claude Code 2.1.267 on 2026-09-10. The implementation uses `peerProtocol: 1`; Claude Code has
@@ -42,7 +42,8 @@ the pane.
 Both plain `agent-send` and `--submit` send a message on this route; Claude Code has no remote
 composer draft. `--wait` collects a reply through a temporary daemon peer, as described below.
 Without a matching Claude Code terminal peer, the daemon checks for Codex as described below,
-then follows its existing Agent-pane target resolution for other targets.
+then types the text into the terminal when it runs an agent (`claude`, `codex`, or a nonempty
+`@agent_state`). Any other pane exits 1 with `no agent runs in %N; send-text types into any pane`.
 Claude Code processes received messages between tool calls or starts a turn when idle, subject to
 its own inbound policy.
 
@@ -52,26 +53,19 @@ The daemon reads `$CLAUDE_CONFIG_DIR/sessions` when set, otherwise `$HOME/.claud
 It tolerates unknown JSON fields. Claude Code expects the filename `<pid>.json` to identify a
 live process and `procStart` to match trimmed `TZ=UTC ps -p <pid> -o lstart=` output.
 
-For an Agent pane, the daemon uses the ACP adapter child's pid. It discovers that direct child
-of the daemon through its `ZZ_PANE=%N` environment entry, using `ps` on macOS or `/proc` on Linux.
-The ACP library continues to own the child and its spawn path.
+The daemon writes two kinds of record. Both share these fields:
 
-| Field | Value for an Agent pane |
+| Field | Value |
 |---|---|
-| `pid`, `procStart` | Adapter pid and UTC process start text |
 | `sessionId` | Fresh UUID for this registration |
-| `name` | Pane `@name` option, or `zz-%N` |
 | `cwd` | Pane working directory when known, otherwise the daemon's |
-| `tmux` | `<session name>:@<window id>.%<pane id>` |
 | `kind`, `entrypoint` | `interactive`, `cli` |
-| `peerProtocol`, `peerFeatures` | `1`, `[]` |
+| `peerProtocol` | `1` |
 | `version`, `pidDomain` | Daemon package version; `darwin` or `linux` |
 | `messagingSocketPath` | This peer's Unix inbox socket |
-| `status` | `busy` for Running or AwaitingPermission, otherwise `idle` |
 | `startedAt`, `updatedAt`, `statusUpdatedAt` | Unix timestamps in milliseconds |
-| `zz` | Ownership marker `{"pane":"%3","kind":"agent"}` |
 
-Terminal and daemon peers share the record fields above with these differences:
+and differ in these:
 
 | Field | Terminal peer | Transient daemon peer |
 |---|---|---|
@@ -95,7 +89,7 @@ zz set-option -p -t %3 @name codex-1
 
 A pane-scoped `@name@%N` option signal triggers registration. The daemon uses the shell pid from
 `pane_runtime_facts`, without searching descendants. Claude Code sessions with their own matching
-record keep that registration. Agent panes retain their existing registration lifecycle.
+record keep that registration, so a pane running Claude Code is reached through Claude's own record.
 
 The inbox passes each user message verbatim, including its attribution wrapper, to
 `Shared::deliver_to_terminal_pane`. For the typed delivery path, it calls
@@ -121,8 +115,8 @@ On 2026-09-10, live probes with Codex CLI 0.154.0 on macOS verified delivery thr
 `Queued message <id> for thread <id>.` and exits 0. Codex polls its durable queue every ten
 seconds and starts the message as a user turn when idle. Messages received during a turn wait
 for the next idle. Use the same `CODEX_HOME` as the pane (default `~/.codex`) and no `-c`
-configuration overrides. The daemon inherits its Codex home environment and uses the ACP
-login-shell PATH capture to find and launch the installed CLI.
+configuration overrides. The daemon inherits its Codex home environment and uses the
+login-shell PATH capture in `agent/environment.rs` to find and launch the installed CLI.
 
 Codex sets the terminal title to `<thread name> | <project>`. Before its first prompt it sets
 only `<project>`. The name comes from its first-prompt auto-title or `/rename`. The observed
@@ -161,7 +155,7 @@ or failure. It hosts no persistent vendor server, adds no vendor verb, and leave
 Codex process in control of turns and approvals.
 
 Direct `agent-send` and `--submit` both queue the payload and print the pane ID for a
-noninteractive caller. Errors exit 1 and do not route the message to an Agent pane:
+noninteractive caller. Errors exit 1 and do not fall back to typing:
 
 - No title name: `Codex session in %N has no name yet; send it a first prompt in the pane or run /rename there`.
 - No matching thread: `no Codex session named X in DIR for %N; run /rename in the pane`.
@@ -216,7 +210,7 @@ lines such as `notify_when_idle` subscriptions and `peer_message_status` reports
 2026-09-10: it delivers messages to any socket named in a record, but it sends control lines only
 when the process that accepted the connection is the record's `pid`. A record whose socket is
 served by another process, which is every zz pane peer because the daemon holds the socket while
-the record names the adapter or shell, never receives a subscription, and the sender reports "the
+the record names the shell, never receives a subscription, and the sender reports "the
 subscription could not be sent". The transient daemon peer is the exception, since its record
 names the daemon's own pid, which is why delivery status reports reach pending waits.
 
@@ -245,17 +239,17 @@ and the notice a peer that could answer would post to that `from` address is:
 ## Wire line
 
 Peers exchange newline-delimited JSON over Unix stream sockets. An outbound message from a
-registered Agent pane has this shape:
+registered terminal pane has this shape:
 
 ```json
-{"msgV":1,"msg_id":"ad3b395d-02dd-46fa-a37c-f35170304716","type":"user","priority":"next","from":"uds:/tmp/cc-socks/4712.sock","message":{"role":"user","content":"<cross-session-message from=\"uds:/tmp/cc-socks/4712.sock\" from-name=\"zz-%3\" from-mode=\"prompting\">\nTEXT\n</cross-session-message>"}}
+{"msgV":1,"msg_id":"ad3b395d-02dd-46fa-a37c-f35170304716","type":"user","priority":"next","from":"uds:/tmp/cc-socks/4712.sock","message":{"role":"user","content":"<cross-session-message from=\"uds:/tmp/cc-socks/4712.sock\" from-name=\"codex-1\" from-mode=\"prompting\">\nTEXT\n</cross-session-message>"}}
 ```
 
 The sender generates a UUID v4 for `msg_id` and uses `from-mode="prompting"`. It replaces a
 payload's `</cross-session-message>` with `<\/cross-session-message>` before wrapping it, so
 payload text cannot end the attribution wrapper early.
 
-For a registered sending Agent or terminal pane, `from-name` uses its peer name and `from` points back to its
+For a registered sending terminal pane, `from-name` uses its peer name and `from` points back to its
 socket. Otherwise the sender omits both the JSON `from` field and the wrapper's `from` attribute;
 `from-name` is `zz %N` when the caller pane is known, or `zz`. Claude Code validates reply
 addresses against its registry. The daemon sends no auth line and reads no reply from the outbound
@@ -269,28 +263,16 @@ One listener thread serves each registered peer. It tolerates empty liveness con
 ignores `type: auth` lines and unrecognized messages, and accepts `type: user` lines with a string
 `message.content`. The listener applies a 30-second idle deadline to connections and reads sockets
 without holding the daemon lock. It logs the sender and byte count at info level, then passes the
-content verbatim, including its wrapper, to `submit_agent_prompt` for Agent peers. That existing
-path queues the prompt while the Agent pane is busy. Terminal peers use the Codex queue or
-paste path described above; the daemon peer routes replies to pending waits.
+content verbatim, including its wrapper, to `deliver_to_terminal_pane`, which uses the Codex queue
+or paste path described above; the daemon peer routes replies to pending waits.
 
 ## Lifecycle and limits
 
-In `crates/zz-daemon/src/daemon.rs`, `publish_agent_state` registers a pane when its runtime first
-reports Ready, then updates the record's status, timestamps, and name on phase changes, so a later
-`@name` write shows up after the pane's next turn starts or ends. Restarting an
-adapter removes the old record and socket before registering the replacement pid. The daemon
-stops the listener and removes the record and socket when `close_agent_panes` closes a pane or
-the daemon shuts down. At startup it removes stale records carrying the `zz` marker whose pid is
+In `crates/zz-daemon/src/daemon.rs`, `update_terminal_peer` registers a terminal pane when its
+`@name` is set, renames the record in place when it changes, and removes it when the option is unset
+or a Claude Code record of its own already names the pane. The daemon stops the listener and removes
+the record and socket when `close_agent_panes` closes a pane or the daemon shuts down. At startup it removes stale records carrying the `zz` marker whose pid is
 dead, together with their sockets; it leaves unmarked records alone.
-
-The Claude provider's adapter runs Claude Code through the Agent SDK, and that inner Claude Code
-registers its own peer record too (`entrypoint: "sdk-ts"`, an auto-generated name such as
-`zz-5c`, no `tmux` field). A message sent to that name is answered inside the SDK session and
-never appears in the pane, and when the pane's agent replies to a peer it does so from that inner
-address. Claude Code exposes no switch for it, so a Claude-provider pane shows up twice in
-`ListAgents`; the record with the `tmux` field and the `zz-%N` or `@name` name is the one whose
-messages reach the pane. Verified on 2026-09-10 with Claude Code 2.1.267 and
-`claude-agent-acp@0.76.0`.
 
 On macOS, `setsockopt` fails with `EINVAL` on a Unix socket whose peer has already closed, even
 though the buffered data is still readable, so the inbox treats a failed read-timeout call as

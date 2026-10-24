@@ -16,7 +16,6 @@ pub enum PaneTag {
     Picker,
     Terminal,
     Browser,
-    Agent(AgentProvider),
     Editor,
 }
 
@@ -150,7 +149,6 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
         PaneKindSnapshot::Picker => PaneTag::Picker,
         PaneKindSnapshot::Terminal => PaneTag::Terminal,
         PaneKindSnapshot::Browser(_) => PaneTag::Browser,
-        PaneKindSnapshot::Agent(agent) => PaneTag::Agent(agent.provider),
         PaneKindSnapshot::Editor(_) => PaneTag::Editor,
     }
 }
@@ -158,11 +156,16 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
 #[must_use]
 pub fn pane_program(pane: &PaneSnapshot) -> Option<&'static Program> {
     match &pane.kind {
-        PaneKindSnapshot::Agent(agent) => Program::by_id(match agent.provider {
-            AgentProvider::ClaudeCode => "claude",
-            AgentProvider::Codex => "codex",
-        }),
         PaneKindSnapshot::Terminal => resolve(pane.summary.process.iter().map(String::as_str)),
+        _ => None,
+    }
+}
+
+#[must_use]
+pub fn pane_agent(pane: &PaneSnapshot) -> Option<AgentProvider> {
+    match pane_program(pane)?.id {
+        "claude" => Some(AgentProvider::ClaudeCode),
+        "codex" => Some(AgentProvider::Codex),
         _ => None,
     }
 }
@@ -293,16 +296,11 @@ fn headline_pane<'a>(
 }
 
 fn agent_like(pane: &PaneSnapshot) -> bool {
-    matches!(pane.kind, PaneKindSnapshot::Agent(_))
-        || pane.status.is_some()
-        || !pane.summary.name.trim().is_empty()
+    pane.status.is_some() || !pane.summary.name.trim().is_empty()
 }
 
 fn agent_title(pane: &PaneSnapshot) -> Option<String> {
-    let title = pane.title.trim();
-    let own = matches!(pane.kind, PaneKindSnapshot::Agent(_)) && title != "agent";
     [
-        own.then_some(title),
         pane.status.as_ref().map(|status| status.title.trim()),
         Some(pane.summary.name.trim()),
     ]
@@ -444,10 +442,6 @@ pub fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) ->
             )]
         }
         PaneKindSnapshot::Picker => vec![part("New pane", Tone::Muted)],
-        PaneKindSnapshot::Agent(agent) => vec![part(
-            location.unwrap_or_else(|| agent.provider.label().to_owned()),
-            Tone::Muted,
-        )],
     }
 }
 
@@ -462,7 +456,6 @@ fn location(pane: &PaneSnapshot) -> Option<String> {
         });
     }
     let fallback = match &pane.kind {
-        PaneKindSnapshot::Agent(agent) => agent.cwd.as_deref()?.to_string_lossy().into_owned(),
         PaneKindSnapshot::Editor(editor) => editor.cwd.clone(),
         _ => return None,
     };
@@ -490,8 +483,7 @@ fn browser_host(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use zz_protocol::{
-        AgentDescriptor, BrowserDescriptor, EditorDescriptor, LayoutNode, PaneStatus, PaneSummary,
-        SplitId,
+        BrowserDescriptor, EditorDescriptor, LayoutNode, PaneStatus, PaneSummary, SplitId,
     };
 
     use super::*;
@@ -522,16 +514,9 @@ mod tests {
     }
 
     fn agent(id: u64, title: &str) -> PaneSnapshot {
-        PaneSnapshot {
-            title: title.to_owned(),
-            ..pane(
-                id,
-                PaneKindSnapshot::Agent(AgentDescriptor {
-                    provider: AgentProvider::ClaudeCode,
-                    ..AgentDescriptor::default()
-                }),
-            )
-        }
+        let mut pane = terminal(id, title);
+        pane.summary.process = vec!["/usr/local/bin/claude".to_owned()];
+        pane
     }
 
     fn status(state: PaneStatusState, kind: Option<PaneStatusKind>, message: &str) -> PaneStatus {
@@ -616,10 +601,6 @@ mod tests {
         };
         for (window, expected) in [
             (
-                renamed(window(1, vec![agent(1, "Fix titlebar")])),
-                "Fix titlebar",
-            ),
-            (
                 renamed(window(
                     1,
                     vec![with_status(agent(1, "agent"), titled("Plan"))],
@@ -633,7 +614,7 @@ mod tests {
             (renamed(window(1, vec![agent(1, "agent")])), "Reviews"),
             (renamed(window(1, vec![terminal(1, "vim")])), "Reviews"),
             (window(1, vec![terminal(1, "vim")]), "vim"),
-            (window(1, vec![agent(1, "agent")]), "New session"),
+            (window(1, vec![agent(1, "agent")]), "agent"),
             (
                 window(1, vec![with_status(terminal(1, "claude"), titled(""))]),
                 "claude",
@@ -837,24 +818,12 @@ mod tests {
             ),
             (terminal(1, "zsh"), vec![("Shell", Tone::Muted)]),
             (terminal(1, "vim notes.md"), vec![("zsh", Tone::Muted)]),
-            (agent(1, "x"), vec![("Claude Code", Tone::Muted)]),
+            (agent(1, "x"), vec![("zsh", Tone::Muted)]),
         ];
         for (pane, expected) in cases {
             let summary = summarize_window(&window(1, vec![pane]));
             assert_eq!(texts(&summary), expected);
         }
-    }
-
-    #[test]
-    fn agents_fall_back_to_the_descriptor_cwd() {
-        let mut pane = agent(1, "x");
-        pane.kind = PaneKindSnapshot::Agent(AgentDescriptor {
-            provider: AgentProvider::Codex,
-            cwd: Some("/work/zz".into()),
-            session_id: None,
-        });
-        let summary = summarize_window(&window(1, vec![pane]));
-        assert_eq!(texts(&summary), vec![("zz", Tone::Muted)]);
     }
 
     #[test]
@@ -866,7 +835,6 @@ mod tests {
                 String::new(),
                 "default".to_owned(),
             )),
-            PaneKindSnapshot::Agent(AgentDescriptor::default()),
             PaneKindSnapshot::Editor(EditorDescriptor {
                 path: None,
                 cwd: "/".to_owned(),
@@ -1020,7 +988,7 @@ mod tests {
                 .map(|tile| tile.tag)
                 .collect::<Vec<_>>(),
             vec![
-                PaneTag::Agent(AgentProvider::ClaudeCode),
+                PaneTag::Terminal,
                 PaneTag::Terminal,
                 PaneTag::Browser,
                 PaneTag::Picker,

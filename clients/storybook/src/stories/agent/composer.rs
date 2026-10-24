@@ -1,19 +1,17 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use zz_client::agent_completion::{active_command_hint, pane_commands};
 use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, Image, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, px,
 };
-use zz_protocol::AgentProvider;
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, IconName, Sizable as _,
     agent::{
         COMPOSER_ATTACHMENT, agent_attachment_thumbnail,
         composer::{AgentComposer, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING},
         controls::{
-            AgentControlSelection, ComposerAction, agent_config_picker, agent_directory_button,
-            agent_model_picker, composer_action, composer_action_button, context_usage_meter,
+            ComposerAction, composer_action, composer_action_button, context_usage_meter,
             git_summary_footer,
         },
         presentation::error_card,
@@ -25,10 +23,7 @@ use zz_ui::{
 
 use super::{
     cards::{slash_commands, slash_list},
-    fixtures::{
-        chart_screenshot, choices, claude_model, claude_modes, codex_model, effort,
-        tab_strip_screenshot,
-    },
+    fixtures::{chart_screenshot, tab_strip_screenshot},
 };
 use crate::story::{row, states};
 
@@ -59,11 +54,12 @@ pub struct Draft {
     pub input: Entity<InputState>,
     pub running: bool,
     pub writable: bool,
+    pub attach: bool,
     pub images: Vec<Arc<Image>>,
     pub prefix: Vec<AnyElement>,
 }
 
-pub fn composer(draft: Draft, window: &mut Window, cx: &mut App) -> AnyElement {
+pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
     let id = draft.id;
     let value = draft.input.read(cx).value();
     let has_content = !value.trim().is_empty() || !draft.images.is_empty();
@@ -101,36 +97,16 @@ pub fn composer(draft: Draft, window: &mut Window, cx: &mut App) -> AnyElement {
             }))
             .into_any_element()
     });
-    let settings = vec![
-        Button::compact_icon(SharedString::from(format!("{id}-attach")), IconName::Plus)
-            .tooltip("Attach images")
-            .disabled(!ready)
-            .into_any_element(),
-        agent_config_picker(
-            SharedString::from(format!("{id}-mode")),
-            IconName::Check,
-            "default",
-            "Mode",
-            "Mode",
-            claude_modes(),
-            ready,
-            |_, _, _| {},
-        ),
-        agent_model_picker(
-            SharedString::from(format!("{id}-model")),
-            ("storybook".to_owned(), PathBuf::new()),
-            AgentProvider::ClaudeCode,
-            claude_model(),
-            Some(effort("high")),
-            ready,
-            true,
-            Vec::new(),
-            |_, _| {},
-            |_, _| {},
-            window,
-            cx,
-        ),
-    ];
+    let settings = draft
+        .attach
+        .then(|| {
+            Button::compact_icon(SharedString::from(format!("{id}-attach")), IconName::Plus)
+                .tooltip("Attach images")
+                .disabled(!ready)
+                .into_any_element()
+        })
+        .into_iter()
+        .collect();
     AgentComposer {
         input: draft.input,
         action: composer_action_button(SharedString::from(format!("{id}-action")), action, enabled)
@@ -150,16 +126,7 @@ pub fn composer(draft: Draft, window: &mut Window, cx: &mut App) -> AnyElement {
             17,
             cx,
         )),
-        footer_actions: vec![
-            agent_directory_button(
-                SharedString::from(format!("{id}-directory")),
-                "zz",
-                ready,
-                cx,
-            )
-            .tooltip("/Users/you/dev/zz")
-            .into_any_element(),
-        ],
+        footer_actions: Vec::new(),
         command_hint: active_command_hint(&value, &pane_commands(&[], true)).map(Into::into),
         prefix: draft.prefix,
         attachments,
@@ -269,7 +236,7 @@ pub fn composers(window: &mut Window, cx: &mut App) -> AnyView {
 }
 
 impl Render for Composers {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut states = states();
         for (index, case) in self.cases.iter().enumerate() {
             let id = SharedString::from(format!("composer-{index}"));
@@ -295,10 +262,10 @@ impl Render for Composers {
                     input: case.input.clone(),
                     running: case.running,
                     writable: case.writable,
+                    attach: true,
                     images: case.images.clone(),
                     prefix,
                 },
-                window,
                 cx,
             );
             states = states.state(
@@ -321,41 +288,7 @@ pub fn controls(_: &mut Window, cx: &mut App) -> AnyView {
 }
 
 impl Render for Controls {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let model = |id: &'static str,
-                     provider,
-                     model: AgentControlSelection,
-                     effort: Option<AgentControlSelection>,
-                     enabled,
-                     window: &mut Window,
-                     cx: &mut App| {
-            agent_model_picker(
-                id,
-                (id.to_owned(), PathBuf::new()),
-                provider,
-                model,
-                effort,
-                enabled,
-                true,
-                Vec::new(),
-                |_, _| {},
-                |_, _| {},
-                window,
-                cx,
-            )
-        };
-        let mode = |id: &'static str, current: &str, enabled| {
-            agent_config_picker(
-                id,
-                IconName::Check,
-                current,
-                "Mode",
-                "Mode",
-                claude_modes(),
-                enabled,
-                |_, _, _| {},
-            )
-        };
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let usage = [
             ("empty", 0, 200_000),
             ("a quarter", 50_000, 200_000),
@@ -444,79 +377,7 @@ impl Render for Controls {
                             .disabled(true),
                     ),
             )
-            .state(
-                "mode picker: default, plan, disabled, no choices",
-                row()
-                    .child(mode("mode-default", "default", true))
-                    .child(mode("mode-plan", "plan", true))
-                    .child(mode("mode-disabled", "acceptEdits", false))
-                    .child(agent_config_picker(
-                        "mode-empty",
-                        IconName::Check,
-                        "",
-                        "Mode",
-                        "Mode",
-                        Vec::new(),
-                        true,
-                        |_, _, _| {},
-                    )),
-            )
-            .state(
-                "model picker: Codex with effort, Claude Code, disabled, no model list",
-                row()
-                    .child(model(
-                        "model-codex",
-                        AgentProvider::Codex,
-                        codex_model(),
-                        Some(effort("medium")),
-                        true,
-                        window,
-                        cx,
-                    ))
-                    .child(model(
-                        "model-claude",
-                        AgentProvider::ClaudeCode,
-                        claude_model(),
-                        None,
-                        true,
-                        window,
-                        cx,
-                    ))
-                    .child(model(
-                        "model-disabled",
-                        AgentProvider::ClaudeCode,
-                        claude_model(),
-                        Some(effort("low")),
-                        false,
-                        window,
-                        cx,
-                    ))
-                    .child(model(
-                        "model-unknown",
-                        AgentProvider::Codex,
-                        AgentControlSelection {
-                            current_value: String::new(),
-                            choices: choices(&[]),
-                        },
-                        None,
-                        true,
-                        window,
-                        cx,
-                    )),
-            )
             .state("context usage meter", usage)
             .state("git summary", git)
-            .state(
-                "working directory: enabled, read-only, long name",
-                row()
-                    .child(agent_directory_button("directory-on", "zz", true, cx))
-                    .child(agent_directory_button("directory-off", "zz", false, cx))
-                    .child(agent_directory_button(
-                        "directory-long",
-                        "zz-worktree-browser-pinned-tabs",
-                        true,
-                        cx,
-                    )),
-            )
     }
 }

@@ -11,7 +11,6 @@ fn terminal_read_command(name: &str) -> bool {
             | "run-pane"
             | "agent-send"
             | "agent-respond"
-            | "new-agent-session"
             | "capture-browser"
     )
 }

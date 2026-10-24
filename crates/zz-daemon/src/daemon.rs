@@ -55,6 +55,8 @@ mod history_io;
     reason = "job families move to the loop registry in subsequent slices"
 )]
 mod jobs;
+#[cfg(feature = "agent")]
+mod lens;
 #[cfg(unix)]
 mod lifecycle;
 #[cfg(unix)]
@@ -66,8 +68,6 @@ mod pipe_jobs;
 pub(crate) mod solo_tests;
 mod source_queue;
 pub(crate) mod status_jobs;
-#[cfg(feature = "agent")]
-mod subagent_feeds;
 mod terminal_reads;
 mod terminal_requests;
 mod watchers;
@@ -97,7 +97,7 @@ use zz_mux::{
 #[cfg(windows)]
 use zz_protocol::read_protocol_message_into;
 use zz_protocol::{
-    AgentCommand, BrowserCommand, COMMAND_ARGS_PARSE_BEHAVES, ChooseBufferAction, ChooseBufferItem,
+    BrowserCommand, COMMAND_ARGS_PARSE_BEHAVES, ChooseBufferAction, ChooseBufferItem,
     ChooseBufferSearchState, ChooseBufferState, ChooseTreeAction, ChooseTreeItem, ChooseTreeKind,
     ChooseTreePaneKind, ChooseTreeSearchState, ChooseTreeState, ChooseTreeTarget,
     ChooserPreviewSize, ChooserRow, ClientEnvironmentBlob, ClientExitAction, ClientFileOperation,
@@ -141,9 +141,7 @@ use zz_protocol::{
 #[cfg(feature = "agent")]
 use crate::agent::{
     environment::AgentWorkspaceEnvironment,
-    fanout::{
-        AgentPublisher, AgentRequestReply, AgentRuntime, AgentToolCall, is_default_agent_title,
-    },
+    fanout::{AgentPublisher, AgentRequestReply, AgentRuntime, AgentToolCall},
     host::{AgentPaneSpec, AgentTurnFailure, HostCommand, PermissionResponse},
     runtime::{AgentSpawnConfig, load_persistent_journal},
     stream::{AgentImage, AgentPrompt, AgentSessionSummary},
@@ -4544,20 +4542,6 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
             "kill-pane",
         ],
     ),
-    (
-        "agent",
-        &[
-            "agent-send",
-            "agent-respond",
-            "show-last-output",
-            "send-last-output",
-            "restart-agent-pane",
-            "new-agent-session",
-            "set-agent-provider",
-            "resize-pane",
-            "kill-pane",
-        ],
-    ),
     ("editor", &["resize-pane", "kill-pane"]),
     ("picker", &["resize-pane", "kill-pane", "select-pane-kind"]),
 ];
@@ -4586,7 +4570,6 @@ enum DaemonCommandDispatch {
     RunShell,
     IfShell,
     AgentSend,
-    NewAgentSession,
     AgentRespond,
     SendLastOutput,
     ShowLastOutput,
@@ -4623,7 +4606,6 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("if-shell", DaemonCommandDispatch::IfShell),
     ("if", DaemonCommandDispatch::IfShell),
     ("agent-send", DaemonCommandDispatch::AgentSend),
-    ("new-agent-session", DaemonCommandDispatch::NewAgentSession),
     ("agent-respond", DaemonCommandDispatch::AgentRespond),
     ("send-last-output", DaemonCommandDispatch::SendLastOutput),
     ("show-last-output", DaemonCommandDispatch::ShowLastOutput),
@@ -8488,9 +8470,6 @@ impl Shared {
                     DaemonCommandDispatch::IfShell => {
                         self.if_shell(client, kind, context, canonical, command, queue_execution)
                     }
-                    DaemonCommandDispatch::NewAgentSession => {
-                        self.new_agent_session(context, &command.args)
-                    }
                     DaemonCommandDispatch::AgentSend => {
                         self.agent_send(client, kind, context, &command.args)
                     }
@@ -9444,9 +9423,6 @@ impl Shared {
         let mut source_files = Vec::new();
         let mut pane_stream_inputs: Vec<(PaneId, RawText)> = Vec::new();
         let mut removed_panes = Vec::new();
-        let mut agent_panes_opened = Vec::new();
-        #[cfg(feature = "agent")]
-        let mut agent_panes_restarted = Vec::new();
         let mut relocated_terminal_views = Vec::new();
         let mut retired_command_outputs = Vec::new();
         let mut deferred_terminal_commands = Vec::new();
@@ -10265,57 +10241,6 @@ impl Shared {
                                 .or_insert_with(|| PaneExitWait::new(&terminal));
                             entry.command_wait = Some(Arc::clone(&entry.current));
                         }
-                    }
-                    MuxEffect::PaneCreated {
-                        pane,
-                        kind: PaneKindSnapshot::Agent(descriptor),
-                        inherit_cwd_from,
-                        ..
-                    }
-                    | MuxEffect::PaneMaterialized {
-                        pane,
-                        kind: PaneKindSnapshot::Agent(descriptor),
-                        inherit_cwd_from,
-                        ..
-                    } => {
-                        let working_directory = descriptor
-                            .cwd
-                            .clone()
-                            .or_else(|| {
-                                inherit_cwd_from
-                                    .and_then(|source| inner.terminals.get(&source))
-                                    .and_then(|terminal| terminal_working_directory(terminal))
-                            })
-                            .or_else(|| std::env::current_dir().ok());
-                        inner
-                            .engine
-                            .state
-                            .update_agent_cwd(*pane, working_directory)?;
-                        if !inner.terminals.contains_key(pane) {
-                            let history_limit = inner.engine.history_limit_for_pane(*pane)?;
-                            let terminal_options = terminal_worker_options(
-                                &inner.engine,
-                                &inner.appearance,
-                                &inner.config_files,
-                                *pane,
-                            )?;
-                            let session = Arc::new(TerminalSession::spawn_empty_with_appearance(
-                                history_limit,
-                                Arc::clone(&terminal_options.appearance),
-                            ));
-                            if let Some((columns, rows)) = inner.engine.pane_geometry(*pane) {
-                                session.resize(columns, rows, 0, 0);
-                            }
-                            inner.terminals_mut().insert(*pane, Arc::clone(&session));
-                            terminals_to_watch.push((*pane, session));
-                        }
-                        agent_panes_opened.push(*pane);
-                    }
-                    MuxEffect::AgentPaneRestart { pane } => {
-                        #[cfg(feature = "agent")]
-                        agent_panes_restarted.push(*pane);
-                        #[cfg(not(feature = "agent"))]
-                        let _ = pane;
                     }
                     MuxEffect::PaneCreated {
                         pane,
@@ -12096,20 +12021,7 @@ impl Shared {
             if agent_options_changed {
                 self.reconfigure_agents();
             }
-            if agent_options_changed
-                || option_signals
-                    .iter()
-                    .any(|channel| channel.starts_with("@agent-auto-approve@"))
-            {
-                self.refresh_agent_auto_approve();
-            }
             self.close_agent_panes(&removed_panes);
-            for pane in agent_panes_opened {
-                self.open_agent_pane(pane);
-            }
-            for pane in agent_panes_restarted {
-                self.restart_agent_pane(pane);
-            }
         }
         for pane in removed_panes {
             self.cancel_pane_files(pane);
@@ -16887,29 +16799,41 @@ impl Shared {
             .client(context.replay_client().unwrap_or(client))
             .and_then(|client| client.origin)
             .or(context.pane.filter(|_| kind == ClientKind::Interactive));
-        if parsed.final_only
+        let lens_only = parsed.final_only
+            || parsed.notify
             || matches!(
                 parsed.on_block,
                 AgentBlockPolicy::Allow | AgentBlockPolicy::Deny
-            )
-        {
-            let inner = self.inner.lock();
-            let pane = inner.engine.resolve_pane(
+            );
+        if lens_only || parsed.wait {
+            let pane = self.inner.lock().engine.resolve_pane(
                 parsed.target.as_deref(),
                 context.window,
                 context.pane,
             )?;
-            if matches!(
-                inner.engine.state.pane(pane).map(|pane| &pane.kind),
-                Some(PaneKind::Terminal)
-            ) {
+            #[cfg(feature = "agent")]
+            if self.open_lens(pane) {
+                if parsed.notify {
+                    return self.submit_agent_prompt_and_notify(caller, pane, payload, kind);
+                }
+                if !matches!(kind, ClientKind::Command | ClientKind::Control) {
+                    return Err(ServerError::InvalidCommand(
+                        "agent-send --wait needs a command client".to_owned(),
+                    )
+                    .into());
+                }
+                return self.submit_agent_prompt_and_wait(client, pane, payload, &parsed);
+            }
+            if lens_only {
                 let flag = if parsed.final_only {
                     "--final"
+                } else if parsed.notify {
+                    "--notify"
                 } else {
                     "--on-block allow|deny"
                 };
                 return Err(ServerError::NativeCommandParse(format!(
-                    "agent-send: {flag} needs an agent pane"
+                    "agent-send: {flag} needs Claude Code or Codex running in {pane}"
                 ))
                 .into());
             }
@@ -17027,35 +16951,51 @@ impl Shared {
                 return self.send_terminal_message_and_wait(client, pane, &payload, &parsed);
             }
         }
-        let pane = self.resolve_agent_pane(context, parsed.target.as_deref())?;
-        if parsed.notify {
-            #[cfg(feature = "agent")]
-            return self.submit_agent_prompt_and_notify(caller, pane, payload, kind);
-            #[cfg(not(feature = "agent"))]
-            return Err(ServerError::PaneExited(pane).into());
-        }
-        if parsed.wait {
-            if !matches!(kind, ClientKind::Command | ClientKind::Control) {
-                return Err(ServerError::InvalidCommand(
-                    "agent-send --wait needs a command client".to_owned(),
-                )
-                .into());
-            }
-            #[cfg(feature = "agent")]
-            return self.submit_agent_prompt_and_wait(client, pane, payload, &parsed);
-            #[cfg(not(feature = "agent"))]
-            return Err(ServerError::PaneExited(pane).into());
-        }
-        let mut execution = self.deliver_to_agent(pane, payload, parsed.submit, |missing| {
-            format!(
-                "agent-send: {missing}, so {pane} has no composer to draft into. Use --submit or \
-                 --wait."
+        let pane = self.inner.lock().engine.resolve_pane(
+            parsed.target.as_deref(),
+            context.window,
+            context.pane,
+        )?;
+        let terminal = {
+            let inner = self.inner.lock();
+            matches!(
+                inner.engine.state.pane(pane).map(|pane| &pane.kind),
+                Some(PaneKind::Terminal)
             )
-        })?;
-        if parsed.submit && kind != ClientKind::Interactive {
-            execution.output = pane.to_string().into();
+            .then(|| inner.terminals.get(&pane).cloned())
+            .flatten()
+        };
+        let Some(terminal) = terminal else {
+            return Err(ServerError::InvalidTarget(format!(
+                "{pane} is not a terminal running an agent"
+            ))
+            .into());
+        };
+        #[cfg(feature = "agent")]
+        let agent = self.terminal_agent(pane).is_some();
+        #[cfg(not(feature = "agent"))]
+        let agent = false;
+        if !agent && self.pane_agent_state(pane).is_empty() {
+            return Err(ServerError::MissingTarget(format!(
+                "no agent runs in {pane}; send-text types into any pane"
+            ))
+            .into());
         }
-        Ok(execution)
+        #[cfg(feature = "agent")]
+        return terminal_reads::send_text(
+            self,
+            client,
+            pane,
+            terminal,
+            &payload,
+            SEND_TEXT_TIMEOUT,
+            parsed.submit,
+        );
+        #[cfg(not(feature = "agent"))]
+        {
+            let _ = terminal;
+            Err(ServerError::PaneExited(pane).into())
+        }
     }
 
     fn pane_agent_state(&self, pane: PaneId) -> String {
@@ -17251,146 +17191,22 @@ impl Shared {
         context: &ExecutionContext,
         target: Option<&str>,
     ) -> Result<PaneId, DaemonError> {
-        if let Some(target) = target {
-            let inner = self.inner.lock();
-            let pane = inner
-                .engine
-                .resolve_pane(Some(target), context.window, context.pane)?;
-            if !matches!(
-                inner.engine.state.pane(pane).map(|pane| &pane.kind),
-                Some(PaneKind::Agent(_))
-            ) {
-                return Err(
-                    ServerError::InvalidTarget(format!("{pane} is not an agent pane")).into(),
-                );
-            }
-            Ok(pane)
-        } else {
-            self.resolve_agent_pane(context, None)
-        }
-    }
-
-    fn new_agent_session(
-        self: &Arc<Self>,
-        context: &ExecutionContext,
-        args: &[RawText],
-    ) -> Result<Execution, DaemonError> {
-        let spec =
-            zz_protocol::catalog_command_spec("new-agent-session").expect("registered command");
-        let parsed = zz_protocol::parse_tmux_options(spec, args)?;
-        if !parsed.positionals.is_empty() {
-            return Err(ServerError::CommandParse(format!(
-                "usage: new-agent-session {}",
-                spec.usage
-            ))
-            .into());
-        }
-        let mut target = None;
-        let mut cwd = None;
-        let mut timeout = Duration::from_mins(1);
-        for option in parsed.options {
-            match option {
-                zz_protocol::TmuxOption::Value("-t", value) => target = Some(value),
-                zz_protocol::TmuxOption::Value("-c", value) => cwd = Some(PathBuf::from(value)),
-                zz_protocol::TmuxOption::Value("--timeout", value) => {
-                    timeout = parse_pane_timeout("new-agent-session", value)?;
-                }
-                _ => {}
-            }
-        }
-        let (pane, cwd) = {
-            let inner = self.inner.lock();
-            let pane = inner
-                .engine
-                .resolve_pane(target, context.window, context.pane)?;
-            let Some(PaneKind::Agent(descriptor)) =
-                inner.engine.state.pane(pane).map(|pane| &pane.kind)
-            else {
-                return Err(DaemonError::CommandExit {
-                    output: format!("not an agent pane: {pane}").into(),
-                    exit_code: 1,
-                });
-            };
-            let cwd = cwd
-                .or_else(|| descriptor.cwd.clone())
-                .or_else(|| std::env::current_dir().ok())
-                .unwrap_or_else(|| PathBuf::from("/"));
-            (pane, cwd)
-        };
-        if !cwd.is_absolute() {
-            return Err(ServerError::CommandParse(
-                "agent session directories must be absolute on the daemon host".into(),
-            )
-            .into());
-        }
+        let pane = self
+            .inner
+            .lock()
+            .engine
+            .resolve_pane(target, context.window, context.pane)?;
         #[cfg(feature = "agent")]
+        if self
+            .open_agent_runtime()
+            .is_some_and(|runtime| runtime.pane_generation(pane).is_some())
         {
-            let runtime = self.agent_runtime().ok_or(ServerError::PaneExited(pane))?;
-            let timeout = (!timeout.is_zero()).then_some(timeout);
-            let (wait, published) =
-                agent_waits::reply::<Result<(), String>>(self, timeout, move |_, outcome| {
-                    match outcome {
-                        terminal_requests::ReplyOutcome::Ready(Ok(())) => Ok(Execution::default()),
-                        terminal_requests::ReplyOutcome::Ready(Err(message)) => {
-                            Err(DaemonError::CommandExit {
-                                output: message.into(),
-                                exit_code: 1,
-                            })
-                        }
-                        terminal_requests::ReplyOutcome::TimedOut => {
-                            Err(DaemonError::CommandExit {
-                                output: format!(
-                                    "{pane}: new session not ready within {} seconds",
-                                    timeout.unwrap().as_secs_f64()
-                                )
-                                .into(),
-                                exit_code: 124,
-                            })
-                        }
-                        terminal_requests::ReplyOutcome::Closed => {
-                            Err(ServerError::PaneExited(pane).into())
-                        }
-                    }
-                });
-            let owner = Arc::downgrade(&self.server_owner());
-            let waiter = cmdq::Reply::new(move |result| {
-                let Some(result) = result else {
-                    return;
-                };
-                match result {
-                    Ok(()) => {
-                        if let Some(runtime) = owner
-                            .upgrade()
-                            .and_then(|shared| shared.open_agent_runtime())
-                        {
-                            let applied = cmdq::Reply::new(move |result: Option<()>| {
-                                if result.is_some() {
-                                    published.try_send(Ok(()));
-                                }
-                            });
-                            runtime.publication_barrier(pane, applied);
-                        }
-                    }
-                    Err(message) => published.try_send(Err(message)),
-                }
-            });
-            if !runtime.command(
-                pane,
-                HostCommand::NewSession {
-                    cwd,
-                    reply: Some(waiter),
-                },
-            ) {
-                return Err(ServerError::PaneExited(pane).into());
-            }
-            self.report_command_queue_park();
-            wait.finish(self, Execution::default())
+            return Ok(pane);
         }
-        #[cfg(not(feature = "agent"))]
-        {
-            let _ = (pane, cwd, timeout);
-            Err(ServerError::InvalidCommand("agent support is disabled".into()).into())
-        }
+        Err(ServerError::InvalidTarget(format!(
+            "{pane} has no agent lens open; open it in the zz app or run agent-send --final first"
+        ))
+        .into())
     }
 
     fn agent_catalog(
@@ -17417,13 +17233,21 @@ impl Shared {
             zz_protocol::TmuxOption::Value("-t", value) => Some(*value),
             _ => None,
         });
-        let pane = self.resolve_agent_permission_pane(context, target)?;
+        let pane = self
+            .inner
+            .lock()
+            .engine
+            .resolve_pane(target, context.window, context.pane)?;
         #[cfg(feature = "agent")]
         {
             let cwd = self
-                .agent_pane_spec(pane)
-                .ok_or(ServerError::PaneExited(pane))?
-                .cwd;
+                .inner
+                .lock()
+                .terminals
+                .get(&pane)
+                .and_then(|terminal| terminal_working_directory(terminal))
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_else(|| PathBuf::from("/"));
             let mut result = zz_protocol::agent_stream::AgentCatalogResult {
                 catalog_provider: provider,
                 cwd: cwd.clone(),
@@ -17578,15 +17402,25 @@ impl Shared {
         let mut output = Vec::new();
         for (_pane, mut values) in rows {
             #[cfg(feature = "agent")]
-            let permission = self
-                .open_agent_runtime()
-                .and_then(|runtime| runtime.wire_state(_pane))
-                .and_then(|state| state.pending_permission)
-                .map_or(serde_json::Value::Null, |permission| {
+            let (lensed, permission) = {
+                let lens = self
+                    .open_agent_runtime()
+                    .and_then(|runtime| runtime.wire_state(_pane));
+                let lensed = lens.is_some();
+                let pending = lens.and_then(|state| state.pending_permission);
+                if let Some(pending) = &pending {
+                    values.insert(
+                        "agent_pending_permission".to_owned(),
+                        serde_json::Value::String(pending.request_id.to_string()),
+                    );
+                }
+                let permission = pending.map_or(serde_json::Value::Null, |permission| {
                     agent_permission_json(&permission)
                 });
+                (lensed, permission)
+            };
             #[cfg(not(feature = "agent"))]
-            let permission = serde_json::Value::Null;
+            let (lensed, permission) = (false, serde_json::Value::Null);
             values.insert("permission".to_owned(), permission);
             let kind = values["pane_kind"].as_str().unwrap_or_default().to_owned();
             let mut verbs = INSPECT_VERBS
@@ -17602,11 +17436,14 @@ impl Shared {
             {
                 verbs.push("agent-send");
             }
+            if lensed {
+                verbs.push("agent-respond");
+            }
             values.insert("verbs".to_owned(), serde_json::json!(verbs));
             let events = INSPECT_EVENTS
                 .iter()
                 .copied()
-                .filter(|event| *event != "agent-tool-call" || kind == "agent")
+                .filter(|event| *event != "agent-tool-call" || lensed)
                 .collect::<Vec<_>>();
             values.insert("events".to_owned(), serde_json::json!(events));
             let block = if json {
@@ -17713,32 +17550,38 @@ impl Shared {
             context,
             args,
             |shared, pane, capture, status| {
-                let agent = shared
-                    .inner
-                    .lock()
-                    .engine
-                    .state
-                    .recent_agent_pane(pane)
-                    .ok_or_else(|| {
+                #[cfg(feature = "agent")]
+                {
+                    let agent = shared.recent_agent_terminal(pane).ok_or_else(|| {
                         ServerError::MissingTarget(format!(
-                            "no agent pane in the window holding {pane}"
+                            "no Claude Code or Codex terminal in the window holding {pane}"
                         ))
                     })?;
-                shared.deliver_to_agent(
-                    agent,
-                    last_command_block(pane, &capture, status),
-                    false,
-                    |missing| {
-                        format!(
-                            "send-last-output: {missing}, so {agent} has no composer to draft \
-                             into. Open that session in the zz app, then retry."
-                        )
-                    },
-                )?;
-                Ok(Execution {
-                    output: format!("sent the last command from {pane} to {agent}").into(),
-                    effects: Vec::new(),
-                })
+                    let text = last_command_block(pane, &capture, status);
+                    let shared = Arc::clone(shared);
+                    std::thread::Builder::new()
+                        .name("zz-send-last-output".to_owned())
+                        .spawn(move || {
+                            if let Err(error) =
+                                shared.paste_and_submit(agent, &text, SEND_TEXT_TIMEOUT, false)
+                            {
+                                log::warn!(target: "zz::agent", "could not draft into {agent}: {error}");
+                            }
+                        })
+                        .map_err(|error| ServerError::Internal(error.to_string()))?;
+                    Ok(Execution {
+                        output: format!("sent the last command from {pane} to {agent}").into(),
+                        effects: Vec::new(),
+                    })
+                }
+                #[cfg(not(feature = "agent"))]
+                {
+                    let _ = (shared, capture, status);
+                    Err(ServerError::MissingTarget(format!(
+                        "no agent terminal in the window holding {pane}"
+                    ))
+                    .into())
+                }
             },
         )
     }
@@ -17946,28 +17789,26 @@ impl Shared {
         + 'static,
     ) -> Result<Execution, DaemonError> {
         let target = parse_target_only_args(verb, args)?;
-        let (pane, terminal, is_agent) = {
+        let (pane, terminal) = {
             let inner = self.inner.lock();
             let pane =
                 inner
                     .engine
                     .resolve_pane(target.as_deref(), context.window, context.pane)?;
-            let is_agent = match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
-                Some(PaneKind::Terminal) => false,
-                Some(PaneKind::Agent(_)) => true,
-                _ => {
-                    return Err(ServerError::InvalidTarget(format!(
-                        "{pane} is not a terminal pane"
-                    ))
-                    .into());
-                }
-            };
+            if !matches!(
+                inner.engine.state.pane(pane).map(|pane| &pane.kind),
+                Some(PaneKind::Terminal)
+            ) {
+                return Err(
+                    ServerError::InvalidTarget(format!("{pane} is not a terminal pane")).into(),
+                );
+            }
             let terminal = inner
                 .terminals
                 .get(&pane)
                 .cloned()
                 .ok_or(ServerError::PaneExited(pane))?;
-            (pane, terminal, is_agent)
+            (pane, terminal)
         };
         let wait = terminal_requests::CommandWait::new(self);
         let request = terminal.capture_last_command_request(self.terminal_requests.notifier());
@@ -17985,12 +17826,6 @@ impl Shared {
                     .and_then(|result| result)
                 {
                     Ok(capture) => capture,
-                    Err(TerminalCaptureError::NoSemanticMarks) if is_agent => {
-                        return Err(ServerError::InvalidCommand(format!(
-                            "{pane} has not completed a turn yet"
-                        ))
-                        .into());
-                    }
                     Err(TerminalCaptureError::NoSemanticMarks) => {
                         return Err(ServerError::InvalidCommand(format!(
                     "{pane} has no shell-integration marks; {verb} needs a shell that emits \
@@ -18010,9 +17845,8 @@ impl Shared {
                     Err(error) => return Err(ServerError::Internal(error.to_string()).into()),
                 };
                 if capture.command.trim().is_empty() {
-                    let unit = if is_agent { "turn" } else { "command" };
                     return Err(ServerError::InvalidCommand(format!(
-                        "{pane} has not completed a {unit} yet"
+                        "{pane} has not completed a command yet"
                     ))
                     .into());
                 }
@@ -18076,55 +17910,6 @@ impl Shared {
                 command: BrowserCommand::Screenshot { request_id, path },
             },
         )
-    }
-
-    fn resolve_agent_pane(
-        &self,
-        context: &ExecutionContext,
-        target: Option<&str>,
-    ) -> Result<PaneId, DaemonError> {
-        let inner = self.inner.lock();
-        let pane = inner
-            .engine
-            .resolve_pane(target, context.window, context.pane)?;
-        match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
-            Some(PaneKind::Agent(_)) => Ok(pane),
-            Some(_) => inner.engine.state.recent_agent_pane(pane).ok_or_else(|| {
-                ServerError::MissingTarget(format!("no agent pane in the window holding {pane}"))
-                    .into()
-            }),
-            None => Err(ServerError::MissingTarget(pane.to_string()).into()),
-        }
-    }
-
-    fn deliver_to_agent(
-        self: &Arc<Self>,
-        pane: PaneId,
-        text: String,
-        submit: bool,
-        unavailable: impl FnOnce(&str) -> String,
-    ) -> Result<Execution, DaemonError> {
-        // A submitted prompt is the daemon's own business now; only the
-        // composer draft still belongs to whichever GUI owns the pane.
-        #[cfg(feature = "agent")]
-        if submit {
-            if !self.submit_agent_prompt(pane, text) {
-                return Err(ServerError::PaneExited(pane).into());
-            }
-            return Ok(Execution::default());
-        }
-        let command = if submit {
-            AgentCommand::Prompt { text }
-        } else {
-            AgentCommand::ComposerAppend { text }
-        };
-        self.request_from_gui(pane, unavailable, move |request_id| {
-            EventPayload::AgentCommand {
-                pane,
-                request_id,
-                command,
-            }
-        })
     }
 
     fn list_clients(
@@ -27925,13 +27710,6 @@ impl Shared {
     ) -> Result<(), DaemonError> {
         #[cfg(any(test, windows))]
         self.start_watcher_consumer()?;
-        let projects_agent = self
-            .inner
-            .lock()
-            .engine
-            .state
-            .pane(pane)
-            .is_some_and(|pane| matches!(pane.kind, PaneKind::Agent(_)));
         terminal.install_frame_sink(Arc::new(shard_sink::PaneSink::new(
             pane,
             Arc::clone(&self.terminal_frames),
@@ -27977,7 +27755,7 @@ impl Shared {
             }
         }
         self.watcher_tx.register(
-            watchers::Watcher::terminal(pane, terminal, projects_agent),
+            watchers::Watcher::terminal(pane, terminal),
             terminal.events(),
             VecDeque::new(),
         )
@@ -28723,10 +28501,6 @@ impl Shared {
         }
         if (output || changed.is_some()) && pid.is_some() {
             self.request_peer_probe();
-        }
-        #[cfg(feature = "agent")]
-        if matches!(current_command, "codex" | "node") {
-            self.watch_subagents();
         }
         if let Some(reason) = changed {
             self.request_publish(reason);
@@ -33277,125 +33051,6 @@ impl Shared {
         runtime.reconfigure(config);
     }
 
-    /// Start the adapter for a pane the mux just materialized.
-    fn open_agent_pane(self: &Arc<Self>, pane: PaneId) {
-        let _effects = self.agent_effects.lock();
-        let Some(spec) = self.agent_pane_spec(pane) else {
-            return;
-        };
-        let Some(runtime) = self.agent_runtime() else {
-            return;
-        };
-        runtime.reconfigure(self.agent_spawn_config());
-        self.refresh_agent_visibility();
-        let watch = spec.feed.is_none();
-        if !runtime.open(pane, spec) {
-            log::warn!(target: "zz::agent", "{pane} already has an agent runtime");
-        }
-        if watch {
-            self.watch_subagents();
-        }
-    }
-
-    fn restart_agent_pane(self: &Arc<Self>, pane: PaneId) {
-        let _effects = self.agent_effects.lock();
-        let Some(spec) = self.agent_pane_spec(pane) else {
-            return;
-        };
-        let Some(runtime) = self.agent_runtime() else {
-            return;
-        };
-        runtime.reconfigure(self.agent_spawn_config());
-        #[cfg(unix)]
-        self.agent_peers.lock().remove(&pane);
-        if !runtime.restart(pane, spec) {
-            log::warn!(target: "zz::agent", "could not restart the agent runtime for {pane}");
-        }
-    }
-
-    fn agent_auto_approve(&self, pane: PaneId) -> Option<zz_protocol::AgentAutoApprove> {
-        let inner = self.inner.lock();
-        let window = inner.engine.state.window_for_pane(pane)?;
-        let session = inner.engine.state.windows[&window].session;
-        let facts = inner.engine.format_facts();
-        match facts.user_option(
-            &pane.to_string(),
-            &window.to_string(),
-            &session.to_string(),
-            "@agent-auto-approve",
-        ) {
-            Some("off") => Some(zz_protocol::AgentAutoApprove::Off),
-            Some("reads") => Some(zz_protocol::AgentAutoApprove::Reads),
-            Some("all") => Some(zz_protocol::AgentAutoApprove::All),
-            Some(value) => {
-                log::warn!(target: "zz::agent", "{pane}: invalid @agent-auto-approve value {value:?}; keeping the current tier");
-                None
-            }
-            None => Some(inner.engine.agent_options().auto_approve),
-        }
-    }
-
-    fn refresh_agent_auto_approve(&self) {
-        let _effects = self.agent_effects.lock();
-        let Some(runtime) = self.open_agent_runtime() else {
-            return;
-        };
-        let panes = {
-            let inner = self.inner.lock();
-            inner
-                .engine
-                .state
-                .windows
-                .values()
-                .flat_map(|window| window.panes.iter())
-                .filter_map(|(pane, state)| {
-                    matches!(state.kind, PaneKind::Agent(_)).then_some(*pane)
-                })
-                .collect::<Vec<_>>()
-        };
-        for pane in panes {
-            if let Some(tier) = self.agent_auto_approve(pane) {
-                runtime.command(pane, HostCommand::SetAutoApprove(tier));
-            }
-        }
-    }
-
-    fn agent_pane_spec(self: &Arc<Self>, pane: PaneId) -> Option<AgentPaneSpec> {
-        let feed = self.subagent_feed_spec(pane);
-        let auto_approve = self.agent_auto_approve(pane).or_else(|| {
-            self.open_agent_runtime()
-                .and_then(|runtime| runtime.auto_approve(pane))
-        });
-        let inner = self.inner.lock();
-        let PaneKind::Agent(descriptor) = &inner.engine.state.pane(pane)?.kind else {
-            return None;
-        };
-        let session = inner
-            .engine
-            .state
-            .window_for_pane(pane)
-            .map(|window| inner.engine.state.windows[&window].session);
-        Some(AgentPaneSpec {
-            feed,
-            auto_approve,
-            provider: descriptor.provider,
-            cwd: descriptor
-                .cwd
-                .clone()
-                .or_else(|| std::env::current_dir().ok())
-                .unwrap_or_else(|| PathBuf::from("/")),
-            resume_session: descriptor.session_id.clone(),
-            workspace: AgentWorkspaceEnvironment {
-                pane: Some(pane.to_string()),
-                session: session.map(|session| session.to_string()),
-                socket: None,
-                tmux: session.map(|session| tmux_environment(&self.socket_path, Some(session))),
-                tmux_pane: Some(pane.to_string()),
-                ..AgentWorkspaceEnvironment::default()
-            },
-        })
-    }
-
     #[cfg(all(feature = "agent", unix))]
     fn peer_scan_inputs(&self) -> Vec<(PaneId, String, Option<u32>)> {
         if self.agent_stopped.load(Ordering::Acquire) {
@@ -33516,9 +33171,6 @@ impl Shared {
                 self.write_pane_agent_state(pane, &value);
             }
         }
-        if !self.inner.lock().claude_peer_states.is_empty() {
-            self.watch_subagents();
-        }
     }
 
     #[cfg(all(feature = "agent", unix))]
@@ -33628,116 +33280,6 @@ impl Shared {
         }
     }
 
-    #[cfg(unix)]
-    fn update_agent_peer(
-        self: &Arc<Self>,
-        pane: PaneId,
-        phase: &zz_protocol::AgentConnectionPhase,
-    ) {
-        use crate::agent::claude_peers::{PeerEvent, PeerInbox, PeerKind, PeerMetadata, peer_name};
-        use zz_protocol::AgentConnectionPhase;
-
-        let mut peers = self.agent_peers.lock();
-        if self.agent_stopped.load(Ordering::Acquire) {
-            return;
-        }
-        if matches!(
-            phase,
-            AgentConnectionPhase::Starting | AgentConnectionPhase::Failed { .. }
-        ) {
-            peers.remove(&pane);
-            return;
-        }
-        let busy = matches!(
-            phase,
-            AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission
-        );
-        let registered = peers.contains_key(&pane);
-        if !registered && !matches!(phase, AgentConnectionPhase::Ready) {
-            return;
-        }
-        let metadata = {
-            let inner = self.inner.lock();
-            let Some(model) = inner.engine.state.pane(pane) else {
-                return;
-            };
-            let PaneKind::Agent(agent) = &model.kind else {
-                return;
-            };
-            if agent.provider == zz_protocol::AgentProvider::ClaudeCode
-                && crate::agent::claude::ClaudeCommand::parse(
-                    &inner.engine.agent_options().claude_code_command,
-                )
-                .is_some()
-            {
-                peers.remove(&pane);
-                return;
-            }
-            let Some(window) = inner.engine.state.window_for_pane(pane) else {
-                return;
-            };
-            let session = inner.engine.state.windows[&window].session;
-            let facts = inner.engine.format_facts();
-            if facts
-                .user_option(
-                    &pane.to_string(),
-                    &window.to_string(),
-                    &session.to_string(),
-                    subagent_feeds::FEED_OPTION,
-                )
-                .is_some()
-            {
-                peers.remove(&pane);
-                return;
-            }
-            PeerMetadata {
-                pid: None,
-                kind: PeerKind::Agent,
-                pane: pane.to_string(),
-                name: peer_name(
-                    &pane.to_string(),
-                    facts.user_option(
-                        &pane.to_string(),
-                        &window.to_string(),
-                        &session.to_string(),
-                        "@name",
-                    ),
-                ),
-                cwd: agent
-                    .cwd
-                    .clone()
-                    .or_else(|| std::env::current_dir().ok())
-                    .unwrap_or_else(|| PathBuf::from("/")),
-                tmux: format!(
-                    "{}:{window}.{pane}",
-                    inner.engine.state.sessions[&session].name
-                ),
-            }
-        };
-        if let Some(peer) = peers.get_mut(&pane) {
-            if let Err(error) = peer.update(busy, &metadata.name) {
-                log::warn!(target: "zz::agent", "could not update Claude peer {pane}: {error}");
-            }
-            return;
-        }
-        let owner = Arc::downgrade(&self.server_owner());
-        match PeerInbox::register(metadata, move |event| {
-            if let PeerEvent::Message { content: text, .. } = event
-                && let Some(shared) = owner.upgrade()
-                && !shared.submit_agent_prompt(pane, text)
-            {
-                log::warn!(target: "zz::agent", "could not submit Claude peer prompt to {pane}");
-            }
-        }) {
-            Ok(peer) => {
-                peers.insert(pane, peer);
-            }
-            Err(error) => {
-                log::warn!(target: "zz::agent", "could not register Claude peer {pane}: {error}");
-            }
-        }
-    }
-
     fn close_agent_panes(&self, panes: &[PaneId]) {
         if panes.is_empty() {
             return;
@@ -33756,9 +33298,8 @@ impl Shared {
             }
         }
         let mut inner = self.inner.lock();
-        let states = Arc::make_mut(&mut inner.agent_states);
         for pane in panes {
-            states.remove(pane);
+            inner.lens_panes.remove(pane);
         }
     }
 
@@ -33783,18 +33324,27 @@ impl Shared {
         message: ProtocolMessage,
     ) -> Result<(), ServerError> {
         let pane = agent_message_pane(&message)?;
+        match self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .map(|pane| &pane.kind)
         {
-            let inner = self.inner.lock();
-            match inner.engine.state.pane(pane).map(|pane| &pane.kind) {
-                Some(PaneKind::Agent(_)) => {}
-                Some(_) => {
-                    return Err(ServerError::InvalidTarget(format!(
-                        "{pane} is not an agent pane"
-                    )));
-                }
-                None => return Err(ServerError::MissingTarget(pane.to_string())),
+            Some(PaneKind::Terminal) => {}
+            Some(_) => {
+                return Err(ServerError::InvalidTarget(format!(
+                    "{pane} is not a terminal pane"
+                )));
             }
-        };
+            None => return Err(ServerError::MissingTarget(pane.to_string())),
+        }
+        if matches!(message, ProtocolMessage::AgentReplay { .. }) && !self.open_lens(pane) {
+            return Err(ServerError::InvalidTarget(format!(
+                "{pane} is not running Claude Code or Codex"
+            )));
+        }
         if let ProtocolMessage::AgentSessionOp { op, .. } = &message {
             let valid_directory = |path: &Path| {
                 path.is_absolute()
@@ -33924,21 +33474,6 @@ impl Shared {
             .ok_or(ServerError::PaneExited(pane))
     }
 
-    /// Dispatch `agent-send --submit` straight into the pane's runtime; the
-    /// composer half still round-trips through the GUI that owns the draft.
-    fn submit_agent_prompt(self: &Arc<Self>, pane: PaneId, text: String) -> bool {
-        self.agent_runtime().is_some_and(|runtime| {
-            runtime.prompt(
-                pane,
-                AgentPrompt {
-                    owner: ClientInstanceId(u64::MAX),
-                    text,
-                    images: Vec::new(),
-                },
-            )
-        })
-    }
-
     /// Submit to `pane` and, when its turn ends, hand the reply back to the
     /// agent pane that asked, queued behind whatever that pane is doing.
     #[cfg(feature = "agent")]
@@ -33959,12 +33494,12 @@ impl Shared {
                         .state
                         .pane(*caller)
                         .map(|pane| &pane.kind),
-                    Some(PaneKind::Agent(_))
+                    Some(PaneKind::Terminal)
                 )
             })
             .ok_or_else(|| {
                 ServerError::InvalidCommand(
-                    "agent-send --notify runs from inside another agent pane".to_owned(),
+                    "agent-send --notify runs from inside another terminal pane".to_owned(),
                 )
             })?;
         let runtime = self.agent_runtime().ok_or(ServerError::PaneExited(pane))?;
@@ -33978,8 +33513,13 @@ impl Shared {
                 let spawned = std::thread::Builder::new()
                     .name("zz-agent-notify".to_owned())
                     .spawn(move || {
-                        if !shared.submit_agent_prompt(caller, message) {
-                            log::warn!(target: "zz::agent", "could not tell {caller} that {pane} finished");
+                        #[cfg(unix)]
+                        let delivered = shared.deliver_to_terminal_pane(caller, &message);
+                        #[cfg(not(unix))]
+                        let delivered =
+                            shared.paste_and_submit(caller, &message, SEND_TEXT_TIMEOUT, true);
+                        if let Err(error) = delivered {
+                            log::warn!(target: "zz::agent", "could not tell {caller} that {pane} finished: {error}");
                         }
                     });
                 if let Err(error) = spawned {
@@ -34330,77 +33870,8 @@ impl Shared {
         }
     }
 
-    fn apply_agent_state(
-        self: &Arc<Self>,
-        pane: PaneId,
-        state: AgentPaneWire,
-    ) -> Option<PendingHookEvent> {
-        let changed = {
-            let mut inner = self.inner.lock();
-            let previous = Arc::make_mut(&mut inner.agent_states).insert(pane, state.clone());
-            previous.as_ref().is_none_or(|previous| {
-                crate::status::agent_state_name(&previous.phase)
-                    != crate::status::agent_state_name(&state.phase)
-                    || previous.pending_permission != state.pending_permission
-            })
-        };
-        #[cfg(unix)]
-        if changed {
-            self.update_agent_peer(pane, &state.phase);
-        }
-        let event = if changed {
-            self.signal_wait_channel(&format!("agent_state@{pane}"));
-            {
-                let inner = self.inner.lock();
-                PendingHookEvent::live_pane("agent-state-changed", pane, &inner.engine).map(
-                    |mut event| {
-                        event.variables.insert(
-                            "agent_state".to_owned(),
-                            crate::status::agent_state_name(&state.phase).to_owned(),
-                        );
-                        event.variables.insert(
-                            "agent_pending_permission".to_owned(),
-                            state
-                                .pending_permission
-                                .as_ref()
-                                .map(|permission| permission.request_id.to_string())
-                                .unwrap_or_default(),
-                        );
-                        event
-                    },
-                )
-            }
-        } else {
-            None
-        };
+    fn apply_agent_state(self: &Arc<Self>, pane: PaneId, state: AgentPaneWire) {
         self.publish_for_pane(pane, &EventPayload::AgentState { pane, state });
-        event
-    }
-
-    fn apply_agent_status(self: &Arc<Self>, pane: PaneId, status: PaneStatus) {
-        let (changed, relocate) = {
-            let mut inner = self.inner.lock();
-            let left_work = status.state != PaneStatusState::Working
-                && inner.engine.state.pane(pane).is_some_and(|pane| {
-                    pane.status
-                        .as_ref()
-                        .is_some_and(|status| status.state == PaneStatusState::Working)
-                });
-            let changed =
-                pane_summary::apply_pane_status(&mut inner, pane, Some(status), unix_timestamp());
-            let unknown = inner
-                .engine
-                .state
-                .pane(pane)
-                .is_some_and(|pane| pane.summary.cwd.is_empty());
-            (changed, changed && (left_work || unknown))
-        };
-        if changed {
-            self.request_publish(timers::PublishReason::Tree);
-        }
-        if relocate {
-            self.request_pane_location(pane);
-        }
     }
 
     fn agent_tool_call_event(&self, pane: PaneId, call: AgentToolCall) -> Option<PendingHookEvent> {
@@ -34418,13 +33889,6 @@ impl Shared {
         }
     }
 
-    #[cfg(test)]
-    fn publish_agent_state(self: &Arc<Self>, pane: PaneId, state: AgentPaneWire) {
-        if let Some(event) = self.apply_agent_state(pane, state) {
-            self.run_event_hooks(vec![event]);
-        }
-    }
-
     fn send_agent_reply(&self, pane: PaneId, reply: AgentRequestReply) {
         let AgentRequestReply::Sessions { client, result } = reply;
         let payload = EventPayload::AgentSessions {
@@ -34436,74 +33900,6 @@ impl Shared {
             self.read_client(client, |c| c.and_then(|c| c.subscriber.as_ref()).cloned());
         if let Some(subscriber) = subscriber {
             Self::send_event(&subscriber, payload);
-        }
-    }
-
-    fn adopt_agent_session(
-        &self,
-        pane: PaneId,
-        provider: AgentProvider,
-        session_id: String,
-        cwd: Option<PathBuf>,
-    ) {
-        let changed = {
-            let mut inner = self.inner.lock();
-            let matches_provider = inner.engine.state.pane(pane).is_some_and(
-                |pane| matches!(&pane.kind, PaneKind::Agent(agent) if agent.provider == provider),
-            );
-            if !matches_provider {
-                return;
-            }
-            match inner
-                .engine
-                .state
-                .update_agent_session(pane, session_id, cwd)
-            {
-                Ok(()) => true,
-                Err(error) => {
-                    log::debug!(target: "zz::agent", "could not adopt the session for {pane}: {error}");
-                    false
-                }
-            }
-        };
-        if changed {
-            self.publish_snapshot_state();
-        }
-    }
-
-    fn feed_agent_pane_text(&self, pane: PaneId, bytes: Vec<u8>) {
-        let (terminal, geometry) = {
-            let inner = self.inner.lock();
-            let Some(terminal) = inner.terminals.get(&pane).cloned() else {
-                return;
-            };
-            (terminal, inner.engine.pane_geometry(pane))
-        };
-        if let Some((columns, rows)) = geometry
-            && terminal.size() != (columns, rows)
-        {
-            terminal.resize(columns, rows, 0, 0);
-        }
-        terminal.feed(Arc::from(bytes));
-    }
-
-    fn title_agent_pane(&self, pane: PaneId, title: String) {
-        let changed = {
-            let mut inner = self.inner.lock();
-            let keeps_default_title = inner
-                .engine
-                .state
-                .pane(pane)
-                .is_some_and(|pane| is_default_agent_title(&pane.title));
-            keeps_default_title
-                && inner
-                    .engine
-                    .state
-                    .update_pane_title(pane, title)
-                    .unwrap_or(false)
-        };
-        if changed {
-            self.publish_snapshot_state();
         }
     }
 }
@@ -34533,22 +33929,17 @@ fn agent_message_pane(message: &ProtocolMessage) -> Result<PaneId, ServerError> 
 #[cfg(feature = "agent")]
 fn session_agent_panes(inner: &ServerState, session: SessionId) -> Vec<PaneId> {
     inner
-        .engine
-        .state
-        .sessions
-        .get(&session)
-        .into_iter()
-        .flat_map(|session| session.windows.iter())
-        .filter_map(|window| inner.engine.state.windows.get(window))
-        .flat_map(|window| window.panes.keys())
+        .lens_panes
+        .iter()
+        .copied()
         .filter(|pane| {
             inner
                 .engine
                 .state
-                .pane(**pane)
-                .is_some_and(|pane| matches!(pane.kind, PaneKind::Agent(_)))
+                .window_for_pane(*pane)
+                .and_then(|window| inner.engine.state.windows.get(&window))
+                .is_some_and(|window| window.session == session)
         })
-        .copied()
         .collect()
 }
 
@@ -35710,7 +35101,6 @@ impl Client {
 struct ServerState {
     border_cycle: parking_lot::Mutex<BTreeSet<ClientId>>,
     clients: BTreeMap<ClientId, Box<Client>>,
-    agent_states: Arc<BTreeMap<PaneId, zz_protocol::AgentPaneWire>>,
     engine: MuxEngine,
     cold_bootstrap: ColdBootstrapLease,
     last_published_mux_generation: u64,
@@ -35742,7 +35132,7 @@ struct ServerState {
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
     #[cfg(feature = "agent")]
-    subagent_feeds: subagent_feeds::SubagentFeeds,
+    lens_panes: BTreeSet<PaneId>,
     artifacts: artifacts::Artifacts,
     artifacts_watching: bool,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
@@ -37830,7 +37220,6 @@ impl ChooseTreeSession {
                             Some(ChooseTreePaneKind::Browser),
                             format!("Browser · {} · {}", browser.profile, browser.url()),
                         ),
-                        PaneKind::Agent(_) => (Some(ChooseTreePaneKind::Agent), "Agent".to_owned()),
                         PaneKind::Editor(editor) => (
                             Some(ChooseTreePaneKind::Editor),
                             editor.path.as_ref().map_or_else(
@@ -46509,11 +45898,7 @@ fn resolve_input_sinks(inner: &ServerState, source: PaneId) -> Result<Vec<PaneSi
         }
         if matches!(
             inner.engine.state.pane(pane).map(|pane| &pane.kind),
-            Some(
-                zz_mux::PaneKind::Picker { .. }
-                    | zz_mux::PaneKind::Agent(_)
-                    | zz_mux::PaneKind::Editor(_)
-            )
+            Some(zz_mux::PaneKind::Picker { .. } | zz_mux::PaneKind::Editor(_))
         ) {
         } else if let Some(terminal) = inner.terminals.get(&pane) {
             sinks.push(PaneSink::Terminal(Arc::clone(terminal)));
@@ -46594,11 +45979,7 @@ fn visible_terminal_panes(
     window
         .panes
         .iter()
-        .filter(|(pane, entry)| {
-            window.pane_is_visible(**pane)
-                && inner.terminals.contains_key(pane)
-                && !matches!(entry.kind, PaneKind::Agent(_))
-        })
+        .filter(|(pane, _)| window.pane_is_visible(**pane) && inner.terminals.contains_key(pane))
         .map(|(pane, _)| *pane)
         .collect()
 }
@@ -46728,9 +46109,7 @@ fn control_route_panes(inner: &ServerState, client: ClientId) -> BTreeSet<PaneId
         .iter()
         .filter_map(|window| inner.engine.state.windows.get(window))
         .flat_map(|window| window.panes.iter())
-        .filter(|(pane, entry)| {
-            !matches!(entry.kind, PaneKind::Agent(_)) && inner.terminals.contains_key(pane)
-        })
+        .filter(|(pane, _)| inner.terminals.contains_key(pane))
         .map(|(pane, _)| *pane)
         .collect()
 }
@@ -46923,11 +46302,7 @@ fn visible_agent_panes(
         .keys()
         .filter(|pane| {
             window.zoomed_pane.is_none_or(|zoomed| **pane == zoomed)
-                && inner
-                    .engine
-                    .state
-                    .pane(**pane)
-                    .is_some_and(|pane| matches!(pane.kind, PaneKind::Agent(_)))
+                && inner.lens_panes.contains(*pane)
         })
         .copied()
         .collect()
@@ -48377,7 +47752,6 @@ struct LazyDerivedFormatFacts {
 struct BorrowedFormatHookFacts<'a> {
     client_fields: ClientFormatFields<'a>,
     paste_buffers: &'a [PasteBuffer],
-    agent_states: &'a BTreeMap<PaneId, zz_protocol::AgentPaneWire>,
     terminals: &'a BTreeMap<PaneId, Arc<TerminalSession>>,
     pane_pipes: &'a BTreeMap<PaneId, PanePipe>,
     attached: &'a BTreeMap<SessionId, BTreeSet<ClientId>>,
@@ -48441,9 +47815,6 @@ fn pane_in_mode_count_from_parts(
 }
 
 impl crate::status::FormatFactSource for BorrowedFormatHookFacts<'_> {
-    fn agent_states(&self) -> &BTreeMap<PaneId, zz_protocol::AgentPaneWire> {
-        self.agent_states
-    }
     fn terminals(&self) -> &BTreeMap<PaneId, Arc<TerminalSession>> {
         self.terminals
     }
@@ -48631,7 +48002,6 @@ fn split_borrowed_format_hook_facts(
 ) -> (&mut MuxEngine, BorrowedFormatHookFacts<'_>) {
     let ServerState {
         engine,
-        agent_states,
         attached,
         clients,
         client_flags,
@@ -48645,7 +48015,6 @@ fn split_borrowed_format_hook_facts(
         ..
     } = inner;
     let facts = BorrowedFormatHookFacts {
-        agent_states,
         terminals,
         pane_pipes,
         attached,
@@ -48675,7 +48044,6 @@ fn readonly_borrowed_format_hook_facts(
     BorrowedFormatHookFacts {
         client_fields: ClientFormatFields::from_inner(inner),
         paste_buffers: &inner.paste_buffers,
-        agent_states: &inner.agent_states,
         terminals: &inner.terminals,
         pane_pipes: &inner.pane_pipes,
         attached: &inner.attached,
@@ -48728,7 +48096,6 @@ thread_local! {
 struct StatusFactSelection {
     full: bool,
     mux: bool,
-    agent_states: bool,
     terminals: bool,
     pane_pipes: bool,
     session_attachments: bool,
@@ -48751,10 +48118,8 @@ impl StatusFactSelection {
                     selection.full = true;
                     return selection;
                 }
-                "pane_kind" | "browser_url" => selection.mux = true,
-                "agent_state" | "agent_pending_permission" => {
+                "pane_kind" | "browser_url" | "agent_state" | "agent_pending_permission" => {
                     selection.mux = true;
-                    selection.agent_states = true;
                 }
                 "pane_search_string"
                 | "history_size"
@@ -48843,9 +48208,6 @@ fn selected_status_format_facts_with_selection(
     if selection.mux {
         facts.mux = Arc::new(inner.engine.format_facts());
     }
-    if selection.agent_states {
-        facts.agent_states = Arc::clone(&inner.agent_states);
-    }
     if selection.terminals {
         facts.terminals = Arc::clone(&inner.terminals);
     }
@@ -48880,7 +48242,6 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
     #[cfg(test)]
     OWNED_FORMAT_FACT_BUILDS.with(|count| count.set(count.get() + 1));
     FormatHookFacts {
-        agent_states: Arc::clone(&inner.agent_states),
         mux: Arc::new(inner.engine.format_facts()),
         copy_modes: Arc::new(copy_mode_format_facts(inner)),
         pane_modes: Arc::new(pane_mode_format_facts(inner)),
@@ -52619,14 +51980,14 @@ pub fn workspace_tools(args: &[RawText]) -> Result<String, ServerError> {
 
 const WORKSPACE_TOOLS_FRONTMATTER: &str = r"---
 name: zz-workspace
-description: Drive the surrounding zz workspace from inside a zz Agent pane using the `zz` CLI to send text or piped output to another agent's composer, read a terminal pane's scrollback, screenshot a browser pane, navigate a browser, and route a failing command's output to an agent. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
+description: Drive the surrounding zz workspace from inside a zz pane using the `zz` CLI to send text or piped output to an agent running in another pane, read a terminal pane's scrollback, screenshot a browser pane, navigate a browser, and route a failing command's output to an agent. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
 ---
 
 ";
 
 pub const WORKSPACE_STUB_SKILL: &str = r#"---
 name: zz-workspace
-description: Drive the surrounding zz workspace (panes, windows, terminal output, agent and browser panes, other machines) with the `zz` CLI. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
+description: Drive the surrounding zz workspace (panes, windows, terminal output, agents, browser panes, other machines) with the `zz` CLI. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
 metadata:
   zz-stub: "1"
 ---
@@ -52686,15 +52047,15 @@ macro_rules! workspace_tools_sections {
 workspace_tools_sections! {
     WORKSPACE_TOOLS_HEAD = r"# Workspace tools
 
-Drive terminal, browser, and Agent panes through the `zz` CLI. Run `zz tools`
+Drive terminal and browser panes, and the agents in them, through the `zz` CLI. Run `zz tools`
 for the full catalog or `zz tools agent` for agent verbs. Run `zz tools --skill`
 for the agent guide with skill frontmatter. Regenerate it with `just tools skill`.
 Run `zz tools terminal` for terminal verbs, `zz tools browser` for browser verbs,
 and `zz tools advanced` for state subscriptions and terminal-agent integration.
 `zz tools --context` prints the short startup context for the calling pane.
-Agent panes get it without a hook; run `zz tools --install-hooks` once so
-Claude Code and Codex started by hand in a terminal pane get it too, and
-`zz tools --remove-hooks` to take the hook and stub skill out again. Codex
+Run `zz tools --install-hooks` once so Claude Code and Codex started in a
+terminal pane get it, and `zz tools --remove-hooks` to take the hook and stub
+skill out again. Codex
 skips a new or changed hook until you approve it with `/hooks` in Codex.
 The install also adds each agent's own allow rule for `zz` (Claude Code's
 `Bash(zz:*)`, a Codex `rules/zz.rules` file), so `zz` commands run without
@@ -52729,9 +52090,9 @@ Run `zz <verb> --help` for options, or `zz list-commands [verb]` for usage.
 `zz` without a verb attaches the terminal UI (`new-session -A`); with `--host NAME`, on that host.
 Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 
-`#{pane_kind}` is `terminal`, `agent`, `browser`, `editor`, or `picker`.
+`#{pane_kind}` is `terminal`, `browser`, `editor`, or `picker`.
 `#{pane_last_command_status}` is the last completed command's exit code, or empty
-when unknown; terminal and Agent panes report it from OSC 133 marks.
+when unknown; terminal panes report it from OSC 133 marks.
 `#{@name}` reads a user option from pane, window, session, then global scope.
 
 ## Remote hosts
@@ -52775,10 +52136,10 @@ mapping option names to value strings in the selected scope. Combining `-F` and
 | 1 | Command failure, a stopped agent turn, missing daemon, connection loss, or a tmux-compatible usage error (including an unknown command). |
 | 2 | Usage error in a zz-native verb or extension: invalid flag, missing argument, or malformed value. |
 | 3 | Blocked or unable to answer now, including `agent-send --on-block fail`; for `run-pane`, nothing ran and a retry is safe. |
-| 124 | Wait timed out, including `wait-pane --exit`, `agent-send`, and `new-agent-session`; a child may also return 124. |
+| 124 | Wait timed out, including `wait-pane --exit` and `agent-send`; a child may also return 124. |
 | 125 | `run-pane` typed the command and it was still running at the timeout, or its child returned 125; the timeout writes a diagnostic to stderr. |
 
-For `wait-pane`, `run-pane`, `send-text`, `agent-send`, and `new-agent-session`,
+For `wait-pane`, `run-pane`, `send-text`, and `agent-send`,
 `--timeout` takes seconds, accepts fractions such as 0.5, and 0 waits forever.
 
 Tmux-compatible commands keep the pin’s exit status, including 1 for parse and usage errors.
@@ -52787,62 +52148,34 @@ The error’s source determines the status: `list-panes -Z` exits 1, while zz’
 Commands that set an explicit exit code keep that code.
 
 ";
-    WORKSPACE_TOOLS_AGENT = r#"## Agent panes
+    WORKSPACE_TOOLS_AGENT = r#"## Agents
 
-### `zz split-window --kind agent [-h | -v] [-t %N] [-P] [-F FORMAT] [--provider codex|claude-code] [-c DIR]`
-
-Split a pane to start an agent; `-t %N` chooses the pane to split and `-c DIR` sets the new pane's cwd.
-Print nothing unless `-P` requests the new pane ID; `-F` changes its format.
-`zz new-window --kind agent [--provider P] [-n NAME]` opens one in its own window.
-
-The providers are `codex` and `claude-code` (`claude` accepted). Choose one with `zz split-window --kind agent --provider <provider>`. The daemon spawns each provider through the `agent-command` or `agent-claude-code-command` option. Claude Code runs the user's own `claude` over its stream-json protocol and Codex runs the user's own `codex` through `codex app-server`; a command whose program is neither runs as an ACP adapter. The model, reasoning effort, and approval policy come from the adapter's own configuration: `~/.codex/config.toml` for Codex or Claude Code's own settings. `zz` does not set them.
+Agents run as their own CLIs in terminal panes: start Claude Code or Codex in a pane, for example `zz split-window -h claude`. The desktop and web clients draw a lens over a terminal running either one, its timeline in place of the cell grid, switched from the pane header. The lens reads the transcript the CLI writes and types into the CLI, so the terminal stays the source of truth.
 
 ### `zz agent-send [-t %N] [--submit | --notify | --wait [--progress] [--timeout SECS] [--on-block wait|fail|allow|deny] [--json | --final]] [--context PATH[:START[-END]]] [TEXT]`
 
-Draft into another Agent pane's composer for its user to review; that needs an app window showing the pane's session, otherwise use `--submit` or `--wait`.
-Print `appended to the composer in %N` when drafted. An omitted or non-agent target routes to that window's most recently focused Agent pane. Read stdin when TEXT is omitted: `git diff | zz agent-send`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
+Send TEXT to the agent running in a terminal pane: Claude Code through its peer socket, Codex through `codex queue`, otherwise typed into its input, with Enter only when `--submit` is given. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
 
-`--submit` sends now and prints the chosen pane; a busy pane queues the prompt. `--notify` submits from inside an agent pane and, when the target's turn ends, posts its reply back into the calling pane as a prompt, queued behind that pane's own turn. `--wait` submits, waits for that turn, and prints its reply on stdout (pane ID on stderr). Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` answers tool permissions, preferring allow-once, and waits for user questions. `--on-block deny` rejects permissions, including user questions.
+`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` go through the pane's lens: TEXT is typed into the CLI, and the transcript tells when the turn ends. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A pane running neither Claude Code nor Codex falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves a Claude Code permission prompt and `--on-block deny` rejects it, with the keys its dialog takes. Codex approvals are answered in its terminal.
 
-Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts tool calls the pane saw, including runtime-approved reads; permission counters count only requests that reached the pane. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
-
-### `zz new-agent-session [-t %N] [-c DIR] [--timeout SECS]`
-
-Start a fresh conversation in an agent pane.
-Use `-c` to choose its absolute working directory; otherwise use the pane's current directory. Wait until the new session can accept a prompt, then exit 0 without printing anything. Drop queued prompts from the old session. Creation failures exit 1 with a message. The timeout accepts decimal seconds, defaults to 60 seconds, and exits 124; `0` waits forever. A timeout leaves the session change running. Other pane kinds exit 1 with `not an agent pane: %N`.
-
-### `zz restart-agent-pane [-t %N]`
-
-Restart the agent pane's agent process and resume its current session.
-Print nothing on success. Use `zz new-agent-session` for a fresh conversation.
+Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts tool calls the transcript showed; permission counters count only requests that reached the lens. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
 ### `zz agent-respond [-t %N] (--allow | --deny | --option ID) [REQUEST_ID]`
 
-Answer the named or oldest pending permission. Read the pending request with `zz inspect -t %N --json | jq .permission`.
-Print the chosen option ID. `--allow` prefers allow-once; `--deny` selects a reject option, or dismisses a question card that has none and prints `dismissed`. Use `--option ID` to choose an advertised option by ID, including an answer to a user question.
+Answer the named or oldest pending permission in a pane whose lens is open, in a desktop or web client or through a running `agent-send --wait`. Read the pending request with `zz inspect -t %N --json | jq .permission`.
+Print the chosen option ID. `--allow` approves once and `--deny` rejects. Other panes exit 1 with `has no agent lens open`.
 
 ### Permissions
 
-Choose `off`, `reads` (the default), or `all` for `agent-auto-approve`. With `reads`, the daemon answers ACP tool requests whose kind is `read`. With `all`, it answers requests with any tool kind. With `off`, it sends permission requests to the pane. Requests without a tool kind still need an answer when you use `reads` or `all`.
-
-With `reads` or `all`, Claude Code and Codex panes also run, without asking, a shell command made of `zz` calls, piped only into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, joined only with `cd`, `echo`, `printf` or `sleep`, and redirected only with `2>&1` or `>/dev/null`. Claude Code panes also start with Claude's own `Bash(zz:*)` allow rule, unless the tier is `off` or `agent-claude-code-command` sets allowed tools; Claude's rule also covers loops. Codex's sandbox blocks the daemon socket, so a `zz` command there fails with "Operation not permitted" until Codex reruns it with escalated permissions; that rerun is approved the same way.
-
-Set `@agent-auto-approve` at pane, window, session, or global scope, in that order of precedence. If no user option applies, use the server option `agent-auto-approve`. Invalid values leave the pane's effective tier unchanged and log a warning.
-
-```sh
-zz set-option -p -t %N @agent-auto-approve all
-zz set-option -g agent-auto-approve reads
-```
-
-Changes apply live to running agent panes. Use `agent-send --on-block` for per-turn permission handling. Configure content-level policy, such as which shell commands may run, in the adapter's own settings: Codex `approval_policy` or Claude Code permission settings.
+Terminal agents keep their own permission settings: Codex `approval_policy`, Claude Code permission rules. `zz tools --install-hooks` adds a rule that lets both run `zz` without asking.
 
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; terminal panes with a nonempty `agent_state` also include `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; terminal panes with a nonempty `agent_state` also include `agent-send`, and panes with an open lens `agent-respond`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
-zz inspect -a --json | jq -c 'select(.pane_kind=="agent") | {pane_id,agent_state}'
+zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
 ```
 
 The keys, in text output order, are `session_id`, `session_name`, `window_id`, `window_index`, `window_name`, `window_width`, `window_height`, `window_size`, `pane_id`, `pane_index`, `pane_active`, `pane_kind`, `pane_pid`, `pane_current_command`, `pane_current_path`, `pane_title`, `pane_width`, `pane_height`, `pane_dead`, `pane_dead_status`, `pane_dead_signal`, `pane_last_command_status`, `pane_pb_state`, `pane_pb_progress`, `pane_status`, `pane_status_kind`, `pane_status_progress`, `pane_status_app`, `pane_status_title`, `pane_status_message`, `pane_status_raw_title`, `pane_status_raw_message`, `pane_status_reported`, `agent_state`, `agent_pending_permission`, `permission`, `browser_url`, `verbs`, `events`.
@@ -52852,7 +52185,7 @@ The keys, in text output order, are `session_id`, `session_name`, `window_id`, `
 ### `zz events [-t %N]`
 
 Stream hook events.
-Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string. Agent panes also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
+Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string. Terminal panes with an open lens also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
 
 "#;
     WORKSPACE_TOOLS_TERMINAL = r#"## Terminal panes
@@ -52923,21 +52256,20 @@ Print nothing on success.
 
 ### `zz capture-pane -p -t %N [-S -] [-E -] [-J]`
 
-Print a terminal or Agent pane's text to stdout. `-S -`/`-E -` include the whole scrollback;
-`-J` rejoins soft-wrapped lines. An Agent pane shows each tool call as `[tool] TITLE`, or
-`[tool failed] TITLE`.
+Print a terminal pane's text to stdout. `-S -`/`-E -` include the whole scrollback;
+`-J` rejoins soft-wrapped lines.
 
 ### `zz show-last-output -t %N`
 
 Print that last command and output under a `%N $ command` header, with the same
-OSC 133 requirement and caps, soft-wrapped lines joined. For an Agent pane, read its last
-prompt and reply. When known, an `exit: <n>` line follows the header, or `exit: running`
+OSC 133 requirement and caps, soft-wrapped lines joined. When known, an `exit: <n>` line follows the header, or `exit: running`
 while it runs; after a run-pane the header shows the command it ran.
 
 ### `zz send-last-output -t %N`
 
-Send the last completed command and output to the window's most recently focused
-Agent pane. The default binding is `<prefix> e`. Requires OSC 133 prompt marks;
+Type the last completed command and output into the input of the window's most
+recently focused terminal running Claude Code or Codex, without pressing Enter.
+The default binding is `<prefix> e`. Requires OSC 133 prompt marks;
 the bundled Bash/zsh integration emits them, with best-effort PowerShell support.
 Output is capped at 200 lines or 256 KiB with a truncation note.
 
@@ -52945,7 +52277,7 @@ Print `sent the last command from %N to %M` with the source and recipient pane I
 
 ### `zz pipe-pane [-o] -t %N [COMMAND]`
 
-Pipe pane output to COMMAND, including an Agent pane's transcript. `-o` starts a pipe only when none exists.
+Pipe pane output to COMMAND. `-o` starts a pipe only when none exists.
 Print nothing; omit COMMAND to close the pipe.
 
 ```sh
@@ -52989,8 +52321,7 @@ and look again. A file serves only itself; a directory also serves the files und
 names that start with `.`. Pages can load scripts from CDNs. `--float` opens a floating pane.
 `-t %N` reloads that pane if `zz html` opened it, otherwise opens the page beside it. With
 `--reply` the page can call `zz.reply(text)`, which sends the text to your pane. Print the page
-URL and the new pane. In an Agent pane, a small page can go in your reply instead, as a fenced
-block opened with ```html preview: the pane shows it rendered in place. Over `--host`, PATH
+URL and the new pane. Over `--host`, PATH
 is read on that host; send a local page with `zz --host NAME html -t %N - < page.html`.
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
@@ -53047,7 +52378,7 @@ Run `zz tools advanced` for state subscriptions and terminal-agent integration.
 
 ### State and waiting
 
-Read native Agent state and the pending permission ID through formats.
+Read agent state through formats.
 A terminal pane whose program reports OSC 7501 program status gets its most urgent
 record mapped into `@agent_state`: `working`, `blocked`, `failed` for `error`, and
 `idle` for `idle`, `done`, or no record. Once a pane has reported, the two heuristics
@@ -53070,7 +52401,6 @@ the pane bell; use `zz set-hook -g alert-bell 'display-message "agent needs atte
 For foreign agents, read `@agent_state` with `zz show-options -p -t %5 -v @agent_state`.
 Use `zz agent-send -t %5 --wait "..."` to send and wait for a turn, and use the
 lifecycle hooks below to write the state. For transitions you did not cause,
-`zz wait-for agent_state@%N` observes native Agent state and
 `zz wait-for '@agent_state@%5'` observes a terminal's option writes; read the state
 after waking.
 `zz set-hook -g @option-changed` observes user-option writes.
@@ -53094,7 +52424,9 @@ refresh-client -B 'agent:%5:#{agent_state}'
 A terminal pane running Claude Code with cross-session messaging is a valid
 target. Plain sends and `--submit` deliver through Claude Code's inbox between
 its tool calls, attributed to your pane, or start a turn when it is idle.
-`--wait` prints the session's reply and exits non-zero if Claude Code refuses,
+`--wait` types into the pane through its lens instead and prints the turn's reply.
+When the pane's program is not recognized as Claude Code, `--wait` uses the inbox:
+it prints the session's reply and exits non-zero if Claude Code refuses,
 expires, or drops the message, the session exits, or the timeout passes. Held
 and delivered status updates keep the wait open. A plain send carries no reply
 address unless you are a registered peer: a caller that needs the answer uses
@@ -53107,11 +52439,11 @@ and `--submit` both queue the message and print the pane ID for command clients.
 A fresh session has no name until its first prompt; `/rename` inside Codex resolves
 a name collision.
 
-For a terminal pane without a peer reply channel, `--wait` requires a non-empty
-`@agent_state` and uses the existing terminal delivery path. It waits for a
+For a terminal pane running neither Claude Code nor Codex and without a peer
+reply channel, `--wait` requires a non-empty `@agent_state` and types the text. It waits for a
 non-idle state followed by `idle`, and prints nothing on success in text mode.
-`--json` prints turn facts with empty reply text. On a terminal pane, `--final` and
-`--on-block allow|deny` exit 2 before sending; these flags need an agent pane. A pane that
+`--json` prints turn facts with empty reply text. There, `--final`, `--notify` and
+`--on-block allow|deny` exit 2 before sending. A pane that
 starts idle must leave idle within 15 seconds; otherwise it exits 124. The overall
 `--timeout` also exits 124. `failed` exits 1; `blocked` waits unless `--on-block fail`
 requests exit 3. A missing `@agent_state` exits 1 before sending.
@@ -53120,11 +52452,7 @@ Terminal waits report their known duration and reply text with zero counters.
 
 ### Peers
 
-Agent panes register as Claude Code peers under their `@name` user option
-(default `zz-%N`). `ListAgents` in any Claude Code session lists them, and
-`SendMessage` queues a prompt into the pane while its adapter runs. Claude
-Code refuses idle subscriptions to these peers. Use
-`zz agent-send -t %N --wait "..."` to send and wait for a turn. Peers are per
+Use `zz agent-send -t %N --wait "..."` to send and wait for a turn. Peers are per
 machine: for an agent on another host, use `zz --host NAME agent-send -t %N --wait "..."`.
 
 A terminal pane becomes a peer when you set its pane `@name` option:
@@ -53137,7 +52465,7 @@ terminal sessions keep their own registration.
 
 ### Foreign agents in terminal panes
 
-A terminal CLI agent has no ACP stream. Configure its lifecycle hooks (Stop,
+A terminal agent other than Claude Code or Codex has no lens. Configure its lifecycle hooks (Stop,
 Notification, or equivalent) to write a pane option:
 
 ```sh
@@ -53153,7 +52481,7 @@ Use `#{hook_target}` and `#{hook_option}` to identify the write.
 "##;
     WORKSPACE_TOOLS_ETIQUETTE = r"## Etiquette
 
-- Draft into another person's Agent pane; use `--submit` only for an authorized hand-off.
+- Send to another person's agent only for an authorized hand-off.
 - Do not send to `$ZZ_PANE`.
 - Trim piped logs to the part the recipient needs.
 
@@ -55575,7 +54903,7 @@ mod tests {
     }
 
     #[test]
-    fn popup_geometry_uses_the_clients_terminal_metrics_when_an_agent_is_active() {
+    fn popup_geometry_uses_the_clients_terminal_metrics_when_a_browser_is_active() {
         let shared = Shared::new(1);
         let mut inner = shared.inner.lock();
         let (session, window, terminal) =
@@ -55586,7 +54914,10 @@ mod tests {
             .split_pane(
                 terminal,
                 zz_protocol::Axis::Horizontal,
-                PaneKind::Agent(zz_protocol::AgentDescriptor::default()),
+                PaneKind::Browser(zz_protocol::BrowserDescriptor::single(
+                    "about:blank".to_owned(),
+                    "default".to_owned(),
+                )),
             )
             .unwrap();
         inner
@@ -77055,75 +76386,6 @@ set-option -g @alias-mixed-next yes
     }
 
     #[test]
-    fn pushed_experimental_pane_override_unlocks_agent_materialization() {
-        let shared = Arc::new(Shared::new(51));
-        let mut context = ExecutionContext::default();
-        shared
-            .execute(
-                ClientId(3),
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("new-session", ["-d", "-s", "gated"]),
-            )
-            .expect("session");
-        shared
-            .execute(
-                ClientId(3),
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
-            )
-            .expect("picker");
-        let picker = context.pane.expect("picker");
-        let report = shared.apply_mux_config_overrides(
-            &[("experimental-agent-pane".to_owned(), "false".to_owned())],
-            "test-experimental-lock",
-        );
-        assert_eq!(report.applied, 1);
-
-        let gated = shared.execute(
-            ClientId(3),
-            ClientKind::Interactive,
-            &mut context,
-            &CommandInvocation::new("select-pane-kind", ["-t", &picker.to_string(), "agent"]),
-        );
-        assert!(matches!(
-            gated,
-            Err(DaemonError::Server(ServerError::InvalidCommand(message)))
-                if message.contains("experimental-agent-pane")
-        ));
-
-        let report = shared.apply_mux_config_overrides(
-            &[("experimental-agent-pane".to_owned(), "true".to_owned())],
-            "test-experimental-unlock",
-        );
-        assert_eq!(report.applied, 1);
-        assert!(report.diagnostics.is_empty(), "{:#?}", report.diagnostics);
-
-        shared
-            .execute(
-                ClientId(3),
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("select-pane-kind", ["-t", &picker.to_string(), "agent"]),
-            )
-            .expect("agent materializes once the override lands");
-        let inner = shared.inner.lock();
-        assert!(matches!(
-            inner.engine.state.pane(picker).map(|pane| &pane.kind),
-            Some(PaneKind::Agent(_))
-        ));
-        assert_eq!(
-            inner
-                .mux_options
-                .get(MuxOptionKey::ExperimentalAgentPane)
-                .expect("option present")
-                .value,
-            "on"
-        );
-    }
-
-    #[test]
     fn mux_option_source_tracks_default_tmux_override_and_runtime_writers() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let tmux_config = directory.path().join("source-tiers.conf");
@@ -79607,13 +78869,7 @@ set-option -g @alias-mixed-next yes
 
     #[test]
     fn terminal_timeout_contract_uses_fractional_seconds() {
-        for verb in [
-            "wait-pane",
-            "run-pane",
-            "send-text",
-            "agent-send",
-            "new-agent-session",
-        ] {
+        for verb in ["wait-pane", "run-pane", "send-text", "agent-send"] {
             for (value, expected) in [
                 ("0", Duration::ZERO),
                 ("0.5", Duration::from_millis(500)),
@@ -79689,17 +78945,13 @@ set-option -g @alias-mixed-next yes
     fn agent_send_rejects_agent_only_flags_before_terminal_delivery() {
         let (shared, client, target) =
             send_text_fixture("agentflags", "printf 'zz-ready\\r\\n'; exec /bin/cat");
-        for (flags, message) in [
-            (vec!["--final"], "agent-send: --final needs an agent pane"),
-            (
-                vec!["--on-block", "allow"],
-                "agent-send: --on-block allow|deny needs an agent pane",
-            ),
-            (
-                vec!["--on-block", "deny"],
-                "agent-send: --on-block allow|deny needs an agent pane",
-            ),
+        for (flags, flag) in [
+            (vec!["--final"], "--final"),
+            (vec!["--on-block", "allow"], "--on-block allow|deny"),
+            (vec!["--on-block", "deny"], "--on-block allow|deny"),
         ] {
+            let message =
+                format!("agent-send: {flag} needs Claude Code or Codex running in {target}");
             let mut args = vec!["-t", &target, "--wait"];
             args.extend(flags);
             args.push("must-not-arrive");
@@ -85001,7 +84253,6 @@ set-option -g @alias-mixed-next yes
             "events",
             "capture-pane",
             "agent-send",
-            "new-agent-session",
             "agent-respond",
             "send-last-output",
             "show-last-output",
@@ -85020,7 +84271,6 @@ set-option -g @alias-mixed-next yes
             "list-hosts",
         ];
         const MUX_VERBS: &[&str] = &[
-            "restart-agent-pane",
             "set-hook",
             "set-option",
             "show-options",
@@ -85157,7 +84407,7 @@ set-option -g @alias-mixed-next yes
     fn tools_catalog_sections_include_only_the_selected_concern() {
         let shared = Arc::new(Shared::new(1));
         let sections = [
-            ("agent", "## Agent panes"),
+            ("agent", "## Agents"),
             ("terminal", "## Terminal panes"),
             ("browser", "## Browser panes"),
             ("advanced", "## Advanced state"),
@@ -85427,7 +84677,7 @@ set-option -g @alias-mixed-next yes
         }
         assert_eq!(spellings, 166);
         assert_eq!(diagnostic_cases, 664);
-        assert_eq!(required_cases, 484);
+        assert_eq!(required_cases, 478);
 
         let mut prefix_cases = 0;
         for spec in &specs {
@@ -85760,19 +85010,15 @@ set-option -g @alias-mixed-next yes
             Ok(())
         }))));
         let mut context = ExecutionContext::default();
-        for command in [
-            CommandInvocation::new("new-session", ["-s", "tool-events"]),
-            CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            CommandInvocation::new("split-window", ["--kind", "picker"]),
-            CommandInvocation::new("select-pane-kind", ["agent"]),
-        ] {
-            shared
-                .inner
-                .lock()
-                .engine
-                .execute(&mut context, &command)
-                .unwrap();
-        }
+        shared
+            .inner
+            .lock()
+            .engine
+            .execute(
+                &mut context,
+                &CommandInvocation::new("new-session", ["-s", "tool-events"]),
+            )
+            .unwrap();
         let pane = context.pane.unwrap();
         let mailbox = OutboundMailbox::new();
         let (control, _) =
@@ -85782,7 +85028,7 @@ set-option -g @alias-mixed-next yes
         assert!(runtime.open(
             pane,
             AgentPaneSpec {
-                feed: None,
+                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
@@ -85799,27 +85045,19 @@ set-option -g @alias-mixed-next yes
         ));
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut events = Vec::new();
-        let mut working = false;
-        let mut finished = false;
-        while Instant::now() < deadline && !finished {
+        while Instant::now() < deadline && events.len() < 4 {
             for message in take_reliable_messages(&mailbox) {
                 if let ProtocolMessage::Event(Event {
                     payload: EventPayload::HookEvent { name, variables },
                     ..
                 }) = message
+                    && name == "agent-tool-call"
                 {
-                    if name == "agent-tool-call" {
-                        events.push(variables);
-                    } else if name == "agent-state-changed" {
-                        working |= variables["agent_state"] == "working";
-                        finished |= working && variables["agent_state"] == "idle";
-                    }
+                    events.push(variables);
                 }
             }
             std::thread::sleep(Duration::from_millis(2));
         }
-        shared.shutdown_agents();
-        assert!(finished, "fixture turn did not finish");
         assert_eq!(events.len(), 4);
         for (event, id, status) in [
             (&events[0], "one", "pending"),
@@ -85853,249 +85091,7 @@ set-option -g @alias-mixed-next yes
                 .unwrap()
                 .contains(&"agent-tool-call".into())
         );
-    }
-
-    #[cfg(feature = "agent")]
-    #[test]
-    fn agent_state_changes_publish_the_hook_event_for_agent_panes() {
-        let shared = Arc::new(Shared::new(1));
-        let mut context = ExecutionContext::default();
-        {
-            let mut inner = shared.inner.lock();
-            for command in [
-                CommandInvocation::new("new-session", ["-s", "agent-events"]),
-                CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-                CommandInvocation::new("split-window", ["--kind", "picker"]),
-                CommandInvocation::new("select-pane-kind", ["agent"]),
-            ] {
-                inner
-                    .engine
-                    .execute(&mut context, &command)
-                    .expect("mux setup");
-            }
-        }
-        let pane = context.pane.expect("agent");
-        let mailbox = OutboundMailbox::new();
-        let (control, _) =
-            shared.register_subscribed(ClientKind::Control, None, None, Arc::clone(&mailbox));
-        shared
-            .attach(control, context.session.expect("session"))
-            .expect("attach");
-        take_reliable_messages(&mailbox);
-        for (phase, permission, expected) in [
-            (zz_protocol::AgentConnectionPhase::Running, None, "working"),
-            (zz_protocol::AgentConnectionPhase::Ready, None, "idle"),
-            (zz_protocol::AgentConnectionPhase::Ready, Some(7), "idle"),
-            (zz_protocol::AgentConnectionPhase::Ready, None, "idle"),
-        ] {
-            let state = AgentPaneWire {
-                phase,
-                pending_permission: permission.map(|request_id| zz_protocol::AgentPermissionWire {
-                    request_id,
-                    payload: "{}".to_owned(),
-                }),
-                ..AgentPaneWire::default()
-            };
-            shared.publish_agent_state(pane, state.clone());
-            let events = take_reliable_messages(&mailbox)
-                .into_iter()
-                .filter_map(|message| match message {
-                    ProtocolMessage::Event(Event {
-                        payload: EventPayload::HookEvent { name, variables },
-                        ..
-                    }) if name == "agent-state-changed" => Some(variables),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            assert_eq!(events.len(), 1);
-            assert_eq!(events[0]["hook_pane"], pane.to_string());
-            assert_eq!(events[0]["agent_state"], expected);
-            assert_eq!(
-                events[0]["agent_pending_permission"],
-                permission.map(|id| id.to_string()).unwrap_or_default()
-            );
-            shared.publish_agent_state(pane, state);
-            assert!(
-                !take_reliable_messages(&mailbox)
-                    .iter()
-                    .any(|message| matches!(message,
-                        ProtocolMessage::Event(Event {
-                            payload: EventPayload::HookEvent { name, .. }, ..
-                        }) if name == "agent-state-changed"
-                    ))
-            );
-        }
-    }
-
-    #[cfg(feature = "agent")]
-    #[test]
-    fn agent_state_formats_reach_commands_and_control_subscriptions() {
-        let shared = Arc::new(Shared::new(1));
-        let mut context = ExecutionContext::default();
-        {
-            let mut inner = shared.inner.lock();
-            for command in [
-                CommandInvocation::new("new-session", ["-s", "agent-formats"]),
-                CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-                CommandInvocation::new("split-window", ["--kind", "picker"]),
-                CommandInvocation::new("select-pane-kind", ["agent"]),
-            ] {
-                inner
-                    .engine
-                    .execute(&mut context, &command)
-                    .expect("mux setup");
-            }
-        }
-        let pane = context.pane.expect("agent");
-        let target = pane.to_string();
-        let mailbox = OutboundMailbox::new();
-        let (control, _) =
-            shared.register_subscribed(ClientKind::Control, None, None, Arc::clone(&mailbox));
-        shared
-            .attach(control, context.session.expect("session"))
-            .expect("attach");
-        shared
-            .execute(
-                control,
-                ClientKind::Control,
-                &mut context,
-                &CommandInvocation::new(
-                    "refresh-client",
-                    ["-B", &format!("agent:{pane}:#{{agent_state}}")],
-                ),
-            )
-            .expect("subscribe");
-        for (phase, expected) in [
-            (zz_protocol::AgentConnectionPhase::Running, "working"),
-            (zz_protocol::AgentConnectionPhase::Ready, "idle"),
-        ] {
-            shared.publish_agent_state(
-                pane,
-                AgentPaneWire {
-                    phase,
-                    ..AgentPaneWire::default()
-                },
-            );
-            let display = shared
-                .execute(
-                    control,
-                    ClientKind::Control,
-                    &mut context,
-                    &CommandInvocation::new(
-                        "display-message",
-                        [
-                            "-p",
-                            "-t",
-                            &target,
-                            "#{agent_state}:#{agent_pending_permission}",
-                        ],
-                    ),
-                )
-                .expect("display state");
-            assert_eq!(display.output, format!("{expected}:"));
-            let panes = shared
-                .execute(
-                    control,
-                    ClientKind::Control,
-                    &mut context,
-                    &CommandInvocation::new("list-panes", ["-F", "#{pane_id}:#{agent_state}"]),
-                )
-                .expect("list state");
-            assert!(
-                panes
-                    .output
-                    .lines()
-                    .any(|line| line == format!("{pane}:{expected}"))
-            );
-            shared.refresh_control_subscriptions();
-            assert!(take_reliable_messages(&mailbox).iter().any(|message| matches!(message,
-                ProtocolMessage::Event(Event { payload: EventPayload::SubscriptionChanged { name, value, .. }, .. })
-                    if name == "agent" && value == expected
-            )));
-            shared.publish_agent_state(
-                pane,
-                AgentPaneWire {
-                    phase: if expected == "working" {
-                        zz_protocol::AgentConnectionPhase::Running
-                    } else {
-                        zz_protocol::AgentConnectionPhase::Ready
-                    },
-                    ..AgentPaneWire::default()
-                },
-            );
-            shared.refresh_control_subscriptions();
-            assert!(
-                !take_reliable_messages(&mailbox)
-                    .iter()
-                    .any(|message| matches!(
-                        message,
-                        ProtocolMessage::Event(Event {
-                            payload: EventPayload::SubscriptionChanged { .. },
-                            ..
-                        })
-                    ))
-            );
-        }
-    }
-
-    #[cfg(feature = "agent")]
-    #[test]
-    fn agent_state_transitions_wake_parked_and_late_waiters_without_noop_edges() {
-        let shared = Arc::new(Shared::new(1));
-        register_wait_clients(&shared, [1, 2]);
-        let pane = PaneId(7);
-        let channel = "agent_state@%7";
-        let parked = Arc::clone(&shared);
-        let waiter = thread::spawn(move || {
-            parked.wait_for(ClientId(1), ClientKind::Command, &[channel.into()])
-        });
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while shared
-            .inner
-            .lock()
-            .wait_channels
-            .get(channel)
-            .is_none_or(|channel| channel.waiters.is_empty())
-        {
-            assert!(Instant::now() < deadline, "waiter did not park");
-            thread::yield_now();
-        }
-        let mut state = AgentPaneWire {
-            phase: zz_protocol::AgentConnectionPhase::Running,
-            ..AgentPaneWire::default()
-        };
-        shared.publish_agent_state(pane, state.clone());
-        waiter.join().expect("waiter").expect("transition");
-        shared.publish_agent_state(pane, state.clone());
-        assert!(
-            !shared
-                .inner
-                .lock()
-                .wait_channels
-                .get(channel)
-                .is_some_and(|channel| channel.woken || !channel.waiters.is_empty())
-        );
-        state.phase = zz_protocol::AgentConnectionPhase::Ready;
-        shared.publish_agent_state(pane, state.clone());
-        assert!(shared.inner.lock().wait_channels[channel].woken);
-        shared
-            .wait_for(ClientId(2), ClientKind::Command, &[channel.into()])
-            .expect("sticky transition");
-        state.title = Some("unrelated title".to_owned());
-        shared.publish_agent_state(pane, state.clone());
-        assert!(!shared.inner.lock().wait_channels.contains_key(channel));
-        for request_id in [Some(1), Some(2), None] {
-            state.pending_permission =
-                request_id.map(|request_id| zz_protocol::AgentPermissionWire {
-                    request_id,
-                    payload: "{}".to_owned(),
-                });
-            shared.publish_agent_state(pane, state.clone());
-            assert!(shared.inner.lock().wait_channels[channel].woken);
-            shared
-                .wait_for(ClientId(2), ClientKind::Command, &[channel.into()])
-                .expect("permission edge");
-        }
+        shared.shutdown_agents();
     }
 
     #[test]
@@ -86564,25 +85560,6 @@ set-option -g @alias-mixed-next yes
             .output
             .trim(),
             ""
-        );
-        {
-            let mut inner = shared.inner.lock();
-            for command in [
-                CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-                CommandInvocation::new("split-window", ["--kind", "picker"]),
-                CommandInvocation::new("select-pane-kind", ["agent"]),
-            ] {
-                inner
-                    .engine
-                    .execute(&mut context, &command)
-                    .expect("agent setup");
-            }
-        }
-        let agent = context.pane.expect("agent").to_string();
-        run(&["set-option", "-p", "-t", &agent, "@agent_state", "working"]);
-        assert_eq!(
-            run(&["display-message", "-p", "-t", &agent, "#{agent_state}"]).output,
-            "starting"
         );
     }
 
@@ -91186,112 +90163,6 @@ set-option -g @alias-mixed-next yes
     }
 
     #[test]
-    fn agent_send_round_trips_through_the_attached_gui() {
-        let shared = Arc::new(Shared::new(1));
-        let mailbox = OutboundMailbox::new();
-        let (client, _) =
-            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
-        let mut context = ExecutionContext::default();
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("new-session", ["-s", "agent-send"]),
-            )
-            .expect("session");
-        let session = context.session.expect("session");
-        let terminal = context.pane.expect("terminal");
-
-        let error = shared
-            .execute(
-                client,
-                ClientKind::Command,
-                &mut context.clone(),
-                &CommandInvocation::new("agent-send", ["-t", &terminal.to_string(), "hi"]),
-            )
-            .expect_err("no recipient");
-        assert!(matches!(
-            error,
-            DaemonError::Server(ServerError::MissingTarget(message))
-                if message.contains("no agent pane")
-        ));
-
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
-            )
-            .expect("picker");
-        let agent = context.pane.expect("picker");
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            )
-            .expect("enable agent panes");
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("select-pane-kind", ["-t", &agent.to_string(), "agent"]),
-            )
-            .expect("agent pane");
-        shared.attach(client, session).expect("attach");
-        take_reliable_messages(&mailbox);
-
-        let sender = Arc::clone(&shared);
-        let target = terminal.to_string();
-        let caller = thread::spawn(move || {
-            let mut context = ExecutionContext::default();
-            sender.execute(
-                ClientId(99),
-                ClientKind::Command,
-                &mut context,
-                &CommandInvocation::new("agent-send", ["-t", &target, "review", "this"]),
-            )
-        });
-
-        let deadline = Instant::now() + Duration::from_secs(30);
-        let request_id = loop {
-            let found = take_reliable_messages(&mailbox)
-                .into_iter()
-                .find_map(|message| match message {
-                    ProtocolMessage::Event(Event {
-                        payload:
-                            EventPayload::AgentCommand {
-                                pane,
-                                request_id,
-                                command: AgentCommand::ComposerAppend { text },
-                            },
-                        ..
-                    }) if pane == agent && text == "review this" => Some(request_id),
-                    _ => None,
-                });
-            if let Some(request_id) = found {
-                break request_id;
-            }
-            assert!(Instant::now() < deadline, "no agent command was published");
-            thread::sleep(Duration::from_millis(10));
-        };
-        shared.complete_gui_request(
-            client,
-            GuiResponse::Success {
-                request_id,
-                output: "appended".to_owned(),
-            },
-        );
-        let execution = caller.join().expect("caller thread").expect("agent-send");
-        assert_eq!(execution.output, "appended");
-        assert!(shared.inner.lock().pending_gui_requests.is_empty());
-    }
-
-    #[test]
     fn gui_requests_prefer_the_desktop_app_and_name_the_missing_window() {
         let shared = Arc::new(Shared::new(1));
         let terminal_ui = OutboundMailbox::new();
@@ -91321,17 +90192,10 @@ set-option -g @alias-mixed-next yes
         run(&mut context, &["new-session", "-d", "-s", "gui"]);
         run(
             &mut context,
-            &["set-option", "-g", "experimental-agent-pane", "on"],
-        );
-        run(
-            &mut context,
             &["split-window", "--kind", "browser", "about:blank"],
         );
         let browser = context.pane.expect("browser pane").to_string();
         let session = context.session.expect("session");
-        run(&mut context, &["split-window", "--kind", "picker"]);
-        let agent = context.pane.expect("agent pane").to_string();
-        run(&mut context, &["select-pane-kind", "-t", &agent, "agent"]);
         let host = shared.inner.lock().engine.format_host_short().to_owned();
         let output = std::env::temp_dir()
             .join("zz-gui-shot.png")
@@ -91355,13 +90219,6 @@ set-option -g @alias-mixed-next yes
              rendering. Open that session in the zz app, then retry."
         );
         assert_eq!(failure(&shot), not_rendering);
-        assert_eq!(
-            failure(&["agent-send", "-t", &agent, "hi"]),
-            format!(
-                "agent-send: no zz window shows session gui on {host}, so {agent} has no composer \
-                 to draft into. Use --submit or --wait."
-            )
-        );
         shared.attach(control, session).expect("attach control");
         assert_eq!(failure(&shot), not_rendering);
         assert!(matches!(
@@ -91441,6 +90298,10 @@ set-option -g @alias-mixed-next yes
     #[test]
     fn agent_send_notify_takes_the_caller_from_the_client_not_the_active_pane() {
         let shared = Arc::new(Shared::new(1));
+        let runtime = shared.build_agent_runtime(None).expect("agent runtime");
+        runtime.set_runner_factory(Box::new(|_| {
+            Box::new(|_| Box::pin(std::future::pending::<Result<(), String>>()))
+        }));
         let (client, _) =
             shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());
         let mut context = ExecutionContext::default();
@@ -91455,18 +90316,11 @@ set-option -g @alias-mixed-next yes
                 .expect("fixture command");
         };
         run(&mut context, &["new-session", "-d", "-s", "notify"]);
-        run(
-            &mut context,
-            &["set-option", "-g", "experimental-agent-pane", "on"],
-        );
         let mut agents = Vec::new();
         for _ in 0..2 {
-            run(&mut context, &["split-window", "--kind", "picker"]);
-            let pane = context.pane.expect("agent pane");
-            run(
-                &mut context,
-                &["select-pane-kind", "-t", &pane.to_string(), "agent"],
-            );
+            run(&mut context, &["split-window"]);
+            let pane = context.pane.expect("agent terminal");
+            assert!(shared.open_test_agent(pane));
             agents.push(pane);
         }
         let (active, target) = (agents[0], agents[1]);
@@ -91485,9 +90339,10 @@ set-option -g @alias-mixed-next yes
             )
             .expect_err("a client outside any pane has no caller");
         assert!(
-            matches!(&error, DaemonError::Server(ServerError::InvalidCommand(message)) if message == "agent-send --notify runs from inside another agent pane"),
+            matches!(&error, DaemonError::Server(ServerError::InvalidCommand(message)) if message == "agent-send --notify runs from inside another terminal pane"),
             "{error:?}"
         );
+        shared.shutdown_agents();
     }
 
     #[test]
@@ -91511,37 +90366,25 @@ set-option -g @alias-mixed-next yes
                 client,
                 ClientKind::Interactive,
                 &mut context,
-                &CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
+                &CommandInvocation::new("split-window", ["--kind", "browser", "about:blank"]),
             )
-            .expect("picker");
-        let agent = context.pane.expect("picker");
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            )
-            .expect("enable agent panes");
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("select-pane-kind", ["-t", &agent.to_string(), "agent"]),
-            )
-            .expect("agent pane");
+            .expect("browser");
+        let browser = context.pane.expect("browser");
         shared.attach(client, session).expect("attach");
 
         let sender = Arc::clone(&shared);
-        let target = agent.to_string();
+        let target = browser.to_string();
+        let output = std::env::temp_dir()
+            .join("zz-gui-disconnect.png")
+            .to_string_lossy()
+            .into_owned();
         let caller = thread::spawn(move || {
             let mut context = ExecutionContext::default();
             sender.execute(
                 ClientId(98),
                 ClientKind::Command,
                 &mut context,
-                &CommandInvocation::new("agent-send", ["-t", &target, "anything"]),
+                &CommandInvocation::new("capture-browser", ["-t", &target, "-o", &output]),
             )
         });
 
@@ -94612,7 +93455,7 @@ bind - split-window -v -c "#{pane_current_path}"
 
     #[cfg(unix)]
     #[test]
-    fn terminal_agent_and_editor_panes_inherit_live_working_directory() {
+    fn terminal_and_editor_panes_inherit_live_working_directory() {
         let directory = tempfile::tempdir().expect("temporary working directory");
         let physical = directory.path().join("physical");
         fs::create_dir(&physical).expect("physical working directory");
@@ -94711,83 +93554,6 @@ bind - split-window -v -c "#{pane_current_path}"
         let second = context.pane.expect("second pane");
         let inherited = Arc::clone(&shared.inner.lock().terminals[&second]);
         wait_for_cwd(&inherited);
-
-        shared
-            .execute(
-                ClientId(7),
-                ClientKind::Command,
-                &mut context,
-                &CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
-            )
-            .expect("agent picker");
-        let agent = context.pane.expect("agent picker pane");
-        shared
-            .execute(
-                ClientId(7),
-                ClientKind::Command,
-                &mut context,
-                &CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            )
-            .expect("enable agent panes");
-        shared
-            .execute(
-                ClientId(7),
-                ClientKind::Command,
-                &mut context,
-                &CommandInvocation::new("select-pane-kind", ["-t", &agent.to_string(), "agent"]),
-            )
-            .expect("agent materialization");
-        {
-            let inner = shared.inner.lock();
-            assert!(matches!(
-                inner.engine.state.pane(agent).map(|pane| &pane.kind),
-                Some(PaneKind::Agent(descriptor))
-                    if descriptor.cwd.as_deref() == Some(expected.as_path())
-            ));
-        }
-
-        let configured_directory = tempfile::tempdir().expect("configured agent directory");
-        let configured = configured_directory
-            .path()
-            .canonicalize()
-            .expect("configured working directory");
-        shared
-            .execute(
-                ClientId(7),
-                ClientKind::Command,
-                &mut context,
-                &CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
-            )
-            .expect("configured agent picker");
-        let configured_agent = context.pane.expect("configured agent picker pane");
-        shared
-            .execute(
-                ClientId(7),
-                ClientKind::Command,
-                &mut context,
-                &CommandInvocation::new(
-                    "select-pane-kind",
-                    [
-                        "-t",
-                        &configured_agent.to_string(),
-                        "-c",
-                        configured.to_string_lossy().as_ref(),
-                        "agent",
-                    ],
-                ),
-            )
-            .expect("configured agent materialization");
-        assert!(matches!(
-            shared
-                .inner
-                .lock()
-                .engine
-                .state
-                .pane(configured_agent)
-                .map(|pane| &pane.kind),
-            Some(PaneKind::Agent(descriptor))
-                if descriptor.cwd.as_deref() == Some(configured.as_path())
-        ));
 
         shared
             .execute(
@@ -118955,24 +117721,8 @@ bind - split-window -v -c "#{pane_current_path}"
                 &mut context,
                 &CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
             )
-            .expect("agent picker");
-        let agent = context.pane.expect("agent picker");
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-            )
-            .expect("enable agent panes");
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("select-pane-kind", ["-t", &agent.to_string(), "agent"]),
-            )
-            .expect("agent");
+            .expect("picker");
+        let picker = context.pane.expect("picker");
         shared.attach(client, session).expect("attach");
         take_reliable_messages(&mailbox);
 
@@ -119209,12 +117959,12 @@ bind - split-window -v -c "#{pane_current_path}"
                     ClientKind::Interactive,
                     &mut context,
                     InputMessage::Key {
-                        pane: agent,
+                        pane: picker,
                         input,
                         text_follows,
                     },
                 )
-                .expect("agent-source key");
+                .expect("picker-source key");
         }
         let messages = take_reliable_messages(&mailbox);
         assert!(messages.iter().any(focus_sidebar));
@@ -124020,26 +122770,16 @@ bind - split-window -v -c "#{pane_current_path}"
                 .expect("workspace session");
             let session = context.session.expect("session");
             shared.attach(client, session).expect("attach");
-            for command in [
-                CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-                CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
-            ] {
-                shared
-                    .execute(client, ClientKind::Interactive, &mut context, &command)
-                    .expect("workspace command");
-            }
-            let agent = context.pane.expect("picker");
             shared
                 .execute(
                     client,
                     ClientKind::Interactive,
                     &mut context,
-                    &CommandInvocation::new(
-                        "select-pane-kind",
-                        ["-t", &agent.to_string(), "agent"],
-                    ),
+                    &CommandInvocation::new("split-window", ["-v"]),
                 )
-                .expect("agent pane");
+                .expect("workspace command");
+            let agent = context.pane.expect("agent terminal");
+            assert!(shared.open_test_agent(agent));
             shared.send_resync(client, &mailbox);
             take_reliable_messages(&mailbox);
             Workspace {
@@ -124090,7 +122830,7 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         #[test]
-        fn an_agent_pane_is_visible_before_its_runtime_starts() {
+        fn a_lens_pane_is_visible_before_its_runtime_starts() {
             let shared = Arc::new(Shared::new(1));
             let mailbox = OutboundMailbox::new();
             let (client, _) = shared.register_subscribed(
@@ -124116,15 +122856,15 @@ bind - split-window -v -c "#{pane_current_path}"
                 .expect("workspace session");
             let session = context.session.expect("session");
             shared.attach(client, session).expect("attach");
-            for command in [
-                CommandInvocation::new("set-option", ["-g", "experimental-agent-pane", "on"]),
-                CommandInvocation::new("split-window", ["--kind", "picker", "-v"]),
-            ] {
-                shared
-                    .execute(client, ClientKind::Interactive, &mut context, &command)
-                    .expect("workspace command");
-            }
-            let agent = context.pane.expect("picker");
+            shared
+                .execute(
+                    client,
+                    ClientKind::Interactive,
+                    &mut context,
+                    &CommandInvocation::new("split-window", ["-v"]),
+                )
+                .expect("workspace command");
+            let agent = context.pane.expect("agent terminal");
             let observed = Arc::new(AtomicBool::new(false));
             let runner_observed = Arc::clone(&observed);
             let weak_shared = Arc::downgrade(&shared);
@@ -124140,21 +122880,11 @@ bind - split-window -v -c "#{pane_current_path}"
                 Box::new(|_| Box::pin(std::future::pending::<Result<(), String>>()))
             }));
 
-            shared
-                .execute(
-                    client,
-                    ClientKind::Interactive,
-                    &mut context,
-                    &CommandInvocation::new(
-                        "select-pane-kind",
-                        ["-t", &agent.to_string(), "agent"],
-                    ),
-                )
-                .expect("agent pane");
+            assert!(shared.open_test_agent(agent));
 
             assert!(
                 observed.load(Ordering::Acquire),
-                "the runner started before the attached client could see the agent pane"
+                "the runner started before the attached client could see the lens pane"
             );
             let deadline = Instant::now() + Duration::from_secs(10);
             while !take_reliable_messages(&mailbox).iter().any(|message| {
@@ -124168,7 +122898,7 @@ bind - split-window -v -c "#{pane_current_path}"
             }) {
                 assert!(
                     Instant::now() < deadline,
-                    "opening the runtime did not publish the agent pane state"
+                    "opening the runtime did not publish the agent state"
                 );
                 thread::sleep(Duration::from_millis(5));
             }
@@ -124211,129 +122941,6 @@ bind - split-window -v -c "#{pane_current_path}"
                     (Some(first), 3)
                 ],
                 "the reliable lane goes first, then one agent frame per pane per turn"
-            );
-        }
-
-        #[test]
-        fn catalog_request_keeps_the_active_provider_and_session_unchanged() {
-            let workspace = workspace(Behavior::Chunk);
-            workspace.wait_for_items("initial session", |items| {
-                items
-                    .iter()
-                    .any(|item| matches!(item.payload, AgentStreamPayload::SessionReady { .. }))
-            });
-            let deadline = Instant::now() + DEADLINE;
-            let before = loop {
-                let kind = workspace
-                    .shared
-                    .inner
-                    .lock()
-                    .engine
-                    .state
-                    .pane(workspace.agent)
-                    .unwrap()
-                    .kind
-                    .clone();
-                if matches!(&kind, PaneKind::Agent(descriptor) if descriptor.session_id.is_some()) {
-                    break kind;
-                }
-                assert!(Instant::now() < deadline, "agent session id never landed");
-                thread::sleep(Duration::from_millis(5));
-            };
-            let other = OutboundMailbox::new();
-            let _ = workspace.shared.register_subscribed(
-                ClientKind::Interactive,
-                None,
-                None,
-                Arc::clone(&other),
-            );
-            let mut context = ExecutionContext::default();
-            workspace
-                .shared
-                .execute(
-                    workspace.client,
-                    ClientKind::Interactive,
-                    &mut context,
-                    &CommandInvocation::new(
-                        "set-option",
-                        [
-                            "-g",
-                            "--",
-                            "agent-claude-code-command",
-                            "/nonexistent/zz-catalog-adapter",
-                        ],
-                    ),
-                )
-                .unwrap();
-            take_reliable_messages(&workspace.mailbox);
-            take_reliable_messages(&other);
-            let execution = workspace
-                .shared
-                .execute(
-                    workspace.client,
-                    ClientKind::Interactive,
-                    &mut context,
-                    &CommandInvocation::new(
-                        "agent-catalog",
-                        ["-t", &workspace.agent.to_string(), "claude-code", "41"],
-                    ),
-                )
-                .unwrap();
-            assert!(execution.output.is_empty());
-            let deadline = Instant::now() + DEADLINE;
-            let result = loop {
-                let result = take_reliable_messages(&workspace.mailbox)
-                    .into_iter()
-                    .find_map(|message| match message {
-                        ProtocolMessage::Event(Event {
-                            payload:
-                                EventPayload::AgentSessions {
-                                    pane,
-                                    request_id: 41,
-                                    result,
-                                },
-                            ..
-                        }) if pane == workspace.agent => Some(result),
-                        _ => None,
-                    });
-                if let Some(result) = result {
-                    break result;
-                }
-                assert!(Instant::now() < deadline, "catalog reply timed out");
-                thread::sleep(Duration::from_millis(5));
-            };
-            let result: zz_protocol::agent_stream::AgentCatalogResult =
-                serde_json::from_str(&result).unwrap();
-            assert_eq!(result.catalog_provider, AgentProvider::ClaudeCode);
-            assert!(result.config_options.is_none());
-            assert!(result.error.is_some());
-            assert_eq!(
-                workspace
-                    .shared
-                    .inner
-                    .lock()
-                    .engine
-                    .state
-                    .pane(workspace.agent)
-                    .unwrap()
-                    .kind,
-                before
-            );
-            assert_eq!(
-                workspace.runtime.wire_state(workspace.agent).unwrap().phase,
-                zz_protocol::AgentConnectionPhase::Ready
-            );
-            assert!(workspace.shared.agent_catalog_pending.lock().is_empty());
-            assert!(
-                !take_reliable_messages(&other)
-                    .iter()
-                    .any(|message| matches!(
-                        message,
-                        ProtocolMessage::Event(Event {
-                            payload: EventPayload::AgentSessions { request_id: 41, .. },
-                            ..
-                        })
-                    ))
             );
         }
 
@@ -124491,50 +123098,6 @@ bind - split-window -v -c "#{pane_current_path}"
                     )),
                 "but it still sees the pane state its badges need"
             );
-        }
-
-        #[test]
-        fn a_submitted_agent_send_is_dispatched_by_the_daemon_itself() {
-            let workspace = workspace(Behavior::Chunk);
-            let mut context = ExecutionContext::default();
-
-            let execution = workspace
-                .shared
-                .execute(
-                    ClientId(99),
-                    ClientKind::Command,
-                    &mut context,
-                    &CommandInvocation::new(
-                        "agent-send",
-                        [
-                            "-t",
-                            &workspace.agent.to_string(),
-                            "--submit",
-                            "review this",
-                        ],
-                    ),
-                )
-                .expect("agent-send reaches the runtime without a GUI");
-            assert_eq!(execution.output, workspace.agent.to_string());
-
-            let items = workspace.wait_for_items("the dispatched turn", |items| {
-                items.iter().any(|item| chunk_text(item) == Some("turn 0"))
-            });
-            assert!(items.iter().any(|item| matches!(
-                &item.payload,
-                AgentStreamPayload::SessionReady { session_id, .. } if session_id == "fixture-session"
-            )));
-            let title = workspace
-                .shared
-                .inner
-                .lock()
-                .engine
-                .state
-                .pane(workspace.agent)
-                .expect("the agent pane")
-                .title
-                .clone();
-            assert_eq!(title, "review this", "the first prompt names the pane");
         }
 
         #[test]
@@ -124964,7 +123527,10 @@ bind - split-window -v -c "#{pane_current_path}"
                     .expect_err("explicit terminal target");
                 assert_eq!(
                     daemon_error_text(&error),
-                    format!("invalid target: {terminal} is not an agent pane")
+                    format!(
+                        "invalid target: {terminal} has no agent lens open; open it in the zz \
+                         app or run agent-send --final first"
+                    )
                 );
             }
             let allowed = workspace
@@ -124989,73 +123555,6 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         #[test]
-        fn agent_panes_project_their_transcript_into_a_capturable_terminal() {
-            let workspace = workspace(Behavior::Chunk);
-            let target = workspace.agent.to_string();
-            let run = |args: &[&str]| {
-                workspace.shared.execute(
-                    ClientId(99),
-                    ClientKind::Command,
-                    &mut ExecutionContext::default(),
-                    &CommandInvocation::new(args[0], args[1..].iter().copied()),
-                )
-            };
-            assert!(
-                workspace
-                    .shared
-                    .inner
-                    .lock()
-                    .terminals
-                    .contains_key(&workspace.agent),
-                "an agent pane owns a PTY-free shadow terminal"
-            );
-
-            workspace.wait_for_items("initial session", |items| {
-                items
-                    .iter()
-                    .any(|item| matches!(item.payload, AgentStreamPayload::SessionReady { .. }))
-            });
-            run(&["agent-send", "-t", &target, "--submit", "review this"]).expect("submit");
-            let deadline = Instant::now() + DEADLINE;
-            let screen = loop {
-                let screen = run(&["capture-pane", "-p", "-t", &target])
-                    .expect("capture-pane reads the projection")
-                    .output;
-                if screen.contains("turn 0") {
-                    break screen;
-                }
-                assert!(
-                    Instant::now() < deadline,
-                    "the projection never landed: {screen:?}"
-                );
-                thread::sleep(Duration::from_millis(10));
-            };
-            assert!(screen.contains("> review this"), "{screen:?}");
-            assert_eq!(screen.matches("> review this").count(), 1, "{screen:?}");
-
-            let last = run(&["show-last-output", "-t", &target])
-                .expect("OSC 133 marks delimit the turn")
-                .output;
-            assert!(
-                last.contains("review this") && last.contains("turn 0"),
-                "{last:?}"
-            );
-
-            let inner = workspace.shared.inner.lock();
-            assert!(
-                !inner
-                    .client(workspace.client)
-                    .and_then(|c| c.visible_terminals.as_ref())
-                    .is_some_and(|panes| panes.contains(&workspace.agent)),
-                "agent panes never ship terminal frames to clients"
-            );
-            assert!(
-                !output_routed(&inner, workspace.agent),
-                "agent panes stay out of control-mode %output"
-            );
-        }
-
-        #[test]
         fn a_waiting_agent_send_from_an_interactive_client_is_refused() {
             let workspace = workspace(Behavior::Chunk);
             let mut context = ExecutionContext::default();
@@ -125076,311 +123575,6 @@ bind - split-window -v -c "#{pane_current_path}"
                 format!("{error:?}").contains("command client"),
                 "unexpected error: {error:?}"
             );
-        }
-
-        #[test]
-        fn new_agent_session_rejects_a_terminal_pane() {
-            let workspace = workspace(Behavior::Chunk);
-            let terminal = {
-                let inner = workspace.shared.inner.lock();
-                inner
-                    .engine
-                    .state
-                    .windows
-                    .values()
-                    .flat_map(|window| window.panes.iter())
-                    .find_map(|(pane, state)| {
-                        matches!(state.kind, PaneKind::Terminal).then_some(*pane)
-                    })
-                    .expect("terminal")
-            };
-            let error = workspace
-                .shared
-                .execute(
-                    ClientId(99),
-                    ClientKind::Command,
-                    &mut ExecutionContext::default(),
-                    &CommandInvocation::new("new-agent-session", ["-t", &terminal.to_string()]),
-                )
-                .expect_err("terminal target");
-            let DaemonError::CommandExit { output, exit_code } = error else {
-                panic!("unexpected error: {error:?}");
-            };
-            assert_eq!(exit_code, 1);
-            assert_eq!(output, format!("not an agent pane: {terminal}"));
-        }
-
-        #[test]
-        fn new_agent_session_waits_for_a_fresh_session_and_accepts_a_prompt() {
-            let workspace = workspace(Behavior::Chunk);
-            workspace.wait_for_items("initial session", |items| {
-                items
-                    .iter()
-                    .any(|item| matches!(item.payload, AgentStreamPayload::SessionReady { .. }))
-            });
-            let before = workspace
-                .shared
-                .agent_pane_spec(workspace.agent)
-                .expect("spec");
-            let target = workspace.agent.to_string();
-            let cwd = tempfile::tempdir().expect("session directory");
-            let output = workspace
-                .shared
-                .execute(
-                    ClientId(99),
-                    ClientKind::Command,
-                    &mut ExecutionContext::default(),
-                    &CommandInvocation::new(
-                        "new-agent-session",
-                        [
-                            "-t",
-                            &target,
-                            "-c",
-                            cwd.path().to_str().expect("cwd"),
-                            "--timeout",
-                            "0",
-                        ],
-                    ),
-                )
-                .expect("fresh session");
-            assert!(output.output.is_empty());
-            let after = workspace
-                .shared
-                .agent_pane_spec(workspace.agent)
-                .expect("spec");
-            assert_ne!(before.resume_session, after.resume_session);
-            assert_eq!(after.cwd, cwd.path());
-            let output = workspace
-                .shared
-                .execute(
-                    ClientId(99),
-                    ClientKind::Command,
-                    &mut ExecutionContext::default(),
-                    &CommandInvocation::new(
-                        "agent-send",
-                        ["-t", &target, "--wait", "--timeout", "5", "fresh"],
-                    ),
-                )
-                .expect("new session accepts prompt");
-            assert_eq!(output.output, "turn 0");
-            workspace
-                .shared
-                .execute(
-                    ClientId(99),
-                    ClientKind::Command,
-                    &mut ExecutionContext::default(),
-                    &CommandInvocation::new("new-agent-session", ["-t", &target]),
-                )
-                .expect("fresh session with current cwd");
-            let inherited = workspace
-                .shared
-                .agent_pane_spec(workspace.agent)
-                .expect("spec");
-            assert_ne!(after.resume_session, inherited.resume_session);
-            assert_eq!(after.cwd, inherited.cwd);
-        }
-
-        #[test]
-        fn new_agent_session_reports_failure_and_timeout() {
-            use crate::agent::runtime::RuntimeCommand;
-
-            for fail in [true, false] {
-                let workspace = workspace(Behavior::Chunk);
-                workspace.wait_for_items("initial session", |items| {
-                    items
-                        .iter()
-                        .any(|item| matches!(item.payload, AgentStreamPayload::SessionReady { .. }))
-                });
-                workspace.runtime.set_runner_factory(Box::new(move |_| {
-                    Box::new(move |channels| {
-                        Box::pin(async move {
-                            assert!(matches!(
-                                channels.commands.recv().await.unwrap(),
-                                RuntimeCommand::Open { .. }
-                            ));
-                            channels
-                                .events
-                                .send(AgentStreamPayload::SessionReady {
-                                    session_id: "session-failure-test".to_owned(),
-                                    modes: None,
-                                    config_options: None,
-                                })
-                                .await
-                                .unwrap();
-                            while let Ok(command) = channels.commands.recv().await {
-                                if let RuntimeCommand::NewSession { .. } = command
-                                    && fail
-                                {
-                                    channels
-                                        .events
-                                        .send(AgentStreamPayload::SessionSwitchFailed {
-                                            message: "fixture refused new session".to_owned(),
-                                        })
-                                        .await
-                                        .unwrap();
-                                }
-                            }
-                            Ok(())
-                        })
-                    })
-                }));
-                let target = workspace.agent.to_string();
-                workspace
-                    .shared
-                    .execute(
-                        ClientId(99),
-                        ClientKind::Command,
-                        &mut ExecutionContext::default(),
-                        &CommandInvocation::new("restart-agent-pane", ["-t", &target]),
-                    )
-                    .expect("install test runner");
-                workspace.wait_for_items("replacement session", |items| items.iter().any(|item| {
-                    matches!(&item.payload, AgentStreamPayload::SessionReady { session_id, .. } if session_id == "session-failure-test")
-                }));
-                let error = workspace
-                    .shared
-                    .execute(
-                        ClientId(99),
-                        ClientKind::Command,
-                        &mut ExecutionContext::default(),
-                        &CommandInvocation::new(
-                            "new-agent-session",
-                            ["-t", &target, "--timeout", if fail { "5" } else { "0.05" }],
-                        ),
-                    )
-                    .expect_err("new session failure");
-                let DaemonError::CommandExit { output, exit_code } = error else {
-                    panic!("unexpected error: {error:?}");
-                };
-                assert_eq!(exit_code, if fail { 1 } else { 124 });
-                if fail {
-                    assert_eq!(output, "fixture refused new session");
-                } else {
-                    assert!(output.contains("new session not ready within 0.05 seconds"));
-                }
-            }
-        }
-
-        #[test]
-        fn agent_auto_approve_resolves_scopes_and_updates_live() {
-            use zz_protocol::AgentAutoApprove::{All, Off, Reads};
-
-            let workspace = workspace(Behavior::Chunk);
-            workspace.wait_for_items("initial session", |items| {
-                items
-                    .iter()
-                    .any(|item| matches!(item.payload, AgentStreamPayload::SessionReady { .. }))
-            });
-            let target = workspace.agent.to_string();
-            let window = workspace
-                .shared
-                .inner
-                .lock()
-                .engine
-                .state
-                .window_for_pane(workspace.agent)
-                .expect("window")
-                .to_string();
-            let session = workspace.session.to_string();
-            let run = |args: &[&str], expected| {
-                workspace
-                    .shared
-                    .execute(
-                        ClientId(99),
-                        ClientKind::Command,
-                        &mut ExecutionContext::default(),
-                        &CommandInvocation::new("set-option", args.iter().copied()),
-                    )
-                    .expect("set permission tier");
-                assert_eq!(
-                    workspace
-                        .shared
-                        .agent_pane_spec(workspace.agent)
-                        .expect("spec")
-                        .auto_approve,
-                    Some(expected)
-                );
-                assert_eq!(
-                    workspace.runtime.auto_approve(workspace.agent),
-                    Some(expected)
-                );
-            };
-            run(&["-g", "agent-auto-approve", "off"], Off);
-            run(&["-g", "@agent-auto-approve", "reads"], Reads);
-            run(&["-t", &session, "@agent-auto-approve", "all"], All);
-            run(&["-w", "-t", &window, "@agent-auto-approve", "off"], Off);
-            run(
-                &["-p", "-t", &target, "@agent-auto-approve", "reads"],
-                Reads,
-            );
-            run(&["-g", "agent-auto-approve", "all"], Reads);
-            run(&["-g", "@agent-auto-approve", "all"], Reads);
-            run(&["-pu", "-t", &target, "@agent-auto-approve"], Off);
-            run(&["-wu", "-t", &window, "@agent-auto-approve"], All);
-            run(&["-u", "-t", &session, "@agent-auto-approve"], All);
-            run(&["-gu", "@agent-auto-approve"], All);
-            run(&["-g", "agent-auto-approve", "reads"], Reads);
-        }
-
-        #[test]
-        fn agent_auto_approve_invalid_values_keep_the_previous_tier_on_restart() {
-            use zz_protocol::AgentAutoApprove::All;
-
-            let workspace = workspace(Behavior::Chunk);
-            workspace.wait_for_items("initial session", |items| {
-                items
-                    .iter()
-                    .any(|item| matches!(item.payload, AgentStreamPayload::SessionReady { .. }))
-            });
-            let target = workspace.agent.to_string();
-            let run = |args: &[&str]| {
-                workspace
-                    .shared
-                    .execute(
-                        ClientId(99),
-                        ClientKind::Command,
-                        &mut ExecutionContext::default(),
-                        &CommandInvocation::new(args[0], args[1..].iter().copied()),
-                    )
-                    .expect("command")
-            };
-            run(&[
-                "set-option",
-                "-p",
-                "-t",
-                &target,
-                "@agent-auto-approve",
-                "all",
-            ]);
-            for invalid in ["invalid", "on", "ALL", ""] {
-                run(&[
-                    "set-option",
-                    "-p",
-                    "-t",
-                    &target,
-                    "@agent-auto-approve",
-                    invalid,
-                ]);
-                assert_eq!(workspace.runtime.auto_approve(workspace.agent), Some(All));
-                assert_eq!(
-                    workspace
-                        .shared
-                        .agent_pane_spec(workspace.agent)
-                        .expect("spec")
-                        .auto_approve,
-                    Some(All)
-                );
-            }
-            workspace.runtime.set_runner_factory(Box::new(|spec| {
-                fixture_runner(
-                    spec.provider,
-                    Behavior::Chunk,
-                    spec.auto_approve.expect("resolved tier"),
-                    true,
-                )
-            }));
-            run(&["restart-agent-pane", "-t", &target]);
-            assert_eq!(workspace.runtime.auto_approve(workspace.agent), Some(All));
         }
 
         #[test]
@@ -125422,90 +123616,6 @@ bind - split-window -v -c "#{pane_current_path}"
                     .expect("the option is published")
                     .value,
                 "my-codex --acp"
-            );
-        }
-
-        #[test]
-        fn provider_switch_and_retry_replace_the_daemon_runtime() {
-            let workspace = workspace(Behavior::Chunk);
-            let initial = workspace.wait_for_items("the initial session", |items| {
-                items
-                    .iter()
-                    .any(|item| matches!(item.payload, AgentStreamPayload::SessionReady { .. }))
-            });
-            let last_initial = initial.last().expect("initial stream").seq;
-            let providers = Arc::new(Mutex::new(Vec::new()));
-            let seen = Arc::clone(&providers);
-            workspace.runtime.set_runner_factory(Box::new(move |spec| {
-                seen.lock().push(spec.provider);
-                fixture_runner(
-                    spec.provider,
-                    Behavior::Chunk,
-                    zz_protocol::AgentAutoApprove::Off,
-                    true,
-                )
-            }));
-
-            let mut context = ExecutionContext::default();
-            workspace
-                .shared
-                .execute(
-                    workspace.client,
-                    ClientKind::Interactive,
-                    &mut context,
-                    &CommandInvocation::new(
-                        "set-agent-provider",
-                        ["-t", &workspace.agent.to_string(), "claude-code"],
-                    ),
-                )
-                .expect("switch provider");
-            let switched = workspace.wait_for_items("the replacement session", |items| {
-                items.iter().any(|item| {
-                    matches!(item.payload, AgentStreamPayload::SessionReady { .. })
-                        && item.seq > last_initial
-                })
-            });
-            assert!(switched.iter().all(|item| item.seq > last_initial));
-            assert_eq!(&*providers.lock(), &[AgentProvider::ClaudeCode]);
-            workspace.shared.adopt_agent_session(
-                workspace.agent,
-                AgentProvider::Codex,
-                "stale-codex-session".to_owned(),
-                None,
-            );
-            {
-                let inner = workspace.shared.inner.lock();
-                let PaneKind::Agent(descriptor) = &inner
-                    .engine
-                    .state
-                    .pane(workspace.agent)
-                    .expect("agent pane")
-                    .kind
-                else {
-                    unreachable!()
-                };
-                assert_eq!(descriptor.provider, AgentProvider::ClaudeCode);
-                assert_ne!(
-                    descriptor.session_id.as_deref(),
-                    Some("stale-codex-session")
-                );
-            }
-
-            workspace
-                .shared
-                .execute(
-                    workspace.client,
-                    ClientKind::Interactive,
-                    &mut context,
-                    &CommandInvocation::new(
-                        "restart-agent-pane",
-                        ["-t", &workspace.agent.to_string()],
-                    ),
-                )
-                .expect("retry pane");
-            assert_eq!(
-                &*providers.lock(),
-                &[AgentProvider::ClaudeCode, AgentProvider::ClaudeCode]
             );
         }
 

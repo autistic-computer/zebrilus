@@ -17,7 +17,7 @@ pub const STORY: Story = Story {
     id: "markdown",
     name: "Markdown",
     group: "Kit",
-    summary: "TextView renders markdown with the theme's syntax colors. The agent pane, help and release notes all go through it.",
+    summary: "TextView renders markdown with the theme's syntax colors. The agent lens, help and release notes all go through it.",
     sections: &[
         Section {
             id: "headings",

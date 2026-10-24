@@ -3349,11 +3349,6 @@ impl MuxEngine {
             context.pane_dead_signal.clone_from(&facts.dead_signal);
         } else {
             context.pane_current_path = match &pane.kind {
-                PaneKind::Agent(agent) => agent
-                    .cwd
-                    .as_deref()
-                    .map(|path| path.to_string_lossy().into_owned())
-                    .unwrap_or_default(),
                 PaneKind::Editor(editor) => editor.cwd.clone(),
                 PaneKind::Picker { .. } | PaneKind::Terminal | PaneKind::Browser(_) => {
                     String::new()

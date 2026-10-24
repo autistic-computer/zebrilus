@@ -5,22 +5,19 @@ use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, Corners, ElementId, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, Stateful, Styled as _, Window, div, px,
 };
-use zz_protocol::{
-    AgentDescriptor, AgentProvider, BrowserDescriptor, EditorDescriptor, PaneId, PaneKindSnapshot,
-};
+use zz_protocol::{AgentProvider, BrowserDescriptor, EditorDescriptor, PaneId, PaneKindSnapshot};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     navigation::status::{StatusAction, StatusPaneEntry},
-    pane::{PaneChrome, PaneDragSource, pane_surface, terminal_pane_header},
+    pane::{PaneChrome, PaneDragSource, PaneLens, pane_surface, terminal_pane_header},
 };
 
 /// What a freshly split pane offers, as the desktop and thin clients list
 /// it: title, icon and the key that picks it.
-pub const PANE_CHOICES: [(&str, IconName, &str); 4] = [
+pub const PANE_CHOICES: [(&str, IconName, &str); 3] = [
     ("Terminal", IconName::SquareTerminal, "t"),
     ("Browser", IconName::BrandChrome, "b"),
     ("Editor", IconName::File, "e"),
-    ("Agent", IconName::RobotFace, "a"),
 ];
 
 #[derive(Clone, Copy)]
@@ -56,6 +53,35 @@ pub const SERVER: &[(Tone, &str)] = &[
     (Tone::Success, "  astro ready in 412 ms"),
     (Tone::Plain, "  Local  http://localhost:4321/"),
     (Tone::Prompt, "$"),
+];
+
+pub const CLAUDE: &[(Tone, &str)] = &[
+    (Tone::Muted, "~/dev/zz fix/pinned-tab-width*"),
+    (
+        Tone::Plain,
+        "> Run the whole browser suite and fix whatever breaks.",
+    ),
+    (Tone::Muted, "• Bash(cargo test -p zz-ui browser)"),
+    (Tone::Danger, "  └ test result: FAILED. 12 passed; 2 failed"),
+    (Tone::Muted, "• Update(crates/zz-ui/src/browser/drag.rs)"),
+    (Tone::Success, "  └ Updated with 6 additions and 2 removals"),
+    (Tone::Muted, "• Bash(cargo test -p zz-ui browser::drag)"),
+    (Tone::Muted, "  Running… (esc to interrupt)"),
+    (Tone::Prompt, ">"),
+];
+
+pub const CODEX: &[(Tone, &str)] = &[
+    (Tone::Muted, "~/dev/zz main*"),
+    (Tone::Plain, "› Fix the flaky tab drag test"),
+    (Tone::Muted, "• Explored"),
+    (Tone::Muted, "  └ Read drag.rs, tab_strip.rs"),
+    (Tone::Muted, "• Ran cargo test -p zz-ui browser::drag"),
+    (Tone::Success, "  └ test result: ok. 9 passed; 0 failed"),
+    (
+        Tone::Plain,
+        "• The drop preview reads the widths the layout stored.",
+    ),
+    (Tone::Prompt, "›"),
 ];
 
 pub fn noop() -> StatusAction {
@@ -151,6 +177,7 @@ pub struct TerminalPane {
     pub lines: &'static [(Tone, &'static str)],
     pub active: bool,
     pub gaps: bool,
+    pub lens: Option<PaneLens>,
 }
 
 impl TerminalPane {
@@ -161,7 +188,16 @@ impl TerminalPane {
             lines,
             active: false,
             gaps: false,
+            lens: None,
         }
+    }
+
+    pub const fn lens(mut self, provider: AgentProvider) -> Self {
+        self.lens = Some(PaneLens {
+            provider,
+            open: false,
+        });
+        self
     }
 
     pub const fn active(mut self, active: bool) -> Self {
@@ -186,6 +222,7 @@ impl TerminalPane {
             self.title,
             PaneDragSource::new(PaneId(self.id), self.title, true, |_, _, _| {}),
             false,
+            self.lens,
             |_, _, _| {},
             cx,
         );
@@ -242,14 +279,6 @@ pub fn placeholder_pane(
     )
 }
 
-pub fn agent_kind(provider: AgentProvider) -> PaneKindSnapshot {
-    PaneKindSnapshot::Agent(AgentDescriptor {
-        provider,
-        cwd: Some("/Users/fabrico/dev/zz".into()),
-        session_id: None,
-    })
-}
-
 pub fn browser_kind(url: &str) -> PaneKindSnapshot {
     PaneKindSnapshot::Browser(BrowserDescriptor::single(url.into(), "default".into()))
 }
@@ -277,18 +306,8 @@ pub fn workspace_panes() -> Vec<StatusPaneEntry> {
     vec![
         status_pane(1, "cargo test", PaneKindSnapshot::Terminal, false),
         status_pane(2, "zed.dev", browser_kind("https://zed.dev/docs"), true),
-        status_pane(
-            3,
-            "Rework status bar",
-            agent_kind(AgentProvider::Codex),
-            false,
-        ),
-        status_pane(
-            4,
-            "Review pane titles",
-            agent_kind(AgentProvider::ClaudeCode),
-            false,
-        ),
+        status_pane(3, "codex", PaneKindSnapshot::Terminal, false),
+        status_pane(4, "Review pane titles", PaneKindSnapshot::Terminal, false),
         status_pane(
             5,
             "status_bar.rs",

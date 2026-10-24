@@ -1,4 +1,4 @@
-//! The Agent pane feature, behind the `agent-pane` cargo feature.
+//! The agent lens over terminal panes, behind the `agent-pane` cargo feature.
 
 pub(crate) mod attachment;
 
@@ -14,15 +14,11 @@ mod view;
 #[cfg(feature = "agent-pane")]
 pub use controller::AgentController;
 #[cfg(feature = "agent-pane")]
-pub(crate) use controller::AgentControllerEvent;
-#[cfg(feature = "agent-pane")]
 pub(crate) use view::AgentView;
-#[cfg(feature = "agent-pane")]
-pub use zz_config::agent_preferences::AgentPreferences;
 
 #[cfg(not(feature = "agent-pane"))]
 mod stub;
 #[cfg(not(feature = "agent-pane"))]
-pub use stub::{AgentController, AgentPreferences};
+pub use stub::AgentController;
 #[cfg(not(feature = "agent-pane"))]
-pub(crate) use stub::{AgentControllerEvent, AgentView};
+pub(crate) use stub::AgentView;
