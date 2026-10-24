@@ -5,17 +5,21 @@
 
 use zz_client::program::Program;
 use zz_gpui::{
-    AnyElement, App, Bounds, ElementId, Entity, Focusable as _, HighlightStyle, Hsla, IntoElement,
-    PathBuilder, Pixels, RenderOnce, ScrollHandle, SharedString, StyledText, Window, canvas, div,
-    point, prelude::*, px, relative,
+    AnyElement, App, AppContext as _, Bounds, Context, CursorStyle, ElementId, Entity,
+    Focusable as _, HighlightStyle, Hsla, IntoElement, PathBuilder, Pixels, Render, RenderOnce,
+    ScrollHandle, SharedString, StyledText, Window, canvas, div, point, prelude::*, px, relative,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Ground, Icon, IconName, PaintState, StyledExt as _,
-    Surface, Tone, h_flex,
+    Surface, Tone,
+    command::PaletteHint,
+    h_flex,
     input::{Input, InputState, field_chrome},
     program::program_tile,
-    roles, v_flex,
+    roles,
+    scroll::ScrollableElement as _,
+    v_flex,
 };
 
 pub const CHAT_GAP: f32 = 10.0;
@@ -52,6 +56,11 @@ const SEEN_TILE: f32 = 14.0;
 const HEADER_TILE: f32 = 16.0;
 const COMPOSER_PADDING_LEFT: f32 = 14.0;
 const COMPOSER_PADDING_RIGHT: f32 = 5.0;
+pub const CHAT_MIN_HEIGHT: f32 = 180.0;
+pub const CHAT_LIST_MIN_HEIGHT: f32 = 96.0;
+const SPLIT_HANDLE: f32 = 9.0;
+const THREAD_FADE: f32 = 28.0;
+const LEAD_THREAD_MAX: f32 = 360.0;
 
 /// How far a message you sent has got.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -415,39 +424,178 @@ pub fn chat_header(
         .children(trailing)
 }
 
-/// The chat as it sits under the sidebar's list: a rule, the header, the
-/// thread scrolling in what is left, and the composer. A short thread sits at
-/// the bottom; call `scroll_to_bottom` on `scroll` when a message arrives.
-pub fn chat_section(
-    header: impl IntoElement,
-    thread: impl IntoElement,
-    composer: impl IntoElement,
+/// What dragging the rule over the chat carries: the split between the
+/// sidebar's list and the chat.
+pub struct ChatSplitDrag;
+
+struct ChatSplitPreview;
+
+impl Render for ChatSplitPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
+/// The chat's height with the split dragged to `y` in a column at `bounds`:
+/// from there to the bottom, leaving the list and the chat their minimums.
+pub fn chat_split_height(y: Pixels, bounds: Bounds<Pixels>) -> Pixels {
+    let most = (bounds.size.height - px(CHAT_LIST_MIN_HEIGHT)).max(px(CHAT_MIN_HEIGHT));
+    (bounds.bottom() - y).clamp(px(CHAT_MIN_HEIGHT), most)
+}
+
+fn thread_scroll(
+    id: &'static str,
+    thread: AnyElement,
     scroll: &ScrollHandle,
-    cx: &App,
+    fade: Hsla,
 ) -> zz_gpui::Div {
-    v_flex()
-        .debug_selector(|| "chat-section".to_owned())
+    div()
+        .relative()
         .flex_1()
         .min_h_0()
-        .w_full()
-        .child(
-            div()
-                .flex_none()
-                .mx(px(16.0))
-                .rule_on(roles::LIST_RULE, Edge::Top, cx),
-        )
-        .child(header)
         .child(
             v_flex()
-                .id("chat-thread")
-                .flex_1()
-                .min_h_0()
+                .id(id)
+                .size_full()
                 .overflow_y_scroll()
                 .track_scroll(scroll)
                 .child(div().flex_1())
                 .child(div().flex_none().child(thread)),
         )
-        .child(composer)
+        .top_fade(scroll, fade, px(THREAD_FADE))
+}
+
+/// The chat as it sits under the sidebar's list: a rule you drag to resize
+/// it, the header, the thread scrolling in what is left with a fade under
+/// the header while there is more above, and the composer. A short thread
+/// sits at the bottom; call `scroll_to_bottom` on the scroll handle when a
+/// message arrives. The column holding it handles [`ChatSplitDrag`] moves,
+/// with [`chat_split_height`].
+#[derive(IntoElement)]
+pub struct ChatSection {
+    header: AnyElement,
+    thread: AnyElement,
+    composer: AnyElement,
+    scroll: ScrollHandle,
+    fade: Hsla,
+    height: Option<Pixels>,
+}
+
+impl ChatSection {
+    /// `fade` is the color the thread fades into under the header: the
+    /// sidebar's own fill.
+    pub fn new(
+        header: impl IntoElement,
+        thread: impl IntoElement,
+        composer: impl IntoElement,
+        scroll: &ScrollHandle,
+        fade: Hsla,
+    ) -> Self {
+        Self {
+            header: header.into_any_element(),
+            thread: thread.into_any_element(),
+            composer: composer.into_any_element(),
+            scroll: scroll.clone(),
+            fade,
+            height: None,
+        }
+    }
+
+    /// Hold the chat at `height`; without one it takes what the list leaves.
+    #[must_use]
+    pub fn height(mut self, height: Option<Pixels>) -> Self {
+        self.height = height;
+        self
+    }
+}
+
+impl RenderOnce for ChatSection {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        v_flex()
+            .debug_selector(|| "chat-section".to_owned())
+            .w_full()
+            .min_h_0()
+            .map(|section| match self.height {
+                Some(height) => section.flex_none().h(height),
+                None => section.flex_1(),
+            })
+            .child(
+                div()
+                    .relative()
+                    .flex_none()
+                    .mx(px(16.0))
+                    .rule_on(roles::LIST_RULE, Edge::Top, cx)
+                    .child(
+                        div()
+                            .id("chat-split")
+                            .debug_selector(|| "chat-split".to_owned())
+                            .absolute()
+                            .left(px(-16.0))
+                            .right(px(-16.0))
+                            .top(px(-SPLIT_HANDLE / 2.0))
+                            .h(px(SPLIT_HANDLE))
+                            .cursor(CursorStyle::ResizeUpDown)
+                            .on_drag(ChatSplitDrag, |_, _, _, cx| cx.new(|_| ChatSplitPreview)),
+                    ),
+            )
+            .child(self.header)
+            .child(thread_scroll(
+                "chat-thread",
+                self.thread,
+                &self.scroll,
+                self.fade,
+            ))
+            .child(self.composer)
+    }
+}
+
+/// The palette's footer keys in Lead mode.
+pub const LEAD_PALETTE_HINTS: [PaletteHint; 4] = [
+    PaletteHint {
+        key: "enter",
+        label: "send",
+    },
+    PaletteHint {
+        key: "1 2",
+        label: "answer",
+    },
+    PaletteHint {
+        key: "backspace",
+        label: "leave mode",
+    },
+    PaletteHint {
+        key: "escape",
+        label: "close",
+    },
+];
+
+/// What the palette shows in Lead mode, under its input: the thread, up to
+/// `LEAD_THREAD_MAX` tall and scrolling with the same fade at its top, then
+/// an approval or question waiting on you. `fade` is the palette's fill.
+pub fn lead_palette_body(
+    thread: impl IntoElement,
+    ask: Option<AnyElement>,
+    scroll: &ScrollHandle,
+    fade: Hsla,
+) -> zz_gpui::Div {
+    v_flex()
+        .debug_selector(|| "lead-palette".to_owned())
+        .w_full()
+        .child(
+            div()
+                .relative()
+                .w_full()
+                .child(
+                    div()
+                        .id("lead-palette-thread")
+                        .max_h(px(LEAD_THREAD_MAX))
+                        .overflow_y_scroll()
+                        .track_scroll(scroll)
+                        .child(thread),
+                )
+                .top_fade(scroll, fade, px(THREAD_FADE)),
+        )
+        .children(ask.map(|ask| div().px(px(4.0)).pt(px(4.0)).child(ask)))
 }
 
 /// The chat's button in the title bar, with a dot in the color of what waits
@@ -559,6 +707,20 @@ mod tests {
         assert_eq!(
             cx.debug_bounds("chat-receipt-Read").unwrap().right(),
             mine.right() - px(STAMP_RIGHT)
+        );
+    }
+
+    #[test]
+    fn the_split_leaves_the_list_and_the_chat_their_minimums() {
+        let bounds = Bounds::new(
+            point(px(0.0), px(100.0)),
+            zz_gpui::size(px(340.0), px(600.0)),
+        );
+        assert_eq!(chat_split_height(px(400.0), bounds), px(300.0));
+        assert_eq!(chat_split_height(px(650.0), bounds), px(CHAT_MIN_HEIGHT));
+        assert_eq!(
+            chat_split_height(px(120.0), bounds),
+            px(600.0 - CHAT_LIST_MIN_HEIGHT)
         );
     }
 
