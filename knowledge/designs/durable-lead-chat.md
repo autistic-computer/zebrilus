@@ -2,7 +2,7 @@
 type: Design Plan
 title: Durable lead chat . one lead, any machine
 description: "How the lead agent survives restarts and moves between machines without replaying its history: zz keeps a small chat log, the lead keeps a ledger it rewrites every turn, and a restarted lead is a fresh Claude Code or Codex session started from a 2-4 KB packet built from the two, while the vendor transcript stays where it was written. One host owns the lead under an epoch and mirrors the small files over zz's own ssh link. Measured against full transcript resume with mid-task kills on the fleet; prototypes in scripts/lead-checkpoint.py and scripts/lead-sync.sh."
-status: Proposed (2026-10-24; checkpoint resume measured against full resume, prototypes verified on the fleet; nothing in the daemon yet)
+status: Proposed (2026-10-24; checkpoint resume measured against full resume, skill v6 shipped, prototypes verified on the fleet; nothing in the daemon yet)
 resource: scripts/lead-checkpoint.py
 tags:
 - agent
@@ -101,7 +101,7 @@ after 420 s, or 600 s into the env-var research task for a bigger history. Nine 
 | Ownership | `~/.zz-lead/owner`: `EPOCH HOST AGENT SESSION` | written by handoffs and mirror passes | decides who may run the lead |
 | Vendor transcript | the CLI's own file on the host that wrote it | optionally, lazily, for the lens | never |
 | Worker panes and state | each host's daemon | nothing to move | queried live: `capture-pane`, `inspect` |
-| The lead's background waits | processes on the old owner | lost | re-armed: `agent-send --wait ''` waits without sending once the lead-gaps fixes land |
+| The lead's background waits | processes on the old owner | lost | re-armed with `agent-send --wait ''`, which waits without sending anything |
 
 # The design
 
@@ -112,8 +112,9 @@ lines, after every send, every result and before it ends a turn; anything not in
 after a restart, and older detail is searched in the chat log or transcripts with `rg`, never read
 whole. A restarted lead reads the ledger, looks at each open job's pane once, verifies finished
 work on its host, waits again on the rest, and never resends a brief or starts a second worker
-for a live job (`bench/agents/lead/skills/v6.md`, the text to ship once the lead-gaps fixes are
-merged).
+for a live job (`.agents/skills/zz-lead/SKILL.md`, v6). On the lead-gaps build a v6 lead
+restarted from its checkpoint re-armed both open jobs with `agent-send --wait ''`, sent the workers
+nothing, and finished green with 609k input tokens after the restart against 821k for full resume.
 
 For Claude Code, a Stop hook (`lead-checkpoint.py stop-hook`) checks the transcript: if the lead
 used a tool since the last user or notice entry and none of those calls wrote `ledger.md`, it

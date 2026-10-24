@@ -3,6 +3,7 @@
 #   ARM   [MODEL/](none | vN | skill:vN)[@full | @checkpoint]; vN (skills/vN.md in the system prompt) | skill:vN (skills/vN.md as a project skill)
 #   TASK  g (green on three hosts) | f (quick facts) | r (env vars in three repos) | a (approval)
 #   LEAD_HOST (ubuntu), MODEL (opus), EFFORT (xhigh), TMO seconds (2400), OUT (results dir)
+#   ZZ_DEV_BENCH=1: the lead's zz is the build dev-setup.sh installed (~/zz-lead/lz on ubuntu, zz-dev elsewhere)
 #   RESUME full|checkpoint: kill the lead KILL_DELAY s (30) after its KILL_SENDS-th agent-send (3) and bring it
 #   back with claude --resume or a fresh session given scripts/lead-checkpoint.py's packet RESTART_DELAY s (0)
 #   later; adds the Stop hook
@@ -20,6 +21,8 @@ esac
 LEAD=${LEAD_HOST:-ubuntu}
 HOSTS=(xps alienware ubuntu)
 MODEL=${MODEL:-opus} EFFORT=${EFFORT:-xhigh} TMO=${TMO:-2400}
+LZ=zz DEVPATH=""
+if [ -n "${ZZ_DEV_BENCH:-}" ]; then LZ="~/zz-lead/lz" DEVPATH='export PATH=$HOME/zz-lead/bin:$PATH'; fi
 OUT=${OUT:-$S/out}
 RUN=lead-$(date +%m%d%H%M%S)-$TASK-$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')
 TOKEN=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
@@ -67,6 +70,7 @@ APPEND=""
 [ "$DELIVERY" = prompt ] && APPEND='--append-system-prompt "$(cat skill.md)"'
 cat > "$D/lead.sh" <<EOF
 #!/bin/bash -l
+$DEVPATH
 cd ~/$R
 exec claude --session-id $UUID --setting-sources project --strict-mcp-config --dangerously-skip-permissions $APPEND "\$(cat prompt.txt)"
 EOF
@@ -81,7 +85,7 @@ if [ -n "${RESUME:-}" ]; then
   scp -q "$D/restart.txt" "$LEAD:$R/"
 fi
 
-LP=$(ssh "$LEAD" "bash -lc 'chmod +x ~/$R/lead.sh; zz new-session -d -s $RUN -x 220 -y 60 -P -F \"#{pane_id}\" -c ~/$R ~/$R/lead.sh'")
+LP=$(ssh "$LEAD" "bash -lc 'chmod +x ~/$R/lead.sh; $LZ new-session -d -s $RUN -x 220 -y 60 -P -F \"#{pane_id}\" -c ~/$R ~/$R/lead.sh'")
 echo "lead=$LEAD:$LP" >> "$D/meta"
 start=$(date +%s)
 TX="" killed=""
@@ -94,7 +98,7 @@ while :; do
   if [ -n "${RESUME:-}" ] && [ -z "$killed" ] && [ -n "$TX" ] && [ "$(ssh "$LEAD" "python3 - $TX" < "$S/sends.py")" -ge "${KILL_SENDS:-3}" ]; then
     sleep "${KILL_DELAY:-30}"
     killed=$(date +%s)
-    ssh "$LEAD" "bash -lc 'cd ~/$R && zz set-option -p -t $LP remain-on-exit on && ./killtree.sh $LP && cp $TX pre.jsonl && wc -l < pre.jsonl'" > "$D/pre-lines"
+    ssh "$LEAD" "bash -lc 'cd ~/$R && $LZ set-option -p -t $LP remain-on-exit on && ZZ=$LZ ./killtree.sh $LP && cp $TX pre.jsonl && wc -l < pre.jsonl'" > "$D/pre-lines"
     sleep "${RESTART_DELAY:-0}"
     if [ "$RESUME" = checkpoint ]; then
       UUID=$(uuidgen | tr 'A-Z' 'a-z')
@@ -104,20 +108,20 @@ while :; do
     else
       START_ARGS="--resume $UUID" FIRST=restart.txt
     fi
-    printf '#!/bin/bash -l\ncd ~/%s\nexec claude %s --setting-sources project --strict-mcp-config --dangerously-skip-permissions %s "$(cat %s)"\n' "$R" "$START_ARGS" "$APPEND" "$FIRST" > "$D/resume.sh"
+    printf '#!/bin/bash -l\n%s\ncd ~/%s\nexec claude %s --setting-sources project --strict-mcp-config --dangerously-skip-permissions %s "$(cat %s)"\n' "$DEVPATH" "$R" "$START_ARGS" "$APPEND" "$FIRST" > "$D/resume.sh"
     scp -q "$D/resume.sh" "$LEAD:$R/"
-    ssh "$LEAD" "bash -lc 'chmod +x ~/$R/resume.sh; zz respawn-pane -k -t $LP ~/$R/resume.sh'"
+    ssh "$LEAD" "bash -lc 'chmod +x ~/$R/resume.sh; $LZ respawn-pane -k -t $LP ~/$R/resume.sh'"
     echo "killed=$killed resume=$RESUME uuid2=$UUID" >> "$D/meta"
   fi
-  ssh "$LEAD" "bash -lc 'zz has-session -t $RUN'" >/dev/null 2>&1 || { status=exited; break; }
+  ssh "$LEAD" "bash -lc '$LZ has-session -t $RUN'" >/dev/null 2>&1 || { status=exited; break; }
   [ $(( $(date +%s) - start )) -ge "$TMO" ] && { status=timeout; break; }
 done
 wall=$(( $(date +%s) - start ))
 echo "status=$status wall=$wall" >> "$D/meta"
 [ -n "$TX" ] && scp -q "$LEAD:$TX" "$D/transcript.jsonl"
 [ -n "$killed" ] && scp -q "$LEAD:$R/pre.jsonl" "$LEAD:$R/ledger.md" "$D/" 2>/dev/null && { [ "$RESUME" = checkpoint ] && scp -q "$LEAD:$R/packet.md" "$D/"; true; }
-ssh "$LEAD" "bash -lc 'zz capture-pane -p -J -t $LP -S - 2>/dev/null'" > "$D/lead-screen.txt"
-ssh "$LEAD" "bash -lc 'zz kill-session -t $RUN'" >/dev/null 2>&1
+ssh "$LEAD" "bash -lc '$LZ capture-pane -p -J -t $LP -S - 2>/dev/null'" > "$D/lead-screen.txt"
+ssh "$LEAD" "bash -lc '$LZ kill-session -t $RUN'" >/dev/null 2>&1
 
 for h in "${HOSTS[@]}"; do
   ssh -o BatchMode=yes "$h" python3 - check "$RUN" "$TOKEN" "$h" < "$S/fixtures.py" > "$D/check-$h.json" 2>&1 &
