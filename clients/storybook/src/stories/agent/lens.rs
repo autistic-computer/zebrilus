@@ -7,6 +7,7 @@ use zz_gpui::{
 };
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
+    IconName,
     agent::{
         AgentEntry, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind,
         AgentToolStatus as Status, TimelineRow,
@@ -15,8 +16,12 @@ use zz_ui::{
         presentation::spinner_phase,
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
+    compact::compact_pane_header,
     input::InputState,
-    pane::{PaneDragSource, PaneLens, TerminalPaneAction, terminal_pane_header},
+    pane::{
+        PaneDragSource, PaneLens, TerminalPaneAction, pane_header_icon_button, pane_lens_button,
+        terminal_pane_header,
+    },
     pip::PipSurface,
     scroll::Scrollbar,
 };
@@ -60,6 +65,25 @@ const CLAUDE_ASKS: &[(Tone, &str)] = &[
     (Tone::Muted, "    3. No, and tell Claude what to do (esc)"),
 ];
 
+const CLAUDE_PLANS: &[(Tone, &str)] = &[
+    (Tone::Muted, "~/dev/zz fix/pinned-tab-width"),
+    (
+        Tone::Plain,
+        "> Plan how pinned tabs keep their width, then wait for me.",
+    ),
+    (Tone::Plain, "  Ready to code?"),
+    (Tone::Plain, "  Here is Claude's plan:"),
+    (
+        Tone::Muted,
+        "  1. Give pinned tabs a 28px floor in tab_strip.rs",
+    ),
+    (Tone::Muted, "  2. Read stored widths in the drop preview"),
+    (Tone::Plain, "  Would you like to proceed?"),
+    (Tone::Success, "  › 1. Yes, and auto-accept edits"),
+    (Tone::Muted, "    2. Yes, and manually approve edits"),
+    (Tone::Muted, "    3. No, keep planning"),
+];
+
 const CODEX_ASKS: &[(Tone, &str)] = &[
     (Tone::Muted, "~/dev/zz main*"),
     (Tone::Plain, "› Bump the storybook lock and commit it"),
@@ -81,13 +105,14 @@ enum Scene {
     Claude,
     Codex,
     ClaudeAsks,
+    ClaudePlans,
     CodexAsks,
 }
 
 impl Scene {
     const fn provider(self) -> AgentProvider {
         match self {
-            Self::Claude | Self::ClaudeAsks => AgentProvider::ClaudeCode,
+            Self::Claude | Self::ClaudeAsks | Self::ClaudePlans => AgentProvider::ClaudeCode,
             Self::Codex | Self::CodexAsks => AgentProvider::Codex,
         }
     }
@@ -98,6 +123,7 @@ impl Scene {
             Self::Codex => 15,
             Self::ClaudeAsks => 16,
             Self::CodexAsks => 17,
+            Self::ClaudePlans => 18,
         }
     }
 
@@ -105,6 +131,7 @@ impl Scene {
         match self {
             Self::Claude => "Pinned tabs keep their icon width",
             Self::ClaudeAsks => "Open the pinned tabs pull request",
+            Self::ClaudePlans => "Plan the pinned tabs fix",
             Self::Codex | Self::CodexAsks => "codex",
         }
     }
@@ -114,6 +141,7 @@ impl Scene {
             Self::Claude => CLAUDE,
             Self::Codex => CODEX,
             Self::ClaudeAsks => CLAUDE_ASKS,
+            Self::ClaudePlans => CLAUDE_PLANS,
             Self::CodexAsks => CODEX_ASKS,
         }
     }
@@ -208,6 +236,15 @@ impl Scene {
                 )
                 .entry(),
             ],
+            Self::ClaudePlans => vec![
+                user(
+                    1,
+                    "Plan how pinned tabs keep their width, then wait for me.",
+                ),
+                done(2, Kind::Search, "rg -n \"pinned\" crates/zz-ui/src/browser"),
+                done(3, Kind::Read, "Read crates/zz-ui/src/browser/tab_strip.rs"),
+                done(4, Kind::Read, "Read crates/zz-ui/src/browser/drag.rs"),
+            ],
             Self::CodexAsks => vec![
                 user(1, "Bump the storybook lock and commit it"),
                 done(
@@ -232,6 +269,7 @@ enum Look {
     Page(f32),
     Tiled,
     Floating,
+    Phone,
 }
 
 pub struct LensPane {
@@ -279,10 +317,49 @@ pub(crate) fn floating_codex(window: &mut Window, cx: &mut App) -> AnyView {
     build(Scene::Codex, Look::Floating, false, window, cx)
 }
 
+pub(crate) fn phone_claude(window: &mut Window, cx: &mut App) -> AnyView {
+    build(Scene::Claude, Look::Phone, true, window, cx)
+}
+
+pub(crate) fn phone_claude_asks(window: &mut Window, cx: &mut App) -> AnyView {
+    build(Scene::ClaudeAsks, Look::Phone, true, window, cx)
+}
+
+pub(crate) fn phone_codex(window: &mut Window, cx: &mut App) -> AnyView {
+    build(Scene::Codex, Look::Phone, false, window, cx)
+}
+
 impl LensPane {
     fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
         let title = self.scene.title();
+        if self.look == Look::Phone {
+            let toggle = pane_lens_button(
+                PaneLens {
+                    provider: self.scene.provider(),
+                    open: self.open,
+                },
+                move |_, cx| {
+                    entity.update(cx, |view, cx| {
+                        view.open = !view.open;
+                        cx.notify();
+                    });
+                },
+                cx,
+            )
+            .hit_slop(10.0, 10.0)
+            .into_any_element();
+            let close = pane_header_icon_button(
+                ("lens-phone-close", self.scene.pane()),
+                IconName::Xmark,
+                true,
+                cx,
+            )
+            .hit_slop(10.0, 10.0)
+            .into_any_element();
+            return compact_pane_header(IconName::SquareTerminal, title, [toggle, close], cx)
+                .into_any_element();
+        }
         terminal_pane_header(
             true,
             title,
@@ -337,6 +414,15 @@ impl LensPane {
                 "git push -u origin fix/pinned-tab-width",
                 None,
                 &ANSWERS,
+                0,
+                true,
+                cx,
+            )],
+            Scene::ClaudePlans => vec![permission(
+                "lens-wait",
+                "Waiting for a plan approval in the terminal",
+                None,
+                &[],
                 0,
                 true,
                 cx,
@@ -410,7 +496,7 @@ impl Render for LensPane {
                 .child(header)
                 .child(body)
                 .into_any_element(),
-            Look::Tiled => div()
+            Look::Tiled | Look::Phone => div()
                 .id(id)
                 .size_full()
                 .flex()
@@ -455,6 +541,10 @@ pub fn approvals(window: &mut Window, cx: &mut App) -> AnyView {
         (
             "Claude Code at its permission prompt: Allow types 1, Deny presses Esc",
             build(Scene::ClaudeAsks, Look::Page(500.0), true, window, cx),
+        ),
+        (
+            "Claude Code at a plan approval or question: the card has no answers, the terminal takes the keys",
+            build(Scene::ClaudePlans, Look::Page(440.0), true, window, cx),
         ),
         (
             "Codex at its own dialog: the rollout says nothing while it waits, so the lens shows the running step and no card",
