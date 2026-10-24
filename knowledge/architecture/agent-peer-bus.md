@@ -192,7 +192,8 @@ from a caller without a peer stays fire-and-forget by decision: a caller that ne
 
 Replies have no reply-to id. A `type: user` line resolves the oldest unresolved wait whose target
 socket equals the line's `from` address (`uds:<target socket>`). Other targets keep waiting. A
-reply from a target whose last wait timed out within the hour is kept, the latest one per target,
+reply from a target whose last wait timed out or lost its caller within the hour is kept, the
+latest one per target,
 for the next wait on that pane; other replies without a matching caller are logged and dropped.
 Stdout receives the trimmed text between
 the wrapper's first line and closing tag; an unwrapped reply retains its raw content. On success,
@@ -205,6 +206,10 @@ and report the status and supplied `reason` or `drop_reason`. A dead target pid 
 exit 1. The timeout defaults to 600 seconds, and `0` waits forever. Timeout errors name the pane
 and exit 124; a timeout does not cancel the remote turn.
 
+```json
+{"type":"control","action":"peer_message_status","orig_msg_id":"sent-message-id","status":"dropped","reason":"peer policy","from":"uds:/tmp/cc-socks/4712.sock"}
+```
+
 The wait also follows the pane's `@agent_state`, which Claude Code's OSC 7501 program status or the
 registry scan writes (`busy` is `working`, `waiting` is `blocked`, anything else `idle`): once the
 pane has been non-idle since the send, a return to `idle` ends the turn and prints the reply if one
@@ -212,15 +217,14 @@ came, or nothing when the session answered only in its pane. `blocked` exits 3 u
 `--on-block fail` and otherwise keeps waiting. A state that is already non-idle at the send counts,
 so a message that lands just as an earlier turn ends can return that turn's end.
 
-`agent-send -t %N --wait ''` (empty text, no `--context`) posts nothing. It prints a kept late reply
+`agent-send -t %N --wait ''` (empty text, no `--context`) posts nothing and skips the
+[agent lens](/concepts/agent-lens.md), which would refuse an empty prompt. It prints a kept late reply
 at once, returns at once with empty text when the pane is idle, and otherwise waits for the reply
 or the end of the running turn the same way. A lead re-arms a timed-out wait this way without
 nudging the worker. Terminal panes without a Claude Code record treat empty text the same way on
-`@agent_state` alone; an Agent pane refuses it.
-
-```json
-{"type":"control","action":"peer_message_status","orig_msg_id":"sent-message-id","status":"dropped","reason":"peer policy","from":"uds:/tmp/cc-socks/4712.sock"}
-```
+`@agent_state` alone. Since the lens, `--wait` with text to a pane running `claude` types it and
+reads the transcript instead, so this inbox wait serves panes whose program is not recognized as
+Claude Code, and the kept replies come from those waits.
 
 ## Control lines and pid verification
 

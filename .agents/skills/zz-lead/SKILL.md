@@ -50,12 +50,10 @@ The worker knows nothing of your conversation. Send one self-contained brief:
 3. Scope: what is in and out (no pushing, no other repos, do not edit tests).
 4. Done when: a checkable condition.
 5. Verify with: the command that proves it.
-6. Reply. Claude Code: "When finished, send me ONE message with SendMessage to the sender of
-   this message: `DONE ok|fail <one line>`, plus a report path if there is more." Codex: "End
-   your last turn with the line `DONE ok|fail <one line>`; put details in a file."
+6. Reply: "End your last turn with the line `DONE ok|fail <one line>`; put details in a file."
 
-Send the brief from a file, to Claude Code and Codex alike:
-`zz --host xps agent-send -t %N --wait --on-block fail --timeout 3600 < brief.md`.
+Send the brief from a file, to Claude Code and Codex alike; zz types it into the CLI:
+`zz --host xps agent-send -t %N --wait --final --on-block fail --timeout 3600 < brief.md`.
 
 ## Wait without polling
 
@@ -63,16 +61,14 @@ Run each `agent-send --wait` in the background, then end your turn or do other w
 woken when it returns. No loops that re-check a pane, file or state (`until`/`while` with
 `sleep`, `.done` markers, `timeout N tail -f`), and no reading a wait's output before you are woken.
 
-- Claude Code: the wait returns when the worker's turn ends, with its SendMessage reply. Empty
-  output means it answered in its pane: read `zz --host H capture-pane -p -t %N | tail -20` once.
-- Codex: the wait returns when the turn ends, with no text; read
-  `zz --host H capture-pane -p -t %N -S -40 | tail -40` or its report. An old Codex whose pane
-  shows no `#{agent_state}` cannot be waited on.
+- Exit 0: the turn ended; stdout is the worker's last message, the DONE line. An old Codex whose
+  pane shows no `#{agent_state}` cannot be waited on.
 - Exit 3: the worker waits on a prompt only the user can answer. Report it.
+- Exit 1 with `turn failed`: the CLI itself failed, such as an API error; the message says why.
 - Exit 124, or you were restarted while waiting: wait again without sending anything,
-  `zz --host H agent-send -t %N --wait --on-block fail --timeout 3600 ''`. It prints a reply that
-  came in the meantime (kept an hour), returns at once if the worker is idle, or waits for its
-  turn to end.
+  `zz --host H agent-send -t %N --wait --on-block fail --timeout 3600 ''`. It returns at once if
+  the worker is idle and otherwise when its turn ends, printing nothing: then read the DONE line
+  with `zz --host H capture-pane -p -t %N | tail -20` once, or the report.
 - Any other failure proves nothing: look at the pane before sending again; never resend blindly.
 
 ## Check claims

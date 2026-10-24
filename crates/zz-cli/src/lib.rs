@@ -235,6 +235,7 @@ pub fn run_startup(socket_path: &Path, options: StartupOptions) -> Startup {
         client_utf8,
         client_features,
     } = arguments;
+    let host = host.filter(|name| !names_this_machine(name));
     zz_daemon_client::set_client_terminal_flags(zz_daemon_client::ClientTerminalFlags {
         utf8: client_utf8,
         features: client_features,
@@ -2695,6 +2696,32 @@ fn chain_is_read_only(command_chain: &[CommandInvocation]) -> bool {
     })
 }
 
+fn names_this_machine(name: &str) -> bool {
+    let hosts = zz_daemon_client::configured_fleet_hosts()
+        .map(|(hosts, _)| hosts)
+        .unwrap_or_default();
+    unconfigured_local_name(
+        &hosts,
+        zz_daemon_client::process_info::host_name().as_deref(),
+        name,
+    )
+}
+
+fn unconfigured_local_name(
+    hosts: &[zz_daemon_client::HostEntry],
+    local: Option<&str>,
+    name: &str,
+) -> bool {
+    !hosts.iter().any(|host| host.name == name)
+        && local.is_some_and(|local| {
+            name.eq_ignore_ascii_case(local)
+                || local
+                    .split('.')
+                    .next()
+                    .is_some_and(|short| name.eq_ignore_ascii_case(short))
+        })
+}
+
 fn connect_host_command_client(name: &str, read_only: bool) -> Result<CommandClient, String> {
     let endpoint = configured_host_endpoint(name)?;
     CommandClient::connect_endpoint(&endpoint, read_only)
@@ -3618,6 +3645,28 @@ mod tests {
                 Some(std::process::ExitCode::from(2))
             );
         }
+    }
+
+    #[test]
+    fn a_host_named_after_this_machine_runs_here_unless_configured() {
+        let configured = [zz_daemon_client::HostEntry {
+            name: "ubuntu".to_owned(),
+            endpoint: zz_daemon_client::Endpoint::parse("ssh://ubuntu").expect("endpoint"),
+        }];
+        assert!(super::unconfigured_local_name(
+            &[],
+            Some("ubuntu"),
+            "ubuntu"
+        ));
+        assert!(super::unconfigured_local_name(&[], Some("xps.lan"), "xps"));
+        assert!(super::unconfigured_local_name(&[], Some("XPS"), "xps"));
+        assert!(!super::unconfigured_local_name(
+            &configured,
+            Some("ubuntu"),
+            "ubuntu"
+        ));
+        assert!(!super::unconfigured_local_name(&[], Some("ubuntu"), "xps"));
+        assert!(!super::unconfigured_local_name(&[], None, "ubuntu"));
     }
 
     #[test]

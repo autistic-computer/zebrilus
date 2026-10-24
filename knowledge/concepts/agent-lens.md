@@ -68,11 +68,18 @@ for the lead chat, but no pane opens them now.
   id in the record (`/clear`, `/resume`) becomes a session switch with a fresh replay, and a prompt
   whose parent is not the last line seen (`/rewind`) reloads the chain. A `system` /
   `turn_duration` line marks a finished turn.
-- **Codex.** The pane's `codex` process holds its rollout open; the runtime finds it through
-  `/proc/<pid>/fd` on Linux or `lsof -p` on macOS and takes the open rollout whose `session_meta`
-  has no parent. `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items and
+- **Codex.** The runtime looks for the rollout the pane's `codex` process holds open, through
+  `/proc/<pid>/fd` on Linux or `lsof -p` on macOS, and takes the one whose `session_meta` has no
+  parent. Codex 0.164 on macOS leaves the file to its shared app-server (`~/.codex/packages`), so the
+  runtime falls back to the newest top-level rollout for the pane's working directory modified since
+  the process started (`newest_rollout`); two Codex panes in one folder can then pick each other's
+  session. `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items and
   `codex::translate::Translator::history_item` translates them. `task_started` marks the pane busy;
-  `task_complete` and `turn_aborted` mark it idle.
+  `task_complete` and `turn_aborted` mark it idle. A `task_complete` that carries an `error` (an API
+  error, such as a model the login does not allow) fails the lens turn with Codex's message, so
+  `agent-send --wait` exits 1. While a lens turn waits on a pane whose rollout is not found yet,
+  the runtime looks on every tick instead of every 5 s, and a rollout found after its turn already
+  ended settles that turn from its last `task_complete`.
 
 Claude's session record carries `status` (`busy`, `idle`, `waiting`). The runtime turns it into
 `Activity { busy }` events, so the pane's phase follows the TUI whether the turn came from the
@@ -127,6 +134,8 @@ the reference; the [command set](/tmux/commands.md) has the rows.
   typed into the CLI and the transcript says when the turn ends. A terminal running neither CLI
   falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny`
   exit 2 there. `--on-block allow|deny` answers a Claude permission prompt with the keys above.
+  `--wait ''` (no text) skips the lens: it waits on `@agent_state` for the running turn and prints
+  nothing, so a caller can wait again after a timeout without typing anything.
 - `agent-respond` answers a pending permission only in a pane whose lens is open (in a client or
   through a running `agent-send --wait`); other panes exit 1 with `has no agent lens open`.
 - `inspect` lists `agent-respond` in `verbs` for a pane with an open lens, and its `permission`
