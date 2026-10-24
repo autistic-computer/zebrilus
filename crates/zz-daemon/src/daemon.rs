@@ -16815,7 +16815,14 @@ impl Shared {
                 parsed.on_block,
                 AgentBlockPolicy::Allow | AgentBlockPolicy::Deny
             );
-        if lens_only || parsed.wait {
+        if lens_only && parsed.wait_only() {
+            return Err(ServerError::NativeCommandParse(
+                "agent-send: --wait without text takes only --timeout, --json and --on-block wait|fail"
+                    .to_owned(),
+            )
+            .into());
+        }
+        if lens_only || (parsed.wait && !parsed.wait_only()) {
             let pane = self.inner.lock().engine.resolve_pane(
                 parsed.target.as_deref(),
                 context.window,
@@ -33703,7 +33710,8 @@ impl Shared {
                     terminal_requests::ReplyOutcome::TimedOut => {
                         return Err(DaemonError::CommandExit {
                             output: format!(
-                                "{pane}: no reply within {} seconds; the turn is still running",
+                                "{pane}: no reply within {} seconds; the turn is still running. \
+                                 `agent-send -t {pane} --wait ''` waits again without sending",
                                 timeout.unwrap().as_secs()
                             )
                             .into(),
@@ -52226,7 +52234,8 @@ when unknown; terminal panes report it from OSC 133 marks.
 ## Remote hosts
 
 `zz list-hosts` lists the machines in `zz/config` with their state and version.
-`zz --host NAME VERB` runs a verb there (NAME may be an ssh destination), and
+`zz --host NAME VERB` runs a verb there (NAME may be an ssh destination; a name that
+`zz/config` does not list and that is this machine's hostname runs here), and
 `zz --host all VERB` runs a read-only verb on every host, prefixing text lines with
 `NAME: ` and adding `host_name` to JSON lines. Pane IDs are per host and none is
 yours there: pass `-t %N` from `list-panes -a` or your own
@@ -52569,8 +52578,8 @@ A terminal pane running Codex is also a valid target. The daemon reads the sessi
 name from the pane title and queues the text through Codex's own `codex queue`.
 Codex runs it at its next idle, with polling taking up to ten seconds. Plain sends
 and `--submit` both queue the message and print the pane ID for command clients.
-A fresh session has no name until its first prompt; `/rename` inside Codex resolves
-a name collision.
+A fresh session has no name until its first prompt, so a plain send to it is typed
+into the pane instead; `/rename` inside Codex resolves a name collision.
 
 For a terminal pane running neither Claude Code nor Codex and without a peer
 reply channel, `--wait` requires a non-empty `@agent_state` and types the text. It waits for a
@@ -52583,13 +52592,16 @@ requests exit 3. A missing `@agent_state` exits 1 before sending.
 
 Terminal waits report their known duration and reply text with zero counters.
 
-A Claude Code `--wait` also ends when the pane's turn ends (`#{agent_state}` leaves
-`idle` and comes back), printing the SendMessage reply if one came and nothing if the
-session answered only in its pane; `blocked` exits 3 under `--on-block fail` there
-too. `zz agent-send -t %N --wait ''` sends nothing: it prints a reply that arrived
-after an earlier wait on that pane timed out, returns at once when the pane is idle,
-and otherwise waits for the running turn to end. After a timeout the daemon keeps
-its reply inbox for an hour so a late reply is not lost.
+The inbox wait also ends when the pane's turn ends (`#{agent_state}` leaves `idle` and
+comes back), printing the SendMessage reply if one came and nothing if the session
+answered only in its pane; `blocked` exits 3 under `--on-block fail` there too.
+
+`zz agent-send -t %N --wait ''` sends nothing, on any terminal agent: it returns at
+once when the pane is idle and otherwise waits for the running turn to end, printing
+nothing (read the pane), or a SendMessage reply that reached the inbox after an
+earlier inbox wait timed out or its caller went away; the daemon keeps those for an
+hour. It takes `--timeout`, `--json` and `--on-block wait|fail`. Use it to wait again
+after a timeout, or after a restart, without nudging the agent.
 
 ### Peers
 
@@ -78856,6 +78868,15 @@ set-option -g @alias-mixed-next yes
         let (shared, client, target) =
             send_text_fixture("agentstateonly", "printf 'zz-ready\\r\\n'; exec /bin/cat");
         let pane = target.parse::<PaneId>().expect("pane id");
+        shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane_mut(pane)
+            .expect("pane")
+            .summary
+            .process = vec!["codex".to_owned()];
         let wait = move |shared: &Arc<Shared>, target: &str| {
             shared.execute(
                 client,

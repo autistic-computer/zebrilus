@@ -144,6 +144,7 @@ impl Tail {
 struct Read {
     updates: Vec<Value>,
     finished: bool,
+    failed: Option<String>,
     reload: bool,
 }
 
@@ -319,6 +320,7 @@ struct Codex {
     tail: Option<Tail>,
     translator: CodexTranslator,
     busy: bool,
+    ended: Option<Result<(), String>>,
 }
 
 impl Codex {
@@ -350,6 +352,7 @@ impl Codex {
             self.entry(&entry, &mut read);
         }
         self.tail = Some(tail);
+        self.ended = (!self.busy && read.finished).then(|| read.failed.map_or(Ok(()), Err));
         read.updates
     }
 
@@ -372,6 +375,7 @@ impl Codex {
             Some("task_complete" | "turn_aborted") => {
                 self.busy = false;
                 read.finished = true;
+                read.failed = payload["error"]["message"].as_str().map(codex_error);
             }
             Some("item_completed") => {
                 let item = &payload["item"];
@@ -389,6 +393,13 @@ impl Codex {
             _ => {}
         }
     }
+}
+
+fn codex_error(message: &str) -> String {
+    serde_json::from_str::<Value>(message)
+        .ok()
+        .and_then(|error| error["error"]["message"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| message.to_owned())
 }
 
 fn is_rollout(path: &Path) -> bool {
@@ -510,6 +521,13 @@ impl Source {
         }
     }
 
+    fn take_ended(&mut self) -> Option<Result<(), String>> {
+        match self {
+            Self::Claude(_) => None,
+            Self::Codex(codex) => codex.ended.take(),
+        }
+    }
+
     fn pending_tool(&self) -> Option<&(String, String, Value)> {
         match self {
             Self::Claude(claude) => claude.open.last(),
@@ -548,6 +566,7 @@ struct Lens {
     cwd: PathBuf,
     busy: bool,
     turn: Option<Turn>,
+    failed: Option<String>,
     permission: Option<Permission>,
     next_locate: Instant,
 }
@@ -576,6 +595,7 @@ impl Lens {
             cwd: PathBuf::from("/"),
             busy: false,
             turn: None,
+            failed: None,
             permission: None,
             next_locate: Instant::now(),
         }
@@ -627,6 +647,7 @@ impl Lens {
 
     fn reload(&mut self, found: Found, opening: bool) -> Vec<AgentStreamPayload> {
         let replay = self.source.load(found.path, &found.cwd);
+        let ended = self.source.take_ended();
         let first = self.session.is_none();
         self.session = Some(found.session.clone());
         self.cwd.clone_from(&found.cwd);
@@ -647,7 +668,13 @@ impl Lens {
             return payloads;
         }
         if first {
-            return updates.collect();
+            let mut payloads = updates.collect::<Vec<_>>();
+            if let Some(ended) = ended {
+                self.failed = ended.err();
+                payloads.extend(self.settle(false));
+                self.failed = None;
+            }
+            return payloads;
         }
         let mut payloads = self.settle(false).into_iter().collect::<Vec<_>>();
         payloads.push(AgentStreamPayload::SessionReset { restoring: true });
@@ -663,7 +690,9 @@ impl Lens {
     }
 
     fn tick(&mut self) -> Vec<AgentStreamPayload> {
-        let mut payloads = if Instant::now() >= self.next_locate {
+        let mut payloads = if Instant::now() >= self.next_locate
+            || (self.turn.is_some() && self.session.is_none())
+        {
             self.locate(false)
         } else {
             Vec::new()
@@ -681,7 +710,9 @@ impl Lens {
                 .into_iter()
                 .map(|update| AgentStreamPayload::Update { update }),
         );
+        self.failed = read.failed;
         payloads.extend(self.observe(read.finished));
+        self.failed = None;
         payloads
     }
 
@@ -801,6 +832,12 @@ impl Lens {
 
     fn settle(&mut self, failed: bool) -> Option<AgentStreamPayload> {
         let turn = self.turn.take()?;
+        if let Some(message) = self.failed.take() {
+            return Some(AgentStreamPayload::PromptFinished {
+                turn_id: turn.id,
+                outcome: AgentPromptOutcome::Failed { message },
+            });
+        }
         let stop_reason = if failed || turn.cancelled {
             "cancelled"
         } else {
@@ -1480,5 +1517,102 @@ mod tests {
         );
         assert!(!codex.busy);
         assert!(read.finished);
+        assert_eq!(read.failed, None);
+    }
+
+    #[test]
+    fn a_codex_turn_that_ends_in_an_api_error_fails() {
+        let root = tempfile::tempdir().unwrap();
+        let rollout = root.path().join("rollout-2026-10-24T10-09-22-test.jsonl");
+        std::fs::write(&rollout, "").unwrap();
+        let pane = Arc::new(FakePane::default());
+        let mut codex = Codex::default();
+        codex.load(rollout.clone(), root.path());
+        let mut lens = Lens::with_source(
+            LensSpec {
+                pane: PaneId(7),
+                provider: AgentProvider::Codex,
+                io: pane.clone(),
+            },
+            Source::Codex(Box::new(codex)),
+            Arc::new(AtomicU64::new(1)),
+        );
+        lens.next_locate = Instant::now() + Duration::from_mins(1);
+        assert!(
+            lens.command(RuntimeCommand::Prompt {
+                turn_id: 4,
+                prompt: AgentPrompt {
+                    text: "Reply with pong".to_owned(),
+                    ..AgentPrompt::default()
+                },
+            })
+            .is_empty()
+        );
+        let error = json!({"type": "error", "status": 400, "error": {
+            "type": "invalid_request_error",
+            "message": "The 'gpt-zz' model is not supported when using Codex with a ChatGPT account.",
+        }});
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&rollout)
+            .unwrap();
+        for line in [
+            json!({ "type": "event_msg", "payload": { "type": "task_started", "turn_id": "t1" } }),
+            json!({ "type": "event_msg", "payload": { "type": "task_complete", "turn_id": "t1",
+                "last_agent_message": null, "error": { "message": error.to_string() } } }),
+        ] {
+            writeln!(file, "{line}").unwrap();
+        }
+        let done = lens.tick();
+        assert!(done.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PromptFinished { turn_id: 4, outcome: AgentPromptOutcome::Failed { message } }
+                if message == "The 'gpt-zz' model is not supported when using Codex with a ChatGPT account."
+        )), "{done:?}");
+    }
+
+    #[test]
+    fn a_codex_rollout_found_after_its_turn_failed_still_fails_the_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let mut lens = Lens::with_source(
+            LensSpec {
+                pane: PaneId(7),
+                provider: AgentProvider::Codex,
+                io: Arc::new(FakePane::default()),
+            },
+            Source::Codex(Box::default()),
+            Arc::new(AtomicU64::new(1)),
+        );
+        lens.command(RuntimeCommand::Prompt {
+            turn_id: 5,
+            prompt: AgentPrompt {
+                text: "Reply with pong".to_owned(),
+                ..AgentPrompt::default()
+            },
+        });
+        let rollout = root.path().join("rollout-2026-10-24T10-09-22-late.jsonl");
+        let lines = [
+            json!({ "type": "event_msg", "payload": { "type": "task_started", "turn_id": "t1" } }),
+            json!({ "type": "event_msg", "payload": { "type": "task_complete", "turn_id": "t1",
+                "error": { "message": "stream disconnected" } } }),
+        ];
+        let mut file = std::fs::File::create(&rollout).unwrap();
+        for line in &lines {
+            writeln!(file, "{line}").unwrap();
+        }
+        let found = lens.reload(
+            Found {
+                session: "thread-1".to_owned(),
+                path: rollout,
+                cwd: root.path().to_path_buf(),
+            },
+            false,
+        );
+        assert!(found.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PromptFinished { turn_id: 5, outcome: AgentPromptOutcome::Failed { message } }
+                if message == "stream disconnected"
+        )), "{found:?}");
+        assert!(lens.turn.is_none());
     }
 }
