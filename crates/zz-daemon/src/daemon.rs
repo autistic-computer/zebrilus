@@ -50976,7 +50976,7 @@ fn parse_popup_dimension(
         if percent.is_empty() {
             return Err(error("invalid"));
         }
-        let percent = parse_popup_number(percent, 0, 1000).map_err(&error)?;
+        let percent = parse_popup_number(percent, 0, 1000).map_err(error)?;
         let cells = u64::from(dimension)
             .saturating_mul(percent)
             .checked_div(100)

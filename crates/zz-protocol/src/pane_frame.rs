@@ -731,7 +731,7 @@ fn encode_runs(
                 }
             }
             RUN_WIDE => {
-                for pair in run.chunks_exact(2) {
+                for pair in run.as_chunks::<2>().0 {
                     check_cell(pair[0], limits)?;
                     push_scalar(output, pair[0].glyph());
                 }

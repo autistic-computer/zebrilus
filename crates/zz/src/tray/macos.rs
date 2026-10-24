@@ -93,7 +93,7 @@ fn tray_glyph(rgb: [u8; 3]) -> image::RgbaImage {
     let mut glyph = image::load_from_memory_with_format(TRAY_GLYPH_PNG, ImageFormat::Png)
         .expect("the embedded zz glyph must be a valid PNG")
         .into_rgba8();
-    for pixel in glyph.chunks_exact_mut(4) {
+    for pixel in glyph.as_chunks_mut::<4>().0 {
         pixel[..3].copy_from_slice(&rgb);
     }
     glyph
@@ -270,7 +270,7 @@ mod tests {
             let mut glyph = image::load_from_memory_with_format(source, ImageFormat::Png)
                 .unwrap()
                 .into_rgba8();
-            for pixel in glyph.chunks_exact_mut(4) {
+            for pixel in glyph.as_chunks_mut::<4>().0 {
                 pixel[..3].copy_from_slice(&rgb);
             }
             let scaled = image::imageops::resize(&glyph, 36, 36, FilterType::Lanczos3);

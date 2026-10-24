@@ -534,7 +534,7 @@ scrollback, layouts, and browser URLs; a reboot starts clean.
 
 ### Prerequisites
 
-- **Rust 1.97.0.** Pinned in `rust-toolchain.toml`; rustup selects it for you.
+- **Rust 1.99.0.** Pinned in `rust-toolchain.toml`; rustup selects it for you.
 - **Zig 0.16.0.** Pinned in `mise.toml`. Install [mise](https://mise.jdx.dev/),
   then `mise install`. Zig compiles `libghostty-vt`, the VT engine.
 - **CMake 3.21+ and Ninja.** The CEF C++ wrapper is built from source.

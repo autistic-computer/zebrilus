@@ -1,4 +1,3 @@
-use std::io::Read as _;
 use std::os::unix::net::UnixStream;
 
 use super::*;

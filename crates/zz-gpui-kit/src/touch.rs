@@ -143,7 +143,7 @@ mod tests {
 
     use zz_gpui::{
         Context, IntoElement, Modifiers, ParentElement as _, Render,
-        StatefulInteractiveElement as _, TestAppContext, Window, point, prelude::*, px,
+        StatefulInteractiveElement as _, TestAppContext, Window, point, px,
     };
 
     use super::*;

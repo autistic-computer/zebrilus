@@ -18,7 +18,7 @@ version = "0.22.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/demfabris/zz"
-rust-version = "1.97"
+rust-version = "1.99"
 publish = false
 
 [workspace.dependencies]
@@ -222,6 +222,8 @@ items_after_statements = "allow"
 too_many_arguments = "allow"
 too_many_lines = "allow"
 result_large_err = "allow"
+assert_is_empty = "allow"
+unused_async_trait_impl = "allow"
 # Pixel math casts between f32/u32/i32 on every screen, and exact f32
 # equality is the UI's change-detection idiom; clippy 1.97 warns on both.
 cast_possible_truncation = "allow"

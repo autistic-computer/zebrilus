@@ -146,7 +146,7 @@ Linux and Windows can be type-checked from macOS: `cargo check --target
 x86_64-unknown-linux-musl` with a `zig cc -target x86_64-linux-musl` wrapper named
 `x86_64-linux-musl-gcc` (drop cc-rs's `--target=` flag; a `zig c++` twin as `-g++`),
 `RUST_FONTCONFIG_DLOPEN=1`, and
-`FREETYPE2_NO_PKG_CONFIG=1`; and `cargo +1.97.0 check -p zz-gpui-platform --target
+`FREETYPE2_NO_PKG_CONFIG=1`; and `cargo +1.99.0 check -p zz-gpui-platform --target
 x86_64-pc-windows-msvc` with `RC_x86_64_pc_windows_msvc` set to Homebrew's `llvm-rc`.
 
 ## Native Ghostty: `third_party/ghostty`

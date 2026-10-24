@@ -422,7 +422,9 @@ fn run_popup_regression_inner() -> Result<(), String> {
                             && !started
                             && frame
                                 .bgra
-                                .chunks_exact(4)
+                                .as_chunks::<4>()
+                                .0
+                                .iter()
                                 .any(|pixel| pixel[..3] == [0xfa, 0xf3, 0xee])
                         {
                             started = true;
@@ -454,12 +456,16 @@ fn run_popup_regression_inner() -> Result<(), String> {
                                 written_painted |= written
                                     && frame
                                         .bgra
-                                        .chunks_exact(4)
+                                        .as_chunks::<4>()
+                                        .0
+                                        .iter()
                                         .any(|pixel| pixel[..3] == [0x76, 0x7c, 0x18]);
                                 handshake_painted |= handshake
                                     && frame
                                         .bgra
-                                        .chunks_exact(4)
+                                        .as_chunks::<4>()
+                                        .0
+                                        .iter()
                                         .any(|pixel| pixel[..3] == [0xaa, 0x5b, 0x30]);
                             }
                         }

@@ -2171,15 +2171,15 @@ fn row_fingerprint(cells: &[PackedCell]) -> u64 {
         0x1656_67b1_9e37_79f9,
         0x27d4_eb2f_1656_67c5,
     ];
-    let mut chunks = cells.chunks_exact(LANES);
-    for chunk in &mut chunks {
+    let (chunks, remainder) = cells.as_chunks::<LANES>();
+    for chunk in chunks {
         for (lane, cell) in lanes.iter_mut().zip(chunk) {
             *lane = (*lane ^ cell.bits().wrapping_mul(0xd6e8_feb8_6659_fd93))
                 .rotate_left(27)
                 .wrapping_mul(0x3c79_ac49_2ba7_b653);
         }
     }
-    for (lane, cell) in lanes.iter_mut().zip(chunks.remainder()) {
+    for (lane, cell) in lanes.iter_mut().zip(remainder) {
         *lane = (*lane ^ cell.bits().wrapping_mul(0xd6e8_feb8_6659_fd93))
             .rotate_left(27)
             .wrapping_mul(0x3c79_ac49_2ba7_b653);
