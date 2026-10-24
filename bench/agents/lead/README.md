@@ -160,8 +160,30 @@ read in `knowledge/designs/durable-lead-chat.md`.
 **v5** (`skills/v5.md`): v4 plus a ledger with a fixed shape rewritten before every turn ends and a
 Restarted section. **v6** (`skills/v6.md`): the lead-gaps branch's skill (briefs straight from a
 file to both CLIs, `--final` on terminal panes, a wait-only re-arm with `agent-send --wait ''`)
-plus v5's Ledger and Restarted sections; the text to ship once that branch is merged. v6 was not
-run.
+plus v5's Ledger and Restarted sections, shipped as `.agents/skills/zz-lead/SKILL.md` once that
+branch was merged here.
+
+**v6 on the lead-gaps build** (2026-10-24, 10 runs with `ZZ_DEV_BENCH=1`). The approval task
+passed 3 of 3 (Opus twice, Sonnet) and the lead told the user in 66 to 96 s: `--on-block fail` now
+exits 3 on a Claude permission prompt, so the delayed look is gone. The green task passed 5 of 5,
+including a checkpoint and a full-resume restart; the checkpoint lead re-armed both open jobs
+with `agent-send --wait ''` and sent the workers nothing, and used 609k input tokens after the
+restart against 821k for full resume. No poll loops and no keystrokes into workers in any run.
+The facts task got every hash and clean state right but reported zz 0.22.0, the build it talks
+to, where the truth script reads the installed 0.21.0. The research task fails recall on scope as
+in every arm (106k peak context).
+
+## Running on a build that is not installed
+
+`dev-setup.sh HOST` copies the dev-identity `zz_cli` built in `~/zz-lead-build` on HOST
+(`ZZ_DEV_BUILD=1 mise x zig@0.16.0 -- cargo build -p zz-cli --bin zz_cli`; build on the host with
+the oldest glibc, xps at 2.43) to `~/.local/bin/zz-dev` on xps and alienware, where a dev client
+looks for it, and to `~/zz-lead/` on ubuntu behind `~/zz-lead/lz`, which pins `ZZ_SOCKET`
+(`/tmp/zzlead.sock`), its own `XDG_CONFIG_HOME` (only the `host-` lines) and `XDG_DATA_HOME` (a copy
+of zz's own ssh key, which the other hosts already trust). The installed zz, its daemons and any
+`zz-dev` the user already has stay as they were; `dev-setup.sh` refuses to overwrite a `zz-dev` it
+did not put there. `ZZ_DEV_BENCH=1` makes `run-one.sh` start the lead through `lz` with that `zz`
+first on its PATH, and `run-all.sh` stops those dev daemons at the end (`dev-cleanup.sh`).
 
 ## Traps
 
@@ -182,5 +204,7 @@ run.
   first assistant entry after `--resume` is a synthetic "No response requested." with zero usage.
 - Parallel leads that write brief files under the same name on a worker host overwrite each
   other's briefs; one restarted lead caught it by checking the worker's claim.
+- `zz --host` refuses an explicit `--socket`; select the local daemon with `ZZ_SOCKET` instead.
+- A login shell puts `~/.local/bin` back in front of PATH, so `lead.sh` exports the dev `zz` after it.
 - Run directories stay in `out*/runs/`; the lab stays in `~/orch-lab` and the lead runs in
   `~/lead-runs` on the hosts. Delete them afterwards.

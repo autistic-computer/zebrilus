@@ -12,3 +12,4 @@ mkdir -p "$H" && cp -R "$S"/*.sh "$S"/*.py "$S/skills" "$S/../../../scripts/lead
     echo "$arm $task $rep"
   done; done; done; fi; } | xargs -P "${PAR:-8}" -L 1 bash -c '"$0"/run-one.sh "$1" "$2" "$3" "${4:-}"' "$H"
 "$H/cleanup.sh" "$OUT/snapshot-$STAMP"
+[ -n "${ZZ_DEV_BENCH:-}" ] && "$H/dev-cleanup.sh"

@@ -8,3 +8,5 @@ immediate	lead-1024100947-g-aa30	checkpoint	opus	done	1	xps=Gg alienware=Gg ubun
 after-420s	lead-1024100947-g-be4f	full	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	49629	51245	49661	65369	12	711356	7911	2	596	11	0	0	0	
 late-kill-600s	lead-1024100947-r-7bc9	checkpoint	opus	done	0	xps=1.00 alienware=0.66 ubuntu=0.99	1	117344	37654	29625	76866	34	1958347	18660	4	1568	31	0	1	2	3070
 late-kill-600s	lead-1024100947-r-d3e2	full	opus	timeout	0	xps=1.00 alienware=0.88 ubuntu=0.00	2	82257	83151	82302	128672	28	2884611	23392	3		27	0	2	2	
+v6-devbuild immediate	lead-1024112328-g-4917	full	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	49939	52819	49937	64061	14	820628	6762	3	317	13	0	1	1	
+v6-devbuild immediate	lead-1024112328-g-e798	checkpoint	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	48789	37427	29333	48997	14	609003	6046	3	480	12	0	0	2	2960
