@@ -97,13 +97,13 @@ const STORY: Story = Story {
         Section {
             id: "permission",
             name: "Permission card",
-            summary: "A tool call waiting for approval, above the composer. Digits pick an option, Enter confirms, Esc cancels.",
+            summary: "A tool call waiting for approval, above the composer. Digits pick an option, Enter confirms, Esc cancels. The lens only ever offers Allow and Deny; the longer lists are the card's other states.",
             build: cards::permissions,
         },
         Section {
             id: "question",
             name: "Question card",
-            summary: "Questions the agent asks, one card per request. A single plain question submits on the first pick; anything else waits for Submit.",
+            summary: "Questions the agent asks, one card per request. A single plain question submits on the first pick; anything else waits for Submit. The lens does not draw these yet: Claude's questions stay in the terminal.",
             build: cards::questions,
         },
         Section {
@@ -121,7 +121,7 @@ const STORY: Story = Story {
         Section {
             id: "empty-states",
             name: "Empty states",
-            summary: "What the lens shows before the first message: the welcome, waiting and failure messages, and the error card.",
+            summary: "What the lens shows before the first message: the welcome while the agent has written no transcript, the waiting and failure messages, and the error card for a prompt the TUI did not take.",
             build: chrome::empty_states,
         },
         Section {
@@ -139,7 +139,7 @@ const STORY: Story = Story {
         Section {
             id: "lens-approval",
             name: "Lens approval",
-            summary: "A Claude Code permission prompt becomes a card above the composer whose answers are the keys the TUI takes. Codex records nothing while its dialog is up, so its lens has no card.",
+            summary: "A Claude Code permission prompt becomes a card above the composer whose answers are the keys the TUI takes. Its other dialogs (plan approval, questions) get a card with no answers. Codex records nothing while its dialog is up, so its lens has no card.",
             build: lens::approvals,
         },
     ],

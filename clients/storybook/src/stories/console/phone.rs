@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    Styled as _, Window, div, prelude::*, px,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
+    Render, Styled as _, Window, div, prelude::*, px,
 };
+use zz_protocol::AgentProvider;
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     button::{Button, ButtonVariants as _},
@@ -14,11 +15,12 @@ use zz_ui::{
         compact_pane_header, overview_card, overview_choice_row, overview_host_empty,
         overview_host_row, overview_section_heading, overview_session_heading, page_dots,
     },
-    pane::pane_header_icon_button,
+    pane::{PaneLens, agent_provider_icon, pane_header_icon_button, pane_lens_button},
     v_flex,
     which_key::WhichKeyRow,
 };
 
+use crate::stories::agent::lens;
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -87,6 +89,12 @@ pub const STORY: Story = Story {
             name: "Phone screen",
             summary: "The pieces together: a terminal page under its header, the key row and the bar.",
             build: |_, cx| cx.new(Screen::new).into(),
+        },
+        Section {
+            id: "lens",
+            name: "Agent lens",
+            summary: "A terminal running Claude Code or Codex on the phone. The lens toggle sits before close in the pane header; while the lens is open the page drops the key row the way a browser page does, and the composer types into the TUI. Tap the toggle to swap.",
+            build: phone_lens,
         },
     ],
 };
@@ -488,6 +496,36 @@ fn headers(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
+            "running Claude Code: the lens toggle before close",
+            phone(
+                div().id("header-lens-claude").child(compact_pane_header(
+                    IconName::SquareTerminal,
+                    "Pinned tabs keep their icon width",
+                    [
+                        lens_toggle(AgentProvider::ClaudeCode, false, cx),
+                        close("header-close-claude", cx),
+                    ],
+                    cx,
+                )),
+                cx,
+            ),
+        )
+        .state(
+            "running Codex with the lens open: the toggle lit",
+            phone(
+                div().id("header-lens-codex").child(compact_pane_header(
+                    IconName::SquareTerminal,
+                    "codex",
+                    [
+                        lens_toggle(AgentProvider::Codex, true, cx),
+                        close("header-close-codex", cx),
+                    ],
+                    cx,
+                )),
+                cx,
+            ),
+        )
+        .state(
             "disabled action",
             phone(
                 compact_pane_header(
@@ -503,6 +541,78 @@ fn headers(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .into_any_element()
+}
+
+fn lens_toggle(provider: AgentProvider, open: bool, cx: &App) -> AnyElement {
+    pane_lens_button(PaneLens { provider, open }, |_, _| {}, cx)
+        .hit_slop(10.0, 10.0)
+        .into_any_element()
+}
+
+struct PhoneLens(Vec<(&'static str, &'static str, AgentProvider, AnyView)>);
+
+fn phone_lens(window: &mut Window, cx: &mut App) -> AnyView {
+    let views = vec![
+        (
+            "Claude Code with the lens open: a turn running, the plan and a background task above the composer",
+            "Pinned tabs keep their icon width",
+            AgentProvider::ClaudeCode,
+            lens::phone_claude(window, cx),
+        ),
+        (
+            "Claude Code at its permission prompt: Allow types 1, Deny presses Esc",
+            "Open the pinned tabs pull request",
+            AgentProvider::ClaudeCode,
+            lens::phone_claude_asks(window, cx),
+        ),
+        (
+            "Codex showing its terminal: the toggle opens the lens",
+            "codex",
+            AgentProvider::Codex,
+            lens::phone_codex(window, cx),
+        ),
+    ];
+    cx.new(|_| PhoneLens(views)).into()
+}
+
+impl Render for PhoneLens {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let placement = placement();
+        self.0.iter().enumerate().fold(
+            states(),
+            |states, (index, (label, title, provider, view))| {
+                let pill = compact_floating_pill(
+                    ("lens-pill", index),
+                    PillLabel {
+                        icon: agent_provider_icon(*provider),
+                        title: (*title).into(),
+                        meta: "zz · agents".into(),
+                        warning: false,
+                    },
+                    page_dots(&groups(), cx),
+                    &placement,
+                    cx,
+                );
+                states.state(
+                    *label,
+                    phone(
+                        v_flex()
+                            .h(px(700.0))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_h_0()
+                                    .flex()
+                                    .flex_col()
+                                    .child(view.clone()),
+                            )
+                            .child(compact_floating_bar(pill, &placement, cx)),
+                        cx,
+                    ),
+                )
+            },
+        )
+    }
 }
 
 fn hud(text: &'static str, cx: &App) -> impl IntoElement {
