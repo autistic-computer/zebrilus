@@ -661,7 +661,7 @@ fn error_and_picker(_: &mut Window, cx: &mut App) -> AnyElement {
                 "picking-long",
                 160.0,
                 BrowserPickStatus::new(
-                    "Copied the element's context and a screenshot to the clipboard · paste it into an agent pane",
+                    "Copied the element's context and a screenshot to the clipboard · paste it into an agent",
                 ),
                 cx,
             ),

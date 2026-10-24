@@ -46,16 +46,12 @@ impl AgentInbox {
                     .engine
                     .state
                     .pane(message.pane)
-                    .is_some_and(|pane| matches!(pane.kind, PaneKind::Agent(_)))
+                    .is_some_and(|pane| matches!(pane.kind, PaneKind::Terminal))
             {
                 return;
             }
             let pane = message.pane;
             match message.payload {
-                Payload::Barrier(reply) => {
-                    reply.try_send(());
-                    None
-                }
                 Payload::Updates {
                     first_seq,
                     items,
@@ -72,30 +68,13 @@ impl AgentInbox {
                     shared.publish_agent_replay(pane, frames, also);
                     None
                 }
-                Payload::State(state) => shared.apply_agent_state(pane, state),
-                Payload::Status(status) => {
-                    shared.apply_agent_status(pane, status);
+                Payload::State(state) => {
+                    shared.apply_agent_state(pane, state);
                     None
                 }
                 Payload::ToolCall(call) => shared.agent_tool_call_event(pane, call),
                 Payload::Reply(reply) => {
                     shared.send_agent_reply(pane, reply);
-                    None
-                }
-                Payload::Session {
-                    provider,
-                    session_id,
-                    cwd,
-                } => {
-                    shared.adopt_agent_session(pane, provider, session_id, cwd);
-                    None
-                }
-                Payload::Title(title) => {
-                    shared.title_agent_pane(pane, title);
-                    None
-                }
-                Payload::Text(bytes) => {
-                    shared.feed_agent_pane_text(pane, bytes);
                     None
                 }
             }

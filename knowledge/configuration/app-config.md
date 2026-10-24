@@ -1,7 +1,7 @@
 ---
 type: Configuration
 title: Application configuration search paths
-description: Platform-aware discovery, bounded parsing, ACP launch settings, settings editing, and one-shot donor import for client-local knobs plus ordered daemon-owned overrides.
+description: Platform-aware discovery, bounded parsing, agent driver options, settings editing, and one-shot donor import for client-local knobs plus ordered daemon-owned overrides.
 resource: crates/zz/src/config/mod.rs
 tags:
 - configuration
@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-22T12:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -18,7 +18,7 @@ The GUI process loads the first existing `zz/config` file from the user's platfo
 roots. `crates/zz/src/config/mod.rs` resolves the candidates when `run_app` enters the GPUI application
 closure, parses named client-local behavior/layout/theme/browser knobs plus
 chrome-color entries into typed
-`AppConfig`, `BrowserConfig`, and `UiFontConfig` values, parses the one app-owned ACP key into `AgentConfig`,
+`AppConfig`, `BrowserConfig`, and `UiFontConfig` values,
 collects repeatable `chrome-keybind`/`chrome-unbind` entries for the client-local keymap, and collects the supported
 daemon-owned appearance and mux entries as ordered raw `(key, value)` pairs. Client-reserved
 `host-<name> = <uri>` entries ([fleet attach](/designs/fleet-attach.md)) are matched before any
@@ -119,12 +119,11 @@ The client-local schema includes these scalar settings and chrome colors.
 | `auto-restart-stale-daemon` | `false` | `true` or `false` | Whether a protocol-mismatched local daemon is terminated and replaced on connect. Off by default because it ends every running session |
 | `check-for-updates` | `true` | `true` or `false` | Whether the GUI fetches the GitHub release list ten seconds after launch and daily after that, offering a newer release as a toast. The channel follows the running build (a `-beta.N` version takes prereleases). One anonymous request; nothing else is sent. Release builds only unless `ZZ_UPDATE_CHECK=1`; `ZZ_UPDATE_CHECK=0` silences every build. Surfaced in Settings under About |
 | `status-badges` | `true` | `true` or `false` | Whether window entries show bell and activity markers. Window names and pane icon decks remain visible when this is off |
-| `status-agents` | `true` | `true` or `false` | Whether the bar shows Agent activity in the attached session |
+| `status-agents` | `true` | `true` or `false` | Whether the bar shows the live terminal panes running Claude Code or Codex in the attached session |
 | `status-host` | `true` | `true` or `false` | Whether the bar shows the host name while attached to a remote host. Local attachment has no host item |
 | `status-update` | `true` | `true` or `false` | Whether an available release appears in the bar with its version and an install action. `check-for-updates` separately controls the release check |
 | `flat-sidebar` | `false` | `true` or `false` | Whether the sidebar shows the flat window list instead of the session tree. The eye button at the bottom right of the sidebar sets it |
 | `program-colors` | `true` | `true` or `false` | Whether a flat sidebar tile takes the colors of the program running in it. Off, tiles keep the theme's color and draw the program's mark in its ink. Settings › Appearance › Sidebar sets it; the web and iPad clients keep their own switch |
-| `experimental-agent-pane` | `true` | `true` or `false` | Whether new Agent panes can be created at all . picker row, palette completion, and the daemon's `split-window --kind agent` and `select-pane-kind agent` |
 | `experimental-editor-pane` | `false` | `true` or `false` | Whether new Editor panes can be created at all . picker row, palette completion, and the daemon's `select-pane-kind editor` |
 | `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped treatment: margin, radius, a glass frame, and no split dividers |
 | `pip-background-opacity` | `0.8` | `0..=1` | How much of its own color a PiP lays over the panes under it; below 1 they show through, blurred. Panes settings display 0–100% |
@@ -174,6 +173,10 @@ other three with `` `<key>` was removed: themes set this per role now ``, since 
 cast shadows, how a selected row shows and how a field draws are role props now (see
 [surface roles](/designs/surface-roles.md)). Each is otherwise ignored, and removed when a theme
 is picked.
+`experimental-agent-pane` and `agent-working-directory` went with the Agent pane on 2026-10-23
+(`zz_config::RETIRED_AGENT_KEYS`). A line with either is reported with `` `<key>` was removed: run
+Claude Code or Codex in a terminal pane and open its lens from the pane header `` and ignored (see
+[agent lens](/concepts/agent-lens.md)).
 
 The status settings project directly into `zz_client::StatusBarSettings` and apply through the
 normal watched-config refresh. The clock never shows seconds. `AppShell` aligns its first wake to
@@ -383,19 +386,17 @@ app crate (mirrored by `editor` on `zz-ui`) gates the implementation behind a fa
 feature the matching config flag below reads false regardless of the file, the Settings switch and
 Editor page disappear, and a pane handed over by a featureful daemon renders a labelled placeholder.
 Dev builds opt back in with `ZZ_CARGO_FEATURES=editor-pane just run mac` (or `--features` on cargo
-directly). The `agent-pane` feature works the same way and keeps the same facade
-(`crates/zz/src/agent/mod.rs`), but it is **in the default set** since 0.2.0-beta.2, so
-`experimental-agent-pane` defaults on and is the only gate a stock build has.
+directly). The `agent-pane` cargo feature keeps the same facade (`crates/zz/src/agent/mod.rs`) for
+the [agent lens](/concepts/agent-lens.md) and is in the default set; it has no config flag.
 
-`experimental-agent-pane` and `experimental-editor-pane` are **hard capability gates** with two
-consumers of the same config entry. Client-side they gate the pane picker rows (and the `a`/`e`
-hotkeys) in `pane::picker::choices` plus the palette's `select-pane-kind` completions.
-Daemon-side the entries are forwarded through the config-override push (they are also
-`MuxOptionKey`s), and the mux engine rejects `select-pane-kind … agent|editor` while the flag is
-off. Turning the agent flag off also blocks `split-window --kind agent`. To enable it again, run
-`set-option -g experimental-agent-pane on` in `mux.conf` or at runtime. This changes the daemon
-gate directly; the picker row follows the `zz/config` entry, not the mux option. Panes that already exist keep rendering on reattach when the switch is off;
-flipping it never destroys pane state.
+`experimental-editor-pane` is a **hard capability gate** with two consumers of the same config
+entry. Client-side it gates the pane picker's Editor row (and the `e` hotkey) in
+`pane::picker::choices` plus the palette's `select-pane-kind` completions. Daemon-side the entry is
+forwarded through the config-override push (it is also a `MuxOptionKey`), and the mux engine
+rejects `select-pane-kind … editor` while the flag is off. To enable it again, run
+`set-option -g experimental-editor-pane on` in `mux.conf` or at runtime. This changes the daemon
+gate directly; the picker row follows the `zz/config` entry, not the mux option. Panes that already
+exist keep rendering on reattach when the switch is off; flipping it never destroys pane state.
 
 `use-system-titlebar` maps to GPUI server-side decorations for the main window on
 Linux. It is applied at window creation and re-requested for every open window after a watched
@@ -455,7 +456,7 @@ amount, and the pane's root paints the pane background like every other pane.
 Floating panes take the theme's full glass like every popover. Settings previews that are not
 inside a frame use `Theme::pane_color`.
 
-The Agent main surface uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
+The agent lens surface uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
 the `agent.composer` field role), so at rest it draws what the theme gives that role, a soft wash
 by default, rather than an opaque raised card.
 The footer inherits the main pane background and adds no fill of its own.
@@ -530,22 +531,20 @@ roots cover the native backdrop inside those bounds. In browser panes the toolba
 top arc: the Chromium surface and the overlays that replace it (error panel, empty state) keep
 square top corners and only follow the pane curve at the bottom.
 
-## App-owned Agent keys
+## Agent keys
 
-Exactly one is left. The three adapter keys are [mux options](#daemon-owned-mux-option-keys) now,
-because the daemon spawns the adapter; this one feeds pane creation, which is a client concern.
+No agent key is app-owned any more: `agent-working-directory` went with the Agent pane (see the
+retired keys above). The three driver keys are [mux options](#daemon-owned-mux-option-keys). They
+configure the daemon's native Claude Code and Codex drivers and its ACP runtime. Since the Agent
+pane was removed on 2026-10-23 nothing opens those outside tests; they stay for the planned lead
+chat. The [agent lens](/concepts/agent-lens.md) reads the files the CLI writes and ignores them.
 
-| Key | Default | Validation / effect |
-| --- | --- | --- |
-| `agent-working-directory` | unset | Absolute path only; overrides the donor cwd for brand-new Agent sessions |
-
-The adapter command values may be unquoted, wrapped in matching single/double quotes, or supplied as
+The command values may be unquoted, wrapped in matching single/double quotes, or supplied as
 raw JSON when explicit arguments/environment variables are needed. zz does not log the configured
-command, because a JSON environment map may contain credentials. A configured working directory takes
-precedence when creating a new pane; a daemon-persisted descriptor cwd takes precedence when loading
-an existing ACP session. None of the four has a row in the Settings dialog.
+command, because a JSON environment map may contain credentials. None of the three has a row in
+the Settings dialog.
 
-The daemon captures and caches the user's login-shell `PATH` before the first ACP launch,
+The daemon captures and caches the user's login-shell `PATH` before the first driver launch,
 merges in inherited entries, and injects the result only when the parsed command has no explicit
 `PATH` environment entry. The capture is bounded and falls back to `/usr/libexec/path_helper` on
 macOS, so a launch-agent or Finder-started daemon can resolve Homebrew and user-local executables
@@ -621,17 +620,17 @@ second-prefix arming and `send-prefix -2`; a reload reapplies them exactly like 
 | `set-clipboard` | `external` | `on`, `external`, or `off` |
 | `buffer-limit` | `50` | integer `1..=2147483647`; updates automatic paste-buffer eviction |
 | `synchronize-panes` | `off` | `on` or `off`; controls global synchronized input inheritance |
-| `experimental-agent-pane` | `on` | flag value (`on`/`off`/`true`/`false`/…); gates `split-window --kind agent` and `select-pane-kind agent` in the engine |
 | `experimental-editor-pane` | `off` | flag value; gates `select-pane-kind editor` in the engine |
 | `history-trickle` | `2000` | integer `0..=10000`; background scrollback backfill budget. `0` disables trickle and leaves scroll-driven prefetch intact |
-| `agent-command` | `npx -y @agentclientprotocol/codex-acp@1.11.0` | Nonempty command string or an `AcpAgentConfig` JSON object (`{"command", "args", "env"}`), up to 4 KiB; what the daemon spawns for a Codex pane |
-| `agent-claude-code-command` | `npx -y @agentclientprotocol/claude-agent-acp@0.76.0` | Same, for Claude Code panes |
-| `agent-auto-approve` | `reads` | `off`, `reads` or `all` (the flag spellings `on`/`yes`/`true`/`1` still parse as `all`, `off`/`no`/`false`/`0` as `off`); `reads` answers read-only tool kinds (`read`, `search`, `fetch`, `think`) and, in Claude Code and Codex panes, shell commands made of `zz` calls (see [agent pane](/concepts/agent-pane.md)) daemon-side, and sends `execute`, `edit`, `delete`, `move`, an absent kind and any unrecognised kind to the permission wizard; when the tier answers, a kinded `session/request_permission` is answered daemon-side with the agent's preferred allow option (`allow_always`, else `allow_once`) and the tool call is still published to the stream. A request with no allow option always falls through to the permission wizard |
+| `agent-command` | `codex` | Nonempty command string or an `AcpAgentConfig` JSON object (`{"command", "args", "env"}`), up to 4 KiB; what the daemon's Codex driver runs |
+| `agent-claude-code-command` | `claude` | Same, for the Claude Code driver |
+| `agent-auto-approve` | `reads` | `off`, `reads` or `all` (the flag spellings `on`/`yes`/`true`/`1` still parse as `all`, `off`/`no`/`false`/`0` as `off`); `reads` answers read-only tool kinds (`read`, `search`, `fetch`, `think`) and, in the Claude Code and Codex drivers, shell commands made of `zz` calls daemon-side, and sends `execute`, `edit`, `delete`, `move`, an absent kind and any unrecognised kind to the permission wizard; when the tier answers, a kinded `session/request_permission` is answered daemon-side with the agent's preferred allow option (`allow_always`, else `allow_once`) and the tool call is still published to the stream. A request with no allow option always falls through to the permission wizard |
 | `mouse` | `on` (the pin builds with `-DTMUX_MOUSE=1`) | flag value; session-effective per client on the wire. zz-tui gates its outer-terminal mouse modes on it and the daemon rejects mouse input from terminal-surface clients when off; the GUI's native mouse is ungated (decision 6) |
 | `escape-time` | `10` | integer milliseconds; zz-tui's escape-sequence fold timeout (`0` clamps to 1 like the pin's `tty_keys_next`) |
 
-The three agent keys became mux options when the [Agent pane](/concepts/agent-pane.md)'s ACP runtime
-moved into the daemon at wire v53 . the daemon spawns the adapter, so the daemon owns what it spawns.
+The three agent keys became mux options when the Agent pane's ACP runtime moved into the daemon at
+wire v53: the daemon spawns the driver, so the daemon owns what it spawns. They apply to the native
+drivers only, not to the [agent lens](/concepts/agent-lens.md).
 They are still written in `zz/config` like any other key; the client's parser recognizes them and
 partitions them into the ordered daemon set, exactly as it does for the appearance and other mux
 keys. Changing one reconfigures the runtime without restarting the children already running.
@@ -644,14 +643,14 @@ keys. Changing one reconfigures the runtime without restarting the children alre
   hashes remain data, so `background = #112233`, the normal tmux punctuation set, and quoted hashes
   in copy commands survive transport unchanged. This bounded rule intentionally leaves an unquoted
   whitespace-prefixed hash ambiguous.
-- Client-local booleans, pane geometry, and Agent values are validated in the client; later valid entries
+- Client-local booleans and pane geometry are validated in the client; later valid entries
   replace earlier values and invalid entries warn while retaining the preceding/default value.
 - Daemon-owned values are retained as trimmed raw strings in file order and parsed only by the
   daemon-side appearance loader or mux command engine. Supported appearance and mux keys do not
   produce client warnings.
-- The two `experimental-*-pane` flags are the one dual-consumer exception: they parse as
-  client-local booleans **and** forward raw to the daemon, so the picker gate and the engine gate
-  read the same entry.
+- `experimental-editor-pane` is the one dual-consumer exception: it parses as a client-local
+  boolean **and** forwards raw to the daemon, so the picker gate and the engine gate read the same
+  entry.
 - Unknown keys and malformed lines warn and are ignored.
 
 # Provenance
@@ -725,8 +724,8 @@ lines remain intact. `zz/config` mux overrides still apply above the loaded mux 
 # Settings view
 
 `crates/zz/src/config/settings.rs` renders the `WorkspaceRoute::Settings` route in the main window.
-`Cmd+,` on macOS or `Ctrl+,` elsewhere opens it. `SettingsSection::ALL` is **ten pages**, titled
-Interface, Status bar, Editor, Panes, Multiplexer, Browser, Terminal, Hosts, System, About. The sidebar labels
+`Cmd+,` on macOS or `Ctrl+,` elsewhere opens it. `SettingsSection::ALL` is **eleven pages**, titled
+Interface, Status bar, Editor, Panes, Multiplexer, Browser, Terminal, Hosts, Providers, System, About. The sidebar labels
 them as Appearance, Tools, and Advanced groups. There is deliberately no "General": the page that name described
 had accumulated window chrome, a global widget metric, daemon lifecycle and a debug overlay. The
 device/pairing page that sat before Terminal was deleted on 2026-08-01 along with pairing itself;
@@ -746,7 +745,8 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **PiP** (`pip-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
-| System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, `experimental-agent-pane`, each row present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
+| Providers | One group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; an install something else owns (a root-owned npm prefix, mise, Nix, Snap, winget, a system package) gets no Update button but says who owns it and offers its update command to copy; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
+| System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
 | Terminal | **Appearance** (Font family, Font size, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
 | About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest-release row that reads the update state: Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
@@ -909,9 +909,8 @@ chrome-tint-hue = 190
 # Off by default . the daemon outliving the app is what preserves sessions.
 quit-daemon-on-exit = false
 
-# Opt in to the experimental panes; off, no surface (picker, palette, CLI)
-# can create them.
-experimental-agent-pane = true
+# Opt in to the experimental editor pane; off, no surface (picker, palette,
+# CLI) can create one.
 experimental-editor-pane = true
 ```
 

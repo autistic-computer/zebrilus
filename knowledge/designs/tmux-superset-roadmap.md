@@ -10,7 +10,7 @@ tags:
 - cli
 - fleet
 - native-superset
-timestamp: 2026-08-27T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 last_updated: 2026-08-31
 last_updated_by: Codex
 ---
@@ -592,6 +592,11 @@ Native command families should remain small and composable:
 - Browser control: `set-browser-url`, `set-browser-tabs`, `set-browser-profile`, `capture-browser`.
 - Agent control: `agent-send`, `send-last-output`, `set-agent-session`, `set-agent-provider`,
   `restart-agent-pane`.
+
+(2026-10-23: the Agent pane was removed. `select-pane-kind` now takes `terminal`, `browser` or
+`editor`; `set-agent-provider`, `restart-agent-pane` and `new-agent-session` are gone, and agents
+run as Claude Code or Codex in terminal panes with a lens over them. See
+[agent lens](/designs/agent-lens.md).)
 - Editor control: `set-editor-path`.
 - Workspace navigation and operations: `focus-sidebar`, `tools`, `debug-marker`, and fleet verbs.
 
@@ -1261,11 +1266,11 @@ zz split-window -h
 zz split-picker -h
 zz split-browser -h https://example.com
 
-# materialize a pending pane explicitly
-zz select-pane-kind -t %7 agent
+# materialize a pending pane explicitly (agent removed 2026-10-23)
+zz select-pane-kind -t %7 browser
 
-# control existing native panes
-zz agent-send -t %7 --submit 'review the failing test'
+# control existing panes (%6 is a terminal running claude)
+zz agent-send -t %6 --submit 'review the failing test'
 zz set-browser-url -t %8 https://example.com/docs
 zz capture-browser -t %8 -o /tmp/browser.png
 ```
@@ -1325,7 +1330,7 @@ that would admit a second identity.
   then agent panes learned to speak bytes: a PTY-free shadow terminal per Agent pane fed with the
   transcript projection ([design](/designs/agent-pane-projection.md)), so `capture-pane`,
   `show-last-output`, `pipe-pane`, and the alerts work on `%agent` — excluded from client frames
-  and from control-mode `%output`.
+  and from control-mode `%output`. (The projection went with the Agent pane on 2026-10-23.)
 - 2026-08-24: `send-keys` adopted tmux's two parser boundaries. The command parser rejects outer
   `-C`, `-P`, and `-o`; the window-copy parser recognizes them on their action-specific tables.
   Invalid local syntax stays silent and resets the copy-mode repeat prefix. Four unimplemented

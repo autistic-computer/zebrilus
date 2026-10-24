@@ -10,7 +10,7 @@ tags:
 - theme
 - provenance
 - design-plan
-timestamp: 2026-09-09T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 last_updated: 2026-09-11
 ---
 
@@ -58,7 +58,7 @@ place that already owns each grammar.
 | Window chrome, pane geometry, widget radius, theme mode, `interface-theme` (with saved themes in the `themes` folder) | GUI client | `crates/zz/src/config/mod.rs` |
 | Browser-local element-selector hotkey | GUI client | `crates/zz/src/config/mod.rs` |
 | Repeatable `chrome-keybind` / `chrome-unbind` overrides for `ui`, `sidebar`, `browser`, and `terminal` actions | GUI client | `crates/zz/src/config/mod.rs` + `crates/zz-client/src/chrome.rs` |
-| Three ACP launch keys (`agent-command`, `agent-claude-code-command`, `agent-working-directory`) | GUI client | `crates/zz/src/config/mod.rs`; file-only, no settings row |
+| Agent launch keys (`agent-command`, `agent-claude-code-command`, `agent-auto-approve`) | daemon (mux options since the runtime moved there) | `crates/zz-mux/src/command.rs`; no settings row. `agent-working-directory` was removed on 2026-10-23 with the Agent pane and now reports a "was removed" diagnostic ([agent lens](/designs/agent-lens.md)) |
 | Terminal appearance, including face-specific `font-family*` stacks, `font-feature`, synthetic/thickening policy, colors, palette, padding, policy, `theme`, and the `zz-*` extension keys | daemon | `crates/zz-terminal/src/appearance.rs` |
 | `prefix`, `mode-keys`, `history-limit`, `word-separators`, `copy-command`, `set-clipboard`, `buffer-limit`, `synchronize-panes` | daemon | `crates/zz-mux/src/command.rs` |
 
@@ -110,8 +110,8 @@ the 2026-09-05 decision to read tmux candidates in place.
 
 `crates/zz/src/config/settings.rs` renders the `WorkspaceRoute::Settings` route in the main window
 (`Cmd+,` / `Ctrl+,`) from zz-ui form widgets, per [UI conventions](/configuration/ui-conventions.md).
-`SettingsSection::ALL` has ten pages: Interface, Status bar, Editor, Panes, Multiplexer, Browser,
-Terminal, Hosts, System, About, arranged in the Appearance, Tools, and Advanced sidebar groups.
+`SettingsSection::ALL` has eleven pages: Interface, Status bar, Editor, Panes, Multiplexer, Browser,
+Terminal, Hosts, Providers, System, About, arranged in the Appearance, Tools, and Advanced sidebar groups.
 About sets nothing: it shows the mark, the version, the platform and gpui revision this build carries
 (copyable as one line for a bug report), and links to the repository, releases, and a new issue. See
 [app-config](/configuration/app-config.md) for the page map.

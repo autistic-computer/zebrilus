@@ -32,11 +32,11 @@ use zz_gpui::{
 };
 use zz_mux::display_width;
 use zz_protocol::{
-    AgentCommand, Axis, ClientMessageKind, CommandInvocation, DisplayPanesAction,
-    FloatingPaneSnapshot, GuiResponse, InputMessage, LayoutNode, MenuState, ModalPaneSnapshot,
-    MuxSnapshot, PROTOCOL_VERSION, PaneBorderLines, PaneBorderStatus, PaneId, PaneIndicator,
-    PaneKindSnapshot, PathEntry, PathListRoot, PopupBorderLines, SPLIT_RATIO_BASIS, SessionId,
-    SplitId, WindowId, WindowSnapshot,
+    Axis, ClientMessageKind, CommandInvocation, DisplayPanesAction, FloatingPaneSnapshot,
+    GuiResponse, InputMessage, LayoutNode, MenuState, ModalPaneSnapshot, MuxSnapshot,
+    PROTOCOL_VERSION, PaneBorderLines, PaneBorderStatus, PaneId, PaneIndicator, PaneKindSnapshot,
+    PathEntry, PathListRoot, PopupBorderLines, SPLIT_RATIO_BASIS, SessionId, SplitId, WindowId,
+    WindowSnapshot,
 };
 use zz_terminal::KeyAction as TerminalKeyAction;
 use zz_ui::attachment::open_attachment_preview;
@@ -53,12 +53,12 @@ use zz_ui::{
 use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneArrivals, PaneChrome, PaneDrag,
-        PaneDragOverlayState, PaneDragSource, PaneMotion, PaneOverlayCorner, PaneSplitAxis,
-        PaneSplitHighlight, PaneSplitSide, PipGrab, moving_pane, pane_border_color,
-        pane_drag_overlay, pane_drag_preview, pane_drop_preview, pane_header_frame, pane_indicator,
-        pane_indicator_overlay, pane_overlay_stack, pane_split_hit_target, pane_split_slot,
-        pane_split_surface, pane_surface, pane_sync_badge, pane_unzoom_control, pane_waiting_state,
-        terminal_pane_header,
+        PaneDragOverlayState, PaneDragSource, PaneLens, PaneMotion, PaneOverlayCorner,
+        PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, PipGrab, TerminalPaneAction, moving_pane,
+        pane_border_color, pane_drag_overlay, pane_drag_preview, pane_drop_preview,
+        pane_header_frame, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
+        pane_split_hit_target, pane_split_slot, pane_split_surface, pane_surface, pane_sync_badge,
+        pane_unzoom_control, pane_waiting_state, terminal_pane_header,
     },
     shell::{app_connection_state, app_workspace_surface},
 };
@@ -72,8 +72,8 @@ use super::{
     which_key::{self, WhichKeySheet},
 };
 use crate::{
+    agent::AgentController,
     agent::AgentView,
-    agent::{AgentController, AgentControllerEvent},
     browser::controller::{BrowserController, ControllerEvent},
     browser::view::BrowserView,
     chooser::buffer::ChooseBufferView,
@@ -83,7 +83,7 @@ use crate::{
         menu::MenuView,
         palette::{CommandPaletteEvent, CommandPaletteView, PaletteMode, palette_backend},
     },
-    config::{self, AgentConfig, frame_content_corner_radius},
+    config::{self, frame_content_corner_radius},
     diagnostics,
     editor::EditorView,
     mux::{
@@ -565,6 +565,7 @@ struct TerminalHeaderState {
     title: String,
     can_drag: bool,
     floats: bool,
+    lens: Option<PaneLens>,
     radii: Corners<Pixels>,
     opacity: f32,
 }
@@ -594,6 +595,7 @@ impl Render for TerminalHeaderView {
         let mux = self.mux.clone();
         let drag_app = self.app.clone();
         let click_app = self.app.clone();
+        let lens_app = self.app.clone();
         let title = state.title.clone();
         let header = terminal_pane_header(
             state.active,
@@ -604,7 +606,14 @@ impl Render for TerminalHeaderView {
                 }
             }),
             state.floats,
-            move |action, _, cx| {
+            state.lens,
+            move |action, window, cx| {
+                if matches!(action, TerminalPaneAction::Lens) {
+                    if let Some(app) = lens_app.upgrade() {
+                        app.update(cx, |view, cx| view.toggle_lens(pane, window, cx));
+                    }
+                    return;
+                }
                 for command in action.commands(pane) {
                     mux.read(cx).execute(command);
                 }
@@ -770,7 +779,6 @@ fn pane_in_session(snapshot: &MuxSnapshot, session: Option<SessionId>, pane: Pan
 #[derive(PartialEq)]
 struct SynchronizeSignature {
     revision: AppRevision,
-    agent_config: Option<AgentConfig>,
     sidebar_focused: bool,
     route: WorkspaceRoute,
 }
@@ -790,6 +798,7 @@ pub struct AppView {
     browsers: BTreeMap<PaneId, Entity<BrowserView>>,
     inline_browser: Entity<crate::browser::inline::InlineBrowser>,
     agents: BTreeMap<PaneId, Entity<AgentView>>,
+    lenses: BTreeSet<PaneId>,
     editors: BTreeMap<PaneId, Entity<EditorView>>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
     menu: Option<Entity<MenuView>>,
@@ -894,7 +903,6 @@ impl AppView {
                     view.input_router.event(InputEvent::Detached);
                 }
                 observed_revision = revision;
-                view.register_agent_panes(cx);
             }
             if let Some(palette) = &view.command_palette {
                 let fleet_changed = !mux
@@ -920,7 +928,7 @@ impl AppView {
                         .iter()
                         .flat_map(|session| &session.windows)
                         .flat_map(|window| window.panes.values())
-                        .filter(|pane| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
+                        .filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal))
                         .map(|pane| (pane.id, mux.read(cx).agent_attention_status(pane.id)))
                 };
                 let agents_changed = !agent_statuses().eq(observed_palette_agents.iter().copied());
@@ -1146,36 +1154,7 @@ impl AppView {
             }
         })
         .detach();
-        cx.subscribe(
-            &agent_controller,
-            |view, _, event: &AgentControllerEvent, cx| match event {
-                AgentControllerEvent::Provider { pane, provider } => {
-                    view.mux.read(cx).execute(CommandInvocation::new(
-                        "set-agent-provider",
-                        ["-t", &pane.to_string(), provider.as_str()],
-                    ));
-                }
-                AgentControllerEvent::Restart { pane } => {
-                    view.mux.read(cx).execute(CommandInvocation::new(
-                        "restart-agent-pane",
-                        ["-t", &pane.to_string()],
-                    ));
-                }
-                AgentControllerEvent::Title { pane, title } => {
-                    view.mux.read(cx).execute(CommandInvocation::new(
-                        "select-pane",
-                        vec![
-                            "-t".to_owned(),
-                            pane.to_string(),
-                            "-T".to_owned(),
-                            title.to_string(),
-                        ],
-                    ));
-                }
-            },
-        )
-        .detach();
-        let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux.clone(), &agent_controller, cx));
+        let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux.clone(), cx));
         if cx.try_global::<crate::tray::DesktopTray>().is_some() {
             cx.global_mut::<crate::tray::DesktopTray>().sidebar = Some(sidebar.downgrade());
         }
@@ -1205,7 +1184,7 @@ impl AppView {
         })
         .detach();
         let new_session = cx.new(|cx| NewSessionView::new(mux.clone(), cx));
-        let mut view = Self {
+        Self {
             controller,
             agent_controller,
             mux,
@@ -1217,6 +1196,7 @@ impl AppView {
             browsers: BTreeMap::new(),
             inline_browser,
             agents: BTreeMap::new(),
+            lenses: BTreeSet::new(),
             editors: BTreeMap::new(),
             command_output: None,
             menu: None,
@@ -1260,9 +1240,7 @@ impl AppView {
             which_key: None,
             which_key_timer: None,
             which_key_generation: 0,
-        };
-        view.register_agent_panes(cx);
-        view
+        }
     }
 
     fn intercept_keystroke(
@@ -1870,12 +1848,12 @@ impl AppView {
     fn pane_focus_target(&self, pane: PaneId, cx: &App) -> Option<(EntityId, FocusHandle)> {
         if let Some(picker) = self.pickers.get(&pane) {
             Some((picker.entity_id(), picker.read(cx).focus().clone()))
+        } else if let Some(agent) = self.agents.get(&pane) {
+            Some((agent.entity_id(), agent.read(cx).focus(cx)))
         } else if let Some(terminal) = self.terminals.get(&pane) {
             Some((terminal.entity_id(), terminal.read(cx).focus()))
         } else if let Some(browser) = self.browsers.get(&pane) {
             Some((browser.entity_id(), browser.read(cx).pane_focus_handle(cx)))
-        } else if let Some(agent) = self.agents.get(&pane) {
-            Some((agent.entity_id(), agent.read(cx).focus(cx)))
         } else {
             self.editors
                 .get(&pane)
@@ -1996,7 +1974,6 @@ impl AppView {
             && last.revision == revision
             && last.sidebar_focused == sidebar_focused
             && last.route == route
-            && last.agent_config.as_ref() == cx.try_global::<AgentConfig>()
         {
             return;
         }
@@ -2057,27 +2034,20 @@ impl AppView {
             #[cfg(target_os = "macos")]
             objc2_app_kit::NSBeep();
         }
-        let agent_config = config::agent_config(cx);
-        self.agent_controller.update(cx, |controller, cx| {
-            controller.synchronize_config(agent_config, cx);
-        });
         let mut wanted_pickers = BTreeSet::new();
         let mut wanted_terminals = BTreeSet::new();
         let mut wanted_browsers = BTreeSet::new();
         let mut wanted_agents = BTreeSet::new();
         let mut wanted_editors = BTreeSet::new();
-        let retained_agents = snapshot
-            .sessions
-            .iter()
-            .filter(|session| Some(session.id) == attached)
-            .flat_map(|session| &session.windows)
-            .flat_map(|window| &window.panes)
-            .filter_map(|(pane, snapshot)| {
-                matches!(snapshot.kind, PaneKindSnapshot::Agent(_)).then_some(*pane)
-            })
-            .collect::<BTreeSet<_>>();
+        let lensed = self.lensed_panes(&snapshot, attached);
+        let open = lensed.keys().copied().collect::<BTreeSet<_>>();
+        #[cfg(feature = "agent-pane")]
+        for pane in self.lenses.difference(&open) {
+            self.mux.update(cx, |mux, _| mux.close_agent_lens(*pane));
+        }
+        self.lenses = open;
         self.agent_controller.update(cx, |controller, cx| {
-            controller.retain_panes(&retained_agents, cx);
+            controller.retain_panes(&self.lenses, cx);
         });
         let active_window = snapshot
             .sessions
@@ -2119,6 +2089,10 @@ impl AppView {
                                     )
                                 });
                                 self.terminals.insert(pane, view);
+                            }
+                            if let Some(provider) = lensed.get(pane).copied() {
+                                wanted_agents.insert(*pane);
+                                self.ensure_lens_view(*pane, provider, window, cx);
                             }
                             if !self.terminal_headers.contains_key(pane) {
                                 let pane = *pane;
@@ -2168,28 +2142,6 @@ impl AppView {
                                         cx,
                                     );
                                 });
-                            }
-                        }
-                        PaneKindSnapshot::Agent(agent) => {
-                            wanted_agents.insert(*pane);
-                            if self.agents.contains_key(pane) {
-                                self.agent_controller.update(cx, |controller, cx| {
-                                    controller.ensure_pane(*pane, agent, cx);
-                                });
-                            } else {
-                                let controller = self.agent_controller.clone();
-                                let mux = self.mux.clone();
-                                let pane = *pane;
-                                let descriptor = agent.clone();
-                                let view = cx.new(|cx| {
-                                    AgentView::new(pane, &descriptor, controller, mux, window, cx)
-                                });
-                                #[cfg(feature = "agent-pane")]
-                                cx.subscribe(&view, |view, _, drag: &PaneDrag, cx| {
-                                    view.on_pane_drag_start(*drag, cx);
-                                })
-                                .detach();
-                                self.agents.insert(pane, view);
                             }
                         }
                         PaneKindSnapshot::Editor(editor) => {
@@ -2665,7 +2617,6 @@ impl AppView {
         );
         self.synchronized_signature = Some(SynchronizeSignature {
             revision,
-            agent_config: cx.try_global::<AgentConfig>().cloned(),
             sidebar_focused: self.sidebar.read(cx).is_focused(window),
             route,
         });
@@ -2675,19 +2626,7 @@ impl AppView {
         if !self.mux.read(cx).has_gui_requests() {
             return;
         }
-        let (agent_commands, screenshots) = self.mux.update(cx, |mux, _| {
-            (mux.take_agent_commands(), mux.take_screenshot_requests())
-        });
-        for (pane, request_id, command) in agent_commands {
-            let response = self.apply_agent_command(pane, command, cx);
-            self.mux.read(cx).respond_to_request(match response {
-                Ok(output) => GuiResponse::Success { request_id, output },
-                Err(message) => GuiResponse::Error {
-                    request_id,
-                    message: message.to_string(),
-                },
-            });
-        }
+        let screenshots = self.mux.update(cx, |mux, _| mux.take_screenshot_requests());
         for (pane, request_id, path) in screenshots {
             if let Some(browser) = self.browsers.get(&pane) {
                 browser.update(cx, |browser, cx| browser.screenshot(request_id, path, cx));
@@ -2700,40 +2639,73 @@ impl AppView {
         }
     }
 
-    /// Hand the agent controller everything the mux client buffered for it:
-    /// the seq-filtered stream, the published pane states, and the answers to
-    /// the requests it made.
-    #[cfg(feature = "agent-pane")]
-    fn register_agent_panes(&mut self, cx: &mut Context<Self>) {
-        let (retained, active) = {
-            let mux = self.mux.read(cx);
-            let attached = mux.attached_session();
-            let snapshot = mux.snapshot();
-            let active = snapshot
-                .sessions
-                .iter()
-                .filter(|session| Some(session.id) == attached)
-                .flat_map(|session| &session.windows)
-                .flat_map(|window| &window.panes)
-                .filter_map(|(pane, snapshot)| match &snapshot.kind {
-                    PaneKindSnapshot::Agent(descriptor) => Some((*pane, descriptor.clone())),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            let retained = active.iter().map(|(pane, _)| *pane).collect();
-            (retained, active)
-        };
-        self.agent_controller.update(cx, |controller, cx| {
-            controller.retain_panes(&retained, cx);
-            for (pane, descriptor) in active {
-                controller.ensure_pane(pane, &descriptor, cx);
-            }
-        });
+    fn lensed_panes(
+        &self,
+        snapshot: &MuxSnapshot,
+        attached: Option<SessionId>,
+    ) -> BTreeMap<PaneId, zz_protocol::AgentProvider> {
+        snapshot
+            .sessions
+            .iter()
+            .filter(|session| Some(session.id) == attached)
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| &window.panes)
+            .filter(|(pane, _)| self.lenses.contains(pane))
+            .filter_map(|(pane, snapshot)| {
+                matches!(snapshot.kind, PaneKindSnapshot::Terminal)
+                    .then(|| zz_client::window_summary::pane_agent(snapshot))
+                    .flatten()
+                    .map(|provider| (*pane, provider))
+            })
+            .collect()
     }
 
-    #[cfg(not(feature = "agent-pane"))]
-    fn register_agent_panes(&mut self, _cx: &mut Context<Self>) {}
+    fn ensure_lens_view(
+        &mut self,
+        pane: PaneId,
+        provider: zz_protocol::AgentProvider,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(feature = "agent-pane")]
+        self.mux.update(cx, |mux, _| mux.open_agent_lens(pane));
+        if self.agents.contains_key(&pane) {
+            return;
+        }
+        let controller = self.agent_controller.clone();
+        let mux = self.mux.clone();
+        let view = cx.new(|cx| AgentView::new(pane, provider, controller, mux, window, cx));
+        self.agents.insert(pane, view);
+    }
 
+    fn toggle_lens(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.lenses.remove(&pane) {
+            self.lenses.insert(pane);
+        }
+        #[cfg(feature = "agent-pane")]
+        if !self.lenses.contains(&pane) {
+            self.mux.update(cx, |mux, _| mux.close_agent_lens(pane));
+        }
+        self.synchronized_signature = None;
+        self.synchronize_panes(window, cx);
+        if let Some((_, focus)) = self.pane_focus_target(pane, cx) {
+            focus.focus(window, cx);
+        }
+        cx.notify();
+    }
+
+    fn pane_lens(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneLens> {
+        matches!(snapshot.kind, PaneKindSnapshot::Terminal)
+            .then(|| zz_client::window_summary::pane_agent(snapshot))
+            .flatten()
+            .map(|provider| PaneLens {
+                provider,
+                open: self.lenses.contains(&snapshot.id),
+            })
+    }
+
+    /// Hand the agent controller everything the mux client buffered for it:
+    /// the seq-filtered stream and the published pane states.
     #[cfg(feature = "agent-pane")]
     fn drain_agent_events(&mut self, cx: &mut Context<Self>) {
         if !self.mux.read(cx).has_agent_events() {
@@ -2750,32 +2722,11 @@ impl AppView {
             for (pane, state) in events.states {
                 controller.apply_pane_state(pane, &state, cx);
             }
-            for (pane, _, result) in events.sessions {
-                controller.apply_sessions_result(pane, &result, cx);
-            }
         });
     }
 
     #[cfg(not(feature = "agent-pane"))]
     fn drain_agent_events(&mut self, _cx: &mut Context<Self>) {}
-
-    fn apply_agent_command(
-        &self,
-        pane: PaneId,
-        command: AgentCommand,
-        cx: &mut Context<Self>,
-    ) -> Result<String, Arc<str>> {
-        self.agent_controller
-            .update(cx, |controller, cx| match command {
-                AgentCommand::ComposerAppend { text } => {
-                    controller.append_composer(pane, &text, cx);
-                    Ok(format!("appended to the composer in {pane}"))
-                }
-                AgentCommand::Prompt { text } => controller
-                    .prompt(pane, &text, Vec::new(), cx)
-                    .map(|()| format!("submitted a prompt to {pane}")),
-            })
-    }
 
     fn reconcile_split_drag(&mut self, active_window: Option<&WindowSnapshot>, cx: &App) {
         let Some(mut drag) = self.split_drag else {
@@ -3449,6 +3400,13 @@ impl AppView {
                 inactive_style: PaneInactiveStyle::Surface,
                 covers_frame: false,
             })
+        } else if let Some(agent) = self.agents.get(&pane) {
+            Some(PaneContent {
+                view: AnyView::from(agent.clone()),
+                cached: true,
+                inactive_style: PaneInactiveStyle::Surface,
+                covers_frame: false,
+            })
         } else if let Some(terminal) = self.terminals.get(&pane) {
             terminal.update(cx, |terminal, cx| {
                 terminal.set_text_dimmed(inactive, inactive_opacity, cx);
@@ -3469,17 +3427,10 @@ impl AppView {
                 inactive_style: PaneInactiveStyle::Content,
                 covers_frame: true,
             })
-        } else if let Some(editor) = self.editors.get(&pane) {
-            Some(PaneContent {
+        } else {
+            self.editors.get(&pane).map(|editor| PaneContent {
                 view: AnyView::from(editor.clone()),
                 cached: false,
-                inactive_style: PaneInactiveStyle::Surface,
-                covers_frame: false,
-            })
-        } else {
-            self.agents.get(&pane).map(|agent| PaneContent {
-                view: AnyView::from(agent.clone()),
-                cached: true,
                 inactive_style: PaneInactiveStyle::Surface,
                 covers_frame: false,
             })
@@ -3544,6 +3495,7 @@ impl AppView {
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
                         floats: window.floating.iter().any(|float| float.pane == *pane),
+                        lens: self.pane_lens(snapshot),
                         radii,
                         opacity: if inactive { inactive_opacity } else { 1.0 },
                     };
@@ -4053,12 +4005,8 @@ impl AppView {
                 .bordered(bordered)
                 .into_any_element()
         } else {
-            let own_header = snapshot.is_some_and(|pane| {
-                matches!(
-                    pane.kind,
-                    PaneKindSnapshot::Agent(_) | PaneKindSnapshot::Browser(_)
-                )
-            });
+            let own_header =
+                snapshot.is_some_and(|pane| matches!(pane.kind, PaneKindSnapshot::Browser(_)));
             let fill = self.terminals.get(&pane).map_or_else(
                 || cx.theme().pane_color(cx.theme().background),
                 |terminal| terminal.read(cx).fill(cx),
@@ -4137,6 +4085,7 @@ impl AppView {
                 title: label,
                 can_drag: connected,
                 floats: true,
+                lens: snapshot.and_then(|snapshot| self.pane_lens(snapshot)),
                 radii: Corners::default(),
                 opacity,
             };
@@ -4161,6 +4110,7 @@ impl AppView {
                 label.clone(),
                 PaneDragSource::new(pane, label, connected, |_, _, _| {}),
                 true,
+                None,
                 move |action, _, cx| {
                     for command in action.commands(pane) {
                         mux.read(cx).execute(command);
@@ -5227,7 +5177,6 @@ mod tests {
             | CoreEvent::ClientMessageCleared { .. }
             | CoreEvent::Clipboard { .. }
             | CoreEvent::OpenUri { .. }
-            | CoreEvent::AgentCommand { .. }
             | CoreEvent::BrowserCommand { .. }
             | CoreEvent::TerminalUiCommand { .. }
             | CoreEvent::HistoryChunk { .. }
@@ -5238,6 +5187,7 @@ mod tests {
             | CoreEvent::AgentStateChanged { .. }
             | CoreEvent::AgentLagged { .. }
             | CoreEvent::AgentSessions { .. }
+            | CoreEvent::ProvidersChanged
             | CoreEvent::Message(_) => None,
         }
     }
@@ -5416,7 +5366,7 @@ mod tests {
             let controller = cx.new(|cx| {
                 BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx
                 .new(|cx| MuxClient::new(Ok(client), zz_daemon_client::default_socket_path(), cx));
             let workspace = cx.new(|cx| {
@@ -5861,7 +5811,7 @@ mod tests {
             let controller = cx.new(|cx| {
                 BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -5978,7 +5928,7 @@ mod tests {
             let controller = cx.new(|cx| {
                 BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -6023,7 +5973,7 @@ mod tests {
             let controller = cx.new(|cx| {
                 BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -6216,7 +6166,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -6472,7 +6422,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -6623,7 +6573,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -6838,7 +6788,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -6935,7 +6885,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -7132,7 +7082,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -7238,7 +7188,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -7298,7 +7248,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -7448,7 +7398,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -7717,7 +7667,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -7893,7 +7843,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -7973,7 +7923,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -8117,7 +8067,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -8258,7 +8208,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -8425,7 +8375,7 @@ mod tests {
                     cx,
                 )
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -8532,7 +8482,7 @@ mod tests {
             let controller = cx.new(|cx| {
                 BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(
@@ -8768,7 +8718,7 @@ mod tests {
             let controller = cx.new(|cx| {
                 BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
             });
-            let agent_controller = cx.new(|_| AgentController::new(AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(zz_daemon_client::DaemonError::Thread(

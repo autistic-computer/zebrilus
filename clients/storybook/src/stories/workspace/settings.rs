@@ -29,6 +29,7 @@ use zz_ui::{
         },
         panes_page,
         panes_preview::PanesPreview,
+        providers::{ProvidersHost, providers_stack},
         settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
         settings_navigation_back_row, settings_navigation_button, settings_navigation_group_label,
         settings_page_description, settings_provenance_badge, settings_reset_button,
@@ -46,7 +47,7 @@ pub const STORY: Story = Story {
     id: "settings",
     name: "Settings",
     group: "Settings",
-    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, the appearance pickers, and the Panes, Status bar and About pages.",
+    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, the appearance pickers, and the Panes, Status bar, Providers and About pages.",
     sections: &[
         Section {
             id: "navigation",
@@ -83,6 +84,12 @@ pub const STORY: Story = Story {
             name: "Status bar page",
             summary: "status_bar_page: a preview of the titlebar that follows the switches below it.",
             build: |_, cx| stateless(status_bar, cx),
+        },
+        Section {
+            id: "providers",
+            name: "Providers",
+            summary: "providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
+            build: |_, cx| stateless(providers, cx),
         },
         Section {
             id: "about",
@@ -218,13 +225,6 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         "Show keyboard shortcuts beside commands.",
                     )
                     .control(Switch::new("shortcuts").checked(true)),
-                )
-                .child(
-                    SettingEntry::new(
-                        "Agent panes",
-                        "Allow creating agent panes on this client.",
-                    )
-                    .control(Switch::new("agents").checked(false)),
                 )
                 .child(
                     SettingEntry::new(
@@ -529,8 +529,6 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 pane_entry("Pane gaps", "Separate panes with spacing and borders.")
                     .title_actions(settings_reset_button("gaps-reset", "Reset to default", gaps))
                     .control(Switch::new("gaps").checked(gaps)),
-                pane_entry("Agent panes", "Allow creating agent panes on this client.")
-                    .control(Switch::new("agents").checked(true)),
             ],
             [
                 pane_entry(
@@ -654,6 +652,175 @@ static LOGOS: LazyLock<[Arc<zz_gpui::Image>; 2]> = LazyLock::new(|| {
         ))
     })
 });
+
+fn provider(
+    provider: zz_protocol::AgentProvider,
+    path: Option<&str>,
+    version: Option<&str>,
+    latest: &str,
+    task: zz_protocol::ProviderTask,
+) -> zz_protocol::ProviderStatus {
+    zz_protocol::ProviderStatus {
+        provider,
+        path: path.map(str::to_owned),
+        version: version.map(str::to_owned),
+        latest: Some(latest.to_owned()),
+        manual: None,
+        task,
+    }
+}
+
+fn manual(
+    status: zz_protocol::ProviderStatus,
+    owner: &str,
+    command: Option<&str>,
+) -> zz_protocol::ProviderStatus {
+    zz_protocol::ProviderStatus {
+        manual: Some(zz_protocol::ManualUpdate {
+            owner: owner.to_owned(),
+            command: command.map(str::to_owned),
+        }),
+        ..status
+    }
+}
+
+fn providers(_: &mut Window, cx: &mut App) -> AnyElement {
+    use zz_protocol::{
+        AgentProvider::{ClaudeCode, Codex},
+        ProviderTask, ProvidersReport,
+    };
+
+    let report = |checking, providers| {
+        ProvidersHost::Report(ProvidersReport {
+            checking,
+            providers,
+        })
+    };
+    let hosts = [
+        (
+            "This Mac",
+            report(
+                false,
+                vec![
+                    provider(
+                        ClaudeCode,
+                        Some("/Users/me/.local/bin/claude"),
+                        Some("2.1.309"),
+                        "2.1.309",
+                        ProviderTask::Idle,
+                    ),
+                    provider(
+                        Codex,
+                        Some("/opt/homebrew/bin/codex"),
+                        Some("0.163.0"),
+                        "0.164.0",
+                        ProviderTask::Idle,
+                    ),
+                ],
+            ),
+        ),
+        (
+            "ubuntu",
+            report(
+                false,
+                vec![
+                    provider(
+                        ClaudeCode,
+                        Some("/home/me/.local/bin/claude"),
+                        Some("2.1.308"),
+                        "2.1.309",
+                        ProviderTask::Running {
+                            output: "Updating Claude Code to 2.1.309…".into(),
+                        },
+                    ),
+                    provider(
+                        Codex,
+                        Some("/home/me/.local/bin/codex"),
+                        Some("0.159.0"),
+                        "0.164.0",
+                        ProviderTask::Failed {
+                            message: "curl: (6) Could not resolve host: chatgpt.com".into(),
+                        },
+                    ),
+                ],
+            ),
+        ),
+        (
+            "alienware",
+            report(
+                false,
+                vec![
+                    provider(
+                        ClaudeCode,
+                        Some("/home/me/.local/bin/claude"),
+                        Some("2.1.309"),
+                        "2.1.309",
+                        ProviderTask::Idle,
+                    ),
+                    manual(
+                        provider(
+                            Codex,
+                            Some("/usr/bin/codex"),
+                            Some("0.163.0"),
+                            "0.164.0",
+                            ProviderTask::Idle,
+                        ),
+                        "npm under /usr",
+                        Some("sudo /usr/bin/npm install -g @openai/codex@latest"),
+                    ),
+                ],
+            ),
+        ),
+        (
+            "nixbox",
+            report(
+                false,
+                vec![manual(
+                    provider(
+                        ClaudeCode,
+                        Some("/run/current-system/sw/bin/claude"),
+                        Some("2.1.290"),
+                        "2.1.309",
+                        ProviderTask::Idle,
+                    ),
+                    "Nix",
+                    None,
+                )],
+            ),
+        ),
+        (
+            "xps",
+            report(
+                true,
+                vec![
+                    provider(ClaudeCode, None, None, "2.1.309", ProviderTask::Idle),
+                    provider(
+                        Codex,
+                        Some("/home/me/.local/bin/codex"),
+                        Some("0.164.0"),
+                        "0.164.0",
+                        ProviderTask::Idle,
+                    ),
+                ],
+            ),
+        ),
+        ("mini", ProvidersHost::Waiting),
+        ("devbox", ProvidersHost::Offline("unreachable".into())),
+    ];
+    let stacks = hosts
+        .iter()
+        .map(|(name, host)| providers_stack(*name, *name, host, |_, _, _| {}, cx));
+    states()
+        .state(
+            "page",
+            div().id("providers").flex().h(px(1500.0)).child(
+                settings_scroll_column("settings-providers")
+                    .child(settings_page_description(SettingsSection::Providers, cx))
+                    .children(stacks),
+            ),
+        )
+        .into_any_element()
+}
 
 fn about(_: &mut Window, cx: &mut App) -> AnyElement {
     let logo = Arc::clone(&LOGOS[usize::from(cx.theme().mode.is_dark())]);

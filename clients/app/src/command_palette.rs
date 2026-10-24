@@ -26,19 +26,16 @@ const HOST: PaletteHostId = PaletteHostId(0);
 pub fn palette_backend(
     connection: Entity<Connection>,
     settings: PaletteSettings,
-    agent_enabled: bool,
 ) -> Rc<dyn PaletteBackend> {
     Rc::new(ConnectionPalette {
         connection,
         settings,
-        agent_enabled,
     })
 }
 
 struct ConnectionPalette {
     connection: Entity<Connection>,
     settings: PaletteSettings,
-    agent_enabled: bool,
 }
 
 impl PaletteBackend for ConnectionPalette {
@@ -114,10 +111,9 @@ impl PaletteBackend for ConnectionPalette {
         self.settings
     }
 
-    fn availability(&self, cx: &App) -> PaneKindAvailability {
+    fn availability(&self, _: &App) -> PaneKindAvailability {
         PaneKindAvailability {
             browser: cfg!(target_os = "ios"),
-            agent: self.agent_enabled && agent_pane_available(&self.connection.read(cx).core),
             editor: false,
         }
     }
@@ -240,29 +236,21 @@ impl PaletteBackend for ConnectionPalette {
     }
 }
 
-#[must_use]
-pub fn agent_pane_available(core: &ClientCore) -> bool {
-    core.mux_options()
-        .get(MuxOptionKey::ExperimentalAgentPane)
-        .is_some_and(|option| option.value == "on")
-}
-
 fn tree_pane(pane: &zz_protocol::PaneSnapshot, core: &ClientCore) -> PaletteTreePane {
-    let attention = matches!(pane.kind, PaneKindSnapshot::Agent(_))
+    let attention = matches!(pane.kind, PaneKindSnapshot::Terminal)
         .then(|| core.agent_state(pane.id).map(agent_attention_status))
         .flatten();
     PaletteTreePane {
         id: pane.id,
         label: pane_label(pane),
         detail: match &pane.kind {
-            PaneKindSnapshot::Agent(_) => match attention {
+            PaneKindSnapshot::Terminal => match attention {
                 Some(AgentAttentionStatus::Working) => "Agent · running",
                 Some(AgentAttentionStatus::NeedsInput) => "Agent · waiting for input",
                 Some(AgentAttentionStatus::Idle) => "Agent · idle",
                 Some(AgentAttentionStatus::Failed) => "Agent · failed",
-                None => "Agent",
+                None => "Terminal",
             },
-            PaneKindSnapshot::Terminal => "Terminal",
             PaneKindSnapshot::Browser(_) => "Browser · unavailable",
             PaneKindSnapshot::Editor(_) => "Editor · unavailable",
             PaneKindSnapshot::Picker => "New pane",
@@ -273,7 +261,6 @@ fn tree_pane(pane: &zz_protocol::PaneSnapshot, core: &ClientCore) -> PaletteTree
             PaneKindSnapshot::Terminal => IconName::SquareTerminal,
             PaneKindSnapshot::Browser(_) => IconName::Globe,
             PaneKindSnapshot::Editor(_) => IconName::File,
-            PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
         },
         running: attention == Some(AgentAttentionStatus::Working),
     }

@@ -1409,6 +1409,66 @@ impl SettingsView {
             .into_any_element()
     }
 
+    fn providers_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        use zz_ui::settings::providers::{ProvidersHost, providers_stack};
+
+        let mux = self.mux.read(cx);
+        let hosts = mux
+            .fleet_hosts()
+            .map(|(host, name, state, _)| {
+                let shown = match state {
+                    HostState::Connected => mux
+                        .host_providers(host)
+                        .cloned()
+                        .map_or(ProvidersHost::Waiting, ProvidersHost::Report),
+                    state => ProvidersHost::Offline(state.label().into()),
+                };
+                let title = if host == HostId::LOCAL {
+                    if cfg!(target_os = "macos") {
+                        "This Mac"
+                    } else {
+                        "This computer"
+                    }
+                    .to_owned()
+                } else {
+                    name.to_owned()
+                };
+                (host, title, shown)
+            })
+            .collect::<Vec<_>>();
+        if mux.providers_unrequested() {
+            let mux = self.mux.clone();
+            cx.defer(move |cx| mux.update(cx, |mux, _| mux.request_providers(false)));
+        }
+        let stacks = hosts.into_iter().map(|(host, title, shown)| {
+            let mux = self.mux.clone();
+            providers_stack(
+                format!("{host:?}"),
+                title,
+                &shown,
+                move |provider, _, cx| {
+                    mux.read(cx).update_provider(host, provider);
+                },
+                cx,
+            )
+        });
+        Self::scroll_column("settings-providers")
+            .child(settings_page_description(SettingsSection::Providers, cx))
+            .children(stacks)
+            .child(
+                h_flex().justify_end().child(
+                    Button::new("settings-providers-check")
+                        .label("Check again")
+                        .on_click(cx.listener(|settings, _, _, cx| {
+                            settings
+                                .mux
+                                .update(cx, |mux, _| mux.request_providers(true));
+                        })),
+                ),
+            )
+            .into_any_element()
+    }
+
     fn advanced_section(resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
         Self::scroll_column("settings-advanced")
             .child(settings_page_description(SettingsSection::Advanced, cx))
@@ -1456,8 +1516,7 @@ impl SettingsView {
                     SettingEntry::new(
                         "Claude Code and Codex",
                         "Add a startup hook and a short skill to their settings in your home \
-                         folder, so the ones you start in a terminal pane know they run in zz. \
-                         Agent panes need nothing.",
+                         folder, so the ones you start in a terminal pane know they run in zz.",
                     )
                     .control(
                         Button::new("settings-agent-setup")
@@ -1503,19 +1562,6 @@ impl SettingsView {
                                      palette, CLI); editor panes that are already open keep \
                                      working.",
                                     resolved.experimental_editor_pane,
-                                    cx,
-                                ))
-                            })
-                            .when(cfg!(feature = "agent-pane"), |group| {
-                                group.child(Self::boolean_setting(
-                                    ConfigKey::ExperimentalAgentPane,
-                                    "Agent pane",
-                                    "Offer the Agent pane in the pane picker. Enabled by \
-                                     default. Turning this off \
-                                     blocks new agent panes everywhere (picker, command \
-                                     palette, CLI); agent panes that are already open keep \
-                                     running.",
-                                    resolved.experimental_agent_pane,
                                     cx,
                                 ))
                             }),
@@ -2037,6 +2083,7 @@ impl Render for SettingsView {
             SettingsSection::Editor => self.editor_section(&resolved, cx),
             SettingsSection::Panes => self.panes_section(&resolved, cx),
             SettingsSection::Hosts => self.hosts_section(cx),
+            SettingsSection::Providers => self.providers_section(cx),
             SettingsSection::Advanced => Self::advanced_section(&resolved, cx),
             SettingsSection::Terminal => self.config_file_section(ConfigFileKind::Terminal, cx),
             SettingsSection::Multiplexer => self.config_file_section(ConfigFileKind::Mux, cx),
@@ -2585,7 +2632,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::StatusUpdate
         | ConfigKey::FlatSidebar
         | ConfigKey::ProgramColors
-        | ConfigKey::ExperimentalAgentPane
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps
         | ConfigKey::EditorLineNumbers

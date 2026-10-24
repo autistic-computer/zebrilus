@@ -210,7 +210,6 @@ pub(super) const fn kind_icon(kind: &PaneKindSnapshot) -> IconName {
     match kind {
         PaneKindSnapshot::Terminal => IconName::SquareTerminal,
         PaneKindSnapshot::Browser(_) => IconName::Globe,
-        PaneKindSnapshot::Agent(_) => IconName::Bot,
         PaneKindSnapshot::Editor(_) => IconName::File,
         PaneKindSnapshot::Picker => IconName::Plus,
     }
@@ -698,7 +697,28 @@ impl AppShell {
         });
         let mut background = cx.theme().background;
         let mut rows_above = false;
+        let lens = matches!(pane.kind, PaneKindSnapshot::Terminal)
+            .then(|| self.shown_lens(pane_id, window, cx))
+            .flatten();
         let content = match &pane.kind {
+            PaneKindSnapshot::Terminal if let Some(lens) = lens => {
+                lens.update(cx, |lens, cx| {
+                    lens.set_corner_radii(
+                        Corners {
+                            top_left: px(0.0),
+                            top_right: px(0.0),
+                            bottom_left: radius,
+                            bottom_right: radius,
+                        },
+                        cx,
+                    );
+                });
+                if can_focus && self.focused_pane != Some(pane_id) {
+                    lens.read(cx).focus_handle(cx).focus(window, cx);
+                    self.focused_pane = Some(pane_id);
+                }
+                lens.into_any_element()
+            }
             PaneKindSnapshot::Terminal => {
                 let terminal = self.pane_terminal(pane_id, window, cx);
                 if can_focus && self.focused_pane != Some(pane_id) {
@@ -730,18 +750,6 @@ impl AppShell {
                     self.compact.text = Some(text);
                 }
                 terminal.into_any_element()
-            }
-            PaneKindSnapshot::Agent(descriptor) => {
-                let agent = self.agent_entity(pane_id, descriptor, window, cx);
-                agent.update(cx, |agent, cx| {
-                    agent.update_descriptor(descriptor, cx);
-                    agent.set_corner_radii(Corners::all(radius), cx);
-                });
-                if can_focus && self.focused_pane != Some(pane_id) {
-                    agent.read(cx).focus_handle(cx).focus(window, cx);
-                    self.focused_pane = Some(pane_id);
-                }
-                agent.into_any_element()
             }
             #[cfg(target_os = "ios")]
             PaneKindSnapshot::Browser(descriptor) => {
@@ -784,7 +792,6 @@ impl AppShell {
             PaneKindSnapshot::Picker => {
                 let picker = self.picker_entity(pane_id, cx);
                 picker.update(cx, |picker, cx| {
-                    picker.set_agent_enabled(self.preferences.agent_enabled);
                     picker.set_corner_radii(Corners::all(radius), cx);
                 });
                 if can_focus && self.focused_pane != Some(pane_id) {
@@ -798,7 +805,19 @@ impl AppShell {
             let connection = self.connection.read(cx);
             connection.connected && !connection.core.attached_read_only()
         };
-        let actions = writable.then(|| {
+        let lens_view = cx.weak_entity();
+        let lens = self.pane_lens(pane_id, cx).map(|lens| {
+            zz_ui::pane::pane_lens_button(
+                lens,
+                move |window, cx| {
+                    let _ = lens_view.update(cx, |this, cx| this.toggle_lens(pane_id, window, cx));
+                },
+                cx,
+            )
+            .hit_slop(10.0, 10.0)
+            .into_any_element()
+        });
+        let close = writable.then(|| {
             pane_header_icon_button(("compact-close-pane", pane_id.0), IconName::Xmark, true, cx)
                 .hit_slop(10.0, 10.0)
                 .tooltip("Close pane")
@@ -807,6 +826,7 @@ impl AppShell {
                 }))
                 .into_any_element()
         });
+        let actions = lens.into_iter().chain(close);
         let header = matches!(pane.kind, PaneKindSnapshot::Terminal)
             .then(|| compact_pane_header(kind_icon(&pane.kind), slot.title.clone(), actions, cx));
         if current {
@@ -1055,10 +1075,8 @@ impl AppShell {
             window.request_animation_frame();
         }
         let keyless = pages.get(self.compact.pager.index()).is_some_and(|page| {
-            matches!(
-                page.kind,
-                PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Agent(_)
-            )
+            matches!(page.kind, PaneKindSnapshot::Browser(_))
+                || self.connection.read(cx).agent_lens_open(page.pane)
         });
         self.compact
             .morph
@@ -1429,16 +1447,15 @@ impl AppShell {
         let Some(page) = page else {
             return (SharedString::default(), SharedString::default(), false);
         };
-        let waiting = matches!(page.kind, PaneKindSnapshot::Agent(_))
-            && self
-                .connection
-                .read(cx)
-                .core
-                .agent_state(page.pane)
-                .is_some_and(|state| {
-                    zz_client::agent_attention_status(state)
-                        == zz_client::AgentAttentionStatus::NeedsInput
-                });
+        let waiting = self
+            .connection
+            .read(cx)
+            .core
+            .agent_state(page.pane)
+            .is_some_and(|state| {
+                zz_client::agent_attention_status(state)
+                    == zz_client::AgentAttentionStatus::NeedsInput
+            });
         if waiting {
             return (page.title.clone(), "Needs your permission".into(), true);
         }

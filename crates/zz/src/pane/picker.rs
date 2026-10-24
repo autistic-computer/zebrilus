@@ -5,7 +5,7 @@ use zz_gpui::{
 use zz_protocol::{CommandInvocation, PaneId};
 use zz_ui::IconName;
 
-use crate::mux::{client::MuxClient, hosts::HostId};
+use crate::mux::client::MuxClient;
 use crate::window::corners::WindowCorners;
 use crate::{browser, config};
 
@@ -14,14 +14,12 @@ enum PaneChoice {
     Terminal,
     Browser,
     Editor,
-    Agent,
 }
 
-const CHOICES: [PaneChoice; 4] = [
+const CHOICES: [PaneChoice; 3] = [
     PaneChoice::Terminal,
     PaneChoice::Browser,
     PaneChoice::Editor,
-    PaneChoice::Agent,
 ];
 
 fn choices(cx: &App) -> Vec<PaneChoice> {
@@ -31,7 +29,6 @@ fn choices(cx: &App) -> Vec<PaneChoice> {
             PaneChoice::Terminal => true,
             PaneChoice::Browser => browser::controller::is_available(cx),
             PaneChoice::Editor => config::editor_pane_enabled(cx),
-            PaneChoice::Agent => config::agent_pane_enabled(cx),
         })
         .collect()
 }
@@ -42,7 +39,6 @@ impl PaneChoice {
             Self::Terminal => "terminal",
             Self::Browser => "browser",
             Self::Editor => "editor",
-            Self::Agent => "agent",
         }
     }
 
@@ -51,7 +47,6 @@ impl PaneChoice {
             Self::Terminal => "Terminal",
             Self::Browser => "Browser",
             Self::Editor => "Editor",
-            Self::Agent => "Agent",
         }
     }
 
@@ -60,7 +55,6 @@ impl PaneChoice {
             Self::Terminal => "t",
             Self::Browser => "b",
             Self::Editor => "e",
-            Self::Agent => "a",
         }
     }
 
@@ -69,7 +63,6 @@ impl PaneChoice {
             Self::Terminal => IconName::SquareTerminal,
             Self::Browser => IconName::BrandChrome,
             Self::Editor => IconName::File,
-            Self::Agent => IconName::RobotFace,
         }
     }
 
@@ -78,7 +71,6 @@ impl PaneChoice {
             Self::Terminal => "pane-picker-terminal",
             Self::Browser => "pane-picker-browser",
             Self::Editor => "pane-picker-editor",
-            Self::Agent => "pane-picker-agent",
         }
     }
 }
@@ -115,19 +107,15 @@ fn wrapping_step(selected: usize, delta: isize, len: usize) -> usize {
     (selected + len).wrapping_add_signed(delta) % len
 }
 
-fn materialize_command(
-    pane: PaneId,
-    choice: PaneChoice,
-    agent_cwd: Option<&std::path::Path>,
-) -> CommandInvocation {
-    let mut args = vec!["-t".to_owned(), pane.to_string()];
-    if choice == PaneChoice::Agent
-        && let Some(cwd) = agent_cwd
-    {
-        args.extend(["-c".to_owned(), cwd.to_string_lossy().into_owned()]);
-    }
-    args.push(choice.command_argument().to_owned());
-    CommandInvocation::new("select-pane-kind", args)
+fn materialize_command(pane: PaneId, choice: PaneChoice) -> CommandInvocation {
+    CommandInvocation::new(
+        "select-pane-kind",
+        [
+            "-t".to_owned(),
+            pane.to_string(),
+            choice.command_argument().to_owned(),
+        ],
+    )
 }
 
 fn close_command(pane: PaneId) -> CommandInvocation {
@@ -176,12 +164,9 @@ impl PanePickerView {
     }
 
     fn activate(&self, choice: PaneChoice, cx: &Context<Self>) {
-        let agent_config = config::agent_config(cx);
-        let mux = self.mux.read(cx);
-        let agent_cwd = (mux.attached_host() == HostId::LOCAL)
-            .then_some(agent_config.working_directory.as_deref())
-            .flatten();
-        mux.execute(materialize_command(self.pane, choice, agent_cwd));
+        self.mux
+            .read(cx)
+            .execute(materialize_command(self.pane, choice));
     }
 
     fn close(&self, cx: &Context<Self>) {
@@ -290,9 +275,8 @@ mod tests {
                 PaneChoice::Terminal,
                 PaneChoice::Browser,
                 PaneChoice::Editor,
-                PaneChoice::Agent,
             ],
-            "the ungated picker catalog contains all four pane kinds"
+            "the ungated picker catalog contains all three pane kinds"
         );
         assert_eq!(
             picker_action(&key("t"), &CHOICES),
@@ -307,10 +291,6 @@ mod tests {
             Some(PickerAction::Activate(PaneChoice::Editor))
         );
         assert_eq!(
-            picker_action(&key("a"), &CHOICES),
-            Some(PickerAction::Activate(PaneChoice::Agent))
-        );
-        assert_eq!(
             picker_action(&key("escape"), &CHOICES),
             Some(PickerAction::Close)
         );
@@ -319,26 +299,15 @@ mod tests {
     #[test]
     fn pane_choices_use_pane_specific_icons() {
         assert_eq!(PaneChoice::Browser.icon(), IconName::BrandChrome);
-        assert_eq!(PaneChoice::Agent.icon(), IconName::RobotFace);
+        assert_eq!(PaneChoice::Editor.icon(), IconName::File);
     }
 
     #[test]
     fn gated_out_choices_take_their_hotkeys_with_them() {
-        let agent_gated = [
-            PaneChoice::Terminal,
-            PaneChoice::Browser,
-            PaneChoice::Editor,
-        ];
-        assert_eq!(picker_action(&key("a"), &agent_gated), None);
+        let editor_gated = [PaneChoice::Terminal, PaneChoice::Browser];
+        assert_eq!(picker_action(&key("e"), &editor_gated), None);
         assert_eq!(
-            picker_action(&key("e"), &agent_gated),
-            Some(PickerAction::Activate(PaneChoice::Editor))
-        );
-        let both_gated = [PaneChoice::Terminal, PaneChoice::Browser];
-        assert_eq!(picker_action(&key("e"), &both_gated), None);
-        assert_eq!(picker_action(&key("a"), &both_gated), None);
-        assert_eq!(
-            picker_action(&key("t"), &both_gated),
+            picker_action(&key("t"), &editor_gated),
             Some(PickerAction::Activate(PaneChoice::Terminal))
         );
     }
@@ -388,31 +357,12 @@ mod tests {
     #[test]
     fn activation_targets_the_existing_picker_pane() {
         assert_eq!(
-            materialize_command(
-                PaneId(42),
-                PaneChoice::Browser,
-                Some(std::path::Path::new("/x"))
-            ),
+            materialize_command(PaneId(42), PaneChoice::Browser),
             CommandInvocation::new("select-pane-kind", ["-t", "%42", "browser"])
         );
         assert_eq!(
-            materialize_command(
-                PaneId(42),
-                PaneChoice::Editor,
-                Some(std::path::Path::new("/x"))
-            ),
+            materialize_command(PaneId(42), PaneChoice::Editor),
             CommandInvocation::new("select-pane-kind", ["-t", "%42", "editor"])
-        );
-        assert_eq!(
-            materialize_command(
-                PaneId(7),
-                PaneChoice::Agent,
-                Some(std::path::Path::new("/workspace")),
-            ),
-            CommandInvocation::new(
-                "select-pane-kind",
-                ["-t", "%7", "-c", "/workspace", "agent"],
-            )
         );
         assert_eq!(
             close_command(PaneId(7)),

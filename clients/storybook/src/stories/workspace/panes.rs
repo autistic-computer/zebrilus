@@ -2,11 +2,11 @@ use zz_gpui::{
     AnyElement, AnyView, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::*, px, relative,
 };
-use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
+use zz_protocol::{AgentProvider, DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     pane::{
-        FloatingSurface, PaneDragOverlayState, PaneOverlayCorner, PaneSplitAxis,
+        FloatingSurface, PaneDragOverlayState, PaneLens, PaneOverlayCorner, PaneSplitAxis,
         PaneSplitHighlight, PaneSplitSide, pane_drag_chip, pane_drag_overlay, pane_drop_preview,
         pane_indicator, pane_indicator_overlay, pane_overlay_stack, pane_picker_choices,
         pane_picker_row, pane_picker_surface, pane_split_surface, pane_status_badge,
@@ -21,7 +21,7 @@ use super::fixtures::{
     BUILD, LOGS, PANE_CHOICES, SERVER, TerminalPane, gap, placeholder_pane, radii, stateful,
     terminal_body,
 };
-use crate::stories::agent::pane::{feed_pane, floating_pane};
+use crate::stories::agent::lens;
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -40,7 +40,7 @@ pub const STORY: Story = Story {
         Section {
             id: "terminal-header",
             name: "Terminal header",
-            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it.",
+            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it. A terminal running Claude Code or Codex adds the lens toggle before them, lit while the pane shows the agent timeline.",
             build: |_, cx| stateless(terminal_header, cx),
         },
         Section {
@@ -76,13 +76,13 @@ pub const STORY: Story = Story {
         Section {
             id: "pip",
             name: "PiP",
-            summary: "PipSurface draws every float that is not modal: the pane's content in a card that casts the float shadow, its title in the top border like a pane header, and tile back, zoom and close while pointed at (always on touch). Any pane can be one: an agent pane drops Float from its own header, and a subagent feed is a watch-only agent pane whose tray stops a child. Thrown by its title, it settles in the third of the window it was headed for.",
+            summary: "PipSurface draws every float that is not modal: the pane's content in a card that casts the float shadow, its title in the top border like a pane header, and tile back, zoom and close while pointed at (always on touch). Any pane can be one, and a terminal running Claude Code or Codex keeps its lens toggle there. Thrown by its title, it settles in the third of the window it was headed for.",
             build: |window, cx| stateful(window, cx, pip_views, pip),
         },
         Section {
             id: "picker",
             name: "New pane picker",
-            summary: "A freshly split pane asks what it should become: pane_picker_surface with the four pane_picker_row choices, in their selected, resting and read-only states.",
+            summary: "A freshly split pane asks what it should become: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states.",
             build: |_, cx| stateless(picker, cx),
         },
         Section {
@@ -131,15 +131,15 @@ fn frames(_: &mut Window, cx: &mut App) -> AnyElement {
                 ),
             )
             .state(
-                format!("inactive agent, scrim · {suffix}"),
+                format!("inactive editor, scrim · {suffix}"),
                 sized(
                     if gaps { "frame-c-gaps" } else { "frame-c" },
                     190.0,
                     placeholder_pane(
                         "pane",
-                        IconName::Claude,
-                        "Review pane titles",
-                        "Agent pane content",
+                        IconName::File,
+                        "flat.rs",
+                        "Editor pane content",
                         false,
                         gaps,
                         Vec::new(),
@@ -172,6 +172,7 @@ fn header(
     title: &'static str,
     active: bool,
     draggable: bool,
+    lens: Option<PaneLens>,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
     zz_ui::pane::terminal_pane_header(
@@ -179,6 +180,7 @@ fn header(
         title,
         zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(id), title, draggable, |_, _, _| {}),
         false,
+        lens,
         |_, _, _| {},
         cx,
     )
@@ -191,7 +193,7 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
             header_box(
                 "header-active",
                 None,
-                header(1, "cargo test -p zz-ui", true, true, cx),
+                header(1, "cargo test -p zz-ui", true, true, None, cx),
                 cx,
             ),
         )
@@ -205,6 +207,7 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
                     "tail -f daemon.log",
                     false,
                     true,
+                    None,
                     cx,
                 )),
                 cx,
@@ -212,7 +215,50 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .state(
             "drag disabled: the only pane in its window, or a read-only client",
-            header_box("header-solo", None, header(3, "htop", true, false, cx), cx),
+            header_box(
+                "header-solo",
+                None,
+                header(3, "htop", true, false, None, cx),
+                cx,
+            ),
+        )
+        .state(
+            "running Claude Code: the lens toggle shows the agent timeline",
+            header_box(
+                "header-claude",
+                None,
+                header(
+                    5,
+                    "Pinned tabs keep their icon width",
+                    true,
+                    true,
+                    Some(PaneLens {
+                        provider: AgentProvider::ClaudeCode,
+                        open: false,
+                    }),
+                    cx,
+                ),
+                cx,
+            ),
+        )
+        .state(
+            "running Codex with the lens open: the toggle lit, Show terminal on hover",
+            header_box(
+                "header-codex",
+                None,
+                header(
+                    6,
+                    "codex",
+                    true,
+                    true,
+                    Some(PaneLens {
+                        provider: AgentProvider::Codex,
+                        open: true,
+                    }),
+                    cx,
+                ),
+                cx,
+            ),
         )
         .state(
             "long title at 320px",
@@ -224,6 +270,7 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
                     "ssh devbox -t 'cd ~/src/zz && cargo build --release --features agent'",
                     true,
                     true,
+                    None,
                     cx,
                 ),
                 cx,
@@ -770,14 +817,14 @@ fn floating(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 struct PipViews {
-    agent: AnyView,
-    feed: AnyView,
+    claude: AnyView,
+    codex: AnyView,
 }
 
 fn pip_views(window: &mut Window, cx: &mut App) -> PipViews {
     PipViews {
-        agent: floating_pane(window, cx),
-        feed: feed_pane(cx),
+        claude: lens::floating_claude(window, cx),
+        codex: lens::floating_codex(window, cx),
     }
 }
 
@@ -805,6 +852,7 @@ pub(crate) fn pip_header(title: &'static str, cx: &App) -> impl IntoElement {
         title,
         zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(4), title, true, |_, _, _| {}),
         true,
+        None,
         |_, _, _| {},
         cx,
     )
@@ -837,20 +885,12 @@ fn pip(views: &PipViews, _: &mut Window, cx: &mut App) -> AnyElement {
             states()
                 .columns(2)
                 .state(
-                    "an agent pane as a PiP: its own header, tile back and zoom for the splits",
-                    pip_box(
-                        "pip-agent",
-                        340.0,
-                        PipSurface::new("pip-agent", views.agent.clone()),
-                    ),
+                    "Claude Code as a PiP with the lens open: the timeline under the terminal header",
+                    pip_box("pip-claude", 340.0, views.claude.clone()),
                 )
                 .state(
-                    "subagent feed: watch-only, one turn per child, Stop in the tray",
-                    pip_box(
-                        "pip-feed",
-                        340.0,
-                        PipSurface::new("pip-feed", views.feed.clone()),
-                    ),
+                    "Codex as a PiP showing its terminal: the toggle opens the lens",
+                    pip_box("pip-codex", 340.0, views.codex.clone()),
                 ),
         )
         .child(
@@ -952,7 +992,10 @@ fn picker(_: &mut Window, cx: &mut App) -> AnyElement {
             "terminal selected",
             picker_pane("picker-terminal", 0, true, cx),
         )
-        .state("agent selected", picker_pane("picker-agent", 3, true, cx))
+        .state(
+            "browser selected",
+            picker_pane("picker-browser", 1, true, cx),
+        )
         .state(
             "read-only client: rows dim and stop taking clicks",
             picker_pane("picker-readonly", 0, false, cx),

@@ -73,7 +73,7 @@ fn chooser_indices(state: &UnifiedPalette) -> Vec<u32> {
 fn daemon_tree_keeps_source_indices_and_selectable_sessions_windows_and_panes() {
     let source = window_chooser_state();
     let mut state = UnifiedPalette::new(Some(PaletteMode::Window));
-    state.rebuild_window_chooser(&source, "", &MuxSnapshot::default());
+    state.rebuild_window_chooser(&source, "");
     assert_eq!(chooser_indices(&state), [0, 1, 2, 3, 5, 6]);
     assert_eq!(
         state
@@ -111,7 +111,7 @@ fn daemon_tree_keeps_source_indices_and_selectable_sessions_windows_and_panes() 
     assert_eq!(state.initial_selection(), Some(1));
 
     state.grouped = false;
-    state.rebuild_window_chooser(&source, "", &MuxSnapshot::default());
+    state.rebuild_window_chooser(&source, "");
     assert_eq!(chooser_indices(&state), [0, 1, 2, 3, 5, 6]);
     assert_eq!(state.rows[1].row.label, "dev / server");
     assert_eq!(state.rows[2].row.label, "dev / server / shell");
@@ -130,16 +130,16 @@ fn daemon_window_search_keeps_custom_text_and_matches_hidden_target_metadata() {
     let source = window_chooser_state();
     let mut state = UnifiedPalette::new(Some(PaletteMode::Window));
     for query in ["ref", "docs", "files", "@20"] {
-        state.rebuild_window_chooser(&source, query, &MuxSnapshot::default());
+        state.rebuild_window_chooser(&source, query);
         assert_eq!(chooser_indices(&state), [5], "query={query}");
         assert_eq!(state.rows[0].row.label, "scratch / <<reference>>");
         assert_eq!(state.rows[0].row.muted_prefix, "scratch / ".len());
     }
-    state.rebuild_window_chooser(&source, "ref", &MuxSnapshot::default());
+    state.rebuild_window_chooser(&source, "ref");
     assert!(!state.rows[0].row.matches.is_empty());
-    state.rebuild_window_chooser(&source, "scratch", &MuxSnapshot::default());
+    state.rebuild_window_chooser(&source, "scratch");
     assert_eq!(chooser_indices(&state), [3, 5, 6]);
-    state.rebuild_window_chooser(&source, "missing", &MuxSnapshot::default());
+    state.rebuild_window_chooser(&source, "missing");
     assert!(state.rows.is_empty());
 }
 
@@ -151,11 +151,11 @@ fn daemon_session_rows_remain_selectable_without_visible_children() {
         .retain(|item| matches!(item.target, ChooseTreeTarget::Session(_)));
     source.items[1].text = "<<scratch>>".to_owned();
     let mut state = UnifiedPalette::new(Some(PaletteMode::Window));
-    state.rebuild_window_chooser(&source, "", &MuxSnapshot::default());
+    state.rebuild_window_chooser(&source, "");
     assert_eq!(chooser_indices(&state), [0, 1]);
     assert_eq!(state.rows[0].row.label, "dev");
     assert_eq!(state.rows[1].row.label, "<<scratch>>");
-    state.rebuild_window_chooser(&source, "$2", &MuxSnapshot::default());
+    state.rebuild_window_chooser(&source, "$2");
     assert_eq!(chooser_indices(&state), [1]);
 }
 
@@ -359,7 +359,6 @@ fn default_recent_commands_are_unique_and_precede_hosts() {
 fn command_rows_hide_unavailable_pane_actions() {
     let availability = PaneKindAvailability {
         browser: false,
-        agent: false,
         editor: false,
     };
     let rows = command_entries("", availability, &|_| None);
@@ -369,12 +368,6 @@ fn command_rows_hide_unavailable_pane_actions() {
         "set-browser-tabs",
         "set-browser-profile",
         "set-editor-path",
-        "agent-send",
-        "restart-agent-pane",
-        "set-agent-provider",
-        "agent-catalog",
-        "agent-respond",
-        "new-agent-session",
         "select-pane-kind",
     ] {
         assert!(

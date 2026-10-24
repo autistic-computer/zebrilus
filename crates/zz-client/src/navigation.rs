@@ -60,7 +60,7 @@ pub fn ordered_panes(window: &WindowSnapshot) -> Vec<&PaneSnapshot> {
 #[must_use]
 pub fn pane_label(pane: &PaneSnapshot) -> String {
     let title = pane.title.trim();
-    if !(title.is_empty() || title == "agent" && matches!(pane.kind, PaneKindSnapshot::Agent(_))) {
+    if !title.is_empty() {
         return title.to_owned();
     }
     match &pane.kind {
@@ -70,7 +70,6 @@ pub fn pane_label(pane: &PaneSnapshot) -> String {
             browser.url().trim().to_owned()
         }
         PaneKindSnapshot::Browser(_) => "browser".to_owned(),
-        PaneKindSnapshot::Agent(_) => "New session".to_owned(),
         PaneKindSnapshot::Editor(_) => "editor".to_owned(),
     }
 }

@@ -45,12 +45,13 @@ fn palette_layout_value(preferences: &Preferences) -> &'static str {
     }
 }
 
-pub(super) const SECTIONS: [SettingsSection; 7] = [
+pub(super) const SECTIONS: [SettingsSection; 8] = [
     SettingsSection::Appearance,
     SettingsSection::StatusBar,
     SettingsSection::Panes,
     SettingsSection::Terminal,
     SettingsSection::Hosts,
+    SettingsSection::Providers,
     SettingsSection::Advanced,
     SettingsSection::About,
 ];
@@ -656,14 +657,13 @@ impl AppShell {
                                     cx.notify();
                                 })),
                         );
-                let agent = self.agent_panes_setting(cx);
                 return zz_ui::settings::panes_page(
                     zz_ui::settings::panes_preview::PanesPreview {
                         gaps: self.preferences.gaps,
                         margin: self.preferences.pane_margin,
                         inactive_opacity: self.preferences.pane_inactive_opacity,
                     },
-                    [gaps, agent],
+                    [gaps],
                     [background],
                     [inactive, glow],
                     [margin],
@@ -776,14 +776,6 @@ impl AppShell {
                                 .children(self.palette_settings(cx)),
                         )
                     })
-                    .when(
-                        !shown(Setting::Section(SettingsSection::Panes), phone),
-                        |page| {
-                            page.child(
-                                SettingsStack::titled("Panes").child(self.agent_panes_setting(cx)),
-                            )
-                        },
-                    )
                     .when(cfg!(target_os = "ios"), |page| {
                         page.child(
                             SettingsStack::titled("Display").child(SettingEntry::new(
@@ -836,6 +828,9 @@ impl AppShell {
                     .into_any_element();
             }
             SettingsSection::About => return about_page(cx),
+            SettingsSection::Providers => {
+                return self.providers_page((!narrow).then_some(section.title()), cx);
+            }
             _ => {}
         }
         self.hosts_page(
@@ -1282,18 +1277,6 @@ impl AppShell {
             _ => return div().into_any_element(),
         };
         entry.position(position).into_any_element()
-    }
-
-    fn agent_panes_setting(&self, cx: &mut Context<Self>) -> SettingEntry {
-        SettingEntry::new("Agent panes", "Allow creating agent panes on this client.").control(
-            Switch::new("settings-agent-enabled")
-                .checked(self.preferences.agent_enabled)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.preferences.agent_enabled = !this.preferences.agent_enabled;
-                    this.preferences.save();
-                    cx.notify();
-                })),
-        )
     }
 
     fn pane_setting(&self, control: PaneControl, cx: &mut Context<Self>) -> SettingEntry {
@@ -1928,6 +1911,7 @@ mod tests {
                 SettingsSection::Appearance,
                 SettingsSection::Terminal,
                 SettingsSection::Hosts,
+                SettingsSection::Providers,
                 SettingsSection::Advanced,
                 SettingsSection::About,
             ]

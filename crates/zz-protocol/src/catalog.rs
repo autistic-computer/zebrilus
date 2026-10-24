@@ -665,7 +665,7 @@ static PINNED_TMUX_USAGE_OVERRIDES: &[(&str, &str)] = &[
 pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "events",
     "agent-catalog",
-    "new-agent-session",
+    "providers",
     "capture-pane",
     "capturep",
     "run-shell",
@@ -808,6 +808,7 @@ pub static INTERNAL_COMMAND_NAMES: &[&str] = &[
     "set-editor-path",
     "select-pane-kind",
     "agent-catalog",
+    "providers",
 ];
 
 pub static NATIVE_COMMAND_NAMES: &[&str] = &[
@@ -825,14 +826,12 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "import-tmux-config",
     "inspect",
     "list-hosts",
-    "new-agent-session",
+    "providers",
     "reload-config",
-    "restart-agent-pane",
     "run-pane",
     "select-pane-kind",
     "send-last-output",
     "send-text",
-    "set-agent-provider",
     "set-browser-profile",
     "set-browser-tabs",
     "set-browser-url",
@@ -843,27 +842,6 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
 ];
 
 pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "new-agent-session",
-        aliases: &[],
-        description: "Start a fresh agent session, wait until ready, and print nothing on success",
-        usage: "[-t target-pane] [-c start-directory] [--timeout SECS]",
-        options: &[
-            CommandOptionSpec::value("-t", Pane, "target agent pane"),
-            CommandOptionSpec::value(
-                "-c",
-                FreeForm,
-                "working directory; defaults to the pane's current directory",
-            ),
-            CommandOptionSpec::value(
-                "--timeout",
-                FreeForm,
-                "seconds to wait; fractions allowed, default 60, 0 waits forever, timeout exits 124",
-            ),
-        ],
-        positionals: &[],
-        variadic: None,
-    },
     CommandSpec {
         name: "inspect",
         aliases: &[],
@@ -943,8 +921,21 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         aliases: &[],
         description: "Load a provider catalog for GUI pickers; the answer arrives on the client event stream, not stdout",
         usage: "[-t target-pane] provider request-id",
-        options: &[CommandOptionSpec::value("-t", Pane, "target agent pane")],
+        options: &[CommandOptionSpec::value("-t", Pane, "target pane")],
         positionals: &[FreeForm, FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "providers",
+        aliases: &[],
+        description: "Check, update, or install the coding-agent CLIs on this host; the answer arrives on the client event stream, not stdout",
+        usage: "[-u provider]",
+        options: &[CommandOptionSpec::value(
+            "-u",
+            FreeForm,
+            "update or install claude-code or codex",
+        )],
+        positionals: &[],
         variadic: None,
     },
     CommandSpec {
@@ -979,7 +970,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "agent-send",
         aliases: &[],
-        description: "Send text to an agent pane",
+        description: "Send text to Claude Code or Codex in a terminal pane",
         usage: "[-t target-pane] [--submit] [--wait] [--notify] [--progress] [--timeout seconds] [--on-block wait|fail|allow|deny] [--json] [--final] [--context context] [text ...]",
         options: &[
             CommandOptionSpec::value("-t", Pane, "target pane"),
@@ -990,7 +981,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             CommandOptionSpec::flag("--wait", "submit, then print the turn's reply"),
             CommandOptionSpec::flag(
                 "--notify",
-                "submit, then post the turn's reply back to the calling agent pane",
+                "submit, then paste the turn's reply into the calling terminal pane",
             ),
             CommandOptionSpec::flag(
                 "--json",
@@ -1025,7 +1016,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         description: "Answer a pending permission and print the selected option ID",
         usage: "[-t target-pane] [--allow] [--deny] [--option option-id] [request-id]",
         options: &[
-            CommandOptionSpec::value("-t", Pane, "target agent pane"),
+            CommandOptionSpec::value("-t", Pane, "terminal pane with an open agent lens"),
             CommandOptionSpec::flag("--allow", "allow, preferring allow-once"),
             CommandOptionSpec::flag("--deny", "reject the request"),
             CommandOptionSpec::value("--option", FreeForm, "exact permission option ID"),
@@ -1036,7 +1027,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "send-last-output",
         aliases: &[],
-        description: "Send a terminal's last command and output to an agent pane",
+        description: "Draft a terminal's last command and output into the window's agent",
         usage: "[-t target-pane]",
         options: &[CommandOptionSpec::value("-t", Pane, "target terminal pane")],
         positionals: &[],
@@ -1635,11 +1626,10 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-window",
         aliases: &["neww"],
         description: "Create a window",
-        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|agent] [--profile NAME] [--provider codex|claude-code] [shell-command [argument ...]]",
+        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser] [--profile NAME] [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
-            CommandOptionSpec::value("--provider", FreeForm, "agent provider").native(),
             CommandOptionSpec::value("-t", Window, "destination session or window index"),
             CommandOptionSpec::value("-n", FreeForm, "window name"),
             CommandOptionSpec::value("-c", FreeForm, "start in the current pane path"),
@@ -1794,11 +1784,10 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "split-window",
         aliases: &["splitw"],
         description: "Split a pane",
-        usage: "[-bdEfhIkPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--provider codex|claude-code] [shell-command [argument ...]]",
+        usage: "[-bdEfhIkPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-t target-pane] [--kind terminal|browser|picker] [--profile NAME] [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
-            CommandOptionSpec::value("--provider", FreeForm, "agent provider").native(),
             CommandOptionSpec::value("-t", Pane, "target pane"),
             CommandOptionSpec::value("-l", FreeForm, "new pane size in cells or percent"),
             CommandOptionSpec::value("-p", FreeForm, "split percentage"),
@@ -1833,11 +1822,10 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-pane",
         aliases: &["newp"],
         description: "Create a floating pane",
-        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker|agent] [--profile NAME] [--provider codex|claude-code] [shell-command [argument ...]]",
+        usage: "[-AbCDdEfhIkKLMOPvWZ] [-B border-lines] [-c start-directory] [-e environment] [-F format] [-l size] [-m message] [-p percentage] [-R inactive-border-style] [-s style] [-S active-border-style] [-T title] [-x width] [-y height] [-X x-position] [-Y y-position] [-t target-pane] [--kind terminal|browser|picker] [--profile NAME] [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
-            CommandOptionSpec::value("--provider", FreeForm, "agent provider").native(),
             CommandOptionSpec::value("-t", Pane, "target pane"),
             CommandOptionSpec::flag("-A", "keep the float visible over a zoomed pane"),
             CommandOptionSpec::flag("-C", "kill the modal pane on a click outside it"),
@@ -1882,12 +1870,9 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "select-pane-kind",
         aliases: &[],
-        description: "Materialize a pending pane as a terminal, browser, agent, or editor",
-        usage: "[-c start-directory] [-t target-pane] pane-kind",
-        options: &[
-            CommandOptionSpec::value("-t", Pane, "target pane"),
-            CommandOptionSpec::value("-c", FreeForm, "agent working directory"),
-        ],
+        description: "Materialize a pending pane as a terminal, browser, or editor",
+        usage: "[-t target-pane] pane-kind",
+        options: &[CommandOptionSpec::value("-t", Pane, "target pane")],
         positionals: &[PaneKind],
         variadic: None,
     },
@@ -1988,24 +1973,6 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         usage: "[-t target-pane] profile",
         options: &[CommandOptionSpec::value("-t", Pane, "target browser pane")],
         positionals: &[FreeForm],
-        variadic: None,
-    },
-    CommandSpec {
-        name: "set-agent-provider",
-        aliases: &[],
-        description: "Select the ACP provider for an agent pane",
-        usage: "[-t target-pane] provider",
-        options: &[CommandOptionSpec::value("-t", Pane, "target agent pane")],
-        positionals: &[FreeForm],
-        variadic: None,
-    },
-    CommandSpec {
-        name: "restart-agent-pane",
-        aliases: &[],
-        description: "Restart an agent pane's ACP adapter and resume its session",
-        usage: "[-t target-pane]",
-        options: &[CommandOptionSpec::value("-t", Pane, "target agent pane")],
-        positionals: &[],
         variadic: None,
     },
     CommandSpec {
@@ -4520,7 +4487,7 @@ mod tests {
         assert!(!command_spec("split-window").unwrap().is_internal());
         for name in ["split-window", "new-window"] {
             let spec = command_spec(name).unwrap();
-            for option in ["--kind", "--profile", "--provider"] {
+            for option in ["--kind", "--profile"] {
                 assert!(spec.option(option).unwrap().native);
                 assert!(matches!(
                     parse_tmux_options(spec, &[option.into()]),
@@ -4563,8 +4530,6 @@ mod tests {
             "set-browser-url",
             "set-browser-tabs",
             "set-browser-profile",
-            "set-agent-provider",
-            "restart-agent-pane",
             "set-editor-path",
             "select-pane",
             "last-pane",

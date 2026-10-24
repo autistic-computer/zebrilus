@@ -166,7 +166,6 @@ fn tree_row_element(
     let pane_kind = item.pane_kind.map(|kind| match kind {
         ChooseTreePaneKind::Terminal => ChooserPaneKind::Terminal,
         ChooseTreePaneKind::Browser => ChooserPaneKind::Browser,
-        ChooseTreePaneKind::Agent => ChooserPaneKind::Agent,
         ChooseTreePaneKind::Editor => ChooserPaneKind::Editor,
     });
     let active = item.active();

@@ -120,7 +120,6 @@ impl PaletteBackend for MuxPalette {
     fn availability(&self, cx: &App) -> PaneKindAvailability {
         PaneKindAvailability {
             browser: crate::browser::controller::is_available(cx),
-            agent: crate::config::agent_pane_enabled(cx),
             editor: crate::config::editor_pane_enabled(cx),
         }
     }
@@ -209,25 +208,20 @@ fn host_detail(host: &MuxTreeHost, cx: &App) -> String {
 }
 
 fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTreePane {
-    let attention = matches!(pane.kind, MuxTreePaneKind::Agent(_))
-        .then(|| {
-            attached
-                .then(|| mux.agent_attention_status(pane.id))
-                .flatten()
-        })
+    let attention = attached
+        .then(|| mux.agent_attention_status(pane.id))
         .flatten();
     PaletteTreePane {
         id: pane.id,
         label: pane.label.clone(),
         detail: match pane.kind {
-            MuxTreePaneKind::Agent(_) => match attention {
+            MuxTreePaneKind::Terminal => match attention {
                 Some(zz_client::AgentAttentionStatus::Working) => "Agent · running",
                 Some(zz_client::AgentAttentionStatus::NeedsInput) => "Agent · waiting for input",
                 Some(zz_client::AgentAttentionStatus::Idle) => "Agent · idle",
                 Some(zz_client::AgentAttentionStatus::Failed) => "Agent · failed",
-                None => "Agent",
+                None => "Terminal",
             },
-            MuxTreePaneKind::Terminal => "Terminal",
             MuxTreePaneKind::Browser => "Browser",
             MuxTreePaneKind::Editor => "Editor",
             MuxTreePaneKind::Picker => "New pane",
@@ -237,7 +231,6 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Picker => IconName::Plus,
             MuxTreePaneKind::Terminal => IconName::SquareTerminal,
             MuxTreePaneKind::Browser => IconName::Globe,
-            MuxTreePaneKind::Agent(provider) => zz_ui::pane::agent_provider_icon(provider),
             MuxTreePaneKind::Editor => IconName::File,
         },
         running: attention == Some(zz_client::AgentAttentionStatus::Working),

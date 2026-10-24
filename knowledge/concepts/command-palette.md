@@ -4,7 +4,7 @@ title: Unified palette and tmux command completions
 description: Desktop session, window, and pane navigation alongside command and host search, with shared zz-ui presentation and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [gpui, command-prompt, tmux, completions, ui]
-timestamp: 2026-10-13T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -36,8 +36,8 @@ a direct pane list.
 
 Typed search includes descendants hidden by collapsed branches and shows their session/window
 breadcrumbs. The default search keeps Navigation, Commands, and Hosts in separate sections;
-Navigate search stays within navigation targets. Agent panes carry their activity state in the tree
-and search results.
+Navigate search stays within navigation targets. A terminal whose agent lens is open carries its
+agent state in the tree and search results.
 
 Typing a prefix into an empty default search replaces it with a mode Badge. A host scope adds a
 Badge before the mode. Choosing a target command adds its name as another Badge. Backspace on an
@@ -48,9 +48,11 @@ including in daemon command prompts. Pointer movement selects the hovered row, a
 
 Session, window, and pane targets use stable IDs for execution; rows display names and breadcrumbs.
 IDs remain searchable metadata. A host scope restricts search and execution to that host without
-attaching just to browse it. Agent rows use the shared vendor icon and show Running, Waiting for
-input, Idle, or Failed as text when the attached host has supplied attention state, without a
-duplicate status dot. Other hosts show Agent until that state is available.
+attaching just to browse it. On the attached host, a terminal row whose
+[agent lens](/concepts/agent-lens.md) runtime is open reads `Agent · running`, `Agent · waiting for
+input`, `Agent · idle` or `Agent · failed` from that pane's agent state (`tree_pane` in
+`crates/zz/src/command/palette.rs`), without a duplicate status dot; other terminal rows read
+Terminal.
 Successful local navigation and command requests use the app's existing notification surface.
 
 The fuzzy matcher ignores query whitespace and case. It scores an ordered subsequence by the

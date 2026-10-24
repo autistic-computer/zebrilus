@@ -4,7 +4,7 @@ title: zz-client crate
 description: Renderer-free client state, effects, chrome keymaps, and normalized pane geometry shared by native and terminal skins.
 resource: crates/zz-client/src/lib.rs
 tags: [client, core, sans-io, keybindings, crate]
-timestamp: 2026-10-12T12:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -19,7 +19,8 @@ while each surface multiplies them by its current local bounds.
 
 `StatusBarModel::from_snapshot` projects one attached session into renderer-free native status
 data. It carries the optional session and remote-host names, the complete window list, per-client
-focus, bell/activity/Agent markers, the count of non-dead Agent panes, update visibility,
+focus, bell/activity/agent markers, the live terminals running Claude Code or Codex
+(`window_summary::pane_agent`, which reads `PaneSummary.process`), update visibility,
 alignment, and the clock mode. `StatusBarSettings` supplies typed defaults. Views own truncation,
 overflow, actions, colors, and time formatting. This path does not read the daemon-expanded
 `StatusLine`.

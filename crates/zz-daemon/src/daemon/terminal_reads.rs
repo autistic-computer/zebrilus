@@ -304,7 +304,7 @@ fn paste(
                     return;
                 }
             };
-            paste.collapsed_before = screen.matches(PASTE_COLLAPSE_MARKER).count();
+            paste.collapsed_before = collapsed_pastes(&screen);
             paste.generation = target.generation();
             target
                 .terminal
@@ -317,6 +317,13 @@ fn paste(
         },
     );
     Ok(())
+}
+
+fn collapsed_pastes(screen: &str) -> usize {
+    PASTE_COLLAPSE_MARKERS
+        .iter()
+        .map(|marker| screen.matches(marker).count())
+        .sum()
 }
 
 fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, mut paste: Paste) {
@@ -338,7 +345,7 @@ fn poll_paste(shared: &Arc<Shared>, target: Arc<Target>, mut paste: Paste) {
             };
             if (paste.tail.is_empty() || generation != paste.generation)
                 && (collapse_whitespace(&screen).contains(&paste.tail)
-                    || screen.matches(PASTE_COLLAPSE_MARKER).count() > paste.collapsed_before)
+                    || collapsed_pastes(&screen) > paste.collapsed_before)
             {
                 let result = if !paste.enter
                     || send_tokens(

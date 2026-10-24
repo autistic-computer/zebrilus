@@ -4,7 +4,7 @@ use std::{
 };
 
 use zz_protocol::{
-    AgentCommand, AgentPaneWire, BrowserCommand, ChooseBufferSearchState, ChooseBufferState,
+    AgentPaneWire, BrowserCommand, ChooseBufferSearchState, ChooseBufferState,
     ChooseTreeSearchState, ChooseTreeState, ChooserPresentation, ClientExitAction,
     ClientMessageKind, ClientView, ClipboardProducer, CommandPromptState, CommandResponse,
     ConfirmState, DisplayPanesState, Event, EventPayload, KeyBindingSnapshot, KeyTableSnapshot,
@@ -173,11 +173,6 @@ pub enum CoreEvent {
         pane: PaneId,
         uri: String,
     },
-    AgentCommand {
-        pane: PaneId,
-        request_id: u64,
-        command: AgentCommand,
-    },
     BrowserCommand {
         pane: PaneId,
         command: BrowserCommand,
@@ -238,6 +233,7 @@ pub enum CoreEvent {
         request_id: u64,
         result: String,
     },
+    ProvidersChanged,
     /// An inbound message the core does not reduce (pasted-image previews,
     /// echoing of client-to-daemon variants); the shell keeps its own handling.
     Message(Box<ProtocolMessage>),
@@ -317,6 +313,7 @@ pub struct ClientCore {
     next_row_revision: u64,
     history_limit: usize,
     agent_states: HashMap<PaneId, AgentPaneWire>,
+    providers: Option<zz_protocol::ProvidersReport>,
     full_pending: HashSet<PaneId>,
     prefix_armed: bool,
     key_table: Option<(String, bool)>,
@@ -687,6 +684,11 @@ impl ClientCore {
     #[must_use]
     pub fn agent_state(&self, pane: PaneId) -> Option<&AgentPaneWire> {
         self.agent_states.get(&pane)
+    }
+
+    #[must_use]
+    pub const fn providers(&self) -> Option<&zz_protocol::ProvidersReport> {
+        self.providers.as_ref()
     }
 
     #[must_use]
@@ -1127,17 +1129,6 @@ impl ClientCore {
             EventPayload::OpenUri { pane, uri } => {
                 self.events.push_back(CoreEvent::OpenUri { pane, uri });
             }
-            EventPayload::AgentCommand {
-                pane,
-                request_id,
-                command,
-            } => {
-                self.events.push_back(CoreEvent::AgentCommand {
-                    pane,
-                    request_id,
-                    command,
-                });
-            }
             EventPayload::BrowserCommand { pane, command } => {
                 self.events
                     .push_back(CoreEvent::BrowserCommand { pane, command });
@@ -1233,6 +1224,10 @@ impl ClientCore {
                     request_id,
                     result,
                 });
+            }
+            EventPayload::Providers(report) => {
+                self.providers = Some(report);
+                self.events.push_back(CoreEvent::ProvidersChanged);
             }
             EventPayload::ControlExit { .. }
             | EventPayload::HookEvent { .. }
@@ -1864,6 +1859,20 @@ mod tests {
         );
         assert_eq!(core.agent_state(pane), None);
         assert!(core.poll_outbound().is_none());
+    }
+
+    #[test]
+    fn providers_report_is_kept_until_the_next_one() {
+        let mut core = ClientCore::new();
+        let mut status = zz_protocol::ProviderStatus::new(zz_protocol::AgentProvider::Codex);
+        status.version = Some("0.163.0".into());
+        let report = zz_protocol::ProvidersReport {
+            checking: false,
+            providers: vec![status],
+        };
+        core.handle_message(event(EventPayload::Providers(report.clone())));
+        assert_eq!(drain(&mut core), vec![CoreEvent::ProvidersChanged]);
+        assert_eq!(core.providers(), Some(&report));
     }
 
     #[test]

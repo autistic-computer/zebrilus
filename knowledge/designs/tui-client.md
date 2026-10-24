@@ -9,7 +9,7 @@ tags:
 - browser
 - kitty-graphics
 - remote
-timestamp: 2026-08-26T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 last_updated: 2026-09-09
 ---
 
@@ -51,7 +51,7 @@ Ship each rung independently; never let a higher rung block a lower one.
 1. **Attach client (terminal panes) — LANDED 2026-08-09.** Cell blit + key
    forwarding + resize. Prefix engine, copy mode, choosers, status are daemon-side
    already. Browser/agent/editor panes render as placeholder cards (kind, title,
-   URL, "open in GUI"). Delivered as `crates/zz-tui` (lib + standalone binary;
+   URL, "open in GUI"); the agent card went with the Agent pane on 2026-10-23. Delivered as `crates/zz-tui` (lib + standalone binary;
    `zz attach` in a TTY dispatches to it) and live-smoked end to end: attach,
    typing, prefix engine + PREFIX indicator, command prompt, `split-window <cmd>`,
    pane navigation, detach-client push, Ctrl-\ detach, reattach with layout
@@ -62,7 +62,9 @@ Ship each rung independently; never let a higher rung block a lower one.
    in `crates/zz-daemon/src/daemon.rs` covers configured split bindings.
 2. **Agent panes as text.** ACP transcripts are structured data; a terminal is
    their native habitat. Composer input, permission prompts, and the attention
-   rollup map to plain TUI affordances.
+   rollup map to plain TUI affordances. (Dropped 2026-10-23: the Agent pane was
+   removed, and Claude Code and Codex now run as their own TUIs in terminal panes,
+   which the TUI client already draws. See [agent lens](/designs/agent-lens.md).)
 3. **Browser panes via kitty graphics**, capability-gated twice: the outer terminal
    must answer the kitty graphics query escape, and the host must have the CEF
    bundle. The kitty-encode half landed 2026-08-09 as the inline-image bridge
@@ -100,8 +102,8 @@ one review fix worth keeping in mind: copy/view indicators ride viewport
 frames, so the frame paint path must refresh the status area or the
 copy-mode indicator freezes. Picker selections execute the existing materialize-pane command —
 browser panes created from a TUI materialize as daemon descriptors and are
-live when a GUI next attaches; the agent entry is hinted "(runs in the zz
-app)". Focus model: sidebar-focus toggle (`EventPayload::FocusSidebar`
+live when a GUI next attaches; the agent entry was hinted "(runs in the zz
+app)" until the picker lost it on 2026-10-23. Focus model: sidebar-focus toggle (`EventPayload::FocusSidebar`
 exists), arrows + Enter, mouse on tree rows; sidebar auto-hides under a
 minimum width like the GUI slideover. Sidebar Up/k, Down/j, Enter, r, Escape, and
 q now come from the TUI `sidebar` chrome table instead of inline chord matches.
@@ -197,7 +199,7 @@ Rungs 1 and 3 have landed, as verified on 2026-09-09. The TUI enables browser
 surfaces after a successful kitty graphics probe in `crates/zz-tui/src/app.rs`;
 `BrowserState::reconcile_surfaces` in `crates/zz-tui/src/browser.rs` also requires
 a browser provider. Without both, browser panes retain their placeholder cards.
-Rung 2, Agent transcript interaction, remains proposed.
+Rung 2, Agent transcript interaction, was dropped on 2026-10-23 with the Agent pane.
 
 # Citations
 
