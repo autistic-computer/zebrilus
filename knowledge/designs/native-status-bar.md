@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Native status bar for GUI clients
-description: The desktop status bar combines the sidebar toggle, left-aligned window pills, and agent activity from structured state while tmux status rows remain a TUI compatibility surface.
+description: The desktop status bar combines the sidebar toggle, left-aligned window pills, and the host and update items from structured state while tmux status rows remain a TUI compatibility surface.
 status: Complete
 resource: crates/zz/src/status_bar.rs
 tags:
@@ -11,7 +11,7 @@ tags:
 - client
 - snapshot
 - configuration
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Decision
@@ -21,7 +21,7 @@ consume `StatusLine`, parse tmux styles, recognize powerline separators, or map 
 icons. The raw-terminal attach client keeps the daemon-expanded tmux rows and renders them with the
 shared cell composer.
 
-Desktop and web share the status widgets and activity menus. The titlebar's only chrome control is
+Desktop and web share the status widgets. The titlebar's only chrome control is
 the sidebar toggle, with no divider after it; settings sits at the bottom of the sidebar
 (`navigation::workspace_sidebar_footer`), and sessions are switched from the sidebar.
 
@@ -32,11 +32,9 @@ selects the attached session, returns its full window list, marks the focused wi
 bell and activity from each window. Each window also carries its panes in layout order, with pane
 identity, kind, label, and focus state for its icon deck.
 Automatically named windows whose active pane is a browser show the page; every other window
-shows its name. The model retains the raw window name for rename prompts. The activity list
-includes only live terminal panes whose program is Claude Code or Codex
-(`zz_client::window_summary::pane_agent`) and disappears at zero. Until the Agent pane was removed
-on 2026-10-23 ([agent lens](/designs/agent-lens.md)), it listed non-dead Agent panes and
-automatically named windows showed the active agent's session name. The model
+shows its name. The model retains the raw window name for rename prompts. Until the Agent pane was
+removed on 2026-10-23 ([agent lens](/designs/agent-lens.md)), automatically named windows showed
+the active agent's session name. The model
 still names the attached session (the iPhone overview shows it); the host value is optional
 according to settings, and the desktop supplies a host name only for a remote attachment.
 
@@ -48,7 +46,6 @@ desktop view owns those concerns:
 | Windows | Always left-aligned; the name (no index, since 2026-10-15) for at most five visible windows, with a close button on hover inset like the sidebar tree's; the visible range stays centered around the active window, and the overflow menu reaches the rest |
 | Pane deck | A packed fan of pane tiles, the focused pane in front with its Terminal, Browser, Agent provider, Editor, or Picker glyph; pointing at it opens every pane in a row with details on hover; clicking a tile selects that pane |
 | Window markers | Small bell and activity indicators derived from the model; daemon selection clears the latched attention state |
-| Agents | Small status dot and summary; needs input takes priority over failed, running, and idle states; clicking lists agents and selects their panes |
 | Host | Remote host name; absent for the local daemon |
 | Update | Available version with a dot; clicking starts the existing installer |
 
@@ -60,9 +57,6 @@ position in the attached session's displayed order, whether the sidebar or title
 is visible. They include windows outside the five visible pills and ignore missing
 positions. The `ui` chrome actions `select-window-1` through `select-window-9`
 support rebinding and take priority over pane shortcuts.
-
-The agent button shares the active window pill’s background, theme border, shadow, and 26px
-height, with its width sized to its contents.
 
 Window pills are 26px high and vertically centered inside the titlebar, a pane header tall (36px) plus the pane margin above and below it, leaving at least 5px at both edges. They
 start at 240px wide regardless of the title and shrink together only when the window strip runs
@@ -81,11 +75,11 @@ browser profile. The globe and current URL are fallbacks, with “New tab” for
 tabs do not increase the pane count. The web client shares the deck, tooltips, and direct selection with globe fallback.
 
 Chrome comes from the active zz-ui theme. There is no time/date item or alignment preference.
-Agent activity uses `zz_client::agent_attention_status` from published agent state; missing state
-is never counted as running. Since 2026-10-23 that state exists only for a terminal whose lens runtime
-is open, so an agent terminal with no lens has none: its menu entry reads Connecting and it never
-counts toward the summary. `mux::client::AgentStateChanged` notifications refresh the app shell
-without a periodic timer. Agent menu actions are disabled while disconnected.
+Until 2026-10-24 the bar also had an agent activity item: a status dot with a summary such as
+"1 needs input" and a menu of the live terminals running Claude Code or Codex that selected each
+one's pane. It and its `status-agents` setting were removed; the lead chat replaces it, and the
+sidebar still shows each agent's state. An old `status-agents` line is reported and otherwise
+ignored.
 
 # Settings
 
@@ -96,7 +90,6 @@ same status components and sample pane decks, updating as these preferences chan
 | Key | Default | Effect |
 | --- | --- | --- |
 | `status-badges` | `true` | Show bell and activity window markers |
-| `status-agents` | `true` | Show activity for live terminals running Claude Code or Codex |
 | `status-host` | `true` | Show the remote host item |
 | `status-update` | `true` | Show an available update item |
 
@@ -121,7 +114,7 @@ Further FFI and mobile-client activity presentation remains separate. There is n
 # Key files
 
 - `crates/zz-client/src/status_bar.rs`: pure status-bar model and typed settings.
-- `crates/zz/src/status_bar.rs`: GPUI layout, overflow, actions, update item, and agent selection.
+- `crates/zz/src/status_bar.rs`: GPUI layout, overflow, actions, host and update items.
 - `crates/zz/src/config/mod.rs`: app-side values, defaults, parsing, and live projection.
 - `crates/zz/src/config/settings.rs`: Status bar page controls.
 - `crates/zz/src/app_shell.rs`: snapshot and agent-state redraw subscriptions.

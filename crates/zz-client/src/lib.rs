@@ -52,9 +52,7 @@ pub use menu::{
     resolve_menu_mouse, resolve_menu_paste,
 };
 pub use status::{ComposedStatusRow, StatusHitRange, compose_status_row, compose_status_row_over};
-pub use status_bar::{
-    StatusBarAgent, StatusBarModel, StatusBarPane, StatusBarSettings, StatusBarWindow,
-};
+pub use status_bar::{StatusBarModel, StatusBarPane, StatusBarSettings, StatusBarWindow};
 
 pub mod appearance;
 pub mod url_input;

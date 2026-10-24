@@ -2,22 +2,21 @@ use std::{ops::Range, rc::Rc};
 
 mod pane_deck;
 pub use pane_deck::{StatusPaneEntry, status_pane_deck};
-pub use zz_client::AgentAttentionStatus;
 
 use zz_gpui::{
-    AnyElement, App, ElementId, IntoElement, MouseButton, SharedString, Window, div, prelude::*, px,
+    AnyElement, App, ElementId, IntoElement, MouseButton, SharedString, Window, div, prelude::*,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, IconName, PaintState, Sizable as _, Surface,
+    ActiveTheme as _, Disableable as _, IconName, PaintState, Sizable as _, Surface,
     button::{Button, ButtonVariants as _},
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
     roles,
 };
 
 use super::{
-    TREE_TOUCH_SLOP, WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState, status_dot,
-    workspace_row_action, workspace_row_action_gap, workspace_status_window,
+    TREE_TOUCH_SLOP, WorkspaceStatusWindowState, workspace_row_action, workspace_row_action_gap,
+    workspace_status_window,
 };
 
 pub const MAX_VISIBLE_WINDOWS: usize = 5;
@@ -35,29 +34,12 @@ pub struct StatusWindowEntry {
     pub select: StatusAction,
 }
 
-pub struct StatusAgentEntry {
-    pub label: SharedString,
-    pub window_name: SharedString,
-    pub icon: IconName,
-    pub status: Option<zz_client::AgentAttentionStatus>,
-    pub select: StatusAction,
-}
-
 pub fn visible_window_range(total: usize, active: usize, limit: usize) -> Range<usize> {
     if total <= limit || limit == 0 {
         return 0..total;
     }
     let start = active.saturating_sub(limit / 2).min(total - limit);
     start..start + limit
-}
-
-fn status_menu_button(id: impl Into<ElementId>) -> Button {
-    Button::new(id)
-        .ghost()
-        .small()
-        .compact()
-        .surface_role(roles::STATUS_CHIP)
-        .h(WORKSPACE_STATUS_PILL_HEIGHT)
 }
 
 pub fn status_window(
@@ -170,196 +152,4 @@ pub fn status_window_overflow(
             })
         })
         .into_any_element()
-}
-
-fn agent_status_label(status: Option<zz_client::AgentAttentionStatus>) -> &'static str {
-    use zz_client::AgentAttentionStatus;
-    match status {
-        Some(AgentAttentionStatus::Working) => "Running",
-        Some(AgentAttentionStatus::NeedsInput) => "Needs input",
-        Some(AgentAttentionStatus::Failed) => "Failed",
-        Some(AgentAttentionStatus::Idle) => "Idle",
-        None => "Connecting",
-    }
-}
-
-fn agent_summary(agents: &[StatusAgentEntry]) -> (String, Option<zz_client::AgentAttentionStatus>) {
-    use zz_client::AgentAttentionStatus;
-    for (status, label) in [
-        (AgentAttentionStatus::NeedsInput, "needs input"),
-        (AgentAttentionStatus::Failed, "failed"),
-        (AgentAttentionStatus::Working, "running"),
-    ] {
-        let count = agents
-            .iter()
-            .filter(|agent| agent.status == Some(status))
-            .count();
-        if count > 0 {
-            return (format!("{count} {label}"), Some(status));
-        }
-    }
-    if agents
-        .iter()
-        .all(|agent| agent.status == Some(AgentAttentionStatus::Idle))
-    {
-        (
-            format!("{} idle", agents.len()),
-            Some(AgentAttentionStatus::Idle),
-        )
-    } else {
-        (
-            format!(
-                "{} agent{}",
-                agents.len(),
-                if agents.len() == 1 { "" } else { "s" }
-            ),
-            None,
-        )
-    }
-}
-
-pub fn status_agents(
-    id: impl Into<ElementId>,
-    agents: Vec<StatusAgentEntry>,
-    connected: bool,
-    cx: &App,
-) -> AnyElement {
-    use zz_client::AgentAttentionStatus;
-    let (label, status) = agent_summary(&agents);
-    let color = match status {
-        Some(AgentAttentionStatus::NeedsInput) => cx.theme().warning,
-        Some(AgentAttentionStatus::Failed) => cx.theme().danger,
-        _ => cx.theme().foreground.muted(),
-    };
-    status_menu_button(id)
-        .px(px(6.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .child(status_dot(color))
-                .child(label),
-        )
-        .tooltip("Agent activity")
-        .disabled(!connected)
-        .dropdown_menu_with_anchor(zz_gpui::Anchor::TopRight, move |menu, _, _| {
-            agents
-                .iter()
-                .fold(menu.label("Agent activity"), |menu, entry| {
-                    let select = entry.select.clone();
-                    menu.item(
-                        PopupMenuItem::new(format!(
-                            "{} · {} · {}",
-                            entry.label,
-                            entry.window_name,
-                            agent_status_label(entry.status)
-                        ))
-                        .icon(entry.icon.clone())
-                        .on_click(move |_, window, cx| select(window, cx)),
-                    )
-                })
-        })
-        .into_any_element()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cell::Cell;
-    use zz_gpui::{Context, Modifiers, Render, TestAppContext, VisualTestContext};
-
-    fn agent(status: Option<AgentAttentionStatus>) -> StatusAgentEntry {
-        StatusAgentEntry {
-            label: "Review titlebar".into(),
-            window_name: "workspace".into(),
-            icon: IconName::Bot,
-            status,
-            select: Rc::new(|_, _| {}),
-        }
-    }
-
-    #[test]
-    fn activity_prioritizes_attention_and_never_counts_unknown_state_as_running() {
-        use AgentAttentionStatus::{Failed, Idle, NeedsInput, Working};
-        let mut agents = vec![agent(Some(Working)), agent(Some(Idle)), agent(None)];
-        assert_eq!(agent_summary(&agents), ("1 running".into(), Some(Working)));
-        agents.push(agent(Some(Failed)));
-        assert_eq!(agent_summary(&agents), ("1 failed".into(), Some(Failed)));
-        agents.push(agent(Some(NeedsInput)));
-        assert_eq!(
-            agent_summary(&agents),
-            ("1 needs input".into(), Some(NeedsInput))
-        );
-        assert_eq!(
-            agent_summary(&[agent(Some(Idle))]),
-            ("1 idle".into(), Some(Idle))
-        );
-        assert_eq!(agent_summary(&[agent(None)]), ("1 agent".into(), None));
-    }
-
-    struct StatusTest {
-        selected: Rc<Cell<usize>>,
-        connected: bool,
-    }
-
-    impl Render for StatusTest {
-        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let agent_selected = self.selected.clone();
-            let mut entry = agent(Some(AgentAttentionStatus::Working));
-            entry.select = Rc::new(move |_, _| agent_selected.set(2));
-            div().flex().gap(px(12.0)).child(
-                div()
-                    .h(px(30.0))
-                    .debug_selector(|| "agents-trigger".into())
-                    .child(status_agents(
-                        "test-agents",
-                        vec![entry],
-                        self.connected,
-                        cx,
-                    )),
-            )
-        }
-    }
-
-    fn draw(cx: &mut VisualTestContext) {
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-    }
-
-    #[zz_gpui::test]
-    fn the_agent_menu_selects_its_target_and_disables_when_disconnected(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let selected = Rc::new(Cell::new(0));
-        let (view, cx) = cx.add_window_view({
-            let selected = selected.clone();
-            move |_, _| StatusTest {
-                selected,
-                connected: true,
-            }
-        });
-        draw(cx);
-        let center = cx.debug_bounds("agents-trigger").unwrap().center();
-        cx.simulate_click(center, Modifiers::none());
-        draw(cx);
-        cx.update(|window, cx| assert!(window.focused(cx).is_some()));
-        cx.simulate_keystrokes("down down enter");
-        draw(cx);
-        assert_eq!(selected.get(), 2);
-        selected.set(0);
-        view.update(cx, |view, cx| {
-            view.connected = false;
-            cx.notify();
-        });
-        draw(cx);
-        let center = cx.debug_bounds("agents-trigger").unwrap().center();
-        cx.simulate_click(center, Modifiers::none());
-        draw(cx);
-        cx.simulate_keystrokes("down down enter");
-        draw(cx);
-        assert_eq!(selected.get(), 0);
-    }
 }

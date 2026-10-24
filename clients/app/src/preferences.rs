@@ -15,7 +15,6 @@ pub struct Preferences {
     pub program_colors: bool,
     pub sidebar_width: f32,
     pub status_badges: bool,
-    pub status_agents: bool,
     pub animations: bool,
     pub animation_speed: f32,
     pub gaps: bool,
@@ -55,7 +54,6 @@ impl Default for Preferences {
             program_colors: true,
             sidebar_width: zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
             status_badges: true,
-            status_agents: true,
             animations: true,
             animation_speed: interface_theme::DEFAULT_ANIMATION_SPEED,
             gaps: false,
@@ -152,7 +150,6 @@ impl Preferences {
     pub fn status_bar_settings(&self) -> zz_client::StatusBarSettings {
         zz_client::StatusBarSettings {
             badges: self.status_badges,
-            show_agents: self.status_agents,
             show_host: false,
             show_update: false,
         }
@@ -510,11 +507,10 @@ mod tests {
             zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH
         );
         let status = defaults.status_bar_settings();
-        assert!(status.badges && status.show_agents);
+        assert!(status.badges);
         assert!(!status.show_host && !status.show_update);
         let changed = Preferences {
             status_badges: false,
-            status_agents: false,
             animations: false,
             theme: Some("macos".into()),
             sidebar_width: 320.0,
@@ -533,6 +529,8 @@ mod tests {
         assert_eq!(restored.shown_theme().materials.outline, macos.outline);
         assert_eq!(restored.widget_corner_radius(), macos.radius);
         assert_eq!(restored.sidebar_width, 320.0);
+        let retired = Preferences::decode(r#"{"sidebar":false,"status_agents":false}"#).unwrap();
+        assert!(!retired.sidebar);
     }
 
     #[test]
