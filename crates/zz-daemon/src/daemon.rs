@@ -226,7 +226,7 @@ const SEND_TEXT_TIMEOUT: Duration = Duration::from_secs(2);
 const SEND_TEXT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const RUN_PANE_CAPTURE_LINES: usize = 10_000;
 const SEND_TEXT_TAIL_CHARS: usize = 40;
-const PASTE_COLLAPSE_MARKER: &str = "[Pasted text";
+const PASTE_COLLAPSE_MARKERS: [&str; 2] = ["[Pasted text", "[Pasted Content"];
 const CONTROL_COMMAND_FRAME_FLAGS_NONE: u8 = 0;
 const CONTROL_COMMAND_FRAME_FLAGS_CONTROL: u8 = 1;
 const MAX_CHOOSE_TREE_ITEMS: usize = 4_096;
@@ -16797,7 +16797,11 @@ impl Shared {
         args: &[RawText],
     ) -> Result<Execution, DaemonError> {
         let parsed = parse_agent_send_args(args)?;
-        let payload = parsed.payload()?;
+        let payload = if parsed.wait_only() {
+            String::new()
+        } else {
+            parsed.payload()?
+        };
         #[cfg(feature = "agent")]
         let caller = self
             .inner
@@ -16811,7 +16815,14 @@ impl Shared {
                 parsed.on_block,
                 AgentBlockPolicy::Allow | AgentBlockPolicy::Deny
             );
-        if lens_only || parsed.wait {
+        if lens_only && parsed.wait_only() {
+            return Err(ServerError::NativeCommandParse(
+                "agent-send: --wait without text takes only --timeout, --json and --on-block wait|fail"
+                    .to_owned(),
+            )
+            .into());
+        }
+        if lens_only || (parsed.wait && !parsed.wait_only()) {
             let pane = self.inner.lock().engine.resolve_pane(
                 parsed.target.as_deref(),
                 context.window,
@@ -16917,10 +16928,34 @@ impl Shared {
                 if !parsed.wait
                     && let Some((pid, title, cwd)) = codex
                 {
-                    let delivered = crate::agent::codex_queue::deliver(pid, &title, &cwd, &payload)
-                        .map_err(|error| {
-                            ServerError::InvalidCommand(error.for_pane(pane, &title, &cwd))
-                        })?;
+                    let delivered =
+                        match crate::agent::codex_queue::deliver(pid, &title, &cwd, &payload) {
+                            Ok(delivered) => delivered,
+                            Err(crate::agent::codex_queue::QueueError::NoName) => {
+                                let terminal = self
+                                    .inner
+                                    .lock()
+                                    .terminals
+                                    .get(&pane)
+                                    .cloned()
+                                    .ok_or(ServerError::PaneExited(pane))?;
+                                return terminal_reads::send_text(
+                                    self,
+                                    client,
+                                    pane,
+                                    terminal,
+                                    &payload,
+                                    SEND_TEXT_TIMEOUT,
+                                    true,
+                                );
+                            }
+                            Err(error) => {
+                                return Err(ServerError::InvalidCommand(
+                                    error.for_pane(pane, &title, &cwd),
+                                )
+                                .into());
+                            }
+                        };
                     log::info!(target: "zz::agent", "queued Codex message {} for thread {} in {pane}", delivered.message_id, delivered.thread_id);
                     return Ok(Execution {
                         output: if kind == ClientKind::Interactive {
@@ -17036,6 +17071,14 @@ impl Shared {
                 "{pane}: agent-send --wait needs an agent state; the pane reports none (@agent_state is unset)"
             )).into());
         }
+        if payload.is_empty() && initial == "idle" {
+            self.record_command_stderr(client, &pane.to_string());
+            return Ok(Execution {
+                output: agent_terminal_reply_output(pane, "", Duration::ZERO, "end_turn", parsed)
+                    .into(),
+                effects: Vec::new(),
+            });
+        }
         let wait = terminal_requests::CommandWait::new(self);
         let terminal_wait = agent_waits::TerminalWait::subscribe(
             self,
@@ -17045,6 +17088,12 @@ impl Shared {
             wait.start(),
             &initial,
         );
+        if payload.is_empty() {
+            terminal_wait.submitted(Ok(()));
+            agent_waits::state_changed(self, pane);
+            self.report_command_queue_park();
+            return wait.finish(self, Execution::default());
+        }
         #[cfg(all(feature = "agent", unix))]
         let queued = if let Some((pid, title, cwd)) = self.codex_terminal_context(pane) {
             match crate::agent::codex_queue::deliver(pid, &title, &cwd, payload) {
@@ -17098,8 +17147,21 @@ impl Shared {
         name: &str,
         parsed: &ParsedAgentSend,
     ) -> Result<Execution, DaemonError> {
-        use crate::agent::claude_peers::{self, PeerInbox, PeerKind, PeerMetadata};
-        let message = {
+        use crate::agent::claude_peers::{self, PeerInbox, PeerKind, PeerMetadata, PeerReply};
+        let target = format!("uds:{}", record.messaging_socket_path.display());
+        let initial = self.pane_agent_state(pane);
+        let ready = if text.is_empty() {
+            match self.peer_waits.lock().take_late(&target) {
+                Some(reply) => Some(PeerReply::Text(reply)),
+                None => (initial == "idle").then_some(PeerReply::TurnEnded),
+            }
+        } else {
+            self.peer_waits.lock().forget(&target);
+            None
+        };
+        let message = if ready.is_some() {
+            None
+        } else {
             let mut inbox = self.peer_wait_inbox.lock();
             if inbox.is_none() {
                 let waits = Arc::clone(&self.peer_waits);
@@ -17118,10 +17180,15 @@ impl Shared {
             let peer = inbox
                 .as_ref()
                 .ok_or_else(|| ServerError::InvalidCommand("reply peer unavailable".to_owned()))?;
-            match claude_peers::prepare_message(text, name, Some(peer.socket_path())) {
+            let message = if text.is_empty() {
+                Ok(None)
+            } else {
+                claude_peers::prepare_message(text, name, Some(peer.socket_path())).map(Some)
+            };
+            match message {
                 Ok(message) => message,
                 Err(error) => {
-                    if self.peer_waits.lock().is_empty() {
+                    if self.peer_waits.lock().idle() {
                         inbox.take();
                     }
                     return Err(error.into());
@@ -17130,33 +17197,81 @@ impl Shared {
         };
         let started = Instant::now();
         let timeout = parsed.wait_timeout();
+        let on_block = parsed.on_block;
         let parsed = parsed.clone();
-        let message_id = message.msg_id().to_owned();
+        let message_id = match &message {
+            Some(message) => message.msg_id().to_owned(),
+            None => claude_peers::uuid_v4()?,
+        };
+        let lapsed = target.clone();
+        let registered = message_id.clone();
         let (wait, reply) =
-            agent_waits::reply::<Result<String, String>>(self, timeout, move |shared, outcome| {
-                let inbox = {
+            agent_waits::reply::<PeerReply>(self, timeout, move |shared, outcome| {
+                let unanswered = matches!(
+                    outcome,
+                    terminal_requests::ReplyOutcome::TimedOut
+                        | terminal_requests::ReplyOutcome::Closed
+                );
+                let (inbox, late) = {
                     let mut inbox = shared.peer_wait_inbox.lock();
                     let mut waits = shared.peer_waits.lock();
-                    waits.cancel(&message_id);
-                    if waits.is_empty() { inbox.take() } else { None }
+                    waits.cancel(&registered);
+                    let late = matches!(
+                        outcome,
+                        terminal_requests::ReplyOutcome::Ready(PeerReply::TurnEnded)
+                    )
+                    .then(|| waits.take_late(&lapsed))
+                    .flatten();
+                    if unanswered {
+                        waits.lapse(lapsed);
+                    }
+                    (if waits.idle() { inbox.take() } else { None }, late)
                 };
                 drop(inbox);
+                if unanswered {
+                    shared.terminal_requests.schedule(
+                        Instant::now() + claude_peers::LATE_REPLY_KEEP,
+                        |shared| {
+                            let inbox = {
+                                let mut inbox = shared.peer_wait_inbox.lock();
+                                if shared.peer_waits.lock().idle() {
+                                    inbox.take()
+                                } else {
+                                    None
+                                }
+                            };
+                            drop(inbox);
+                        },
+                    );
+                }
+                let reply = |text: &str, reason: &str| {
+                    shared.record_command_stderr(client, &pane.to_string());
+                    agent_terminal_reply_output(pane, text, started.elapsed(), reason, &parsed)
+                };
                 match outcome {
-                    terminal_requests::ReplyOutcome::Ready(Ok(text)) => {
-                        shared.record_command_stderr(client, &pane.to_string());
+                    terminal_requests::ReplyOutcome::Ready(PeerReply::Text(text)) => {
                         Ok(Execution {
-                            output: agent_terminal_reply_output(
-                                pane,
-                                &text,
-                                started.elapsed(),
-                                "end_turn",
-                                &parsed,
-                            )
-                            .into(),
+                            output: reply(&text, "end_turn").into(),
                             effects: Vec::new(),
                         })
                     }
-                    terminal_requests::ReplyOutcome::Ready(Err(message)) => {
+                    terminal_requests::ReplyOutcome::Ready(PeerReply::TurnEnded) => Ok(Execution {
+                        output: reply(late.as_deref().unwrap_or_default(), "end_turn").into(),
+                        effects: Vec::new(),
+                    }),
+                    terminal_requests::ReplyOutcome::Ready(PeerReply::Blocked) => {
+                        Err(DaemonError::CommandExit {
+                            output: if parsed.json {
+                                reply("", "blocked")
+                            } else {
+                                shared.record_command_stderr(client, &pane.to_string());
+                                format!("{pane}: blocked (agent_state=blocked)")
+                            }
+                            .into(),
+                            exit_code: 3,
+                        })
+                    }
+                    terminal_requests::ReplyOutcome::Ready(PeerReply::Failed(message)) => {
                         Err(ServerError::InvalidCommand(format!("{pane}: {message}")).into())
                     }
                     terminal_requests::ReplyOutcome::Closed => {
@@ -17164,7 +17279,8 @@ impl Shared {
                     }
                     terminal_requests::ReplyOutcome::TimedOut => Err(DaemonError::CommandExit {
                         output: format!(
-                            "{pane}: no reply within {} seconds; the turn is still running",
+                            "{pane}: no reply within {} seconds; the turn is still running. \
+                         `agent-send -t {pane} --wait ''` waits again without sending",
                             timeout.unwrap().as_secs()
                         )
                         .into(),
@@ -17172,19 +17288,28 @@ impl Shared {
                     }),
                 }
             });
+        if let Some(ready) = ready {
+            reply.try_send(ready);
+            return wait.finish(self, Execution::default());
+        }
         let reply = Arc::new(reply);
-        self.peer_waits.lock().register_reply(
-            message.msg_id().to_owned(),
-            format!("uds:{}", record.messaging_socket_path.display()),
-            Arc::clone(&reply),
-        );
-        if let Err(error) = claude_peers::post_prepared(record, &message) {
+        self.peer_waits
+            .lock()
+            .register_reply(message_id, target, Arc::clone(&reply));
+        if let Some(message) = &message
+            && let Err(error) = claude_peers::post_prepared(record, message)
+        {
             wait.state.resolve(Err(error.into()));
             return wait.finish(self, Execution::default());
         }
         agent_waits::watch_peer(
             self,
-            record.pid,
+            agent_waits::PeerTurn {
+                pane,
+                pid: record.pid,
+                on_block,
+                seen_working: !matches!(initial.as_str(), "" | "idle"),
+            },
             Arc::downgrade(&reply),
             wait.state.continuation.clone(),
         );
@@ -33585,7 +33710,8 @@ impl Shared {
                     terminal_requests::ReplyOutcome::TimedOut => {
                         return Err(DaemonError::CommandExit {
                             output: format!(
-                                "{pane}: no reply within {} seconds; the turn is still running",
+                                "{pane}: no reply within {} seconds; the turn is still running. \
+                                 `agent-send -t {pane} --wait ''` waits again without sending",
                                 timeout.unwrap().as_secs()
                             )
                             .into(),
@@ -51561,6 +51687,10 @@ fn agent_permission_json(permission: &zz_protocol::AgentPermissionWire) -> serde
 }
 
 impl ParsedAgentSend {
+    fn wait_only(&self) -> bool {
+        self.wait && self.context.is_none() && self.text.iter().all(|text| text.trim().is_empty())
+    }
+
     fn wait_timeout(&self) -> Option<Duration> {
         let timeout = self.timeout.unwrap_or(AGENT_SEND_WAIT_TIMEOUT);
         (!timeout.is_zero()).then_some(timeout)
@@ -52104,7 +52234,8 @@ when unknown; terminal panes report it from OSC 133 marks.
 ## Remote hosts
 
 `zz list-hosts` lists the machines in `zz/config` with their state and version.
-`zz --host NAME VERB` runs a verb there (NAME may be an ssh destination), and
+`zz --host NAME VERB` runs a verb there (NAME may be an ssh destination; a name that
+`zz/config` does not list and that is this machine's hostname runs here), and
 `zz --host all VERB` runs a read-only verb on every host, prefixing text lines with
 `NAME: ` and adding `host_name` to JSON lines. Pane IDs are per host and none is
 yours there: pass `-t %N` from `list-panes -a` or your own
@@ -52252,6 +52383,8 @@ stdin when TEXT is omitted. `--no-enter` drafts. The timeout defaults to 2 secon
 accepts fractions such as 0.5, and 0 waits forever. Only the target pane gets the text,
 even with `synchronize-panes` on.
 Print nothing on success. If the text never appears, exit non-zero without submitting.
+A paste that Claude Code or Codex folds into a placeholder (`[Pasted text #1 ...]`,
+`[Pasted Content N chars]`) counts as appeared.
 
 ### `zz send-keys -t %N 'text' Enter`
 
@@ -52393,7 +52526,8 @@ Terminal panes running a listed agent CLI get `working`/`idle` from the OSC 9;4
 progress bar through `#{agent_state}` and `@agent_state`. `@agent-progress-commands`
 sets the whitespace- or comma-separated list of command basenames (default `claude`).
 A terminal pane running Claude Code gets `working`/`idle` from Claude Code's own
-session status in its peer registry once per second. Set `@agent-peer-state off`
+session status in its peer registry once per second, and `blocked` while Claude Code
+waits on a permission prompt or a question. Set `@agent-peer-state off`
 at pane, window, session, or global scope to disable these updates.
 
 ```sh
@@ -52417,6 +52551,8 @@ can see the pre-send idle and return early. Use `zz agent-send -t %N --wait "...
 to wait for a turn on any pane kind. Use the channel loop to observe transitions
 you did not cause.
 `zz events -t %N` streams `agent-state-changed` lines for any pane kind.
+`zz wait-for -E -F '#{==:#{pane},%N}' agent-state-changed` blocks until that pane's
+next state change; add `-v` to print its `agent_state`.
 
 The `zz refresh-client` verb supports `-B` subscriptions in control mode. Send this
 on the control connection and read `%subscription-changed`:
@@ -52442,8 +52578,8 @@ A terminal pane running Codex is also a valid target. The daemon reads the sessi
 name from the pane title and queues the text through Codex's own `codex queue`.
 Codex runs it at its next idle, with polling taking up to ten seconds. Plain sends
 and `--submit` both queue the message and print the pane ID for command clients.
-A fresh session has no name until its first prompt; `/rename` inside Codex resolves
-a name collision.
+A fresh session has no name until its first prompt, so a plain send to it is typed
+into the pane instead; `/rename` inside Codex resolves a name collision.
 
 For a terminal pane running neither Claude Code nor Codex and without a peer
 reply channel, `--wait` requires a non-empty `@agent_state` and types the text. It waits for a
@@ -52455,6 +52591,17 @@ starts idle must leave idle within 15 seconds; otherwise it exits 124. The overa
 requests exit 3. A missing `@agent_state` exits 1 before sending.
 
 Terminal waits report their known duration and reply text with zero counters.
+
+The inbox wait also ends when the pane's turn ends (`#{agent_state}` leaves `idle` and
+comes back), printing the SendMessage reply if one came and nothing if the session
+answered only in its pane; `blocked` exits 3 under `--on-block fail` there too.
+
+`zz agent-send -t %N --wait ''` sends nothing, on any terminal agent: it returns at
+once when the pane is idle and otherwise waits for the running turn to end, printing
+nothing (read the pane), or a SendMessage reply that reached the inbox after an
+earlier inbox wait timed out or its caller went away; the daemon keeps those for an
+hour. It takes `--timeout`, `--json` and `--on-block wait|fail`. Use it to wait again
+after a timeout, or after a restart, without nudging the agent.
 
 ### Peers
 
@@ -78717,6 +78864,52 @@ set-option -g @alias-mixed-next yes
 
     #[cfg(unix)]
     #[test]
+    fn agent_send_wait_without_text_waits_for_the_running_turn() {
+        let (shared, client, target) =
+            send_text_fixture("agentstateonly", "printf 'zz-ready\\r\\n'; exec /bin/cat");
+        let pane = target.parse::<PaneId>().expect("pane id");
+        shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane_mut(pane)
+            .expect("pane")
+            .summary
+            .process = vec!["codex".to_owned()];
+        let wait = move |shared: &Arc<Shared>, target: &str| {
+            shared.execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new(
+                    "agent-send",
+                    ["-t", target, "--wait", "--timeout", "10", ""],
+                ),
+            )
+        };
+        shared.write_pane_agent_state(pane, "idle");
+        assert!(
+            wait(&shared, &target)
+                .expect("an idle pane")
+                .output
+                .is_empty()
+        );
+        shared.write_pane_agent_state(pane, "working");
+        let waiting = Arc::clone(&shared);
+        let wait_target = target.clone();
+        let waiter = thread::spawn(move || wait(&waiting, &wait_target));
+        thread::sleep(Duration::from_millis(100));
+        assert!(!waiter.is_finished(), "working must not finish the wait");
+        shared.write_pane_agent_state(pane, "idle");
+        let execution = waiter.join().expect("wait thread").expect("the turn ended");
+        assert!(execution.output.is_empty());
+        let screen = wait_for_capture(&shared, client, &target, |_| true);
+        assert_eq!(screen.trim(), "zz-ready", "nothing was typed");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn agent_send_wait_reports_blocked_with_on_block_fail() {
         let (shared, client, target) = send_text_fixture(
             "agentstateblocked",
@@ -79170,6 +79363,26 @@ set-option -g @alias-mixed-next yes
             !screen.contains("hidden"),
             "nothing was submitted: {screen:?}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn send_text_submits_a_paste_codex_folds_into_a_placeholder() {
+        let (shared, client, target) = send_text_fixture(
+            "sendfold",
+            r#"stty -echo -icanon min 1; exec sh -c 'printf "zz-ready\r\n"; dd bs=4096 count=1 >/dev/null 2>&1; printf "[Pasted Content 1200 chars]\r\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "submitted\r\n"; sleep 5'"#,
+        );
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut ExecutionContext::default(),
+                &CommandInvocation::new("send-text", ["-t", &target, "a long brief"]),
+            )
+            .expect("the placeholder counts as the echo");
+        wait_for_capture(&shared, client, &target, |screen| {
+            screen.contains("submitted")
+        });
     }
 
     #[test]
@@ -82177,6 +82390,69 @@ set-option -g @alias-mixed-next yes
         rename("stop");
         waiter.join().expect("waiter thread").expect("wait-for -E");
         assert!(shared.inner.lock().event_waiters.is_empty());
+    }
+
+    #[test]
+    fn wait_for_wakes_on_an_agent_state_event() {
+        let shared = Arc::new(Shared::new(1));
+        let mailbox = OutboundMailbox::new();
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
+        let (_, pane, _) = attached_message_fixture(&shared, "agent-event", &[client]);
+        shared.inner.lock().client_entry(client).instance_id = Some(ClientInstanceId(client.0));
+        let wait = |target: String| {
+            let shared = Arc::clone(&shared);
+            std::thread::spawn(move || {
+                shared.execute(
+                    client,
+                    ClientKind::Interactive,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new(
+                        "wait-for",
+                        [
+                            "-E",
+                            "-F",
+                            &format!("#{{==:#{{pane}},{target}}}"),
+                            "agent-state-changed",
+                        ],
+                    ),
+                )
+            })
+        };
+        let other = wait("%999".to_owned());
+        let waiter = wait(pane.to_string());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while shared.inner.lock().event_waiters.len() < 2 {
+            assert!(!waiter.is_finished(), "the wait returned without parking");
+            assert!(Instant::now() < deadline, "the wait never parked");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        shared.write_pane_agent_state(pane, "working");
+        while !waiter.is_finished() {
+            assert!(
+                Instant::now() < deadline,
+                "the state change never woke the wait"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        waiter
+            .join()
+            .expect("waiter thread")
+            .expect("wait-for -E agent-state-changed");
+        assert!(!other.is_finished(), "another pane's wait stays parked");
+        assert_eq!(shared.inner.lock().event_waiters.len(), 1);
+        let payload = hook_events::event_payload(
+            "agent-state-changed",
+            &BTreeMap::from([
+                ("hook_pane".to_owned(), pane.to_string()),
+                ("agent_state".to_owned(), "working".to_owned()),
+            ]),
+        );
+        assert_eq!(
+            payload.get("agent_state").map(String::as_str),
+            Some("working")
+        );
+        assert_eq!(payload.get("pane"), Some(&pane.to_string()));
     }
 
     #[test]
@@ -89929,9 +90205,9 @@ set-option -g @alias-mixed-next yes
 
     #[cfg(all(feature = "agent", unix))]
     #[test]
-    fn stale_claude_peer_status_is_ignored() {
+    fn a_long_claude_turn_stays_working() {
         with_claude_peer_status(
-            "stale_claude_peer_status_is_ignored",
+            "a_long_claude_turn_stays_working",
             |shared, pane, path, mut record| {
                 record["status"] = "busy".into();
                 record["statusUpdatedAt"] = (record["updatedAt"].as_u64().expect("timestamp")
@@ -89951,8 +90227,139 @@ set-option -g @alias-mixed-next yes
                         ),
                     )
                     .expect("read agent state");
-                assert!(state.output.is_empty());
-                assert!(!shared.inner.lock().claude_peer_states.contains_key(&pane));
+                assert_eq!(state.output.trim(), "working");
+            },
+        );
+    }
+
+    #[cfg(all(feature = "agent", unix))]
+    #[test]
+    fn claude_peer_waits_end_on_the_turn_and_keep_late_replies() {
+        use std::io::{BufRead, BufReader};
+        use std::os::unix::net::{UnixListener, UnixStream};
+
+        with_claude_peer_status(
+            "claude_peer_waits_end_on_the_turn_and_keep_late_replies",
+            |shared, pane, path, mut record| {
+                let sockets = tempfile::Builder::new()
+                    .prefix("zz-turn-")
+                    .tempdir_in("/tmp")
+                    .expect("short socket directory");
+                let socket = sockets.path().join("peer.sock");
+                let listener = UnixListener::bind(&socket).expect("peer listener");
+                record["messagingSocketPath"] = socket.display().to_string().into();
+                let status = |record: &mut serde_json::Value, status: &str| {
+                    record["status"] = status.into();
+                    fs::write(path, serde_json::to_vec(record).expect("record JSON"))
+                        .expect("peer record");
+                    shared.sync_claude_peer_states();
+                };
+                status(&mut record, "idle");
+                let send = |args: Vec<String>| {
+                    let waiting = Arc::clone(shared);
+                    thread::spawn(move || {
+                        waiting.execute(
+                            ClientId(1),
+                            ClientKind::Command,
+                            &mut ExecutionContext::default(),
+                            &CommandInvocation::new("agent-send", args),
+                        )
+                    })
+                };
+                let target = pane.to_string();
+                let posted = || {
+                    let (stream, _) = listener.accept().expect("posted message");
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                    let mut line = String::new();
+                    BufReader::new(stream)
+                        .read_line(&mut line)
+                        .expect("wire line");
+                    let value: serde_json::Value = serde_json::from_str(&line).expect("wire JSON");
+                    value["from"].as_str().expect("reply address").to_owned()
+                };
+
+                let waiter = send(vec![
+                    "-t".into(),
+                    target.clone(),
+                    "--wait".into(),
+                    "hello".into(),
+                ]);
+                posted();
+                status(&mut record, "busy");
+                thread::sleep(Duration::from_millis(300));
+                assert!(!waiter.is_finished(), "a busy turn keeps the wait open");
+                status(&mut record, "idle");
+                let execution = waiter.join().expect("wait thread").expect("turn end");
+                assert!(execution.output.is_empty());
+
+                let waiter = send(vec![
+                    "-t".into(),
+                    target.clone(),
+                    "--wait".into(),
+                    "--timeout".into(),
+                    "0.2".into(),
+                    "slow job".into(),
+                ]);
+                let inbox = posted();
+                let late = waiter.join().expect("wait thread");
+                assert!(matches!(
+                    late,
+                    Err(DaemonError::CommandExit { exit_code: 124, ref output })
+                        if output.to_string().contains("--wait ''")
+                ));
+                let mut reply = UnixStream::connect(inbox.strip_prefix("uds:").expect("UDS"))
+                    .expect("the inbox outlives the timed-out wait");
+                serde_json::to_writer(
+                    &mut reply,
+                    &serde_json::json!({
+                        "type": "user", "from": format!("uds:{}", socket.display()),
+                        "message": {"content": "<cross-session-message from-name=\"w\">\nDONE ok\n</cross-session-message>"}
+                    }),
+                )
+                .expect("reply JSON");
+                reply.write_all(b"\n").expect("reply line");
+                drop(reply);
+                let rearm = || vec!["-t".into(), target.clone(), "--wait".into(), String::new()];
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    let output = send(rearm()).join().expect("rearm").expect("rearm").output;
+                    if output == "DONE ok" {
+                        break;
+                    }
+                    assert!(output.is_empty());
+                    assert!(Instant::now() < deadline, "the late reply was lost");
+                    thread::sleep(Duration::from_millis(20));
+                }
+                let execution = send(rearm()).join().expect("rearm").expect("idle pane");
+                assert!(execution.output.is_empty());
+
+                status(&mut record, "busy");
+                let waiter = send(rearm());
+                thread::sleep(Duration::from_millis(300));
+                assert!(
+                    !waiter.is_finished(),
+                    "a wait without text waits for the turn"
+                );
+                status(&mut record, "waiting");
+                thread::sleep(Duration::from_millis(300));
+                assert!(
+                    !waiter.is_finished(),
+                    "a permission prompt waits by default"
+                );
+                status(&mut record, "idle");
+                assert!(
+                    waiter
+                        .join()
+                        .expect("wait thread")
+                        .expect("turn end")
+                        .output
+                        .is_empty()
+                );
+                listener.set_nonblocking(true).expect("nonblocking");
+                assert!(
+                    listener.accept().is_err(),
+                    "a wait without text posts nothing"
+                );
             },
         );
     }

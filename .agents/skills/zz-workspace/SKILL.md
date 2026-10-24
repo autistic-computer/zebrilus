@@ -56,7 +56,8 @@ when unknown; terminal panes report it from OSC 133 marks.
 ## Remote hosts
 
 `zz list-hosts` lists the machines in `zz/config` with their state and version.
-`zz --host NAME VERB` runs a verb there (NAME may be an ssh destination), and
+`zz --host NAME VERB` runs a verb there (NAME may be an ssh destination; a name that
+`zz/config` does not list and that is this machine's hostname runs here), and
 `zz --host all VERB` runs a read-only verb on every host, prefixing text lines with
 `NAME: ` and adding `host_name` to JSON lines. Pane IDs are per host and none is
 yours there: pass `-t %N` from `list-panes -a` or your own

@@ -163,6 +163,9 @@ noninteractive caller. Errors exit 1 and do not fall back to typing:
 - Missing executable: `codex executable not found on the login-shell PATH`.
 - Queue failure: Codex's trimmed stderr, with the target pane ID.
 
+The first case falls back since 2026-10-24: a session with no title name gets the text pasted and
+submitted, as a peer message does, because its first prompt is what names it.
+
 For a terminal pane without a peer reply channel, `--wait` requires a non-empty
 `@agent_state`. It uses terminal delivery and waits for a non-idle state followed
 by `idle`, with no reply text. A state that stays idle for 15 seconds after sending
@@ -178,7 +181,8 @@ leave the message unsubmitted. Other terminal agents retain typed delivery.
 
 For a Claude Code terminal target, `agent-send --wait` requires a command or control client. The
 first pending wait registers a peer for the daemon's own pid, named `zz`, with no `tmux` field.
-Concurrent waits share that inbox; the last caller to finish removes its record and socket.
+Concurrent waits share that inbox. The daemon removes its record and socket once no wait is
+pending and no wait has timed out in the last hour (`LATE_REPLY_KEEP`).
 
 The daemon registers the message id and target socket before posting. The payload retains the
 sender pane's peer name, or the `zz %N` / `zz` fallback, but its `from` address points to the daemon
@@ -187,8 +191,11 @@ from a caller without a peer stays fire-and-forget by decision: a caller that ne
 `--wait`, and a pane that should be reachable sets `@name`; there is no daemon inbox for strays.
 
 Replies have no reply-to id. A `type: user` line resolves the oldest unresolved wait whose target
-socket equals the line's `from` address (`uds:<target socket>`). Other targets keep waiting. The
-daemon logs and drops replies without a matching caller. Stdout receives the trimmed text between
+socket equals the line's `from` address (`uds:<target socket>`). Other targets keep waiting. A
+reply from a target whose last wait timed out or lost its caller within the hour is kept, the
+latest one per target,
+for the next wait on that pane; other replies without a matching caller are logged and dropped.
+Stdout receives the trimmed text between
 the wrapper's first line and closing tag; an unwrapped reply retains its raw content. On success,
 the caller receives the pane id on stderr.
 
@@ -202,6 +209,22 @@ and exit 124; a timeout does not cancel the remote turn.
 ```json
 {"type":"control","action":"peer_message_status","orig_msg_id":"sent-message-id","status":"dropped","reason":"peer policy","from":"uds:/tmp/cc-socks/4712.sock"}
 ```
+
+The wait also follows the pane's `@agent_state`, which Claude Code's OSC 7501 program status or the
+registry scan writes (`busy` is `working`, `waiting` is `blocked`, anything else `idle`): once the
+pane has been non-idle since the send, a return to `idle` ends the turn and prints the reply if one
+came, or nothing when the session answered only in its pane. `blocked` exits 3 under
+`--on-block fail` and otherwise keeps waiting. A state that is already non-idle at the send counts,
+so a message that lands just as an earlier turn ends can return that turn's end.
+
+`agent-send -t %N --wait ''` (empty text, no `--context`) posts nothing and skips the
+[agent lens](/concepts/agent-lens.md), which would refuse an empty prompt. It prints a kept late reply
+at once, returns at once with empty text when the pane is idle, and otherwise waits for the reply
+or the end of the running turn the same way. A lead re-arms a timed-out wait this way without
+nudging the worker. Terminal panes without a Claude Code record treat empty text the same way on
+`@agent_state` alone. Since the lens, `--wait` with text to a pane running `claude` types it and
+reads the transcript instead, so this inbox wait serves panes whose program is not recognized as
+Claude Code, and the kept replies come from those waits.
 
 ## Control lines and pid verification
 
