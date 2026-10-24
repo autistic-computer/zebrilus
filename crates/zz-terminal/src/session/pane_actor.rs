@@ -134,6 +134,7 @@ impl PaneActor {
             spawn.terminal_type.as_deref().unwrap_or("tmux-256color"),
         );
         command.env("COLORTERM", "truecolor");
+        command.env("CLAUDE_CODE_TMUX_TRUECOLOR", "1");
         command.env("TERM_PROGRAM", "zz");
         command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
         for (key, value) in &spawn.env {

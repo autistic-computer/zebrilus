@@ -14168,9 +14168,10 @@ fn wait_for_wake(
 }
 
 #[cfg(unix)]
-const PANE_ENVIRONMENT_KEYS: [&str; 5] = [
+const PANE_ENVIRONMENT_KEYS: [&str; 6] = [
     "TERM",
     "COLORTERM",
+    "CLAUDE_CODE_TMUX_TRUECOLOR",
     "TERM_PROGRAM",
     "TERM_PROGRAM_VERSION",
     "SHELL",
@@ -26494,7 +26495,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn terminal_type_seeds_term_and_spawn_environment_can_override_it() {
+    fn pane_environment_seeds_term_and_truecolor_and_spawn_environment_overrides_them() {
         let capture =
             |view: u64,
              terminal_type: Option<&str>,
@@ -26503,7 +26504,10 @@ mod tests {
                     DEFAULT_HISTORY_LIMIT,
                     Arc::new(TerminalAppearance::default()),
                     TerminalSpawn {
-                        command: Some(vec!["printf 'ZZ_TERM:%s\\n' \"$TERM\"; read _".to_owned()]),
+                        command: Some(vec![
+                            "printf 'ZZ_TERM:%s ZZ_TRUECOLOR:%s\\n' \"$TERM\" \"$CLAUDE_CODE_TMUX_TRUECOLOR\"; read _"
+                                .to_owned(),
+                        ]),
                         terminal_type: terminal_type.map(str::to_owned),
                         env,
                         ..TerminalSpawn::default()
@@ -26524,7 +26528,9 @@ mod tests {
                 contents
             };
 
-        assert!(capture(47, None, Vec::new()).contains("ZZ_TERM:tmux-256color"));
+        let default = capture(47, None, Vec::new());
+        assert!(default.contains("ZZ_TERM:tmux-256color"), "{default:?}");
+        assert!(default.contains("ZZ_TRUECOLOR:1"), "{default:?}");
         assert!(capture(48, Some("zz-term"), Vec::new()).contains("ZZ_TERM:zz-term"));
         assert!(
             capture(
@@ -26534,6 +26540,13 @@ mod tests {
             )
             .contains("ZZ_TERM:override")
         );
+        let unset = capture(
+            50,
+            None,
+            vec![("CLAUDE_CODE_TMUX_TRUECOLOR".into(), Some("".into()))],
+        );
+        assert!(unset.contains("ZZ_TERM:"), "{unset:?}");
+        assert!(!unset.contains("ZZ_TRUECOLOR:1"), "{unset:?}");
     }
 
     #[cfg(unix)]
