@@ -276,6 +276,7 @@ pub fn pane_lens_button(
         "Show agent view"
     };
     pane_header_icon_button("pane-lens", agent_provider_icon(lens.provider), true, cx)
+        .surface_role(roles::PANE_LENS)
         .debug_selector(|| "pane-lens".into())
         .selected(lens.open)
         .when(lens.open, |button| button.text_color(cx.theme().foreground))

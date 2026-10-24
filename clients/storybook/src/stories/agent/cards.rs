@@ -13,7 +13,7 @@ use zz_ui::{
     Disableable as _,
     agent::{
         composer::COMPOSER_MAX_WIDTH,
-        presentation::{permission_card, permission_option, spinner_phase},
+        presentation::{permission_card, permission_option, spinner_phase, terminal_wait_card},
         question::QuestionCardState,
         slash::{suggestion_list, suggestion_list_height, suggestion_row},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
@@ -118,6 +118,15 @@ fn render_permissions(_: &mut Window, cx: &mut App) -> AnyElement {
                 &PLAN_EXIT,
                 1,
                 true,
+                cx,
+            )),
+        )
+        .state(
+            "waiting on a dialog the lens cannot answer: its one action shows the terminal",
+            prefix_width(terminal_wait_card(
+                "permission-wait",
+                "Waiting for a question in the terminal",
+                |_, _| {},
                 cx,
             )),
         )

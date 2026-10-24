@@ -73,7 +73,7 @@ use super::{
 };
 use crate::{
     agent::AgentController,
-    agent::AgentView,
+    agent::{AgentView, ShowTerminal},
     browser::controller::{BrowserController, ControllerEvent},
     browser::view::BrowserView,
     chooser::buffer::ChooseBufferView,
@@ -2675,6 +2675,16 @@ impl AppView {
         let controller = self.agent_controller.clone();
         let mux = self.mux.clone();
         let view = cx.new(|cx| AgentView::new(pane, provider, controller, mux, window, cx));
+        cx.subscribe_in(
+            &view,
+            window,
+            move |this, _, _: &ShowTerminal, window, cx| {
+                if this.lenses.contains(&pane) {
+                    this.toggle_lens(pane, window, cx);
+                }
+            },
+        )
+        .detach();
         self.agents.insert(pane, view);
     }
 

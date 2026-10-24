@@ -146,6 +146,13 @@ pub const PANE_HEADER_BUTTON: SurfaceRole = SurfaceRole::under(
     "Split and the other buttons in pane headers",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
+pub const PANE_LENS: SurfaceRole = SurfaceRole::under(
+    &PANE_HEADER_BUTTON,
+    "pane.header.lens",
+    "Lens toggles",
+    "The agent's mark in the header of a terminal running Claude Code or Codex, tinted while the lens is open",
+)
+.with(P.hover(Highlight::None).selected(Highlight::Tint));
 pub const PANE_TITLE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::QUIET_BUTTON,
     "pane.header.title",
@@ -548,6 +555,7 @@ const ZZ: &[SurfaceRole] = &[
     WINDOW_CONTROLS,
     ROW_ACTION,
     PANE_HEADER_BUTTON,
+    PANE_LENS,
     PANE_TITLE,
     AGENT_SEND,
     AGENT_JUMP,

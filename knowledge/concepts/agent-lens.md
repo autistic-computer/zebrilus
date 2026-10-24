@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, prompts pasted into the TUI, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
@@ -16,8 +16,7 @@ grid; clicking again shows the terminal. The terminal process stays the source o
 timeline is read from the transcript the CLI already writes, and the composer types into the TUI.
 
 The rulings, the full deletion map and the history of the earlier attempt are in the
-[agent lens design](/designs/agent-lens.md). The daemon half landed in `fc9503ece`; the client half
-is being built.
+[agent lens design](/designs/agent-lens.md). Both halves are on main (merged in `d20c49f4b`).
 
 Until 2026-10-23 zz had a separate Agent pane (`PaneKindSnapshot::Agent`) that spawned an ACP
 adapter or a native driver per pane, with project, history, provider, model and effort pickers.
@@ -30,7 +29,12 @@ feeds are gone. The [daemon-owned agent runtime](/designs/agent-daemon-runtime.m
 - **Client.** `zz_client::window_summary::pane_agent` maps `pane_program` (the terminal's
   `PaneSummary.process`, wire v112) to `claude` or `codex`. The toggle is per client and not
   synced, so one client can show the lens while another shows the terminal. The header button is
-  `zz_ui::pane::pane_lens_button` (`PaneLens`, sent as `TerminalPaneAction::Lens`).
+  `zz_ui::pane::pane_lens_button` (`PaneLens`, sent as `TerminalPaneAction::Lens`), drawn in the
+  `pane.header.lens` role, which tints it while the lens is open.
+- **Phone.** In the compact shell (iPhone) the lens opens by default for a terminal running an
+  agent, since typing into a TUI with a phone keyboard is slow. Closing it with the toggle keeps that
+  pane on its terminal until the agent exits (`CompactState::lens_dismissed` in
+  `clients/app/src/app/compact.rs`). Desktop, web and iPad open it only from the toggle.
 - **Daemon.** `lens_provider` in `crates/zz-daemon/src/daemon/lens.rs` looks for a `claude` or
   `codex` basename in the pane's process list (case-insensitive, `.exe` stripped), and
   `terminal_agent` only answers for `PaneKind::Terminal`.
@@ -68,9 +72,11 @@ for the lead chat, but no pane opens them now.
   id in the record (`/clear`, `/resume`) becomes a session switch with a fresh replay, and a prompt
   whose parent is not the last line seen (`/rewind`) reloads the chain. A `system` /
   `turn_duration` line marks a finished turn.
-- **Codex.** The pane's `codex` process holds its rollout open; the runtime finds it through
-  `/proc/<pid>/fd` on Linux or `lsof -p` on macOS and takes the open rollout whose `session_meta`
-  has no parent. `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items and
+- **Codex.** The runtime first looks for a rollout the pane's `codex` process holds open
+  (`/proc/<pid>/fd` on Linux, `lsof -p` on macOS) whose `session_meta` has no parent. Codex 0.164
+  writes rollouts from its shared `codex app-server` instead, so the fallback takes the newest
+  parentless rollout in the last 7 day folders of `$CODEX_HOME/sessions` whose cwd matches the pane
+  and that was written since the TUI started (`newest_rollout`). `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items and
   `codex::translate::Translator::history_item` translates them. `task_started` marks the pane busy;
   `task_complete` and `turn_aborted` mark it idle.
 
@@ -83,13 +89,18 @@ lens, from typing in the terminal, or from a peer message.
 - **Prompts.** The composer sends `AgentPrompt` as before. The runtime delivers it with
   `TerminalLens::submit`, the bracketed paste plus Enter that waits for the text to echo before
   pressing Enter (`paste_and_submit`). Images are refused with "The lens sends text only; paste
-  images in the terminal." Slash commands are the CLI's own and are typed through.
+  images in the terminal." Slash commands are the CLI's own and are typed through. The composer's
+  placeholder names the agent ("Message Claude Code…"), and before the agent has written a
+  transcript the lens shows `presentation::lens_welcome`: the agent's mark, "Claude Code is waiting
+  for its first prompt" and "What you send here is typed into the terminal."
 - **Stop.** `AgentCancel` sends Escape to the TUI.
 - **Claude permission prompts.** While the dialog is up, the record reads `"status":"waiting"` with
   `"waitingFor":"permission prompt"`, and the pending `tool_use` is the last assistant block with no
   `tool_result`. The runtime raises a permission request for that tool with Allow (sends `1`) and
-  Deny (sends Escape). Any other `waitingFor` raises a request with no options, titled
-  "Waiting for a ... in the terminal", so the user answers there.
+  Deny (sends Escape). Any other `waitingFor` (a plan approval, a question) raises a request with no
+  options, titled "Waiting for a ... in the terminal". Clients draw it with
+  `zz_ui::agent::presentation::terminal_wait_card`, whose one action, Show terminal, switches the
+  pane back to the TUI so the user answers there.
 - **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
   card; the user answers in the terminal.
 
