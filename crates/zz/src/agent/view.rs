@@ -14,7 +14,8 @@ use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
 use zz_ui::agent::presentation::rendered_error;
 use zz_ui::agent::presentation::{
-    empty_state, error_card, permission_card, permission_option, spinner_phase, welcome_state,
+    empty_state, error_card, lens_welcome, permission_card, permission_option, spinner_phase,
+    terminal_wait_card,
 };
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
@@ -25,9 +26,10 @@ use zz_client::agent_completion::{
 };
 use zz_client::agent_transcript::rewind_command;
 use zz_gpui::{
-    AnyElement, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement,
-    KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render, ScrollStrategy,
-    SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    AnyElement, Context, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Image,
+    IntoElement, KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render,
+    ScrollStrategy, SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*,
+    px, uniform_list,
 };
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
@@ -500,7 +502,7 @@ impl AgentView {
             InputState::new(window, cx)
                 .auto_grow(2, 8)
                 .submit_on_enter(true)
-                .placeholder("Type to the agent…")
+                .placeholder(format!("Message {}…", provider.label()))
                 .context_menu(true)
         });
         let timeline_store = cx.new(|_| AgentTimelineStore::owned_by(pane.0));
@@ -1143,7 +1145,7 @@ impl AgentView {
             AgentConnectionState::Starting | AgentConnectionState::Restoring => {
                 format!("Reading {agent}’s transcript…").into()
             }
-            AgentConnectionState::Ready => return welcome_state(cx),
+            AgentConnectionState::Ready => return lens_welcome(state.provider, cx),
             AgentConnectionState::Running => format!("Waiting for {agent}’s first update…").into(),
             AgentConnectionState::Cancelling => "Cancelling the current turn…".into(),
             AgentConnectionState::Failed => format!("Could not read {agent}’s transcript.").into(),
@@ -1183,8 +1185,20 @@ impl AgentView {
                 .into_any_element(),
             );
         }
-        let highlighted = self.permission_wizard.highlighted;
         let request_id = permission.request_id;
+        if permission.options.is_empty() {
+            let view = view.clone();
+            return Some(
+                terminal_wait_card(
+                    format!("agent-show-terminal-{}-{request_id}", self.pane.0),
+                    permission.title.clone(),
+                    move |_, cx| view.update(cx, |_, cx| cx.emit(ShowTerminal)),
+                    cx,
+                )
+                .into_any_element(),
+            );
+        }
+        let highlighted = self.permission_wizard.highlighted;
         let options = permission
             .options
             .iter()
@@ -1677,6 +1691,10 @@ impl AgentView {
         }
     }
 }
+
+pub(crate) struct ShowTerminal;
+
+impl EventEmitter<ShowTerminal> for AgentView {}
 
 impl Focusable for AgentView {
     fn focus_handle(&self, cx: &zz_gpui::App) -> FocusHandle {

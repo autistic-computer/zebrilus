@@ -93,7 +93,7 @@ pub const STORY: Story = Story {
         Section {
             id: "lens",
             name: "Agent lens",
-            summary: "A terminal running Claude Code or Codex on the phone. The lens toggle sits before close in the pane header; while the lens is open the page drops the key row the way a browser page does, and the composer types into the TUI. Tap the toggle to swap.",
+            summary: "A terminal running Claude Code or Codex on the phone opens in the lens, since typing into a TUI with a phone keyboard is slow. The toggle sits before close in the pane header; closing the lens keeps that pane on its terminal until the agent exits. While the lens is open the page drops the key row the way a browser page does, and the composer types into the TUI.",
             build: phone_lens,
         },
     ],
@@ -566,7 +566,7 @@ fn phone_lens(window: &mut Window, cx: &mut App) -> AnyView {
             lens::phone_claude_asks(window, cx),
         ),
         (
-            "Codex showing its terminal: the toggle opens the lens",
+            "Codex after its lens was closed: the toggle opens it again",
             "codex",
             AgentProvider::Codex,
             lens::phone_codex(window, cx),

@@ -2,7 +2,7 @@
 type: Design Plan
 title: Agent lens . the agent view of a terminal pane
 description: "zz stops drawing its own agent pane. Claude Code and Codex run as their real TUIs in ordinary terminal panes, and a terminal running one of them gets a lens button in its header that swaps the cell grid for the agent timeline of that same pane. The daemon tails the transcript the CLI already writes (Claude's session jsonl, the rollout Codex holds open) through the existing translators, the lens composer pastes into the TUI, and a Claude permission prompt is answered with the keys the TUI takes. The Agent pane kind, its pickers and every place that treats it as a pane type are deleted; the native drivers stay for the lead chat."
-status: Built on branch claude/agent-lens-3bd7b7, not merged (2026-10-23; replaces the abandoned 2026-09-17 attempt)
+status: Built and merged to main in d20c49f4b (2026-10-23; replaces the abandoned 2026-09-17 attempt)
 resource: crates/zz-daemon/src/agent/lens.rs
 tags:
 - agent
@@ -100,7 +100,8 @@ Verified on 2026-10-23 against Claude Code 2.1.309 and Codex 0.163.0 in a throwa
   Claude sometimes writes the `tool_use` line only after the dialog closes; the card then reads
   "Claude Code asks for permission; the terminal shows what for", still answers with `1` or Esc,
   and is replaced by the real card if the line lands first. Any other `waitingFor` shows a card
-  with no buttons, titled "Waiting for a ... in the terminal"; the user answers there. A record
+  titled "Waiting for a ... in the terminal" whose one action, Show terminal (added 10-24), switches
+  the pane back to the TUI; the user answers there. A record
   caught mid-write keeps the last status while the process lives, so a torn read never ends a turn.
 - **Codex.** The TUI's approval dialog takes `y`, `p` and Esc, but the rollout records nothing while
   it waits (the last line is the `custom_tool_call`), so zz cannot see that a dialog is up. The Codex
