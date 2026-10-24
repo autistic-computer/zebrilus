@@ -36,7 +36,7 @@ use crate::stories::workspace::{
     fixtures::{CLAUDE, CODEX, TerminalPane, gap, stateful},
     flat_sidebar::sidebar_hosts,
     status_bar::{Bar, titlebar},
-    tree::chrome_controls,
+    tree::sidebar_top_controls,
 };
 use crate::story::{Framed as _, Section, Story, stateless, states};
 
@@ -428,7 +428,11 @@ impl Render for SidebarChat {
                 workspace_sidebar_panel(
                     "lead-sidebar",
                     CHAT_WIDTH,
-                    workspace_sidebar_titlebar("lead-sidebar-titlebar", chrome_controls(), cx),
+                    workspace_sidebar_titlebar(
+                        "lead-sidebar-titlebar",
+                        sidebar_top_controls(true),
+                        cx,
+                    ),
                     column,
                     ground,
                     true,

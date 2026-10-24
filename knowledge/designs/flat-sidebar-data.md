@@ -26,8 +26,8 @@ the mux tree, so a client that subscribes to all sessions can draw every row wit
 `AgentPaneWire`, without attaching, and without keeping its own "seen" state.
 
 This plan covers the daemon producers, the wire fields, and the view model. The row, header and
-sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`). The eye
-button at the bottom right of the sidebar footer switches between the session tree and this list:
+sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`). The view
+switch in the sidebar's top strip switches between the session tree and this list:
 the desktop draws every fleet host from `MuxClient::fleet_hosts` and remembers the choice as
 `flat-sidebar` in `zz/config` (`crates/zz/src/workspace/sidebar/flat.rs`); the web and iPad clients
 draw their one host and keep it in their saved preferences. Row actions open a rename and close menu

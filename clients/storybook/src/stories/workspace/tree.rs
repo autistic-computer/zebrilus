@@ -17,9 +17,9 @@ use zz_ui::{
         },
         tree::{IndentGuideColors, WorkspaceIndentGuides},
         workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-        workspace_sidebar_footer, workspace_sidebar_footer_controls, workspace_sidebar_surface,
-        workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
-        workspace_tree_disclosure, workspace_tree_row,
+        workspace_sidebar_controls, workspace_sidebar_surface, workspace_sidebar_titlebar,
+        workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
+        workspace_tree_row,
     },
     program::program_mark,
     scroll::ScrollableElement as _,
@@ -385,31 +385,33 @@ pub fn flat_view_sidebar(navigation: impl IntoElement, cx: &App) -> Stateful<zz_
     sidebar_in_view(navigation, false, true, cx)
 }
 
+/// The sidebar's top strip as the app draws it: Add host, the view switch
+/// and Settings before the sidebar toggle.
+pub fn sidebar_top_controls(flat: bool) -> zz_gpui::Div {
+    workspace_sidebar_controls([
+        workspace_add_host_button("add-host").into_any_element(),
+        workspace_sidebar_view_button("sidebar-view", flat).into_any_element(),
+        workspace_settings_button("settings").into_any_element(),
+        chrome_controls().into_any_element(),
+    ])
+}
+
 fn sidebar_in_view(
     navigation: impl IntoElement,
     settings_selected: bool,
     flat: bool,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
+    let controls = if settings_selected {
+        chrome_controls().into_any_element()
+    } else {
+        sidebar_top_controls(flat).into_any_element()
+    };
     workspace_sidebar_surface(
         "sidebar",
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
-        workspace_sidebar_titlebar("sidebar-titlebar", chrome_controls(), cx),
+        workspace_sidebar_titlebar("sidebar-titlebar", controls, cx),
         navigation,
         cx,
     )
-    .when(!settings_selected, |surface| {
-        surface.child(workspace_sidebar_footer(
-            "sidebar-footer",
-            workspace_settings_button("settings"),
-            Some(
-                workspace_sidebar_footer_controls(
-                    workspace_add_host_button("add-host"),
-                    workspace_sidebar_view_button("sidebar-view", flat),
-                )
-                .into_any_element(),
-            ),
-            cx,
-        ))
-    })
 }
