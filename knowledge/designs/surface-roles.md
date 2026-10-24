@@ -98,7 +98,9 @@ resting fill when the state draws glass, since a fill paints over the glass unde
 which it wants. Tone stays separate: the role decides what a surface is made of, the tone (neutral,
 primary, danger, warning, success) decides what its color means, so a danger button in a glass
 toolbar is red-tinted glass. A prominent surface (`Surface::prominent`, what a solid `Button` is)
-fills with its tone, primary when neutral; on glass it tints the glass with it.
+fills with its tone, primary when neutral; on glass it tints the glass with it. A `tint` surface
+that is not a control (a card or a panel) takes its tone's wash when it has a tone, and the ground's
+wash otherwise: `chat.bubble.mine` is a card drawn in the accent tone.
 
 Rules are surfaces too: a divider role only uses `outline`, and `.rule_on(role, edge)` draws a 1px
 line in the divider color when the role's outline is on.

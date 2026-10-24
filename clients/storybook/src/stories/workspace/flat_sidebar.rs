@@ -630,7 +630,7 @@ fn empty(id: u32, name: &str) -> FlatHost {
     )
 }
 
-fn sidebar_hosts() -> Vec<FlatHost> {
+pub(crate) fn sidebar_hosts() -> Vec<FlatHost> {
     vec![macbook(), ubuntu(), empty(9, "nas")]
 }
 
