@@ -106,18 +106,18 @@ impl WorkspaceSidebar {
         let input = self.lead_input(window, cx);
         let ground = self.content_ground(cx);
         let fade = workspace_sidebar_fade(self.ground(cx), cx);
-        let (bubbles, running, error) = {
+        let ((bubbles, depth), running, error) = {
             let chat = chat.read(cx);
             (
-                chat.bubbles("workspace-lead", ground, cx),
+                chat.thread("workspace-lead", ground, cx),
                 chat.running(cx),
                 chat.error().cloned(),
             )
         };
-        if bubbles.len() > self.lead.shown {
+        if depth > self.lead.shown {
             self.lead.scroll.scroll_to_bottom();
         }
-        self.lead.shown = bubbles.len();
+        self.lead.shown = depth;
         chat.update(cx, |chat, cx| chat.mark_read(cx));
         let has_content = !input.read(cx).value().trim().is_empty();
         let action = if running && has_content {

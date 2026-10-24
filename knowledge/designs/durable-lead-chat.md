@@ -214,6 +214,26 @@ of the stamp. `chat_header` names the lead and its host. `ChatComposer` is one l
 send button; there are no pickers, since the lead's model is a setting. Approvals use the lens's
 permission card.
 
+While the lead works, `ChatTyping` takes the place of its answer at the bottom of the thread: a
+`chat.bubble` on its side with three dots that rise in turn (the kit's repeating animation, 30 fps)
+and its last three steps, the newest beside the dots and the ones before it muted with a tick. With
+no step yet it holds only the dots. The words are the ones the lead's CLI already writes, the way
+other chat agents show progress: Slack assistants set a status with rotating loading messages,
+Linear agents post ephemeral thought and action activities that the next one replaces, and Claude
+Code's own spinner shows the todo item in progress. `lead_steps` reads them from the live turn:
+
+- the item the lead's plan has in progress (Claude's todo `activeForm`, "Committing the changes");
+- per tool since the last message the lead got, the `description` its input carries when it has
+  one (Claude writes one for every Bash call, "Show dirty files", and for every agent it starts),
+  else the kind and what it touches: "Reading lead.rs", "Editing chat.rs", "Searching for pinned",
+  "Running git status";
+- a reasoning summary's bold title, as Codex opens one with `**Checking the tests**` when summaries
+  are on (they are empty in the default Codex rollouts on the fleet, so Codex steps mostly come from
+  its tools).
+
+The same step twice in a row shows once. Nothing new is asked of the lead and nothing goes on the
+wire.
+
 `ChatSection` scrolls the thread, keeps a short one at the bottom and fades it under the header
 while there is more above (the kit's `top_fade`, the mirror of the list's `bottom_fade`); whoever
 owns the `ScrollHandle` calls `scroll_to_bottom` when a message arrives. Its rule starts a
@@ -241,10 +261,11 @@ log above (`crates/zz/src/agent/lead.rs`):
 - **Talking back.** The composer types into the lead's pane like the lens composer, and queues
   behind a running turn. The oldest approval waiting in the lead shows as the lens's permission
   card above it; in the palette, a digit in an empty field picks an option.
-- **Where.** The sidebar draws it under the list in both views (the split is not saved). In
-  titlebar mode the title bar's chat button opens the palette in Lead mode, a view of its own
-  over the panes (`agent/lead_palette.rs`); Esc closes it and Backspace in an empty field opens
-  the command palette.
+- **Where.** The sidebar draws it under the list in both views (the split is not saved). Lead mode,
+  a view of its own over the panes (`agent/lead_palette.rs`), opens in either layout: `>` typed
+  into an empty command palette switches to it while there is a lead (the palette's footer then
+  shows the key), and in titlebar mode the title bar's chat button opens it too. Esc closes it and
+  Backspace in an empty field goes back to the command palette.
 
 Not yet: the web and iPad clients, the zz-owned chat log, peer-bus messages (they arrive as plain
 user turns and show as yours), and an unwatch message, so a client keeps getting the stream of

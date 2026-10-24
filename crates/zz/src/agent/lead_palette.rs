@@ -125,13 +125,14 @@ impl Render for LeadPalette {
                     });
             (
                 host.into_iter().chain(lead).collect::<Vec<_>>(),
-                chat.bubbles("lead-palette", layer.ground, cx),
+                chat.thread("lead-palette", layer.ground, cx),
             )
         };
-        if bubbles.len() > self.shown {
+        let (bubbles, depth) = bubbles;
+        if depth > self.shown {
             self.scroll.scroll_to_bottom();
         }
-        self.shown = bubbles.len();
+        self.shown = depth;
         chat.update(cx, |chat, cx| chat.mark_read(cx));
         let ask = LeadChat::ask(&chat, "lead-palette-ask", cx);
         let surface = CommandPaletteSurface::new(

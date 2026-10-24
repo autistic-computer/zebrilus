@@ -1594,6 +1594,11 @@ impl AppView {
         }
         let palette =
             cx.new(|cx| CommandPaletteView::new_unified(palette_backend(mux), mode, window, cx));
+        #[cfg(feature = "agent-pane")]
+        {
+            let lead = self.sidebar.read(cx).lead_chat().read(cx).lead().is_some();
+            palette.update(cx, |palette, cx| palette.offer_lead(lead, cx));
+        }
         self.observe_command_palette(&palette, window, cx);
         palette.read(cx).focus(cx).focus(window, cx);
         self.command_palette = Some(palette);
@@ -1678,6 +1683,10 @@ impl AppView {
                     view.synchronized_signature = None;
                     cx.notify();
                 }
+                #[cfg(feature = "agent-pane")]
+                CommandPaletteEvent::Lead => view.open_lead_palette(window, cx),
+                #[cfg(not(feature = "agent-pane"))]
+                CommandPaletteEvent::Lead => {}
             }
         })
         .detach();
