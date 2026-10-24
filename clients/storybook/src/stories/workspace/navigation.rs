@@ -11,10 +11,9 @@ use zz_ui::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState,
         sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
         workspace_add_host_button, workspace_layout_button, workspace_palette_button,
-        workspace_settings_button, workspace_sidebar_footer, workspace_sidebar_footer_controls,
-        workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_status_item,
-        workspace_status_window, workspace_tree_action_button, workspace_tree_disclosure,
-        workspace_tree_marker, workspace_tree_row,
+        workspace_settings_button, workspace_sidebar_titlebar, workspace_sidebar_view_button,
+        workspace_status_item, workspace_status_window, workspace_tree_action_button,
+        workspace_tree_disclosure, workspace_tree_marker, workspace_tree_row,
     },
     program::program_mark,
 };
@@ -22,8 +21,7 @@ use zz_ui::{
 use super::{
     fixtures::stateful,
     tree::{
-        Badge, Node, TreeState, chrome_controls, guides, host_only, render_node, sidebar,
-        tree_list, workspace_tree,
+        Badge, Node, TreeState, guides, host_only, render_node, sidebar, tree_list, workspace_tree,
     },
 };
 use crate::story::Framed as _;
@@ -680,6 +678,16 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
                     workspace_settings_button("settings-open").selected(true),
                     cx,
                 ))
+                .child(labeled(
+                    "add host",
+                    workspace_add_host_button("add-host"),
+                    cx,
+                ))
+                .child(labeled(
+                    "view switch",
+                    workspace_sidebar_view_button("view", true),
+                    cx,
+                ))
                 .child(labeled("sidebar", workspace_layout_button("layout"), cx))
                 .child(labeled(
                     "palette (iOS)",
@@ -696,27 +704,7 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
                 .rounded(cx.theme().radius)
                 .child(workspace_sidebar_titlebar(
                     "sidebar-titlebar",
-                    chrome_controls(),
-                    cx,
-                )),
-        )
-        .state(
-            "sidebar footer",
-            div()
-                .id("footer")
-                .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
-                .framed(cx)
-                .rounded(cx.theme().radius)
-                .child(workspace_sidebar_footer(
-                    "sidebar-footer",
-                    workspace_settings_button("footer-settings"),
-                    Some(
-                        workspace_sidebar_footer_controls(
-                            workspace_add_host_button("footer-add-host"),
-                            workspace_sidebar_view_button("footer-view", false),
-                        )
-                        .into_any_element(),
-                    ),
+                    super::tree::sidebar_top_controls(true),
                     cx,
                 )),
         )

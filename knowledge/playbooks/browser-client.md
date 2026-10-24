@@ -9,7 +9,7 @@ tags:
 - client
 - websocket
 - gpui
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
@@ -123,9 +123,8 @@ Frame groups for gaps, inactive opacity, the selected pane's edge and margins; p
 the theme's radius and the pane edge its glass, or its outline without glass. Sidebar rows share desktop labels, markers, layout and
 rename menus, add/split/close actions, and keyboard navigation. Drag the sidebar’s right edge to
 resize it; the browser saves the width and clamps it to 160–640 logical pixels and half the viewport,
-with a 160-pixel minimum. The window strip shares tabs, overflow, rename/close menus, and agent
-activity. Status bar settings control window bell/activity badges and agent activity, with the
-shared live preview.
+with a 160-pixel minimum. The window strip shares tabs, overflow, and rename/close menus.
+Status bar settings control window bell/activity badges, with the shared live preview.
 The browser omits host and update items. It bundles Inter for chrome and Lilex for terminals, code, and command output; daemon font stacks retain families available on the client and fall back to Lilex.
 Terminal settings can override the local family and text scale, with a shared renderer preview.
 UI font selection uses the client’s available fonts. It ships no

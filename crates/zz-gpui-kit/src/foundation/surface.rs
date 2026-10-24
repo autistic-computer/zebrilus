@@ -19,7 +19,8 @@ use zz_gpui::{
 };
 
 use super::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, PaintState, Theme, Tone,
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, PaintState, PrimaryStyle, Theme,
+    Tone,
 };
 
 /// What a surface is made of.
@@ -1324,6 +1325,8 @@ impl Theme {
             Elevation::Popover => 2,
             _ => 1,
         };
+        let toned = !(tone == Tone::Neutral
+            || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground));
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
         } else if kind.is_control() {
@@ -1335,6 +1338,7 @@ impl Theme {
         } else {
             let rest = match fill {
                 Fill::None => self.transparent,
+                Fill::Tint if toned => soft.fill,
                 Fill::Tint => base.washed(step),
                 Fill::Solid | Fill::Glass => self.raise(base, step),
             };

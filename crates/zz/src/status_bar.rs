@@ -10,9 +10,8 @@ use zz_ui::{
     navigation::{
         WorkspaceStatusWindowState,
         status::{
-            MAX_VISIBLE_WINDOWS, StatusAgentEntry, StatusPaneEntry, StatusWindowActions,
-            StatusWindowEntry, status_agents, status_window, status_window_overflow,
-            visible_window_range,
+            MAX_VISIBLE_WINDOWS, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
+            status_window, status_window_overflow, visible_window_range,
         },
         status_dot, workspace_controls_leading_inset, workspace_status_item,
     },
@@ -34,6 +33,7 @@ pub(crate) fn render_gui_status_bar(
     mux: &Entity<MuxClient>,
     titlebar_controls: Option<(AnyElement, Pixels)>,
     window_controls: Option<AnyElement>,
+    chat: Option<AnyElement>,
     _window: &mut Window,
     cx: &mut App,
 ) -> Stateful<zz_gpui::Div> {
@@ -73,7 +73,8 @@ pub(crate) fn render_gui_status_bar(
         .collect::<Vec<_>>();
     let overflow = (model.windows.len() > MAX_VISIBLE_WINDOWS)
         .then(|| render_window_overflow(&model.windows, connected, mux, cx));
-    let right = render_right_items(&model, mux, connected, cx);
+    let mut right = render_right_items(&model, cx);
+    right.extend(chat);
     workspace_status_bar(
         crate::config::pane_gaps(cx),
         workspace_controls_leading_inset(cx),
@@ -87,38 +88,8 @@ pub(crate) fn render_gui_status_bar(
     )
 }
 
-fn render_right_items(
-    model: &StatusBarModel,
-    mux: &Entity<MuxClient>,
-    connected: bool,
-    cx: &App,
-) -> Vec<AnyElement> {
+fn render_right_items(model: &StatusBarModel, cx: &App) -> Vec<AnyElement> {
     let mut items = Vec::new();
-    if !model.agents.is_empty() {
-        let agents = model
-            .agents
-            .iter()
-            .map(|agent| {
-                let status = connected
-                    .then(|| mux.read(cx).agent_attention_status(agent.id))
-                    .flatten();
-                let id = agent.id;
-                let mux = mux.clone();
-                StatusAgentEntry {
-                    label: agent.label.clone().into(),
-                    window_name: agent.window_name.clone().into(),
-                    icon: zz_ui::pane::agent_provider_icon(agent.provider),
-                    status,
-                    select: Rc::new(move |_, cx| {
-                        for command in select_pane_commands(id) {
-                            mux.read(cx).execute(command);
-                        }
-                    }),
-                }
-            })
-            .collect();
-        items.push(status_agents("gui-status-agents", agents, connected, cx));
-    }
     if let Some(host) = &model.host_name {
         items.push(
             workspace_status_item(

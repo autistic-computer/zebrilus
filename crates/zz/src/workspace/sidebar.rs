@@ -1,4 +1,6 @@
 mod flat;
+#[cfg(feature = "agent-pane")]
+mod lead;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -28,10 +30,10 @@ use zz_ui::navigation::{
         tree_node_marker, tree_row_menu,
     },
     workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-    workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_footer_controls,
-    workspace_sidebar_ground, workspace_sidebar_panel, workspace_sidebar_resize_handle,
-    workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
-    workspace_tree_disclosure, workspace_tree_opened, workspace_tree_row,
+    workspace_sidebar_controls, workspace_sidebar_fade, workspace_sidebar_ground,
+    workspace_sidebar_panel, workspace_sidebar_resize_handle, workspace_sidebar_titlebar,
+    workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
+    workspace_tree_opened, workspace_tree_row,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _,
@@ -72,7 +74,8 @@ use crate::mux::nav::{
     select_pane_commands, select_window_command,
 };
 
-const SIDEBAR_MIN_WIDTH: f32 = 160.0;
+/// Wide enough for the top strip's four buttons clear of the traffic lights.
+const SIDEBAR_MIN_WIDTH: f32 = 240.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
 const SIDEBAR_SLIDE: Duration = Duration::from_millis(240);
 const TREE_INDENT_GUIDE_OFFSET: f32 = TREE_MARKER_SLOT_WIDTH / 2.0;
@@ -181,10 +184,13 @@ pub struct WorkspaceSidebar {
     banners: AttentionBanners<(HostId, PaneId)>,
     flat: bool,
     flat_view: flat::FlatView,
+    #[cfg(feature = "agent-pane")]
+    lead: lead::LeadSection,
 }
 
 impl WorkspaceSidebar {
     pub(crate) fn new(mux: Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
+        let local_hostname = sidebar_hostname(sysinfo::System::host_name().as_deref());
         let mut observed_revision = SidebarRevision::for_mux(mux.read(cx));
         cx.observe(&mux, move |sidebar, mux, cx| {
             let revision = SidebarRevision::for_mux(mux.read(cx));
@@ -197,6 +203,8 @@ impl WorkspaceSidebar {
         })
         .detach();
         Self {
+            #[cfg(feature = "agent-pane")]
+            lead: lead::LeadSection::new(mux.clone(), local_hostname.clone(), cx),
             mux,
             tree_model: Rc::new(MuxTreeModel::default()),
             tree_revision: None,
@@ -214,7 +222,7 @@ impl WorkspaceSidebar {
             settings: None,
             slideover: false,
             width: SIDEBAR_DEFAULT_WIDTH,
-            local_hostname: sidebar_hostname(sysinfo::System::host_name().as_deref()),
+            local_hostname,
             badges: Rc::new(BTreeMap::new()),
             tracker: AgentAttentionTracker::default(),
             banners: AttentionBanners::default(),
@@ -777,31 +785,26 @@ impl WorkspaceSidebar {
         })
     }
 
-    fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+    fn render_actions(&self, sidebar: &Entity<Self>, cx: &App) -> [AnyElement; 3] {
         let settings = sidebar.clone();
         let view = sidebar.clone();
         let ground = self.content_ground(cx);
-        workspace_sidebar_footer(
-            "workspace-sidebar-footer",
+        [
+            workspace_add_host_button("workspace-add-host")
+                .on(ground)
+                .on_click(|_, window, cx| crate::workspace::add_host::open(window, cx))
+                .into_any_element(),
+            workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+                .on(ground)
+                .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat))
+                .into_any_element(),
             workspace_settings_button("workspace-settings")
                 .on(ground)
                 .on_click(move |_, window, cx| {
                     settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
-                }),
-            Some(
-                workspace_sidebar_footer_controls(
-                    workspace_add_host_button("workspace-add-host")
-                        .on(ground)
-                        .on_click(|_, window, cx| crate::workspace::add_host::open(window, cx)),
-                    workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
-                        .on(ground)
-                        .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat)),
-                )
+                })
                 .into_any_element(),
-            ),
-            cx,
-        )
-        .into_any_element()
+        ]
     }
 }
 
@@ -910,12 +913,19 @@ impl Render for WorkspaceSidebar {
         } else {
             self.render_navigation(&sidebar, attached_host, attached, window, cx)
         };
-        let controls = if settings_route {
-            None
+        #[cfg(feature = "agent-pane")]
+        let navigation = if settings_route {
+            navigation
         } else {
-            Self::render_controls(&sidebar, self.content_ground(cx), cx)
+            self.with_lead_chat(navigation, window, cx)
         };
-        let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
+        let controls = (!settings_route).then(|| {
+            workspace_sidebar_controls(
+                self.render_actions(&sidebar, cx)
+                    .into_iter()
+                    .chain(Self::render_controls(&sidebar, self.content_ground(cx), cx)),
+            )
+        });
         let titlebar =
             workspace_sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)
                 .window_control_area(WindowControlArea::Drag);
@@ -940,8 +950,7 @@ impl Render for WorkspaceSidebar {
                 self.ground(cx),
                 !divider_hidden,
                 cx,
-            )
-            .children(footer),
+            ),
             frame_content_corner_radius(cx),
         );
         let resize_handle =

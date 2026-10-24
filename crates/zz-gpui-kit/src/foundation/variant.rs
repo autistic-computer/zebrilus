@@ -25,15 +25,18 @@ pub enum Tone {
     Warning,
     /// Something completed or is healthy.
     Success,
+    /// The theme's accent, whichever color the look gives primary.
+    Accent,
 }
 
 impl Tone {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Neutral,
         Self::Primary,
         Self::Danger,
         Self::Warning,
         Self::Success,
+        Self::Accent,
     ];
 
     pub fn name(self) -> &'static str {
@@ -43,6 +46,7 @@ impl Tone {
             Self::Danger => "danger",
             Self::Warning => "warning",
             Self::Success => "success",
+            Self::Accent => "accent",
         }
     }
 }
@@ -277,6 +281,7 @@ impl Theme {
             Tone::Danger => self.danger,
             Tone::Warning => self.warning,
             Tone::Success => self.success,
+            Tone::Accent => self.accent,
         }
     }
 
@@ -344,7 +349,7 @@ impl Theme {
         let window = ground == self.ground();
         let clear = self.transparent;
         let focus = match tone {
-            Tone::Danger | Tone::Warning | Tone::Success => color,
+            Tone::Danger | Tone::Warning | Tone::Success | Tone::Accent => color,
             Tone::Neutral | Tone::Primary => match self.primary {
                 PrimaryStyle::Foreground => ink,
                 PrimaryStyle::Accent => self.accent,
@@ -386,7 +391,9 @@ impl Theme {
         } else {
             color.opacity(TONE_OUTLINE_ALPHA)
         };
-        let solid_text = if tone == Tone::Primary && self.primary == PrimaryStyle::Accent {
+        let solid_text = if tone == Tone::Accent
+            || (tone == Tone::Primary && self.primary == PrimaryStyle::Accent)
+        {
             on_accent
         } else {
             readable_on(color)

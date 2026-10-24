@@ -8,7 +8,7 @@ use zz_client::{
     },
 };
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
     ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
 use zz_protocol::{
@@ -35,6 +35,7 @@ use super::{
     fixtures::{browser_kind, editor_kind},
     tree::flat_view_sidebar,
 };
+use crate::stories::agent::chat::{SidebarLead, with_lead};
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -47,7 +48,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the row fill and the brighter session label follow the pointer; a right click opens the row's menu. A host header's button opens a new session and a session header's opens a new window; nas is connected with no sessions; hover it for New session. The footer adds a host and switches between the session tree and this list.",
+            summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the row fill and the brighter session label follow the pointer; a right click opens the row's menu. A host header's button opens a new session and a session header's opens a new window; nas is connected with no sessions; hover it for New session. The top strip adds a host, switches between the session tree and this list, and opens Settings.",
             build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
         },
         Section {
@@ -630,7 +631,7 @@ fn empty(id: u32, name: &str) -> FlatHost {
     )
 }
 
-fn sidebar_hosts() -> Vec<FlatHost> {
+pub(crate) fn sidebar_hosts() -> Vec<FlatHost> {
     vec![macbook(), ubuntu(), empty(9, "nas")]
 }
 
@@ -658,6 +659,7 @@ pub(crate) struct Live {
     state: FlatState,
     scroll: ScrollHandle,
     height: Option<f32>,
+    lead: Option<Entity<SidebarLead>>,
 }
 
 impl Live {
@@ -670,7 +672,14 @@ impl Live {
             },
             scroll: ScrollHandle::new(),
             height,
+            lead: None,
         }
+    }
+
+    /// The lead chat under the list, as the app draws it while there is a lead.
+    pub(crate) fn lead(mut self, lead: Entity<SidebarLead>) -> Self {
+        self.lead = Some(lead);
+        self
     }
 
     fn handle(&mut self, event: FlatEvent, cx: &mut Context<Self>) {
@@ -722,6 +731,25 @@ impl Render for Live {
             cx.theme().ground(),
             cx,
         );
+        let navigation = div()
+            .relative()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                div()
+                    .id("flat-live-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
+                    .child(list),
+            )
+            .bottom_fade(
+                &self.scroll,
+                cx.theme().background,
+                WORKSPACE_SIDEBAR_FADE_HEIGHT,
+            )
+            .vertical_scrollbar(&self.scroll);
         div()
             .id("flat-live")
             .flex()
@@ -730,24 +758,16 @@ impl Render for Live {
                 None => this.h_full(),
             })
             .child(flat_view_sidebar(
-                div()
-                    .relative()
-                    .size_full()
-                    .min_h_0()
-                    .child(
-                        div()
-                            .id("flat-live-scroll")
-                            .size_full()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.scroll)
-                            .child(list),
-                    )
-                    .bottom_fade(
-                        &self.scroll,
-                        cx.theme().background,
-                        WORKSPACE_SIDEBAR_FADE_HEIGHT,
-                    )
-                    .vertical_scrollbar(&self.scroll),
+                match &self.lead {
+                    Some(lead) => with_lead("flat-live-column", navigation, lead),
+                    None => div()
+                        .flex()
+                        .flex_col()
+                        .size_full()
+                        .min_h_0()
+                        .child(navigation)
+                        .into_any_element(),
+                },
                 cx,
             ))
     }

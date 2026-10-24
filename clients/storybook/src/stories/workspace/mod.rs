@@ -8,7 +8,7 @@ pub(super) mod panes;
 mod settings;
 pub(super) mod shell;
 pub(super) mod status_bar;
-mod tree;
+pub(super) mod tree;
 
 pub const STORIES: &[Story] = &[
     shell::STORY,
