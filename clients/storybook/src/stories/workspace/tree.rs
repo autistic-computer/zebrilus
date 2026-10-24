@@ -211,7 +211,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
         Kind::Host => actions.push(
             workspace_tree_action_button(
                 format!("tree-add-{key}"),
-                IconName::Plus,
+                IconName::LayersPlus,
                 "New session",
                 disabled,
                 cx,
@@ -221,7 +221,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
         Kind::Session => actions.push(
             workspace_tree_action_button(
                 format!("tree-add-{key}"),
-                IconName::Plus,
+                IconName::WindowPlus,
                 "New window",
                 disabled,
                 cx,

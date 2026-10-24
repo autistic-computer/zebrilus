@@ -227,7 +227,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; max-width: 68ch
   <div class="controls" role="group" aria-label="Drawing controls">
     <div class="control">
       <label for="radius">Theme radius <output id="radius-out"></output></label>
-      <input id="radius" type="range" min="0" max="25" step="1" value="6">
+      <input id="radius" type="range" min="0" max="25" step="1" value="24">
     </div>
     <div class="control">
       <label for="smoothing">Corner smoothing <output id="smoothing-out"></output></label>
@@ -237,9 +237,9 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; max-width: 68ch
       <span class="label">Presets</span>
       <div class="presets">
         <button type="button" data-radius="0" id="preset-flat">Flat 0</button>
-        <button type="button" data-radius="6" id="preset-default">zz 6</button>
-        <button type="button" data-radius="12" id="preset-soft">Soft 12</button>
-        <button type="button" data-radius="25" id="preset-round">Round 25</button>
+        <button type="button" data-radius="6" id="preset-soft">Soft 6</button>
+        <button type="button" data-radius="16" id="preset-yaru">Yaru 16</button>
+        <button type="button" data-radius="24" id="preset-default">zz 24</button>
       </div>
     </div>
     <div class="control">
@@ -263,11 +263,11 @@ footer { margin-top: 48px; color: var(--muted); font-size: 12px; max-width: 68ch
 <script>
 const SETS = /*SETS*/;
 const SCHOOLS = {
-  mac: "Mac school: continuous corners everywhere, a lighter 1.75 stroke, wide Mac proportions, small filled parts (traffic lights, dog-ears, eyes, commits) and containers that show their content (sidebar rows, key caps, a tray). Our own drawings in that spirit; SF Symbols themselves may only be used on Apple platforms.",
+  solar: "Solar, by 480 Design (CC BY 4.0): the Linear style redrawn so corners follow the theme radius, on Solar's own 1.5 stroke. Window glyphs share one 20 by 18 frame; icons Solar lacks are drawn in its style.",
 };
 const USAGE = /*USAGE*/;
 
-const state = { radius: 6, smoothing: 4, set: "mac" };
+const state = { radius: 24, smoothing: 4, set: "solar" };
 const bySet = Object.fromEntries(SETS.map((set) => [set.name, set]));
 const slots = [];
 
@@ -339,8 +339,9 @@ function paint() {
     const icon = set.icons.find((candidate) => candidate.name === name);
     const svg = icon ? zzGlyph.svg(set, icon, units, state.smoothing) : "";
     for (const target of targets) target.innerHTML = svg;
-    note.textContent = icon?.note || "";
-    note.hidden = !icon?.note;
+    const credit = icon?.solar ? `Solar: ${icon.solar}.` : "zz's own, in Solar's style.";
+    note.textContent = [icon?.note, credit].filter(Boolean).join(" ");
+    note.hidden = !icon;
   }
 }
 

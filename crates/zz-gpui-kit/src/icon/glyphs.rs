@@ -10,8 +10,9 @@ const SAMPLES: usize = 16;
 const DEFAULT_RADIUS: f32 = 6.0;
 const DEFAULT_SMOOTHING: f32 = 4.0;
 
-static SET: LazyLock<Value> =
-    LazyLock::new(|| serde_json::from_str(include_str!("mac.json")).expect("the icon set parses"));
+static SET: LazyLock<Value> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("solar.json")).expect("the icon set parses")
+});
 
 type Point = (f32, f32, f32);
 
@@ -25,6 +26,23 @@ fn icon(name: &str) -> Option<&'static Value> {
 
 pub fn names() -> impl Iterator<Item = &'static str> {
     icons().iter().filter_map(|icon| icon["name"].as_str())
+}
+
+#[derive(Clone, Copy)]
+pub struct Glyph {
+    pub name: &'static str,
+    pub group: &'static str,
+    pub solar: Option<&'static str>,
+}
+
+pub fn catalog() -> impl Iterator<Item = Glyph> {
+    icons().iter().filter_map(|icon| {
+        Some(Glyph {
+            name: icon["name"].as_str()?,
+            group: icon["group"].as_str().unwrap_or_default(),
+            solar: icon["solar"].as_str(),
+        })
+    })
 }
 
 pub fn path(icon_path: &str, radius: f32, smoothing: f32) -> Option<SharedString> {

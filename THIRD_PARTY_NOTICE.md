@@ -75,7 +75,8 @@ The desktop clients ship no fonts; they render with the system text stack.
 
 | Set | Used for | License |
 | --- | --- | --- |
-| [Tabler Icons](https://tabler.io/icons) | The Chrome brand mark, `crates/zz-gpui-kit/assets/icons/brand-chrome.svg`. Every other glyph in the app and the site is zz's own. | MIT, © 2020–2026 Paweł Kuna. Retained as `LICENSE-TABLER` beside it. |
+| [Solar Icons Set](https://www.figma.com/community/file/1166831539721848736) by 480 Design | Every glyph in the app and the site except the brand marks: `crates/zz-gpui-kit/src/icon/solar.json` and `site/src/icons`, adapted to follow the theme radius. Icons Solar lacks are zz's own, drawn in its style. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit and changes in `LICENSE-SOLAR` beside the set. |
+| [Tabler Icons](https://tabler.io/icons) | The Chrome brand mark, `crates/zz-gpui-kit/assets/icons/brand-chrome.svg`. | MIT, © 2020–2026 Paweł Kuna. Retained as `LICENSE-TABLER` beside it. |
 | [Simple Icons](https://simpleicons.org) | The vendor brand marks `openai.svg` and `claude.svg`. | CC0-1.0 |
 
 ## Interface themes

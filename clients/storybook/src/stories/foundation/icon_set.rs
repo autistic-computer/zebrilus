@@ -18,8 +18,14 @@ pub const STORY: Story = Story {
     id: "icon-set",
     name: "Icon set",
     group: "Foundation",
-    summary: "Every zz icon drawn from the theme, in the Mac school (crates/zz-gpui-kit/src/icon/mac.json). Corners take half the theme radius in 24-grid units and the fixed corner smoothing, capped at 0.45 of the shorter side like every zz corner. Radius 0 is flat: sharp corners, square caps, miter joins.",
+    summary: "Every zz icon drawn from the theme, adapted from Solar (crates/zz-gpui-kit/src/icon/solar.json). Corners take half the theme radius in 24-grid units and the fixed corner smoothing, capped at 0.45 of the shorter side like every zz corner. Radius 0 is flat: sharp corners, square caps, miter joins.",
     sections: &[
+        Section {
+            id: "catalog",
+            name: "Catalog",
+            summary: "Every icon by group at 24px: its name, then the Solar icon it comes from, or zz for the ones drawn in Solar's style.",
+            build: |_, cx| stateless(catalog, cx),
+        },
         Section {
             id: "follows-the-theme",
             name: "Follows the theme",
@@ -47,7 +53,7 @@ pub const STORY: Story = Story {
         Section {
             id: "construction",
             name: "Construction",
-            summary: "48px at the current radius, to read the geometry.",
+            summary: "48px at the current radius, named, to read the geometry.",
             build: |_, cx| stateless(construction, cx),
         },
     ],
@@ -110,8 +116,67 @@ fn sizes(_: &mut Window, _: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn construction(_: &mut Window, _: &mut App) -> AnyElement {
-    strip(Radius::Theme, 48.0).into_any_element()
+fn catalog(_: &mut Window, cx: &mut App) -> AnyElement {
+    let mut groups: Vec<(&str, Vec<glyphs::Glyph>)> = Vec::new();
+    for glyph in glyphs::catalog() {
+        match groups.iter_mut().find(|(group, _)| *group == glyph.group) {
+            Some((_, members)) => members.push(glyph),
+            None => groups.push((glyph.group, vec![glyph])),
+        }
+    }
+    groups
+        .into_iter()
+        .fold(states(), |states, (group, members)| {
+            states.state(
+                format!("{group} ({})", members.len()),
+                h_flex()
+                    .flex_wrap()
+                    .gap_3()
+                    .children(members.iter().map(|glyph| card(*glyph, 24.0, cx))),
+            )
+        })
+        .into_any_element()
+}
+
+fn construction(_: &mut Window, cx: &mut App) -> AnyElement {
+    h_flex()
+        .flex_wrap()
+        .gap_3()
+        .children(glyphs::catalog().map(|glyph| card(glyph, 48.0, cx)))
+        .into_any_element()
+}
+
+fn card(glyph: glyphs::Glyph, size: f32, cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    let label = |text: String| {
+        div()
+            .w_full()
+            .text_center()
+            .truncate()
+            .text_size(px(11.0))
+            .line_height(px(14.0))
+            .font_family(theme.mono_font_family.clone())
+            .child(text)
+    };
+    v_flex()
+        .w(px(size * 2.0 + 72.0))
+        .items_center()
+        .gap_1()
+        .child(
+            h_flex()
+                .w_full()
+                .h(px(size * 2.0))
+                .justify_center()
+                .rounded(theme.radius)
+                .framed(cx)
+                .child(
+                    Radius::Theme
+                        .icon(glyph.name)
+                        .with_size(Size::Size(px(size))),
+                ),
+        )
+        .child(label(glyph.name.to_owned()))
+        .child(label(glyph.solar.unwrap_or("zz").to_owned()).text_color(theme.foreground.muted()))
 }
 
 fn in_chrome(_: &mut Window, cx: &mut App) -> AnyElement {

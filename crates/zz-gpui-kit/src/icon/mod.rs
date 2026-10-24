@@ -1,8 +1,10 @@
 //! Icons: the glyph set, and the element that draws one.
 //!
-//! Every glyph but the brand marks is zz's own, drawn by [`glyphs`] from the
-//! skeletons in `mac.json` so its corners follow the theme radius and corner
-//! smoothing (`knowledge/configuration/icon-set.md`). The brand marks are
+//! Every glyph but the brand marks is drawn by [`glyphs`] from the skeletons in
+//! `solar.json` so its corners follow the theme radius and corner smoothing
+//! (`knowledge/configuration/icon-set.md`). The set is adapted from the
+//! [Solar Icons Set](https://www.figma.com/community/file/1166831539721848736)
+//! by 480 Design (CC BY 4.0, `src/icon/LICENSE-SOLAR`). The brand marks are
 //! files in `assets/icons/`: `openai` and `claude` are
 //! [Simple Icons](https://simpleicons.org) (CC0-1.0), `brand-chrome` is
 //! [Tabler Icons](https://tabler.io/icons) (MIT, `assets/icons/LICENSE-TABLER`),
@@ -502,7 +504,7 @@ mod tests {
     #[test]
     fn every_drawn_icon_names_its_variant_and_ships_no_file() {
         let set: serde_json::Value =
-            serde_json::from_str(include_str!("mac.json")).expect("the icon set parses");
+            serde_json::from_str(include_str!("solar.json")).expect("the icon set parses");
         for icon in set["icons"].as_array().expect("the set lists icons") {
             let name = icon["name"].as_str().expect("every icon has a name");
             let path = format!("icons/{name}.svg");

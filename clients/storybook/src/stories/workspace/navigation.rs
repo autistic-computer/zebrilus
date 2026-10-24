@@ -516,7 +516,7 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         vec![
                             workspace_tree_action_button(
                                 "add",
-                                IconName::Plus,
+                                IconName::WindowPlus,
                                 "New window",
                                 false,
                                 cx,
