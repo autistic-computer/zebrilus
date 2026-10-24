@@ -216,6 +216,26 @@ pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "Message bubbles",
     "Your messages in the agent lens",
 );
+pub const CHAT_BUBBLE: SurfaceRole = SurfaceRole::new(
+    "chat.bubble",
+    Kind::Card,
+    "Chat bubbles",
+    "The lead's replies and agents' messages in the lead chat",
+);
+pub const CHAT_MINE: SurfaceRole = SurfaceRole::under(
+    &CHAT_BUBBLE,
+    "chat.bubble.mine",
+    "Your chat bubbles",
+    "Your messages to the lead, washed in the accent",
+)
+.with(P.fill(Fill::Tint));
+pub const CHAT_COMPOSER: SurfaceRole = SurfaceRole::new(
+    "chat.composer",
+    Kind::Field,
+    "Chat composer",
+    "The one-line box you message the lead in",
+)
+.with(P.shape(Shape::Pill));
 pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
     "agent.composer",
@@ -525,6 +545,8 @@ const ZZ: &[SurfaceRole] = &[
     PANE_HEADER,
     PHONE_BAR,
     AGENT_BUBBLE,
+    CHAT_BUBBLE,
+    CHAT_MINE,
     CODE,
     FIGURE,
     AGENT_ATTACHMENT,
@@ -576,6 +598,7 @@ const ZZ: &[SurfaceRole] = &[
     PHONE_ADD,
     PANE_STACK,
     AGENT_COMPOSER,
+    CHAT_COMPOSER,
     AGENT_PICKER,
     AGENT_STATUS,
     ADDRESS_BAR,

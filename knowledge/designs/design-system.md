@@ -32,9 +32,10 @@ The palette itself was fine: six roots and a scrim (see
 
 A widget picks two things and the theme does the rest.
 
-- **`Tone`**, what it means: `Neutral`, `Primary`, `Danger`, `Warning`, `Success`.
+- **`Tone`**, what it means: `Neutral`, `Primary`, `Danger`, `Warning`, `Success`, `Accent`.
   - Primary's color comes from the theme's `primary` material: `foreground | accent` (`PrimaryStyle`). It defaults to foreground, so the main action is white on dark and black on light (see [interface themes](/designs/interface-themes.md)).
   - Code says "this is the main action" and never picks the color itself.
+  - Accent is the theme's accent whatever `primary` says, for what marks your own things rather than the main action: your messages in the [lead chat](/designs/durable-lead-chat.md#chat-ui) are washed in it.
 - **`Emphasis`**, how loud it is: `Solid`, `Soft`, `Outline`, `Ghost`.
 - **`theme.paint(tone, emphasis)`** returns a `Paint`:
   - fills for rest, hover, pressed, selected and current;

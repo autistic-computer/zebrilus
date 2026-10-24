@@ -189,6 +189,33 @@ Unchanged in shape from the first version, smaller in payload:
   from the worker's pane or report.
 - Workers on a dead host; the ledger marks them lost and the lead starts new ones elsewhere.
 
+## Chat UI
+
+The chat sits at the bottom of the flat sidebar, under a rule, and in titlebar mode at the bottom of
+the sidebar's slideover, which a chat button in the title bar opens (`workspace_chat_button`, dotted
+with `chat_button` in the color of what waits). The parts are in `crates/zz-ui/src/agent/chat.rs`
+and the storybook's Agent › Lead chat story shows each one and both layouts:
+
+| Chat log line | Drawn as |
+|---|---|
+| `user` | `ChatBubble::mine`: right, the `chat.bubble.mine` role in the accent tone, a tail on the right, the time and a `Receipt` |
+| `lead` | `ChatBubble::theirs`: left, the `chat.bubble` role, a tail on the left, no sender line |
+| `peer` | `ChatBubble::theirs` with a `ChatSender`: the agent's sidebar program tile and name on top |
+| `notice`, `checkpoint` | nothing: workers at work show as sidebar rows above the chat |
+
+A receipt is one tick (`Sent`: zz has it), two (`Delivered`: typed into the lead's pane) or two in
+the accent (`Read`: the lead started a turn on it). `chat_seen` lists the agents a routed answer
+reached under it. The bubble and its tail are one painted path, so a translucent fill does not
+double where they meet; a hidden copy of the time at the end of the text keeps the last line clear
+of the stamp. `chat_header` names the lead and its host, and ends in the Esc keycap in the
+slideover. `ChatComposer` is one line (the `chat.composer` pill) with the lens composer's round
+send button; there are no pickers, since the lead's model is a setting. Approvals use the lens's
+permission card.
+
+`chat_section` scrolls the thread and keeps a short one at the bottom; whoever owns the
+`ScrollHandle` calls `scroll_to_bottom` when a message arrives. Nothing feeds it yet: the app still
+needs the chat log and the sidebar split between the list and the chat.
+
 ## Settings and verbs
 
 - `lead-agent` (`claude` or `codex`), `lead-hosts` (owner first, then standbys), `lead-lease`
