@@ -724,8 +724,8 @@ lines remain intact. `zz/config` mux overrides still apply above the loaded mux 
 # Settings view
 
 `crates/zz/src/config/settings.rs` renders the `WorkspaceRoute::Settings` route in the main window.
-`Cmd+,` on macOS or `Ctrl+,` elsewhere opens it. `SettingsSection::ALL` is **ten pages**, titled
-Interface, Status bar, Editor, Panes, Multiplexer, Browser, Terminal, Hosts, System, About. The sidebar labels
+`Cmd+,` on macOS or `Ctrl+,` elsewhere opens it. `SettingsSection::ALL` is **eleven pages**, titled
+Interface, Status bar, Editor, Panes, Multiplexer, Browser, Terminal, Hosts, Providers, System, About. The sidebar labels
 them as Appearance, Tools, and Advanced groups. There is deliberately no "General": the page that name described
 had accumulated window chrome, a global widget metric, daemon lifecycle and a debug overlay. The
 device/pairing page that sat before Terminal was deleted on 2026-08-01 along with pairing itself;
@@ -745,6 +745,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **PiP** (`pip-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
+| Providers | One group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
 | Terminal | **Appearance** (Font family, Font size, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |

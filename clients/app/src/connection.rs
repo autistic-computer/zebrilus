@@ -227,6 +227,7 @@ pub struct Connection {
     input_sink: Option<std::rc::Rc<std::cell::RefCell<Vec<ProtocolMessage>>>>,
     pub status: String,
     pub connected: bool,
+    providers_requested: bool,
     pub agent_events: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     agent_cursors: HashMap<PaneId, AgentCursor>,
     agent_lenses: BTreeSet<PaneId>,
@@ -279,6 +280,7 @@ impl Connection {
             input_sink: None,
             status: "Connecting…".into(),
             connected: false,
+            providers_requested: false,
             agent_events: HashMap::new(),
             agent_cursors: HashMap::new(),
             agent_lenses: BTreeSet::new(),
@@ -841,6 +843,29 @@ impl Connection {
         self.invoke(CommandInvocation::new(command, args), cx);
     }
 
+    pub fn providers_unrequested(&self) -> bool {
+        self.connected && !self.providers_requested
+    }
+
+    pub fn request_providers(&mut self, force: bool, cx: &mut Context<Self>) {
+        if self.connected && (force || !self.providers_requested) {
+            self.providers_requested = true;
+            self.command("providers", Vec::new(), cx);
+        }
+    }
+
+    pub fn update_provider(
+        &mut self,
+        provider: zz_protocol::AgentProvider,
+        cx: &mut Context<Self>,
+    ) {
+        self.command(
+            "providers",
+            vec!["-u".to_owned(), provider.as_str().to_owned()],
+            cx,
+        );
+    }
+
     pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) {
         let request_id = self.next_request_id();
         self.commands.insert(request_id, command.name.clone());
@@ -945,6 +970,7 @@ impl Connection {
                 CoreEvent::HelloReceived => {
                     self.history.clear();
                     self.connected = true;
+                    self.providers_requested = false;
                     self.commands.clear();
                     #[cfg(target_family = "wasm")]
                     {

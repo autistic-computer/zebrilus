@@ -45,12 +45,13 @@ fn palette_layout_value(preferences: &Preferences) -> &'static str {
     }
 }
 
-pub(super) const SECTIONS: [SettingsSection; 7] = [
+pub(super) const SECTIONS: [SettingsSection; 8] = [
     SettingsSection::Appearance,
     SettingsSection::StatusBar,
     SettingsSection::Panes,
     SettingsSection::Terminal,
     SettingsSection::Hosts,
+    SettingsSection::Providers,
     SettingsSection::Advanced,
     SettingsSection::About,
 ];
@@ -827,6 +828,9 @@ impl AppShell {
                     .into_any_element();
             }
             SettingsSection::About => return about_page(cx),
+            SettingsSection::Providers => {
+                return self.providers_page((!narrow).then_some(section.title()), cx);
+            }
             _ => {}
         }
         self.hosts_page(
@@ -1907,6 +1911,7 @@ mod tests {
                 SettingsSection::Appearance,
                 SettingsSection::Terminal,
                 SettingsSection::Hosts,
+                SettingsSection::Providers,
                 SettingsSection::Advanced,
                 SettingsSection::About,
             ]

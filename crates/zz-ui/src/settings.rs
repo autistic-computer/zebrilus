@@ -1,6 +1,7 @@
 pub mod about;
 pub mod appearance;
 pub mod panes_preview;
+pub mod providers;
 pub mod status_bar_preview;
 
 use std::rc::Rc;
@@ -39,6 +40,7 @@ pub enum SettingsSection {
     Editor,
     Panes,
     Hosts,
+    Providers,
     Advanced,
     Multiplexer,
     About,
@@ -64,7 +66,7 @@ impl SettingsNavigationGroup {
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Appearance,
         Self::StatusBar,
         Self::Editor,
@@ -73,6 +75,7 @@ impl SettingsSection {
         Self::Browser,
         Self::Terminal,
         Self::Hosts,
+        Self::Providers,
         Self::Advanced,
         Self::About,
     ];
@@ -88,6 +91,7 @@ impl SettingsSection {
             Self::Panes => "Panes",
             Self::Multiplexer => "Multiplexer",
             Self::Hosts => "Hosts",
+            Self::Providers => "Providers",
             Self::Advanced => "System",
             Self::About => "About",
         }
@@ -111,6 +115,10 @@ impl SettingsSection {
                 "zz loads only zz/mux.conf. Import a tmux file here, or edit the options and bindings below."
             }
             Self::Hosts => "Manage the ssh machines in the fleet.",
+            Self::Providers => {
+                "Claude Code and Codex on each connected machine. Update runs the tool's own \
+                 updater on that machine."
+            }
             Self::Advanced => "Control daemon lifecycle and experimental pane features.",
             Self::About => "tmux, ghostty and zz_gpui walked into a mux.",
         }
@@ -127,6 +135,7 @@ impl SettingsSection {
             Self::Panes => crate::IconName::LayoutDashboard,
             Self::Multiplexer => crate::IconName::GalleryVerticalEnd,
             Self::Hosts => crate::IconName::HardDrive,
+            Self::Providers => crate::IconName::Bot,
             Self::Advanced => crate::IconName::Cpu,
             Self::About => crate::IconName::Info,
         }
@@ -139,7 +148,9 @@ impl SettingsSection {
                 SettingsNavigationGroup::Appearance
             }
             Self::Multiplexer | Self::Browser | Self::Terminal => SettingsNavigationGroup::Tools,
-            Self::Hosts | Self::Advanced | Self::About => SettingsNavigationGroup::Advanced,
+            Self::Hosts | Self::Providers | Self::Advanced | Self::About => {
+                SettingsNavigationGroup::Advanced
+            }
         }
     }
 }
@@ -465,6 +476,7 @@ mod tests {
                 "Browser",
                 "Terminal",
                 "Hosts",
+                "Providers",
                 "System",
                 "About",
             ]
@@ -484,6 +496,7 @@ mod tests {
                 SettingsSection::Browser,
                 SettingsSection::Terminal,
                 SettingsSection::Hosts,
+                SettingsSection::Providers,
                 SettingsSection::Advanced,
                 SettingsSection::About,
             ]
@@ -498,6 +511,7 @@ mod tests {
                 SettingsNavigationGroup::Tools,
                 SettingsNavigationGroup::Tools,
                 SettingsNavigationGroup::Tools,
+                SettingsNavigationGroup::Advanced,
                 SettingsNavigationGroup::Advanced,
                 SettingsNavigationGroup::Advanced,
                 SettingsNavigationGroup::Advanced,

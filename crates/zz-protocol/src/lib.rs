@@ -15,6 +15,7 @@ mod menu;
 mod message;
 mod pane_frame;
 mod path_list;
+mod providers;
 mod snapshot;
 mod style;
 mod terminal_codec;
@@ -112,6 +113,9 @@ pub use pane_frame::{MAX_HISTORY_CHUNK_ROWS, PatchTail};
 pub use path_list::{
     GitMark, InsertStyle, MAX_PATH_LIST_CHUNK_BYTES, MAX_PATH_LIST_DEPTH, MAX_PATH_LIST_ENTRIES,
     MAX_PATH_LIST_TEXT_BYTES, PathEntry, PathKind, PathListRoot, ShellKind,
+};
+pub use providers::{
+    MAX_PROVIDER_TEXT_BYTES, ProviderStatus, ProviderTask, ProvidersReport, compare_versions,
 };
 pub use snapshot::{
     AgentProvider, Axis, BrowserDescriptor, BrowserProfileNameError, DEFAULT_BROWSER_PROFILE,

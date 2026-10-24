@@ -25,7 +25,7 @@ use crate::{
 
 /// Client and daemon must match this exactly. The handshake rejects any
 /// mismatch instead of negotiating down.
-pub const PROTOCOL_VERSION: u16 = 113;
+pub const PROTOCOL_VERSION: u16 = 114;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
@@ -3777,6 +3777,7 @@ pub enum EventPayload {
         user_keys: Vec<String>,
         application_escape: Vec<String>,
     },
+    Providers(crate::ProvidersReport),
 }
 
 impl EventPayload {
@@ -5764,7 +5765,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 113);
+        assert_eq!(super::PROTOCOL_VERSION, 114);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),
