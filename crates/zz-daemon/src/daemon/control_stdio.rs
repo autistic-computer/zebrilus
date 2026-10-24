@@ -1,4 +1,3 @@
-use std::io::Write as _;
 use std::mem::MaybeUninit;
 
 use rustix::fs::OFlags;
@@ -109,7 +108,7 @@ const fn escapes(byte: u8) -> bool {
 
 fn plain_run(bytes: &[u8]) -> usize {
     let mut run = 0;
-    for block in bytes.chunks_exact(16) {
+    for block in bytes.as_chunks::<16>().0 {
         if block
             .iter()
             .fold(false, |found, byte| found | escapes(*byte))

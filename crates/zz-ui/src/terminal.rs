@@ -3251,7 +3251,7 @@ fn ensure_minimum_contrast(foreground: Color, background: Color, minimum: f32) -
     let mut near = lightness;
     let mut far = if lighten { 1.0 } else { 0.0 };
     for _ in 0..16 {
-        let midpoint = (near + far) * 0.5;
+        let midpoint = f32::midpoint(near, far);
         if contrast_ratio(from_oklab(midpoint, green_red, blue_yellow), background) >= minimum {
             far = midpoint;
         } else {
@@ -3314,7 +3314,7 @@ fn from_oklab(lightness: f32, green_red: f32, blue_yellow: f32) -> Color {
         let mut kept = 0.0_f32;
         let mut dropped = 1.0_f32;
         for _ in 0..12 {
-            let chroma = (kept + dropped) * 0.5;
+            let chroma = f32::midpoint(kept, dropped);
             if in_gamut(oklab_to_linear_rgb(
                 lightness,
                 green_red * chroma,

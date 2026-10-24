@@ -1867,7 +1867,7 @@ impl TerminalFrameSink for TestOutputSink {
     fn output(&self, bytes: &Arc<[u8]>) {
         let _ = self
             .room
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |room| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |room| {
                 Some(room.saturating_sub(1))
             });
         let _ = self.sender.send(Arc::clone(bytes));
@@ -5600,18 +5600,18 @@ fn kitty_to_premultiplied_bgra(input: &[u8], format: ImageFormat, output_len: us
             }
         }
         ImageFormat::GrayAlpha => {
-            for pixel in input.chunks_exact(2) {
+            for pixel in input.as_chunks::<2>().0 {
                 let gray = premultiply(pixel[0], pixel[1]);
                 output.extend_from_slice(&[gray, gray, gray, pixel[1]]);
             }
         }
         ImageFormat::Rgb => {
-            for pixel in input.chunks_exact(3) {
+            for pixel in input.as_chunks::<3>().0 {
                 output.extend_from_slice(&[pixel[2], pixel[1], pixel[0], u8::MAX]);
             }
         }
         ImageFormat::Rgba => {
-            for pixel in input.chunks_exact(4) {
+            for pixel in input.as_chunks::<4>().0 {
                 output.extend_from_slice(&[
                     premultiply(pixel[2], pixel[3]),
                     premultiply(pixel[1], pixel[3]),
@@ -6074,14 +6074,14 @@ impl Publisher {
         let bytes = reliable_event_bytes(&event);
         self.state
             .pending_reliable
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |pending| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |pending| {
                 (pending < MAX_PENDING_RELIABLE_EVENTS).then_some(pending + 1)
             })
             .map_err(|_| WorkerError::EventBackpressure)?;
         if self
             .state
             .pending_reliable_bytes
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |pending| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |pending| {
                 (bytes <= MAX_PENDING_RELIABLE_EVENT_BYTES.saturating_sub(pending))
                     .then_some(pending + bytes)
             })
@@ -25971,7 +25971,7 @@ mod tests {
             output.len(),
             usize::try_from(MAX_WHEEL_REPEAT).unwrap_or(0) * 3
         );
-        assert!(output.chunks_exact(3).all(|sequence| sequence == b"\x1bOA"));
+        assert!(output.as_chunks::<3>().0.iter().all(|s| s == b"\x1bOA"));
     }
 
     #[test]

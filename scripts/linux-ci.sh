@@ -20,7 +20,7 @@ command -v docker >/dev/null 2>&1 || { echo "error: docker is required" >&2; exi
 
 if [[ "${REBUILD:-0}" != 0 ]] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     docker build -t "$IMAGE" --build-arg ZIG_VERSION="$ZIG_VERSION" - <<'DOCKERFILE'
-FROM rust:1.97-bookworm
+FROM rust:1.99-bookworm
 # The second line carries libcef.so's link/runtime closure (the GitHub
 # runner image ships these desktop libraries out of the box).
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -767,13 +767,13 @@ impl FormatUniverse {
             .windows
             .lock()
             .iter()
-            .map(|(key, items)| (*key, items.as_ref().map(&detach_items)))
+            .map(|(key, items)| (*key, items.as_ref().map(detach_items)))
             .collect();
         *detached.panes.lock() = self
             .panes
             .lock()
             .iter()
-            .map(|(key, items)| (*key, items.as_ref().map(&detach_items)))
+            .map(|(key, items)| (*key, items.as_ref().map(detach_items)))
             .collect();
         *detached.options.lock() = self.options.lock().clone();
         *detached.environments.lock() = self.environments.lock().clone();

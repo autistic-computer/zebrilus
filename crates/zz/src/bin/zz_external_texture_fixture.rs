@@ -331,7 +331,7 @@ mod fixture {
             let mut second = first.clone();
             paint_bgra_pattern(&mut first, 32, 32, 0);
             paint_bgra_pattern(&mut second, 32, 32, 16);
-            assert!(first.chunks_exact(4).all(|pixel| pixel[3] == 255));
+            assert!(first.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 255));
             assert_ne!(first, second);
         }
     }

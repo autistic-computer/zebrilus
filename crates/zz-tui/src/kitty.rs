@@ -782,8 +782,7 @@ fn proportional_boundary(extent: u32, cells: u32, total_cells: u32) -> Option<u3
 
 fn premultiplied_bgra_to_rgba(bytes: &[u8]) -> Vec<u8> {
     let mut rgba = Vec::with_capacity(bytes.len());
-    for pixel in bytes.chunks_exact(4) {
-        let [blue, green, red, alpha] = [pixel[0], pixel[1], pixel[2], pixel[3]];
+    for &[blue, green, red, alpha] in bytes.as_chunks::<4>().0 {
         if alpha == 0 {
             rgba.extend_from_slice(&[0, 0, 0, 0]);
             continue;

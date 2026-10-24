@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::{
     collections::{BTreeSet, HashMap},
     ops::{ControlFlow, Range},
-    usize,
 };
 use tree_sitter::{
     InputEdit, ParseOptions, Parser, Point, Query, QueryCursor, StreamingIterator, Tree,

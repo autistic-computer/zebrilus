@@ -2404,7 +2404,7 @@ mod tests {
                     })
                     .collect::<Vec<_>>();
                 assert_eq!(users.len(), 4, "{provider:?} {behavior:?}");
-                for pair in users.chunks_exact(2) {
+                for pair in users.as_chunks::<2>().0 {
                     assert_eq!(pair[0]["content"]["text"], "look again");
                     assert_eq!(pair[1]["content"]["data"], "aW1hZ2U=");
                     assert_eq!(pair[0]["messageId"], pair[1]["messageId"]);

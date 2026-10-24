@@ -2,7 +2,7 @@
 
 zz is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on zz-gpui (our fork of Zed's GPUI UI framework, the `crates/zz-gpui*` crates), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL and iOS clients, and a raw-terminal attach client.
 
-Rust edition 2024, MSRV 1.97. Release builds on mac/windows require Zig 0.16.0 (see `mise.toml`).
+Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (see `mise.toml`).
 
 ## Project map
 

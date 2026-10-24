@@ -89,7 +89,7 @@ fn icon_pixels(variant: ThemeMode) -> Cow<'static, RgbaImage> {
 
 fn render_image(pixels: RgbaImage) -> Arc<RenderImage> {
     let mut image = pixels;
-    for pixel in image.chunks_exact_mut(4) {
+    for pixel in image.as_chunks_mut::<4>().0 {
         pixel.swap(0, 2);
     }
     Arc::new(RenderImage::new(smallvec![Frame::new(image)]))
@@ -97,7 +97,7 @@ fn render_image(pixels: RgbaImage) -> Arc<RenderImage> {
 
 fn resize_preview(pixels: &RgbaImage, size: u32) -> RgbaImage {
     let mut premultiplied = pixels.clone();
-    for pixel in premultiplied.chunks_exact_mut(4) {
+    for pixel in premultiplied.as_chunks_mut::<4>().0 {
         let alpha = u16::from(pixel[3]);
         for channel in &mut pixel[..3] {
             *channel = ((u16::from(*channel) * alpha + 127) / 255) as u8;
@@ -105,7 +105,7 @@ fn resize_preview(pixels: &RgbaImage, size: u32) -> RgbaImage {
     }
 
     let mut resized = image::imageops::resize(&premultiplied, size, size, FilterType::Lanczos3);
-    for pixel in resized.chunks_exact_mut(4) {
+    for pixel in resized.as_chunks_mut::<4>().0 {
         let alpha = u32::from(pixel[3]);
         if alpha == 0 {
             pixel[..3].fill(0);

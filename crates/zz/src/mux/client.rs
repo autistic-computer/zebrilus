@@ -5247,7 +5247,7 @@ mod tests {
     };
 
     use zz_client::scrollback::{HISTORY_REQUEST_RETRY, MAX_HISTORY_CHUNK_ROWS};
-    use zz_gpui::{AppContext as _, TestAppContext};
+    use zz_gpui::TestAppContext;
     use zz_protocol::{
         Axis, BrowserDescriptor, MuxOptions, PaneSnapshot, PaneSummary, SessionSnapshot, SplitId,
         WindowId, WindowSnapshot,

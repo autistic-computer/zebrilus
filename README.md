@@ -105,7 +105,7 @@ Related commands use `just <group> <action> [arguments]`; `run`, `watch`, and `b
 
 ## Prerequisites
 
-- Rust 1.97.0
+- Rust 1.99.0
 - Zig 0.16.0
 - CMake 3.21+ and Ninja: the CEF C++ wrapper is compiled from source.
 - Linux: `cmake curl desktop-file-utils ninja-build libfontconfig-dev libwayland-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev`.

@@ -53,7 +53,9 @@ impl Screenshot {
         for row in 0..rows {
             let source = &bgra[row * stride..row * stride + row_bytes];
             let target = &mut rgba[row * row_bytes..(row + 1) * row_bytes];
-            for (pixel, out) in source.chunks_exact(4).zip(target.chunks_exact_mut(4)) {
+            let (pixels, _) = source.as_chunks::<4>();
+            let (outs, _) = target.as_chunks_mut::<4>();
+            for (pixel, out) in pixels.iter().zip(outs) {
                 out[0] = pixel[2];
                 out[1] = pixel[1];
                 out[2] = pixel[0];
