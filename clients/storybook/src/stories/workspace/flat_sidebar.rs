@@ -8,7 +8,7 @@ use zz_client::{
     },
 };
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
     ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
 use zz_protocol::{
@@ -35,6 +35,7 @@ use super::{
     fixtures::{browser_kind, editor_kind},
     tree::flat_view_sidebar,
 };
+use crate::stories::agent::chat::{SidebarLead, with_lead};
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -658,6 +659,7 @@ pub(crate) struct Live {
     state: FlatState,
     scroll: ScrollHandle,
     height: Option<f32>,
+    lead: Option<Entity<SidebarLead>>,
 }
 
 impl Live {
@@ -670,7 +672,14 @@ impl Live {
             },
             scroll: ScrollHandle::new(),
             height,
+            lead: None,
         }
+    }
+
+    /// The lead chat under the list, as the app draws it while there is a lead.
+    pub(crate) fn lead(mut self, lead: Entity<SidebarLead>) -> Self {
+        self.lead = Some(lead);
+        self
     }
 
     fn handle(&mut self, event: FlatEvent, cx: &mut Context<Self>) {
@@ -722,6 +731,25 @@ impl Render for Live {
             cx.theme().ground(),
             cx,
         );
+        let navigation = div()
+            .relative()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                div()
+                    .id("flat-live-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
+                    .child(list),
+            )
+            .bottom_fade(
+                &self.scroll,
+                cx.theme().background,
+                WORKSPACE_SIDEBAR_FADE_HEIGHT,
+            )
+            .vertical_scrollbar(&self.scroll);
         div()
             .id("flat-live")
             .flex()
@@ -730,24 +758,16 @@ impl Render for Live {
                 None => this.h_full(),
             })
             .child(flat_view_sidebar(
-                div()
-                    .relative()
-                    .size_full()
-                    .min_h_0()
-                    .child(
-                        div()
-                            .id("flat-live-scroll")
-                            .size_full()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.scroll)
-                            .child(list),
-                    )
-                    .bottom_fade(
-                        &self.scroll,
-                        cx.theme().background,
-                        WORKSPACE_SIDEBAR_FADE_HEIGHT,
-                    )
-                    .vertical_scrollbar(&self.scroll),
+                match &self.lead {
+                    Some(lead) => with_lead("flat-live-column", navigation, lead),
+                    None => div()
+                        .flex()
+                        .flex_col()
+                        .size_full()
+                        .min_h_0()
+                        .child(navigation)
+                        .into_any_element(),
+                },
                 cx,
             ))
     }

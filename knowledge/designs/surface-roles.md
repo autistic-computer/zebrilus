@@ -1,15 +1,15 @@
 ---
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
-description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 60 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
-status: Built (2026-10-13; agent pane rows updated for the lens 2026-10-23)
+description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 73 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
+status: Built (2026-10-13; agent pane rows updated for the lens 2026-10-23; lead chat roles 2026-10-24)
 resource: crates/zz-gpui-kit/src/foundation/surface.rs
 tags:
 - ui
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-23T00:00:00Z
+timestamp: 2026-10-24T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -155,7 +155,7 @@ that makes `floating` glass makes drop zones and pane chips glass too, though bo
 solid as built in, and a patch for `pane.drop-zone` takes it back. Built-in patches only say how
 the Default theme draws a role. A widget
 with no role draws as its kind. `zz_ui::roles::all()` lists the kit's kinds and groups, then zz's
-60 roles; `members(group)` lists what is directly in a group.
+73 roles; `members(group)` lists what is directly in a group.
 
 A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
 concentric inside its list: its round corners are the radius less 4px, square when the row inset
@@ -336,7 +336,7 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 | `titlebar` | bar | title bar strip, the control strip above panes | `ui/shell.rs:137` | |
 | `chrome.button` | icon-button | sidebar toggle, settings gear, tree/flat eye, iPad search, window overflow | `ui/navigation.rs:101` | already one function |
 | `titlebar.window-tab` | tab | window pills with hover close and bell/activity dots | `ui/navigation.rs:162` | active looks the same as hover; Default still lifts both, a theme can tell them apart (`selected: glass` turns the active pill to glass) |
-| `titlebar.status-chip` | badge | agents "2 running", update "v1.2", host name | `ui/navigation/status.rs:54`, `zz/status_bar.rs:139` | three treatments, hand-made dot; fixed, one chip |
+| `titlebar.status-chip` | badge | update "v1.2", host name (the agents chip, "2 running", went on 2026-10-24) | `ui/navigation/status.rs:54`, `zz/status_bar.rs:139` | three treatments, hand-made dot; fixed, one chip |
 | `titlebar.window-controls` | icon-button | minimize, maximize, close (Windows, Linux) | `kit/title_bar/mod.rs:214` | |
 
 ### Sidebar
@@ -384,12 +384,27 @@ pickers, so `agent_status_pill` and the composer pickers are deleted, and `agent
 | `agent.status` | badge | Running, Waiting for you and Exited in an agent pane's header | `ui/agent.rs:3712` (`agent_status_pill`) | was a `pane.chip`, so styling the floating chips restyled it; its own role since 10-15 |
 | `agent.tray` | tab | plan and tasks chips that open the tray over the composer (the queue chip is a quiet button) | `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the tab's selected lift |
 | `agent.attachment` | card | image tiles in bubbles and the composer, their remove × | `ui/agent.rs:2105` | × has no backing |
-| `agent.option` | menu-item | answer tiles in question and permission cards | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
+| `agent.option` | menu-item | answer tiles in question and permission cards, Show terminal on the card for an approval the lens cannot answer | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
 | `agent.jump` | icon-button | jump-to-bottom button over the transcript | `ui/agent.rs:1025` | |
 | `agent.action` | icon-button | copy on answers, code blocks and diagrams, rewind on prompts | `ui/agent.rs:2464` | washed and lifted under the pointer, and the copy buttons always showed; since 10-15 no fill in any state, shown only while their message, block or figure is pointed at |
-| `inline-panel` | floating | panels raised inside a pane: question cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
+| `inline-panel` | floating | panels raised inside a pane or the lead chat: question and approval cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
 
 The agent's step rows (the trace line, thoughts and tool calls) had `agent.trace`, a `row`, until 2026-10-15. They draw no fill now: their ink is muted and a row you can open brightens it under the pointer, so the role had nothing left to style.
+
+### Lead chat
+
+The chat with the lead agent, under the sidebar's list and in the command palette's Lead mode
+([durable lead chat](/designs/durable-lead-chat.md)). It also paints through roles it shares:
+`agent.send` for send and queue, `inline-panel` and `agent.option` for an approval waiting on you,
+`palette` for Lead mode, `chrome.button` for the title bar's chat button, and `pane-stack` for the
+corners of the sender tiles.
+
+| Role | Group | Covers | Where | Drift found |
+|---|---|---|---|---|
+| `chat.bubble` | card | the lead's replies and agents' messages, with their tails | `ui/agent/chat.rs` (`ChatBubble`) | new 2026-10-24 |
+| `chat.bubble.mine` | chat.bubble | your messages, in the accent's wash | `ui/agent/chat.rs` (`ChatBubble::mine`) | new 2026-10-24 |
+| `chat.composer` | field | the one-line box you message the lead in, a pill in every theme | `ui/agent/chat.rs` (`ChatComposer`) | new 2026-10-24 |
+| `rule.chat` | rule | the line over the chat in the sidebar, dragged to resize it | `ui/agent/chat.rs` (`ChatSection`) | drew as `rule.list` until 2026-10-24, so styling list dividers restyled it |
 
 ### Reading content (markdown in agent replies)
 
@@ -466,6 +481,7 @@ they fill with `theme.scrim`.
 | `rule.split` | split divider and the accent half on the active pane's side | `ui/pane.rs:636` |
 | `rule.list` | menu separators, setting row lines, prompt card lines | `ui/settings.rs:1357`, `kit/menu/popup_menu.rs:922` |
 | `rule.tree` | tree indent guides | `ui/navigation/tree.rs:157` |
+| `rule.chat` | the line over the lead chat in the sidebar | `ui/agent/chat.rs` (`ChatSection`) |
 
 ### Not roles
 
