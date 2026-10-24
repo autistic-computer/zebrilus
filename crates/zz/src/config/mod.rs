@@ -660,7 +660,6 @@ pub(crate) fn status_bar_settings(cx: &App) -> StatusBarSettings {
     let config = resolved_config(cx);
     StatusBarSettings {
         badges: config.status_badges.value,
-        show_agents: config.status_agents.value,
         show_host: config.status_host.value,
         show_update: config.status_update.value,
     }
@@ -1368,25 +1367,21 @@ mod tests {
     fn status_bar_settings_parse_with_typed_defaults() {
         let defaults = AppConfig::default();
         assert!(defaults.status_badges.value);
-        assert!(defaults.status_agents.value);
         assert!(defaults.status_host.value);
         assert!(defaults.status_update.value);
 
         let parsed = parse_config(
             "status-badges = false\n\
-             status-agents = false\n\
              status-host = false\n\
              status-update = false\n",
         );
 
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert!(!parsed.config.status_badges.value);
-        assert!(!parsed.config.status_agents.value);
         assert!(!parsed.config.status_host.value);
         assert!(!parsed.config.status_update.value);
         for provenance in [
             parsed.config.status_badges.provenance,
-            parsed.config.status_agents.provenance,
             parsed.config.status_host.provenance,
             parsed.config.status_update.provenance,
         ] {
@@ -2671,7 +2666,6 @@ mod tests {
     fn status_bar_settings_project_from_the_live_app_config(cx: &mut zz_gpui::TestAppContext) {
         let config = parse_config(
             "status-badges = false\n\
-             status-agents = false\n\
              status-host = false\n\
              status-update = false\n",
         )
@@ -2682,7 +2676,6 @@ mod tests {
             cx.update(|cx| status_bar_settings(cx)),
             StatusBarSettings {
                 badges: false,
-                show_agents: false,
                 show_host: false,
                 show_update: false,
             }
@@ -3111,7 +3104,6 @@ mod tests {
             "auto-restart-stale-daemon",
             "check-for-updates",
             "status-badges",
-            "status-agents",
             "status-host",
             "status-update",
             "experimental-editor-pane",

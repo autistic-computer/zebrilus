@@ -8,7 +8,6 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StatusBarSettings {
     pub badges: bool,
-    pub show_agents: bool,
     pub show_host: bool,
     pub show_update: bool,
 }
@@ -17,7 +16,6 @@ impl Default for StatusBarSettings {
     fn default() -> Self {
         Self {
             badges: true,
-            show_agents: true,
             show_host: true,
             show_update: true,
         }
@@ -46,18 +44,9 @@ pub struct StatusBarWindow {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StatusBarAgent {
-    pub id: PaneId,
-    pub label: String,
-    pub window_name: String,
-    pub provider: AgentProvider,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StatusBarModel {
     pub session_name: Option<String>,
     pub windows: Vec<StatusBarWindow>,
-    pub agents: Vec<StatusBarAgent>,
     pub host_name: Option<String>,
     pub show_update: bool,
 }
@@ -77,7 +66,6 @@ impl StatusBarModel {
                 .find(|session| session.id == attached)
         });
         let focused_window = session.map(|session| snapshot.focused_window_for(session));
-        let mut agents = Vec::new();
         let windows = session.map_or_else(Vec::new, |session| {
             session
                 .windows
@@ -85,17 +73,6 @@ impl StatusBarModel {
                 .map(|window| {
                     let panes = ordered_panes(window);
                     let bell = panes.iter().any(|pane| pane.bell);
-                    if settings.show_agents {
-                        agents.extend(panes.iter().filter_map(|pane| {
-                            let provider = pane_agent(pane)?;
-                            (!pane.dead).then(|| StatusBarAgent {
-                                id: pane.id,
-                                label: pane_label(pane),
-                                window_name: window.name.clone(),
-                                provider,
-                            })
-                        }));
-                    }
                     let agent_provider = window
                         .panes
                         .get(&window.active_pane)
@@ -143,7 +120,6 @@ impl StatusBarModel {
         Self {
             session_name: session.map(|session| session.name.clone()),
             windows,
-            agents,
             host_name: host_name.filter(|_| settings.show_host).map(str::to_owned),
             show_update: settings.show_update,
         }
@@ -323,7 +299,6 @@ mod tests {
             StatusBarSettings::default(),
             StatusBarSettings {
                 badges: true,
-                show_agents: true,
                 show_host: true,
                 show_update: true,
             }
@@ -365,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn badges_use_window_and_pane_flags_and_agents_include_only_live_panes() {
+    fn badges_use_window_and_pane_flags() {
         let snapshot = snapshot();
         let model = StatusBarModel::from_snapshot(
             &snapshot,
@@ -380,15 +355,6 @@ mod tests {
         assert!(!model.windows[1].bell);
         assert!(!model.windows[1].activity);
         assert_eq!(model.windows[1].agent_provider, Some(AgentProvider::Codex));
-        assert_eq!(
-            model.agents,
-            vec![StatusBarAgent {
-                id: PaneId(110),
-                label: "pane-110".to_owned(),
-                window_name: "agent".to_owned(),
-                provider: AgentProvider::Codex,
-            }]
-        );
     }
 
     #[test]
@@ -408,9 +374,6 @@ mod tests {
             assert_eq!(model.windows[1].name, "agent");
             assert_eq!(model.windows[1].label, "agent");
             assert_eq!(model.windows[1].agent_provider, Some(provider));
-            assert_eq!(model.agents[0].id, PaneId(110));
-            assert_eq!(model.agents[0].label, "pane-110");
-            assert_eq!(model.agents[0].provider, provider);
         }
     }
 
@@ -511,7 +474,6 @@ mod tests {
         let snapshot = snapshot();
         let settings = StatusBarSettings {
             badges: false,
-            show_agents: false,
             show_host: false,
             show_update: false,
         };
@@ -529,68 +491,13 @@ mod tests {
                 .iter()
                 .all(|window| !window.bell && !window.activity && window.agent_provider.is_none())
         );
-        assert!(model.agents.is_empty());
         assert_eq!(model.host_name, None);
         assert!(!model.show_update);
         assert_eq!(model.windows[1].label, "agent");
     }
 
     #[test]
-    fn badges_do_not_control_the_agents_item() {
-        let model = StatusBarModel::from_snapshot(
-            &snapshot(),
-            Some(SessionId(1)),
-            None,
-            StatusBarSettings {
-                badges: false,
-                ..StatusBarSettings::default()
-            },
-        );
-
-        assert_eq!(
-            model.agents,
-            vec![StatusBarAgent {
-                id: PaneId(110),
-                label: "pane-110".to_owned(),
-                window_name: "agent".to_owned(),
-                provider: AgentProvider::Codex,
-            }]
-        );
-        assert!(
-            model
-                .windows
-                .iter()
-                .all(|window| window.agent_provider.is_none())
-        );
-    }
-
-    #[test]
-    fn zero_agents_and_missing_attachments_are_empty() {
-        let no_agents = MuxSnapshot {
-            generation: 1,
-            sessions: vec![SessionSnapshot {
-                id: SessionId(3),
-                name: "plain".to_owned(),
-                active_window: WindowId(30),
-                windows: vec![window(
-                    30,
-                    0,
-                    "terminal",
-                    false,
-                    vec![pane(300, PaneKindSnapshot::Terminal, false, false)],
-                )],
-                viewers: Vec::new(),
-            }],
-            focused_window: None,
-        };
-        let model = StatusBarModel::from_snapshot(
-            &no_agents,
-            Some(SessionId(3)),
-            None,
-            StatusBarSettings::default(),
-        );
-        assert!(model.agents.is_empty());
-
+    fn missing_attachments_are_empty() {
         for attached in [None, Some(SessionId(99))] {
             let model = StatusBarModel::from_snapshot(
                 &snapshot(),
@@ -600,7 +507,6 @@ mod tests {
             );
             assert_eq!(model.session_name, None);
             assert!(model.windows.is_empty());
-            assert!(model.agents.is_empty());
             assert_eq!(model.host_name.as_deref(), Some("remote.example"));
         }
     }

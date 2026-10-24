@@ -583,30 +583,17 @@ fn status_rows(settings: StatusBarSettings) -> SettingsStack {
             )
             .control(Switch::new("sidebar").checked(false)),
         )
-        .children(
-            [
-                (
-                    "badges",
-                    "Window badges",
-                    "Show bell and activity markers on window items.",
-                    settings.badges,
-                ),
-                (
-                    "agents",
-                    "Agent activity",
-                    "Show agent activity in the titlebar.",
-                    settings.show_agents,
-                ),
-            ]
-            .map(|(id, title, description, checked)| {
-                SettingEntry::new(title, description)
-                    .title_actions(settings_reset_button(
-                        format!("status-{id}-reset"),
-                        "Reset to default",
-                        !checked,
-                    ))
-                    .control(Switch::new(format!("status-{id}")).checked(checked))
-            }),
+        .child(
+            SettingEntry::new(
+                "Window badges",
+                "Show bell and activity markers on window items.",
+            )
+            .title_actions(settings_reset_button(
+                "status-badges-reset",
+                "Reset to default",
+                !settings.badges,
+            ))
+            .control(Switch::new("status-badges").checked(settings.badges)),
         )
 }
 
@@ -625,12 +612,11 @@ fn status_bar(_: &mut Window, cx: &mut App) -> AnyElement {
             page("status-defaults", StatusBarSettings::default(), false, cx),
         )
         .state(
-            "badges and agents off, pane gaps on",
+            "badges off, pane gaps on",
             page(
                 "status-minimal",
                 StatusBarSettings {
                     badges: false,
-                    show_agents: false,
                     ..StatusBarSettings::default()
                 },
                 true,

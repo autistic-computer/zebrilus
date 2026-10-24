@@ -7,9 +7,8 @@ use zz_ui::{
     navigation::{
         WorkspaceStatusWindowState,
         status::{
-            MAX_VISIBLE_WINDOWS, StatusAction, StatusAgentEntry, StatusPaneEntry,
-            StatusWindowActions, StatusWindowEntry, status_agents, status_window,
-            status_window_overflow, visible_window_range,
+            MAX_VISIBLE_WINDOWS, StatusAction, StatusPaneEntry, StatusWindowActions,
+            StatusWindowEntry, status_window, status_window_overflow, visible_window_range,
         },
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
@@ -117,49 +116,12 @@ pub(super) fn render(
             cx,
         ));
     }
-    let mut right = Vec::new();
-    if !model.agents.is_empty() {
-        let agents = model
-            .agents
-            .iter()
-            .map(|agent| {
-                let connection = view.connection.clone();
-                let target = agent.id.to_string();
-                StatusAgentEntry {
-                    label: agent.label.clone().into(),
-                    window_name: agent.window_name.clone().into(),
-                    icon: zz_ui::pane::agent_provider_icon(agent.provider),
-                    status: connected
-                        .then(|| {
-                            core.agent_state(agent.id)
-                                .map(zz_client::agent_attention_status)
-                        })
-                        .flatten(),
-                    select: Rc::new(move |_, cx| {
-                        connection.update(cx, |connection, cx| {
-                            connection.command(
-                                "select-window",
-                                vec!["-t".into(), target.clone()],
-                                cx,
-                            );
-                            connection.command(
-                                "select-pane",
-                                vec!["-Z".into(), "-t".into(), target.clone()],
-                                cx,
-                            );
-                        });
-                    }),
-                }
-            })
-            .collect();
-        right.push(status_agents("web-status-agents", agents, connected, cx));
-    }
     workspace_status_bar(
         view.preferences.gaps,
         px(8.0),
         WorkspaceStatusSlots {
             windows,
-            right,
+            right: Vec::new(),
             titlebar_controls: Some((
                 view.controls(cx.theme().ground(), cx),
                 AppShell::controls_width(window),
