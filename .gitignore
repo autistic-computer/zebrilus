@@ -57,5 +57,6 @@ bench/agents/browser/out-site.log
 bench/agents/browser/out-site.pid
 bench/agents/skill/out/
 bench/agents/fresh/out/
+bench/agents/lead/out*/
 bench/agents/browser/.playwright-mcp/
 bench/agents/skill/out/
