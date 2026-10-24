@@ -59,7 +59,13 @@ impl Global for RecentPaletteCommands {}
 
 pub enum CommandPaletteEvent {
     ReturnToDefault,
+    /// [`LEAD_PREFIX`] typed into an empty palette while there is a lead:
+    /// the app swaps the palette for its Lead mode.
+    Lead,
 }
+
+/// What switches the palette to its Lead mode, typed into an empty palette.
+pub const LEAD_PREFIX: &str = ">";
 
 impl EventEmitter<CommandPaletteEvent> for CommandPaletteView {}
 
@@ -86,6 +92,7 @@ pub struct CommandPaletteView {
     chooser_activation: Option<ChooseTreeTarget>,
     local: bool,
     changing_input: bool,
+    lead: bool,
 }
 
 #[derive(Default)]
@@ -200,6 +207,7 @@ impl CommandPaletteView {
             chooser_search: ChooserSearch::default(),
             chooser_activation: None,
             changing_input: false,
+            lead: false,
         };
         palette.recompute_suggestions();
         palette.refresh(window, cx);
@@ -238,6 +246,14 @@ impl CommandPaletteView {
 
     pub const fn is_local(&self) -> bool {
         self.local
+    }
+
+    /// Whether [`LEAD_PREFIX`] switches to Lead mode: while there is a lead.
+    pub fn offer_lead(&mut self, offer: bool, cx: &mut Context<Self>) {
+        if self.lead != offer {
+            self.lead = offer;
+            cx.notify();
+        }
     }
 
     pub const fn is_window_chooser(&self) -> bool {
@@ -576,6 +592,18 @@ impl CommandPaletteView {
                 };
                 state.items.get(index as usize).map(|item| item.target)
             });
+        }
+        if self.lead
+            && self.last_input.is_empty()
+            && value == LEAD_PREFIX
+            && self
+                .unified
+                .as_ref()
+                .is_some_and(|unified| unified.mode.is_none() && unified.command.is_none())
+        {
+            self.set_query(String::new(), window, cx);
+            cx.emit(CommandPaletteEvent::Lead);
+            return;
         }
         if self.last_input.is_empty()
             && let Some(unified) = &mut self.unified
@@ -1034,6 +1062,12 @@ impl CommandPaletteView {
                         hints.push(PaletteHint {
                             key: "backspace",
                             label: "clear host",
+                        });
+                    }
+                    if self.lead && self.last_input.is_empty() {
+                        hints.push(PaletteHint {
+                            key: LEAD_PREFIX,
+                            label: "lead",
                         });
                     }
                     hints.push(PaletteHint {
