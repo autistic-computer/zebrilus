@@ -904,6 +904,7 @@ impl AppShell {
                     palette.update(cx, |palette, cx| palette.return_to_default(window, cx));
                     cx.notify();
                 }
+                CommandPaletteEvent::Lead => {}
             },
         )
         .detach();

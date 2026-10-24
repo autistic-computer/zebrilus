@@ -5,9 +5,10 @@
 
 use zz_client::program::Program;
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Bounds, Context, CursorStyle, ElementId, Entity,
-    Focusable as _, HighlightStyle, Hsla, IntoElement, PathBuilder, Pixels, Render, RenderOnce,
-    ScrollHandle, SharedString, StyledText, Window, canvas, div, point, prelude::*, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, AppContext as _, Bounds, Context, CursorStyle,
+    ElementId, Entity, Focusable as _, HighlightStyle, Hsla, IntoElement, PathBuilder, Pixels,
+    Render, RenderOnce, ScrollHandle, SharedString, StyledText, Window, canvas, div, point,
+    prelude::*, px, relative,
 };
 
 use crate::{
@@ -61,6 +62,20 @@ pub const CHAT_LIST_MIN_HEIGHT: f32 = 96.0;
 const SPLIT_HANDLE: f32 = 9.0;
 const THREAD_FADE: f32 = 28.0;
 const LEAD_THREAD_MAX: f32 = 360.0;
+/// How many of the lead's steps a [`ChatTyping`] shows.
+pub const TYPING_STEPS: usize = 3;
+const TYPING_PERIOD: std::time::Duration = std::time::Duration::from_millis(1300);
+const TYPING_BEAT: f32 = 0.14;
+const TYPING_FPS: f32 = 30.0;
+const TYPING_RISE_SHARE: f32 = 0.42;
+const TYPING_DOT: f32 = 6.0;
+const TYPING_DOT_GAP: f32 = 4.0;
+const TYPING_LIFT: f32 = 2.5;
+const TYPING_REST: f32 = 0.4;
+const TYPING_PADDING_Y: f32 = 8.0;
+const STEP_SIZE: f32 = 12.0;
+const STEP_LINE: f32 = 18.0;
+const STEP_CHECK: f32 = 12.0;
 
 /// How far a message you sent has got.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,27 +243,7 @@ impl RenderOnce for ChatBubble {
                 )
             });
 
-        let shape = canvas(
-            |_, _, _| (),
-            move |bounds, (), window, _| {
-                let side = if mine {
-                    ChatSide::Mine
-                } else {
-                    ChatSide::Theirs
-                };
-                if let Ok(path) = bubble_path(PathBuilder::fill(), bounds, radius, side).build() {
-                    window.paint_path(path, fill);
-                }
-                if let Some((color, width)) = edge
-                    && let Ok(path) =
-                        bubble_path(PathBuilder::stroke(width), bounds, radius, side).build()
-                {
-                    window.paint_path(path, color);
-                }
-            },
-        )
-        .absolute()
-        .inset_0();
+        let shape = bubble_shape(radius, fill, edge, self.side);
 
         let bubble = v_flex()
             .id(self.id)
@@ -277,6 +272,166 @@ impl RenderOnce for ChatBubble {
             .w_full()
             .when(mine, zz_gpui::Styled::justify_end)
             .child(bubble)
+    }
+}
+
+/// The bubble's fill and edge, painted along [`bubble_path`] behind what
+/// the bubble holds.
+fn bubble_shape(
+    radius: Pixels,
+    fill: Hsla,
+    edge: Option<(Hsla, Pixels)>,
+    side: ChatSide,
+) -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |bounds, (), window, _| {
+            if let Ok(path) = bubble_path(PathBuilder::fill(), bounds, radius, side).build() {
+                window.paint_path(path, fill);
+            }
+            if let Some((color, width)) = edge
+                && let Ok(path) =
+                    bubble_path(PathBuilder::stroke(width), bounds, radius, side).build()
+            {
+                window.paint_path(path, color);
+            }
+        },
+    )
+    .absolute()
+    .inset_0()
+}
+
+/// How high the dot at `index` sits at `phase`, from 0 at rest to 1: each
+/// rises and falls in the first part of the period, a beat after the one
+/// before it, then waits for the next round.
+fn dot_lift(phase: f32, index: usize) -> f32 {
+    #[allow(clippy::cast_precision_loss, reason = "index is one of three dots")]
+    let at = (phase - index as f32 * TYPING_BEAT).rem_euclid(1.0);
+    if at < TYPING_RISE_SHARE {
+        (std::f32::consts::PI * at / TYPING_RISE_SHARE).sin()
+    } else {
+        0.0
+    }
+}
+
+/// The lead at work: a bubble on its side whose three dots rise in turn,
+/// with its latest steps, the newest beside the dots and the ones before it
+/// above, muted and ticked. A step is what the lead's CLI says it is doing,
+/// cut to one line; with none yet the bubble holds only the dots.
+#[derive(IntoElement)]
+pub struct ChatTyping {
+    id: ElementId,
+    steps: Vec<SharedString>,
+    ground: Option<Ground>,
+}
+
+impl ChatTyping {
+    pub fn new(id: impl Into<ElementId>) -> Self {
+        Self {
+            id: id.into(),
+            steps: Vec::new(),
+            ground: None,
+        }
+    }
+
+    /// The lead's steps so far, oldest first; the last [`TYPING_STEPS`] show.
+    #[must_use]
+    pub fn steps(mut self, steps: impl IntoIterator<Item = impl Into<SharedString>>) -> Self {
+        self.steps = steps.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Draw on `ground`, the paint the thread sits on, instead of the window.
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.ground = Some(ground);
+        self
+    }
+}
+
+impl RenderOnce for ChatTyping {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme = cx.theme();
+        let ground = self.ground.unwrap_or_else(|| theme.ground());
+        let layer = theme.layer(
+            Surface::new(roles::CHAT_BUBBLE).on(ground),
+            PaintState::Rest,
+        );
+        let radius = layer.radius.min(px(BUBBLE_RADIUS));
+        let edge = (layer.border_width > px(0.0)).then_some((layer.border, layer.border_width));
+        let ink = ground.ink;
+        let muted = ink.muted();
+        let shown = self.steps.len().saturating_sub(TYPING_STEPS);
+        let mut steps = self.steps.into_iter().skip(shown).collect::<Vec<_>>();
+        let current = steps.pop();
+        let dots = h_flex()
+            .debug_selector(|| "chat-typing-dots".to_owned())
+            .flex_none()
+            .h(px(STEP_LINE))
+            .gap(px(TYPING_DOT_GAP))
+            .items_center()
+            .children((0..3).map(|index| {
+                div()
+                    .relative()
+                    .size(px(TYPING_DOT))
+                    .rounded_full()
+                    .bg(muted)
+                    .with_animation(
+                        ("chat-typing-dot", index),
+                        Animation::new(TYPING_PERIOD)
+                            .repeat()
+                            .with_max_fps(TYPING_FPS),
+                        move |dot, phase| {
+                            let lift = dot_lift(phase, index);
+                            dot.top(px(-TYPING_LIFT * lift))
+                                .opacity(TYPING_REST + (1.0 - TYPING_REST) * lift)
+                        },
+                    )
+            }));
+        let line = |text: SharedString| {
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(text)
+        };
+        let bubble = v_flex()
+            .id(self.id)
+            .debug_selector(|| "chat-typing".to_owned())
+            .relative()
+            .min_w_0()
+            .max_w(relative(THEIRS_MAX_WIDTH))
+            .px(px(BUBBLE_PADDING_X + 2.0))
+            .py(px(TYPING_PADDING_Y))
+            .gap(px(2.0))
+            .text_size(crate::rems_from_px(STEP_SIZE))
+            .line_height(px(STEP_LINE))
+            .child(bubble_shape(radius, layer.fill, edge, ChatSide::Theirs))
+            .children(steps.into_iter().map(|step| {
+                h_flex()
+                    .debug_selector(|| "chat-typing-done".to_owned())
+                    .min_w_0()
+                    .gap(px(6.0))
+                    .text_color(muted)
+                    .child(
+                        Icon::new(IconName::Check)
+                            .size(px(STEP_CHECK))
+                            .flex_none()
+                            .text_color(muted),
+                    )
+                    .child(line(step))
+            }))
+            .child(
+                h_flex()
+                    .debug_selector(|| "chat-typing-now".to_owned())
+                    .min_w_0()
+                    .gap(px(8.0))
+                    .text_color(ink)
+                    .child(dots)
+                    .children(current.map(line)),
+            );
+        h_flex().w_full().child(bubble)
     }
 }
 

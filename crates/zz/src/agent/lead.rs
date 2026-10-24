@@ -11,6 +11,7 @@ use std::{
 };
 
 use zz_client::{
+    agent_transcript::{AgentToolKindModel, ToolPayload},
     program::Program,
     window_summary::{pane_agent, pane_program},
 };
@@ -22,7 +23,7 @@ use zz_protocol::{AgentProvider, PaneId, PaneKindSnapshot};
 use zz_ui::{
     ActiveTheme as _, Ground,
     agent::{
-        chat::{ChatBubble, ChatSender, Receipt},
+        chat::{ChatBubble, ChatSender, ChatTyping, Receipt, TYPING_STEPS},
         presentation::{permission_card, permission_option},
     },
     button::Button,
@@ -155,6 +156,111 @@ pub(crate) fn lead_messages(entries: &[AgentThreadEntry], turn_live: bool) -> Ve
         });
     }
     messages
+}
+
+/// What the lead is doing in its live turn, one short line per step, oldest
+/// first: the item its plan has in progress, then each step since the last
+/// message it got, in the words its CLI gives the step where it gives any
+/// (a Bash call's description, an agent's task, a reasoning summary's title)
+/// and from the tool and what it touches otherwise.
+pub(crate) fn lead_steps(entries: &[AgentThreadEntry]) -> Vec<String> {
+    let start = entries
+        .iter()
+        .rposition(|entry| matches!(entry, AgentThreadEntry::User { .. }))
+        .map_or(0, |index| index + 1);
+    let plan = entries.iter().rev().find_map(|entry| match entry {
+        AgentThreadEntry::Plan { markdown, .. } => markdown
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("- [~]"))
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(str::to_owned),
+        _ => None,
+    });
+    let mut steps = Vec::<String>::new();
+    let later = entries[start..].iter().filter_map(|entry| match entry {
+        AgentThreadEntry::Tool {
+            kind,
+            label,
+            location,
+            input,
+            ..
+        } => Some(tool_step(*kind, label, location.as_deref(), input.as_ref())),
+        AgentThreadEntry::Reasoning { markdown, .. } => reasoning_title(markdown),
+        _ => None,
+    });
+    for step in plan.into_iter().chain(later) {
+        if !step.is_empty() && steps.last() != Some(&step) {
+            steps.push(step);
+        }
+    }
+    steps
+}
+
+fn tool_step(
+    kind: AgentToolKindModel,
+    label: &str,
+    location: Option<&str>,
+    input: Option<&ToolPayload>,
+) -> String {
+    let input = match input {
+        Some(ToolPayload::Json(json)) => serde_json::from_str::<serde_json::Value>(json).ok(),
+        _ => None,
+    };
+    let field = |name: &str| {
+        input
+            .as_ref()
+            .and_then(|input| input[name].as_str())
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    };
+    if let Some(description) = field("description") {
+        return single_line(&description);
+    }
+    let label = single_line(label);
+    let file = location
+        .map(|location| {
+            location
+                .rsplit_once(':')
+                .filter(|(_, line)| line.chars().all(|digit| digit.is_ascii_digit()))
+                .map_or(location, |(path, _)| path)
+                .to_owned()
+        })
+        .or_else(|| field("file_path"))
+        .or_else(|| field("path"))
+        .map(|path| {
+            std::path::Path::new(&path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map_or_else(|| path.clone(), str::to_owned)
+        });
+    let touched = file.unwrap_or_else(|| label.clone());
+    match kind {
+        AgentToolKindModel::Read => format!("Reading {touched}"),
+        AgentToolKindModel::Edit => format!("Editing {touched}"),
+        AgentToolKindModel::Delete => format!("Deleting {touched}"),
+        AgentToolKindModel::Move => format!("Moving {touched}"),
+        AgentToolKindModel::Search => field("pattern").or_else(|| field("query")).map_or_else(
+            || "Searching".to_owned(),
+            |pattern| format!("Searching for {pattern}"),
+        ),
+        AgentToolKindModel::Execute => format!("Running {label}"),
+        AgentToolKindModel::SwitchMode => "Planning".to_owned(),
+        AgentToolKindModel::Fetch | AgentToolKindModel::Think | AgentToolKindModel::Other => label,
+    }
+}
+
+/// The title a reasoning summary opens with, `**Checking the tests**`, the
+/// way Codex shows it while it works.
+fn reasoning_title(markdown: &str) -> Option<String> {
+    let rest = markdown.trim_start().strip_prefix("**")?;
+    let (title, _) = rest.split_once("**")?;
+    Some(single_line(title)).filter(|title| !title.is_empty())
+}
+
+fn single_line(text: &str) -> String {
+    text.lines().next().unwrap_or_default().trim().to_owned()
 }
 
 /// The agent and the words of a notice zz typed into the lead, or `None`
@@ -297,6 +403,45 @@ impl LeadChat {
             .pane_entries(lead.pane)
             .map(|(entries, _, _)| lead_messages(entries, self.running(cx)))
             .unwrap_or_default()
+    }
+
+    /// The lead's steps in its live turn, or `None` while it is not working.
+    pub(crate) fn steps(&self, cx: &App) -> Option<Vec<String>> {
+        let lead = self.lead.as_ref()?;
+        if !self.running(cx) {
+            return None;
+        }
+        Some(
+            self.controller
+                .read(cx)
+                .pane_entries(lead.pane)
+                .map(|(entries, _, _)| lead_steps(entries))
+                .unwrap_or_default(),
+        )
+    }
+
+    /// The thread as a surface draws it: the bubbles, then the lead typing
+    /// with its latest steps while it works. The count grows with every
+    /// bubble and step, and when an answer takes the typing bubble's place,
+    /// so a surface can follow the bottom as it grows.
+    pub(crate) fn thread(
+        &self,
+        scope: &'static str,
+        ground: Ground,
+        cx: &App,
+    ) -> (Vec<AnyElement>, usize) {
+        let mut bubbles = self.bubbles(scope, ground, cx);
+        let mut depth = bubbles.len() * (TYPING_STEPS + 2);
+        if let Some(steps) = self.steps(cx) {
+            depth += 1 + steps.len().min(TYPING_STEPS);
+            bubbles.push(
+                ChatTyping::new((scope, usize::MAX))
+                    .steps(steps)
+                    .on(ground)
+                    .into_any_element(),
+            );
+        }
+        (bubbles, depth)
     }
 
     /// The color of the dot on the chat's title-bar button: an approval waiting
@@ -560,5 +705,99 @@ mod tests {
         );
         assert_eq!(agent_notice("[zz] Agentless"), None);
         assert_eq!(agent_notice("hello"), None);
+    }
+
+    fn tool(
+        id: u64,
+        kind: AgentToolKindModel,
+        label: &str,
+        location: Option<&str>,
+        input: &serde_json::Value,
+    ) -> AgentThreadEntry {
+        AgentThreadEntry::Tool {
+            id,
+            protocol_id: id.to_string(),
+            kind,
+            status: zz_client::agent_transcript::AgentToolStatusModel::Completed,
+            label: label.to_owned(),
+            location: location.map(str::to_owned),
+            input: Some(ToolPayload::Json(input.to_string())),
+            output: Vec::new(),
+            default_expanded: false,
+            exit_code: None,
+        }
+    }
+
+    #[test]
+    fn steps_take_the_clis_own_words_and_start_over_with_each_message() {
+        let entries = [
+            user(1, "status?"),
+            tool(
+                2,
+                AgentToolKindModel::Execute,
+                "zz ls",
+                None,
+                &serde_json::json!({}),
+            ),
+            user(3, "commit this"),
+            AgentThreadEntry::Plan {
+                id: 4,
+                markdown: "- [x] Look at the diff\n- [~] Committing the changes".to_owned(),
+            },
+            tool(
+                5,
+                AgentToolKindModel::Execute,
+                "git status --short",
+                None,
+                &serde_json::json!({"command": "git status --short", "description": "Show dirty files"}),
+            ),
+            tool(
+                6,
+                AgentToolKindModel::Read,
+                "Read crates/zz/src/agent/lead.rs",
+                Some("/home/me/zz/crates/zz/src/agent/lead.rs:40"),
+                &serde_json::json!({"file_path": "/home/me/zz/crates/zz/src/agent/lead.rs"}),
+            ),
+            tool(
+                7,
+                AgentToolKindModel::Read,
+                "Read crates/zz/src/agent/lead.rs",
+                Some("/home/me/zz/crates/zz/src/agent/lead.rs"),
+                &serde_json::json!({}),
+            ),
+            AgentThreadEntry::Reasoning {
+                id: 8,
+                label: "Thinking".to_owned(),
+                markdown: "**Writing the message**\n\nOne line, then the why.".to_owned(),
+                default_expanded: false,
+            },
+            tool(
+                9,
+                AgentToolKindModel::Search,
+                "rg pinned",
+                None,
+                &serde_json::json!({"pattern": "pinned"}),
+            ),
+            tool(
+                10,
+                AgentToolKindModel::Execute,
+                "git commit -m 'x'\nmore",
+                None,
+                &serde_json::json!({}),
+            ),
+        ];
+        assert_eq!(
+            lead_steps(&entries),
+            [
+                "Committing the changes",
+                "Show dirty files",
+                "Reading lead.rs",
+                "Writing the message",
+                "Searching for pinned",
+                "Running git commit -m 'x'",
+            ]
+        );
+        assert_eq!(lead_steps(&entries[..2]), ["Running zz ls"]);
+        assert!(lead_steps(&entries[..3]).is_empty());
     }
 }
