@@ -1196,13 +1196,6 @@ impl SettingsView {
                     cx,
                 ))
                 .child(Self::boolean_setting(
-                    ConfigKey::StatusAgents,
-                    "Agent activity",
-                    "Show agent activity in the titlebar.",
-                    resolved.status_agents,
-                    cx,
-                ))
-                .child(Self::boolean_setting(
                     ConfigKey::StatusHost,
                     "Host",
                     "Show the attached host when it is remote.",
@@ -2510,7 +2503,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
                 | ConfigKey::StatusBadges
-                | ConfigKey::StatusAgents
                 | ConfigKey::StatusHost
                 | ConfigKey::StatusUpdate
                 | ConfigKey::ProgramColors
@@ -2627,7 +2619,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::AutoRestartStaleDaemon
         | ConfigKey::CheckForUpdates
         | ConfigKey::StatusBadges
-        | ConfigKey::StatusAgents
         | ConfigKey::StatusHost
         | ConfigKey::StatusUpdate
         | ConfigKey::FlatSidebar

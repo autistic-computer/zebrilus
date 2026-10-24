@@ -100,7 +100,6 @@ pub enum ConfigKey {
     AutoRestartStaleDaemon,
     CheckForUpdates,
     StatusBadges,
-    StatusAgents,
     StatusHost,
     StatusUpdate,
     FlatSidebar,
@@ -151,7 +150,6 @@ impl ConfigKey {
             Self::AutoRestartStaleDaemon => "auto-restart-stale-daemon",
             Self::CheckForUpdates => "check-for-updates",
             Self::StatusBadges => "status-badges",
-            Self::StatusAgents => "status-agents",
             Self::StatusHost => "status-host",
             Self::StatusUpdate => "status-update",
             Self::FlatSidebar => "flat-sidebar",
@@ -202,7 +200,6 @@ impl ConfigKey {
             "auto-restart-stale-daemon" => Some(Self::AutoRestartStaleDaemon),
             "check-for-updates" => Some(Self::CheckForUpdates),
             "status-badges" => Some(Self::StatusBadges),
-            "status-agents" => Some(Self::StatusAgents),
             "status-host" => Some(Self::StatusHost),
             "status-update" => Some(Self::StatusUpdate),
             "flat-sidebar" => Some(Self::FlatSidebar),
@@ -267,7 +264,6 @@ impl ConfigKey {
             | Self::AutoRestartStaleDaemon
             | Self::CheckForUpdates
             | Self::StatusBadges
-            | Self::StatusAgents
             | Self::StatusHost
             | Self::StatusUpdate
             | Self::FlatSidebar
@@ -423,7 +419,6 @@ pub struct AppConfig {
     pub auto_restart_stale_daemon: ConfigValue<bool>,
     pub check_for_updates: ConfigValue<bool>,
     pub status_badges: ConfigValue<bool>,
-    pub status_agents: ConfigValue<bool>,
     pub status_host: ConfigValue<bool>,
     pub status_update: ConfigValue<bool>,
     pub flat_sidebar: ConfigValue<bool>,
@@ -473,7 +468,6 @@ impl Default for AppConfig {
             auto_restart_stale_daemon: ConfigValue::from_default(DEFAULT_AUTO_RESTART_STALE_DAEMON),
             check_for_updates: ConfigValue::from_default(DEFAULT_CHECK_FOR_UPDATES),
             status_badges: ConfigValue::from_default(status_bar.badges),
-            status_agents: ConfigValue::from_default(status_bar.show_agents),
             status_host: ConfigValue::from_default(status_bar.show_host),
             status_update: ConfigValue::from_default(status_bar.show_update),
             flat_sidebar: ConfigValue::from_default(false),
@@ -526,7 +520,6 @@ impl AppConfig {
             ConfigKey::AutoRestartStaleDaemon => Some(&mut self.auto_restart_stale_daemon),
             ConfigKey::CheckForUpdates => Some(&mut self.check_for_updates),
             ConfigKey::StatusBadges => Some(&mut self.status_badges),
-            ConfigKey::StatusAgents => Some(&mut self.status_agents),
             ConfigKey::StatusHost => Some(&mut self.status_host),
             ConfigKey::StatusUpdate => Some(&mut self.status_update),
             ConfigKey::FlatSidebar => Some(&mut self.flat_sidebar),
@@ -906,11 +899,14 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         }
 
         if RETIRED_STATUS_KEYS.contains(&key) {
+            let instead = if key == "status-agents" {
+                "the status bar no longer shows agent activity; the sidebar shows each agent's state"
+            } else {
+                "the status bar no longer has a session menu; switch sessions from the sidebar"
+            };
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
-                message: format!(
-                    "`{key}` was removed: the status bar no longer has a session menu; switch sessions from the sidebar"
-                ),
+                message: format!("`{key}` was removed: {instead}"),
             });
             continue;
         }
@@ -1168,7 +1164,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::BrowserRemoteDebuggingPort
             | ConfigKey::BrowserSearchProvider
             | ConfigKey::BrowserEgress
-            | ConfigKey::StatusAgents
             | ConfigKey::StatusHost
             | ConfigKey::StatusUpdate
             | ConfigKey::FlatSidebar
@@ -1480,7 +1475,7 @@ pub const RETIRED_PANE_KEYS: [&str; 4] = [
 pub const RETIRED_AGENT_KEYS: [&str; 2] = ["experimental-agent-pane", "agent-working-directory"];
 
 /// Status bar keys an older zz read. Parsing reports them and otherwise ignores them.
-pub const RETIRED_STATUS_KEYS: [&str; 1] = ["status-show-session"];
+pub const RETIRED_STATUS_KEYS: [&str; 2] = ["status-show-session", "status-agents"];
 
 pub fn is_app_config_key(key: &str) -> bool {
     ConfigKey::parse(key).is_some()
@@ -2170,10 +2165,10 @@ mod tests {
     }
 
     #[test]
-    fn a_retired_session_menu_line_is_reported_and_otherwise_ignored() {
-        let source = "status-badges = false\nstatus-show-session = false\n";
+    fn retired_status_bar_lines_are_reported_and_otherwise_ignored() {
+        let source = "status-badges = false\nstatus-show-session = false\nstatus-agents = false\n";
         let parsed = parse_config(source, "monospace");
-        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(parsed.diagnostics.len(), 2);
         assert_eq!(parsed.diagnostics[0].line, 2);
         assert!(
             parsed.diagnostics[0]
@@ -2182,7 +2177,13 @@ mod tests {
             "{}",
             parsed.diagnostics[0].message
         );
+        assert_eq!(parsed.diagnostics[1].line, 3);
+        assert_eq!(
+            parsed.diagnostics[1].message,
+            "`status-agents` was removed: the status bar no longer shows agent activity; the sidebar shows each agent's state"
+        );
         assert!(is_app_config_key("status-show-session"));
+        assert!(is_app_config_key("status-agents"));
         assert!(!parsed.config.status_badges.value);
     }
 

@@ -316,7 +316,7 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   Frame controls apply with gaps.
 - **Terminal:** a live preview, local font family, and text scale. Host colors,
   cursor, and padding remain visible as host-owned settings.
-- **Status bar:** session menu, window badges, and agent activity controls.
+- **Status bar:** the sidebar switch and window badges.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
   Display: drawing under the home indicator, matching the system text size, and keeping

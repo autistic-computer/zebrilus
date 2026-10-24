@@ -672,7 +672,8 @@ impl AppShell {
                 .into_any_element();
             }
             SettingsSection::StatusBar => {
-                let mut rows = vec![
+                let default = Preferences::default().status_badges;
+                let rows = [
                     SettingEntry::new(
                         "Sidebar",
                         "Show sessions, windows, and panes beside the workspace.",
@@ -687,44 +688,26 @@ impl AppShell {
                                 cx.notify();
                             })),
                     ),
-                ];
-                for (id, title, description, checked) in [
-                    (
-                        "badges",
+                    SettingEntry::new(
                         "Window badges",
                         "Show bell and activity markers on window items.",
-                        self.preferences.status_badges,
+                    )
+                    .title_actions(reset_button(
+                        "settings-status-badges-reset",
+                        self.preferences.status_badges != default,
+                        move |this, _, _| this.preferences.status_badges = default,
+                        cx,
+                    ))
+                    .control(
+                        Switch::new("settings-status-badges")
+                            .checked(self.preferences.status_badges)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.preferences.status_badges = !this.preferences.status_badges;
+                                this.preferences.save();
+                                cx.notify();
+                            })),
                     ),
-                    (
-                        "agents",
-                        "Agent activity",
-                        "Show agent activity in the titlebar.",
-                        self.preferences.status_agents,
-                    ),
-                ] {
-                    let default = *status_field(&mut Preferences::default(), id);
-                    rows.push(
-                        SettingEntry::new(title, description)
-                            .title_actions(reset_button(
-                                format!("settings-status-{id}-reset"),
-                                checked != default,
-                                move |this, _, _| {
-                                    *status_field(&mut this.preferences, id) = default;
-                                },
-                                cx,
-                            ))
-                            .control(
-                                Switch::new(format!("settings-status-{id}"))
-                                    .checked(checked)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        let value = status_field(&mut this.preferences, id);
-                                        *value = !*value;
-                                        this.preferences.save();
-                                        cx.notify();
-                                    })),
-                            ),
-                    );
-                }
+                ];
                 return zz_ui::settings::status_bar_preview::status_bar_page(
                     self.preferences.status_bar_settings(),
                     self.preferences.gaps,
@@ -1538,13 +1521,6 @@ fn reset_button(
             this.preferences.save();
             this.preferences.apply(&this.connection, window, cx);
         }))
-}
-
-fn status_field<'a>(preferences: &'a mut Preferences, id: &str) -> &'a mut bool {
-    match id {
-        "badges" => &mut preferences.status_badges,
-        _ => &mut preferences.status_agents,
-    }
 }
 
 fn number_field_event(event: &InputEvent, window: &mut Window, cx: &mut App) {
