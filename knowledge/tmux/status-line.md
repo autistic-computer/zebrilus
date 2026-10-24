@@ -4,8 +4,8 @@ title: tmux status rows and format expansion
 description: The daemon expands tmux status formats per client for the cell-faithful TUI; GUI clients build native bars from snapshots and app settings without consuming StatusLine.
 resource: crates/zz-mux/src/formats.rs
 tags: [tmux, status-line, formats, gui, tui, options]
-timestamp: 2026-08-27T00:00:00-03:00
-last_updated: 2026-09-07
+timestamp: 2026-10-23T00:00:00-03:00
+last_updated: 2026-10-23
 last_updated_by: Claude
 ---
 
@@ -26,7 +26,7 @@ publishes client-specific styled data for terminal clients:
   below the workspace; titlebar mode places it above the workspace with the native controls.
 - The desktop window strip uses snapshot index, name, per-client focus, bell, activity, and pane
   kind. It keeps stable-id selection, rename/close menus, five-window focus centering, and an
-  overflow menu. The right side can show a live Agent-pane count, remote host, update, and clock.
+  overflow menu. The right side can show the live terminals running Claude Code or Codex, remote host, update, and clock.
 - Prompts, choosers, and copy mode remain native surfaces. Compatibility covers their state and
   input behavior, not terminal escape output.
 

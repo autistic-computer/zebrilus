@@ -408,7 +408,7 @@ impl CommandPaletteView {
             }
         }
         if let Some(state) = &self.window_chooser {
-            unified.rebuild_window_chooser(state, &self.last_input, &self.snapshot);
+            unified.rebuild_window_chooser(state, &self.last_input);
         } else {
             let backend = Rc::clone(&self.backend);
             unified.rebuild(

@@ -498,10 +498,6 @@ impl FormatTree<'_> {
                     FormatBacking::PaneCurrentPath | FormatBacking::PaneStartPath
                 ) {
                     match pane.map(|pane| &pane.kind) {
-                        Some(PaneKind::Agent(agent)) => agent
-                            .cwd
-                            .as_deref()
-                            .map_or(Cow::Borrowed(""), |path| path.to_string_lossy()),
                         Some(PaneKind::Editor(editor)) => Cow::Borrowed(&editor.cwd),
                         _ => Cow::Borrowed(""),
                     }

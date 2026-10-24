@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Session persistence & daemon lifecycle
-description: Why mux state and terminals outlive GPUI windows, which GUI state is disk-backed, which browser/Agent descriptors can restore, and how attach, detach, eviction, per-client state, and local transport work when several devices share one session.
+description: Why mux state and terminals outlive GPUI windows, which GUI state is disk-backed, which browser descriptors can restore, what the agent lens rebuilds, and how attach, detach, eviction, per-client state, and local transport work when several devices share one session.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [daemon, persistence, attach, detach, transport, lifecycle, multi-client]
-timestamp: 2026-08-25T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -19,7 +19,7 @@ attached to the same session.
 For mux sessions, persistence means daemon-lifetime, in-memory persistence. There is **no on-disk
 session restoration**: a daemon crash, `kill-server`, logout, or reboot destroys PTYs, and a fresh
 daemon starts empty. Its first default Interactive attach lazily creates numeric session `0`; a
-Command client does not. Client-owned state such as browser storage, recent pages, Agent choices,
+Command client does not. Client-owned state such as browser storage, recent pages,
 and main-window bounds is separately persisted to disk as called out below.
 
 # Daemon lifecycle
@@ -178,30 +178,22 @@ devices attached to that session never notice.
 | App-owned browser history list | Yes | **Yes** | Client-side, not daemon state: the app persists up to 5,000 live or imported Chrome visits in `<data dir>/zz/browser/recent-pages` (see [browser profile](/browser/profile.md)) |
 | Main-window bounds and mode | **Yes** | **Yes** | Client-side, not daemon state: bounded `<data dir>/zz/window-state.json` remembers size, position, display, and windowed/maximized/full-screen mode; restore clamps to a usable current display |
 | Chromium renderer runtime (JS heap, scroll, unsubmitted forms, media) | **No** | No | Not kept alive with no GUI attached; on reattach the GUI builds a fresh CEF instance from the descriptor |
-| Agent provider + cwd + opaque ACP session ID | Yes | No | Stored as `AgentDescriptor` in mux state; the daemon adopts the session ID the adapter returns and passes the metadata to `session/load` when supported |
-| ACP child process + its running turn | Yes | No | Daemon-owned per pane (`zz-daemon/src/agent/host.rs`), one thread each, exactly like a PTY worker. Closing every GPUI window does not stop a turn; the adapter keeps working and a reattaching client replays and tails |
-| Reduced conversation state (the transcript as entries) | **No** | No | Client-side and rebuilt on every attach from the replayed stream; the daemon keeps raw items, never a transcript |
-| Journalled ACP transcript | Yes | **Yes** | Daemon state now: every `session/update` is appended as JSONL under `<data dir>/zz/daemon/agent-journal`, one file per ACP session ID, pruned at 30 days. It is the fallback replay when the provider cannot `session/load`, and the floor under the fanout's 16 MiB per-pane replay ring. It is only reachable while a descriptor still names that session ID |
+| Claude Code or Codex CLI + its running turn | Yes | No | An ordinary terminal process in a PTY, so a turn keeps going with every GPUI window closed |
+| Agent lens runtime | Yes | No | Daemon-owned per terminal pane once a client opens the lens (`zz-daemon/src/agent/lens.rs`), one thread each, until the pane closes |
+| Agent transcript | Yes | **Yes** | Written by the CLI itself (Claude's session jsonl, Codex's rollout). The lens reads it back; zz stores no copy of its own |
+| Reduced lens timeline | **No** | No | Client-side and rebuilt from the replayed stream every time a client opens the lens |
 | Terminal frames in flight | No | No | Coalesced per-pane in each client's `OutboundMailbox`; newest replaces stale |
 
 Browser panes are the key asymmetry: the daemon persists only the **restorable descriptor**, not the
 live browser. Live browser input while detached returns `PaneNotAttached` and is not queued for
 replay. See [browser lifecycle](/browser/lifecycle.md) and [browser profile](/browser/profile.md).
 
-Agent panes are **not** that asymmetry any more . they follow the terminal. The daemon spawns and
-owns the ACP adapter child, so an agent run survives the GUI closing or detaching: the turn keeps
-going, permissions still park waiting for an answer, and a reattaching client asks for a replay and
-then tails the live stream. What stays client-side is the *rendering* half: `AgentController`'s
-reduced entries, the composer draft, the wizard, sticky selector preferences. Those are rebuilt from
-the replay on every attach, which is why the transcript survives a client detach *and* an app
-restart, not just an adapter that supports `session/load`.
-
-The durability floor is the journal. Reattach reconstructs the timeline from what the daemon replays;
-daemon-side, when a provider cannot `session/load` or the load fails, the runtime creates a fresh
-session and seeds it from the journal, so the conversation survives an adapter respawn even against
-an agent with no replay of its own. What agent panes still do not survive is a **daemon** exit: the
-mux state goes with it and the journal is left with no pane to replay into. See
-[Native Agent pane](/concepts/agent-pane.md).
+Agents are not that asymmetry: Claude Code and Codex run in terminal panes, so they follow the
+terminal. A turn survives the GUI closing or detaching, and a client that opens the
+[agent lens](/concepts/agent-lens.md) again gets the timeline replayed from the lens runtime, which
+read it from the CLI's own transcript. What stays client-side is the rendering half: the reduced
+entries and the composer draft. A **daemon** exit takes the terminal and its CLI with it; the CLI's
+transcript stays on disk for the CLI to resume from.
 
 # Transport per platform
 

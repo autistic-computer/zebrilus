@@ -4,7 +4,7 @@ title: zz-mux crate . renderer-free mux state machine
 description: The pure, UI-agnostic multiplexer core that owns sessions/windows/panes/splits, resolves tmux-style targets, executes tmux-compatible commands, holds key tables, and parses .tmux.conf.
 resource: crates/zz-mux/src/lib.rs
 tags: [mux, tmux, state-machine, crate, layout]
-timestamp: 2026-08-01T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -56,11 +56,11 @@ counter bumped on every mutation. Each `Window` owns its panes (`BTreeMap<PaneId
 recursive [`LayoutNode`](/concepts/split-pane-layout.md) split tree, a canonical `pane_order` vector,
 a most-recently-used `last_panes` history, `zoomed_pane`, and `previous_layout`/`last_layout` for
 layout undo. A `Pane` is an ID, a title, a `PaneKind` . `Picker { inherit_cwd_from }`, `Terminal`,
-`Browser(BrowserDescriptor)`, `Agent(AgentDescriptor)`, or `Editor(EditorDescriptor)` . and packed
+`Browser(BrowserDescriptor)`, or `Editor(EditorDescriptor)` . and packed
 per-pane/window `InputOptions` (including `synchronize-panes`, `automatic-rename`, and
 `aggressive-resize` override bits). `Picker` is the runtime-free pending state a new pane sits in
-until the user chooses its kind; `Agent` carries the provider (Codex or Claude Code), working
-directory, and opaque ACP session ID the GUI restores a native Agent pane from. Pane titles are live
+until the user chooses its kind. There is no agent kind: Claude Code and Codex run in `Terminal`
+panes, and clients draw the [agent lens](/concepts/agent-lens.md) over them. Pane titles are live
 metadata updated independently of explicit window names; tmux-compatible `select-pane -T` changes a
 title without selecting the pane.
 

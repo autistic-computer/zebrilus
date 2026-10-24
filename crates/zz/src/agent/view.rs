@@ -1,36 +1,26 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    path::{Path, PathBuf},
-    rc::Rc,
     sync::Arc,
 };
 use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, composer_ground};
 use zz_ui::agent::controls::{
-    AgentControlChoice, AgentControlSelection, ComposerAction, agent_chrome_button,
-    agent_config_picker, agent_directory_button, agent_model_picker, agent_pane_title,
-    agent_queue_chip, composer_action, composer_action_button, context_usage_meter,
+    ComposerAction, agent_queue_chip, composer_action, composer_action_button, context_usage_meter,
     git_summary_footer,
 };
 #[cfg(test)]
 use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_file_count_label};
-use zz_ui::agent::history::{
-    HistoryPicker, history_delete_banner, history_directories, history_directory_heading,
-    history_directory_row, history_hints, history_session_row,
-};
 #[cfg(test)]
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
+#[cfg(test)]
+use zz_ui::agent::presentation::rendered_error;
 use zz_ui::agent::presentation::{
-    card_button, empty_state, error_card, permission_card, permission_option, rendered_error,
-    spinner_phase, welcome_state,
+    empty_state, error_card, permission_card, permission_option, spinner_phase, welcome_state,
 };
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
-use zz_ui::agent::title::{agent_thread_title_editor, agent_title_is_editing};
-use zz_ui::feedback::alert_actions;
 
-use chrono::{DateTime, Datelike as _, Local, NaiveDate, Timelike as _};
 use zz_client::agent_completion::{
-    CommandCompletion, active_command_hint, bare_command_name, completion_query, completion_score,
+    CommandCompletion, active_command_hint, bare_command_name, completion_query,
     meaningful_command_description, pane_commands, ranked_completions,
 };
 use zz_client::agent_transcript::rewind_command;
@@ -39,43 +29,36 @@ use zz_gpui::{
     KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render, ScrollStrategy,
     SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
-use zz_protocol::{AgentDescriptor, AgentProvider, CommandInvocation, PaneId};
+use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
 use zz_ui::agent::{
-    AGENT_CONTENT_MAX_WIDTH, AgentAside, AgentEntry, AgentMarkdown, AgentPaneStatus, AgentTimeline,
+    AGENT_CONTENT_MAX_WIDTH, AgentAside, AgentEntry, AgentMarkdown, AgentTimeline,
     AgentTimelineStore, AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus,
     AgentToolText, FoldedTimelineRows, MarkdownSlot, TimelineRow, TimelineStick,
-    agent_jump_to_bottom_button, agent_pane_header, agent_status_pill, append_timeline_row,
-    composer_attachment, fold_timeline_rows, plan_progress, timeline_group_kind, timeline_parent,
-    tool_output_text,
+    agent_jump_to_bottom_button, append_timeline_row, composer_attachment, fold_timeline_rows,
+    plan_progress, timeline_group_kind, timeline_parent, tool_output_text,
 };
 use zz_ui::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Disableable as _, IconName,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     scroll::Scrollbar,
 };
 
 use crate::{
     agent::attachment as agent_attachment,
     agent::controller::{
-        AgentCommand, AgentConfigCategory, AgentConfigOption, AgentConnectionState,
-        AgentController, AgentPaneState, AgentPermissionKind, AgentPermissionRequest,
-        AgentSessionCapabilities, AgentSessionHistoryState, AgentSessionSummary, AgentThreadEntry,
-        AgentToolKindModel, AgentToolStatusModel, ToolPayload,
+        AgentCommand, AgentConnectionState, AgentController, AgentPaneState, AgentPermissionKind,
+        AgentPermissionRequest, AgentSessionCapabilities, AgentThreadEntry, AgentToolKindModel,
+        AgentToolStatusModel, ToolPayload,
     },
     config::pane_content_radii,
-    file_picker::{DirectoryCatalog, directory_picker_root},
-    mux::{client::MuxClient, hosts::HostId},
+    mux::client::MuxClient,
     window::corners::{WindowCorners, round_div_radii},
 };
 
 const AGENT_KEY_CONTEXT: &str = "Agent";
 const STICK_FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
-
-impl zz_gpui::EventEmitter<PaneDrag> for AgentView {}
 
 /// Whether the pane shows busy chrome. This reads the connection phase and
 /// nothing else: an adapter that never sends a final tool update leaves rows
@@ -89,13 +72,6 @@ const fn pane_is_busy(connection: AgentConnectionState) -> bool {
             | AgentConnectionState::Running
             | AgentConnectionState::Cancelling
     )
-}
-
-const fn directory_picker_enabled(
-    connection: AgentConnectionState,
-    pending_permission: bool,
-) -> bool {
-    connection.accepts_prompt() && !pending_permission
 }
 
 enum TimelineStoreUpdate {
@@ -487,7 +463,6 @@ pub(crate) struct AgentView {
     mux: Entity<MuxClient>,
     controller: Entity<AgentController>,
     input: Entity<InputState>,
-    history_input: Entity<InputState>,
     visible: bool,
     pane_state: AgentPaneState,
     timeline: TimelineModel,
@@ -507,79 +482,15 @@ pub(crate) struct AgentView {
     completion_dismissed: bool,
     last_input: String,
     last_cursor: usize,
-    history_open: bool,
-    history_compact: bool,
-    project_directory: Option<PathBuf>,
-    project_hovered: Option<PathBuf>,
-    project_rows: Arc<[ProjectDirectory]>,
-    project_focus: bool,
-    project_scroll: UniformListScrollHandle,
-    directory_matches: Vec<(SharedString, PathBuf)>,
-    history_results: Arc<[usize]>,
-    history_selected: Option<usize>,
-    history_scroll: UniformListScrollHandle,
-    history_delete_confirmation: Option<Arc<str>>,
-    last_history_query: String,
-    directory_catalog: Option<Entity<DirectoryCatalog>>,
     window_corners: WindowCorners,
-    chrome: AgentPaneChrome,
-    _subscriptions: Vec<Subscription>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct AgentPaneChrome {
-    connected: bool,
-    attached_host: HostId,
-    title: String,
-    active: bool,
-    can_drag: bool,
     floats: bool,
-}
-
-impl AgentPaneChrome {
-    #[cfg(all(test, not(target_os = "macos")))]
-    fn detached() -> Self {
-        Self {
-            connected: false,
-            attached_host: HostId::LOCAL,
-            title: String::new(),
-            active: false,
-            can_drag: false,
-            floats: false,
-        }
-    }
-
-    fn read(mux: &MuxClient, pane: PaneId) -> Self {
-        let snapshot = mux.snapshot();
-        let connected = mux.is_connected();
-        let windows = || {
-            snapshot
-                .sessions
-                .iter()
-                .flat_map(|session| &session.windows)
-        };
-        Self {
-            connected,
-            attached_host: mux.attached_host(),
-            title: windows()
-                .find_map(|window| window.panes.get(&pane))
-                .map_or_else(|| "New session".to_owned(), |pane| pane.title.clone()),
-            active: windows().any(|window| window.active_pane == pane),
-            can_drag: connected
-                && windows().any(|window| {
-                    window.panes.contains_key(&pane)
-                        && window.zoomed_pane.is_none()
-                        && window.panes.len() > 1
-                }),
-            floats: zz_client::floating::pane_floats(&snapshot, pane),
-        }
-    }
+    _subscriptions: Vec<Subscription>,
 }
 
 impl AgentView {
     pub(crate) fn new(
         pane: PaneId,
-        descriptor: &AgentDescriptor,
+        provider: AgentProvider,
         controller: Entity<AgentController>,
         mux: Entity<MuxClient>,
         window: &mut Window,
@@ -589,11 +500,9 @@ impl AgentView {
             InputState::new(window, cx)
                 .auto_grow(2, 8)
                 .submit_on_enter(true)
-                .placeholder("Ask the agent…")
+                .placeholder("Type to the agent…")
                 .context_menu(true)
         });
-        let history_input = cx
-            .new(|cx| InputState::new(window, cx).placeholder("Search directories and sessions…"));
         let timeline_store = cx.new(|_| AgentTimelineStore::owned_by(pane.0));
         let timeline_store_observer = cx.observe(&timeline_store, |_, _, cx| cx.notify());
         let input_observer = cx.observe(&input, |view, input, cx| {
@@ -609,19 +518,18 @@ impl AgentView {
                 _ => {}
             },
         );
-        let history_input_subscription = cx.subscribe_in(
-            &history_input,
-            window,
-            |view, input, event: &InputEvent, window, cx| match event {
-                InputEvent::Change => view.synchronize_history_input(input, cx),
-                InputEvent::PressEnter { .. } => {
-                    view.open_selected_history(window, cx);
-                }
-                _ => {}
-            },
-        );
-        controller.update(cx, |controller, cx| {
-            controller.ensure_pane(pane, descriptor, cx);
+        let cwd = mux
+            .read(cx)
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&pane))
+            .map(|pane| std::path::PathBuf::from(&pane.summary.cwd))
+            .filter(|cwd| cwd.is_absolute())
+            .unwrap_or_else(|| std::path::PathBuf::from("/"));
+        controller.update(cx, |controller, _| {
+            controller.ensure_pane(pane, provider, cwd);
         });
         let (pane_state, timeline, timeline_next_revision, conversation_epoch) = {
             let controller = controller.read(cx);
@@ -657,11 +565,11 @@ impl AgentView {
                 cx.notify();
             }
         });
-        let chrome = AgentPaneChrome::read(mux.read(cx), pane);
+        let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), pane);
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
-            let chrome = AgentPaneChrome::read(mux.read(cx), view.pane);
-            if view.chrome != chrome {
-                view.chrome = chrome;
+            let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
+            if view.floats != floats {
+                view.floats = floats;
                 cx.notify();
             }
         });
@@ -670,7 +578,6 @@ impl AgentView {
             mux,
             controller,
             input,
-            history_input,
             visible: false,
             pane_state,
             timeline,
@@ -690,27 +597,12 @@ impl AgentView {
             completion_dismissed: false,
             last_input: String::new(),
             last_cursor: 0,
-            history_open: false,
-            history_compact: true,
-            project_directory: None,
-            project_hovered: None,
-            project_rows: Arc::from([]),
-            project_focus: false,
-            project_scroll: UniformListScrollHandle::new(),
-            directory_matches: Vec::new(),
-            history_results: Arc::from([]),
-            history_selected: None,
-            history_scroll: UniformListScrollHandle::new(),
-            history_delete_confirmation: None,
-            last_history_query: String::new(),
-            directory_catalog: None,
             window_corners: WindowCorners::NONE,
-            chrome,
+            floats,
             _subscriptions: vec![
                 input_observer,
                 timeline_store_observer,
                 input_subscription,
-                history_input_subscription,
                 controller_observer,
                 mux_observer,
             ],
@@ -773,23 +665,6 @@ impl AgentView {
         cx.notify();
     }
 
-    fn synchronize_history_input(&mut self, input: &Entity<InputState>, cx: &mut Context<Self>) {
-        let query = input.read(cx).value().to_string();
-        if query == self.last_history_query {
-            return;
-        }
-        self.last_history_query.clone_from(&query);
-        self.directory_matches.clear();
-        if let Some(catalog) = &self.directory_catalog {
-            catalog.update(cx, |catalog, cx| catalog.search(&query, cx));
-        }
-        self.recompute_history_results(&query);
-        self.project_scroll.scroll_to_item(0, ScrollStrategy::Top);
-        self.history_delete_confirmation = None;
-        self.submission_error = None;
-        cx.notify();
-    }
-
     fn synchronize_controller(
         &mut self,
         controller: &Entity<AgentController>,
@@ -849,24 +724,11 @@ impl AgentView {
             || provider_changed
             || self.pane_state.session_id != next_state.session_id;
         self.conversation_epoch = next_conversation_epoch;
-        let history_changed = provider_changed
-            || self.pane_state.session_history != next_state.session_history
-            || self.pane_state.session_id != next_state.session_id;
-        let selected_history_session_id = (history_changed && !provider_changed)
-            .then(|| self.selected_history_session_id())
-            .flatten();
         let commands_changed = provider_changed
             || self.pane_state.available_commands.as_ref()
                 != next_state.available_commands.as_ref();
         if state_changed {
             self.pane_state = next_state;
-        }
-        if history_changed {
-            let query = self.last_history_query.clone();
-            self.recompute_history_results_preserving(
-                &query,
-                selected_history_session_id.as_deref(),
-            );
         }
         if commands_changed {
             let commands = pane_commands(
@@ -918,71 +780,6 @@ impl AgentView {
             reduce_motion,
         );
         (timeline_changed || state_changed, store_update)
-    }
-
-    fn recompute_history_results(&mut self, query: &str) {
-        self.recompute_history_results_preserving(query, None);
-    }
-
-    fn recompute_history_results_preserving(
-        &mut self,
-        query: &str,
-        preferred_session_id: Option<&str>,
-    ) {
-        let mut directories = self.directory_matches.clone();
-        if query.is_empty()
-            && let Some(path) = &self.project_directory
-            && !directories.iter().any(|(_, candidate)| candidate == path)
-        {
-            directories.push((session_directory_label(path).into(), path.clone()));
-        }
-        self.project_rows = project_directory_rows(
-            &self.pane_state.cwd,
-            &self.pane_state.session_history.sessions,
-            &directories,
-            query,
-        )
-        .into();
-        if !self
-            .project_rows
-            .iter()
-            .any(|row| Some(&row.path) == self.project_directory.as_ref())
-        {
-            self.project_directory = self.project_rows.first().map(|row| row.path.clone());
-        }
-        let results = ranked_session_indices(&self.pane_state.session_history.sessions, query)
-            .into_iter()
-            .filter(|index| {
-                Some(&self.pane_state.session_history.sessions[*index].cwd)
-                    == self.project_directory.as_ref()
-            })
-            .collect::<Vec<_>>();
-        let retained_selection = preferred_session_id.and_then(|session_id| {
-            history_result_index_for_session(
-                &self.pane_state.session_history.sessions,
-                &results,
-                session_id,
-            )
-        });
-        let selected = retained_selection.or_else(|| (!results.is_empty()).then_some(0));
-        self.history_results = results.into();
-        self.history_selected = selected;
-        if retained_selection.is_none()
-            && let Some(selected) = selected
-        {
-            self.history_scroll
-                .scroll_to_item(selected, ScrollStrategy::Top);
-        }
-    }
-
-    fn selected_history_session_id(&self) -> Option<String> {
-        let result_index = self.history_selected?;
-        let session_index = *self.history_results.get(result_index)?;
-        self.pane_state
-            .session_history
-            .sessions
-            .get(session_index)
-            .map(|session| session.session_id.clone())
     }
 
     fn synchronize_timeline(
@@ -1057,10 +854,6 @@ impl AgentView {
     }
 
     fn enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.history_open {
-            self.open_selected_history(window, cx);
-            return;
-        }
         if !self.completions.is_empty() {
             self.accept_selected_completion(window, cx);
             return;
@@ -1172,214 +965,6 @@ impl AgentView {
         cx.notify();
     }
 
-    fn open_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !directory_picker_enabled(
-            self.pane_state.connection,
-            !self.pane_state.pending_permissions.is_empty(),
-        ) {
-            return;
-        }
-        self.history_open = true;
-        self.project_hovered = None;
-        self.project_directory = Some(self.pane_state.cwd.clone());
-        self.project_focus = false;
-        if self.mux.read(cx).attached_host() == HostId::LOCAL {
-            let root = directory_picker_root(&self.pane_state.cwd);
-            let catalog = cx.new(|cx| DirectoryCatalog::new(root, cx));
-            cx.observe(&catalog, |view, catalog, cx| {
-                let selected = view.selected_history_session_id();
-                view.directory_matches.clone_from(&catalog.read(cx).entries);
-                view.recompute_history_results_preserving(
-                    &view.last_history_query.clone(),
-                    selected.as_deref(),
-                );
-                cx.notify();
-            })
-            .detach();
-            self.directory_catalog = Some(catalog);
-        }
-        self.history_delete_confirmation = None;
-        self.last_history_query.clear();
-        self.completions = Arc::from([]);
-        self.completion_selected = None;
-        self.history_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
-        self.recompute_history_results("");
-        self.submission_error = None;
-        if self.pane_state.session_capabilities.list {
-            self.refresh_history(cx);
-        }
-        self.history_input
-            .read(cx)
-            .focus_handle(cx)
-            .focus(window, cx);
-        cx.notify();
-    }
-
-    fn close_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.history_open = false;
-        self.project_hovered = None;
-        self.directory_catalog = None;
-        self.directory_matches.clear();
-        self.history_delete_confirmation = None;
-        self.focus(cx).focus(window, cx);
-        cx.notify();
-    }
-
-    fn refresh_history(&mut self, cx: &mut Context<Self>) {
-        let result = self.controller.update(cx, |controller, cx| {
-            controller.list_sessions(self.pane, true, false, cx)
-        });
-        self.submission_error = result.err();
-        cx.notify();
-    }
-
-    fn select_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        self.project_directory = Some(path);
-        self.project_focus = true;
-        self.history_delete_confirmation = None;
-        self.recompute_history_results(&self.last_history_query.clone());
-        cx.notify();
-    }
-
-    fn load_more_history(&mut self, cx: &mut Context<Self>) {
-        let result = self.controller.update(cx, |controller, cx| {
-            controller.list_sessions(self.pane, true, true, cx)
-        });
-        self.submission_error = result.err();
-        cx.notify();
-    }
-
-    fn navigate_history(&mut self, direction: isize, cx: &mut Context<Self>) {
-        if self.history_delete_confirmation.is_some() {
-            return;
-        }
-        if self.project_focus || self.history_results.is_empty() {
-            let count = self.project_rows.len();
-            if count == 0 {
-                return;
-            }
-            let current = self
-                .project_rows
-                .iter()
-                .position(|row| Some(&row.path) == self.project_directory.as_ref())
-                .unwrap_or_default();
-            let selected = if direction < 0 {
-                current.checked_sub(1).unwrap_or(count - 1)
-            } else {
-                (current + 1) % count
-            };
-            self.select_project(self.project_rows[selected].path.clone(), cx);
-            let recent = self
-                .project_rows
-                .iter()
-                .take_while(|row| row.recent)
-                .count();
-            let heading_count = 1 + usize::from(recent > 0 && selected >= recent);
-            self.project_scroll
-                .scroll_to_item(selected + heading_count, ScrollStrategy::Nearest);
-            return;
-        }
-        if self.history_results.is_empty() {
-            return;
-        }
-        let count = self.history_results.len();
-        let current = self.history_selected.unwrap_or_default();
-        let selected = if direction < 0 {
-            current.checked_sub(1).unwrap_or(count - 1)
-        } else {
-            (current + 1) % count
-        };
-        self.history_selected = Some(selected);
-        self.history_scroll
-            .scroll_to_item(selected, ScrollStrategy::Nearest);
-        cx.notify();
-    }
-
-    fn open_history_result(
-        &mut self,
-        result_index: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(session_index) = self.history_results.get(result_index).copied() else {
-            return;
-        };
-        let Some(session) = self
-            .pane_state
-            .session_history
-            .sessions
-            .get(session_index)
-            .cloned()
-        else {
-            return;
-        };
-        let result = self.controller.update(cx, |controller, cx| {
-            controller.switch_session(self.pane, session, cx)
-        });
-        match result {
-            Ok(()) => {
-                self.history_open = false;
-                self.directory_catalog = None;
-                self.directory_matches.clear();
-                self.history_delete_confirmation = None;
-                self.submission_error = None;
-                self.focus(cx).focus(window, cx);
-            }
-            Err(error) => self.submission_error = Some(error),
-        }
-        cx.notify();
-    }
-
-    fn open_selected_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.history_open || self.history_delete_confirmation.is_some() {
-            return;
-        }
-        if self.history_results.is_empty() {
-            self.start_new_session(window, cx);
-        } else if self.project_focus {
-            self.project_focus = false;
-            cx.notify();
-        } else if let Some(index) = self.history_selected {
-            self.open_history_result(index, window, cx);
-        }
-    }
-
-    fn start_new_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(directory) = self.project_directory.clone() else {
-            return;
-        };
-        let result = self.controller.update(cx, |controller, cx| {
-            if directory == self.pane_state.cwd {
-                controller.new_session(self.pane, cx)
-            } else {
-                controller.set_working_directory(self.pane, &directory, cx)
-            }
-        });
-        match result {
-            Ok(()) => {
-                self.history_open = false;
-                self.directory_catalog = None;
-                self.directory_matches.clear();
-                self.history_delete_confirmation = None;
-                self.submission_error = None;
-                self.focus(cx).focus(window, cx);
-            }
-            Err(error) => self.submission_error = Some(error),
-        }
-        cx.notify();
-    }
-
-    fn confirm_delete_history(&mut self, session_id: &str, cx: &mut Context<Self>) {
-        let result = self.controller.update(cx, |controller, cx| {
-            controller.delete_session(self.pane, session_id, cx)
-        });
-        self.submission_error = result.err();
-        self.history_delete_confirmation = None;
-        cx.notify();
-    }
-
     fn accept_completion(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(completion) = self.completions.get(index).cloned() else {
             return;
@@ -1406,15 +991,6 @@ impl AgentView {
     }
 
     fn complete(&mut self, _: &IndentInline, window: &mut Window, cx: &mut Context<Self>) {
-        if agent_title_is_editing(window) {
-            return;
-        }
-        if self.history_open {
-            self.project_focus = !self.project_focus;
-            cx.notify();
-            cx.stop_propagation();
-            return;
-        }
         if self.completions.is_empty() {
             return;
         }
@@ -1422,49 +998,22 @@ impl AgentView {
         cx.stop_propagation();
     }
 
-    fn move_completion_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
-        if agent_title_is_editing(window) {
-            return;
-        }
-        if self.history_open {
-            self.navigate_history(-1, cx);
-            cx.stop_propagation();
-        } else if !self.completions.is_empty() {
+    fn move_completion_up(&mut self, _: &MoveUp, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.completions.is_empty() {
             self.navigate_completion(-1, cx);
             cx.stop_propagation();
         }
     }
 
-    fn move_completion_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
-        if agent_title_is_editing(window) {
-            return;
-        }
-        if self.history_open {
-            self.navigate_history(1, cx);
-            cx.stop_propagation();
-        } else if !self.completions.is_empty() {
+    fn move_completion_down(&mut self, _: &MoveDown, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.completions.is_empty() {
             self.navigate_completion(1, cx);
             cx.stop_propagation();
         }
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if agent_title_is_editing(window) {
-            return;
-        }
-        if self.history_open && event.keystroke.key.as_str() == "escape" {
-            if self.history_delete_confirmation.take().is_some() {
-                cx.notify();
-            } else {
-                self.close_history(window, cx);
-            }
-            cx.stop_propagation();
-            return;
-        }
-        if self.completions.is_empty()
-            && !self.history_open
-            && self.handle_permission_key(event, window, cx)
-        {
+        if self.completions.is_empty() && self.handle_permission_key(event, window, cx) {
             cx.stop_propagation();
             return;
         }
@@ -1912,46 +1461,6 @@ impl AgentView {
         (total > 0 && (done < total || state.connection.has_active_turn())).then_some(source)
     }
 
-    fn pane_status(state: &AgentPaneState) -> Option<AgentPaneStatus> {
-        if !state.pending_permissions.is_empty() {
-            return Some(AgentPaneStatus::Waiting);
-        }
-        match state.connection {
-            AgentConnectionState::Running => Some(AgentPaneStatus::Running),
-            AgentConnectionState::Cancelling => Some(AgentPaneStatus::Stopping),
-            AgentConnectionState::Failed => Some(AgentPaneStatus::Exited),
-            AgentConnectionState::Disconnected => Some(AgentPaneStatus::Offline),
-            AgentConnectionState::Starting
-            | AgentConnectionState::Restoring
-            | AgentConnectionState::Ready => None,
-        }
-    }
-
-    fn render_status(
-        &self,
-        state: &AgentPaneState,
-        view: &Entity<Self>,
-        cx: &mut zz_gpui::App,
-    ) -> Option<AnyElement> {
-        let status = Self::pane_status(state)?;
-        let phase = if matches!(status, AgentPaneStatus::Running | AgentPaneStatus::Stopping) {
-            spinner_phase(view.entity_id(), cx)
-        } else {
-            0.0
-        };
-        let restart = (status == AgentPaneStatus::Exited).then(|| {
-            let controller = self.controller.clone();
-            let pane = self.pane;
-            Rc::new(move |_: &mut Window, cx: &mut zz_gpui::App| {
-                controller.update(cx, |controller, cx| controller.retry(pane, cx));
-            }) as Rc<dyn Fn(&mut Window, &mut zz_gpui::App)>
-        });
-        Some(
-            agent_status_pill(("agent-status", self.pane.0), status, phase, restart, cx)
-                .into_any_element(),
-        )
-    }
-
     fn open_output(&self, tool: &AgentToolEntry, cx: &mut Context<Self>) {
         let Some(args) = zz_client::agent_output::output_pane_args(
             self.pane,
@@ -1999,118 +1508,8 @@ impl AgentView {
         let error = runtime_error
             .clone()
             .or_else(|| self.submission_error.clone())?;
-        let retry_controller = self.controller.clone();
-        let pane = self.pane;
         let stopped = runtime_error.is_some() && state.connection == AgentConnectionState::Failed;
-        Some(error_card(&error, stopped, cx).when(stopped, |this| {
-            let auth_buttons = state
-                .auth_methods
-                .iter()
-                .enumerate()
-                .map(|(index, method)| {
-                    let controller = self.controller.clone();
-                    let method_id = method.id.clone();
-                    card_button(
-                        Button::new(format!("agent-auth-{}-{index}", self.pane.0)).secondary(),
-                        cx,
-                    )
-                    .label(method.name.clone())
-                    .tooltip(
-                        method
-                            .description
-                            .clone()
-                            .unwrap_or_else(|| "Authenticate with the agent".to_owned()),
-                    )
-                    .on_click(move |_, _, cx| {
-                        controller.update(cx, |controller, cx| {
-                            controller.authenticate(pane, method_id.clone(), cx);
-                        });
-                    })
-                });
-            this.child(
-                alert_actions(cx).children(auth_buttons).child(
-                    card_button(
-                        Button::new(format!("agent-retry-{}", self.pane.0)).primary(),
-                        cx,
-                    )
-                    .label(if state.lifecycle_pending {
-                        "Restarting…"
-                    } else {
-                        "Try again"
-                    })
-                    .disabled(state.lifecycle_pending)
-                    .on_click(move |_, _, cx| {
-                        retry_controller.update(cx, |controller, cx| {
-                            controller.retry(pane, cx);
-                        });
-                    }),
-                ),
-            )
-        }))
-    }
-
-    fn render_model_picker(
-        &self,
-        state: &AgentPaneState,
-        view: Entity<Self>,
-        window: &mut Window,
-        cx: &mut zz_gpui::App,
-    ) -> AnyElement {
-        let option = state
-            .config_options
-            .iter()
-            .find(|option| option.category == AgentConfigCategory::Model);
-        let effort = state
-            .config_options
-            .iter()
-            .find(|option| option.category == AgentConfigCategory::ThoughtLevel);
-        let selection = |option: &AgentConfigOption| AgentControlSelection {
-            current_value: option.current_value.clone(),
-            choices: option
-                .choices
-                .iter()
-                .map(|choice| AgentControlChoice {
-                    value: choice.value.clone(),
-                    name: choice.name.clone(),
-                    description: choice.description.clone(),
-                })
-                .collect(),
-        };
-        let catalog_view = view.clone();
-        agent_model_picker(
-            ("agent-model-picker", self.pane.0),
-            (
-                format!("{:?}", self.chrome.attached_host),
-                state.cwd.clone(),
-            ),
-            state.provider,
-            option.map(&selection).unwrap_or_default(),
-            effort.map(selection),
-            !state.connection.has_active_turn()
-                && !state.lifecycle_pending
-                && !state.settings_busy
-                && state.pending_permissions.is_empty(),
-            state.connection.accepts_prompt() && !state.lifecycle_pending,
-            state.catalogs.to_vec(),
-            move |provider, cx| {
-                catalog_view.update(cx, |view, cx| {
-                    view.controller.update(cx, |controller, cx| {
-                        controller.request_catalog(view.pane, provider, cx);
-                    });
-                });
-            },
-            move |selection, cx| {
-                view.update(cx, |view, cx| {
-                    let result = view.controller.update(cx, |controller, cx| {
-                        controller.apply_settings(view.pane, selection, cx)
-                    });
-                    view.submission_error = result.err();
-                    cx.notify();
-                });
-            },
-            window,
-            cx,
-        )
+        Some(error_card(&error, stopped, cx))
     }
 
     /// The jump-to-bottom pill, floated over the timeline just above the
@@ -2133,500 +1532,6 @@ impl AgentView {
                     },
                 ),
             )
-    }
-
-    fn render_directory_picker(
-        &self,
-        state: &AgentPaneState,
-        view: Entity<Self>,
-        cx: &zz_gpui::App,
-    ) -> impl IntoElement {
-        let ready =
-            directory_picker_enabled(state.connection, !state.pending_permissions.is_empty());
-        let cwd = state.cwd.display().to_string();
-        agent_directory_button(
-            ("agent-working-directory", self.pane.0),
-            session_directory_label(&state.cwd),
-            ready,
-            cx,
-        )
-        .tooltip(
-            if state.connection.has_active_turn() || !state.pending_permissions.is_empty() {
-                "Finish or cancel the current turn before changing the working directory".to_owned()
-            } else if !state.connection.accepts_prompt() {
-                "Wait for the agent to be ready before changing the working directory".to_owned()
-            } else {
-                format!("{cwd} · browse directories and sessions")
-            },
-        )
-        .on_click(move |_, window, cx| {
-            view.update(cx, |view, cx| view.open_history(window, cx));
-            cx.stop_propagation();
-        })
-    }
-
-    fn render_history_overlay(
-        &self,
-        state: &AgentPaneState,
-        view: &Entity<Self>,
-        cx: &zz_gpui::App,
-    ) -> impl IntoElement {
-        let compact = self.history_compact;
-        let layout_view = view.clone();
-        let sessions = state.session_history.sessions.clone();
-        let results = self.history_results.clone();
-        let selected = self.history_selected;
-        let current_session = state.session_id.clone();
-        let can_delete = state.session_capabilities.delete;
-        let loading = state.session_history.loading;
-        let pane = self.pane;
-        let today = Local::now().date_naive();
-        let rows_view = view.clone();
-        let rows = uniform_list(
-            ("agent-history-rows", pane.0),
-            results.len(),
-            move |range, _, cx| {
-                range
-                    .filter_map(|result_index| {
-                        let session_index = *results.get(result_index)?;
-                        let session = sessions.get(session_index)?.clone();
-                        let title = session_display_title(&session);
-                        let updated_at = session
-                            .updated_at
-                            .as_deref()
-                            .map(|value| format_session_timestamp(value, today).into());
-                        let is_selected = selected == Some(result_index);
-                        let is_current =
-                            current_session.as_deref() == Some(session.session_id.as_str());
-                        let pointer_view = rows_view.clone();
-                        let click_view = rows_view.clone();
-                        let delete_view = rows_view.clone();
-                        let delete_id: Arc<str> = Arc::from(session.session_id);
-                        let delete = (can_delete && !is_current && is_selected).then(|| {
-                            agent_chrome_button(format!(
-                                "agent-history-delete-{}-{result_index}",
-                                pane.0
-                            ))
-                            .disabled(loading)
-                            .on_click(move |_, _, cx| {
-                                let delete_id = delete_id.clone();
-                                delete_view.update(cx, |view, cx| {
-                                    view.history_delete_confirmation = Some(delete_id);
-                                    cx.notify();
-                                });
-                                cx.stop_propagation();
-                            })
-                        });
-                        Some(
-                            history_session_row(
-                                format!("agent-history-row-{}-{result_index}", pane.0),
-                                title,
-                                updated_at,
-                                is_selected,
-                                is_current,
-                                delete,
-                                cx,
-                            )
-                            .debug_selector(move || format!("agent-history-row-{result_index}"))
-                            .on_mouse_move(move |_, _, cx| {
-                                pointer_view.update(cx, |view, cx| {
-                                    if view.history_selected != Some(result_index)
-                                        || view.project_focus
-                                    {
-                                        view.project_focus = false;
-                                        view.history_selected = Some(result_index);
-                                        cx.notify();
-                                    }
-                                });
-                            })
-                            .on_click(move |_, window, cx| {
-                                click_view.update(cx, |view, cx| {
-                                    view.open_history_result(result_index, window, cx);
-                                });
-                                cx.stop_propagation();
-                            }),
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            },
-        )
-        .flex_1()
-        .w_full()
-        .track_scroll(&self.history_scroll);
-
-        let refresh_view = view.clone();
-        let backdrop_view = view.clone();
-        let load_more_view = view.clone();
-        let new_view = view.clone();
-        let key_view = view.clone();
-        let directory = self.project_directory.as_deref();
-        let new_label = directory.map_or_else(
-            || "New session".to_owned(),
-            |path| format!("New session in {}", session_directory_label(path)),
-        );
-        let delete_confirmation = self.history_delete_confirmation.clone();
-        let footer = if let Some(session_id) = delete_confirmation {
-            let cancel_view = view.clone();
-            let delete_view = view.clone();
-            let confirm_id = session_id.clone();
-            history_delete_banner(
-                compact,
-                agent_chrome_button(("agent-history-delete-cancel", pane.0)).on_click(
-                    move |_, _, cx| {
-                        cancel_view.update(cx, |view, cx| {
-                            view.history_delete_confirmation = None;
-                            cx.notify();
-                        });
-                        cx.stop_propagation();
-                    },
-                ),
-                agent_chrome_button(("agent-history-delete-confirm", pane.0))
-                    .danger()
-                    .disabled(loading)
-                    .on_click(move |_, _, cx| {
-                        delete_view.update(cx, |view, cx| {
-                            view.confirm_delete_history(&confirm_id, cx);
-                        });
-                        cx.stop_propagation();
-                    }),
-                cx,
-            )
-            .into_any_element()
-        } else {
-            let error = self
-                .submission_error
-                .clone()
-                .or_else(|| state.session_history.error.clone());
-            zz_ui::picker::picker_footer(cx)
-                .flex_wrap()
-                .when_some(error, |this, error| {
-                    this.child(
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
-                            .text_color(cx.theme().danger)
-                            .child(rendered_error(&error)),
-                    )
-                })
-                .when(state.session_history.loading, |this| {
-                    this.child("Loading sessions…")
-                })
-                .when(
-                    !compact
-                        && !state.session_history.loading
-                        && state.session_history.error.is_none(),
-                    |this| this.child(history_hints(can_delete)),
-                )
-                .child(div().flex_1())
-                .when(state.session_history.next_cursor.is_some(), |this| {
-                    this.child(
-                        agent_chrome_button(("agent-history-load-more", pane.0))
-                            .debug_selector(|| "agent-history-load-more".into())
-                            .label("Load more")
-                            .disabled(loading)
-                            .on_click(move |_, _, cx| {
-                                load_more_view.update(cx, |view, cx| {
-                                    view.load_more_history(cx);
-                                });
-                                cx.stop_propagation();
-                            }),
-                    )
-                })
-                .child(
-                    agent_chrome_button(("agent-project-new", pane.0))
-                        .primary()
-                        .debug_selector(|| "agent-project-new".into())
-                        .min_w_0()
-                        .max_w_full()
-                        .child(
-                            div()
-                                .min_w_0()
-                                .max_w(px(240.0))
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .child(new_label),
-                        )
-                        .disabled(
-                            directory.is_none()
-                                || !directory_picker_enabled(
-                                    state.connection,
-                                    !state.pending_permissions.is_empty(),
-                                ),
-                        )
-                        .tooltip("Start a new session in the selected directory (Cmd/Ctrl+Enter)")
-                        .on_click(move |_, window, cx| {
-                            new_view.update(cx, |view, cx| view.start_new_session(window, cx));
-                            cx.stop_propagation();
-                        }),
-                )
-                .into_any_element()
-        };
-
-        HistoryPicker {
-            pane: pane.0,
-            input: self.history_input.clone(),
-            compact,
-            on_layout: Box::new(move |compact, cx| {
-                layout_view.update(cx, |view, cx| {
-                    if view.history_compact != compact {
-                        view.history_compact = compact;
-                        cx.notify();
-                    }
-                });
-            }),
-            directories: self.render_project_directories(view, cx).into_any_element(),
-            directory: directory
-                .map_or_else(String::new, |path| path.display().to_string())
-                .into(),
-            refresh: state.session_capabilities.list.then(|| {
-                agent_chrome_button(("agent-history-refresh", pane.0))
-                    .disabled(loading)
-                    .on_click(move |_, _, cx| {
-                        refresh_view.update(cx, |view, cx| {
-                            view.refresh_history(cx);
-                        });
-                        cx.stop_propagation();
-                    })
-            }),
-            sessions: rows.into_any_element(),
-            sessions_scroll: self.history_scroll.clone(),
-            empty: self.history_results.is_empty().then(|| {
-                if loading {
-                    "Loading sessions…"
-                } else if !state.session_capabilities.list {
-                    "This agent does not provide session history."
-                } else if directory.is_none() {
-                    "Choose a directory."
-                } else if self.last_history_query.is_empty() {
-                    "No sessions in this directory."
-                } else {
-                    "No sessions match that search."
-                }
-                .into()
-            }),
-            footer,
-        }
-        .render(cx)
-        .track_focus(&self.history_input.read(cx).focus_handle(cx))
-        .capture_key_down(move |event, window, cx| {
-            key_view.update(cx, |view, cx| view.on_project_picker_key(event, window, cx));
-        })
-        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-            backdrop_view.update(cx, |view, cx| view.close_history(window, cx));
-            cx.stop_propagation();
-        })
-    }
-
-    fn render_project_directories(
-        &self,
-        view: &Entity<Self>,
-        cx: &zz_gpui::App,
-    ) -> impl IntoElement {
-        let directories = self.project_rows.clone();
-        let selected = self.project_directory.clone();
-        let hovered = self.project_hovered.clone();
-        let recent = directories.iter().take_while(|row| row.recent).count();
-        let mut entries = Vec::new();
-        for index in 0..directories.len() {
-            if index == 0 || index == recent {
-                entries.push(None);
-            }
-            entries.push(Some(index));
-        }
-        let view = view.clone();
-        let rows = uniform_list(
-            ("agent-project-directories", self.pane.0),
-            entries.len(),
-            move |range, _, cx| {
-                range
-                    .map(|index| {
-                        let Some(directory_index) = entries[index] else {
-                            return history_directory_heading(index, index == 0 && recent > 0, cx)
-                                .into_any_element();
-                        };
-                        let directory = &directories[directory_index];
-                        let path = directory.path.clone();
-                        let highlighted =
-                            Some(&path) == selected.as_ref() || Some(&path) == hovered.as_ref();
-                        let pointer_path = path.clone();
-                        let pointer_view = view.clone();
-                        let view = view.clone();
-                        history_directory_row(
-                            directory_index,
-                            directory.label.clone(),
-                            directory.sessions,
-                            highlighted,
-                            cx,
-                        )
-                        .on_hover(move |hovered, _, cx| {
-                            pointer_view.update(cx, |view, cx| {
-                                let next = if *hovered {
-                                    Some(pointer_path.clone())
-                                } else if view.project_hovered.as_ref() == Some(&pointer_path) {
-                                    None
-                                } else {
-                                    return;
-                                };
-                                if view.project_hovered != next {
-                                    view.project_hovered = next;
-                                    cx.notify();
-                                }
-                            });
-                        })
-                        .on_click(move |_, _, cx| {
-                            view.update(cx, |view, cx| view.select_project(path.clone(), cx));
-                            cx.stop_propagation();
-                        })
-                        .into_any_element()
-                    })
-                    .collect::<Vec<_>>()
-            },
-        )
-        .flex_1()
-        .w_full()
-        .track_scroll(&self.project_scroll);
-        let catalog = self
-            .directory_catalog
-            .as_ref()
-            .map(|catalog| catalog.read(cx));
-        let notes = catalog.map(|catalog| {
-            div()
-                .flex_none()
-                .max_h(px(40.0))
-                .overflow_hidden()
-                .text_size(zz_ui::rems_from_px(10.0))
-                .text_color(cx.theme().foreground.muted())
-                .px_2()
-                .when(catalog.scanning, |note| note.child("Scanning directories…"))
-                .when(catalog.limited, |note| {
-                    note.child("Enter a full path for directories outside this scan.")
-                })
-                .when_some(catalog.error.clone(), zz_gpui::ParentElement::child)
-                .into_any_element()
-        });
-        history_directories(self.history_compact, rows, &self.project_scroll, notes, cx)
-    }
-
-    fn on_project_picker_key(
-        &mut self,
-        event: &KeyDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let modifiers = event.keystroke.modifiers;
-        match event.keystroke.key.as_str() {
-            "enter" if modifiers.platform => {
-                if self.history_delete_confirmation.is_none() {
-                    self.start_new_session(window, cx);
-                }
-            }
-            "tab" => {
-                self.project_focus = !self.project_focus;
-                cx.notify();
-            }
-            "up" if !modifiers.platform && !modifiers.alt => self.navigate_history(-1, cx),
-            "down" if !modifiers.platform && !modifiers.alt => self.navigate_history(1, cx),
-            "delete" if !self.project_focus => self.request_delete_selected_history(cx),
-            "backspace" if !self.project_focus && self.last_history_query.is_empty() => {
-                self.request_delete_selected_history(cx);
-            }
-            "escape" => {
-                if self.history_delete_confirmation.take().is_some() {
-                    cx.notify();
-                } else {
-                    self.close_history(window, cx);
-                }
-            }
-            _ => return,
-        }
-        cx.stop_propagation();
-    }
-
-    fn request_delete_selected_history(&mut self, cx: &mut Context<Self>) {
-        if self.pane_state.session_capabilities.delete
-            && !self.pane_state.session_history.loading
-            && let Some(session_id) = self.selected_history_session_id()
-            && self.pane_state.session_id.as_deref() != Some(session_id.as_str())
-        {
-            self.history_delete_confirmation = Some(session_id.into());
-            cx.notify();
-        }
-    }
-
-    fn render_config_picker(
-        &self,
-        option: &AgentConfigOption,
-        icon: IconName,
-        view: Entity<Self>,
-        enabled: bool,
-    ) -> zz_gpui::AnyElement {
-        let option_id = option.id.clone();
-        agent_config_picker(
-            format!("agent-config-picker-{}-{}", self.pane.0, option.id),
-            icon,
-            &option.current_value,
-            &option.name,
-            option.description.as_deref().unwrap_or(&option.name),
-            option
-                .choices
-                .iter()
-                .map(|choice| AgentControlChoice {
-                    value: choice.value.clone(),
-                    name: choice.name.clone(),
-                    description: choice.description.clone(),
-                })
-                .collect(),
-            enabled,
-            move |value, _, cx| {
-                view.update(cx, |view, cx| {
-                    let result = view.controller.update(cx, |controller, cx| {
-                        controller.set_config_option(view.pane, &option_id, value, cx)
-                    });
-                    view.submission_error = result.err();
-                    cx.notify();
-                });
-            },
-        )
-    }
-
-    fn render_legacy_mode_picker(
-        &self,
-        state: &AgentPaneState,
-        view: Entity<Self>,
-        enabled: bool,
-    ) -> Option<zz_gpui::AnyElement> {
-        if !state.config_options.is_empty() || state.modes.is_empty() {
-            return None;
-        }
-        Some(agent_config_picker(
-            ("agent-mode-picker", self.pane.0),
-            IconName::Check,
-            state.mode.as_deref().unwrap_or_default(),
-            "Permissions",
-            "Agent permission mode",
-            state
-                .modes
-                .iter()
-                .map(|mode| AgentControlChoice {
-                    value: mode.id.clone(),
-                    name: mode.name.clone(),
-                    description: mode.description.clone(),
-                })
-                .collect(),
-            enabled,
-            move |mode_id, _, cx| {
-                view.update(cx, |view, cx| {
-                    let result = view.controller.update(cx, |controller, cx| {
-                        controller.set_mode(view.pane, mode_id, cx)
-                    });
-                    view.submission_error = result.err();
-                    cx.notify();
-                });
-            },
-        ))
     }
 
     fn render_completions(
@@ -2692,33 +1597,13 @@ impl AgentView {
         Some(zz_ui::agent::slash::suggestion_list(rows, cx).into_any_element())
     }
 
-    #[allow(clippy::redundant_closure_for_method_calls)]
-    fn render_watch_footer(
-        &self,
-        state: &AgentPaneState,
-        view: &Entity<Self>,
-        cx: &mut zz_gpui::App,
-    ) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .flex_none()
-            .gap_2()
-            .px(px(COMPOSER_OUTER_PADDING))
-            .pb(px(COMPOSER_OUTER_PADDING))
-            .children(self.render_task_tray(state, view, cx))
-            .children(self.render_error(state, cx))
-    }
-
     fn render_composer(
         &self,
         state: &AgentPaneState,
         view: &Entity<Self>,
-        window: &mut Window,
         cx: &mut zz_gpui::App,
     ) -> impl IntoElement {
-        let can_submit = state.connection.accepts_prompt() && !state.settings_busy;
+        let can_submit = state.connection.accepts_prompt();
         let action_kind = composer_action(
             state.connection.has_active_turn(),
             self.composer_has_content(),
@@ -2741,25 +1626,6 @@ impl AgentView {
                 submit_view.update(cx, |view, cx| view.submit(window, cx));
             })
         };
-        let settings_enabled = state.connection.accepts_prompt() && !state.settings_busy;
-        let permission_option = state
-            .config_options
-            .iter()
-            .find(|option| option.category == AgentConfigCategory::Mode);
-        let mut settings = Vec::with_capacity(2);
-        if let Some(option) = permission_option {
-            settings.push(self.render_config_picker(
-                option,
-                IconName::Check,
-                view.clone(),
-                settings_enabled,
-            ));
-        } else if let Some(mode) =
-            self.render_legacy_mode_picker(state, view.clone(), settings_enabled)
-        {
-            settings.push(mode);
-        }
-        settings.push(self.render_model_picker(state, view.clone(), window, cx));
         let usage = state.usage.map(|(used, size)| {
             context_usage_meter(("agent-context-usage", self.pane.0), used, size, cx)
         });
@@ -2773,10 +1639,6 @@ impl AgentView {
                 cx,
             )
         });
-        let footer_actions = vec![
-            self.render_directory_picker(state, view.clone(), cx)
-                .into_any_element(),
-        ];
         let command_hint = active_command_hint(
             &self.last_input,
             &pane_commands(&state.available_commands, state.session_capabilities.verbs),
@@ -2785,10 +1647,10 @@ impl AgentView {
         zz_ui::agent::composer::AgentComposer {
             input: self.input.clone(),
             action: action.into_any_element(),
-            settings,
+            settings: Vec::new(),
             usage: usage.map(IntoElement::into_any_element),
             git: git.map(IntoElement::into_any_element),
-            footer_actions,
+            footer_actions: Vec::new(),
             command_hint: command_hint.map(Into::into),
             prefix: self
                 .render_permission_wizard(state, view, cx)
@@ -2902,66 +1764,7 @@ impl Render for AgentView {
         let show_jump = has_timeline && self.stick.shows_jump_button();
         self.stick.set_bottom_padding(COMPOSER_OUTER_PADDING);
         self.drive_stick(window, cx);
-        let view = cx.entity();
-        let AgentPaneChrome {
-            connected,
-            title,
-            active,
-            can_drag,
-            floats,
-            ..
-        } = self.chrome.clone();
-        let mux = self.mux.clone();
-        let pane = self.pane;
-        let title_editor = agent_thread_title_editor(
-            ("agent-thread-title", pane.0),
-            &title,
-            connected,
-            move |title, cx| {
-                mux.read(cx).execute(CommandInvocation::new(
-                    "select-pane",
-                    vec![
-                        "-t".to_owned(),
-                        pane.to_string(),
-                        "-T".to_owned(),
-                        title.to_owned(),
-                    ],
-                ));
-            },
-            window,
-            cx,
-        );
-        let close_mux = self.mux.clone();
-        let header_controls = agent_pane_title(
-            state.provider,
-            title_editor,
-            PaneDragSource::new(pane, title, can_drag || floats, move |drag, _, cx| {
-                view.update(cx, |_, cx| cx.emit(*drag));
-            })
-            .floating(floats),
-            move |_, cx| {
-                close_mux.read(cx).execute(CommandInvocation::new(
-                    "kill-pane",
-                    vec!["-t".to_owned(), pane.to_string()],
-                ));
-            },
-        );
-        let header_actions = h_flex().flex_none().gap(px(CHROME_GAP)).children(
-            zz_ui::pane::pane_header_actions(floats)
-                .iter()
-                .map(|(action, icon, label)| {
-                    let mux = self.mux.clone();
-                    let action = *action;
-                    pane_header_icon_button((*label, pane.0), icon.clone(), connected, cx)
-                        .tooltip(*label)
-                        .on_click(move |_, _, cx| {
-                            for command in action.commands(pane) {
-                                mux.read(cx).execute(command);
-                            }
-                            cx.stop_propagation();
-                        })
-                }),
-        );
+        let floats = self.floats;
         let view = cx.entity();
         let input_focus = self.focus(cx);
         let timeline = AgentTimeline::new(
@@ -2987,7 +1790,7 @@ impl Render for AgentView {
             timeline
         };
         let root = div()
-            .id(("agent-pane", self.pane.0))
+            .id(("agent-lens", self.pane.0))
             .key_context(AGENT_KEY_CONTEXT)
             .track_focus(&input_focus)
             .relative()
@@ -3000,16 +1803,6 @@ impl Render for AgentView {
             .capture_action(cx.listener(Self::move_completion_down))
             .capture_action(cx.listener(Self::complete))
             .on_key_down(cx.listener(Self::on_key_down))
-            .map(|pane| {
-                pane.child(agent_pane_header(
-                    active,
-                    header_controls,
-                    self.render_status(&state, &view, cx),
-                    header_actions,
-                    has_timeline,
-                    cx,
-                ))
-            })
             .child(
                 div()
                     .id(("agent-thread-scroll", self.pane.0))
@@ -3043,22 +1836,9 @@ impl Render for AgentView {
                         this.child(self.render_jump_to_end(&view, cx))
                     }),
             )
-            .child(if state.session_capabilities.watch {
-                self.render_watch_footer(&state, &view, cx)
-                    .into_any_element()
-            } else {
-                self.render_composer(&state, &view, window, cx)
-                    .into_any_element()
-            })
-            .when(self.history_open, |this| {
-                this.child(self.render_history_overlay(&state, &view, cx))
-            });
-        let radii = if floats {
-            zz_gpui::Corners::all(zz_ui::pip::pip_content_radius(cx))
-        } else {
-            pane_content_radii(cx, self.window_corners)
-        };
-        round_div_radii(root, radii)
+            .child(self.render_composer(&state, &view, cx));
+        round_div_radii(root, pane_content_radii(cx, self.window_corners))
+            .when(!floats, |root| root.rounded_tl(px(0.0)).rounded_tr(px(0.0)))
     }
 }
 
@@ -3067,19 +1847,11 @@ fn disconnected_pane_state() -> AgentPaneState {
         provider: AgentProvider::Codex,
         connection: AgentConnectionState::Disconnected,
         pending_permissions: Arc::from([]),
-        auth_methods: Arc::from([]),
-        error: Some(Arc::from("agent pane is not registered")),
+        error: Some(Arc::from("the lens is not open")),
         agent_name: None,
-        cwd: PathBuf::from("/"),
+        cwd: std::path::PathBuf::from("/"),
         session_id: None,
         session_capabilities: AgentSessionCapabilities::default(),
-        session_history: AgentSessionHistoryState::default(),
-        settings_busy: false,
-        lifecycle_pending: false,
-        mode: None,
-        modes: Arc::from([]),
-        config_options: Arc::from([]),
-        catalogs: Arc::from([]),
         available_commands: Arc::from([]),
         usage: None,
         git: None,
@@ -3301,140 +2073,6 @@ fn retained_tool_payload(
     next
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ProjectDirectory {
-    path: PathBuf,
-    label: SharedString,
-    sessions: usize,
-    recent: bool,
-}
-
-fn project_directory_rows(
-    cwd: &Path,
-    sessions: &[AgentSessionSummary],
-    directories: &[(SharedString, PathBuf)],
-    query: &str,
-) -> Vec<ProjectDirectory> {
-    let matching_directories = ranked_session_indices(sessions, query)
-        .into_iter()
-        .map(|index| sessions[index].cwd.as_path())
-        .collect::<BTreeSet<_>>();
-    let mut counts = HashMap::<PathBuf, usize>::new();
-    for session in sessions {
-        *counts.entry(session.cwd.clone()).or_default() += 1;
-    }
-    let mut seen = BTreeSet::new();
-    let mut rows = Vec::new();
-    let needle = query.trim().to_lowercase();
-    for path in std::iter::once(cwd).chain(sessions.iter().map(|session| session.cwd.as_path())) {
-        let matches = needle.is_empty()
-            || completion_score(&path.to_string_lossy().to_lowercase(), &needle).is_some()
-            || matching_directories.contains(path);
-        if matches && seen.insert(path.to_path_buf()) {
-            rows.push(ProjectDirectory {
-                path: path.to_path_buf(),
-                label: session_directory_label(path).into(),
-                sessions: counts.get(path).copied().unwrap_or_default(),
-                recent: true,
-            });
-        }
-    }
-    for (label, path) in directories {
-        if seen.insert(path.clone()) {
-            rows.push(ProjectDirectory {
-                path: path.clone(),
-                label: label.clone(),
-                sessions: counts.get(path).copied().unwrap_or_default(),
-                recent: false,
-            });
-        }
-    }
-    let mut labels = HashMap::<SharedString, usize>::new();
-    for row in &rows {
-        *labels.entry(row.label.clone()).or_default() += 1;
-    }
-    for row in &mut rows {
-        if labels[&row.label] > 1 {
-            row.label = row.path.display().to_string().into();
-        }
-    }
-    rows
-}
-
-fn session_directory_label(cwd: &Path) -> String {
-    cwd.file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| !name.is_empty())
-        .map_or_else(|| cwd.display().to_string(), ToOwned::to_owned)
-}
-
-fn session_display_title(session: &AgentSessionSummary) -> String {
-    session
-        .title
-        .clone()
-        .unwrap_or_else(|| session_directory_label(&session.cwd))
-}
-
-fn format_session_timestamp(value: &str, today: NaiveDate) -> String {
-    let Ok(timestamp) = DateTime::parse_from_rfc3339(value) else {
-        return value.to_owned();
-    };
-    let local = timestamp.with_timezone(&Local);
-    session_timestamp_label(local.date_naive(), local.hour(), local.minute(), today)
-}
-
-fn session_timestamp_label(date: NaiveDate, hour: u32, minute: u32, today: NaiveDate) -> String {
-    let time = format!("{hour:02}:{minute:02}");
-    if date == today {
-        return format!("Today, {time}");
-    }
-    if today.pred_opt() == Some(date) {
-        return format!("Yesterday, {time}");
-    }
-    let month = date.format("%b");
-    if date.year() == today.year() {
-        format!("{month} {}, {time}", date.day())
-    } else {
-        format!("{month} {}, {}, {time}", date.day(), date.year())
-    }
-}
-
-fn ranked_session_indices(sessions: &[AgentSessionSummary], query: &str) -> Vec<usize> {
-    let needle = query.trim().to_lowercase();
-    let mut ranked = sessions
-        .iter()
-        .enumerate()
-        .filter_map(|(index, session)| {
-            if needle.is_empty() {
-                return Some((3, index));
-            }
-            [
-                session.title.as_deref().unwrap_or_default().to_lowercase(),
-                session.cwd.to_string_lossy().to_lowercase(),
-                session.session_id.to_lowercase(),
-            ]
-            .iter()
-            .filter_map(|candidate| completion_score(candidate, &needle))
-            .min()
-            .map(|score| (score, index))
-        })
-        .collect::<Vec<_>>();
-    ranked.sort_by_key(|(score, index)| (*score, *index));
-    ranked.into_iter().map(|(_, index)| index).collect()
-}
-
-fn history_result_index_for_session(
-    sessions: &[AgentSessionSummary],
-    results: &[usize],
-    session_id: &str,
-) -> Option<usize> {
-    results.iter().position(|session_index| {
-        sessions
-            .get(*session_index)
-            .is_some_and(|session| session.session_id == session_id)
-    })
-}
-
 #[cfg(test)]
 mod completion_tests {
     #[cfg(not(target_os = "macos"))]
@@ -3623,287 +2261,12 @@ mod completion_tests {
         );
     }
 
-    fn session(id: &str, cwd: &str, title: Option<&str>) -> AgentSessionSummary {
-        AgentSessionSummary {
-            session_id: id.to_owned(),
-            cwd: PathBuf::from(cwd),
-            additional_directories: Vec::new(),
-            title: title.map(ToOwned::to_owned),
-            updated_at: None,
-        }
-    }
-
-    #[test]
-    fn session_history_searches_title_path_and_opaque_id_without_losing_source_order() {
-        let sessions = vec![
-            session("sess-alpha", "/work/one", Some("Release planning")),
-            session("sess-beta", "/work/payments", Some("Fix retries")),
-            session("opaque-needle-id", "/work/three", None),
-        ];
-
-        assert_eq!(ranked_session_indices(&sessions, ""), vec![0, 1, 2]);
-        assert_eq!(ranked_session_indices(&sessions, "release"), vec![0]);
-        assert_eq!(ranked_session_indices(&sessions, "payments"), vec![1]);
-        assert_eq!(ranked_session_indices(&sessions, "needle"), vec![2]);
-    }
-
-    #[zz_gpui::test]
-    fn project_picker_renders_rows_and_adapts_to_pane_width(cx: &mut zz_gpui::TestAppContext) {
-        struct PickerTest {
-            view: Entity<AgentView>,
-            width: f32,
-            _subscription: Subscription,
-        }
-
-        impl Render for PickerTest {
-            fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-                let view = self.view.read(cx);
-                div()
-                    .relative()
-                    .w(px(self.width))
-                    .h(px(600.0))
-                    .child(view.render_history_overlay(&view.pane_state, &self.view, cx))
-            }
-        }
-
-        cx.update(zz_ui::init);
-        let (fixture, cx) = cx.add_window_view(|window, cx| {
-            let mux = cx.new(|cx| {
-                MuxClient::new(
-                    Err(zz_daemon_client::DaemonError::Thread("test client".into())),
-                    zz_daemon_client::default_socket_path(),
-                    cx,
-                )
-            });
-            let controller =
-                cx.new(|_| AgentController::new(crate::config::AgentConfig::default()));
-            let view = cx.new(|cx| {
-                let mut view = AgentView::new(
-                    PaneId(7),
-                    &AgentDescriptor {
-                        cwd: Some("/work/api".into()),
-                        ..Default::default()
-                    },
-                    controller,
-                    mux,
-                    window,
-                    cx,
-                );
-                view.pane_state.session_capabilities.list = true;
-                view.pane_state.session_capabilities.delete = true;
-                view.pane_state.session_history.next_cursor = Some("next-page".into());
-                view.pane_state.session_history.sessions = vec![
-                    session("one", "/work/api", Some("Fix retries")),
-                    session("two", "/work/web", Some("Deploy")),
-                ]
-                .into();
-                view.project_directory = Some("/work/api".into());
-                view.recompute_history_results("");
-                view
-            });
-            let subscription = cx.observe(&view, |_, _, cx| cx.notify());
-            PickerTest {
-                view,
-                width: 960.0,
-                _subscription: subscription,
-            }
-        });
-        for width in [960.0, 320.0, 200.0, 800.0] {
-            fixture.update(cx, |fixture, cx| {
-                fixture.width = width;
-                cx.notify();
-            });
-            for _ in 0..3 {
-                cx.run_until_parked();
-                cx.update(|window, cx| {
-                    _ = window.draw(cx);
-                });
-            }
-            let directories = cx
-                .debug_bounds("agent-project-list")
-                .expect("directory list");
-            let sessions = cx.debug_bounds("agent-history-list").expect("session list");
-            let directory_header = cx.debug_bounds("agent-project-header-0").unwrap();
-            let session_header = cx.debug_bounds("agent-history-header").unwrap();
-            assert_eq!(directory_header.size.height, session_header.size.height);
-            for (list, row) in [
-                (directories, "agent-project-row-0"),
-                (sessions, "agent-history-row-0"),
-            ] {
-                assert!(
-                    cx.debug_bounds(row).unwrap().right()
-                        <= list.right() - zz_ui::scroll::GUTTER_WIDTH
-                );
-            }
-            assert!(
-                directories.size.height >= px(64.0),
-                "directory height at {width}: {directories:?}"
-            );
-            assert!(
-                sessions.size.height >= px(40.0),
-                "session height at {width}: {sessions:?}"
-            );
-            for selector in [
-                "agent-project-row-0",
-                "agent-history-row-0",
-                "agent-project-new",
-                "agent-history-load-more",
-            ] {
-                let bounds = cx
-                    .debug_bounds(selector)
-                    .unwrap_or_else(|| panic!("missing {selector} at {width}"));
-                assert!(bounds.size.width > px(0.0) && bounds.size.height > px(0.0));
-                assert!(
-                    bounds.origin.x >= px(0.0) && bounds.right() <= px(width),
-                    "{selector} at {width}: {bounds:?}"
-                );
-                assert!(bounds.origin.y >= px(0.0) && bounds.bottom() <= px(600.0));
-            }
-            if width < 560.0 {
-                assert!(directories.bottom() <= sessions.origin.y);
-            } else {
-                assert!(directories.right() <= sessions.origin.x);
-                assert_eq!(directory_header.origin.y, session_header.origin.y);
-                assert_eq!(
-                    cx.debug_bounds("agent-project-row-0").unwrap().origin.y,
-                    cx.debug_bounds("agent-history-row-0").unwrap().origin.y,
-                );
-            }
-        }
-        let view = cx.update(|_, cx| fixture.read(cx).view.clone());
-        let directory = cx
-            .debug_bounds("agent-project-row-1")
-            .expect("second directory");
-        cx.simulate_mouse_move(directory.center(), None, zz_gpui::Modifiers::default());
-        cx.run_until_parked();
-        assert_eq!(
-            cx.update(|_, cx| view.read(cx).project_hovered.clone()),
-            Some("/work/web".into())
-        );
-        assert_eq!(
-            cx.update(|_, cx| view.read(cx).project_directory.clone()),
-            Some("/work/api".into())
-        );
-        cx.simulate_click(directory.center(), zz_gpui::Modifiers::default());
-        assert_eq!(
-            cx.update(|_, cx| view.read(cx).project_directory.clone()),
-            Some("/work/web".into())
-        );
-        assert_eq!(
-            cx.update(|_, cx| view.read(cx).history_results.to_vec()),
-            vec![1]
-        );
-    }
-
-    #[test]
-    fn project_picker_groups_sessions_and_keeps_unvisited_directories() {
-        let sessions = vec![
-            session("one", "/work/api", Some("Fix retries")),
-            session("two", "/work/api", Some("Auth")),
-            session("three", "/other/api", Some("Deploy")),
-        ];
-        let directories = vec![
-            ("api".into(), PathBuf::from("/work/api")),
-            ("empty".into(), PathBuf::from("/work/empty")),
-        ];
-        let rows = project_directory_rows(Path::new("/work/api"), &sessions, &directories, "");
-        assert_eq!(rows.len(), 3);
-        assert_eq!(rows[0].sessions, 2);
-        assert_eq!(rows[1].sessions, 1);
-        assert_ne!(rows[0].label, rows[1].label);
-        assert!(rows[0].recent && rows[1].recent);
-        assert!(!rows[2].recent);
-        assert_eq!(rows[2].path, Path::new("/work/empty"));
-    }
-
-    #[test]
-    fn project_picker_finds_a_directory_through_its_session_title() {
-        let sessions = vec![
-            session("one", "/work/api", Some("Fix retries")),
-            session("two", "/other/web", Some("Deploy")),
-        ];
-        let rows = project_directory_rows(Path::new("/other/web"), &sessions, &[], "retries");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].path, Path::new("/work/api"));
-        assert!(
-            project_directory_rows(Path::new("/other/web"), &sessions, &[], "unmatched-query")
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn session_history_retains_selection_by_identity_after_catalog_updates() {
-        let sessions = vec![
-            session("sess-gamma", "/work/three", Some("Gamma")),
-            session("sess-alpha", "/work/one", Some("Alpha")),
-            session("sess-beta", "/work/two", Some("Beta")),
-        ];
-        let results = ranked_session_indices(&sessions, "");
-
-        assert_eq!(
-            history_result_index_for_session(&sessions, &results, "sess-beta"),
-            Some(2)
-        );
-        assert_eq!(
-            history_result_index_for_session(&sessions, &results, "missing"),
-            None
-        );
-    }
-
-    #[test]
-    fn session_directories_are_clipped_to_their_last_component() {
-        assert_eq!(
-            session_directory_label(Path::new("/work/payments")),
-            "payments"
-        );
-        assert_eq!(
-            session_directory_label(Path::new("/work/payments/")),
-            "payments"
-        );
-        assert_eq!(session_directory_label(Path::new("/")), "/");
-    }
-
-    #[test]
-    fn session_timestamps_use_compact_calendar_labels() {
-        let today = NaiveDate::from_ymd_opt(2026, 7, 20).expect("valid fixture date");
-
-        assert_eq!(session_timestamp_label(today, 18, 1, today), "Today, 18:01");
-        assert_eq!(
-            session_timestamp_label(
-                NaiveDate::from_ymd_opt(2026, 7, 19).expect("valid fixture date"),
-                9,
-                43,
-                today,
-            ),
-            "Yesterday, 09:43"
-        );
-        assert_eq!(
-            session_timestamp_label(
-                NaiveDate::from_ymd_opt(2026, 6, 4).expect("valid fixture date"),
-                7,
-                5,
-                today,
-            ),
-            "Jun 4, 07:05"
-        );
-        assert_eq!(
-            session_timestamp_label(
-                NaiveDate::from_ymd_opt(2025, 12, 31).expect("valid fixture date"),
-                23,
-                59,
-                today,
-            ),
-            "Dec 31, 2025, 23:59"
-        );
-    }
-
     #[cfg(not(target_os = "macos"))]
     #[zz_gpui::test]
     fn non_append_timeline_rebuild_clears_retained_store(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let (view, cx) = cx.add_window_view(|window, cx| {
             let input = cx.new(|cx| InputState::new(window, cx));
-            let history_input = cx.new(|cx| InputState::new(window, cx));
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(DaemonError::Thread("test client".to_owned())),
@@ -3911,8 +2274,7 @@ mod completion_tests {
                     cx,
                 )
             });
-            let controller =
-                cx.new(|_| AgentController::new(crate::config::AgentConfig::default()));
+            let controller = cx.new(|_| AgentController::new());
             let timeline_store = cx.new(|_| AgentTimelineStore::default());
             timeline_store.update(cx, |store, cx| {
                 assert!(!store.expanded(1, DisclosureKind::Turn, false));
@@ -3939,7 +2301,6 @@ mod completion_tests {
                 mux,
                 controller,
                 input,
-                history_input,
                 visible: false,
                 pane_state: disconnected_pane_state(),
                 timeline: TimelineModel::new(&timeline_entries, &[1, 2], &|_| None),
@@ -3959,22 +2320,8 @@ mod completion_tests {
                 completion_dismissed: false,
                 last_input: String::new(),
                 last_cursor: 0,
-                history_open: false,
-                history_compact: true,
-                project_directory: None,
-                project_hovered: None,
-                project_rows: Arc::from([]),
-                project_focus: false,
-                project_scroll: UniformListScrollHandle::new(),
-                directory_matches: Vec::new(),
-                history_results: Arc::from([]),
-                history_selected: None,
-                history_scroll: UniformListScrollHandle::new(),
-                history_delete_confirmation: None,
-                last_history_query: String::new(),
-                directory_catalog: None,
                 window_corners: WindowCorners::NONE,
-                chrome: AgentPaneChrome::detached(),
+                floats: false,
                 _subscriptions: Vec::new(),
             }
         });
@@ -4022,16 +2369,13 @@ mod completion_tests {
                     cx,
                 )
             });
-            let controller =
-                cx.new(|_| AgentController::new(crate::config::AgentConfig::default()));
-            let history_input = cx.new(|cx| InputState::new(window, cx));
+            let controller = cx.new(|_| AgentController::new());
             let timeline_scroll = ListState::new(0, ListAlignment::Top, px(1_200.0));
             let view = cx.new(|view_cx| AgentView {
                 pane: PaneId(7),
                 mux,
                 controller,
                 input,
-                history_input,
                 visible: false,
                 pane_state: disconnected_pane_state(),
                 timeline: TimelineModel::default(),
@@ -4061,22 +2405,8 @@ mod completion_tests {
                 completion_dismissed: false,
                 last_input: "/".to_owned(),
                 last_cursor: 1,
-                history_open: false,
-                history_compact: true,
-                project_directory: None,
-                project_hovered: None,
-                project_rows: Arc::from([]),
-                project_focus: false,
-                project_scroll: UniformListScrollHandle::new(),
-                directory_matches: Vec::new(),
-                history_results: Arc::from([]),
-                history_selected: None,
-                history_scroll: UniformListScrollHandle::new(),
-                history_delete_confirmation: None,
-                last_history_query: String::new(),
-                directory_catalog: None,
                 window_corners: WindowCorners::NONE,
-                chrome: AgentPaneChrome::detached(),
+                floats: false,
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);
@@ -4135,17 +2465,17 @@ mod completion_tests {
                 mux.set_agent_client_instance_id_for_test(zz_protocol::ClientInstanceId(1));
                 mux.record_agent_requests_for_test()
             });
-            let controller =
-                cx.new(|_| AgentController::new(crate::config::AgentConfig::default()));
+            let controller = cx.new(|_| AgentController::new());
             controller.update(cx, |controller, _| controller.attach_mux(mux.clone()));
-            let descriptor = AgentDescriptor {
-                provider: AgentProvider::ClaudeCode,
-                cwd: Some(PathBuf::from("/workspace")),
-                session_id: None,
-            };
             let view = cx.new(|cx| {
-                let mut view =
-                    AgentView::new(pane, &descriptor, controller.clone(), mux, window, cx);
+                let mut view = AgentView::new(
+                    pane,
+                    AgentProvider::ClaudeCode,
+                    controller.clone(),
+                    mux,
+                    window,
+                    cx,
+                );
                 view.set_visible(true, cx);
                 view
             });
@@ -4925,22 +3255,6 @@ mod tests {
     }
 
     #[test]
-    fn directory_picker_requires_a_ready_pane_without_a_permission() {
-        for connection in [
-            AgentConnectionState::Starting,
-            AgentConnectionState::Restoring,
-            AgentConnectionState::Running,
-            AgentConnectionState::Cancelling,
-            AgentConnectionState::Failed,
-            AgentConnectionState::Disconnected,
-        ] {
-            assert!(!directory_picker_enabled(connection, false));
-        }
-        assert!(directory_picker_enabled(AgentConnectionState::Ready, false,));
-        assert!(!directory_picker_enabled(AgentConnectionState::Ready, true,));
-    }
-
-    #[test]
     fn rendered_errors_are_bounded_and_strip_control_bytes() {
         let rendered = rendered_error(&format!("bad\0{}", "x".repeat(4096)));
         assert!(rendered.len() <= MAX_RENDERED_ERROR_BYTES);
@@ -5372,128 +3686,6 @@ mod tests {
         assert!(
             Arc::ptr_eq(&images[0], &image),
             "the bytes should travel by handle, not by clone, so zz_gpui decodes them once"
-        );
-    }
-
-    fn titled_pane_snapshot(generation: u64, title: &str) -> zz_protocol::MuxSnapshot {
-        let pane = PaneId(7);
-        let other = PaneId(8);
-        let pane_snapshot = |id: PaneId, title: &str| zz_protocol::PaneSnapshot {
-            id,
-            title: title.to_owned(),
-            kind: zz_protocol::PaneKindSnapshot::Terminal,
-            synchronized_input: false,
-            bell: false,
-            dead: false,
-            dead_status: None,
-            border_colour: None,
-            active_border_colour: None,
-            border_status_text: String::new(),
-            mode: None,
-            status: None,
-            summary: zz_protocol::PaneSummary::default(),
-        };
-        zz_protocol::MuxSnapshot {
-            generation,
-            focused_window: Some(zz_protocol::WindowId(0)),
-            sessions: vec![zz_protocol::SessionSnapshot {
-                id: zz_protocol::SessionId(0),
-                name: "zz".to_owned(),
-                active_window: zz_protocol::WindowId(0),
-                windows: vec![zz_protocol::WindowSnapshot {
-                    id: zz_protocol::WindowId(0),
-                    index: 0,
-                    name: "zz".to_owned(),
-                    automatic_rename: true,
-                    active_pane: other,
-                    zoomed_pane: None,
-                    layout: zz_protocol::LayoutNode::Pane(pane),
-                    panes: [
-                        (pane, pane_snapshot(pane, title)),
-                        (other, pane_snapshot(other, "other")),
-                    ]
-                    .into_iter()
-                    .collect(),
-                    layout_dump: String::new(),
-                    visible_layout_dump: String::new(),
-                    status_label: String::new(),
-                    activity: false,
-                    silence: false,
-                    pane_border_status: zz_protocol::PaneBorderStatus::Off,
-                    pane_border_lines: zz_protocol::PaneBorderLines::Single,
-                    pane_border_indicators: zz_protocol::PaneBorderIndicators::Colour,
-                    pane_order: Vec::new(),
-                    pane_z_order: Vec::new(),
-                    floating: Vec::new(),
-                    modal: None,
-                    sx: 0,
-                    sy: 0,
-                }],
-                viewers: Vec::new(),
-            }],
-        }
-    }
-
-    #[zz_gpui::test]
-    fn the_cached_pane_redraws_when_the_mux_changes_what_it_shows(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
-        use std::{cell::Cell, rc::Rc};
-
-        cx.update(zz_ui::init);
-        let mux = cx.update(|cx| {
-            cx.new(|cx| {
-                MuxClient::new(
-                    Err(zz_daemon_client::DaemonError::Thread("test client".into())),
-                    zz_daemon_client::default_socket_path(),
-                    cx,
-                )
-            })
-        });
-        let (view, cx) = cx.add_window_view(|window, cx| {
-            let controller =
-                cx.new(|_| AgentController::new(crate::config::AgentConfig::default()));
-            AgentView::new(
-                PaneId(7),
-                &AgentDescriptor::default(),
-                controller,
-                mux.clone(),
-                window,
-                cx,
-            )
-        });
-        cx.run_until_parked();
-        let notified = Rc::new(Cell::new(0));
-        let _subscription = cx.update(|_, cx| {
-            let notified = Rc::clone(&notified);
-            cx.observe(&view, move |_, _| notified.set(notified.get() + 1))
-        });
-        let attach = |snapshot, cx: &mut zz_gpui::VisualTestContext| {
-            mux.update(cx, |mux, cx| {
-                mux.attach_snapshot_for_test(zz_protocol::SessionId(0), snapshot, cx);
-            });
-            cx.run_until_parked();
-        };
-
-        attach(titled_pane_snapshot(1, "first"), cx);
-        assert_eq!(notified.get(), 1);
-        assert_eq!(
-            view.read_with(cx, |view, _| view.chrome.title.clone()),
-            "first"
-        );
-
-        attach(titled_pane_snapshot(2, "first"), cx);
-        assert_eq!(
-            notified.get(),
-            1,
-            "an unrelated mux change left the pane alone"
-        );
-
-        attach(titled_pane_snapshot(3, "renamed"), cx);
-        assert_eq!(notified.get(), 2);
-        assert_eq!(
-            view.read_with(cx, |view, _| view.chrome.title.clone()),
-            "renamed"
         );
     }
 }

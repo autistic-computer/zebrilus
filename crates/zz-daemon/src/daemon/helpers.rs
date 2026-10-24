@@ -529,6 +529,15 @@ struct PeerKey {
 }
 
 #[cfg(all(feature = "agent", unix))]
+pub(super) fn peer_agent_state(status: &str) -> &'static str {
+    match status {
+        "busy" => "working",
+        "waiting" => "blocked",
+        _ => "idle",
+    }
+}
+
+#[cfg(all(feature = "agent", unix))]
 fn scan_peers(state: &State, panes: Vec<(PaneId, String, Option<u32>)>) -> PeerResult {
     use crate::agent::claude_peers;
     *state.settled.lock() = None;
@@ -538,10 +547,6 @@ fn scan_peers(state: &State, panes: Vec<(PaneId, String, Option<u32>)>) -> PeerR
         (registry.records().cloned().collect(), registry.settled())
     };
     records.retain(|record| record.zz.is_none());
-    let now = super::SystemTime::now()
-        .duration_since(super::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
     let parents = std::cell::RefCell::new(std::collections::BTreeMap::new());
     let updates: Vec<_> = panes
         .iter()
@@ -552,25 +557,8 @@ fn scan_peers(state: &State, panes: Vec<(PaneId, String, Option<u32>)>) -> PeerR
                     .entry(pid)
                     .or_insert_with(|| zz_daemon_client::process_info::parent(pid))
             })
-            .filter(|record| {
-                let updated = if record.status_updated_at == 0 {
-                    record.updated_at
-                } else {
-                    record.status_updated_at
-                };
-                !record.status.is_empty()
-                    && now
-                        .checked_sub(updated)
-                        .is_some_and(|age| u128::from(age) <= Duration::from_mins(10).as_millis())
-            })
-            .map(|record| {
-                if record.status == "busy" {
-                    "working"
-                } else {
-                    "idle"
-                }
-                .to_owned()
-            });
+            .filter(|record| !record.status.is_empty())
+            .map(|record| peer_agent_state(&record.status).to_owned());
             (*pane, *pid, value)
         })
         .collect();

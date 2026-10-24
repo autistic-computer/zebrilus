@@ -30,7 +30,8 @@ terminal gains focus or receives input. No OS notification popup. zz v1 matches 
 adds nothing.
 
 Scope guard: agent-pane lifecycle notifications (`RuntimeEvent::PromptFinished` and
-friends) are out of scope while the `agent-pane` feature stays gated. OSC 9 / OSC 777
+friends) are out of scope while the `agent-pane` feature stays gated. (The Agent pane was removed
+on 2026-10-23; see [agent lens](/designs/agent-lens.md).) OSC 9 / OSC 777
 program notifications are not wired: the pinned libghostty C ABI has a
 `DESKTOP_NOTIFICATION` callback, but zz does not register it. Programs that want to say
 they are waiting or done can use [OSC 7501](/terminal/program-status.md) instead.

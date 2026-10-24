@@ -13,7 +13,6 @@ use zz_ui::{
 
 const CHOICES: &[(&str, &str, IconName, &str)] = &[
     ("Terminal", "terminal", IconName::SquareTerminal, "t"),
-    ("Agent", "agent", IconName::RobotFace, "a"),
     #[cfg(target_os = "ios")]
     ("Browser", "browser", IconName::Globe, "b"),
 ];
@@ -23,7 +22,6 @@ pub(super) struct PanePicker {
     connection: Entity<Connection>,
     focus: FocusHandle,
     selected: usize,
-    agent_enabled: bool,
     corner_radii: Corners<Pixels>,
     chosen: Option<usize>,
     sheet_closed: bool,
@@ -33,7 +31,6 @@ impl PanePicker {
     pub(super) fn new(
         pane: PaneId,
         connection: Entity<Connection>,
-        agent_enabled: bool,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
@@ -41,7 +38,6 @@ impl PanePicker {
             connection,
             focus: cx.focus_handle(),
             selected: 0,
-            agent_enabled,
             corner_radii: Corners::default(),
             chosen: None,
             sheet_closed: false,
@@ -63,7 +59,6 @@ impl PanePicker {
         let rows = CHOICES
             .iter()
             .enumerate()
-            .filter(|(index, _)| self.enabled(*index, cx))
             .map(|(index, (title, _, icon, _))| {
                 let id = id.clone();
                 sheet_row(
@@ -127,23 +122,8 @@ impl PanePicker {
         }
     }
 
-    pub(super) fn set_agent_enabled(&mut self, enabled: bool) {
-        self.agent_enabled = enabled;
-        if !enabled {
-            self.selected = 0;
-        }
-    }
-
-    fn enabled(&self, index: usize, cx: &App) -> bool {
-        CHOICES[index].1 != "agent"
-            || (self.agent_enabled
-                && crate::command_palette::agent_pane_available(&self.connection.read(cx).core))
-    }
-
     fn activate(&self, index: usize, cx: &mut Context<Self>) {
-        if !self.enabled(index, cx)
-            || !self.connection.read(cx).connected
-            || self.connection.read(cx).core.attached_read_only()
+        if !self.connection.read(cx).connected || self.connection.read(cx).core.attached_read_only()
         {
             return;
         }
@@ -163,18 +143,12 @@ impl PanePicker {
         }
         match key.key.as_str() {
             "down" | "j" | "up" | "k" => {
-                let forward = matches!(key.key.as_str(), "down" | "j");
-                for offset in 1..=CHOICES.len() {
-                    let index = if forward {
-                        (self.selected + offset) % CHOICES.len()
-                    } else {
-                        (self.selected + CHOICES.len() - offset) % CHOICES.len()
-                    };
-                    if self.enabled(index, cx) {
-                        self.selected = index;
-                        break;
-                    }
-                }
+                let step = if matches!(key.key.as_str(), "down" | "j") {
+                    1
+                } else {
+                    CHOICES.len() - 1
+                };
+                self.selected = (self.selected + step) % CHOICES.len();
                 cx.notify();
             }
             "enter" => self.activate(self.selected, cx),
@@ -182,9 +156,7 @@ impl PanePicker {
                 connection.command("kill-pane", vec!["-t".into(), self.pane.to_string()], cx);
             }),
             shortcut => {
-                let Some(index) = CHOICES.iter().enumerate().find_map(|(index, choice)| {
-                    (choice.3 == shortcut && self.enabled(index, cx)).then_some(index)
-                }) else {
+                let Some(index) = CHOICES.iter().position(|choice| choice.3 == shortcut) else {
                     return;
                 };
                 self.activate(index, cx);
@@ -204,14 +176,11 @@ impl Render for PanePicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let writable = self.connection.read(cx).connected
             && !self.connection.read(cx).core.attached_read_only();
-        if !self.enabled(self.selected, cx) {
-            self.selected = 0;
-        }
         let phone = super::settings::phone();
         let rows = CHOICES
             .iter()
             .enumerate()
-            .filter(|(index, _)| !phone && self.enabled(*index, cx))
+            .filter(|_| !phone)
             .map(|(index, (title, _, icon, shortcut))| {
                 pane_picker_row(
                     ("web-pane-choice", index),
@@ -223,7 +192,7 @@ impl Render for PanePicker {
                     cx,
                 )
                 .on_mouse_move(cx.listener(move |this, _, _, cx| {
-                    if this.enabled(index, cx) && this.selected != index {
+                    if this.selected != index {
                         this.selected = index;
                         cx.notify();
                     }

@@ -4,7 +4,7 @@ title: Sidebar navigation and native choosers
 description: Persistent sidebar navigation for sessions and windows plus daemon-owned pane and paste-buffer choosers, with tmux-style keyboard movement and activation.
 resource: crates/zz-mux/src/command.rs
 tags: [tmux, choose-tree, choose-buffer, chooser, overlay]
-timestamp: 2026-10-09T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -47,7 +47,7 @@ Navigate palette preserves the hierarchy of the `-s` and `-w` forms:
 
 | Invocation | `ChooseTreeKind` | Initial daemon view |
 | --- | --- | --- |
-| `choose-tree` (default) | `Panes` | full `$session → @window → %pane` hierarchy, including terminal, browser, and Agent pane types |
+| `choose-tree` (default) | `Panes` | full `$session → @window → %pane` hierarchy, including terminal, browser, and editor pane types |
 | `choose-tree -s` | `Windows` | collapsed session rows; source session selected; each session expandable through windows to panes |
 | `choose-tree -w` | `Windows` | expanded sessions with collapsed window rows; source window selected; each window expandable to panes |
 

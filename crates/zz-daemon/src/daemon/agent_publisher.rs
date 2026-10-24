@@ -1,12 +1,9 @@
-use std::{
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-    },
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use zz_protocol::{AgentPaneWire, AgentProvider, ClientId, PaneId, PaneStatus};
+use zz_protocol::{AgentPaneWire, ClientId, PaneId};
 
 use super::AcceptWake;
 use crate::agent::fanout::{AgentPublisher, AgentRequestReply, AgentToolCall};
@@ -33,7 +30,6 @@ pub(super) struct Message {
 }
 
 pub(super) enum Payload {
-    Barrier(crate::daemon::cmdq::Reply<()>),
     Updates {
         first_seq: u64,
         items: Vec<Vec<u8>>,
@@ -48,16 +44,8 @@ pub(super) enum Payload {
         also: Option<ClientId>,
     },
     State(AgentPaneWire),
-    Status(PaneStatus),
     ToolCall(AgentToolCall),
     Reply(AgentRequestReply),
-    Session {
-        provider: AgentProvider,
-        session_id: String,
-        cwd: Option<PathBuf>,
-    },
-    Title(String),
-    Text(Vec<u8>),
 }
 
 impl Sender {
@@ -107,10 +95,6 @@ impl Publisher {
 }
 
 impl AgentPublisher for Publisher {
-    fn barrier(&self, generation: u64, pane: PaneId, reply: crate::daemon::cmdq::Reply<()>) {
-        self.post(generation, pane, Payload::Barrier(reply));
-    }
-
     fn publish_agent_updates(
         &self,
         generation: u64,
@@ -154,42 +138,11 @@ impl AgentPublisher for Publisher {
         self.post(generation, pane, Payload::State(state));
     }
 
-    fn publish_agent_status(&self, generation: u64, pane: PaneId, status: PaneStatus) {
-        self.post(generation, pane, Payload::Status(status));
-    }
-
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall) {
         self.post(generation, pane, Payload::ToolCall(call));
     }
 
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply) {
         self.post(generation, pane, Payload::Reply(reply));
-    }
-
-    fn adopt_agent_session(
-        &self,
-        generation: u64,
-        pane: PaneId,
-        provider: AgentProvider,
-        session_id: String,
-        cwd: Option<PathBuf>,
-    ) {
-        self.post(
-            generation,
-            pane,
-            Payload::Session {
-                provider,
-                session_id,
-                cwd,
-            },
-        );
-    }
-
-    fn title_agent_pane(&self, generation: u64, pane: PaneId, title: String) {
-        self.post(generation, pane, Payload::Title(title));
-    }
-
-    fn feed_agent_pane_text(&self, generation: u64, pane: PaneId, bytes: Vec<u8>) {
-        self.post(generation, pane, Payload::Text(bytes));
     }
 }

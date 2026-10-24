@@ -264,7 +264,6 @@ impl PaletteBackend for StoryBackend {
     fn availability(&self, _: &App) -> PaneKindAvailability {
         PaneKindAvailability {
             browser: true,
-            agent: true,
             editor: true,
         }
     }
@@ -403,7 +402,7 @@ fn online_tree() -> PaletteTree {
                                 false,
                                 12,
                                 vec![
-                                    pane(12, "claude", "Agent", IconName::Bot, true),
+                                    pane(12, "claude", "Terminal", IconName::SquareTerminal, true),
                                     pane(13, "localhost:8097", "Browser", IconName::Globe, false),
                                 ],
                             ),

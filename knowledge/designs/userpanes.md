@@ -2,7 +2,7 @@
 type: Design Plan
 title: Artifacts . agent-written HTML in browser panes and inline
 description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
-status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started)
+status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started; the Agent pane that hosted inline previews was removed 2026-10-23)
 resource: crates/zz-browser/src/cef_runtime.rs
 tags:
 - browser
@@ -13,7 +13,7 @@ tags:
 - agent-pane
 - artifacts
 - design-plan
-timestamp: 2026-10-18T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -32,7 +32,8 @@ zz html /tmp/report.html
 ```
 
 The model learns nothing new: HTML, a file path, one verb. Smaller drawings stay in the
-conversation: `svg` and `html` blocks in the Agent pane preview inline (see Inline previews).
+conversation: `svg` and `html` blocks in the Agent pane preview inline (see Inline previews; the
+Agent pane is gone since 2026-10-23 and the agent lens timeline keeps this).
 
 # What changed since the July plan
 
@@ -230,6 +231,13 @@ That gives the agent a form to ask with:
 ```
 
 # Inline previews in the Agent pane
+
+The Agent pane was removed on 2026-10-23 ([agent lens](/designs/agent-lens.md)). The preview code
+lives in the timeline (`crates/zz-ui/src/agent.rs`, `crates/zz/src/browser/inline.rs`), which the
+lens over a Claude Code or Codex terminal keeps, so "the Agent pane" below now means that timeline.
+Terminal agents get the startup context without the html paragraph (`zz tools --context` calls
+`workspace_context(.., false)`), so the CLIs are not taught the form, and a `zz.reply` would land in
+the lens composer, which pastes into the TUI.
 
 Small drawings belong in the answer, not in a pane. The rule is that a preview costs an image
 while you scroll: Chromium never sits in the timeline unless you click a block.

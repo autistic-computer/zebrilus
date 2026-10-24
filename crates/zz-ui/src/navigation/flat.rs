@@ -12,7 +12,7 @@ use zz_gpui::{
     FontWeight, HighlightStyle, Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString,
     Stateful, StyledText, Window, div, font, prelude::*, px,
 };
-use zz_protocol::{AgentProvider, PaneId, SessionId, WindowId};
+use zz_protocol::{PaneId, SessionId, WindowId};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Highlight, Icon, IconName, PaintState,
@@ -298,8 +298,6 @@ impl RowInk {
 
 pub fn pane_glyph(tag: PaneTag) -> IconName {
     match tag {
-        PaneTag::Agent(AgentProvider::ClaudeCode) => IconName::Asterisk,
-        PaneTag::Agent(AgentProvider::Codex) => IconName::Braces,
         PaneTag::Terminal => IconName::Terminal,
         PaneTag::Browser => IconName::Globe,
         PaneTag::Editor => IconName::File,

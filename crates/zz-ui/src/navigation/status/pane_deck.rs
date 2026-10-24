@@ -1,4 +1,4 @@
-use std::{fmt::Write as _, sync::Arc};
+use std::sync::Arc;
 
 use zz_gpui::{App, ElementId, SharedString, px};
 use zz_protocol::PaneKindSnapshot;
@@ -36,13 +36,6 @@ impl StatusPaneEntry {
                 browser.profile,
                 browser.url(),
             ),
-            PaneKindSnapshot::Agent(agent) => {
-                let mut detail = format!("{} · {}", agent.provider.label(), pane.id);
-                if let Some(cwd) = &agent.cwd {
-                    let _ = write!(detail, "\n{}", cwd.display());
-                }
-                detail
-            }
             PaneKindSnapshot::Editor(editor) => format!(
                 "Editor · {}\n{}",
                 pane.id,

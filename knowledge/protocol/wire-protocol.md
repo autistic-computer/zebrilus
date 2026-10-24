@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v112)
+title: zz wire protocol (v114)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-10-20T20:00:00-03:00
+timestamp: 2026-10-23T19:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 112`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 114`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (112) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (114) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -85,7 +85,7 @@ fields in declaration order.
 | `SetConfigOverrides { entries }` | ordered `Vec<(String, String)>` | Replace the daemon's complete appearance and mux override sets; an empty vector clears both |
 | `Input(InputMessage)` | see below | Keyboard / resize / view / split input |
 | `Event(Event)` | `sequence: u64`, `payload: EventPayload` | Ordered daemon → client push |
-| `GuiResponse(GuiResponse)` | `Success { request_id, output }` / `Error { request_id, message }` | Interactive client → daemon answer to an `AgentCommand` or `BrowserCommand::Screenshot` request; both strings bounded to `MAX_GUI_TEXT_BYTES` (64 KiB) |
+| `GuiResponse(GuiResponse)` | `Success { request_id, output }` / `Error { request_id, message }` | Interactive client → daemon answer to a `BrowserCommand::Screenshot` request; both strings bounded to `MAX_GUI_TEXT_BYTES` (64 KiB) |
 | `Resync` | . | Client requests a fresh snapshot after a shell-detected reconciliation error; event sequence gaps alone are valid because the daemon may supersede stale terminal frames |
 | `RequestFull { pane: PaneId }` | `pane` | Client asks for one full replacement viewport for a single pane after a dropped or unusable terminal frame |
 | `HistoryRequest { pane: PaneId, start: u32, count: u32 }` | scrollback window | Client asks for a chunk of a pane's scrollback; the daemon answers with `EventPayload::HistoryChunk` |
@@ -95,7 +95,7 @@ fields in declaration order.
 | `PastedImageBegin { pane, number, format, total_bytes }` | one image announced | Daemon → client: start streaming that numbered image. `format` is `Png` / `Jpeg` / `Gif` / `Webp` |
 | `PastedImageChunk { pane, number, bytes }` | one ordered slice | Body of the announced fetch, at most `MAX_PASTE_UPLOAD_CHUNK_BYTES` (1 MiB) per message |
 | `PastedImageUnavailable { pane, number }` | one placeholder | Daemon → client: that numbered image is gone or could not be encoded |
-| `AgentPrompt { pane, text, images: Vec<AgentImage> }` | one prompt | Client → daemon: submit an ACP prompt to the pane's daemon-owned adapter. `AgentImage { format, data }` carries encoded bytes the daemon turns into content blocks; text plus every image totals at most `MAX_AGENT_PROMPT_BYTES` (6 MiB), each `format` at most 64 bytes |
+| `AgentPrompt { pane, text, images: Vec<AgentImage> }` | one prompt | Client → daemon: submit a prompt to the agent runtime of a terminal pane. The lens types the text into the CLI and refuses images. `AgentImage { format, data }` carries encoded bytes; text plus every image totals at most `MAX_AGENT_PROMPT_BYTES` (6 MiB), each `format` at most 64 bytes |
 | `AgentCancel { pane }` | . | Cancel the pane's running turn |
 | `AgentUnqueue { pane }` | . | Reclaim the pane's queued prompts; the daemon returns them inside the stream so the composer refills |
 | `AgentRespondPermission { pane, request_id, option_id: Option<String> }` | one answer | Answer a parked permission request; `None` cancels. First answer wins and a late one is a no-op |
@@ -103,7 +103,7 @@ fields in declaration order.
 | `AgentSetMode { pane, mode_id }` | one mode | Switch the session mode |
 | `AgentAuthenticate { pane, method_id }` | one method | Run one advertised authentication method |
 | `AgentSessionOp { pane, op }` | `List { cwd, cursor, replace }` / `New { cwd }` / `Switch { session_id, cwd, additional_directories }` / `Delete { session_id }` | Session management against the pane's adapter; `List` answers with `EventPayload::AgentSessions` |
-| `AgentReplay { pane, from_seq: u64 }` | journal cursor | Replay the pane's journal from `from_seq`, then tail it. Sent on attach, after `AgentLagged`, and when a pane enters the visible set |
+| `AgentReplay { pane, from_seq: u64 }` | journal cursor | Replay the pane's agent stream from `from_seq`, then tail it. Sent when a client opens the lens, after `AgentLagged`, and when a lens pane enters the visible set. For a terminal running Claude Code or Codex the daemon first opens its lens runtime; any other pane is refused |
 | `AgentAcknowledgePromptRestore { pane, reclaim_id }` | one restored draft | Retire one daemon-cached recovered prompt after its owning client has put it back in the composer, preventing a later replay from restoring it again |
 | `PrepareCommandList { request_id, commands }` | request identity plus `Vec<CommandInvocation>` | Client → daemon: freeze one live alias layer for a complete command unit under one mux lock. Preparation performs no command effects, target or format resolution, hook emission, message publication, or authorization |
 | `PreparedCommandList { request_id, commands }` | request identity plus one `PreparedCommand` per input | Daemon → client: return the immutable invocation, optional canonical identity, `alias_matched`, and `Ready` or a typed `ServerError`. Multi-command and empty aliases return their opaque invocation with `canonical_name: None`, `alias_matched: true`, and `Ready`. The echoed request ID lets a client ignore stale replies while notifications share the stream |
@@ -209,7 +209,7 @@ introduced in v17): `Info | Success | Warning | Error`.
 | `ClientSuspendState` | `suspended: bool`; reports terminal suspension and resumption |
 
 Every `Key`/`Text` resolves the per-client `KeyEngine` against the live key tables first; `Pass`
-reaches the synchronized Terminal/Browser sinks (Picker and Agent source panes have no sink and
+reaches the synchronized Terminal/Browser sinks (Picker and Editor source panes have no sink and
 drop passed keys). `BrowserSurfaceKey`/`BrowserSurfaceText` validate a Browser source and go
 straight to those sinks, so root bindings cannot consume page input. The desktop client's
 window-root prefix claim sends the configured prefix and armed sequence as `Key`, preserving tmux
@@ -237,7 +237,7 @@ unpaired keys.
 
 ## `EventPayload` variants
 
-`Snapshot(MuxSnapshot)`, `AgentCommand { pane, request_id, command }`,
+`Snapshot(MuxSnapshot)`,
 `AppearanceChanged { appearance: Box<TerminalAppearance>, provenance: AppearanceProvenance }`,
 `MuxOptionsChanged { options: MuxOptions }`, `StatusChanged { status: StatusLine }`,
 `TerminalViewport { pane, viewport }`, `TerminalPatch { pane, patch }`,
@@ -557,7 +557,7 @@ full rule.
 
 Pasting an image into a pane on a **remote** host cannot work through the pasteboard: the CLI in that
 pane reads its own host's board, which on a headless machine is empty. So the client uploads the
-bytes instead. It normalizes the clipboard image exactly as an Agent pane does (SVG refused, TIFF
+bytes instead. It normalizes the clipboard image (SVG refused, TIFF
 transcoded, long edge capped at 1568 px, 5 MiB ceiling), then sends one `PasteUploadBegin` followed by
 `PasteUploadChunk`s of at most 1 MiB, all under one writer lock so nothing interleaves.
 
@@ -633,11 +633,11 @@ Missing keys are rejected during control-message validation.
 
 `MuxOptions` is a `BTreeMap<MuxOptionKey, MuxOptionValue>` over the 20 keys of `MuxOptionKey::ALL`, in
 declaration order: `prefix`, `mode-keys`, `history-limit`, `word-separators`, `copy-command`,
-`set-clipboard`, `buffer-limit`, `synchronize-panes`, `experimental-agent-pane`,
+`set-clipboard`, `buffer-limit`, `synchronize-panes`,
 `experimental-editor-pane`, `history-trickle` (default `2000`), `agent-command`,
 `agent-claude-code-command`, `agent-auto-approve`, and the v71 tail `mouse` (default `on`),
 `escape-time` (default `10`), and `prefix2` (default `None`), followed by `focus-follows-mouse` (default `off`) and the v107 `extended-keys` (default `off`) and
-`focus-events` (default `off`). `postcard` encodes the key as its variant
+`focus-events` (default `off`), then `clear-on-attach` (default `on`). `postcard` encodes the key as its variant
 index, so a new key is appended. Every entry contains an effective display string plus `MuxOptionSource`:
 `Default`, `TmuxConfig`, `Override`, or `RuntimeCommand`. The initial Batch supplies the subscribed
 options, and `MuxOptionsPatched` merges changed values and sources. `MuxOptionsChanged` remains
@@ -950,8 +950,9 @@ and `repo` at `MAX_PANE_CWD_BYTES` (4096) and `branch` at `MAX_PANE_BRANCH_BYTES
 encoding but now decodes `app`, `title` and `message` bounded at 64, 256 and 2048 bytes
 (`MAX_PANE_STATUS_*`). `TreeOp::UpsertPane` now holds a `Box<PaneSnapshot>`; postcard encodes a box
 as its contents, so its bytes are unchanged. `pane_summary_wire_tests` pins the layout and the tag.
-The daemon now fills `PaneSnapshot.status` for native Agent panes and, from `@agent_state`, for
-terminal panes with no OSC 7501 record, so the record reaches every session on every host.
+The daemon then also filled `PaneSnapshot.status` for native Agent panes (gone in v113) and, from
+`@agent_state`, for terminal panes with no OSC 7501 record, so the record reaches every session on
+every host.
 
 v110 also carries pages agents write ([Artifacts](/designs/userpanes.md)). After the flow window's
 `Ping` and `Pong` (below) it appends five more `ProtocolMessage` variants: an interactive client asks for one file of a page with
@@ -961,9 +962,9 @@ total_bytes, reply }` and ordered `ArtifactChunk`s of at most `MAX_ARTIFACT_CHUN
 `ArtifactReply { token, text }` carries what a page sent with `zz.reply`, at most 64 KiB.
 
 v109 carries the watch-only agent pane behind PiP subagent feeds
-([PiP panes](/designs/pip-panes.md#subagent-feeds)). `AgentSessionCapabilities` appends
+([PiP panes](/designs/pip-panes.md)). `AgentSessionCapabilities` appends
 `watch: bool` with `#[serde(default)]`; a feed's Ready sets it, and clients draw the task tray in
-place of the composer. It travels as JSON on the agent stream, so postcard frames keep their
+place of the composer. The feeds were removed with the Agent pane kind; the field stays. It travels as JSON on the agent stream, so postcard frames keep their
 layout, but v108 shipped in zz 0.17.0 and `compat/wire-version.py` reads the source diff, so the
 number moves.
 
@@ -994,11 +995,38 @@ and for every other pane kind, and `#[serde(default)]`. It decodes bounded at
 drops longer entries and keeps the first 32. Clients map it to an icon with
 `zz_client::program::resolve`, so new icons work against an older v112 daemon.
 
+v112 shipped in zz 0.21.0 and 0.22.0. v113 removes the Agent pane kind
+([agent lens](/designs/agent-lens.md)). Claude Code and Codex run in terminal panes, and a client
+opens the lens over one by sending `AgentReplay` for that terminal's `%pane`; the agent messages
+and payloads keep their shapes and are now accepted only for terminal panes. Removed:
+`PaneKindSnapshot::Agent(AgentDescriptor)` and `AgentDescriptor`, `EventPayload::AgentCommand` with
+its `AgentCommand` enum (`ComposerAppend`, `Prompt`), `ChooseTreePaneKind::Agent`, and
+`MuxOptionKey::ExperimentalAgentPane`, which leaves `MuxOptionKey::ALL` at 20 keys.
+`GuiResponse` now answers only `BrowserCommand::Screenshot`.
+
+v114 appends `EventPayload::Providers(ProvidersReport)`, the answer to
+the internal `providers [-u provider]` command behind Settings > Providers. The daemon finds
+Claude Code and Codex on its own host (login-shell PATH plus `~/.local/bin`), reads their
+`--version`, asks `downloads.claude.ai` and the npm registry through `curl` for the newest release,
+and with `-u` runs the vendor's updater (`claude update`, `codex update`, `brew upgrade --cask` for
+Homebrew installs, the vendor install script when missing). `ProvidersReport { checking, providers }`
+holds one `ProviderStatus { provider, path, version, latest, manual, task }` per CLI, where `task` is
+`Idle`, `Running { output }` (the updater's latest line) or `Failed { message }` (its last lines, at
+most `MAX_PROVIDER_TEXT_BYTES`). `manual: Option<ManualUpdate { owner, command }>` marks an install
+zz will not update because something else owns it: an npm prefix this user cannot write (`sudo <npm>
+install -g <pkg>@latest`), a mise tool (`mise use -g <tool>@latest`), Nix, Snap, winget, or a
+system package found with `dpkg-query -S`, `pacman -Qqo` or `rpm -qf`; `-u` on one is refused with
+that text. The daemon sends the whole report on every change to each client that
+asked.
+
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 112`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 114`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v114 requires updated clients and daemon together, including the daemon on every ssh host.
+  v112 shipped in zz 0.21.0 and 0.22.0; v113 removes the Agent pane kind, `AgentDescriptor`,
+  `EventPayload::AgentCommand`, `ChooseTreePaneKind::Agent` and `MuxOptionKey::ExperimentalAgentPane`; v114 appends `EventPayload::Providers`.
 - v112 requires updated clients and daemon together, including the daemon on every ssh host.
   v111 shipped in zz 0.20.0; v112 appends `PaneSummary.process`.
 - v111 requires updated clients and daemon together, including the daemon on every ssh host.
@@ -1625,13 +1653,12 @@ drops longer entries and keeps the first 32. Clients map it to an icon with
   `MAX_FRAME_BYTES` before the payload buffer grows.
   `SetConfigOverrides` is additionally validated at no more than 1,024 single-line pairs, with
   nonempty keys of at most 128 bytes and values of at most 64 KiB. Each mux-option payload must be a
-  complete 17-key map with values of at most 64 KiB; bounded value deserialization rejects an
+  complete map holding every `MuxOptionKey::ALL` key, with values of at most 64 KiB; bounded value deserialization rejects an
   oversized string before it can become protocol state.
   `StartupConfigCauses` has a dedicated `InvalidStartupConfigCauses` validation path with a bounded
   sequence visitor: at most 1,024 causes, 64 KiB each, and 1 MiB total.
-- The GUI-request path is bounded twice, on encode and on decode: `AgentCommand` text to
-  `MAX_AGENT_SEND_BYTES` (1 MiB), the screenshot path and every `GuiResponse` string to
-  `MAX_GUI_TEXT_BYTES` (64 KiB), each with a bounded deserializer *and* a `validate_control_message`
+- The GUI-request path is bounded twice, on encode and on decode: the screenshot path and every
+  `GuiResponse` string to `MAX_GUI_TEXT_BYTES` (64 KiB), each with a bounded deserializer *and* a `validate_control_message`
   check. Rejections surface as `ProtocolError::InvalidGuiRequest`.
 - Paste uploads are bounded the same way, on encode and on decode: `total_bytes` to
   `MAX_PASTE_UPLOAD_BYTES` (6 MiB) and nonzero, each chunk to `MAX_PASTE_UPLOAD_CHUNK_BYTES` (1 MiB),

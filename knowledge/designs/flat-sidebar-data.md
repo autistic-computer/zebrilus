@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Flat sidebar data: pane summaries, attention and time"
 description: "The data layer for a flat, two-line-per-window sidebar on every client: one PaneSummary per pane in the tree (last change time, unseen finish latch, last shell command, @name, display cwd and git branch, and the program running in a terminal), one status record for every agent kind, the daemon clock on the handshake, and a renderer-free view model in zz-client. Both data slices are built, and the desktop, web and iPad sidebars draw it when the footer's eye switch is on."
-status: Complete
+status: Complete (Agent pane parts removed 2026-10-23)
 resource: crates/zz-client/src/window_summary.rs
 tags:
 - sidebar
@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-20T20:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -39,9 +39,10 @@ it, so the two-line rows never turn into pills.
 # What every client receives
 
 - `PaneSnapshot.status` is the one attention record for all agent kinds: OSC 7501 programs
-  ([program status](/terminal/program-status.md)), native Agent panes (computed by the agent fanout,
-  see [Native Agent pane](/concepts/agent-pane.md)), and terminal panes without a 7501 record through
-  a mirror of their `@agent_state` option.
+  ([program status](/terminal/program-status.md)) and terminal panes without a 7501 record through
+  a mirror of their `@agent_state` option. Native Agent panes also filled it from the agent fanout
+  until the Agent pane was removed on 2026-10-23 ([agent lens](/designs/agent-lens.md)); the fanout
+  computes no status record now.
 - `PaneSnapshot.summary: PaneSummary` holds `changed_at`, `unseen`, `command`, `name`, `cwd`,
   `repo`, `branch` and `process`, with its own `TreeOp::PaneSummary` at tag 18.
 - `Welcome.clock` and `ServerHello.clock` carry the daemon wall clock once per connection.
@@ -72,7 +73,9 @@ connected goes uncorrected until the next reconnect.
 
 **Native agents report through `PaneStatus`, not `AgentPaneWire`.** The heavy wire carries large
 JSON blobs and republishes on config, mode and task edges; the status record is bounded and changes
-only on phase, permission and turn-end edges.
+only on phase, permission and turn-end edges. (History: this applied to the Agent pane, removed on
+2026-10-23. A terminal running Claude Code or Codex reports through OSC 7501 or `@agent_state`
+like any terminal.)
 
 **Location never stats under the lock or on the helper pool.** cwd and branch are resolved on a
 location thread of its own that starts when a job arrives and exits when its queue is empty, one
@@ -108,11 +111,11 @@ Working, then `unseen` is Done, then the bell. A window takes the most urgent of
 the highest attention among NeedsYou, Failed, Done and Working; ties go to the active pane, then the
 newer `changed_at`, then layout order. With none, the active pane. A bell never takes line 2.
 
-**Title (line 1)** describes the title pane: the headline when it is agent-like (Agent kind, a
-status record, or a `@name`), else the active pane. First that applies:
+**Title (line 1)** describes the title pane: the headline when it is agent-like (a status record
+or a `@name`), else the active pane. First that applies:
 
-1. The title pane's own title when it is an Agent pane and the title is not the default `agent`,
-   else its status title, else its `@name`.
+1. The title pane's status title, else its `@name`. (Until 2026-10-23 an Agent pane's own title
+   came first when it was not the default `agent`.)
 2. The window name when the user renamed it (`automatic_rename` off).
 3. `navigation::pane_label` of the title pane: the program title, the page title, or "New session".
 4. The window name.
@@ -124,7 +127,8 @@ you, Failed (each with the status message), Done with the reply or message, Work
 or title and progress, Done for an unseen finish, an idle message, Exited with a non-zero status,
 Exit with a failed shell command and the location, the browser's host ("New tab" for a blank page),
 the editor's file, "New pane" for a picker, the location (`cwd` folder and branch), then the window
-name or "Shell" for terminals and the provider label for agents. A lead (Needs approval, Question,
+name or "Shell" for terminals (the provider label for Agent panes until they were removed on
+2026-10-23). A lead (Needs approval, Question,
 Needs you, Failed, Done, Exit) takes its tone and anything after it follows muted after " · ", as in
 the agreed mock; Done is in the foreground only while the finish is unseen.
 
@@ -171,7 +175,10 @@ and a program that keeps running cost nothing past that comparison.
 known command at a `/` boundary (case folded, `\` read as `/`, `.exe` dropped, and tried again
 without its extension), the longest command winning, so `/home/me/bin/claude.py` and
 `codex` (from `exec -a codex sleep 30`) both resolve, and a later `node` or `python3` never beats
-the script before it. `pane_program` keeps Agent panes on their provider's icon.
+the script before it. `pane_program` resolves terminal panes only; Agent panes kept their
+provider's icon until the kind was removed on 2026-10-23, and `pane_agent` now maps a terminal whose
+program is `claude` or `codex` to its provider, which is what gets the lens button and the status
+bar's agent activity.
 
 **The tree draws the mark alone.** The session tree on desktop, web and iPad puts the program's
 mark, without its tile, in the row's ink where the kind icon was (`zz_ui::program::program_mark`):
@@ -261,5 +268,5 @@ no single-ink mark, so its row keeps the kind icon.
 # Related
 
 - [Mux snapshots](/protocol/snapshots.md), [the wire protocol](/protocol/wire-protocol.md)
-- [Program status (OSC 7501)](/terminal/program-status.md), [Native Agent pane](/concepts/agent-pane.md)
+- [Program status (OSC 7501)](/terminal/program-status.md), [Agent lens](/concepts/agent-lens.md)
 - [Terminal bell](/designs/terminal-bell.md), [Fleet attach](/designs/fleet-attach.md)

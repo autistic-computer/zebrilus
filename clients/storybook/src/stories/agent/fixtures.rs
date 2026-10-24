@@ -7,7 +7,6 @@ use zz_protocol::{
 };
 use zz_ui::agent::{
     AgentAside, AgentEntry, AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus,
-    controls::{AgentControlChoice, AgentControlSelection},
 };
 
 const WIDE_SCREENSHOT: &[u8] =
@@ -234,58 +233,6 @@ pub fn tasks() -> Vec<AgentTaskWire> {
             tool_call_id: None,
         },
     ]
-}
-
-pub fn choices(items: &[(&str, &str, Option<&str>)]) -> Vec<AgentControlChoice> {
-    items
-        .iter()
-        .map(|(value, name, description)| AgentControlChoice {
-            value: (*value).to_owned(),
-            name: (*name).to_owned(),
-            description: description.map(str::to_owned),
-        })
-        .collect()
-}
-
-pub fn claude_modes() -> Vec<AgentControlChoice> {
-    choices(&[
-        ("default", "Default", Some("Ask before edits and commands")),
-        (
-            "acceptEdits",
-            "Accept edits",
-            Some("Edit files without asking"),
-        ),
-        ("plan", "Plan", Some("Plan before changing anything")),
-    ])
-}
-
-pub fn codex_model() -> AgentControlSelection {
-    AgentControlSelection {
-        current_value: "gpt-5".into(),
-        choices: choices(&[("gpt-5", "GPT-5", None), ("gpt-5-mini", "GPT-5 mini", None)]),
-    }
-}
-
-pub fn claude_model() -> AgentControlSelection {
-    AgentControlSelection {
-        current_value: "opus".into(),
-        choices: choices(&[
-            ("opus", "Opus", None),
-            ("sonnet", "Sonnet", None),
-            ("haiku", "Haiku", None),
-        ]),
-    }
-}
-
-pub fn effort(current: &str) -> AgentControlSelection {
-    AgentControlSelection {
-        current_value: current.to_owned(),
-        choices: choices(&[
-            ("low", "Low", None),
-            ("medium", "Medium", None),
-            ("high", "High", None),
-        ]),
-    }
 }
 
 pub fn option(label: &str, description: Option<&str>) -> AgentQuestionOption {

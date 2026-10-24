@@ -127,7 +127,6 @@ struct TerminalWatcher {
     previous: BTreeMap<TerminalViewId, (u64, Arc<TerminalViewport>)>,
     previous_title: Option<String>,
     previous_title_writes: u64,
-    projects_agent: bool,
     previous_bar_state: ProgressBarState,
     previous_program_status: Option<Arc<ProgramStatus>>,
     fanout: PaneFrameFanout,
@@ -161,11 +160,7 @@ impl Watcher {
         }
     }
 
-    pub(super) fn terminal(
-        pane: PaneId,
-        terminal: &Arc<TerminalSession>,
-        projects_agent: bool,
-    ) -> Self {
+    pub(super) fn terminal(pane: PaneId, terminal: &Arc<TerminalSession>) -> Self {
         Self::new(
             terminal,
             Surface::Terminal(Box::new(TerminalWatcher {
@@ -173,7 +168,6 @@ impl Watcher {
                 previous: BTreeMap::new(),
                 previous_title: None,
                 previous_title_writes: 0,
-                projects_agent,
                 previous_bar_state: ProgressBarState::Hidden,
                 previous_program_status: None,
                 fanout: PaneFrameFanout::new(),
@@ -378,7 +372,7 @@ impl TerminalWatcher {
                         self.previous_reported_path = Some(reported_path.to_owned());
                     }
                     let bar_state = terminal.progress_bar().state;
-                    if !self.projects_agent && self.previous_bar_state != bar_state {
+                    if self.previous_bar_state != bar_state {
                         self.previous_bar_state = bar_state;
                         let terminal = Arc::clone(terminal);
                         shared.defer_watcher_effect(move |shared| {
@@ -393,12 +387,11 @@ impl TerminalWatcher {
                     }
                 }
                 let title_writes = terminal.facts().program_title_writes;
-                if !self.projects_agent
-                    && (self.previous_title_writes != title_writes
-                        || self
-                            .previous_title
-                            .as_deref()
-                            .is_none_or(|previous| previous != runtime_viewport.title()))
+                if self.previous_title_writes != title_writes
+                    || self
+                        .previous_title
+                        .as_deref()
+                        .is_none_or(|previous| previous != runtime_viewport.title())
                 {
                     shared.synchronize_pane_title(
                         pane,
@@ -410,11 +403,10 @@ impl TerminalWatcher {
                     self.previous_title_writes = title_writes;
                 }
                 let program_status = terminal.program_status();
-                if !self.projects_agent
-                    && self
-                        .previous_program_status
-                        .as_ref()
-                        .is_none_or(|previous| !Arc::ptr_eq(previous, &program_status))
+                if self
+                    .previous_program_status
+                    .as_ref()
+                    .is_none_or(|previous| !Arc::ptr_eq(previous, &program_status))
                 {
                     let worked = self
                         .previous_program_status

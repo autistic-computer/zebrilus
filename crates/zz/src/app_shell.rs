@@ -446,11 +446,6 @@ impl Render for AppShell {
                         shell.pane_menu_command("split-window", &["--kind", "browser"], cx);
                     }))
                 })
-                .when(crate::config::agent_pane_enabled(cx), |shell| {
-                    shell.on_action(cx.listener(|shell, _: &menus::NewAgentPane, _, cx| {
-                        shell.pane_menu_command("split-window", &["--kind", "agent"], cx);
-                    }))
-                })
                 .on_action(cx.listener(|shell, action: &menus::SwitchSession, _, cx| {
                     let session = shell
                         .mux
@@ -619,8 +614,7 @@ mod tests {
         let (_, cx) = cx.add_window_view(move |window, cx| {
             let controller =
                 cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx));
-            let agent_controller =
-                cx.new(|_| AgentController::new(crate::config::AgentConfig::default()));
+            let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
                     Err(DaemonError::Thread("test client".to_owned())),
