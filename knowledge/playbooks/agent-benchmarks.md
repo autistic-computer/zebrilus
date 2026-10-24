@@ -234,41 +234,63 @@ starts the CLI as the window's command and hands every prompt to the user.
 ## zz gaps a lead hits
 
 Each came from a run or a probe on the fleet (zz 0.21.0, Claude Code 2.1.308 and 2.1.309, Codex
-0.159 and 0.163). The skill works around the first, second and fourth; the rest are open.
+0.159 and 0.163). Branch `claude/lead-gaps-92827e` (2026-10-24) fixed items 1 to 5 and 8, each with
+a daemon test and a live check against Claude Code 2.1.308 and 2.1.310 and Codex 0.164 on a
+throwaway daemon; Codex 0.164 fixes item 6 and the agent-lens branch item 7. The fleet keeps the
+old behavior until it runs that build, and `.agents/skills/zz-lead/SKILL.md` already assumes it.
 
-1. **A Claude terminal worker's turn end depends on a SendMessage reply.** `agent-send --wait`
-   to a Claude Code terminal pane returns only when the worker replies over the peer bus. A
-   Sonnet worker on xps answered in its own pane in 7 s; the wait exited 124 after 120 s saying
-   "the turn is still running". The Codex path already ends on busy then idle; the Claude path
-   could end the same way when no reply came.
-2. **A Claude permission prompt reads as idle.** `scan_peers` in
-   `crates/zz-daemon/src/daemon/helpers.rs` maps every status but `busy` to `idle`, and Claude
-   writes `waiting` while a prompt is up, so `#{agent_state}`, `--on-block fail` and `events`
-   never see it. Leads waited 978 s and 1875 s on a worker blocked from its first second; v3 and
-   v4 add one delayed `capture-pane`. Mapping `waiting` to `blocked` closes it.
-3. **A reply after a timed-out wait is dropped,** and nothing waits for a pane's next reply or
-   turn end without sending text. A lead cannot re-arm a wait without nudging the worker.
-4. **A long brief pasted into Codex is never submitted.** Codex folds it into
-   `[Pasted Content 3886 chars]`, zz's echo check fails ("text not echoed within 2 seconds;
-   nothing submitted"), and the brief sits in the composer; a v1 lead pressed Enter itself. The
-   skill puts Codex briefs in a file on the host and sends one line.
-5. **A fresh Codex 0.159 cannot be reached:** no `@agent_state`, so `--wait` refuses, and a plain
-   send fails with "Codex session in %12 has no name yet". Codex 0.163 works.
-6. **A failed Codex turn reads as success.** An API error (`gpt-6.1-sol` is not allowed on
-   alienware's ChatGPT login) came back as `stop_reason: end_turn`, exit 0, empty text.
-7. **`--notify` needs two native agent panes on one daemon**
-   (`submit_agent_prompt_and_notify` in `daemon.rs`), so a lead in a terminal pane gets no push
-   from zz and relies on its own CLI's background-task notice. A Codex lead has none; untested.
-8. **No event wait on a terminal agent's turn.** `wait-for -E agent-state-changed` answers
-   "invalid event", and `wait-for -E @option-changed` never fires for the peer-state writes; only
-   `zz events` streams them.
+1. **A Claude terminal worker's turn end depended on a SendMessage reply.** `agent-send --wait`
+   to a Claude Code terminal pane returned only when the worker replied over the peer bus; a
+   Sonnet worker on xps answered in its pane in 7 s and the wait exited 124 after 120 s. Fixed:
+   the wait also follows the pane's `@agent_state` and ends when it goes back to idle, printing the
+   reply if one came and nothing otherwise (live: 1.1 s for an in-pane answer).
+2. **A Claude permission prompt was missed by the wait.** The peer-bus wait ignored
+   `--on-block fail` and never looked at the pane, so leads waited 978 s and 1875 s on a blocked
+   worker. Fixed with item 1: `blocked` exits 3 (live: 2.4 s on a curl prompt). Claude Code
+   reports a prompt itself through OSC 7501 (`pane_status=blocked`, `kind=permission`) on 2.1.308
+   and 2.1.310, which is what `#{agent_state}` showed live. Where it does not, the registry scan in
+   `scan_peers` now maps Claude's `waiting` to `blocked` instead of `idle`. The scan also dropped
+   records whose `statusUpdatedAt` was over 10 minutes old, but Claude Code does not refresh a busy
+   record (one sat at 851 s while its session worked), so a long turn read as idle; that filter is
+   gone (pid liveness and the 24 h record check stay).
+3. **A reply after a timed-out wait was dropped,** and nothing waited for a pane's next reply or
+   turn end without sending text. Fixed: after a wait times out or its caller dies, the daemon
+   keeps its reply inbox for an hour and the latest reply per target, and
+   `agent-send -t %N --wait ''` sends nothing: it prints that reply, returns at once on an idle
+   pane, or waits for the running turn (live: a reply sent while no wait was open, and after the
+   waiting CLI was killed, came back in 36 ms). The v5 restart nudge in the orchestrator-skill
+   branch can use this instead of sending text.
+4. **A long brief pasted into Codex was never submitted.** Codex folds it into
+   `[Pasted Content 3886 chars]` and the echo check missed it. Fixed: that placeholder counts like
+   Claude's `[Pasted text`, so the paste path presses Enter (live: a 3944-character brief to a
+   fresh Codex). The skill's brief-file detour is gone.
+5. **A fresh Codex could not be reached:** a plain send failed with "Codex session in %12 has no
+   name yet". Fixed: with no thread name a plain send pastes and submits, as a peer message already
+   did. `--wait` still needs `#{agent_state}`, which Codex 0.163 and later report (OSC 7501) and
+   0.159 does not.
+6. **A failed Codex turn read as success** on 0.163 (`end_turn`, exit 0, empty text, for a model
+   the ChatGPT login does not allow). Codex 0.164 reports the failed turn as `pane_status=error`,
+   which zz maps to `failed`: the same 400 came back live as exit 1, `%5: agent_state=failed`. No
+   zz change; update Codex. The error text stays in the pane (`■ {"type":"error",...}`).
+7. **`--notify` needs two native agent panes on one daemon.** Not changed here: the agent-lens
+   branch (`claude/agent-lens-3bd7b7`) routes `--notify` from a terminal pane through the lens and
+   posts the reply back into the calling pane.
+8. **No event wait on a terminal agent's turn.** `wait-for -E agent-state-changed` answered
+   "invalid event". Fixed: `wait-for -E` takes `agent-state-changed` and `agent-tool-call`, its
+   payload keeps `agent_state` (and the tool fields), and
+   `wait-for -E -F '#{==:#{pane},%N}' agent-state-changed` wakes on that pane only. A filter on
+   `#{agent_state}` reads the format, not the payload, so it is empty there. `@option-changed` still
+   does not fire for the daemon's own `@agent_state` writes.
 9. **Startup dialogs stop every new TUI worker:** Claude's folder trust for every new git repo,
    even under a trusted parent, Codex's per folder, "Claude in Chrome extension detected",
    "6 new MCP servers found", Codex update offers. zz has no verb that starts a terminal CLI and
-   returns once it takes input.
+   returns once it takes input. Open.
 10. **Moving files is obscure.** `run-shell` over `--host` takes no stdin, `save-buffer PATH`
     through `--host` writes on the caller, so a file goes `load-buffer -` there plus
-    `run-shell "zz save-buffer ..."`. Plain ssh between fleet hosts has no keys.
+    `run-shell "zz save-buffer ..."`. Plain ssh between fleet hosts has no keys. Open.
+
+When the agent lens lands, `--wait` to a pane running `claude` or `codex` goes through the lens
+instead of the peer bus and the `@agent_state` edge; the lens has to take `--wait ''` the same way.
 
 Verbs that work only with the native agent pane: `--notify`, `--final`, `--on-block allow|deny`,
 `--progress` tool lines, `new-agent-session`, `restart-agent-pane`, `split-window --kind agent`.

@@ -897,6 +897,22 @@ fn a_pane_whose_root_process_is_the_agent_gets_its_peer_state() {
         assert!(Instant::now() < deadline, "agent state never arrived");
         thread::sleep(Duration::from_millis(20));
     }
+    let mut waiting = record;
+    waiting["status"] = "waiting".into();
+    waiting["waitingFor"] = "permission prompt".into();
+    fs::write(
+        directory.join("sessions").join(format!("{pid}.json")),
+        serde_json::to_vec(&waiting).expect("record JSON"),
+    )
+    .expect("waiting record");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while state().trim() != "blocked" {
+        assert!(
+            Instant::now() < deadline,
+            "a permission prompt never read as blocked"
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
     shared.request_shutdown();
 }
 
