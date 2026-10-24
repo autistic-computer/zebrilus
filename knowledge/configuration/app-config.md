@@ -505,11 +505,9 @@ under Default, a radius of about 13.6px, concentric with the controls in the pan
 grid reads as one rounded surface. The strip along the window's top (the macOS traffic lights, the
 sidebar's buttons, the status bar) is a pane header tall (34px) plus the margin above and below it
 (`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line; flush panes
-leave it one header tall. The sidebar's footer mirrors it: settings and the view switch are
-centered the margin plus half a header in from the window's bottom and leading edges, like the
-traffic lights from its top, so those sit as far from the window as Rex puts its own (25pt there,
-with an 8pt margin). The toggle and the view switch center on the column the sidebar rows' actions
-(+, …, ×) center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
+leave it one header tall. The sidebar's buttons sit in that strip too: Add host, the view switch
+and Settings before the toggle, which centers on the column the sidebar rows' actions (+, …, ×)
+center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
 no second tier of gapped defaults: the number Settings shows is the number the panes use, which is
 what lets the disabled Frame row stay honest. Gapped panes draw their frame in glass, as above,
 and keep the contact shadow. This treatment is built in; the retired `pane-shadow` key produces the
