@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
@@ -177,8 +177,7 @@ without its extension), the longest command winning, so `/home/me/bin/claude.py`
 `codex` (from `exec -a codex sleep 30`) both resolve, and a later `node` or `python3` never beats
 the script before it. `pane_program` resolves terminal panes only; Agent panes kept their
 provider's icon until the kind was removed on 2026-10-23, and `pane_agent` now maps a terminal whose
-program is `claude` or `codex` to its provider, which is what gets the lens button and the status
-bar's agent activity.
+program is `claude` or `codex` to its provider, which is what gets the lens button.
 
 **The tree draws the mark alone.** The session tree on desktop, web and iPad puts the program's
 mark, without its tile, in the row's ink where the kind icon was (`zz_ui::program::program_mark`):

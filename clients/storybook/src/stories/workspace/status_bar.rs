@@ -1,20 +1,18 @@
-use zz_client::AgentAttentionStatus;
 use zz_gpui::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
-use zz_protocol::{AgentProvider, PaneKindSnapshot};
+use zz_protocol::PaneKindSnapshot;
 use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, h_flex,
     navigation::{
         WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState,
         status::{
-            StatusAgentEntry, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
-            status_agents, status_pane_deck, status_window, status_window_overflow,
+            StatusPaneEntry, StatusWindowActions, StatusWindowEntry, status_pane_deck,
+            status_window, status_window_overflow,
         },
         workspace_status_item,
     },
-    pane::agent_provider_icon,
     shell::{WorkspaceStatusSlots, workspace_status_bar},
 };
 
@@ -29,7 +27,7 @@ pub const STORY: Story = Story {
     id: "status-bar",
     name: "Status bar",
     group: "Workspace",
-    summary: "The titlebar that replaces the sidebar when it is hidden: the sidebar toggle, window pills with their pane decks, agent activity and host items. Settings lives at the bottom of the sidebar.",
+    summary: "The titlebar that replaces the sidebar when it is hidden: the sidebar toggle, window pills with their pane decks, and the host and update items. Settings lives at the bottom of the sidebar.",
     sections: &[
         Section {
             id: "bar",
@@ -48,12 +46,6 @@ pub const STORY: Story = Story {
             name: "Pane deck",
             summary: "status_pane_deck draws a window's panes as a packed fan: the focused pane in front with its glyph, at most two blank tiles behind it, each with its own outline, so the one in front reads against the one behind. Point at it to open every pane in a row and click one to focus it; a disconnected deck still opens but selects nothing.",
             build: |_, cx| stateless(pane_deck, cx),
-        },
-        Section {
-            id: "agents",
-            name: "Agent activity",
-            summary: "status_agents summarizes every terminal running Claude Code or Codex by the most urgent state: needs input, then failed, then running, then idle.",
-            build: |_, cx| stateless(agents, cx),
         },
         Section {
             id: "overflow",
@@ -134,40 +126,6 @@ fn window(
     )
 }
 
-fn agent(
-    label: &str,
-    provider: AgentProvider,
-    status: Option<AgentAttentionStatus>,
-) -> StatusAgentEntry {
-    StatusAgentEntry {
-        label: label.to_owned().into(),
-        window_name: "agents".into(),
-        icon: agent_provider_icon(provider),
-        status,
-        select: noop(),
-    }
-}
-
-fn agent_entries() -> Vec<StatusAgentEntry> {
-    vec![
-        agent(
-            "Rework status bar",
-            AgentProvider::Codex,
-            Some(AgentAttentionStatus::Working),
-        ),
-        agent(
-            "Review sidebar",
-            AgentProvider::ClaudeCode,
-            Some(AgentAttentionStatus::NeedsInput),
-        ),
-        agent(
-            "Write release notes",
-            AgentProvider::ClaudeCode,
-            Some(AgentAttentionStatus::Idle),
-        ),
-    ]
-}
-
 fn update_item(cx: &App) -> AnyElement {
     workspace_status_item("update", None, "v0.17.0".into(), cx)
         .flex_none()
@@ -186,7 +144,6 @@ fn update_item(cx: &App) -> AnyElement {
 pub struct Bar {
     pub gaps: bool,
     pub connected: bool,
-    pub agents: bool,
     pub host: bool,
     pub windows: usize,
 }
@@ -195,7 +152,6 @@ impl Bar {
     pub const FULL: Self = Self {
         gaps: false,
         connected: true,
-        agents: true,
         host: true,
         windows: 3,
     };
@@ -237,15 +193,6 @@ pub fn titlebar(config: &Bar, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
         ));
     }
     let mut right = Vec::new();
-    if config.agents {
-        let mut agents = agent_entries();
-        if !config.connected {
-            for agent in &mut agents {
-                agent.status = None;
-            }
-        }
-        right.push(status_agents("agents", agents, config.connected, cx));
-    }
     if config.host {
         right.push(
             workspace_status_item("host", Some(IconName::Globe), "devbox".into(), cx)
@@ -293,17 +240,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 &Bar {
                     windows: 8,
                     host: false,
-                    ..full
-                },
-                cx,
-            ),
-        )
-        .state(
-            "agents hidden in settings",
-            bar(
-                "bar-minimal",
-                &Bar {
-                    agents: false,
                     ..full
                 },
                 cx,
@@ -452,63 +388,6 @@ fn pane_deck(_: &mut Window, cx: &mut App) -> AnyElement {
                     )
                 }),
             ),
-        )
-        .into_any_element()
-}
-
-fn agents(_: &mut Window, cx: &mut App) -> AnyElement {
-    use AgentAttentionStatus::{Failed, Idle, Working};
-    let single = |status| vec![agent("Rework status bar", AgentProvider::Codex, status)];
-    let summary = |id: &'static str, agents: Vec<StatusAgentEntry>, connected: bool| {
-        div()
-            .id(id)
-            .flex()
-            .child(status_agents(id, agents, connected, cx))
-            .into_any_element()
-    };
-    states()
-        .columns(3)
-        .state(
-            "needs input outranks the rest",
-            summary("agents-mixed", agent_entries(), true),
-        )
-        .state(
-            "failed",
-            summary(
-                "agents-failed",
-                vec![
-                    agent(
-                        "Fix flaky daemon test",
-                        AgentProvider::ClaudeCode,
-                        Some(Failed),
-                    ),
-                    agent("Rework status bar", AgentProvider::Codex, Some(Working)),
-                ],
-                true,
-            ),
-        )
-        .state(
-            "running",
-            summary("agents-running", single(Some(Working)), true),
-        )
-        .state(
-            "all idle",
-            summary(
-                "agents-idle",
-                vec![
-                    agent("Rework status bar", AgentProvider::Codex, Some(Idle)),
-                    agent("Write release notes", AgentProvider::ClaudeCode, Some(Idle)),
-                ],
-                true,
-            ),
-        )
-        .state(
-            "state unknown while connecting",
-            summary("agents-unknown", single(None), true),
-        )
-        .state(
-            "disconnected",
-            summary("agents-disconnected", single(None), false),
         )
         .into_any_element()
 }

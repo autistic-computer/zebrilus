@@ -7,9 +7,7 @@ use crate::{
     ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
     navigation::{
         WorkspaceStatusWindowState,
-        status::{
-            StatusAgentEntry, StatusPaneEntry, StatusWindowActions, status_agents, status_window,
-        },
+        status::{StatusPaneEntry, StatusWindowActions, status_window},
         status_dot, workspace_status_item,
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
@@ -108,29 +106,6 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
         })
         .collect();
     let mut right = Vec::new();
-    if settings.show_agents {
-        right.push(status_agents(
-            "settings-preview-agents",
-            [
-                (
-                    crate::pane::agent_provider_icon(zz_protocol::AgentProvider::Codex),
-                    "Rework status bar",
-                ),
-                (IconName::Claude, "Review pane titles"),
-            ]
-            .into_iter()
-            .map(|(icon, label)| StatusAgentEntry {
-                label: label.into(),
-                window_name: "workspace".into(),
-                icon,
-                status: Some(zz_client::AgentAttentionStatus::Working),
-                select: Rc::new(|_, _| {}),
-            })
-            .collect(),
-            true,
-            cx,
-        ));
-    }
     if settings.show_host {
         right.push(
             workspace_status_item(
