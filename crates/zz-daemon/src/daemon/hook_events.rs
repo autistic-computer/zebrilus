@@ -1896,9 +1896,15 @@ pub(super) fn event_payload(
     name: &str,
     variables: &BTreeMap<String, String>,
 ) -> BTreeMap<String, String> {
+    let agent = matches!(name, "agent-state-changed" | "agent-tool-call");
     let mut payload = variables
         .iter()
-        .filter_map(|(key, value)| Some((key.strip_prefix("hook_")?.to_owned(), value.clone())))
+        .filter_map(|(key, value)| {
+            let key = key.strip_prefix("hook_").or_else(|| {
+                (agent && (key.starts_with("agent_") || key.starts_with("tool_"))).then_some(key)
+            })?;
+            Some((key.to_owned(), value.clone()))
+        })
         .collect::<BTreeMap<_, _>>();
     payload.insert("event".to_owned(), name.to_owned());
     payload
@@ -2070,7 +2076,9 @@ impl Shared {
         list: bool,
         wake: Option<&str>,
     ) -> Result<Execution, DaemonError> {
-        if !MuxEngine::is_hook_event(name) {
+        if !MuxEngine::is_hook_event(name)
+            && !matches!(name, "agent-state-changed" | "agent-tool-call")
+        {
             return Err(ServerError::InvalidCommand(format!("invalid event: {name}")).into());
         }
         if list {
