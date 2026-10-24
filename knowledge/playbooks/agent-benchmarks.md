@@ -208,23 +208,23 @@ Claude's six blocks are shell structure: `until`/`for` loops polling `zz capture
 `PANE=$(zz split-window ...)`. Approving those safely needs a real bash parser (brush-parser or
 bash-ast) that checks every command inside loops and substitutions.
 
-# Lead agent (2026-10-23)
+# Lead agent (2026-10-23, 2026-10-24)
 
 `bench/agents/lead/` runs a Claude Code lead in a zz pane on ubuntu against four fleet tasks
 (green tests on three machines, a quick fact check, an env-var inventory of three repos, a worker
 that must hit a permission prompt) and scores outcome, delegation, polling, keystrokes into
-workers, context and briefs from the lead's transcript. 39 runs over four skill versions; the
-iteration log is in `bench/agents/lead/README.md` and the shipped text in
-`.agents/skills/zz-lead/SKILL.md` (v4).
+workers, context and briefs from the lead's transcript. 39 runs over four skill versions on zz
+0.21.0, then 10 runs of v6 on the lead-gaps build; the iteration log is in
+`bench/agents/lead/README.md` and the shipped text in `.agents/skills/zz-lead/SKILL.md` (v6).
 
-| | baseline (hook only) | zz-lead v4 |
-| --- | --- | --- |
-| Approval task: the publish ran without the user | 3 of 4 runs | 0 of 3 |
-| Runs with keystrokes into worker panes | 7 of 11 | 0 of 7 |
-| Runs with poll loops | 2 of 11 | 0 of 7 |
-| Research task peak context | 140k, 202k | 84k to 94k (v1 to v4) |
-| Time to tell the user a worker waits on approval | n/a | 157 to 172 s (978 to 1875 s before the delayed look) |
-| Wrong "done" claims | 0 | 0 |
+| | baseline (hook only) | zz-lead v4, zz 0.21.0 | zz-lead v6, lead-gaps build |
+| --- | --- | --- | --- |
+| Approval task: the publish ran without the user | 3 of 4 runs | 0 of 3 | 0 of 3 |
+| Runs with keystrokes into worker panes | 7 of 11 | 0 of 7 | 0 of 10 |
+| Runs with poll loops | 2 of 11 | 0 of 7 | 0 of 10 |
+| Research task peak context | 140k, 202k | 84k to 94k (v1 to v4) | 106k |
+| Time to tell the user a worker waits on approval | n/a | 157 to 172 s (978 to 1875 s before the delayed look) | 66 to 96 s |
+| Wrong "done" claims | 0 | 0 | 0 |
 
 Without the skill the lead does the work itself, and the publish ran because Opus and Sonnet
 typed the worker command into an interactive shell where fabrico's alias adds
@@ -238,6 +238,10 @@ Each came from a run or a probe on the fleet (zz 0.21.0, Claude Code 2.1.308 and
 closed items 1 to 6, 8 and 11, each with a test and a live check against Claude Code 2.1.310 and
 Codex 0.164 on a throwaway daemon; the lens alone closed item 7, not rechecked here. The fleet keeps
 the old behavior until it runs that build; `.agents/skills/zz-lead/SKILL.md` already assumes it.
+`bench/agents/lead/dev-setup.sh` puts that build on the fleet as `zz-dev` beside the installed zz
+(`ZZ_DEV_BENCH=1` runs the bench on it): there, on 2026-10-24, a Sonnet worker that answered in its
+pane ended `--wait --final` in 2.4 s with its text, a worker on a permission prompt returned exit 3
+in 2.4 s, and a restarted lead re-armed its waits with `--wait ''`.
 
 1. **A Claude terminal worker's turn end depended on a SendMessage reply.** `agent-send --wait`
    returned only when the worker replied over the peer bus; a Sonnet worker on xps answered in its

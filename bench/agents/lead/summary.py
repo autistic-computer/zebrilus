@@ -10,7 +10,7 @@ rows = collections.defaultdict(list)
 for root in sys.argv[1:] or ["out"]:
     for f in sorted(pathlib.Path(root).glob("runs/*/metrics.json")):
         m = json.loads(f.read_text())
-        if m.get("status") not in ("done", "timeout"):
+        if m.get("status") not in ("done", "timeout") or "killed=" in (f.parent / "meta").read_text():
             continue
         rows[(m.get("model", ""), m["arm"], m["task"])].append(m)
 
