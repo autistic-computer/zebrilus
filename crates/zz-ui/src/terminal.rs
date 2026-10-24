@@ -2092,8 +2092,10 @@ fn shape_text_row(
         );
         let glyph = glyph_for_dictionary(dictionary, cell);
         let decorative = decorative_glyph(glyph);
-        let foreground =
-            forced_foreground.unwrap_or_else(|| resolved_foreground(style, appearance, decorative));
+        let foreground = forced_foreground.map_or_else(
+            || resolved_foreground(style, appearance, decorative),
+            |foreground| faint_foreground(style, foreground),
+        );
         push_background(
             &mut background_batch,
             column,
@@ -2161,7 +2163,7 @@ fn shape_text_row(
                 column,
                 drawing,
                 color: foreground,
-                alpha: terminal_text_alpha(style) * text_opacity,
+                alpha: text_opacity,
             });
             let font_decorates_glyph = style.strikethrough()
                 || style.hyperlink()
@@ -2185,7 +2187,7 @@ fn shape_text_row(
                 column,
                 element,
                 color: foreground,
-                alpha: terminal_text_alpha(style) * text_opacity,
+                alpha: text_opacity,
             });
             let font_decorates_glyph = style.strikethrough()
                 || style.hyperlink()
@@ -2852,10 +2854,7 @@ fn text_run(
     text_opacity: f32,
 ) -> TextRun {
     let font = styled_font(style, base_font, appearance);
-    let foreground = color(
-        resolved_foreground,
-        terminal_text_alpha(style) * text_opacity,
-    );
+    let foreground = color(resolved_foreground, text_opacity);
     TextRun {
         len: text_len,
         font,
@@ -2886,8 +2885,19 @@ fn text_run(
     }
 }
 
-fn terminal_text_alpha(style: PackedStyle) -> f32 {
-    if style.faint() { 0.58 } else { 1.0 }
+fn faint_foreground(style: PackedStyle, foreground: Color) -> Color {
+    if !style.faint() {
+        return foreground;
+    }
+    let background = style.background();
+    let channel = |foreground: u8, background: u8| {
+        (f32::from(foreground) * 0.58 + f32::from(background) * 0.42).round() as u8
+    };
+    Color::rgb(
+        channel(foreground.r, background.r),
+        channel(foreground.g, background.g),
+        channel(foreground.b, background.b),
+    )
 }
 
 fn style_for_dictionary(
@@ -3195,7 +3205,7 @@ fn resolved_foreground(
     appearance: &TerminalAppearance,
     decorative: bool,
 ) -> Color {
-    let foreground = style.foreground();
+    let foreground = faint_foreground(style, style.foreground());
     if decorative || appearance.minimum_contrast <= 1.0 {
         return foreground;
     }
@@ -4438,6 +4448,69 @@ mod tests {
         );
         appearance.minimum_contrast = 1.0;
         assert_eq!(resolved_foreground(style, &appearance, false), foreground);
+    }
+
+    #[test]
+    fn contrast_correction_keeps_normal_and_faint_input_text_readable() {
+        let appearance = TerminalAppearance::default();
+        assert_eq!(appearance.minimum_contrast, 4.5);
+        for (foreground, background) in [
+            (Color::rgb(0, 0, 0), Color::rgb(0x38, 0x38, 0x38)),
+            (Color::rgb(0, 0, 0), Color::rgb(0x2f, 0x2f, 0x2f)),
+            (Color::rgb(0x80, 0x80, 0x80), Color::rgb(0xff, 0xff, 0xff)),
+        ] {
+            for attributes in [
+                0,
+                zz_terminal::ATTR_FAINT,
+                zz_terminal::ATTR_EXPLICIT_RGB,
+                zz_terminal::ATTR_EXPLICIT_RGB | zz_terminal::ATTR_FAINT,
+            ] {
+                let style = PackedStyle::new(
+                    foreground,
+                    background,
+                    None,
+                    attributes,
+                    TerminalUnderlineStyle::None,
+                );
+                let corrected = resolved_foreground(style, &appearance, false);
+                let run = text_run(
+                    style,
+                    1,
+                    &zz_gpui::font("monospace"),
+                    corrected,
+                    &appearance,
+                    1.0,
+                    1.0,
+                );
+                assert_eq!(run.color.a, 1.0);
+                assert!(
+                    contrast_ratio(terminal_color(run.color), background)
+                        >= appearance.minimum_contrast,
+                    "{foreground:?} on {background:?}, attributes={attributes}: {run:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn contrast_exemptions_preserve_faint_colors() {
+        let style = PackedStyle::new(
+            Color::rgb(0x80, 0x80, 0x80),
+            Color::rgb(0xf8, 0xf8, 0xf8),
+            None,
+            zz_terminal::ATTR_FAINT,
+            TerminalUnderlineStyle::None,
+        );
+        let dimmed = Color::rgb(0xb2, 0xb2, 0xb2);
+        assert_eq!(
+            resolved_foreground(style, &TerminalAppearance::default(), true),
+            dimmed
+        );
+        let disabled = TerminalAppearance {
+            minimum_contrast: 1.0,
+            ..TerminalAppearance::default()
+        };
+        assert_eq!(resolved_foreground(style, &disabled, false), dimmed);
     }
 
     #[test]

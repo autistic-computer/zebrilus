@@ -68,7 +68,7 @@ impl SettingsView {
         };
         let source = self.config_file_editor(kind).saved.clone();
         if let std::collections::btree_map::Entry::Vacant(vacant) = self.file_options.entry(kind) {
-            let definitions = match kind {
+            let mut definitions = match kind {
                 ConfigFileKind::Mux => vec![
                     (FileKey::Mux(MuxOptionKey::Prefix), "Prefix", false),
                     (FileKey::Mux(MuxOptionKey::ModeKeys), "Mode keys", false),
@@ -128,6 +128,24 @@ impl SettingsView {
                     ),
                 ],
             };
+            if cfg!(target_os = "macos") && kind == ConfigFileKind::Terminal {
+                definitions.insert(
+                    2,
+                    (
+                        FileKey::Appearance(AppearanceConfigKey::FontThicken),
+                        "Font smoothing",
+                        false,
+                    ),
+                );
+                definitions.insert(
+                    3,
+                    (
+                        FileKey::Appearance(AppearanceConfigKey::FontThickenStrength),
+                        "Smoothing strength",
+                        true,
+                    ),
+                );
+            }
             let donor_path = match kind {
                 ConfigFileKind::Mux => zz_daemon_client::discover_tmux_config(),
                 ConfigFileKind::Terminal => discover_ghostty_config(),
@@ -158,6 +176,8 @@ impl SettingsView {
                     };
                     if key.name() == "background-opacity" {
                         input.min(0.0).max(100.0)
+                    } else if key.name() == "font-thicken-strength" {
+                        input.min(0.0).max(255.0)
                     } else if matches!(key.name(), "window-padding-x" | "window-padding-y") {
                         input.min(0.0)
                     } else {
@@ -316,6 +336,10 @@ impl SettingsView {
             return div().into_any_element();
         };
         let disabled = self.file_controls_disabled(kind, cx);
+        let smoothing_enabled = controls.rows.iter().any(|row| {
+            row.key.name() == "font-thicken"
+                && matches!(row.value.as_deref(), Some("true" | "yes" | "on" | "1"))
+        });
         let mut stack = SettingsStack::titled(if kind == ConfigFileKind::Mux {
             "Options"
         } else {
@@ -350,19 +374,24 @@ impl SettingsView {
                 .gap(px(8.0))
                 .child(reset)
                 .child(provenance_badge(provenance));
-            let description = if row.key.name() == "theme" {
-                "Choosing a theme replaces custom terminal colors."
-            } else {
-                row.key.name()
+            let description = match row.key.name() {
+                "theme" => "Choosing a theme replaces custom terminal colors.",
+                "font-thicken" => "Draw terminal text with macOS font smoothing.",
+                "font-thicken-strength" => "Weight of smoothed text, from 0 to 255.",
+                name => name,
             };
             let entry = SettingEntry::new(row.title, description)
                 .title_actions(annotations)
-                .disabled(disabled);
-            let control = if row.key.name() == "mouse" {
+                .disabled(
+                    disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled,
+                );
+            let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
+                let default = row.key.default_value();
                 let enabled = matches!(
-                    row.value.as_deref().unwrap_or("on"),
+                    row.value.as_deref().unwrap_or(&default),
                     "on" | "true" | "yes" | "1"
                 );
+                let is_appearance = matches!(row.key, FileKey::Appearance(_));
                 boolean_control(
                     row.key.name(),
                     enabled,
@@ -370,7 +399,12 @@ impl SettingsView {
                         this.commit_file_option(
                             kind,
                             index,
-                            Some(if *enabled { "on" } else { "off" }),
+                            Some(match (*enabled, is_appearance) {
+                                (true, true) => "true",
+                                (false, true) => "false",
+                                (true, false) => "on",
+                                (false, false) => "off",
+                            }),
                             window,
                             cx,
                         );
@@ -492,7 +526,11 @@ impl SettingsView {
             return;
         }
         let result = (|| -> io::Result<()> {
-            let path = config_file_path(kind)?;
+            let path = self
+                .config_file_editor(kind)
+                .path
+                .clone()
+                .map_or_else(|| config_file_path(kind), Ok)?;
             let source = config::read_config_editor_source(&path, kind.max_bytes())?;
             if kind.editor_view(source.clone()) != self.config_file_editor(kind).saved {
                 return Err(io::Error::other(
@@ -770,6 +808,68 @@ fn option_choices(key: FileKey, scheme: TerminalColorScheme) -> Vec<(String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[zz_gpui::test]
+    fn font_smoothing_controls_save_strength_toggle_and_reset(cx: &mut zz_gpui::TestAppContext) {
+        use std::{cell::RefCell, rc::Rc};
+
+        cx.update(zz_ui::init);
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config");
+        let source = "# keep this\nfont-size = 13\n";
+        std::fs::write(&path, source).unwrap();
+        let captured = Rc::new(RefCell::new(None));
+        let captured_for_window = Rc::clone(&captured);
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(zz_daemon_client::DaemonError::Thread(
+                        "test client".to_owned(),
+                    )),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            captured_for_window.replace(Some(cx.entity()));
+            SettingsView::new(mux, window, cx)
+        });
+        let settings = captured.borrow().clone().unwrap();
+        cx.update(|window, cx| {
+            settings.update(cx, |settings, cx| {
+                settings.set_section(SettingsSection::Terminal, window, cx);
+                let file = settings.config_file_editor_mut(ConfigFileKind::Terminal);
+                file.path = Some(path.clone());
+                file.saved = source.to_owned();
+                file.error = None;
+                file.editor
+                    .update(cx, |editor, cx| editor.set_value(source, window, cx));
+                settings.synchronize_file_options(window, cx);
+                for (key, value) in [
+                    (AppearanceConfigKey::FontThicken, Some("true")),
+                    (AppearanceConfigKey::FontThickenStrength, Some("173")),
+                    (AppearanceConfigKey::FontThicken, Some("false")),
+                    (AppearanceConfigKey::FontThickenStrength, None),
+                    (AppearanceConfigKey::FontThicken, None),
+                ] {
+                    let index = settings.file_options[&ConfigFileKind::Terminal]
+                        .rows
+                        .iter()
+                        .position(|row| row.key.name() == key.as_str())
+                        .unwrap();
+                    settings.commit_file_option(ConfigFileKind::Terminal, index, value, window, cx);
+                    settings.synchronize_file_options(window, cx);
+                    let saved = std::fs::read_to_string(&path).unwrap();
+                    assert_eq!(
+                        config::file_options::appearance_value(&saved, key).as_deref(),
+                        value
+                    );
+                    assert_eq!(settings.terminal_preview_source(cx), saved);
+                }
+            });
+        });
+        assert_eq!(std::fs::read_to_string(path).unwrap(), source);
+    }
 
     #[zz_gpui::test]
     fn terminal_preview_uses_drafts_without_changing_saved_settings(
