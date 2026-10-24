@@ -27,7 +27,7 @@ use super::{
 };
 use crate::story::{row, states};
 
-pub const PLACEHOLDER: &str = "Ask the agent…";
+pub const PLACEHOLDER: &str = "Message Claude Code…";
 
 pub fn composer_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<InputState> {
     let value = value.to_owned();

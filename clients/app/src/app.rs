@@ -64,7 +64,7 @@ use crate::{
     connection::Connection,
     terminal::TerminalPane,
 };
-use agent_lens::AgentLens;
+use agent_lens::{AgentLens, ShowTerminal};
 pub(crate) use settings::phone;
 
 const TREE_HINTS: &[ChooserHint] = &[
@@ -1216,7 +1216,18 @@ impl AppShell {
                 .entry(pane)
                 .or_insert_with(|| {
                     let connection = self.connection.clone();
-                    cx.new(|cx| AgentLens::new(pane, connection, window, cx))
+                    let lens = cx.new(|cx| AgentLens::new(pane, connection, window, cx));
+                    cx.subscribe_in(
+                        &lens,
+                        window,
+                        move |this, _, _: &ShowTerminal, window, cx| {
+                            if this.connection.read(cx).agent_lens_open(pane) {
+                                this.toggle_lens(pane, window, cx);
+                            }
+                        },
+                    )
+                    .detach();
+                    lens
                 })
                 .clone(),
         )
@@ -1227,10 +1238,12 @@ impl AppShell {
             self.connection
                 .update(cx, |connection, cx| connection.close_agent_lens(pane, cx));
             self.lenses.remove(&pane);
+            self.compact.remember_lens(pane, false);
         } else if self.connection.read(cx).terminal_agent(pane).is_some() {
             self.connection
                 .update(cx, |connection, cx| connection.open_agent_lens(pane, cx));
             self.shown_lens(pane, window, cx);
+            self.compact.remember_lens(pane, true);
         } else {
             return;
         }
