@@ -127,10 +127,18 @@ The delivery model is unchanged from the agent pane; the full contract is in the
 - **Replay.** Each pane keeps an 18 MiB ring of encoded items (`MAX_REPLAY_RING_BYTES`); a replay
   older than the ring takes the reset path the runtime design describes. When the lens runtime
   opens, it rebuilds the history from the CLI's own file.
-- **Visibility.** The heavy stream goes only to clients for whom the pane is a lens pane in their
-  focused window, honoring zoom (`visible_agent_panes`). `AgentState` goes to every client attached
-  to the session, and a reattaching client gets it for every lens pane there
-  (`send_agent_resync`, `session_agent_panes`).
+- **Visibility.** The heavy stream goes to clients for whom the pane is a lens pane in their
+  focused window, honoring zoom (`visible_agent_panes`), and to clients watching the pane.
+  `AgentState` goes to every client attached to the session and to the pane's watchers, and a
+  reattaching client gets it for every lens pane there (`send_agent_resync`, `session_agent_panes`).
+- **Watchers.** A client that sends `AgentReplay` for a pane watches it from then on, attached or
+  not (`watched_agents` on the client entry): it gets the pane's `AgentUpdates`, `AgentState` and
+  `AgentLagged` until it disconnects or the pane closes, and the pane's `AgentState` right away when
+  the watch starts. This is how the desktop's lead chat follows a lead agent on another host without
+  attaching to its session, which would resize its panes, and how an attached client keeps a lens
+  live while its focused window shows something else. A client that both sees and watches a pane is
+  sent each frame once, and a watched pane leaving the visible set keeps its queued frames. There is
+  no unwatch message.
 
 # From outside: the CLI
 

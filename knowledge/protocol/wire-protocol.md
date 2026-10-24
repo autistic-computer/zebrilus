@@ -4,7 +4,7 @@ title: zz wire protocol (v114)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-10-23T19:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
@@ -103,7 +103,7 @@ fields in declaration order.
 | `AgentSetMode { pane, mode_id }` | one mode | Switch the session mode |
 | `AgentAuthenticate { pane, method_id }` | one method | Run one advertised authentication method |
 | `AgentSessionOp { pane, op }` | `List { cwd, cursor, replace }` / `New { cwd }` / `Switch { session_id, cwd, additional_directories }` / `Delete { session_id }` | Session management against the pane's adapter; `List` answers with `EventPayload::AgentSessions` |
-| `AgentReplay { pane, from_seq: u64 }` | journal cursor | Replay the pane's agent stream from `from_seq`, then tail it. Sent when a client opens the lens, after `AgentLagged`, and when a lens pane enters the visible set. For a terminal running Claude Code or Codex the daemon first opens its lens runtime; any other pane is refused |
+| `AgentReplay { pane, from_seq: u64 }` | journal cursor | Replay the pane's agent stream from `from_seq`, then tail it. Sent when a client opens the lens, after `AgentLagged`, and when a lens pane enters the visible set. For a terminal running Claude Code or Codex the daemon first opens its lens runtime; any other pane is refused. The sender watches the pane from then on, attached to its session or not: it gets the pane's `AgentState` at once, then its live `AgentUpdates`, `AgentState` and `AgentLagged` until it disconnects or the pane closes |
 | `AgentAcknowledgePromptRestore { pane, reclaim_id }` | one restored draft | Retire one daemon-cached recovered prompt after its owning client has put it back in the composer, preventing a later replay from restoring it again |
 | `PrepareCommandList { request_id, commands }` | request identity plus `Vec<CommandInvocation>` | Client → daemon: freeze one live alias layer for a complete command unit under one mux lock. Preparation performs no command effects, target or format resolution, hook emission, message publication, or authorization |
 | `PreparedCommandList { request_id, commands }` | request identity plus one `PreparedCommand` per input | Daemon → client: return the immutable invocation, optional canonical identity, `alias_matched`, and `Ready` or a typed `ServerError`. Multi-command and empty aliases return their opaque invocation with `canonical_name: None`, `alias_matched: true`, and `Ready`. The echoed request ID lets a client ignore stale replies while notifications share the stream |
@@ -270,8 +270,10 @@ The agent lane added at v53 carries four more: `AgentUpdates { pane, first_seq: 
 carries one coalesced batch of JSON agent stream items numbered by the pane's fanout lane
 (`first_seq` names the first item, the rest follow one by one; a batch is nonempty and totals at most
 `MAX_AGENT_UPDATES_BYTES`, 9 MiB, so a longer window splits across frames).
+`AgentUpdates` goes to the attached clients whose focused window shows the pane and to every client
+watching it (one that sent `AgentReplay` for it).
 `AgentState { pane, state: AgentPaneWire }` is the small typed pane state published to every client
-attached to the session: `phase` (`Starting | Ready | Running | AwaitingPermission | Failed
+attached to the session and to the pane's watchers: `phase` (`Starting | Ready | Running | AwaitingPermission | Failed
 { message }`), `queued_prompts: u32`, `session_id`, `title`, the adapter's auth methods, config
 options, and modes as one JSON `String` blob each (≤ `MAX_AGENT_STATE_BLOB_BYTES`, 256 KiB, because
 postcard cannot carry the ACP SDK's JSON-shaped types),

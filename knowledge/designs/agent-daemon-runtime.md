@@ -10,7 +10,7 @@ tags:
 - protocol
 - persistence
 resource: crates/zz-daemon/src/agent/fanout.rs
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 > **Status 2026-10-23.** The Agent pane kind is gone ([agent lens design](/designs/agent-lens.md)).
@@ -135,14 +135,17 @@ hundreds of updates, so agent streams get their own `OutboundState` lane, preced
   `AgentLagged { pane, next_seq }` marker queued; the client re-requests `AgentReplay` from its
   last applied seq. The journal makes the stream recoverable, so slow clients degrade to
   replay instead of dying.
-- Visibility: the heavy stream flows only to clients for whom the pane is in the derived
+- Visibility: the heavy stream flows to clients for whom the pane is in the derived
   visible set (`visible_agent_panes`: attached session + that client's focused window, honoring
-  zoom — the same shape as terminal visibility). `AgentState` flows to all clients attached to
-  the session. Attach pushes `AgentState` for every agent pane in the session
+  zoom, the same shape as terminal visibility), and to every client that has sent `AgentReplay`
+  for the pane (`watched_agents`), attached or not, until it disconnects or the pane closes.
+  `AgentState` flows to all clients attached to the session and to those watchers; a watcher gets
+  the pane's state as its watch starts. Attach pushes `AgentState` for every agent pane in the session
   (`send_agent_resync`) and a pane entering the visible set pushes its state
   (`refresh_agent_visibility`); in both cases the client, not the daemon, decides where to
   replay from and issues `AgentReplay { from_seq }` off its own cursor. A pane leaving the
-  visible set has its queued frames dropped (`cancel_agent`), which the cursor makes safe.
+  visible set has its queued frames dropped (`cancel_agent`) unless the client watches it, which
+  the cursor makes safe.
 
 `Event.sequence` stays advisory (pitfall 1); the agent stream's own per-pane `seq` is the
 replay cursor.

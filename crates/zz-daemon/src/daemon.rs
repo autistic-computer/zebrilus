@@ -33432,6 +33432,11 @@ impl Shared {
         for pane in panes {
             inner.lens_panes.remove(pane);
         }
+        for client in inner.clients.values_mut() {
+            for pane in panes {
+                client.watched_agents.remove(pane);
+            }
+        }
     }
 
     fn shutdown_agents(&self) {
@@ -33508,6 +33513,21 @@ impl Shared {
         };
         let command = match message {
             ProtocolMessage::AgentReplay { from_seq, .. } => {
+                let watcher = {
+                    let mut inner = self.inner.lock();
+                    match inner.client_mut(client) {
+                        Some(entry) if !entry.watched_agents.contains(&pane) => {
+                            entry.watched_agents.insert(pane);
+                            entry.subscriber.clone()
+                        }
+                        _ => None,
+                    }
+                };
+                if let Some(subscriber) = watcher
+                    && let Some(state) = runtime.wire_state(pane)
+                {
+                    Self::send_event(&subscriber, EventPayload::AgentState { pane, state });
+                }
                 runtime.replay(client, pane, from_seq);
                 return Ok(());
             }
@@ -33852,7 +33872,15 @@ impl Shared {
                 if next == previous {
                     continue;
                 }
-                let removed = previous.difference(&next).copied().collect::<Vec<_>>();
+                let removed = previous
+                    .difference(&next)
+                    .filter(|pane| {
+                        inner
+                            .client(client)
+                            .is_none_or(|c| !c.watched_agents.contains(pane))
+                    })
+                    .copied()
+                    .collect::<Vec<_>>();
                 let entered = next.difference(&previous).copied().collect::<Vec<_>>();
                 if let Some(subscriber) = inner
                     .client(client)
@@ -33900,30 +33928,7 @@ impl Shared {
             first_seq,
             items,
         });
-        let subscribers = {
-            let inner = self.inner.lock();
-            let mut clients = attached_clients_for_pane(&inner, pane)
-                .into_iter()
-                .flatten()
-                .filter(|client| {
-                    inner
-                        .client(**client)
-                        .and_then(|c| c.visible_agents.as_ref())
-                        .is_some_and(|visible| visible.contains(&pane))
-                })
-                .copied()
-                .collect::<BTreeSet<_>>();
-            clients.extend(also.filter(|client| client_is_attached_to_pane(&inner, *client, pane)));
-            clients
-                .into_iter()
-                .filter_map(|client| {
-                    inner
-                        .client(client)
-                        .and_then(|c| c.subscriber.as_ref())
-                        .cloned()
-                })
-                .collect::<Vec<_>>()
-        };
+        let subscribers = agent_stream_subscribers(&self.inner.lock(), pane, also);
         let Ok(encoded) = zz_protocol::encode_protocol_message(&message).map(Arc::<[u8]>::from)
         else {
             return;
@@ -33961,30 +33966,7 @@ impl Shared {
         frames: Vec<(u64, Vec<Vec<u8>>)>,
         also: Option<ClientId>,
     ) {
-        let subscribers = {
-            let inner = self.inner.lock();
-            let mut clients = attached_clients_for_pane(&inner, pane)
-                .into_iter()
-                .flatten()
-                .filter(|client| {
-                    inner
-                        .client(**client)
-                        .and_then(|c| c.visible_agents.as_ref())
-                        .is_some_and(|visible| visible.contains(&pane))
-                })
-                .copied()
-                .collect::<BTreeSet<_>>();
-            clients.extend(also.filter(|client| client_is_attached_to_pane(&inner, *client, pane)));
-            clients
-                .into_iter()
-                .filter_map(|client| {
-                    inner
-                        .client(client)
-                        .and_then(|c| c.subscriber.as_ref())
-                        .cloned()
-                })
-                .collect::<Vec<_>>()
-        };
+        let subscribers = agent_stream_subscribers(&self.inner.lock(), pane, also);
         let mut encoded = Vec::with_capacity(frames.len());
         for (first_seq, items) in frames {
             let message = Self::event(EventPayload::AgentUpdates {
@@ -34003,7 +33985,27 @@ impl Shared {
     }
 
     fn apply_agent_state(self: &Arc<Self>, pane: PaneId, state: AgentPaneWire) {
-        self.publish_for_pane(pane, &EventPayload::AgentState { pane, state });
+        let subscribers = {
+            let inner = self.inner.lock();
+            attached_clients_for_pane(&inner, pane)
+                .into_iter()
+                .flatten()
+                .copied()
+                .chain(agent_watchers(&inner, pane))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .filter_map(|client| {
+                    inner
+                        .client(client)
+                        .and_then(|c| c.subscriber.as_ref())
+                        .cloned()
+                })
+                .collect::<Vec<_>>()
+        };
+        let payload = EventPayload::AgentState { pane, state };
+        for subscriber in subscribers {
+            Self::send_event(&subscriber, payload.clone());
+        }
     }
 
     fn agent_tool_call_event(&self, pane: PaneId, call: AgentToolCall) -> Option<PendingHookEvent> {
@@ -35198,6 +35200,8 @@ struct Client {
     streamed_terminals: Option<BTreeMap<PaneId, TerminalStreamKind>>,
     terminal_preview: bool,
     visible_agents: Option<BTreeSet<PaneId>>,
+    #[cfg(feature = "agent")]
+    watched_agents: BTreeSet<PaneId>,
     published_mux_options: Option<MuxOptions>,
     published_terminal_negotiation: Option<TerminalNegotiation>,
     command_output: Option<CommandOutputSession>,
@@ -46438,6 +46442,49 @@ fn visible_agent_panes(
         })
         .copied()
         .collect()
+}
+
+/// Who gets `pane`'s agent stream: attached clients the pane is visible to,
+/// `also` when it is attached, and every client that asked for a replay of it.
+#[cfg(feature = "agent")]
+fn agent_stream_subscribers(
+    inner: &ServerState,
+    pane: PaneId,
+    also: Option<ClientId>,
+) -> Vec<Arc<OutboundMailbox>> {
+    let mut clients = attached_clients_for_pane(inner, pane)
+        .into_iter()
+        .flatten()
+        .filter(|client| {
+            inner
+                .client(**client)
+                .and_then(|c| c.visible_agents.as_ref())
+                .is_some_and(|visible| visible.contains(&pane))
+        })
+        .copied()
+        .collect::<BTreeSet<_>>();
+    clients.extend(also.filter(|client| client_is_attached_to_pane(inner, *client, pane)));
+    clients.extend(agent_watchers(inner, pane));
+    clients
+        .into_iter()
+        .filter_map(|client| {
+            inner
+                .client(client)
+                .and_then(|c| c.subscriber.as_ref())
+                .cloned()
+        })
+        .collect()
+}
+
+/// The clients that asked for a replay of `pane` and so follow it until they
+/// disconnect or the pane closes.
+#[cfg(feature = "agent")]
+fn agent_watchers(inner: &ServerState, pane: PaneId) -> impl Iterator<Item = ClientId> + '_ {
+    inner
+        .clients
+        .iter()
+        .filter(move |(_, client)| client.watched_agents.contains(&pane))
+        .map(|(client, _)| *client)
 }
 
 /// The client a `send-keys` effect acts for. `-c` resolves through the
@@ -123137,6 +123184,42 @@ bind - split-window -v -c "#{pane_current_path}"
             encode_protocol_message(&message).expect("encode agent updates")
         }
 
+        #[track_caller]
+        fn wait_for_items_in<F>(
+            mailbox: &OutboundMailbox,
+            what: &str,
+            accept: F,
+        ) -> Vec<AgentStreamItem>
+        where
+            F: Fn(&[AgentStreamItem]) -> bool,
+        {
+            let deadline = Instant::now() + DEADLINE;
+            let mut seen = Vec::new();
+            while Instant::now() < deadline {
+                seen.extend(drain_items(mailbox));
+                if accept(&seen) {
+                    return seen;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            panic!("timed out waiting for {what}: {seen:#?}");
+        }
+
+        fn agent_states_for(mailbox: &OutboundMailbox, agent: PaneId) -> usize {
+            take_reliable_messages(mailbox)
+                .iter()
+                .filter(|message| {
+                    matches!(
+                        message,
+                        ProtocolMessage::Event(Event {
+                            payload: EventPayload::AgentState { pane, .. },
+                            ..
+                        }) if *pane == agent
+                    )
+                })
+                .count()
+        }
+
         struct Workspace {
             shared: Arc<Shared>,
             mailbox: Arc<OutboundMailbox>,
@@ -123212,16 +123295,7 @@ bind - split-window -v -c "#{pane_current_path}"
             where
                 F: Fn(&[AgentStreamItem]) -> bool,
             {
-                let deadline = Instant::now() + DEADLINE;
-                let mut seen = Vec::new();
-                while Instant::now() < deadline {
-                    seen.extend(drain_items(&self.mailbox));
-                    if accept(&seen) {
-                        return seen;
-                    }
-                    thread::sleep(Duration::from_millis(5));
-                }
-                panic!("timed out waiting for {what}: {seen:#?}");
+                wait_for_items_in(&self.mailbox, what, accept)
             }
 
             fn prompt(&self, text: &str) -> Result<(), ServerError> {
@@ -123510,6 +123584,135 @@ bind - split-window -v -c "#{pane_current_path}"
                         }) if *pane == workspace.agent
                     )),
                 "but it still sees the pane state its badges need"
+            );
+        }
+
+        #[test]
+        fn a_client_that_asks_for_a_replay_follows_the_pane_live_whether_attached_or_not() {
+            let workspace = workspace(Behavior::Chunk);
+            let subscribe = || {
+                let mailbox = OutboundMailbox::new();
+                let (client, _) = workspace.shared.register_subscribed(
+                    ClientKind::Interactive,
+                    None,
+                    None,
+                    Arc::clone(&mailbox),
+                );
+                (client, mailbox)
+            };
+            let (outside, outside_mailbox) = subscribe();
+            let (elsewhere, elsewhere_mailbox) = subscribe();
+            let (_bystander, bystander_mailbox) = subscribe();
+            workspace
+                .shared
+                .attach(elsewhere, workspace.session)
+                .expect("attach the client that looks at another window");
+            let mut context = ExecutionContext::default();
+            workspace
+                .shared
+                .execute(
+                    elsewhere,
+                    ClientKind::Interactive,
+                    &mut context,
+                    &CommandInvocation::new("new-window", ["-t", "agents"]),
+                )
+                .expect("a window of its own");
+            workspace.shared.publish_snapshot();
+            assert!(
+                workspace.shared.read_client(elsewhere, |c| {
+                    c.and_then(|c| c.visible_agents.as_ref())
+                        .is_some_and(|visible| !visible.contains(&workspace.agent))
+                }),
+                "the attached client's window does not show the agent pane"
+            );
+            for mailbox in [
+                &workspace.mailbox,
+                &outside_mailbox,
+                &elsewhere_mailbox,
+                &bystander_mailbox,
+            ] {
+                take_reliable_messages(mailbox);
+                let _ = drain_items(mailbox);
+            }
+
+            for client in [outside, elsewhere, workspace.client] {
+                workspace
+                    .shared
+                    .agent_message(
+                        client,
+                        ProtocolMessage::AgentReplay {
+                            pane: workspace.agent,
+                            from_seq: 0,
+                        },
+                    )
+                    .expect("replay");
+            }
+            assert_eq!(
+                agent_states_for(&outside_mailbox, workspace.agent),
+                1,
+                "an unattached watcher is sent the pane state as it starts watching"
+            );
+            assert_eq!(
+                agent_states_for(&elsewhere_mailbox, workspace.agent),
+                1,
+                "so is an attached one whose window does not show the pane"
+            );
+
+            workspace.prompt("go").expect("prompt");
+            let turn = |items: &[AgentStreamItem]| {
+                items.iter().any(|item| chunk_text(item) == Some("turn 0"))
+            };
+            for (mailbox, who) in [
+                (&outside_mailbox, "the unattached watcher"),
+                (&elsewhere_mailbox, "the attached watcher on another window"),
+                (
+                    &workspace.mailbox,
+                    "the attached client that sees and watches the pane",
+                ),
+            ] {
+                let mut items = wait_for_items_in(mailbox, who, turn);
+                items.extend(drain_items(mailbox));
+                assert_eq!(
+                    items
+                        .iter()
+                        .filter(|item| chunk_text(item) == Some("turn 0"))
+                        .count(),
+                    1,
+                    "{who} is sent each live item once"
+                );
+            }
+            let deadline = Instant::now() + DEADLINE;
+            while agent_states_for(&outside_mailbox, workspace.agent) == 0 {
+                assert!(
+                    Instant::now() < deadline,
+                    "the unattached watcher was not sent the turn's state changes"
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+
+            assert!(
+                drain_items(&bystander_mailbox).is_empty(),
+                "a client that never asked is sent no transcript"
+            );
+            assert_eq!(
+                agent_states_for(&bystander_mailbox, workspace.agent),
+                0,
+                "nor the pane state"
+            );
+
+            workspace
+                .shared
+                .execute(
+                    workspace.client,
+                    ClientKind::Interactive,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new("kill-pane", ["-t", &workspace.agent.to_string()]),
+                )
+                .expect("close the agent pane");
+            assert!(
+                !workspace.shared.read_client(outside, |c| c
+                    .is_some_and(|c| c.watched_agents.contains(&workspace.agent))),
+                "a closed pane is no longer watched"
             );
         }
 
