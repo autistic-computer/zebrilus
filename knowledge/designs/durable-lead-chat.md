@@ -218,8 +218,37 @@ permission card.
 while there is more above (the kit's `top_fade`, the mirror of the list's `bottom_fade`); whoever
 owns the `ScrollHandle` calls `scroll_to_bottom` when a message arrives. Its rule starts a
 `ChatSplitDrag`; the column holding it turns the pointer into a height with `chat_split_height`,
-which leaves the chat 180px and the list 96px. Nothing feeds it yet: the app still needs the chat
-log, a place to keep the split, and Lead mode in its palette.
+which leaves the chat 180px and the list 96px.
+
+The desktop app feeds it from the lead's pane today, through the lens stream rather than the chat
+log above (`crates/zz/src/agent/lead.rs`):
+
+- **Which pane.** The lead is the first terminal running Claude Code or Codex in a session named
+  `lead`, on the first host in fleet order that has one. Nothing else marks it yet; `zz lead
+  start` would make that session.
+- **The feed.** `MuxClient::follow_lead` asks the lead's host for an `AgentReplay` and keeps a
+  cursor of its own, apart from the attached session's lenses, taking `AgentUpdates`,
+  `AgentState` and lag notices from the attached connection or a background one. The daemon
+  keeps sending a pane's stream to any client that asked for its replay, attached or not, so the
+  chat stays live while you work on another host or window; a host whose daemon predates that
+  sends only the replay. A new connection to the lead's host asks again from the cursor.
+- **The messages.** A lead-only `AgentController` reduces the stream, and `lead_messages` keeps
+  your turns, the lead's last answer of each finished turn, and the `[zz] Agent %N finished:`
+  notices zz types into the lead, which show as that agent's message under its window name and
+  program tile. Your turn reads two ticks once it is in the transcript and two in the accent once
+  the lead did anything after it. Messages that arrive live get the local time; the history
+  replayed when zz starts following gets none, since the stream carries no timestamps.
+- **Talking back.** The composer types into the lead's pane like the lens composer, and queues
+  behind a running turn. The oldest approval waiting in the lead shows as the lens's permission
+  card above it; in the palette, a digit in an empty field picks an option.
+- **Where.** The sidebar draws it under the list in both views (the split is not saved). In
+  titlebar mode the title bar's chat button opens the palette in Lead mode, a view of its own
+  over the panes (`agent/lead_palette.rs`); Esc closes it and Backspace in an empty field opens
+  the command palette.
+
+Not yet: the web and iPad clients, the zz-owned chat log, peer-bus messages (they arrive as plain
+user turns and show as yours), and an unwatch message, so a client keeps getting the stream of
+every pane it ever asked to replay until it disconnects.
 
 ## Settings and verbs
 
