@@ -83,6 +83,10 @@ impl AgentView {
     }
 }
 
+pub(crate) struct ShowTerminal;
+
+impl zz_gpui::EventEmitter<ShowTerminal> for AgentView {}
+
 impl Render for AgentView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()

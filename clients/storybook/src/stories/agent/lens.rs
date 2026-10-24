@@ -13,7 +13,7 @@ use zz_ui::{
         AgentToolStatus as Status, TimelineRow,
         composer::COMPOSER_OUTER_PADDING,
         fold_timeline_rows,
-        presentation::spinner_phase,
+        presentation::{spinner_phase, terminal_wait_card},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
     compact::compact_pane_header,
@@ -286,6 +286,9 @@ pub struct LensPane {
 
 fn build(scene: Scene, look: Look, open: bool, window: &mut Window, cx: &mut App) -> AnyView {
     let input = composer_input("", window, cx);
+    input.update(cx, |input, cx| {
+        input.set_placeholder(format!("Message {}…", scene.provider().label()), cx);
+    });
     cx.new(|cx| {
         let rows = fold_timeline_rows(&scene.entries()).rows;
         let store = cx.new(|_| AgentTimelineStore::default());
@@ -418,15 +421,23 @@ impl LensPane {
                 true,
                 cx,
             )],
-            Scene::ClaudePlans => vec![permission(
-                "lens-wait",
-                "Waiting for a plan approval in the terminal",
-                None,
-                &[],
-                0,
-                true,
-                cx,
-            )],
+            Scene::ClaudePlans => {
+                let entity = cx.entity();
+                vec![
+                    terminal_wait_card(
+                        "lens-wait",
+                        "Waiting for a plan approval in the terminal",
+                        move |_, cx| {
+                            entity.update(cx, |view, cx| {
+                                view.open = false;
+                                cx.notify();
+                            });
+                        },
+                        cx,
+                    )
+                    .into_any_element(),
+                ]
+            }
             Scene::Codex | Scene::CodexAsks => Vec::new(),
         }
     }
@@ -543,7 +554,7 @@ pub fn approvals(window: &mut Window, cx: &mut App) -> AnyView {
             build(Scene::ClaudeAsks, Look::Page(500.0), true, window, cx),
         ),
         (
-            "Claude Code at a plan approval or question: the card has no answers, the terminal takes the keys",
+            "Claude Code at a plan approval or question: the lens cannot answer it, so Show terminal switches back to the TUI",
             build(Scene::ClaudePlans, Look::Page(440.0), true, window, cx),
         ),
         (

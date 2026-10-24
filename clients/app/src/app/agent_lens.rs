@@ -15,8 +15,8 @@ use zz_client::agent_transcript::{
     AgentTranscript, ToolPayload, is_zz_command, rewind_command,
 };
 use zz_gpui::{
-    AnyElement, App, Context, Corners, Entity, FocusHandle, Focusable, IntoElement, ListAlignment,
-    ListState, Pixels, Render, Subscription, Window, div, prelude::*, px,
+    AnyElement, App, Context, Corners, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
+    ListAlignment, ListState, Pixels, Render, Subscription, Window, div, prelude::*, px,
 };
 use zz_protocol::{
     AgentConnectionPhase, AgentImage, AgentProvider, AgentQuestionAnswer, PaneId, PaneSnapshot,
@@ -36,7 +36,8 @@ use zz_ui::{
         },
         fold_timeline_rows,
         presentation::{
-            empty_state, error_card, permission_card, permission_option, welcome_state,
+            empty_state, error_card, lens_welcome, permission_card, permission_option,
+            terminal_wait_card,
         },
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
@@ -89,9 +90,13 @@ impl AgentLens {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let agent = connection
+            .read(cx)
+            .terminal_agent(pane)
+            .map_or("the agent", AgentProvider::label);
         let input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Ask the agent…")
+                .placeholder(format!("Message {agent}…"))
                 .auto_grow(2, 8)
                 .submit_on_enter(true)
                 .context_menu(true)
@@ -740,6 +745,16 @@ impl AgentLens {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let request_id = permission.request_id;
+        if permission.options.is_empty() {
+            let lens = cx.entity();
+            return terminal_wait_card(
+                format!("agent-show-terminal-{}-{request_id}", self.pane.0),
+                permission.title,
+                move |_, cx| lens.update(cx, |_, cx| cx.emit(ShowTerminal)),
+                cx,
+            )
+            .into_any_element();
+        }
         let writable = self.connection.read(cx).connected
             && !self.connection.read(cx).core.attached_read_only()
             && !self.permission_answered.contains(&request_id);
@@ -1142,6 +1157,10 @@ impl AgentLens {
     }
 }
 
+pub(super) struct ShowTerminal;
+
+impl EventEmitter<ShowTerminal> for AgentLens {}
+
 impl Focusable for AgentLens {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.input.read(cx).focus_handle(cx)
@@ -1356,15 +1375,18 @@ impl Render for AgentLens {
             }
             .into_any_element()
         };
-        let agent = self
+        let provider = self
             .terminal(cx)
-            .and_then(zz_client::window_summary::pane_agent)
-            .map_or("the agent", AgentProvider::label);
+            .and_then(zz_client::window_summary::pane_agent);
+        let agent = provider.map_or("the agent", AgentProvider::label);
         let empty = self.rows.is_empty().then(|| {
             let empty_message = if connected {
                 match state.phase {
                     AgentConnectionPhase::Starting => format!("Reading {agent}’s transcript…"),
-                    AgentConnectionPhase::Ready => return welcome_state(cx),
+                    AgentConnectionPhase::Ready => match provider {
+                        Some(provider) => return lens_welcome(provider, cx),
+                        None => format!("{agent} is waiting for its first prompt."),
+                    },
                     AgentConnectionPhase::Running => {
                         format!("Waiting for {agent}’s first update…")
                     }

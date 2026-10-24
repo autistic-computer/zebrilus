@@ -92,9 +92,18 @@ pub(super) struct CompactState {
     text: Option<TerminalText>,
     page_background: Option<zz_gpui::Hsla>,
     pill_inverted: Option<zz_gpui::Hsla>,
+    lens_dismissed: BTreeSet<PaneId>,
 }
 
 impl CompactState {
+    pub(super) fn remember_lens(&mut self, pane: PaneId, open: bool) {
+        if open {
+            self.lens_dismissed.remove(&pane);
+        } else {
+            self.lens_dismissed.insert(pane);
+        }
+    }
+
     #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
     pub(super) fn forget_panes(&mut self) {
         self.notice = None;
@@ -1014,6 +1023,29 @@ impl AppShell {
             .unwrap_or_default()
     }
 
+    fn open_default_lenses(&mut self, pages: &[Page], cx: &mut Context<Self>) {
+        if !super::settings::phone() {
+            return;
+        }
+        let connection = self.connection.read(cx);
+        self.compact
+            .lens_dismissed
+            .retain(|pane| connection.terminal_agent(*pane).is_some());
+        let closed = pages
+            .iter()
+            .map(|page| page.pane)
+            .filter(|pane| {
+                connection.terminal_agent(*pane).is_some()
+                    && !connection.agent_lens_open(*pane)
+                    && !self.compact.lens_dismissed.contains(pane)
+            })
+            .collect::<Vec<_>>();
+        for pane in closed {
+            self.connection
+                .update(cx, |connection, cx| connection.open_agent_lens(pane, cx));
+        }
+    }
+
     pub(super) fn compact_shell(
         &mut self,
         terminal_overlays: Vec<AnyElement>,
@@ -1024,6 +1056,7 @@ impl AppShell {
         self.prune_pane_entities(cx);
         let model = self.status_model(cx);
         let (pages, current) = pages(&model, &self.unseen_agents);
+        self.open_default_lenses(&pages, cx);
         let current_pane = pages.get(current).map(|page| page.pane);
         if self.compact.last_current.is_some() && current_pane != self.compact.last_current {
             self.compact.zoom_intent = current_pane;

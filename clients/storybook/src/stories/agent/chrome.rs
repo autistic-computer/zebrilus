@@ -5,13 +5,14 @@ use zz_gpui::{
     ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
     px,
 };
+use zz_protocol::AgentProvider;
 use zz_ui::{
     agent::{
         AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
         agent_jump_to_bottom_button,
         composer::COMPOSER_OUTER_PADDING,
         fold_timeline_rows,
-        presentation::{empty_state, error_card, welcome_state},
+        presentation::{empty_state, error_card, lens_welcome},
     },
     scroll::Scrollbar,
 };
@@ -133,8 +134,16 @@ impl Render for EmptyStates {
             });
         states()
             .state(
-                "welcome: the agent has not written a transcript yet",
-                pane_frame(cx).h(px(340.0)).child(welcome_state(cx)),
+                "welcome: Claude Code has not written a transcript yet",
+                pane_frame(cx)
+                    .h(px(340.0))
+                    .child(lens_welcome(AgentProvider::ClaudeCode, cx)),
+            )
+            .state(
+                "welcome: Codex before its first prompt",
+                pane_frame(cx)
+                    .h(px(340.0))
+                    .child(lens_welcome(AgentProvider::Codex, cx)),
             )
             .state("waiting and failure messages", grid)
             .state(

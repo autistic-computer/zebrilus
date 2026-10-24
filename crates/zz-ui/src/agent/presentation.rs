@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use zz_gpui::{
     AnyElement, App, Div, ElementId, EntityId, FontWeight, SharedString, Stateful, Transformation,
-    div, ease_in_out, percentage, prelude::*, px,
+    Window, div, ease_in_out, percentage, prelude::*, px,
 };
 
 use crate::{
@@ -13,7 +13,12 @@ use crate::{
 
 pub use zz_client::agent_completion::{MAX_RENDERED_ERROR_BYTES, rendered_error};
 
-pub fn welcome_state(cx: &App) -> Div {
+pub fn welcome_state(
+    icon: Icon,
+    title: impl Into<SharedString>,
+    detail: impl Into<SharedString>,
+    cx: &App,
+) -> Div {
     v_flex()
         .size_full()
         .items_center()
@@ -21,27 +26,30 @@ pub fn welcome_state(cx: &App) -> Div {
         .px_3()
         .pb(px(32.0))
         .text_center()
-        .child(
-            Icon::new(IconName::Zz)
-                .w(px(112.0))
-                .h(px(47.0))
-                .mb(px(24.0))
-                .text_color(cx.theme().foreground.muted()),
-        )
+        .child(icon.mb(px(24.0)).text_color(cx.theme().foreground.muted()))
         .child(
             div()
                 .text_size(crate::rems_from_px(21.0))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(cx.theme().foreground)
-                .child("What are we working on?"),
+                .child(title.into()),
         )
         .child(
             div()
                 .mt(px(10.0))
                 .text_size(crate::rems_from_px(13.0))
                 .text_color(cx.theme().foreground.muted())
-                .child("Ask a question or describe a task."),
+                .child(detail.into()),
         )
+}
+
+pub fn lens_welcome(provider: zz_protocol::AgentProvider, cx: &App) -> Div {
+    welcome_state(
+        Icon::new(crate::pane::agent_provider_icon(provider)).size(px(40.0)),
+        format!("{} is waiting for its first prompt", provider.label()),
+        "What you send here is typed into the terminal.",
+        cx,
+    )
 }
 
 pub fn error_card(error: &str, stopped: bool, cx: &App) -> Div {
@@ -126,6 +134,41 @@ pub fn permission_card(
                 .child(card_close(cancel, cx)),
         )
         .child(card_tiles().pb(px(CARD_GUTTER)).children(options))
+}
+
+pub fn terminal_wait_card(
+    id: impl Into<ElementId>,
+    title: impl Into<SharedString>,
+    on_show: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Div {
+    let show = CardTile::new(Tone::Neutral, true, false, cx);
+    card_surface(cx)
+        .child(
+            card_header()
+                .child(card_glyph(
+                    Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
+                    cx,
+                ))
+                .child(div().min_w_0().flex_1().child(title.into())),
+        )
+        .child(
+            card_tiles().pb(px(CARD_GUTTER)).child(
+                show.render(id, cx)
+                    .child(div().min_w_0().flex_1().child("Show terminal"))
+                    .child(
+                        card_trailing().child(
+                            Icon::new(IconName::SquareTerminal)
+                                .size(px(CARD_GLYPH))
+                                .text_color(show.muted),
+                        ),
+                    )
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        on_show(window, cx);
+                    }),
+            ),
+        )
 }
 
 pub fn card_close(button: Button, cx: &App) -> Div {

@@ -121,7 +121,7 @@ const STORY: Story = Story {
         Section {
             id: "empty-states",
             name: "Empty states",
-            summary: "What the lens shows before the first message: the welcome while the agent has written no transcript, the waiting and failure messages, and the error card for a prompt the TUI did not take.",
+            summary: "What the lens shows before the first message: the welcome, which names the agent and says the composer types into its terminal, while the agent has written no transcript, the waiting and failure messages, and the error card for a prompt the TUI did not take.",
             build: chrome::empty_states,
         },
         Section {
@@ -139,7 +139,7 @@ const STORY: Story = Story {
         Section {
             id: "lens-approval",
             name: "Lens approval",
-            summary: "A Claude Code permission prompt becomes a card above the composer whose answers are the keys the TUI takes. Its other dialogs (plan approval, questions) get a card with no answers. Codex records nothing while its dialog is up, so its lens has no card.",
+            summary: "A Claude Code permission prompt becomes a card above the composer whose answers are the keys the TUI takes. Its other dialogs (plan approval, questions) get a card whose one action, Show terminal, switches the pane back to the TUI. Codex records nothing while its dialog is up, so its lens has no card.",
             build: lens::approvals,
         },
     ],
