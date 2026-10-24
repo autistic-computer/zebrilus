@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
 use zz_gpui::{
-    App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, prelude::*, px,
+    App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
+    prelude::*, px,
 };
 use zz_protocol::{AgentProvider, ProviderStatus, ProviderTask, ProvidersReport};
 
@@ -92,6 +93,23 @@ fn provider_entry(
                 .child(version_text(status, cx))
                 .children(action(id, status, checking, on_update, cx)),
         );
+    if let Some(manual) = status.manual.as_ref().filter(|_| stale(status)) {
+        let muted = cx.theme().foreground.muted();
+        entry = match &manual.command {
+            Some(command) => entry
+                .child(task_line(
+                    format!("Installed by {}. Update it with:", manual.owner),
+                    muted,
+                    cx,
+                ))
+                .child(task_line(command.clone(), cx.theme().foreground, cx)),
+            None => entry.child(task_line(
+                format!("Installed by {}. Update it there.", manual.owner),
+                muted,
+                cx,
+            )),
+        };
+    }
     match &status.task {
         ProviderTask::Running { output } if !output.is_empty() => {
             entry = entry.child(task_line(output.clone(), cx.theme().foreground.muted(), cx));
@@ -153,9 +171,20 @@ fn action(
                 .on(settings_card_ground(cx)),
         );
     }
-    let stale = status.outdated() || status.latest.is_none();
-    if installed && !stale {
+    if installed && !stale(status) {
         return None;
+    }
+    if let Some(manual) = &status.manual {
+        let command = manual.command.clone()?;
+        return Some(
+            Button::new(id)
+                .icon(IconName::Copy)
+                .label("Copy command")
+                .on(settings_card_ground(cx))
+                .on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(command.clone()));
+                }),
+        );
     }
     let label = if installed { "Update" } else { "Install" };
     let on_update = Rc::clone(on_update);
@@ -169,6 +198,10 @@ fn action(
     } else {
         button
     })
+}
+
+fn stale(status: &ProviderStatus) -> bool {
+    status.outdated() || status.latest.is_none()
 }
 
 fn task_line(text: impl Into<SharedString>, color: zz_gpui::Hsla, cx: &App) -> impl IntoElement {

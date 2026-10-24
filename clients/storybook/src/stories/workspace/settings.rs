@@ -29,11 +29,11 @@ use zz_ui::{
         },
         panes_page,
         panes_preview::PanesPreview,
+        providers::{ProvidersHost, providers_stack},
         settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
         settings_navigation_back_row, settings_navigation_button, settings_navigation_group_label,
         settings_page_description, settings_provenance_badge, settings_reset_button,
         settings_scroll_column, settings_section_index,
-        providers::{ProvidersHost, providers_stack},
         status_bar_preview::status_bar_page,
     },
     switch::Switch,
@@ -88,7 +88,7 @@ pub const STORY: Story = Story {
         Section {
             id: "providers",
             name: "Providers",
-            summary: "providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, a machine still checking and one that is offline.",
+            summary: "providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
             build: |_, cx| stateless(providers, cx),
         },
         Section {
@@ -665,7 +665,22 @@ fn provider(
         path: path.map(str::to_owned),
         version: version.map(str::to_owned),
         latest: Some(latest.to_owned()),
+        manual: None,
         task,
+    }
+}
+
+fn manual(
+    status: zz_protocol::ProviderStatus,
+    owner: &str,
+    command: Option<&str>,
+) -> zz_protocol::ProviderStatus {
+    zz_protocol::ProviderStatus {
+        manual: Some(zz_protocol::ManualUpdate {
+            owner: owner.to_owned(),
+            command: command.map(str::to_owned),
+        }),
+        ..status
     }
 }
 
@@ -720,14 +735,57 @@ fn providers(_: &mut Window, cx: &mut App) -> AnyElement {
                     ),
                     provider(
                         Codex,
-                        Some("/usr/bin/codex"),
+                        Some("/home/me/.local/bin/codex"),
                         Some("0.159.0"),
                         "0.164.0",
                         ProviderTask::Failed {
-                            message: "npm error code EACCES\nnpm error path /usr/lib/node_modules/@openai/codex".into(),
+                            message: "curl: (6) Could not resolve host: chatgpt.com".into(),
                         },
                     ),
                 ],
+            ),
+        ),
+        (
+            "alienware",
+            report(
+                false,
+                vec![
+                    provider(
+                        ClaudeCode,
+                        Some("/home/me/.local/bin/claude"),
+                        Some("2.1.309"),
+                        "2.1.309",
+                        ProviderTask::Idle,
+                    ),
+                    manual(
+                        provider(
+                            Codex,
+                            Some("/usr/bin/codex"),
+                            Some("0.163.0"),
+                            "0.164.0",
+                            ProviderTask::Idle,
+                        ),
+                        "npm under /usr",
+                        Some("sudo /usr/bin/npm install -g @openai/codex@latest"),
+                    ),
+                ],
+            ),
+        ),
+        (
+            "nixbox",
+            report(
+                false,
+                vec![manual(
+                    provider(
+                        ClaudeCode,
+                        Some("/run/current-system/sw/bin/claude"),
+                        Some("2.1.290"),
+                        "2.1.309",
+                        ProviderTask::Idle,
+                    ),
+                    "Nix",
+                    None,
+                )],
             ),
         ),
         (
@@ -746,16 +804,16 @@ fn providers(_: &mut Window, cx: &mut App) -> AnyElement {
                 ],
             ),
         ),
-        ("alienware", ProvidersHost::Waiting),
+        ("mini", ProvidersHost::Waiting),
         ("devbox", ProvidersHost::Offline("unreachable".into())),
     ];
-    let stacks = hosts.iter().map(|(name, host)| {
-        providers_stack(*name, *name, host, |_, _, _| {}, cx)
-    });
+    let stacks = hosts
+        .iter()
+        .map(|(name, host)| providers_stack(*name, *name, host, |_, _, _| {}, cx));
     states()
         .state(
             "page",
-            div().id("providers").flex().h(px(900.0)).child(
+            div().id("providers").flex().h(px(1500.0)).child(
                 settings_scroll_column("settings-providers")
                     .child(settings_page_description(SettingsSection::Providers, cx))
                     .children(stacks),

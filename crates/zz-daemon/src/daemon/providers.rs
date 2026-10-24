@@ -8,7 +8,8 @@ use std::{
 
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 use zz_protocol::{
-    AgentProvider, MAX_PROVIDER_TEXT_BYTES, ProviderStatus, ProviderTask, ProvidersReport,
+    AgentProvider, MAX_PROVIDER_TEXT_BYTES, ManualUpdate, ProviderStatus, ProviderTask,
+    ProvidersReport,
 };
 
 const PROVIDERS: [AgentProvider; 2] = [AgentProvider::ClaudeCode, AgentProvider::Codex];
@@ -230,13 +231,47 @@ impl Shared {
 
 struct Found {
     path: PathBuf,
-    real: PathBuf,
     version: Option<String>,
+    owner: Owner,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Owner {
+    Updater,
+    Npm {
+        bin: Option<PathBuf>,
+    },
+    Homebrew {
+        brew: PathBuf,
+        cask: bool,
+        token: String,
+    },
+    Manual(ManualUpdate),
+}
+
+impl Owner {
+    fn first_on_path(&self) -> Option<&Path> {
+        match self {
+            Self::Npm { bin } => bin.as_deref(),
+            Self::Updater | Self::Homebrew { .. } | Self::Manual(_) => None,
+        }
+    }
 }
 
 fn apply(found: Option<&Found>, status: &mut ProviderStatus) {
     status.path = found.map(|found| found.path.to_string_lossy().into_owned());
     status.version = found.and_then(|found| found.version.clone());
+    status.manual = found.and_then(|found| match &found.owner {
+        Owner::Manual(manual) => Some(manual.clone()),
+        Owner::Updater | Owner::Npm { .. } | Owner::Homebrew { .. } => None,
+    });
+}
+
+fn manual_message(manual: &ManualUpdate) -> String {
+    match &manual.command {
+        Some(command) => format!("Installed by {}. Update it with: {command}", manual.owner),
+        None => format!("Installed by {}. Update it there.", manual.owner),
+    }
 }
 
 const fn program(provider: AgentProvider) -> &'static str {
@@ -303,10 +338,10 @@ fn executable(candidate: &Path) -> bool {
 
 fn detect(provider: AgentProvider, search: Option<&OsString>) -> Option<Found> {
     let path = locate(provider, search)?;
-    let real = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let owner = owner(provider, &path, search);
     let mut command = Command::new(&path);
     command.arg("--version");
-    prepare(&mut command, search, owning_bin(&real).as_deref());
+    prepare(&mut command, search, owner.first_on_path());
     let mut output = String::new();
     let version = run(command, VERSION_TIMEOUT, |line| {
         if output.is_empty() {
@@ -317,8 +352,8 @@ fn detect(provider: AgentProvider, search: Option<&OsString>) -> Option<Found> {
     .and_then(|_| parse_version(&output));
     Some(Found {
         path,
-        real,
         version,
+        owner,
     })
 }
 
@@ -335,7 +370,76 @@ fn parse_version(output: &str) -> Option<String> {
     })
 }
 
-fn homebrew(real: &Path) -> Option<(PathBuf, bool, String)> {
+fn owner(provider: AgentProvider, path: &Path, search: Option<&OsString>) -> Owner {
+    let mut real = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if path.parent().and_then(Path::file_name) == Some("shims".as_ref())
+        && real.file_name() == Some("mise".as_ref())
+    {
+        match mise_which(&real, provider, search) {
+            Some(target) => real = target,
+            None => {
+                return Owner::Manual(ManualUpdate {
+                    owner: "mise".to_owned(),
+                    command: None,
+                });
+            }
+        }
+    }
+    if let Some(prefix) = npm_prefix(&real) {
+        return npm_owner(provider, &prefix);
+    }
+    if let Some(owner) = homebrew(&real) {
+        return owner;
+    }
+    if let Some(manual) = mise_install(&real) {
+        return Owner::Manual(manual);
+    }
+    system_owner(provider, &real, search).unwrap_or(Owner::Updater)
+}
+
+fn npm_package(provider: AgentProvider) -> &'static str {
+    match provider {
+        AgentProvider::ClaudeCode => "@anthropic-ai/claude-code",
+        AgentProvider::Codex => "@openai/codex",
+    }
+}
+
+fn npm_prefix(real: &Path) -> Option<PathBuf> {
+    let text = real.to_str()?;
+    let (prefix, _) = text.split_once("/lib/node_modules/")?;
+    Some(PathBuf::from(prefix))
+}
+
+fn npm_owner(provider: AgentProvider, prefix: &Path) -> Owner {
+    let bin = prefix.join("bin");
+    let npm = bin.join("npm");
+    let npm = executable(&npm).then_some(npm);
+    if writable(&prefix.join("lib/node_modules")) {
+        return Owner::Npm {
+            bin: npm.map(|_| bin),
+        };
+    }
+    let npm = npm.map_or_else(|| "npm".to_owned(), |npm| npm.display().to_string());
+    Owner::Manual(ManualUpdate {
+        owner: format!("npm under {}", prefix.display()),
+        command: Some(format!(
+            "sudo {npm} install -g {}@latest",
+            npm_package(provider)
+        )),
+    })
+}
+
+#[cfg(unix)]
+fn writable(directory: &Path) -> bool {
+    rustix::fs::access(directory, rustix::fs::Access::WRITE_OK).is_ok()
+}
+
+#[cfg(not(unix))]
+fn writable(directory: &Path) -> bool {
+    fs::metadata(directory).is_ok_and(|metadata| !metadata.permissions().readonly())
+}
+
+fn homebrew(real: &Path) -> Option<Owner> {
     let components = real.components().collect::<Vec<_>>();
     let index = components.iter().position(|component| {
         matches!(component.as_os_str().to_str(), Some("Caskroom" | "Cellar"))
@@ -344,18 +448,132 @@ fn homebrew(real: &Path) -> Option<(PathBuf, bool, String)> {
     let token = components.get(index + 1)?.as_os_str().to_str()?.to_owned();
     let prefix = components[..index].iter().collect::<PathBuf>();
     let brew = prefix.join("bin/brew");
-    executable(&brew).then_some((brew, cask, token))
+    executable(&brew).then_some(Owner::Homebrew { brew, cask, token })
 }
 
-fn owning_bin(real: &Path) -> Option<PathBuf> {
-    let text = real.to_str()?;
-    let (prefix, _) = text.split_once("/lib/node_modules/")?;
-    let bin = Path::new(prefix).join("bin");
-    executable(&bin.join("npm")).then_some(bin)
+fn mise_which(mise: &Path, provider: AgentProvider, search: Option<&OsString>) -> Option<PathBuf> {
+    let mut command = Command::new(mise);
+    command.args(["which", program(provider)]);
+    prepare(&mut command, search, None);
+    let mut target = None;
+    run(command, VERSION_TIMEOUT, |line| {
+        target.get_or_insert_with(|| PathBuf::from(line));
+    })
+    .ok()?;
+    fs::canonicalize(target?).ok()
+}
+
+fn mise_install(real: &Path) -> Option<ManualUpdate> {
+    let tool = real.ancestors().find(|ancestor| {
+        ancestor.parent().and_then(Path::file_name) == Some("installs".as_ref())
+            && ancestor.join(".mise.backend.toml").is_file()
+    })?;
+    let backend = fs::read_to_string(tool.join(".mise.backend.toml")).ok()?;
+    let short = backend.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        (key.trim() == "short").then(|| value.trim().trim_matches('"').to_owned())
+    })?;
+    Some(ManualUpdate {
+        owner: "mise".to_owned(),
+        command: Some(format!("mise use -g {short}@latest")),
+    })
+}
+
+fn system_owner(provider: AgentProvider, real: &Path, search: Option<&OsString>) -> Option<Owner> {
+    let text = real.to_string_lossy().replace('\\', "/");
+    let manual = |owner: &str, command: Option<String>| {
+        Some(Owner::Manual(ManualUpdate {
+            owner: owner.to_owned(),
+            command,
+        }))
+    };
+    if text.to_ascii_lowercase().contains("/winget/") {
+        return manual(
+            "winget",
+            (provider == AgentProvider::ClaudeCode)
+                .then(|| "winget upgrade Anthropic.ClaudeCode".to_owned()),
+        );
+    }
+    if text.starts_with("/nix/store/") {
+        return manual("Nix", None);
+    }
+    if let Some(rest) = text.strip_prefix("/snap/") {
+        let name = rest.split('/').next().unwrap_or_default();
+        return manual("Snap", Some(format!("sudo snap refresh {name}")));
+    }
+    let system = ["/usr/", "/bin/", "/sbin/", "/opt/"]
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
+        && !text.starts_with("/usr/local/")
+        && !text.starts_with("/opt/homebrew/");
+    if !system {
+        return None;
+    }
+    if let Some(manual) = system_package(real, search) {
+        return Some(Owner::Manual(manual));
+    }
+    let directory = real.parent()?;
+    (!writable(directory)).then(|| {
+        Owner::Manual(ManualUpdate {
+            owner: format!("the system ({})", directory.display()),
+            command: None,
+        })
+    })
+}
+
+fn system_package(real: &Path, search: Option<&OsString>) -> Option<ManualUpdate> {
+    let path = real.to_str()?;
+    let query = |program: &str, args: &[&str]| {
+        let mut command = Command::new(program);
+        command.args(args).arg(path);
+        prepare(&mut command, search, None);
+        let mut first = None;
+        run(command, VERSION_TIMEOUT, |line| {
+            first.get_or_insert_with(|| line.to_owned());
+        })
+        .ok()
+        .and(first)
+    };
+    let installed = |program: &str| {
+        search.is_some_and(|search| {
+            std::env::split_paths(search).any(|directory| executable(&directory.join(program)))
+        })
+    };
+    if let Some(line) = query("dpkg-query", &["-S"]) {
+        let name = line.split(':').next()?.trim().to_owned();
+        return Some(ManualUpdate {
+            owner: format!("apt ({name})"),
+            command: Some(format!("sudo apt install --only-upgrade {name}")),
+        });
+    }
+    if let Some(name) = query("pacman", &["-Qqo"]) {
+        let command = ["paru", "yay"]
+            .into_iter()
+            .find(|helper| installed(helper))
+            .map_or_else(
+                || format!("sudo pacman -S {name}"),
+                |helper| format!("{helper} -S {name}"),
+            );
+        return Some(ManualUpdate {
+            owner: format!("pacman ({name})"),
+            command: Some(command),
+        });
+    }
+    let name = query("rpm", &["-qf", "--qf", "%{NAME}"])?;
+    Some(ManualUpdate {
+        owner: format!("rpm ({name})"),
+        command: Some(format!("sudo dnf upgrade {name}")),
+    })
 }
 
 fn claude_channel(found: Option<&Found>) -> &'static str {
-    if let Some((_, true, token)) = found.and_then(|found| homebrew(&found.real)) {
+    if let Some(Found {
+        owner: Owner::Homebrew {
+            cask: true, token, ..
+        },
+        ..
+    }) = found
+    {
         return if token.ends_with("@latest") {
             "latest"
         } else {
@@ -426,26 +644,32 @@ fn task_command(
             });
             command
         }
-        Some(found) => {
-            if let Some((brew, cask, token)) = homebrew(&found.real) {
-                let mut command = Command::new(brew);
-                command.arg("upgrade");
-                if cask {
-                    command.arg("--cask");
-                }
-                command.arg(token);
-                command
-            } else {
-                let mut command = Command::new(&found.path);
-                command.arg("update");
-                command
+        Some(Found {
+            owner: Owner::Manual(manual),
+            ..
+        }) => return Err(manual_message(manual)),
+        Some(Found {
+            owner: Owner::Homebrew { brew, cask, token },
+            ..
+        }) => {
+            let mut command = Command::new(brew);
+            command.arg("upgrade");
+            if *cask {
+                command.arg("--cask");
             }
+            command.arg(token);
+            command
+        }
+        Some(found) => {
+            let mut command = Command::new(&found.path);
+            command.arg("update");
+            command
         }
     };
     prepare(
         &mut command,
         search,
-        found.and_then(|found| owning_bin(&found.real)).as_deref(),
+        found.and_then(|found| found.owner.first_on_path()),
     );
     Ok(command)
 }
@@ -636,52 +860,192 @@ mod tests {
         assert_eq!(parse_version("12 errors"), None);
     }
 
+    #[cfg(unix)]
+    fn root() -> bool {
+        rustix::process::geteuid().is_root()
+    }
+
+    #[cfg(unix)]
     #[test]
     fn homebrew_installs_upgrade_through_their_own_brew() {
         let dir = tempfile::tempdir().unwrap();
         let brew = dir.path().join("bin/brew");
         fs::create_dir_all(brew.parent().unwrap()).unwrap();
-        fs::write(&brew, "").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            fs::set_permissions(&brew, fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        script(&brew, "");
         let cask = dir
             .path()
             .join("Caskroom/claude-code@latest/2.1.309/claude");
         assert_eq!(
             homebrew(&cask),
-            Some((brew.clone(), true, "claude-code@latest".to_owned()))
+            Some(Owner::Homebrew {
+                brew: brew.clone(),
+                cask: true,
+                token: "claude-code@latest".to_owned()
+            })
         );
         let formula = dir.path().join("Cellar/codex/0.163.0/bin/codex");
-        assert_eq!(homebrew(&formula), Some((brew, false, "codex".to_owned())));
+        assert_eq!(
+            homebrew(&formula),
+            Some(Owner::Homebrew {
+                brew,
+                cask: false,
+                token: "codex".to_owned()
+            })
+        );
         assert_eq!(
             homebrew(Path::new("/home/me/.local/share/claude/versions/2.1.309")),
             None
         );
     }
 
+    #[cfg(unix)]
     #[test]
-    fn npm_installs_update_with_the_npm_that_owns_them() {
+    fn npm_installs_update_with_their_own_npm_unless_the_prefix_is_read_only() {
+        use std::os::unix::fs::PermissionsExt as _;
         let dir = tempfile::tempdir().unwrap();
-        let npm = dir.path().join("bin/npm");
+        let prefix = fs::canonicalize(dir.path())
+            .unwrap()
+            .join("Cellar/node/26.12.1");
+        let npm = prefix.join("bin/npm");
         fs::create_dir_all(npm.parent().unwrap()).unwrap();
-        fs::write(&npm, "").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            fs::set_permissions(&npm, fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        let codex = dir
-            .path()
-            .join("lib/node_modules/@openai/codex/bin/codex.js");
-        assert_eq!(owning_bin(&codex), Some(dir.path().join("bin")));
+        script(&npm, "");
+        let codex = prefix.join("lib/node_modules/@openai/codex/bin/codex.js");
+        fs::create_dir_all(codex.parent().unwrap()).unwrap();
+        script(&codex, "");
         assert_eq!(
-            owning_bin(Path::new(
-                "/usr/lib/node_modules/@openai/codex/bin/codex.js"
-            )),
+            owner(AgentProvider::Codex, &codex, None),
+            Owner::Npm {
+                bin: Some(prefix.join("bin"))
+            }
+        );
+        if root() {
+            return;
+        }
+        let modules = prefix.join("lib/node_modules");
+        fs::set_permissions(&modules, fs::Permissions::from_mode(0o555)).unwrap();
+        let owned = owner(AgentProvider::Codex, &codex, None);
+        fs::set_permissions(&modules, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            owned,
+            Owner::Manual(ManualUpdate {
+                owner: format!("npm under {}", prefix.display()),
+                command: Some(format!(
+                    "sudo {} install -g @openai/codex@latest",
+                    npm.display()
+                )),
+            })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mise_tools_and_their_shims_stay_with_mise() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = dir.path().join("mise/installs/npm-openai-codex");
+        let codex = tool.join("0.163.0/bin/codex");
+        fs::create_dir_all(codex.parent().unwrap()).unwrap();
+        script(&codex, "");
+        fs::write(
+            tool.join(".mise.backend.toml"),
+            "short = \"npm:@openai/codex\"\nfull = \"npm:@openai/codex\"\n",
+        )
+        .unwrap();
+        let expected = Owner::Manual(ManualUpdate {
+            owner: "mise".to_owned(),
+            command: Some("mise use -g npm:@openai/codex@latest".to_owned()),
+        });
+        assert_eq!(owner(AgentProvider::Codex, &codex, None), expected);
+        let mise = dir.path().join("mise-bin/mise");
+        fs::create_dir_all(mise.parent().unwrap()).unwrap();
+        script(&mise, &format!("echo {}", codex.display()));
+        let shim = dir.path().join("mise/shims/codex");
+        fs::create_dir_all(shim.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&mise, &shim).unwrap();
+        assert_eq!(owner(AgentProvider::Codex, &shim, None), expected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_installs_name_their_package_manager() {
+        let manual = |owner: &str, command: Option<&str>| {
+            Some(Owner::Manual(ManualUpdate {
+                owner: owner.to_owned(),
+                command: command.map(str::to_owned),
+            }))
+        };
+        assert_eq!(
+            system_owner(
+                AgentProvider::Codex,
+                Path::new("/nix/store/abc-codex-0.163.0/bin/codex"),
+                None
+            ),
+            manual("Nix", None)
+        );
+        assert_eq!(
+            system_owner(
+                AgentProvider::Codex,
+                Path::new("/snap/codex/12/bin/codex"),
+                None
+            ),
+            manual("Snap", Some("sudo snap refresh codex"))
+        );
+        assert_eq!(
+            system_owner(
+                AgentProvider::ClaudeCode,
+                Path::new("C:/Users/me/AppData/Local/Microsoft/WinGet/Packages/claude.exe"),
+                None
+            ),
+            manual("winget", Some("winget upgrade Anthropic.ClaudeCode"))
+        );
+        assert_eq!(
+            system_owner(
+                AgentProvider::ClaudeCode,
+                Path::new("/home/me/.local/share/claude/versions/2.1.309"),
+                None
+            ),
             None
+        );
+        let dir = tempfile::tempdir().unwrap();
+        script(&dir.path().join("pacman"), "echo claude-code");
+        script(&dir.path().join("paru"), "");
+        let search = std::env::join_paths([dir.path()]).unwrap();
+        assert_eq!(
+            system_owner(
+                AgentProvider::ClaudeCode,
+                Path::new("/usr/bin/claude"),
+                Some(&search)
+            ),
+            manual("pacman (claude-code)", Some("paru -S claude-code"))
+        );
+        if !root() {
+            assert_eq!(
+                system_owner(
+                    AgentProvider::ClaudeCode,
+                    Path::new("/usr/bin/claude"),
+                    None
+                ),
+                manual("the system (/usr/bin)", None)
+            );
+        }
+    }
+
+    #[test]
+    fn a_manual_install_is_never_updated() {
+        let found = Found {
+            path: PathBuf::from("/usr/bin/codex"),
+            version: Some("0.159.0".to_owned()),
+            owner: Owner::Manual(ManualUpdate {
+                owner: "npm under /usr".to_owned(),
+                command: Some("sudo /usr/bin/npm install -g @openai/codex@latest".to_owned()),
+            }),
+        };
+        assert_eq!(
+            task_command(AgentProvider::Codex, Some(&found), None).err(),
+            Some(
+                "Installed by npm under /usr. Update it with: sudo /usr/bin/npm install -g \
+                 @openai/codex@latest"
+                    .to_owned()
+            )
         );
     }
 
