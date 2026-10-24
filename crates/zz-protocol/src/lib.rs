@@ -115,7 +115,8 @@ pub use path_list::{
     MAX_PATH_LIST_TEXT_BYTES, PathEntry, PathKind, PathListRoot, ShellKind,
 };
 pub use providers::{
-    MAX_PROVIDER_TEXT_BYTES, ProviderStatus, ProviderTask, ProvidersReport, compare_versions,
+    MAX_PROVIDER_TEXT_BYTES, ManualUpdate, ProviderStatus, ProviderTask, ProvidersReport,
+    compare_versions,
 };
 pub use snapshot::{
     AgentProvider, Axis, BrowserDescriptor, BrowserProfileNameError, DEFAULT_BROWSER_PROFILE,

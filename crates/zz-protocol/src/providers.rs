@@ -27,7 +27,14 @@ pub struct ProviderStatus {
     pub path: Option<String>,
     pub version: Option<String>,
     pub latest: Option<String>,
+    pub manual: Option<ManualUpdate>,
     pub task: ProviderTask,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManualUpdate {
+    pub owner: String,
+    pub command: Option<String>,
 }
 
 impl ProviderStatus {
@@ -38,6 +45,7 @@ impl ProviderStatus {
             path: None,
             version: None,
             latest: None,
+            manual: None,
             task: ProviderTask::Idle,
         }
     }

@@ -1010,9 +1010,13 @@ Claude Code and Codex on its own host (login-shell PATH plus `~/.local/bin`), re
 `--version`, asks `downloads.claude.ai` and the npm registry through `curl` for the newest release,
 and with `-u` runs the vendor's updater (`claude update`, `codex update`, `brew upgrade --cask` for
 Homebrew installs, the vendor install script when missing). `ProvidersReport { checking, providers }`
-holds one `ProviderStatus { provider, path, version, latest, task }` per CLI, where `task` is `Idle`,
-`Running { output }` (the updater's latest line) or `Failed { message }` (its last lines, at most
-`MAX_PROVIDER_TEXT_BYTES`). The daemon sends the whole report on every change to each client that
+holds one `ProviderStatus { provider, path, version, latest, manual, task }` per CLI, where `task` is
+`Idle`, `Running { output }` (the updater's latest line) or `Failed { message }` (its last lines, at
+most `MAX_PROVIDER_TEXT_BYTES`). `manual: Option<ManualUpdate { owner, command }>` marks an install
+zz will not update because something else owns it: an npm prefix this user cannot write (`sudo <npm>
+install -g <pkg>@latest`), a mise tool (`mise use -g <tool>@latest`), Nix, Snap, winget, or a
+system package found with `dpkg-query -S`, `pacman -Qqo` or `rpm -qf`; `-u` on one is refused with
+that text. The daemon sends the whole report on every change to each client that
 asked.
 
 # Versioning & compatibility
