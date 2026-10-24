@@ -8392,6 +8392,63 @@ mod tests {
 
     #[cfg(feature = "agent-pane")]
     #[zz_gpui::test]
+    fn the_lead_is_followed_on_its_own_host_whatever_is_attached(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(vec![test_host("xps", "ssh://xps")], cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("fixture".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            mux.update(cx, |mux, cx| {
+                let xps = mux.registry.get_by_name("xps").unwrap().0;
+                let pane = PaneId(5);
+                let sink = mux.record_agent_requests_for_test();
+                mux.follow_lead(Some((xps, pane)));
+                assert_eq!(mux.lead(), Some((xps, pane)));
+                let updates = |first_seq, items| {
+                    ProtocolMessage::Event(Event {
+                        sequence: 0,
+                        payload: EventPayload::AgentUpdates {
+                            pane,
+                            first_seq,
+                            items,
+                        },
+                    })
+                };
+                mux.handle_message(HostId::LOCAL, updates(1, vec![agent_blob(1)]), cx);
+                assert!(
+                    !mux.has_lead_events(),
+                    "the same pane id on another host is not the lead"
+                );
+                mux.handle_message(xps, updates(1, vec![agent_blob(1), agent_blob(2)]), cx);
+                let seqs = |events: AgentEvents| {
+                    events
+                        .items
+                        .into_iter()
+                        .flat_map(|(_, items)| items.into_iter().map(|item| item.seq))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(seqs(mux.take_lead_events()), [1, 2]);
+                mux.handle_message(xps, updates(5, vec![agent_blob(5)]), cx);
+                assert!(seqs(mux.take_lead_events()).is_empty());
+                assert_eq!(
+                    sink.borrow().last(),
+                    Some(&(pane, AgentRequest::Replay { from_seq: 2 })),
+                    "a gap asks the lead's host for the rest"
+                );
+                assert!(mux.send_lead_request(AgentRequest::Cancel));
+                mux.follow_lead(None);
+                assert_eq!(mux.lead(), None);
+                assert!(!mux.send_lead_request(AgentRequest::Cancel));
+            });
+        });
+    }
+
+    #[cfg(feature = "agent-pane")]
+    #[zz_gpui::test]
     fn a_lens_tracks_its_pane_only_while_it_is_open(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
