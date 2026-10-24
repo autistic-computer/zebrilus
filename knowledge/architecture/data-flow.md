@@ -4,7 +4,7 @@ title: End-to-end data flow
 description: How terminal frames, browser pixels, agent lens updates, and user input move among the daemon, GUI, PTY workers, CEF, and agent CLIs.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [architecture, data-flow, frames, input, rendering]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
@@ -81,8 +81,9 @@ AgentController reducer ──────▶ AgentTimeline + composer          
 - A replay deliberately overlaps the live tail; the client's per-pane sequence cursor is what makes
   that idempotent. A lane overflow sends `AgentLagged` rather than closing the connection, and the
   client answers with `AgentReplay` from its cursor.
-- A Claude permission prompt rides `AgentState` out to every client on the session, so a
-  late-attaching client sees the same card. `AgentRespondPermission` answers it with the key the
+- A Claude permission prompt rides `AgentState` out to every client on the session and every
+  client watching the pane (one that sent `AgentReplay` for it, attached or not), so a
+  late-attaching client and the desktop's lead chat on another host see the same card. `AgentRespondPermission` answers it with the key the
   dialog takes (`1` allows, Esc denies); first answer wins. Codex approvals are answered in the
   terminal. Cancel sends `AgentCancel`, which presses Esc.
 - Nothing about the agent lives in mux state. Opening the lens again rebuilds the timeline from the

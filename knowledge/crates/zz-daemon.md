@@ -4,7 +4,7 @@ title: zz-daemon crate
 description: The persistent local daemon. Sole authority for mux state, owner of PTY-backed terminal sessions and the agent lens runtimes over them, and the fan-out engine that streams coalesced terminal frames and agent timelines to attached and short-lived clients over a socket or named pipe.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [crate, daemon, ipc, fanout, transport, agent]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
@@ -496,10 +496,13 @@ hundreds of small updates and a slow client should not lose its session over it,
 clears the pane's queued frames and puts a tiny `EventPayload::AgentLagged { pane, next_seq }` on the
 reliable lane instead; the client answers with `AgentReplay` from its own cursor and the fanout
 serves it out of the pane's 18 MiB replay ring, or out of the journal when the ask predates the ring.
-Agent frames also follow visibility like terminal frames do: `AgentUpdates` reaches only clients the
+Agent frames also follow visibility like terminal frames do: `AgentUpdates` reaches the clients the
 pane is visible to (`visible_agents`, derived by `visible_agent_panes`: lens panes in the client's
 focused window, honoring zoom), while the small typed `AgentState` goes to every client attached to
-the session so permission prompts work for a pane nobody is watching.
+the session so permission prompts work for a pane nobody is looking at. A client that sends
+`AgentReplay` for a pane also watches it (`watched_agents`), attached or not, and gets its
+`AgentUpdates` and `AgentState` until it disconnects or the pane closes (`agent_stream_subscribers`,
+`agent_watchers`); that is how the lead chat follows an agent on another host without attaching.
 
 A command-output watcher publishes in two phases: it validates the current terminal and captures the
 subscriber under `ServerState`, encodes the potentially megabyte-scale viewport after releasing that global
