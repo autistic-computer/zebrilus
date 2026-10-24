@@ -143,6 +143,26 @@ every arm because workers leave vendored code out while the regex truth counts i
 | opus | v3 | r | 1 | 0/1 | 1.0 | 1484 | 48 | 2.0 | 0.0 | 0.0 | 106 | 84 | 27.0 | 1.00 |
 | opus | v4 | r | 1 | 0/1 | 1.0 | 1991 | 45 | 2.0 | 0.0 | 0.0 | 104 | 94 | 32.4 | 0.52 |
 
+## Resume runs (2026-10-24)
+
+`[MODEL/]ARM@full` or `@checkpoint` kills the lead's whole process tree `KILL_DELAY` seconds (30)
+after its `KILL_SENDS`-th `agent-send` (3), the way a dead host would, keeps the pane with
+`remain-on-exit`, waits `RESTART_DELAY` seconds (0), and restarts it in the same pane with
+`respawn-pane -k`: either `claude --resume <id>` with a one-line restart notice, or a fresh session
+whose first prompt is `scripts/lead-checkpoint.py packet` built from the transcript up to the kill
+and the lead's `ledger.md`. Both arms get the Stop hook (`lead-checkpoint.py stop-hook`). A fourth
+`JOBS` field sets per-run variables (`opus/v5@full g 3 RESTART_DELAY=420`). `resume_metrics.py`
+scores the part after the restart: first-request tokens and how much was cached, total input
+tokens, peak context, seconds to `LEAD-DONE`, new workers, resent briefs and re-armed waits.
+Results: `results/2026-10-24-resume-runs.tsv` and `results/2026-10-24-resume-cost-probe.tsv`,
+read in `knowledge/designs/durable-lead-chat.md`.
+
+**v5** (`skills/v5.md`): v4 plus a ledger with a fixed shape rewritten before every turn ends and a
+Restarted section. **v6** (`skills/v6.md`): the lead-gaps branch's skill (briefs straight from a
+file to both CLIs, `--final` on terminal panes, a wait-only re-arm with `agent-send --wait ''`)
+plus v5's Ledger and Restarted sections; the text to ship once that branch is merged. v6 was not
+run.
+
 ## Traps
 
 - bash reads a script while it runs: editing `run-one.sh` mid-batch broke two runs in batch 1.
@@ -156,5 +176,11 @@ every arm because workers leave vendored code out while the regex truth counts i
 - Leads write briefs as heredocs inside shell loops (`cat > brief-$h.md`); `metrics.py --briefs`
   resolves those names against the files later piped into `agent-send` or `load-buffer`.
 - `trust.sh` leaves trust entries in `~/.claude.json` and `~/.codex/config.toml` on each host.
+- Killing a lead with `pkill -f <run dir>` from an `ssh ... bash -lc 'cd <run dir> && ...'` also kills
+  that shell; `killtree.sh` walks the pane's process tree instead.
+- Claude Code stores a peer message as an `isMeta` user entry with `origin.kind: "peer"`, and the
+  first assistant entry after `--resume` is a synthetic "No response requested." with zero usage.
+- Parallel leads that write brief files under the same name on a worker host overwrite each
+  other's briefs; one restarted lead caught it by checking the worker's claim.
 - Run directories stay in `out*/runs/`; the lab stays in `~/orch-lab` and the lead runs in
   `~/lead-runs` on the hosts. Delete them afterwards.
