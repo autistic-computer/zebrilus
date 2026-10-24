@@ -47,6 +47,21 @@ pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Eleme
         ))
     }
 
+    /// Fade the top edge toward `ground` while there is content above.
+    #[must_use]
+    fn top_fade<H: ScrollbarHandle + Clone>(
+        self,
+        scroll_handle: &H,
+        ground: Hsla,
+        height: Pixels,
+    ) -> Self {
+        self.child(super::top_fade(
+            Rc::new(scroll_handle.clone()),
+            ground,
+            height,
+        ))
+    }
+
     #[track_caller]
     #[must_use]
     fn vertical_scrollbar<H: ScrollbarHandle + Clone>(self, scroll_handle: &H) -> Self {

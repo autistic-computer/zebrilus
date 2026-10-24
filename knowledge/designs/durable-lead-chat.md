@@ -191,10 +191,13 @@ Unchanged in shape from the first version, smaller in payload:
 
 ## Chat UI
 
-The chat sits at the bottom of the flat sidebar, under a rule, and in titlebar mode at the bottom of
-the sidebar's slideover, which a chat button in the title bar opens (`workspace_chat_button`, dotted
-with `chat_button` in the color of what waits). The parts are in `crates/zz-ui/src/agent/chat.rs`
-and the storybook's Agent › Lead chat story shows each one and both layouts:
+The chat sits at the bottom of the flat sidebar, under a rule you drag to move the split. In
+titlebar mode, a chat button in the title bar (`workspace_chat_button`, dotted with `chat_button` in
+the color of what waits) opens the command palette in Lead mode instead: a `PalettePill::Program`
+for the lead in the input, `lead_palette_body` under it (the thread, at most 360px and scrolling,
+then the approval waiting on you) and `LEAD_PALETTE_HINTS` in the footer. The parts are in
+`crates/zz-ui/src/agent/chat.rs` and the storybook's Agent › Lead chat story shows each one and both
+layouts:
 
 | Chat log line | Drawn as |
 |---|---|
@@ -207,14 +210,16 @@ A receipt is one tick (`Sent`: zz has it), two (`Delivered`: typed into the lead
 the accent (`Read`: the lead started a turn on it). `chat_seen` lists the agents a routed answer
 reached under it. The bubble and its tail are one painted path, so a translucent fill does not
 double where they meet; a hidden copy of the time at the end of the text keeps the last line clear
-of the stamp. `chat_header` names the lead and its host, and ends in the Esc keycap in the
-slideover. `ChatComposer` is one line (the `chat.composer` pill) with the lens composer's round
+of the stamp. `chat_header` names the lead and its host. `ChatComposer` is one line (the `chat.composer` pill) with the lens composer's round
 send button; there are no pickers, since the lead's model is a setting. Approvals use the lens's
 permission card.
 
-`chat_section` scrolls the thread and keeps a short one at the bottom; whoever owns the
-`ScrollHandle` calls `scroll_to_bottom` when a message arrives. Nothing feeds it yet: the app still
-needs the chat log and the sidebar split between the list and the chat.
+`ChatSection` scrolls the thread, keeps a short one at the bottom and fades it under the header
+while there is more above (the kit's `top_fade`, the mirror of the list's `bottom_fade`); whoever
+owns the `ScrollHandle` calls `scroll_to_bottom` when a message arrives. Its rule starts a
+`ChatSplitDrag`; the column holding it turns the pointer into a height with `chat_split_height`,
+which leaves the chat 180px and the list 96px. Nothing feeds it yet: the app still needs the chat
+log, a place to keep the split, and Lead mode in its palette.
 
 ## Settings and verbs
 
