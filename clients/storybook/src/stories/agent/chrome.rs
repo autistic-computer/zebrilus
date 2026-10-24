@@ -112,17 +112,16 @@ impl Render for EmptyStates {
                 .into_any_element()
         };
         let messages = [
-            ("starting", "Starting Codex…", true),
-            ("restoring", "Restoring the previous session…", true),
+            ("opening", "Reading Claude Code’s transcript…", true),
             (
                 "running, nothing streamed yet",
-                "Waiting for Claude Code’s first update…",
+                "Waiting for Codex’s first update…",
                 true,
             ),
             ("cancelling", "Cancelling the current turn…", true),
             (
-                "failed to start",
-                "The agent could not start this session.",
+                "transcript unreadable",
+                "Could not read Codex’s transcript.",
                 false,
             ),
             ("offline", "The agent is offline.", false),
@@ -134,21 +133,33 @@ impl Render for EmptyStates {
             });
         states()
             .state(
-                "welcome, ready with no transcript",
+                "welcome: the agent has not written a transcript yet",
                 pane_frame(cx).h(px(340.0)).child(welcome_state(cx)),
             )
             .state("waiting and failure messages", grid)
             .state(
-                "error card, the agent stopped",
-                error_card("Codex exited with status 1.", true, cx),
+                "error card, a prompt with images",
+                error_card(
+                    "The lens sends text only; paste images in the terminal.",
+                    false,
+                    cx,
+                ),
             )
             .state(
-                "error card, a request failed",
-                error_card("This agent does not accept images.", false, cx),
+                "error card, the TUI did not take the paste",
+                error_card(
+                    "%14: text not echoed within 2 seconds; nothing submitted",
+                    false,
+                    cx,
+                ),
             )
             .state(
                 "error card, long error",
-                error_card(&"thread 'tokio-runtime-worker' panicked at crates/zz-daemon/src/agent/host.rs:2873:13: the adapter closed stdout before answering session/new\nstack backtrace:\n   0: rust_begin_unwind\n   1: core::panicking::panic_fmt\n".repeat(3), true, cx),
+                error_card(
+                    &"%14: text not echoed within 2 seconds; nothing submitted\n".repeat(12),
+                    true,
+                    cx,
+                ),
             )
     }
 }

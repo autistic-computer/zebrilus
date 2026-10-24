@@ -1140,12 +1140,13 @@ impl AgentView {
             .as_deref()
             .unwrap_or(state.provider.label());
         let message: SharedString = match state.connection {
-            AgentConnectionState::Starting => format!("Starting {agent}…").into(),
-            AgentConnectionState::Restoring => "Restoring the previous session…".into(),
+            AgentConnectionState::Starting | AgentConnectionState::Restoring => {
+                format!("Reading {agent}’s transcript…").into()
+            }
             AgentConnectionState::Ready => return welcome_state(cx),
             AgentConnectionState::Running => format!("Waiting for {agent}’s first update…").into(),
             AgentConnectionState::Cancelling => "Cancelling the current turn…".into(),
-            AgentConnectionState::Failed => "The agent could not start this session.".into(),
+            AgentConnectionState::Failed => format!("Could not read {agent}’s transcript.").into(),
             AgentConnectionState::Disconnected => "The agent is offline.".into(),
         };
         empty_state(message, pane_is_busy(state.connection), view, cx)

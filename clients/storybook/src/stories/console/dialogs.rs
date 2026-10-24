@@ -175,25 +175,20 @@ fn inline_alerts(_: &mut Window, cx: &mut App) -> AnyElement {
             .child(alert_actions(cx).child(retry("editor-retry"))),
         )
         .state(
-            "agent: stopped, with sign-in",
+            "agent lens: the TUI did not take the prompt",
             inline_alert(
-                Some("The agent stopped".into()),
-                "Claude Code exited before the session started: authentication required (401).",
+                Some("The prompt did not reach Claude Code".into()),
+                "%14: text not echoed within 2 seconds; nothing submitted",
                 cx,
-            )
-            .child(
-                alert_actions(cx)
-                    .child(
-                        Button::new("agent-auth")
-                            .secondary()
-                            .label("Log in with Claude"),
-                    )
-                    .child(retry("agent-retry")),
             ),
         )
         .state(
-            "agent: a request failed, no title",
-            inline_alert(None, "This agent does not accept images.", cx),
+            "agent lens: a prompt with images, no title",
+            inline_alert(
+                None,
+                "The lens sends text only; paste images in the terminal.",
+                cx,
+            ),
         )
         .into_any_element()
 }
