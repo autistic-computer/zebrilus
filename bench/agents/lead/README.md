@@ -143,6 +143,48 @@ every arm because workers leave vendored code out while the regex truth counts i
 | opus | v3 | r | 1 | 0/1 | 1.0 | 1484 | 48 | 2.0 | 0.0 | 0.0 | 106 | 84 | 27.0 | 1.00 |
 | opus | v4 | r | 1 | 0/1 | 1.0 | 1991 | 45 | 2.0 | 0.0 | 0.0 | 104 | 94 | 32.4 | 0.52 |
 
+## Resume runs (2026-10-24)
+
+`[MODEL/]ARM@full` or `@checkpoint` kills the lead's whole process tree `KILL_DELAY` seconds (30)
+after its `KILL_SENDS`-th `agent-send` (3), the way a dead host would, keeps the pane with
+`remain-on-exit`, waits `RESTART_DELAY` seconds (0), and restarts it in the same pane with
+`respawn-pane -k`: either `claude --resume <id>` with a one-line restart notice, or a fresh session
+whose first prompt is `scripts/lead-checkpoint.py packet` built from the transcript up to the kill
+and the lead's `ledger.md`. Both arms get the Stop hook (`lead-checkpoint.py stop-hook`). A fourth
+`JOBS` field sets per-run variables (`opus/v5@full g 3 RESTART_DELAY=420`). `resume_metrics.py`
+scores the part after the restart: first-request tokens and how much was cached, total input
+tokens, peak context, seconds to `LEAD-DONE`, new workers, resent briefs and re-armed waits.
+Results: `results/2026-10-24-resume-runs.tsv` and `results/2026-10-24-resume-cost-probe.tsv`,
+read in `knowledge/designs/durable-lead-chat.md`.
+
+**v5** (`skills/v5.md`): v4 plus a ledger with a fixed shape rewritten before every turn ends and a
+Restarted section. **v6** (`skills/v6.md`): the lead-gaps branch's skill (briefs straight from a
+file to both CLIs, `--final` on terminal panes, a wait-only re-arm with `agent-send --wait ''`)
+plus v5's Ledger and Restarted sections, shipped as `.agents/skills/zz-lead/SKILL.md` once that
+branch was merged here.
+
+**v6 on the lead-gaps build** (2026-10-24, 10 runs with `ZZ_DEV_BENCH=1`). The approval task
+passed 3 of 3 (Opus twice, Sonnet) and the lead told the user in 66 to 96 s: `--on-block fail` now
+exits 3 on a Claude permission prompt, so the delayed look is gone. The green task passed 5 of 5,
+including a checkpoint and a full-resume restart; the checkpoint lead re-armed both open jobs
+with `agent-send --wait ''` and sent the workers nothing, and used 609k input tokens after the
+restart against 821k for full resume. No poll loops and no keystrokes into workers in any run.
+The facts task got every hash and clean state right but reported zz 0.22.0, the build it talks
+to, where the truth script reads the installed 0.21.0. The research task fails recall on scope as
+in every arm (106k peak context).
+
+## Running on a build that is not installed
+
+`dev-setup.sh HOST` copies the dev-identity `zz_cli` built in `~/zz-lead-build` on HOST
+(`ZZ_DEV_BUILD=1 mise x zig@0.16.0 -- cargo build -p zz-cli --bin zz_cli`; build on the host with
+the oldest glibc, xps at 2.43) to `~/.local/bin/zz-dev` on xps and alienware, where a dev client
+looks for it, and to `~/zz-lead/` on ubuntu behind `~/zz-lead/lz`, which pins `ZZ_SOCKET`
+(`/tmp/zzlead.sock`), its own `XDG_CONFIG_HOME` (only the `host-` lines) and `XDG_DATA_HOME` (a copy
+of zz's own ssh key, which the other hosts already trust). The installed zz, its daemons and any
+`zz-dev` the user already has stay as they were; `dev-setup.sh` refuses to overwrite a `zz-dev` it
+did not put there. `ZZ_DEV_BENCH=1` makes `run-one.sh` start the lead through `lz` with that `zz`
+first on its PATH, and `run-all.sh` stops those dev daemons at the end (`dev-cleanup.sh`).
+
 ## Traps
 
 - bash reads a script while it runs: editing `run-one.sh` mid-batch broke two runs in batch 1.
@@ -156,5 +198,13 @@ every arm because workers leave vendored code out while the regex truth counts i
 - Leads write briefs as heredocs inside shell loops (`cat > brief-$h.md`); `metrics.py --briefs`
   resolves those names against the files later piped into `agent-send` or `load-buffer`.
 - `trust.sh` leaves trust entries in `~/.claude.json` and `~/.codex/config.toml` on each host.
+- Killing a lead with `pkill -f <run dir>` from an `ssh ... bash -lc 'cd <run dir> && ...'` also kills
+  that shell; `killtree.sh` walks the pane's process tree instead.
+- Claude Code stores a peer message as an `isMeta` user entry with `origin.kind: "peer"`, and the
+  first assistant entry after `--resume` is a synthetic "No response requested." with zero usage.
+- Parallel leads that write brief files under the same name on a worker host overwrite each
+  other's briefs; one restarted lead caught it by checking the worker's claim.
+- `zz --host` refuses an explicit `--socket`; select the local daemon with `ZZ_SOCKET` instead.
+- A login shell puts `~/.local/bin` back in front of PATH, so `lead.sh` exports the dev `zz` after it.
 - Run directories stay in `out*/runs/`; the lab stays in `~/orch-lab` and the lead runs in
   `~/lead-runs` on the hosts. Delete them afterwards.

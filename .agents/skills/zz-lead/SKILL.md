@@ -21,10 +21,38 @@ small and be restarted at any time.
 
 ## Ledger
 
-Keep `ledger.md` in your working directory, one line per job:
-`<id> <host> <pane> <state> <goal> <report path>`. Read it before every decision, update it after
-every send and result; it and live zz state outrank your memory. If it already exists when you
-start, you were restarted: look at each open job's pane once and wait on it again.
+`ledger.md` in your working directory is your checkpoint: if you are restarted, it and the last
+few messages are all you come back with. Rewrite it whole, under 60 lines, after every send,
+every result, and before you end every turn:
+
+```text
+# Goal
+fabrico's current request, in his words
+# Jobs
+<id> <host> <pane> <state> <goal> <report path>
+# Decisions
+- what fabrico decided or prefers, what you settled and why
+# Waiting on fabrico
+- question or approval: host, pane, what it asks
+# Next
+- your next step
+```
+
+It and live zz state outrank your memory. For an older detail, search the chat or transcripts
+with `rg`; do not read them whole.
+
+## Restarted
+
+When your first message says you were restarted, read `ledger.md`, then for each open job look
+at its pane once (`zz --host H capture-pane -p -t %N | tail -20`); the waits you had died with
+your old process:
+
+- Finished: read its DONE line there or its report, check the result on the host as below, then
+  update the ledger.
+- Still working: wait again in the background without sending anything,
+  `zz --host H agent-send -t %N --wait --on-block fail --timeout 3600 ''`.
+- Never resend a brief to a worker that has one, and never start a second worker for a job whose
+  worker is alive.
 
 ## Start a worker
 

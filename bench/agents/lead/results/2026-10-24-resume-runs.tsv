@@ -1,0 +1,12 @@
+condition	run	resume	model	status	pass	detail	wrong_done	pre_ctx	first_ctx	first_cached	post_peak_ctx	post_requests	post_input_tok	post_out_tok	first_reply_s	post_wall_s	post_tools	new_workers	resent_briefs	rearms	packet_bytes
+immediate	lead-1024095855-g-4baf	checkpoint	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	52478	37626	29624	44393	11	456375	4424	3	313	10	0	0	1	2890
+immediate	lead-1024095855-g-f956	full	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	50784	51719	51212	65420	14	832956	7664	3	302	15	0	0	3	
+immediate	lead-1024100947-g-06cd	checkpoint	sonnet	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	53382	37795	29740	48410	12	533269	5518	3	318	17	0	0	1	3478
+immediate	lead-1024100947-g-19c9	full	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	48691	49726	48689	60998	15	839689	6593	2	335	15	0	0	1	
+after-420s	lead-1024100947-g-294f	checkpoint	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	49293	37655	29623	45365	10	422018	4330	3	602	8	0	0	0	2975
+immediate	lead-1024100947-g-aa30	checkpoint	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	51744	37766	29624	66465	30	1596662	15647	3	314	29	0	0	4	3268
+after-420s	lead-1024100947-g-be4f	full	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	49629	51245	49661	65369	12	711356	7911	2	596	11	0	0	0	
+late-kill-600s	lead-1024100947-r-7bc9	checkpoint	opus	done	0	xps=1.00 alienware=0.66 ubuntu=0.99	1	117344	37654	29625	76866	34	1958347	18660	4	1568	31	0	1	2	3070
+late-kill-600s	lead-1024100947-r-d3e2	full	opus	timeout	0	xps=1.00 alienware=0.88 ubuntu=0.00	2	82257	83151	82302	128672	28	2884611	23392	3		27	0	2	2	
+v6-devbuild immediate	lead-1024112328-g-4917	full	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	49939	52819	49937	64061	14	820628	6762	3	317	13	0	1	1	
+v6-devbuild immediate	lead-1024112328-g-e798	checkpoint	opus	done	1	xps=Gg alienware=Gg ubuntu=Gg	0	48789	37427	29333	48997	14	609003	6046	3	480	12	0	0	2	2960
