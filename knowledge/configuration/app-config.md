@@ -579,12 +579,12 @@ daemon still resolves cells with the host's colors but tags where each came from
 so the client repaints default and palette 0-15 colors (`LocalColors::recolor`) and leaves 256-color
 and RGB picks alone; an inverted cell, whose source isn't tagged, is matched by value.
 
-`minimum-contrast` (a WCAG ratio from 1 to 21, default 2) keeps terminal text readable whatever the
+`minimum-contrast` (a WCAG ratio from 1 to 21, default 4.5) keeps terminal text readable whatever the
 theme or the application picked: any text color below the floor against its cell background gets
-lighter or darker until it reaches it, keeping its hue. 2 only rescues text that is hard to read, such
-as a dark-theme application's yellow on a white background or palette black on a dark one, and leaves
-designed palettes almost untouched; 3 to 4.5 is stricter; 1 turns it off. Box drawing, block and
-Powerline glyphs are never changed.
+lighter or darker until it reaches it, keeping its hue. Faint text is dimmed against its cell background
+before correction, so dim placeholders and input text retain the same contrast floor. Lower values
+such as 2 preserve more application colors; 1 turns correction off. Box drawing, block and Powerline
+glyphs skip correction.
 
 File order is preserved, including repeated `palette`, face-specific font-family, and `font-feature`
 entries. `config-file` is not part of the native override surface.
@@ -751,7 +751,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Providers | One group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; an install something else owns (a root-owned npm prefix, mise, Nix, Snap, winget, a system package) gets no Update button but says who owns it and offers its update command to copy; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
-| Terminal | **Appearance** (Font family, Font size, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
+| Terminal | **Appearance** (Font family, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
 | About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest-release row that reads the update state: Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
 
 Structured `zz/config` rows show their effective client-local or daemon-resolved appearance provenance and
@@ -850,7 +850,10 @@ file selection, including explicit `-f` files.
 
 Terminal's Appearance rows read the saved parsed `zz/config` entries. Scalars replace the last
 line; Font family replaces its whole stack with one line. The existing watcher applies these
-edits. Both pages offer a donor path prefilled from discovery, Choose, and a confirmed Import.
+edits. macOS exposes `font-thicken` as Font smoothing and `font-thicken-strength` as Smoothing
+strength (0–255); the strength control is disabled while smoothing is off. Changes update the
+terminal preview and live panes through the existing reload path. Both pages offer a donor path
+prefilled from discovery, Choose, and a confirmed Import.
 Import requires a clean editor; tmux import also requires a local connection.
 
 The first-run prompt (`crates/zz/src/config/import_prompt.rs`) uses marker
