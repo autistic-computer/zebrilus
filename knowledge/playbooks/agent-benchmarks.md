@@ -1,10 +1,10 @@
 ---
 type: Playbook
 title: Agent benchmarks
-description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, and what a fresh user's Claude Code and Codex get; harness layout, prerequisites, results, and traps."
+description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, what a fresh user's Claude Code and Codex get, and whether the zz-lead skill makes a lead agent coordinate workers across machines well; harness layout, prerequisites, results, the zz gaps a lead hits, and traps."
 resource: bench/agents/browser/matrix.sh
 tags: [agents, browser, cdp, benchmark, skill, agent-browser, playwright-mcp, chrome-devtools-mcp]
-timestamp: 2026-10-21T00:00:00Z
+timestamp: 2026-10-23T00:00:00Z
 ---
 
 # What the benchmarks answer
@@ -204,6 +204,72 @@ stayed sandboxed). A/B against HEAD, interleaved:
 Claude's six blocks are shell structure: `until`/`for` loops polling `zz capture-pane`, and
 `PANE=$(zz split-window ...)`. Approving those safely needs a real bash parser (brush-parser or
 bash-ast) that checks every command inside loops and substitutions.
+
+# Lead agent (2026-10-23)
+
+`bench/agents/lead/` runs a Claude Code lead in a zz pane on ubuntu against four fleet tasks
+(green tests on three machines, a quick fact check, an env-var inventory of three repos, a worker
+that must hit a permission prompt) and scores outcome, delegation, polling, keystrokes into
+workers, context and briefs from the lead's transcript. 39 runs over four skill versions; the
+iteration log is in `bench/agents/lead/README.md` and the shipped text in
+`.agents/skills/zz-lead/SKILL.md` (v4).
+
+| | baseline (hook only) | zz-lead v4 |
+| --- | --- | --- |
+| Approval task: the publish ran without the user | 3 of 4 runs | 0 of 3 |
+| Runs with keystrokes into worker panes | 7 of 11 | 0 of 7 |
+| Runs with poll loops | 2 of 11 | 0 of 7 |
+| Research task peak context | 140k, 202k | 84k to 94k (v1 to v4) |
+| Time to tell the user a worker waits on approval | n/a | 157 to 172 s (978 to 1875 s before the delayed look) |
+| Wrong "done" claims | 0 | 0 |
+
+Without the skill the lead does the work itself, and the publish ran because Opus and Sonnet
+typed the worker command into an interactive shell where fabrico's alias adds
+`--dangerously-skip-permissions`, while Haiku sent eight keystrokes into the worker. The skill
+starts the CLI as the window's command and hands every prompt to the user.
+
+## zz gaps a lead hits
+
+Each came from a run or a probe on the fleet (zz 0.21.0, Claude Code 2.1.308 and 2.1.309, Codex
+0.159 and 0.163). The skill works around the first, second and fourth; the rest are open.
+
+1. **A Claude terminal worker's turn end depends on a SendMessage reply.** `agent-send --wait`
+   to a Claude Code terminal pane returns only when the worker replies over the peer bus. A
+   Sonnet worker on xps answered in its own pane in 7 s; the wait exited 124 after 120 s saying
+   "the turn is still running". The Codex path already ends on busy then idle; the Claude path
+   could end the same way when no reply came.
+2. **A Claude permission prompt reads as idle.** `scan_peers` in
+   `crates/zz-daemon/src/daemon/helpers.rs` maps every status but `busy` to `idle`, and Claude
+   writes `waiting` while a prompt is up, so `#{agent_state}`, `--on-block fail` and `events`
+   never see it. Leads waited 978 s and 1875 s on a worker blocked from its first second; v3 and
+   v4 add one delayed `capture-pane`. Mapping `waiting` to `blocked` closes it.
+3. **A reply after a timed-out wait is dropped,** and nothing waits for a pane's next reply or
+   turn end without sending text. A lead cannot re-arm a wait without nudging the worker.
+4. **A long brief pasted into Codex is never submitted.** Codex folds it into
+   `[Pasted Content 3886 chars]`, zz's echo check fails ("text not echoed within 2 seconds;
+   nothing submitted"), and the brief sits in the composer; a v1 lead pressed Enter itself. The
+   skill puts Codex briefs in a file on the host and sends one line.
+5. **A fresh Codex 0.159 cannot be reached:** no `@agent_state`, so `--wait` refuses, and a plain
+   send fails with "Codex session in %12 has no name yet". Codex 0.163 works.
+6. **A failed Codex turn reads as success.** An API error (`gpt-6.1-sol` is not allowed on
+   alienware's ChatGPT login) came back as `stop_reason: end_turn`, exit 0, empty text.
+7. **`--notify` needs two native agent panes on one daemon**
+   (`submit_agent_prompt_and_notify` in `daemon.rs`), so a lead in a terminal pane gets no push
+   from zz and relies on its own CLI's background-task notice. A Codex lead has none; untested.
+8. **No event wait on a terminal agent's turn.** `wait-for -E agent-state-changed` answers
+   "invalid event", and `wait-for -E @option-changed` never fires for the peer-state writes; only
+   `zz events` streams them.
+9. **Startup dialogs stop every new TUI worker:** Claude's folder trust for every new git repo,
+   even under a trusted parent, Codex's per folder, "Claude in Chrome extension detected",
+   "6 new MCP servers found", Codex update offers. zz has no verb that starts a terminal CLI and
+   returns once it takes input.
+10. **Moving files is obscure.** `run-shell` over `--host` takes no stdin, `save-buffer PATH`
+    through `--host` writes on the caller, so a file goes `load-buffer -` there plus
+    `run-shell "zz save-buffer ..."`. Plain ssh between fleet hosts has no keys.
+
+Verbs that work only with the native agent pane: `--notify`, `--final`, `--on-block allow|deny`,
+`--progress` tool lines, `new-agent-session`, `restart-agent-pane`, `split-window --kind agent`.
+The skill uses none of them.
 
 # Traps
 
