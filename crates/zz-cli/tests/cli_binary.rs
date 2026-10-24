@@ -1635,7 +1635,7 @@ mod daemon_autostart {
             (&["reload-config", "extra"][..], 2),
             (&["set-option", "-a", "history-trickle", "1"][..], 2),
             (
-                &["set-option", "-a", "experimental-agent-pane", "on"][..],
+                &["set-option", "-a", "experimental-editor-pane", "on"][..],
                 2,
             ),
             (&["split-window", "--kind", "browser", "-I"][..], 2),
@@ -4654,7 +4654,7 @@ tmux set-option -g @plugin loaded
         assert_eq!(aliased.stdout, b"before\n");
         assert_eq!(
             aliased.stderr,
-            b"target not found: no agent pane in the window holding %0\n"
+            b"target not found: no agent runs in %0; send-text types into any pane\n"
         );
 
         assert!(
@@ -5213,7 +5213,7 @@ tmux set-option -g @plugin loaded
         assert!(sent.stdout.is_empty());
         assert_eq!(
             sent.stderr,
-            b"target not found: no agent pane in the window holding %0\n"
+            b"target not found: no agent runs in %0; send-text types into any pane\n"
         );
     }
 

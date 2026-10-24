@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, gpui, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
@@ -110,8 +110,7 @@ materials decide what those look like, and the theme can change any role by id. 
    use semibold foreground; breadcrumb prefixes stay muted until selected. Status dots are the
    shared 6px `navigation::status_dot`: a host's is success when online, warning while waiting,
    muted while running and faint when offline, and a session or window with a running agent shows
-   one in the row's muted ink.
-   Agent pane rows use shared vendor icons and text status without a duplicate dot. All palette
+   one in the row's muted ink. All palette
    colors and corners follow the current Chroma theme. `PaletteRow::icon` and
    `PaletteRow::expanded` supply tree icons and disclosure state; `command_palette_tree_entry`
    gives the disclosure a toggle handler separate from row activation. Workspace and Navigate
@@ -195,11 +194,11 @@ past them over `LABEL_FADE` (`PaneStack::beside`); tooltips show pane details an
 selects that pane directly. Browser
 tiles use cached favicons with a globe fallback.
 The settings sample allows hover while selection actions remain inert.
-Automatically named window pills use the active browser or agent pane title. Browser labels fall
+Automatically named window pills use the active browser pane's title. Browser labels fall
 back to the active URL and then “browser”; explicitly renamed windows keep their chosen names.
 
 Every pane header puts its controls 22px tall (`PANE_HEADER_CONTROL_HEIGHT`), 6px (`CHROME_GAP`)
-in from the pane's top and sides, so Terminal and Agent headers are 34px, Rex's size; the sidebar's
+in from the pane's top and sides, so a terminal header is 34px, Rex's size; the sidebar's
 28px buttons and the titlebar's 32px tabs stay larger. A Browser header's first row is 40px so
 its 28px tabs, as tall as the URL field, keep the 6px inset: the title, the tabs, New tab right
 after the last tab, then the split buttons at the row's end; under it the navigation row, then 6px
@@ -446,7 +445,8 @@ client keeps the default derivation strengths.
 
 Icon-only chrome controls use `Button::compact_icon`: a 24px hover surface around a Small 14px
 glyph with a 0.5px downward optical adjustment. The titlebar, sidebar row actions, browser pane,
-and Agent pane share this constructor, which fixes padding and icon scale in one place. Browser
+pane header buttons (`pane_header_icon_button`, the agent lens toggle among them) and the agent
+timeline share this constructor, which fixes padding and icon scale in one place. Browser
 controls override the hover surface to 28px while retaining the shared icon scale. The sidebar
 toggle, Settings, the view switch (eye) and the iOS palette button are 28px buttons with 17px
 glyphs, a step under the 32px titlebar pills (`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`).
@@ -478,7 +478,7 @@ centred on the line, then moved down by `zz_gpui_kit::icon::cap_center_drop(font
 cx)`: half of the theme font's ascent less descent less cap height, 0.31px for SF Pro at 12px and
 0.33px at 13px, nothing for Inter, nudged by up to a quarter point so the icon and the baseline
 round to the same device pixel grid. Rows that wrap give the icon a first-line strut as tall as the
-first line's pixel line height. The agent pane's activity rows, cards, alerts, task tray and composer
+first line's pixel line height. The agent timeline's activity rows, cards, alerts, task tray and composer
 footer, the workspace status pills, markdown task lists and the settings disclosure heading all
 use it. The glyph's own ink has to be centred in its 24-unit box too; the GPUI notes are in
 `.agents/skills/gpui-interface/SKILL.md`.

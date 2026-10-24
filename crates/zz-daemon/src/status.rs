@@ -966,19 +966,8 @@ fn resolve_theme_colours(
     }))
 }
 
-pub(crate) fn agent_state_name(phase: &zz_protocol::AgentConnectionPhase) -> &'static str {
-    match phase {
-        zz_protocol::AgentConnectionPhase::Starting => "starting",
-        zz_protocol::AgentConnectionPhase::Ready => "idle",
-        zz_protocol::AgentConnectionPhase::Running => "working",
-        zz_protocol::AgentConnectionPhase::AwaitingPermission => "blocked",
-        zz_protocol::AgentConnectionPhase::Failed { .. } => "failed",
-    }
-}
-
 #[derive(Clone, Default)]
 pub(crate) struct FormatHookFacts {
-    pub(crate) agent_states: Arc<BTreeMap<PaneId, zz_protocol::AgentPaneWire>>,
     pub(crate) terminals: Arc<BTreeMap<PaneId, Arc<TerminalSession>>>,
     pub(crate) pane_pipes: Arc<BTreeMap<PaneId, u32>>,
     pub(crate) session_attachments: Arc<BTreeMap<SessionId, (usize, String)>>,
@@ -1011,7 +1000,6 @@ impl FormatHookFacts {
 }
 
 pub(crate) trait FormatFactSource {
-    fn agent_states(&self) -> &BTreeMap<PaneId, zz_protocol::AgentPaneWire>;
     fn terminals(&self) -> &BTreeMap<PaneId, Arc<TerminalSession>>;
     fn pane_pipes(&self) -> &BTreeMap<PaneId, u32>;
     fn session_attachments(&self) -> &BTreeMap<SessionId, (usize, String)>;
@@ -1034,10 +1022,6 @@ pub(crate) trait FormatFactSource {
 }
 
 impl FormatFactSource for FormatHookFacts {
-    fn agent_states(&self) -> &BTreeMap<PaneId, zz_protocol::AgentPaneWire> {
-        &self.agent_states
-    }
-
     fn terminals(&self) -> &BTreeMap<PaneId, Arc<TerminalSession>> {
         &self.terminals
     }
@@ -3084,24 +3068,7 @@ impl StatusHooks for DaemonFormatHooks<'_> {
                             .to_owned(),
                     );
                 }
-                if pane_kind != Some("agent") {
-                    return Some(String::new());
-                }
-                let state = context
-                    .pane_id
-                    .parse()
-                    .ok()
-                    .and_then(|pane| self.facts.agent_states().get(&pane));
-                Some(if name == "agent_state" {
-                    state
-                        .map_or("starting", |state| agent_state_name(&state.phase))
-                        .to_owned()
-                } else {
-                    state
-                        .and_then(|state| state.pending_permission.as_ref())
-                        .map(|permission| permission.request_id.to_string())
-                        .unwrap_or_default()
-                })
+                Some(String::new())
             }
             "pane_kind" => context
                 .engine()
@@ -3739,82 +3706,6 @@ mod tests {
         );
         Arc::make_mut(&mut request.context).pane_id = terminal.to_string();
         assert_eq!(renderer.render_initial(&request).left, "url=");
-    }
-
-    #[test]
-    fn agent_formats_cover_phases_permissions_and_other_panes() {
-        let mut engine = MuxEngine::default();
-        let mut context = zz_mux::ExecutionContext::default();
-        execute(&mut engine, &mut context, &["new-session", "-s", "agents"]);
-        let terminal = context.pane.expect("terminal");
-        execute(
-            &mut engine,
-            &mut context,
-            &["set-option", "-g", "experimental-agent-pane", "on"],
-        );
-        execute(
-            &mut engine,
-            &mut context,
-            &["split-window", "--kind", "picker"],
-        );
-        execute(&mut engine, &mut context, &["select-pane-kind", "agent"]);
-        let pane = context.pane.expect("agent");
-        for (phase, expected) in [
-            (zz_protocol::AgentConnectionPhase::Starting, "starting"),
-            (zz_protocol::AgentConnectionPhase::Ready, "idle"),
-            (zz_protocol::AgentConnectionPhase::Running, "working"),
-            (
-                zz_protocol::AgentConnectionPhase::AwaitingPermission,
-                "blocked",
-            ),
-            (
-                zz_protocol::AgentConnectionPhase::Failed {
-                    message: "failed".to_owned(),
-                },
-                "failed",
-            ),
-        ] {
-            for pending in [false, true] {
-                let state = zz_protocol::AgentPaneWire {
-                    phase: phase.clone(),
-                    pending_permission: pending.then(|| zz_protocol::AgentPermissionWire {
-                        request_id: 1,
-                        payload: "{}".to_owned(),
-                    }),
-                    ..zz_protocol::AgentPaneWire::default()
-                };
-                let facts = FormatHookFacts {
-                    mux: Arc::new(engine.format_facts()),
-                    agent_states: Arc::new(BTreeMap::from([(pane, state)])),
-                    ..FormatHookFacts::default()
-                };
-                let mut hooks = DaemonFormatHooks::command(&facts);
-                let context = StatusContext::from(StatusValues {
-                    pane_id: pane.to_string(),
-                    ..StatusValues::default()
-                });
-                assert_eq!(
-                    zz_mux::expand_format_values(
-                        "#{agent_state}:#{agent_pending_permission}",
-                        &context,
-                        &mut hooks
-                    ),
-                    format!("{expected}:{}", if pending { "1" } else { "" })
-                );
-                let context = StatusContext::from(StatusValues {
-                    pane_id: terminal.to_string(),
-                    ..StatusValues::default()
-                });
-                assert_eq!(
-                    zz_mux::expand_format_values(
-                        "#{agent_state}:#{agent_pending_permission}",
-                        &context,
-                        &mut hooks
-                    ),
-                    ":"
-                );
-            }
-        }
     }
 
     #[test]

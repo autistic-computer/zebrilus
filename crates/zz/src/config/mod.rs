@@ -111,21 +111,6 @@ impl std::ops::DerefMut for UiFontConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct AgentConfig(pub zz_config::AgentConfig);
-impl Global for AgentConfig {}
-impl std::ops::Deref for AgentConfig {
-    type Target = zz_config::AgentConfig;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for AgentConfig {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 fn load_config(path: &Path) -> io::Result<ParsedConfig> {
     zz_config::load_config(path, zz_gpui::Font::default().family.as_ref())
 }
@@ -170,7 +155,6 @@ impl Global for ConfigOverrideTransport {}
 pub fn init(cx: &mut App) {
     cx.set_global(PlatformReduceMotion(cx.reduce_motion()));
     cx.set_global(ConfigOverrideTransport::default());
-    cx.set_global(AgentConfig::default());
     let candidates = config_candidates();
     let initial = ConfigFileStamp::detect(&candidates);
     let parsed = initial.path.as_deref().map(load_config);
@@ -220,7 +204,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         apply_window_background_appearance(cx);
         apply_window_decorations(cx);
         crate::app_icon::apply(cx);
-        cx.set_global(AgentConfig::default());
         cx.set_global(FleetHosts::default());
         cx.set_global(DaemonConfigOverrides::default());
         crate::keymap::install(&[], DEFAULT_BROWSER_ELEMENT_SELECTOR_HOTKEY, cx);
@@ -253,7 +236,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     let announce = loaded.error.is_some() && loaded.error != themes(cx).error;
     log::info!(
         target: "zz::config",
-        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} agent_working_directory={:?} daemon_override_entries={}",
+        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
         path.display(),
         parsed.config.pane_gaps.value,
         parsed.config.pane_inactive_opacity.value,
@@ -276,7 +259,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         parsed.config.quit_daemon_on_exit.value,
         parsed.config.auto_restart_stale_daemon.value,
         parsed.config.check_for_updates.value,
-        parsed.agent.working_directory,
         parsed.daemon_entries.len(),
     );
     cx.set_global(FleetHosts {
@@ -297,7 +279,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     apply_window_background_appearance(cx);
     apply_window_decorations(cx);
     crate::app_icon::apply(cx);
-    cx.set_global(AgentConfig(parsed.agent));
     cx.set_global(DaemonConfigOverrides {
         entries: parsed.daemon_entries,
     });
@@ -451,15 +432,9 @@ pub(crate) fn palette_show_keys(cx: &App) -> bool {
     resolved_config(cx).palette_show_keys.value
 }
 
-/// Whether the experimental agent pane is enabled. Blocks creating new agent
-/// panes while off; existing ones keep rendering. Always false in a build
-/// without the `agent-pane` cargo feature.
-pub fn agent_pane_enabled(cx: &App) -> bool {
-    cfg!(feature = "agent-pane") && resolved_config(cx).experimental_agent_pane.value
-}
-
-/// Whether the experimental editor pane is enabled. Same contract as the agent
-/// gate, and always false without the `editor-pane` cargo feature.
+/// Whether the experimental editor pane is enabled. Blocks creating new editor
+/// panes while off; existing ones keep rendering. Always false without the
+/// `editor-pane` cargo feature.
 pub(crate) fn editor_pane_enabled(cx: &App) -> bool {
     cfg!(feature = "editor-pane") && resolved_config(cx).experimental_editor_pane.value
 }
@@ -707,10 +682,6 @@ pub(crate) fn browser_config(cx: &App) -> BrowserConfig {
 
 pub(crate) fn browser_search_provider(cx: &App) -> SearchProvider {
     browser_config(cx).search_provider.value
-}
-
-pub fn agent_config(cx: &App) -> AgentConfig {
-    cx.try_global::<AgentConfig>().cloned().unwrap_or_default()
 }
 
 pub(crate) fn fleet_hosts(cx: &App) -> Vec<HostEntry> {
@@ -1302,7 +1273,6 @@ mod tests {
              quit-daemon-on-exit = true\n\
              auto-restart-stale-daemon = true\n\
              check-for-updates = false\n\
-             experimental-agent-pane = true\n\
              experimental-editor-pane = true\n\
              editor-font-size = 15\n\
              editor-line-numbers = false\n\
@@ -1312,7 +1282,6 @@ mod tests {
         );
 
         assert!(parsed.diagnostics.is_empty());
-        assert!(parsed.config.experimental_agent_pane.value);
         assert!(parsed.config.experimental_editor_pane.value);
         assert_f32_eq(parsed.config.editor_font_size.value, 15.0);
         assert_eq!(
@@ -1513,18 +1482,14 @@ mod tests {
     }
 
     #[test]
-    fn agent_adapter_keys_reach_the_daemon_while_the_working_directory_stays_local() {
-        let working_directory = absolute_test_root("agent project");
-        let parsed = parse_config(&format!(
-            "agent-command = {{\"command\":\"node\",\"args\":[\"agent.js\"],\"env\":{{\"TOKEN\":\"#not-a-comment\"}}}} # command comment\n\
+    fn agent_adapter_keys_reach_the_daemon() {
+        let parsed = parse_config(
+            "agent-command = {\"command\":\"node\",\"args\":[\"agent.js\"],\"env\":{\"TOKEN\":\"#not-a-comment\"}} # command comment\n\
              agent-claude-code-command = claude-agent-acp --stdio\n\
-             agent-auto-approve = false\n\
-             agent-working-directory = {}\n",
-            working_directory.display()
-        ));
+             agent-auto-approve = false\n",
+        );
 
         assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
-        assert_eq!(parsed.agent.working_directory, Some(working_directory));
         assert_eq!(
             parsed.daemon_entries,
             [
@@ -1544,33 +1509,8 @@ mod tests {
     }
 
     #[test]
-    fn invalid_agent_working_directory_keeps_the_last_valid_value() {
-        let valid_working_directory = absolute_test_root("valid-agent-directory");
-        let parsed = parse_config(&format!(
-            "agent-working-directory = {}\n\
-             agent-working-directory = relative/path\n",
-            valid_working_directory.display()
-        ));
-
-        assert_eq!(
-            parsed.agent.working_directory,
-            Some(valid_working_directory)
-        );
-        assert_eq!(parsed.diagnostics.len(), 1);
-        assert!(
-            parsed.diagnostics[0]
-                .message
-                .contains("expected an absolute path")
-        );
-    }
-
-    #[test]
     fn remote_override_filter_strips_only_experimental_pane_keys() {
         let entries = vec![
-            (
-                MuxOptionKey::ExperimentalAgentPane.as_str().to_owned(),
-                "true".to_owned(),
-            ),
             ("background".to_owned(), "#101010".to_owned()),
             (MuxOptionKey::Prefix.as_str().to_owned(), "C-a".to_owned()),
             (
@@ -1864,19 +1804,14 @@ mod tests {
     fn experimental_pane_flags_apply_locally_and_forward_to_the_daemon() {
         let parsed = parse_config(
             "\
-             experimental-agent-pane = true\n\
              experimental-editor-pane = false\n",
         );
 
         assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
-        assert!(parsed.config.experimental_agent_pane.value);
         assert!(!parsed.config.experimental_editor_pane.value);
         assert_eq!(
             parsed.daemon_entries,
-            [
-                ("experimental-agent-pane".to_owned(), "true".to_owned()),
-                ("experimental-editor-pane".to_owned(), "false".to_owned()),
-            ]
+            [("experimental-editor-pane".to_owned(), "false".to_owned()),]
         );
     }
 
@@ -3164,17 +3099,6 @@ mod tests {
     }
 
     #[test]
-    fn experimental_agent_pane_on_forwards_to_the_daemon_and_enables_the_gui() {
-        let parsed = parse_config("experimental-agent-pane = on\n");
-        assert_eq!(
-            parsed.daemon_entries,
-            [("experimental-agent-pane".to_owned(), "on".to_owned())]
-        );
-        assert!(parsed.config.experimental_agent_pane.value);
-        assert!(parsed.diagnostics.is_empty());
-    }
-
-    #[test]
     fn named_config_keys_round_trip_and_retired_ones_do_not() {
         let named = [
             "use-system-titlebar",
@@ -3190,7 +3114,6 @@ mod tests {
             "status-agents",
             "status-host",
             "status-update",
-            "experimental-agent-pane",
             "experimental-editor-pane",
             "pane-gaps",
             "pip-background-opacity",
@@ -3224,6 +3147,7 @@ mod tests {
             .chain(RETIRED_STATUS_KEYS)
             .chain(zz_config::RETIRED_LOOK_KEYS)
             .chain(zz_config::RETIRED_MATERIAL_KEYS)
+            .chain(zz_config::RETIRED_AGENT_KEYS)
         {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }

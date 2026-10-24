@@ -1,5 +1,4 @@
 pub(crate) mod sessions;
-pub(crate) mod subagents;
 pub(crate) mod translate;
 
 use std::{
@@ -729,7 +728,7 @@ impl Runtime {
                 );
                 Ok(())
             }
-            RuntimeCommand::InterruptThread { .. } | RuntimeCommand::Shutdown => Ok(()),
+            RuntimeCommand::Shutdown => Ok(()),
         }
     }
 

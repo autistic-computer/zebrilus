@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use zz_client::{program::Program, window_summary::pane_program};
 use zz_gpui::{App, Entity, SharedString};
 use zz_protocol::{
-    AgentProvider, Axis, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
-    PaneStatusState, SessionId, WindowId,
+    Axis, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatusState,
+    SessionId, WindowId,
 };
 
 use super::{
@@ -60,7 +60,6 @@ pub enum MuxTreePaneKind {
     Picker,
     Terminal,
     Browser,
-    Agent(AgentProvider),
     Editor,
 }
 
@@ -519,7 +518,6 @@ impl MuxTreePane {
             PaneKindSnapshot::Picker => MuxTreePaneKind::Picker,
             PaneKindSnapshot::Terminal => MuxTreePaneKind::Terminal,
             PaneKindSnapshot::Browser(_) => MuxTreePaneKind::Browser,
-            PaneKindSnapshot::Agent(ref agent) => MuxTreePaneKind::Agent(agent.provider),
             PaneKindSnapshot::Editor(_) => MuxTreePaneKind::Editor,
         };
         Self {

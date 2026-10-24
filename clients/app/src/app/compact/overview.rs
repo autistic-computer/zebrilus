@@ -1013,11 +1013,6 @@ impl AppShell {
         let here = || vec!["-c".to_owned(), "#{pane_current_path}".to_owned()];
         match what {
             NewThing::Terminal => self.command("new-window", here(), cx),
-            NewThing::Agent => self.command(
-                "new-window",
-                [vec!["--kind".to_owned(), "agent".to_owned()], here()].concat(),
-                cx,
-            ),
             NewThing::Browser => {
                 self.command("new-window", vec!["--kind".into(), "browser".into()], cx);
             }
@@ -1176,14 +1171,6 @@ impl AppShell {
                 "Terminal",
                 "A shell in the current folder".into(),
                 NewThing::Terminal,
-                cx,
-            ),
-            choice(
-                "overview-new-agent",
-                IconName::Bot,
-                "Agent",
-                "Claude Code or Codex in the current folder".into(),
-                NewThing::Agent,
                 cx,
             ),
             choice(
@@ -1352,7 +1339,6 @@ struct WindowTitle {
 #[derive(Clone, Copy)]
 pub(in super::super) enum NewThing {
     Terminal,
-    Agent,
     Browser,
     Session,
 }

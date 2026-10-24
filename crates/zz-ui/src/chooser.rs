@@ -265,7 +265,6 @@ pub fn chooser_row(id: &'static str, index: usize, selected: bool) -> ListItem {
 pub enum ChooserPaneKind {
     Terminal,
     Browser,
-    Agent,
     Editor,
 }
 
@@ -330,7 +329,6 @@ pub fn tree_chooser_row(
     let icon = match pane_kind {
         Some(ChooserPaneKind::Terminal) => IconName::SquareTerminal,
         Some(ChooserPaneKind::Browser) => IconName::Globe,
-        Some(ChooserPaneKind::Agent) => IconName::Bot,
         Some(ChooserPaneKind::Editor) => IconName::File,
         None if target.starts_with('$') => IconName::Folder,
         None => IconName::PanelsTopLeft,

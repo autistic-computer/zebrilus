@@ -107,7 +107,6 @@ fn backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Calls) {
         tree,
         PaneKindAvailability {
             browser: true,
-            agent: true,
             editor: true,
         },
     )
@@ -737,14 +736,12 @@ fn history_suggestions_skip_commands_the_backend_cannot_run(cx: &mut TestAppCont
     state.history = vec![
         "set-editor-path /tmp/file".to_owned(),
         "set-browser-tabs []".to_owned(),
-        "agent-send hello".to_owned(),
         "list-panes".to_owned(),
     ];
     let (backend, _) = fake_backend(
         offline_tree(),
         PaneKindAvailability {
             browser: false,
-            agent: false,
             editor: false,
         },
     );

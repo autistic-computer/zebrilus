@@ -7,11 +7,10 @@ use std::{
 use zz_protocol::LayoutNode;
 pub use zz_protocol::layout::{joined_layout, swapped_layout};
 use zz_protocol::{
-    AgentDescriptor, AgentProvider, Axis, BrowserDescriptor, EditorDescriptor,
-    FloatingPaneSnapshot, MAX_GUI_TEXT_BYTES, ModalPaneSnapshot, MuxSnapshot, PaneBorderIndicators,
-    PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus,
-    PaneSummary, ServerError, SessionId, SessionSnapshot, SplitId, WindowId, WindowSnapshot,
-    normalize_browser_profile_name,
+    Axis, BrowserDescriptor, EditorDescriptor, FloatingPaneSnapshot, ModalPaneSnapshot,
+    MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot,
+    PaneSnapshot, PaneStatus, PaneSummary, ServerError, SessionId, SessionSnapshot, SplitId,
+    WindowId, WindowSnapshot, normalize_browser_profile_name,
 };
 
 use crate::{
@@ -27,7 +26,6 @@ const SYNCHRONIZE_PANES: u8 = 1 << 0;
 const AUTOMATIC_RENAME: u8 = 1 << 1;
 const AGGRESSIVE_RESIZE: u8 = 1 << 2;
 const LAYOUT_COORDINATE_MAX: u32 = 1_000_000;
-const MAX_AGENT_SESSION_ID_BYTES: usize = 16 * 1024;
 const MAX_WINDOW_INDEX: u32 = i32::MAX.cast_unsigned();
 
 #[repr(u8)]
@@ -172,7 +170,6 @@ pub enum PaneKind {
     Picker { inherit_cwd_from: Option<PaneId> },
     Terminal,
     Browser(BrowserDescriptor),
-    Agent(AgentDescriptor),
     Editor(EditorDescriptor),
 }
 
@@ -182,7 +179,6 @@ impl PaneKind {
             Self::Picker { .. } => PaneKindSnapshot::Picker,
             Self::Terminal => PaneKindSnapshot::Terminal,
             Self::Browser(browser) => PaneKindSnapshot::Browser(browser.clone()),
-            Self::Agent(agent) => PaneKindSnapshot::Agent(agent.clone()),
             Self::Editor(editor) => PaneKindSnapshot::Editor(editor.clone()),
         }
     }
@@ -2678,101 +2674,6 @@ impl MuxState {
         Ok(())
     }
 
-    pub fn update_agent_cwd(
-        &mut self,
-        pane: PaneId,
-        cwd: Option<PathBuf>,
-    ) -> Result<(), ServerError> {
-        if cwd.as_ref().is_some_and(|cwd| {
-            !cwd.is_absolute() || cwd.as_os_str().as_encoded_bytes().len() > MAX_GUI_TEXT_BYTES
-        }) {
-            return Err(ServerError::InvalidCommand(
-                "agent working directory must be absolute and stay inside the wire limit"
-                    .to_owned(),
-            ));
-        }
-        let pane_state = self
-            .pane_mut(pane)
-            .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
-        let PaneKind::Agent(agent) = &mut pane_state.kind else {
-            return Err(ServerError::InvalidCommand(format!(
-                "pane {pane} is not an agent"
-            )));
-        };
-        if agent.cwd == cwd {
-            return Ok(());
-        }
-        agent.cwd = cwd;
-        self.bump_generation();
-        Ok(())
-    }
-
-    pub fn update_agent_session(
-        &mut self,
-        pane: PaneId,
-        session_id: String,
-        cwd: Option<PathBuf>,
-    ) -> Result<(), ServerError> {
-        if session_id.is_empty()
-            || session_id.len() > MAX_AGENT_SESSION_ID_BYTES
-            || session_id.chars().any(char::is_control)
-        {
-            return Err(ServerError::InvalidCommand(format!(
-                "agent session ID must be 1..={MAX_AGENT_SESSION_ID_BYTES} non-control bytes"
-            )));
-        }
-        if cwd.as_ref().is_some_and(|cwd| {
-            !cwd.is_absolute() || cwd.as_os_str().as_encoded_bytes().len() > MAX_GUI_TEXT_BYTES
-        }) {
-            return Err(ServerError::InvalidCommand(
-                "agent working directory must be absolute and stay inside the wire limit"
-                    .to_owned(),
-            ));
-        }
-        let pane_state = self
-            .pane_mut(pane)
-            .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
-        let PaneKind::Agent(agent) = &mut pane_state.kind else {
-            return Err(ServerError::InvalidCommand(format!(
-                "pane {pane} is not an agent"
-            )));
-        };
-        let cwd_changed = cwd
-            .as_ref()
-            .is_some_and(|cwd| agent.cwd.as_ref() != Some(cwd));
-        if agent.session_id.as_deref() == Some(&session_id) && !cwd_changed {
-            return Ok(());
-        }
-        agent.session_id = Some(session_id);
-        if let Some(cwd) = cwd {
-            agent.cwd = Some(cwd);
-        }
-        self.bump_generation();
-        Ok(())
-    }
-
-    pub fn update_agent_provider(
-        &mut self,
-        pane: PaneId,
-        provider: AgentProvider,
-    ) -> Result<bool, ServerError> {
-        let pane_state = self
-            .pane_mut(pane)
-            .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
-        let PaneKind::Agent(agent) = &mut pane_state.kind else {
-            return Err(ServerError::InvalidCommand(format!(
-                "pane {pane} is not an agent"
-            )));
-        };
-        if agent.provider == provider {
-            return Ok(false);
-        }
-        agent.provider = provider;
-        agent.session_id = None;
-        self.bump_generation();
-        Ok(true)
-    }
-
     pub fn update_editor_cwd(&mut self, pane: PaneId, cwd: String) -> Result<(), ServerError> {
         let pane_state = self
             .pane_mut(pane)
@@ -3959,24 +3860,6 @@ impl MuxState {
             .copied()
     }
 
-    /// The Agent pane a routed payload (`send-last-output`) lands in: the active
-    /// pane when it is an agent, otherwise focus history, otherwise layout order.
-    #[must_use]
-    pub fn recent_agent_pane(&self, origin: PaneId) -> Option<PaneId> {
-        let window = &self.windows[&self.window_for_pane(origin)?];
-        let is_agent = |pane: &PaneId| {
-            matches!(
-                window.panes.get(pane).map(|pane| &pane.kind),
-                Some(PaneKind::Agent(_))
-            )
-        };
-        std::iter::once(&window.active_pane)
-            .chain(&window.last_panes)
-            .chain(&window.pane_order)
-            .find(|pane| is_agent(pane))
-            .copied()
-    }
-
     pub fn pane_in_direction(
         &self,
         pane: PaneId,
@@ -4923,7 +4806,6 @@ fn pane_title(kind: &PaneKind, terminal: &str) -> String {
         PaneKind::Terminal => terminal.to_owned(),
         PaneKind::Browser(browser) if browser.url() == "about:blank" => "browser".to_owned(),
         PaneKind::Browser(browser) => browser.url().to_owned(),
-        PaneKind::Agent(_) => "agent".to_owned(),
         PaneKind::Editor(_) => "editor".to_owned(),
     }
 }
@@ -5747,46 +5629,6 @@ mod tests {
     }
 
     #[test]
-    fn recent_agent_pane_follows_focus_history_then_layout_order() {
-        let mut state = MuxState::default();
-        let (_, _, terminal) = state.create_session("main").unwrap();
-        assert_eq!(state.recent_agent_pane(terminal), None);
-
-        let first = state
-            .split_pane(
-                terminal,
-                Axis::Horizontal,
-                PaneKind::Agent(AgentDescriptor::default()),
-            )
-            .unwrap();
-        let second = state
-            .split_pane(
-                terminal,
-                Axis::Vertical,
-                PaneKind::Agent(AgentDescriptor::default()),
-            )
-            .unwrap();
-
-        assert_eq!(state.recent_agent_pane(terminal), Some(second));
-
-        state.select_pane(first).unwrap();
-        state.select_pane(terminal).unwrap();
-        assert_eq!(state.recent_agent_pane(terminal), Some(first));
-
-        let browser = state
-            .split_pane(
-                terminal,
-                Axis::Horizontal,
-                PaneKind::Browser(BrowserDescriptor::single(
-                    "https://example.com".to_owned(),
-                    "default".to_owned(),
-                )),
-            )
-            .unwrap();
-        assert_ne!(state.recent_agent_pane(terminal), Some(browser));
-    }
-
-    #[test]
     fn pane_titles_change_snapshot_generation_without_overwriting_static_window_names() {
         let mut state = MuxState::default();
         let (_, window, terminal) = state.create_session("main").unwrap();
@@ -5884,7 +5726,13 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            state.materialize_pane(picker, PaneKind::Agent(AgentDescriptor::default())),
+            state.materialize_pane(
+                picker,
+                PaneKind::Editor(EditorDescriptor {
+                    path: None,
+                    cwd: "/".to_owned()
+                })
+            ),
             Ok(Some(first)),
             "a picker split with no donor still opens on the last focused terminal"
         );

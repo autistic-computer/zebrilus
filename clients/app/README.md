@@ -1,7 +1,7 @@
 # zz-app
 
 The thin-client app the web and iOS clients share: one shell, sidebar, status bar,
-settings, command palette, overlays, terminal pane, agent pane, pane picker,
+settings, command palette, overlays, terminal pane, agent lens, pane picker,
 protocol reducer, and image cache. `zz-ui` owns their widgets and painting;
 `zz-client` owns protocol state.
 

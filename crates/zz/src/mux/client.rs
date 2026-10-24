@@ -32,13 +32,13 @@ use zz_gpui::{
 #[cfg(test)]
 use zz_protocol::StatusLine;
 use zz_protocol::{
-    AgentCommand, BrowserCommand, ChooseBufferState, ChooseTreeState, ClientMessageKind,
-    ClipboardProducer, CommandInvocation, CommandPromptState, CommandResponse, ConfirmState,
-    DisplayPanesState, Event, EventPayload, GitMark, GuiResponse, InputMessage, KeyBindingSnapshot,
-    KeyTableSnapshot, LayoutNode, MenuState, MuxOptionKey, MuxSnapshot,
-    NEW_SESSION_ATTACH_CAPABILITY, PROTOCOL_VERSION, PaneId, PaneKindSnapshot, PastedImageFormat,
-    PathEntry, PathListRoot, ProtocolError, ProtocolMessage, ServerError, ServerHello, SessionId,
-    TerminalUiCommand, WindowSnapshot,
+    BrowserCommand, ChooseBufferState, ChooseTreeState, ClientMessageKind, ClipboardProducer,
+    CommandInvocation, CommandPromptState, CommandResponse, ConfirmState, DisplayPanesState, Event,
+    EventPayload, GitMark, GuiResponse, InputMessage, KeyBindingSnapshot, KeyTableSnapshot,
+    LayoutNode, MenuState, MuxOptionKey, MuxSnapshot, NEW_SESSION_ATTACH_CAPABILITY,
+    PROTOCOL_VERSION, PaneId, PaneKindSnapshot, PastedImageFormat, PathEntry, PathListRoot,
+    ProtocolError, ProtocolMessage, ServerError, ServerHello, SessionId, TerminalUiCommand,
+    WindowSnapshot,
 };
 use zz_terminal::{
     AppearanceProvenance, ClipboardTarget, IMAGE_PLACEHOLDER_SCHEME, PackedCell,
@@ -67,19 +67,6 @@ pub(crate) enum AgentRequest {
         request_id: u64,
         option_id: Option<String>,
     },
-    SetConfigOption {
-        option_id: String,
-        value: String,
-    },
-    SetMode {
-        mode_id: String,
-    },
-    Authenticate {
-        method_id: String,
-    },
-    SessionOp {
-        op: zz_protocol::AgentSessionOpKind,
-    },
     Replay {
         from_seq: u64,
     },
@@ -101,13 +88,12 @@ pub(crate) enum AgentRequest {
 pub(crate) struct AgentEvents {
     pub(crate) items: Vec<(PaneId, Vec<zz_daemon::AgentStreamItem>)>,
     pub(crate) states: Vec<(PaneId, zz_protocol::AgentPaneWire)>,
-    pub(crate) sessions: Vec<(PaneId, u64, String)>,
 }
 
 #[cfg(feature = "agent-pane")]
 impl AgentEvents {
     fn is_empty(&self) -> bool {
-        self.items.is_empty() && self.states.is_empty() && self.sessions.is_empty()
+        self.items.is_empty() && self.states.is_empty()
     }
 }
 
@@ -1040,7 +1026,6 @@ pub struct MuxClient {
     kitty_images: BTreeMap<PaneId, Arc<RwLock<KittyImageCache>>>,
     kitty_image_assemblies: BTreeMap<(PaneId, u32, u64), KittyImageAssembly>,
     browser_commands: BTreeMap<PaneId, Vec<BrowserCommand>>,
-    agent_commands: BTreeMap<PaneId, Vec<(u64, AgentCommand)>>,
     /// Per-pane replay cursor: the highest agent stream seq handed to the
     /// shell. A replay overlaps the live tail on purpose, so this is what makes
     /// the stream idempotent.
@@ -1053,6 +1038,8 @@ pub struct MuxClient {
     agent_replays_pending: BTreeSet<PaneId>,
     #[cfg(feature = "agent-pane")]
     agent_events: AgentEvents,
+    #[cfg(feature = "agent-pane")]
+    agent_lenses: BTreeSet<PaneId>,
     screenshot_requests: Vec<(PaneId, u64, String)>,
     terminal_commands: BTreeMap<PaneId, Vec<TerminalUiCommand>>,
     pane_images: BTreeMap<PaneId, PaneImageSnapshots>,
@@ -1199,13 +1186,14 @@ impl MuxClient {
             kitty_images: BTreeMap::new(),
             kitty_image_assemblies: BTreeMap::new(),
             browser_commands: BTreeMap::new(),
-            agent_commands: BTreeMap::new(),
             #[cfg(feature = "agent-pane")]
             agent_cursors: BTreeMap::new(),
             #[cfg(feature = "agent-pane")]
             agent_replays_pending: BTreeSet::new(),
             #[cfg(feature = "agent-pane")]
             agent_events: AgentEvents::default(),
+            #[cfg(feature = "agent-pane")]
+            agent_lenses: BTreeSet::new(),
             screenshot_requests: Vec::new(),
             terminal_commands: BTreeMap::new(),
             pane_images: BTreeMap::new(),
@@ -3395,7 +3383,6 @@ impl MuxClient {
         self.viewports.clear();
         self.clear_all_kitty_images();
         self.browser_commands.clear();
-        self.agent_commands.clear();
         self.clear_agent_streams();
         self.screenshot_requests.clear();
         self.terminal_commands.clear();
@@ -3755,6 +3742,9 @@ impl MuxClient {
     /// reaches the cursor without a gap is the proof it closed.
     #[cfg(feature = "agent-pane")]
     fn apply_agent_updates(&mut self, pane: PaneId, first_seq: u64, items: Vec<Vec<u8>>) {
+        if !self.agent_lenses.contains(&pane) {
+            return;
+        }
         let cursor = self.agent_cursors.entry(pane).or_default();
         let mut accepted = Vec::new();
         let mut gapped = false;
@@ -3821,8 +3811,29 @@ impl MuxClient {
         sent
     }
 
-    #[cfg(not(feature = "agent-pane"))]
-    fn request_agent_replay_from_cursor(&mut self, _pane: PaneId) {}
+    #[cfg(feature = "agent-pane")]
+    pub(crate) fn open_agent_lens(&mut self, pane: PaneId) {
+        self.agent_lenses.insert(pane);
+        if !self.agent_cursors.contains_key(&pane)
+            && self.send_agent_request(pane, AgentRequest::Replay { from_seq: 0 })
+        {
+            self.agent_cursors.insert(pane, 0);
+            self.agent_replays_pending.insert(pane);
+        }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    pub(crate) fn close_agent_lens(&mut self, pane: PaneId) {
+        self.agent_lenses.remove(&pane);
+        self.agent_cursors.remove(&pane);
+        self.agent_replays_pending.remove(&pane);
+        self.agent_events
+            .items
+            .retain(|(target, _)| *target != pane);
+        self.agent_events
+            .states
+            .retain(|(target, _)| *target != pane);
+    }
 
     /// Forget every pane's replay cursor. The core clears its agent state at
     /// the same two moments, so the next attach replays from seq 0 rather than
@@ -3853,13 +3864,6 @@ impl MuxClient {
                 ready.states.push((pane, state));
             } else {
                 self.agent_events.states.push((pane, state));
-            }
-        }
-        for (pane, request_id, result) in pending.sessions {
-            if panes.contains(&pane) {
-                ready.sessions.push((pane, request_id, result));
-            } else {
-                self.agent_events.sessions.push((pane, request_id, result));
             }
         }
         ready
@@ -3893,12 +3897,6 @@ impl MuxClient {
                 request_id,
                 option_id,
             } => client.agent_respond_permission(pane, request_id, option_id),
-            AgentRequest::SetConfigOption { option_id, value } => {
-                client.agent_set_config_option(pane, option_id, value)
-            }
-            AgentRequest::SetMode { mode_id } => client.agent_set_mode(pane, mode_id),
-            AgentRequest::Authenticate { method_id } => client.agent_authenticate(pane, method_id),
-            AgentRequest::SessionOp { op } => client.agent_session_op(pane, op),
             AgentRequest::Replay { from_seq } => client.agent_replay(pane, from_seq),
             AgentRequest::AcknowledgePromptRestore { reclaim_id } => {
                 client.agent_acknowledge_prompt_restore(pane, reclaim_id)
@@ -3922,18 +3920,6 @@ impl MuxClient {
         true
     }
 
-    /// Every queued `agent-send` payload, in arrival order per pane.
-    pub(crate) fn take_agent_commands(&mut self) -> Vec<(PaneId, u64, AgentCommand)> {
-        std::mem::take(&mut self.agent_commands)
-            .into_iter()
-            .flat_map(|(pane, commands)| {
-                commands
-                    .into_iter()
-                    .map(move |(request_id, command)| (pane, request_id, command))
-            })
-            .collect()
-    }
-
     pub(crate) fn take_screenshot_requests(&mut self) -> Vec<(PaneId, u64, String)> {
         std::mem::take(&mut self.screenshot_requests)
     }
@@ -3941,7 +3927,7 @@ impl MuxClient {
     /// Whether any daemon-issued GUI request is waiting for an answer.
     #[must_use]
     pub(crate) fn has_gui_requests(&self) -> bool {
-        !self.agent_commands.is_empty() || !self.screenshot_requests.is_empty()
+        !self.screenshot_requests.is_empty()
     }
 
     /// Answer a daemon request for GUI-owned work. A CLI client is blocked on
@@ -4442,18 +4428,6 @@ impl MuxClient {
                 ..
             } => self.write_clipboard(pane, producer, target, text, cx),
             CoreEvent::OpenUri { pane, uri } => self.route_open_uri(pane, &uri, cx),
-            CoreEvent::AgentCommand {
-                pane,
-                request_id,
-                command,
-            } => {
-                self.agent_commands
-                    .entry(pane)
-                    .or_default()
-                    .push((request_id, command));
-                self.pending_commands_revision =
-                    self.pending_commands_revision.wrapping_add(1).max(1);
-            }
             CoreEvent::BrowserCommand { pane, command } => {
                 if let BrowserCommand::Screenshot { request_id, path } = command {
                     self.screenshot_requests.push((pane, request_id, path));
@@ -4507,7 +4481,9 @@ impl MuxClient {
             CoreEvent::AgentStateChanged { pane, .. } => {
                 cx.emit(AgentStateChanged);
                 #[cfg(feature = "agent-pane")]
-                if let Some(state) = self.core.agent_state(pane).cloned() {
+                if self.agent_lenses.contains(&pane)
+                    && let Some(state) = self.core.agent_state(pane).cloned()
+                {
                     self.agent_events.states.push((pane, state));
                     // The daemon publishes state to every attached client and
                     // pushes it again on resync, but never pushes the stream:
@@ -4531,17 +4507,10 @@ impl MuxClient {
                     target: "zz::diagnostics::mux",
                     "agent lane cleared for {pane} from {next_seq}; replaying from the shell's cursor"
                 );
-                self.request_agent_replay_from_cursor(pane);
-            }
-            CoreEvent::AgentSessions {
-                pane,
-                request_id,
-                result,
-            } => {
                 #[cfg(feature = "agent-pane")]
-                self.agent_events.sessions.push((pane, request_id, result));
-                #[cfg(not(feature = "agent-pane"))]
-                let _ = (pane, request_id, result);
+                if self.agent_lenses.contains(&pane) {
+                    self.request_agent_replay_from_cursor(pane);
+                }
             }
             CoreEvent::Message(message) => self.handle_unreduced_message(*message, cx),
             CoreEvent::KeyTableChanged => cx.emit(KeyTableChanged),
@@ -4552,7 +4521,8 @@ impl MuxClient {
             | CoreEvent::HelloReceived
             | CoreEvent::ViewportChanged { .. }
             | CoreEvent::StatusChanged
-            | CoreEvent::CommandOutputChanged => {}
+            | CoreEvent::CommandOutputChanged
+            | CoreEvent::AgentSessions { .. } => {}
             CoreEvent::OpenPathPicker { pane, start_dir } => {
                 cx.emit(PathPickerUpdate::Open { pane, start_dir });
             }
@@ -4636,20 +4606,12 @@ impl MuxClient {
         self.browser_commands.remove(&pane);
         self.terminal_commands.remove(&pane);
         #[cfg(feature = "agent-pane")]
-        self.agent_cursors.remove(&pane);
-        #[cfg(feature = "agent-pane")]
-        self.agent_replays_pending.remove(&pane);
+        self.close_agent_lens(pane);
         self.pane_images.remove(&pane);
         self.pasted_image_assemblies
             .retain(|(target, _), _| *target != pane);
         self.pending_pasted_image_previews
             .retain(|(target, _)| *target != pane);
-        for (request_id, _) in self.agent_commands.remove(&pane).unwrap_or_default() {
-            self.respond_to_request(GuiResponse::Error {
-                request_id,
-                message: format!("{pane} was closed"),
-            });
-        }
         let mut removed_screenshots = Vec::new();
         self.screenshot_requests.retain(|(target, request_id, _)| {
             let keep = *target != pane;
@@ -8184,6 +8146,47 @@ mod tests {
 
     #[cfg(feature = "agent-pane")]
     #[zz_gpui::test]
+    fn a_lens_tracks_its_pane_only_while_it_is_open(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("fixture".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            mux.update(cx, |mux, _| {
+                let pane = PaneId(4);
+                let sink = mux.record_agent_requests_for_test();
+                mux.apply_agent_updates(pane, 1, vec![agent_blob(1)]);
+                assert!(applied_agent_seqs(mux, pane).is_empty());
+
+                mux.open_agent_lens(pane);
+                mux.open_agent_lens(pane);
+                assert_eq!(
+                    sink.borrow().as_slice(),
+                    [(pane, AgentRequest::Replay { from_seq: 0 })],
+                    "opening asks for the whole journal once"
+                );
+                mux.apply_agent_updates(pane, 1, vec![agent_blob(1), agent_blob(2)]);
+                mux.close_agent_lens(pane);
+                assert!(applied_agent_seqs(mux, pane).is_empty());
+                mux.apply_agent_updates(pane, 3, vec![agent_blob(3)]);
+                assert!(applied_agent_seqs(mux, pane).is_empty());
+
+                mux.open_agent_lens(pane);
+                assert_eq!(
+                    sink.borrow().last(),
+                    Some(&(pane, AgentRequest::Replay { from_seq: 0 })),
+                    "reopening replays from the start"
+                );
+            });
+        });
+    }
+
+    #[cfg(feature = "agent-pane")]
+    #[zz_gpui::test]
     fn the_agent_stream_is_filtered_by_seq_and_a_gap_asks_for_a_replay(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
@@ -8196,6 +8199,7 @@ mod tests {
             });
             mux.update(cx, |mux, cx| {
                 let pane = PaneId(3);
+                mux.agent_lenses.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
                 let blob = agent_blob;
                 let reset = agent_reset;
@@ -8275,6 +8279,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
+                mux.agent_lenses.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
                 let applied = |mux: &mut MuxClient| applied_agent_seqs(mux, pane);
 
@@ -8334,6 +8339,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
+                mux.agent_lenses.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
 
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1), agent_blob(2)]);
@@ -8373,6 +8379,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
+                mux.agent_lenses.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
 
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1)]);
@@ -8410,6 +8417,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
+                mux.agent_lenses.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
 
                 mux.apply_agent_updates(
@@ -8683,12 +8691,6 @@ mod tests {
                     .entry(pane)
                     .or_default()
                     .push(BrowserCommand::Reload);
-                mux.agent_commands.entry(pane).or_default().push((
-                    31,
-                    AgentCommand::ComposerAppend {
-                        text: "old host".to_owned(),
-                    },
-                ));
                 mux.screenshot_requests
                     .push((pane, 32, "/tmp/old-host.png".to_owned()));
                 mux.terminal_commands.entry(pane).or_default().push(
@@ -8709,7 +8711,6 @@ mod tests {
                 assert!(mux.core.snapshot().sessions.is_empty());
                 assert!(mux.viewports.is_empty());
                 assert!(mux.browser_commands.is_empty());
-                assert!(mux.agent_commands.is_empty());
                 assert!(mux.screenshot_requests.is_empty());
                 assert!(mux.terminal_commands.is_empty());
                 assert!(mux.pane_images.is_empty());

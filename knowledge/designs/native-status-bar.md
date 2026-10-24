@@ -11,7 +11,7 @@ tags:
 - client
 - snapshot
 - configuration
-timestamp: 2026-09-17T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Decision
@@ -31,9 +31,12 @@ the sidebar toggle, with no divider after it; settings sits at the bottom of the
 selects the attached session, returns its full window list, marks the focused window, and derives
 bell and activity from each window. Each window also carries its panes in layout order, with pane
 identity, kind, label, and focus state for its icon deck.
-Automatically named windows show the active agent's session name, or “New session” when unnamed;
-explicit window names and terminal-focused window labels stay in place. The model retains the raw
-window name for rename prompts. The activity list includes only non-dead Agent panes and disappears at zero. The model
+Automatically named windows whose active pane is a browser show the page; every other window
+shows its name. The model retains the raw window name for rename prompts. The activity list
+includes only live terminal panes whose program is Claude Code or Codex
+(`zz_client::window_summary::pane_agent`) and disappears at zero. Until the Agent pane was removed
+on 2026-10-23 ([agent lens](/designs/agent-lens.md)), it listed non-dead Agent panes and
+automatically named windows showed the active agent's session name. The model
 still names the attached session (the iPhone overview shows it); the host value is optional
 according to settings, and the desktop supplies a host name only for a remote attachment.
 
@@ -79,7 +82,9 @@ tabs do not increase the pane count. The web client shares the deck, tooltips, a
 
 Chrome comes from the active zz-ui theme. There is no time/date item or alignment preference.
 Agent activity uses `zz_client::agent_attention_status` from published agent state; missing state
-is never counted as running. `mux::client::AgentStateChanged` notifications refresh the app shell
+is never counted as running. Since 2026-10-23 that state exists only for a terminal whose lens runtime
+is open, so an agent terminal with no lens has none: its menu entry reads Connecting and it never
+counts toward the summary. `mux::client::AgentStateChanged` notifications refresh the app shell
 without a periodic timer. Agent menu actions are disabled while disconnected.
 
 # Settings
@@ -91,7 +96,7 @@ same status components and sample pane decks, updating as these preferences chan
 | Key | Default | Effect |
 | --- | --- | --- |
 | `status-badges` | `true` | Show bell and activity window markers |
-| `status-agents` | `true` | Show activity for non-dead Agent panes |
+| `status-agents` | `true` | Show activity for live terminals running Claude Code or Codex |
 | `status-host` | `true` | Show the remote host item |
 | `status-update` | `true` | Show an available update item |
 

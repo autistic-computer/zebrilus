@@ -1,26 +1,18 @@
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
 use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ListAlignment,
     ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
-    prelude::*, px,
+    px,
 };
-use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
-    CHROME_GAP, Disableable as _, IconName,
     agent::{
-        AgentPaneStatus, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
-        agent_jump_to_bottom_button, agent_pane_header, agent_status_pill,
+        AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
+        agent_jump_to_bottom_button,
         composer::COMPOSER_OUTER_PADDING,
-        controls::agent_pane_title,
         fold_timeline_rows,
-        presentation::{card_button, empty_state, error_card, spinner_phase, welcome_state},
-        title::agent_thread_title_editor,
+        presentation::{empty_state, error_card, welcome_state},
     },
-    button::{Button, ButtonVariants as _},
-    feedback::alert_actions,
-    h_flex,
-    pane::{PaneDragSource, pane_header_icon_button},
     scroll::Scrollbar,
 };
 
@@ -29,261 +21,6 @@ use super::{
     timeline::pane_frame,
 };
 use crate::story::{row, states};
-
-struct HeaderCase {
-    label: &'static str,
-    provider: AgentProvider,
-    title: &'static str,
-    status: Option<AgentPaneStatus>,
-    restart: bool,
-    active: bool,
-    enabled: bool,
-    separator: bool,
-    width: Option<f32>,
-}
-
-const HEADER: HeaderCase = HeaderCase {
-    label: "",
-    provider: AgentProvider::Codex,
-    title: "Fix the flaky tab drag test",
-    status: None,
-    restart: false,
-    active: true,
-    enabled: true,
-    separator: true,
-    width: None,
-};
-
-const HEADERS: [HeaderCase; 9] = [
-    HeaderCase {
-        label: "active, no status",
-        ..HEADER
-    },
-    HeaderCase {
-        label: "running",
-        provider: AgentProvider::ClaudeCode,
-        status: Some(AgentPaneStatus::Running),
-        ..HEADER
-    },
-    HeaderCase {
-        label: "waiting for you",
-        status: Some(AgentPaneStatus::Waiting),
-        ..HEADER
-    },
-    HeaderCase {
-        label: "exited, with Restart",
-        provider: AgentProvider::ClaudeCode,
-        status: Some(AgentPaneStatus::Exited),
-        restart: true,
-        ..HEADER
-    },
-    HeaderCase {
-        label: "offline, read-only",
-        status: Some(AgentPaneStatus::Offline),
-        enabled: false,
-        ..HEADER
-    },
-    HeaderCase {
-        label: "inactive pane, actions show on hover",
-        active: false,
-        ..HEADER
-    },
-    HeaderCase {
-        label: "new session, no transcript, no rule",
-        title: "",
-        separator: false,
-        ..HEADER
-    },
-    HeaderCase {
-        label: "long title",
-        title: "Investigate why the browser pane drops frames on the secondary display at 120 Hz",
-        ..HEADER
-    },
-    HeaderCase {
-        label: "narrow pane, running",
-        provider: AgentProvider::ClaudeCode,
-        title: "Investigate why the browser pane drops frames on the secondary display at 120 Hz",
-        status: Some(AgentPaneStatus::Running),
-        width: Some(380.0),
-        ..HEADER
-    },
-];
-
-pub struct Headers;
-
-pub fn headers(_: &mut Window, cx: &mut App) -> AnyView {
-    cx.new(|_| Headers).into()
-}
-
-impl Render for Headers {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity_id();
-        let phase = spinner_phase(view, cx);
-        HEADERS
-            .iter()
-            .enumerate()
-            .fold(states(), |states, (index, case)| {
-                states.state(case.label, header(index, case, phase, window, cx))
-            })
-    }
-}
-
-fn header(
-    index: usize,
-    case: &HeaderCase,
-    phase: f32,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
-    let leading = agent_pane_title(
-        case.provider,
-        agent_thread_title_editor(
-            ("header-title", index),
-            case.title,
-            case.enabled,
-            |_, _| {},
-            window,
-            cx,
-        ),
-        PaneDragSource::new(
-            PaneId(index as u64 + 1),
-            case.title,
-            case.enabled,
-            |_, _, _| {},
-        ),
-        |_, _| {},
-    );
-    let trailing = h_flex()
-        .gap(px(CHROME_GAP))
-        .child(
-            pane_header_icon_button(
-                ("header-split-bottom", index),
-                IconName::PanelBottom,
-                case.enabled,
-                cx,
-            )
-            .tooltip("Split bottom"),
-        )
-        .child(
-            pane_header_icon_button(
-                ("header-split-right", index),
-                IconName::PanelRight,
-                case.enabled,
-                cx,
-            )
-            .tooltip("Split right"),
-        )
-        .child(
-            pane_header_icon_button(
-                ("header-float", index),
-                IconName::PictureInPicture,
-                case.enabled,
-                cx,
-            )
-            .tooltip("Float"),
-        );
-    let status = case.status.map(|status| {
-        let restart = case.restart.then(|| {
-            Rc::new(|_: &mut Window, _: &mut App| {}) as Rc<dyn Fn(&mut Window, &mut App)>
-        });
-        let phase = if status == AgentPaneStatus::Running {
-            phase
-        } else {
-            0.0
-        };
-        agent_status_pill(("header-status", index), status, phase, restart, cx).into_any_element()
-    });
-    pane_frame(cx)
-        .id(("header-case", index))
-        .when_some(case.width, |frame, width| frame.w(px(width)))
-        .child(agent_pane_header(
-            case.active,
-            leading,
-            status,
-            trailing,
-            case.separator,
-            cx,
-        ))
-        .child(div().h(px(20.0)))
-        .into_any_element()
-}
-
-pub struct StatusPills;
-
-pub fn status_pills(_: &mut Window, cx: &mut App) -> AnyView {
-    cx.new(|_| StatusPills).into()
-}
-
-impl Render for StatusPills {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity_id();
-        let phase = spinner_phase(view, cx);
-        let restart =
-            || Some(Rc::new(|_: &mut Window, _: &mut App| {}) as Rc<dyn Fn(&mut Window, &mut App)>);
-        states()
-            .columns(3)
-            .state(
-                "running",
-                row().child(agent_status_pill(
-                    "pill-running",
-                    AgentPaneStatus::Running,
-                    phase,
-                    None,
-                    cx,
-                )),
-            )
-            .state(
-                "stopping",
-                row().child(agent_status_pill(
-                    "pill-stopping",
-                    AgentPaneStatus::Stopping,
-                    phase,
-                    None,
-                    cx,
-                )),
-            )
-            .state(
-                "waiting for you",
-                row().child(agent_status_pill(
-                    "pill-waiting",
-                    AgentPaneStatus::Waiting,
-                    0.0,
-                    None,
-                    cx,
-                )),
-            )
-            .state(
-                "exited",
-                row().child(agent_status_pill(
-                    "pill-exited",
-                    AgentPaneStatus::Exited,
-                    0.0,
-                    None,
-                    cx,
-                )),
-            )
-            .state(
-                "exited, with Restart",
-                row().child(agent_status_pill(
-                    "pill-restart",
-                    AgentPaneStatus::Exited,
-                    0.0,
-                    restart(),
-                    cx,
-                )),
-            )
-            .state(
-                "offline",
-                row().child(agent_status_pill(
-                    "pill-offline",
-                    AgentPaneStatus::Offline,
-                    0.0,
-                    None,
-                    cx,
-                )),
-            )
-    }
-}
 
 pub struct Jump {
     store: Entity<AgentTimelineStore>,
@@ -402,38 +139,12 @@ impl Render for EmptyStates {
             )
             .state("waiting and failure messages", grid)
             .state(
-                "error card, failed to start, with Try again and sign-in",
-                error_card(
-                    "Claude Code exited before the session started: authentication required (401). Sign in and try again.",
-                    true,
-                    cx,
-                )
-                .child(
-                    alert_actions(cx)
-                        .child(
-                            card_button(Button::new("error-auth").secondary(), cx)
-                                .label("Log in with Claude")
-                                .tooltip("Open the browser to sign in"),
-                        )
-                        .child(
-                            card_button(Button::new("error-retry").primary(), cx)
-                                .label("Try again"),
-                        ),
-                ),
+                "error card, the agent stopped",
+                error_card("Codex exited with status 1.", true, cx),
             )
             .state(
-                "error card, restarting",
-                error_card("Codex exited with status 1.", true, cx).child(
-                    alert_actions(cx).child(
-                        card_button(Button::new("error-restarting").primary(), cx)
-                            .label("Restarting…")
-                            .disabled(true),
-                    ),
-                ),
-            )
-            .state(
-                "error card, draft error",
-                error_card("Timed out applying agent settings.", false, cx),
+                "error card, a request failed",
+                error_card("This agent does not accept images.", false, cx),
             )
             .state(
                 "error card, long error",

@@ -2,7 +2,7 @@
 type: Design Plan
 title: Agent backbone v3 - browser over CDP, typed agent state, headless completeness
 description: Handoff plan from the 2026-09-09 headless audit of what an AI agent can drive through the zz CLI - the verified working set, the verified gaps, the locked decisions (zz is the browser process and the agent brings its own CLI, no MCP server, no native snapshot verbs before measurement), and three lanes of work with file pointers, acceptance checks, and traps.
-status: Shipped 2026-09-09 - lanes 0, A1, B1, B2, B3, B4, C1, C2 on main (7c4ba1a0, 62e5b802, d9b3e072, 48ccf3e1, bd2277b7, 856e9687); CDP attach verified live with agent-browser; A2 belongs to the TUI rework session; A3 measured and closed 2026-09-10 (native verbs would save 20 ms of a 50 ms step); the same day fixed the render-only snapshot reducer that stalled CLI browser control while the window was hidden
+status: Shipped 2026-09-09 - lanes 0, A1, B1, B2, B3, B4, C1, C2 on main (7c4ba1a0, 62e5b802, d9b3e072, 48ccf3e1, bd2277b7, 856e9687); CDP attach verified live with agent-browser; A2 belongs to the TUI rework session; A3 measured and closed 2026-09-10 (native verbs would save 20 ms of a 50 ms step); the same day fixed the render-only snapshot reducer that stalled CLI browser control while the window was hidden; its Agent pane parts were removed 2026-10-23
 tags:
 - agent
 - browser
@@ -11,11 +11,16 @@ tags:
 - daemon
 - tui
 - roadmap
-timestamp: 2026-09-09T17:00:00-03:00
-last_updated: 2026-09-09
+timestamp: 2026-10-23T00:00:00-03:00
+last_updated: 2026-10-23
 ---
 
 # Read this first
+
+**2026-10-23:** the Agent pane this plan treats as an orchestration target is gone, with
+`experimental-agent-pane`, `select-pane-kind agent`, `set-agent-provider` and the agent pane end of
+`send-last-output`. Claude Code and Codex run in terminal panes and the GUI draws a lens over them
+([agent lens](/designs/agent-lens.md)). Lane B below and the Agent pane rows are history.
 
 You are picking this up on another machine with no memory of the session that wrote it. Everything
 you need is in this file plus the source it points at. Line numbers are from `main` at `4f069977`
@@ -256,6 +261,8 @@ CLI-driven browser creation and `set-browser-url` stalled until the window drew 
 kept working; see the trap below and `knowledge/browser/agent-cdp.md`.
 
 # Lane B - agent panes as an orchestration target
+
+Removed 2026-10-23 with the Agent pane ([agent lens](/designs/agent-lens.md)); kept as history.
 
 ## B1. `#{agent_state}` plus a wait channel (half a day)
 

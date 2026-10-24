@@ -1,19 +1,19 @@
 ---
 name: zz-workspace
-description: Drive the surrounding zz workspace from inside a zz Agent pane using the `zz` CLI to send text or piped output to another agent's composer, read a terminal pane's scrollback, screenshot a browser pane, navigate a browser, and route a failing command's output to an agent. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
+description: Drive the surrounding zz workspace from inside a zz pane using the `zz` CLI to send text or piped output to an agent running in another pane, read a terminal pane's scrollback, screenshot a browser pane, navigate a browser, and route a failing command's output to an agent. Use whenever you are running inside zz (the `ZZ_PANE` environment variable is set) and the task involves another pane, a terminal's output, a browser page, or another machine.
 ---
 
 # Workspace tools
 
-Drive terminal, browser, and Agent panes through the `zz` CLI. Run `zz tools`
+Drive terminal and browser panes, and the agents in them, through the `zz` CLI. Run `zz tools`
 for the full catalog or `zz tools agent` for agent verbs. Run `zz tools --skill`
 for the agent guide with skill frontmatter. Regenerate it with `just tools skill`.
 Run `zz tools terminal` for terminal verbs, `zz tools browser` for browser verbs,
 and `zz tools advanced` for state subscriptions and terminal-agent integration.
 `zz tools --context` prints the short startup context for the calling pane.
-Agent panes get it without a hook; run `zz tools --install-hooks` once so
-Claude Code and Codex started by hand in a terminal pane get it too, and
-`zz tools --remove-hooks` to take the hook and stub skill out again. Codex
+Run `zz tools --install-hooks` once so Claude Code and Codex started in a
+terminal pane get it, and `zz tools --remove-hooks` to take the hook and stub
+skill out again. Codex
 skips a new or changed hook until you approve it with `/hooks` in Codex.
 The install also adds each agent's own allow rule for `zz` (Claude Code's
 `Bash(zz:*)`, a Codex `rules/zz.rules` file), so `zz` commands run without
@@ -48,9 +48,9 @@ Run `zz <verb> --help` for options, or `zz list-commands [verb]` for usage.
 `zz` without a verb attaches the terminal UI (`new-session -A`); with `--host NAME`, on that host.
 Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 
-`#{pane_kind}` is `terminal`, `agent`, `browser`, `editor`, or `picker`.
+`#{pane_kind}` is `terminal`, `browser`, `editor`, or `picker`.
 `#{pane_last_command_status}` is the last completed command's exit code, or empty
-when unknown; terminal and Agent panes report it from OSC 133 marks.
+when unknown; terminal panes report it from OSC 133 marks.
 `#{@name}` reads a user option from pane, window, session, then global scope.
 
 ## Remote hosts
@@ -94,10 +94,10 @@ mapping option names to value strings in the selected scope. Combining `-F` and
 | 1 | Command failure, a stopped agent turn, missing daemon, connection loss, or a tmux-compatible usage error (including an unknown command). |
 | 2 | Usage error in a zz-native verb or extension: invalid flag, missing argument, or malformed value. |
 | 3 | Blocked or unable to answer now, including `agent-send --on-block fail`; for `run-pane`, nothing ran and a retry is safe. |
-| 124 | Wait timed out, including `wait-pane --exit`, `agent-send`, and `new-agent-session`; a child may also return 124. |
+| 124 | Wait timed out, including `wait-pane --exit` and `agent-send`; a child may also return 124. |
 | 125 | `run-pane` typed the command and it was still running at the timeout, or its child returned 125; the timeout writes a diagnostic to stderr. |
 
-For `wait-pane`, `run-pane`, `send-text`, `agent-send`, and `new-agent-session`,
+For `wait-pane`, `run-pane`, `send-text`, and `agent-send`,
 `--timeout` takes seconds, accepts fractions such as 0.5, and 0 waits forever.
 
 Tmux-compatible commands keep the pin’s exit status, including 1 for parse and usage errors.
@@ -105,62 +105,34 @@ The error’s source determines the status: `list-panes -Z` exits 1, while zz’
 `list-panes --json -F x` extension conflict exits 2.
 Commands that set an explicit exit code keep that code.
 
-## Agent panes
+## Agents
 
-### `zz split-window --kind agent [-h | -v] [-t %N] [-P] [-F FORMAT] [--provider codex|claude-code] [-c DIR]`
-
-Split a pane to start an agent; `-t %N` chooses the pane to split and `-c DIR` sets the new pane's cwd.
-Print nothing unless `-P` requests the new pane ID; `-F` changes its format.
-`zz new-window --kind agent [--provider P] [-n NAME]` opens one in its own window.
-
-The providers are `codex` and `claude-code` (`claude` accepted). Choose one with `zz split-window --kind agent --provider <provider>`. The daemon spawns each provider through the `agent-command` or `agent-claude-code-command` option. Claude Code runs the user's own `claude` over its stream-json protocol and Codex runs the user's own `codex` through `codex app-server`; a command whose program is neither runs as an ACP adapter. The model, reasoning effort, and approval policy come from the adapter's own configuration: `~/.codex/config.toml` for Codex or Claude Code's own settings. `zz` does not set them.
+Agents run as their own CLIs in terminal panes: start Claude Code or Codex in a pane, for example `zz split-window -h claude`. The desktop and web clients draw a lens over a terminal running either one, its timeline in place of the cell grid, switched from the pane header. The lens reads the transcript the CLI writes and types into the CLI, so the terminal stays the source of truth.
 
 ### `zz agent-send [-t %N] [--submit | --notify | --wait [--progress] [--timeout SECS] [--on-block wait|fail|allow|deny] [--json | --final]] [--context PATH[:START[-END]]] [TEXT]`
 
-Draft into another Agent pane's composer for its user to review; that needs an app window showing the pane's session, otherwise use `--submit` or `--wait`.
-Print `appended to the composer in %N` when drafted. An omitted or non-agent target routes to that window's most recently focused Agent pane. Read stdin when TEXT is omitted: `git diff | zz agent-send`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
+Send TEXT to the agent running in a terminal pane: Claude Code through its peer socket, Codex through `codex queue`, otherwise typed into its input, with Enter only when `--submit` is given. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
 
-`--submit` sends now and prints the chosen pane; a busy pane queues the prompt. `--notify` submits from inside an agent pane and, when the target's turn ends, posts its reply back into the calling pane as a prompt, queued behind that pane's own turn. `--wait` submits, waits for that turn, and prints its reply on stdout (pane ID on stderr). Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` answers tool permissions, preferring allow-once, and waits for user questions. `--on-block deny` rejects permissions, including user questions.
+`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` go through the pane's lens: TEXT is typed into the CLI, and the transcript tells when the turn ends. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A pane running neither Claude Code nor Codex falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves a Claude Code permission prompt and `--on-block deny` rejects it, with the keys its dialog takes. Codex approvals are answered in its terminal.
 
-Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts tool calls the pane saw, including runtime-approved reads; permission counters count only requests that reached the pane. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
-
-### `zz new-agent-session [-t %N] [-c DIR] [--timeout SECS]`
-
-Start a fresh conversation in an agent pane.
-Use `-c` to choose its absolute working directory; otherwise use the pane's current directory. Wait until the new session can accept a prompt, then exit 0 without printing anything. Drop queued prompts from the old session. Creation failures exit 1 with a message. The timeout accepts decimal seconds, defaults to 60 seconds, and exits 124; `0` waits forever. A timeout leaves the session change running. Other pane kinds exit 1 with `not an agent pane: %N`.
-
-### `zz restart-agent-pane [-t %N]`
-
-Restart the agent pane's agent process and resume its current session.
-Print nothing on success. Use `zz new-agent-session` for a fresh conversation.
+Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts tool calls the transcript showed; permission counters count only requests that reached the lens. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
 ### `zz agent-respond [-t %N] (--allow | --deny | --option ID) [REQUEST_ID]`
 
-Answer the named or oldest pending permission. Read the pending request with `zz inspect -t %N --json | jq .permission`.
-Print the chosen option ID. `--allow` prefers allow-once; `--deny` selects a reject option, or dismisses a question card that has none and prints `dismissed`. Use `--option ID` to choose an advertised option by ID, including an answer to a user question.
+Answer the named or oldest pending permission in a pane whose lens is open, in a desktop or web client or through a running `agent-send --wait`. Read the pending request with `zz inspect -t %N --json | jq .permission`.
+Print the chosen option ID. `--allow` approves once and `--deny` rejects. Other panes exit 1 with `has no agent lens open`.
 
 ### Permissions
 
-Choose `off`, `reads` (the default), or `all` for `agent-auto-approve`. With `reads`, the daemon answers ACP tool requests whose kind is `read`. With `all`, it answers requests with any tool kind. With `off`, it sends permission requests to the pane. Requests without a tool kind still need an answer when you use `reads` or `all`.
-
-With `reads` or `all`, Claude Code and Codex panes also run, without asking, a shell command made of `zz` calls, piped only into `head`, `tail`, `grep`, `rg`, `wc`, `jq`, `cut` or `tr`, joined only with `cd`, `echo`, `printf` or `sleep`, and redirected only with `2>&1` or `>/dev/null`. Claude Code panes also start with Claude's own `Bash(zz:*)` allow rule, unless the tier is `off` or `agent-claude-code-command` sets allowed tools; Claude's rule also covers loops. Codex's sandbox blocks the daemon socket, so a `zz` command there fails with "Operation not permitted" until Codex reruns it with escalated permissions; that rerun is approved the same way.
-
-Set `@agent-auto-approve` at pane, window, session, or global scope, in that order of precedence. If no user option applies, use the server option `agent-auto-approve`. Invalid values leave the pane's effective tier unchanged and log a warning.
-
-```sh
-zz set-option -p -t %N @agent-auto-approve all
-zz set-option -g agent-auto-approve reads
-```
-
-Changes apply live to running agent panes. Use `agent-send --on-block` for per-turn permission handling. Configure content-level policy, such as which shell commands may run, in the adapter's own settings: Codex `approval_policy` or Claude Code permission settings.
+Terminal agents keep their own permission settings: Codex `approval_policy`, Claude Code permission rules. `zz tools --install-hooks` adds a rule that lets both run `zz` without asking.
 
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; terminal panes with a nonempty `agent_state` also include `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; terminal panes with a nonempty `agent_state` also include `agent-send`, and panes with an open lens `agent-respond`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
-zz inspect -a --json | jq -c 'select(.pane_kind=="agent") | {pane_id,agent_state}'
+zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
 ```
 
 The keys, in text output order, are `session_id`, `session_name`, `window_id`, `window_index`, `window_name`, `window_width`, `window_height`, `window_size`, `pane_id`, `pane_index`, `pane_active`, `pane_kind`, `pane_pid`, `pane_current_command`, `pane_current_path`, `pane_title`, `pane_width`, `pane_height`, `pane_dead`, `pane_dead_status`, `pane_dead_signal`, `pane_last_command_status`, `pane_pb_state`, `pane_pb_progress`, `pane_status`, `pane_status_kind`, `pane_status_progress`, `pane_status_app`, `pane_status_title`, `pane_status_message`, `pane_status_raw_title`, `pane_status_raw_message`, `pane_status_reported`, `agent_state`, `agent_pending_permission`, `permission`, `browser_url`, `verbs`, `events`.
@@ -170,11 +142,11 @@ The keys, in text output order, are `session_id`, `session_name`, `window_id`, `
 ### `zz events [-t %N]`
 
 Stream hook events.
-Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string. Agent panes also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
+Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string. Terminal panes with an open lens also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
 
 ## Etiquette
 
-- Draft into another person's Agent pane; use `--submit` only for an authorized hand-off.
+- Send to another person's agent only for an authorized hand-off.
 - Do not send to `$ZZ_PANE`.
 - Trim piped logs to the part the recipient needs.
 

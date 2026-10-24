@@ -25,7 +25,6 @@ zz_gpui::actions!(
         SplitRight,
         SplitDown,
         NewBrowserPane,
-        NewAgentPane,
         RenameSession,
         RenameWindow,
         KillWindow,
@@ -159,7 +158,6 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
             MenuItem::action("Split Right", SplitRight),
             MenuItem::action("Split Down", SplitDown),
             MenuItem::action("New Browser Pane", NewBrowserPane),
-            MenuItem::action("New Agent Pane", NewAgentPane),
             MenuItem::separator(),
             MenuItem::submenu(Menu::new("Switch Session").items(
                 sessions.iter().map(|name| {

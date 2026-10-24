@@ -11,7 +11,7 @@ tags:
 - tmux-3.8
 - mux
 - design-plan
-timestamp: 2026-10-09T00:00:00-03:00
+timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Decisions
@@ -239,7 +239,7 @@ one (`floating panes are not supported`), which is the branch that places them.
 
 **Desktop** (`crates/zz/src/workspace/view.rs`). `render` (`:3656`) draws visible floats back to
 front after `render_layout` and before `overlays`: an absolute `FloatingSurface`
-(`crates/zz-ui/src/pane.rs:279`) around the pane's normal surface (terminal, browser, agent) at
+(`crates/zz-ui/src/pane.rs:279`) around the pane's normal surface (terminal or browser) at
 `xoff * cell_w, yoff * cell_h` from the canvas origin with this client's cell metrics, clipped,
 titled from `border_status_text` split by `zz_client::floating::float_title` (the `#[align=right]`
 part, 3.8's `[t][z][x]`, sits at the header's right edge; web drops it), borderless for `None`.
@@ -366,8 +366,10 @@ Recorded by float.keys (2026-10-09).
 
 # zz-only extensions
 
-- `new-pane --kind terminal|browser|picker|agent [--profile] [--provider]`, inherited from
-  `split-window` (`catalog.rs:1777`): floating browser and agent panes, drawn with their own surface.
+- `new-pane --kind terminal|browser|picker [--profile]`, inherited from `split-window`
+  (`crates/zz-protocol/src/catalog.rs`): floating browser panes, drawn with their own surface.
+  The `agent` kind and `--provider` were removed with the Agent pane on 2026-10-23
+  ([agent lens](/designs/agent-lens.md)).
 - GUI drag and resize by title bar and edges, committed as commands (GUI clients load no tmux mouse
   tables). iPhone pages floats.
 

@@ -27,14 +27,6 @@ const BROWSER_COMMANDS: &[&str] = &[
     "set-browser-url",
     "set-browser-profile",
 ];
-const AGENT_COMMANDS: &[&str] = &[
-    "agent-respond",
-    "agent-send",
-    "new-agent-session",
-    "restart-agent-pane",
-    "send-last-output",
-    "set-agent-provider",
-];
 const SET_OPTIONS: &[&str] = &[
     "base-index",
     "buffer-limit",
@@ -84,7 +76,6 @@ struct Rank {
 #[derive(Clone, Copy, Debug)]
 pub struct PaneKindAvailability {
     pub browser: bool,
-    pub agent: bool,
     pub editor: bool,
 }
 
@@ -92,7 +83,6 @@ impl Default for PaneKindAvailability {
     fn default() -> Self {
         Self {
             browser: true,
-            agent: false,
             editor: false,
         }
     }
@@ -104,7 +94,6 @@ impl PaneKindAvailability {
         let name = spec.map_or(name, |spec| spec.name);
         !spec.is_some_and(CommandSpec::is_internal)
             && (self.browser || !BROWSER_COMMANDS.contains(&name))
-            && (self.agent || !AGENT_COMMANDS.contains(&name))
     }
 }
 
@@ -446,15 +435,11 @@ fn values_for_kind(
                 (name.clone(), name, "Layout".to_owned())
             })
             .collect(),
-        CommandValueKind::PaneKind => ["terminal", "browser", "picker", "agent"]
+        CommandValueKind::PaneKind => ["terminal", "browser", "picker"]
             .into_iter()
             .filter(|kind| match *kind {
                 "browser" => availability.browser,
                 "picker" => matches!(spec.name, "split-window" | "new-pane"),
-                "agent" => {
-                    matches!(spec.name, "split-window" | "new-pane" | "new-window")
-                        && availability.agent
-                }
                 _ => true,
             })
             .map(|kind| (kind.to_owned(), kind.to_owned(), "Pane kind".to_owned()))
@@ -1028,7 +1013,6 @@ mod tests {
             &snapshot(),
             PaneKindAvailability {
                 browser: true,
-                agent: true,
                 editor: true,
             },
         );
@@ -1038,7 +1022,7 @@ mod tests {
                 .filter(|completion| completion.detail == "Pane kind")
                 .map(|completion| completion.label.as_str())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["agent", "browser", "picker", "terminal"])
+            BTreeSet::from(["browser", "picker", "terminal"])
         );
 
         let unavailable = PaneKindAvailability {
@@ -1074,7 +1058,6 @@ mod tests {
     fn daemon_native_commands_and_their_arguments_are_completed_from_the_catalog() {
         let available = PaneKindAvailability {
             browser: true,
-            agent: true,
             editor: true,
         };
         for command in [
@@ -1129,10 +1112,9 @@ mod tests {
     fn native_command_completion_respects_pane_kind_availability() {
         let unavailable = PaneKindAvailability {
             browser: false,
-            agent: false,
             editor: false,
         };
-        for command in AGENT_COMMANDS.iter().chain(BROWSER_COMMANDS) {
+        for command in BROWSER_COMMANDS {
             let completions =
                 complete_command(command, command.len(), &[], &snapshot(), unavailable);
             assert!(
@@ -1173,7 +1155,6 @@ mod tests {
             assert!(
                 !PaneKindAvailability {
                     browser: true,
-                    agent: true,
                     editor: true,
                 }
                 .allows_command(command)
@@ -1195,14 +1176,11 @@ mod tests {
     #[test]
     fn new_window_only_completes_supported_kinds() {
         for (input, kinds) in [
-            ("new-window --kind ", &["agent", "browser", "terminal"][..]),
-            (
-                "new-pane --kind ",
-                &["agent", "browser", "picker", "terminal"][..],
-            ),
+            ("new-window --kind ", &["browser", "terminal"][..]),
+            ("new-pane --kind ", &["browser", "picker", "terminal"][..]),
             (
                 "split-window --kind ",
-                &["agent", "browser", "picker", "terminal"][..],
+                &["browser", "picker", "terminal"][..],
             ),
         ] {
             let completions = complete_command(
@@ -1212,7 +1190,6 @@ mod tests {
                 &snapshot(),
                 PaneKindAvailability {
                     browser: true,
-                    agent: true,
                     editor: true,
                 },
             );

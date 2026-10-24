@@ -1,4 +1,4 @@
-pub(crate) mod children;
+pub(crate) mod rollout;
 pub(crate) mod translate;
 
 use std::{
@@ -677,14 +677,6 @@ impl Runtime {
                 self.emit(AgentStreamPayload::ModeChanged { mode_id })
                     .await?;
                 self.publish_settings().await
-            }
-            RuntimeCommand::InterruptThread { thread_id, turn_id } => {
-                self.request(
-                    "turn/interrupt",
-                    &json!({ "threadId": thread_id, "turnId": turn_id }),
-                    Outgoing::Quiet,
-                );
-                Ok(())
             }
             RuntimeCommand::StopTask { task_id } => {
                 if let Some(thread) = self.thread_id() {

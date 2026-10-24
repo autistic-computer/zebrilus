@@ -74,12 +74,14 @@ fn thread_name_from_title(title: &str) -> Option<&str> {
 }
 
 pub(crate) fn pane_runs_codex(pane_pid: u32) -> bool {
-    let Ok(parents) = claude_peers::process_parents() else {
-        return false;
-    };
+    codex_pid(pane_pid).is_some()
+}
+
+pub(crate) fn codex_pid(pane_pid: u32) -> Option<u32> {
+    let parents = claude_peers::process_parents().ok()?;
     claude_peers::pane_process_ids(&parents, pane_pid)
         .into_iter()
-        .any(|pid| {
+        .find(|pid| {
             #[cfg(target_os = "linux")]
             let executable = std::fs::read_link(format!("/proc/{pid}/exe")).ok();
             #[cfg(not(target_os = "linux"))]

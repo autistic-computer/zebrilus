@@ -609,7 +609,10 @@ impl Default for KeyTables {
             ("M-7", "Set the main-vertical-mirrored layout"),
             ("[", "Enter copy mode"),
             ("=", "Choose a paste buffer from a list"),
-            ("e", "Send the last command and its output to an agent pane"),
+            (
+                "e",
+                "Draft the last command and its output into the window's agent",
+            ),
             ("s", "Choose a session from a list"),
             ("w", "Choose a window from a list"),
             ("D", "Choose and detach a client from a list"),

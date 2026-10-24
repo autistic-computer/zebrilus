@@ -16,12 +16,13 @@ pub(crate) mod codex;
 pub(crate) mod codex_queue;
 pub(crate) mod environment;
 pub(crate) mod fanout;
-pub(crate) mod feed;
 #[cfg(test)]
 pub(crate) mod fixture;
 pub(crate) mod git_summary;
 pub(crate) mod host;
 pub(crate) mod journal;
+#[cfg(unix)]
+pub(crate) mod lens;
 pub(crate) mod paths;
 pub(crate) mod runtime;
 pub(crate) mod stream;

@@ -46,7 +46,6 @@ use zz_ui::{
 
 use crate::{
     agent::{
-        AgentController,
         notify::{self, AttentionBanners},
         sound::{AgentAttentionTracker, AgentBadge, AgentPaneStatus, AttentionEdge, loudest},
     },
@@ -160,7 +159,6 @@ impl Render for SidebarResizePreview {
 
 pub struct WorkspaceSidebar {
     mux: Entity<MuxClient>,
-    agents: Entity<AgentController>,
     tree_model: Rc<MuxTreeModel>,
     tree_revision: Option<SidebarRevision>,
     visible_entries: Rc<[VisibleTreeEntry]>,
@@ -186,30 +184,20 @@ pub struct WorkspaceSidebar {
 }
 
 impl WorkspaceSidebar {
-    pub(crate) fn new(
-        mux: Entity<MuxClient>,
-        agents: &Entity<AgentController>,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub(crate) fn new(mux: Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
         let mut observed_revision = SidebarRevision::for_mux(mux.read(cx));
-        let observed_agents = agents.clone();
         cx.observe(&mux, move |sidebar, mux, cx| {
             let revision = SidebarRevision::for_mux(mux.read(cx));
             if revision != observed_revision {
                 observed_revision = revision;
                 sidebar.synchronize_tree(cx);
-                sidebar.reconcile_attention(&observed_agents, cx);
+                sidebar.reconcile_attention(cx);
                 cx.notify();
             }
         })
         .detach();
-        cx.observe(agents, |sidebar, agents, cx| {
-            sidebar.reconcile_attention(&agents, cx);
-        })
-        .detach();
         Self {
             mux,
-            agents: agents.clone(),
             tree_model: Rc::new(MuxTreeModel::default()),
             tree_revision: None,
             visible_entries: Rc::from([]),
@@ -235,9 +223,9 @@ impl WorkspaceSidebar {
         }
     }
 
-    fn reconcile_attention(&mut self, agents: &Entity<AgentController>, cx: &mut Context<Self>) {
+    fn reconcile_attention(&mut self, cx: &mut Context<Self>) {
         let attached_host = self.mux.read(cx).attached_host();
-        let statuses = self.agent_pane_statuses(agents, cx);
+        let statuses = self.agent_pane_statuses(cx);
         let watched = self.watched_pane(cx).map(|pane| (attached_host, pane));
         let edges = self.tracker.observe(&statuses, watched);
         if let Some(chime) = loudest(&edges) {
@@ -302,12 +290,7 @@ impl WorkspaceSidebar {
         }
     }
 
-    fn agent_pane_statuses(
-        &self,
-        agents: &Entity<AgentController>,
-        cx: &App,
-    ) -> BTreeMap<(HostId, PaneId), AgentPaneStatus> {
-        let controller = agents.read(cx);
+    fn agent_pane_statuses(&self, cx: &App) -> BTreeMap<(HostId, PaneId), AgentPaneStatus> {
         let attached_host = self.mux.read(cx).attached_host();
         self.tree_model
             .hosts
@@ -318,7 +301,6 @@ impl WorkspaceSidebar {
             .flat_map(|window| &window.panes)
             .filter_map(|pane| {
                 let status = match pane.kind {
-                    MuxTreePaneKind::Agent(_) => controller.pane_status(pane.id)?,
                     MuxTreePaneKind::Terminal => match pane.status {
                         Some(PaneStatusState::Working) => AgentPaneStatus::Working,
                         Some(PaneStatusState::Blocked) => AgentPaneStatus::NeedsInput,
@@ -915,8 +897,7 @@ impl Render for WorkspaceSidebar {
             (mux.attached_host(), mux.attached_session())
         };
         if self.synchronize_tree(cx) {
-            let agents = self.agents.clone();
-            self.reconcile_attention(&agents, cx);
+            self.reconcile_attention(cx);
         }
 
         let sidebar = cx.entity().clone();
@@ -1540,7 +1521,6 @@ const fn pane_kind_icon(kind: MuxTreePaneKind) -> IconName {
         MuxTreePaneKind::Picker => IconName::Plus,
         MuxTreePaneKind::Terminal => IconName::SquareTerminal,
         MuxTreePaneKind::Browser => IconName::Globe,
-        MuxTreePaneKind::Agent(provider) => zz_ui::pane::agent_provider_icon(provider),
         MuxTreePaneKind::Editor => IconName::File,
     }
 }
@@ -1749,7 +1729,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{config::AgentConfig, mux::nav::picker_split_command};
+    use crate::mux::nav::picker_split_command;
 
     #[zz_gpui::test]
     fn workspace_tree_key_bindings_register(cx: &mut TestAppContext) {
@@ -1765,8 +1745,7 @@ mod tests {
                 cx,
             )
         });
-        let agents = cx.new(|_| AgentController::new(AgentConfig::default()));
-        let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux.clone(), &agents, cx));
+        let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux.clone(), cx));
         sidebar.update(cx, |sidebar, cx| {
             assert!(sidebar.synchronize_tree(cx));
             assert_eq!(sidebar.tree_model.hosts.len(), 1);
@@ -1833,8 +1812,7 @@ mod tests {
                 cx,
             )
         });
-        let agents = cx.new(|_| AgentController::new(AgentConfig::default()));
-        let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux.clone(), &agents, cx));
+        let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux.clone(), cx));
         let mut snapshot = snapshot_with_two_panes();
         mux.update(cx, |mux, cx| {
             mux.attach_snapshot_for_test(SessionId(1), snapshot.clone(), cx);
@@ -1876,9 +1854,8 @@ mod tests {
                     cx,
                 )
             });
-            let agents = cx.new(|_| AgentController::new(AgentConfig::default()));
             captured_for_window.replace(Some(cx.entity()));
-            WorkspaceSidebar::new(mux, &agents, cx)
+            WorkspaceSidebar::new(mux, cx)
         });
         let sidebar = captured.borrow().clone().expect("captured sidebar");
 
@@ -1990,8 +1967,7 @@ mod tests {
                     cx,
                 )
             });
-            let agents = cx.new(|_| AgentController::new(AgentConfig::default()));
-            let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux, &agents, cx));
+            let sidebar = cx.new(|cx| WorkspaceSidebar::new(mux, cx));
             sidebar.update(cx, WorkspaceSidebar::toggle_mode);
             assert_eq!(sidebar.read(cx).mode(), ChromeMode::Titlebar);
             let workspace = cx.new(|_| WorkspaceProbe {
@@ -3110,48 +3086,6 @@ mod tests {
         let projected = MuxTreePane::from_snapshot(&pane);
         assert_eq!(projected.kind, MuxTreePaneKind::Picker);
         assert_eq!(projected.label, "new pane");
-    }
-
-    #[test]
-    fn agent_panes_show_the_current_provider_and_session_name() {
-        let mut pane = PaneSnapshot {
-            id: PaneId(404),
-            title: String::new(),
-            kind: PaneKindSnapshot::Agent(zz_protocol::AgentDescriptor::default()),
-            synchronized_input: false,
-            bell: false,
-            dead: false,
-            dead_status: None,
-            border_colour: None,
-            active_border_colour: None,
-            border_status_text: String::new(),
-            mode: None,
-            status: None,
-            summary: PaneSummary::default(),
-        };
-
-        let projected = MuxTreePane::from_snapshot(&pane);
-        assert_eq!(
-            projected.kind,
-            MuxTreePaneKind::Agent(zz_protocol::AgentProvider::Codex)
-        );
-        assert_eq!(pane_kind_icon(projected.kind), IconName::Openai);
-        assert_eq!(projected.label, "New session");
-
-        pane.title = "agent".to_owned();
-        assert_eq!(MuxTreePane::from_snapshot(&pane).label, "New session");
-        pane.title = "Fix the agent header".to_owned();
-        assert_eq!(MuxTreePane::from_snapshot(&pane).label, pane.title);
-
-        let before_switch = MuxTreePane::from_snapshot(&pane);
-        let PaneKindSnapshot::Agent(agent) = &mut pane.kind else {
-            unreachable!()
-        };
-        agent.provider = zz_protocol::AgentProvider::ClaudeCode;
-        let after_switch = MuxTreePane::from_snapshot(&pane);
-        assert_ne!(before_switch, after_switch);
-        assert_eq!(pane_kind_icon(after_switch.kind), IconName::Claude);
-        assert_eq!(after_switch.label, pane.title);
     }
 
     #[test]
