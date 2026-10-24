@@ -1,0 +1,7 @@
+mode	transcript_bytes	first_request_tokens	cached_tokens	seconds	cost_usd	note
+resume	411284	45141	25370	7.1	0.33	claude -p --resume PATH --fork-session, cold cache, one question
+resume	639715	56274	25254	3.2	1.03	same
+resume	884422	84140	25254	5.5	2.18	same
+resume	1817872	202294	25254	10.2	43.06	same; over 200k tokens
+fresh	3429	~40000	30779	3.3	0.08	fresh session, skill v5 plus a 3.4 KB packet; one question, no tools
+fresh	3429	86545 (5 requests)	79637	19.8	0.10	same packet, the lead checked live state on its own
