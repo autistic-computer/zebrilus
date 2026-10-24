@@ -13,7 +13,7 @@ use zz_ui::{
         AgentToolStatus as Status, TimelineRow,
         composer::COMPOSER_OUTER_PADDING,
         fold_timeline_rows,
-        presentation::{spinner_phase, terminal_wait_card},
+        presentation::{lens_welcome, spinner_phase, terminal_wait_card},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
     compact::compact_pane_header,
@@ -98,6 +98,8 @@ const CODEX_ASKS: &[(Tone, &str)] = &[
     (Tone::Muted, "    No, tell Codex what to do (esc)"),
 ];
 
+const CODEX_FIRST: &[(Tone, &str)] = &[(Tone::Muted, "~/dev/zz main"), (Tone::Plain, "› ")];
+
 const ANSWERS: [(&str, Option<bool>); 2] = [("Allow", Some(true)), ("Deny", Some(false))];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -107,13 +109,14 @@ enum Scene {
     ClaudeAsks,
     ClaudePlans,
     CodexAsks,
+    CodexFirst,
 }
 
 impl Scene {
     const fn provider(self) -> AgentProvider {
         match self {
             Self::Claude | Self::ClaudeAsks | Self::ClaudePlans => AgentProvider::ClaudeCode,
-            Self::Codex | Self::CodexAsks => AgentProvider::Codex,
+            Self::Codex | Self::CodexAsks | Self::CodexFirst => AgentProvider::Codex,
         }
     }
 
@@ -124,6 +127,7 @@ impl Scene {
             Self::ClaudeAsks => 16,
             Self::CodexAsks => 17,
             Self::ClaudePlans => 18,
+            Self::CodexFirst => 19,
         }
     }
 
@@ -132,7 +136,7 @@ impl Scene {
             Self::Claude => "Pinned tabs keep their icon width",
             Self::ClaudeAsks => "Open the pinned tabs pull request",
             Self::ClaudePlans => "Plan the pinned tabs fix",
-            Self::Codex | Self::CodexAsks => "codex",
+            Self::Codex | Self::CodexAsks | Self::CodexFirst => "codex",
         }
     }
 
@@ -143,11 +147,12 @@ impl Scene {
             Self::ClaudeAsks => CLAUDE_ASKS,
             Self::ClaudePlans => CLAUDE_PLANS,
             Self::CodexAsks => CODEX_ASKS,
+            Self::CodexFirst => CODEX_FIRST,
         }
     }
 
     const fn running(self) -> bool {
-        !matches!(self, Self::Codex)
+        !matches!(self, Self::Codex | Self::CodexFirst)
     }
 
     fn entries(self) -> Vec<AgentEntry> {
@@ -260,6 +265,7 @@ impl Scene {
                 )
                 .entry(),
             ],
+            Self::CodexFirst => Vec::new(),
         }
     }
 }
@@ -310,6 +316,14 @@ fn build(scene: Scene, look: Look, open: bool, window: &mut Window, cx: &mut App
 
 pub(crate) fn tiled(window: &mut Window, cx: &mut App) -> AnyView {
     build(Scene::Claude, Look::Tiled, true, window, cx)
+}
+
+pub(crate) fn tiled_plans(window: &mut Window, cx: &mut App) -> AnyView {
+    build(Scene::ClaudePlans, Look::Tiled, true, window, cx)
+}
+
+pub(crate) fn tiled_first(window: &mut Window, cx: &mut App) -> AnyView {
+    build(Scene::CodexFirst, Look::Tiled, true, window, cx)
 }
 
 pub(crate) fn floating_claude(window: &mut Window, cx: &mut App) -> AnyView {
@@ -438,7 +452,7 @@ impl LensPane {
                     .into_any_element(),
                 ]
             }
-            Scene::Codex | Scene::CodexAsks => Vec::new(),
+            Scene::Codex | Scene::CodexAsks | Scene::CodexFirst => Vec::new(),
         }
     }
 
@@ -466,7 +480,13 @@ impl LensPane {
             .flex_1()
             .min_h_0()
             .min_w_0()
-            .child(
+            .child(if self.rows.is_empty() {
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .child(lens_welcome(self.scene.provider(), cx))
+                    .into_any_element()
+            } else {
                 div()
                     .id("lens-timeline")
                     .relative()
@@ -482,8 +502,9 @@ impl LensPane {
                             .right_0()
                             .bottom(px(COMPOSER_OUTER_PADDING))
                             .child(Scrollbar::vertical(&self.list)),
-                    ),
-            )
+                    )
+                    .into_any_element()
+            })
             .child(composer)
             .into_any_element()
     }
@@ -542,6 +563,10 @@ pub fn panes(window: &mut Window, cx: &mut App) -> AnyView {
         (
             "Codex showing its terminal: the toggle opens the lens on the same session",
             build(Scene::Codex, Look::Page(360.0), false, window, cx),
+        ),
+        (
+            "Codex before its first prompt: the welcome names it, and what you send is typed into its terminal",
+            build(Scene::CodexFirst, Look::Page(360.0), true, window, cx),
         ),
     ];
     cx.new(|_| Panes(panes)).into()

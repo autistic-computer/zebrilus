@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
@@ -119,7 +119,6 @@ The client-local schema includes these scalar settings and chrome colors.
 | `auto-restart-stale-daemon` | `false` | `true` or `false` | Whether a protocol-mismatched local daemon is terminated and replaced on connect. Off by default because it ends every running session |
 | `check-for-updates` | `true` | `true` or `false` | Whether the GUI fetches the GitHub release list ten seconds after launch and daily after that, offering a newer release as a toast. The channel follows the running build (a `-beta.N` version takes prereleases). One anonymous request; nothing else is sent. Release builds only unless `ZZ_UPDATE_CHECK=1`; `ZZ_UPDATE_CHECK=0` silences every build. Surfaced in Settings under About |
 | `status-badges` | `true` | `true` or `false` | Whether window entries show bell and activity markers. Window names and pane icon decks remain visible when this is off |
-| `status-agents` | `true` | `true` or `false` | Whether the bar shows the live terminal panes running Claude Code or Codex in the attached session |
 | `status-host` | `true` | `true` or `false` | Whether the bar shows the host name while attached to a remote host. Local attachment has no host item |
 | `status-update` | `true` | `true` or `false` | Whether an available release appears in the bar with its version and an install action. `check-for-updates` separately controls the release check |
 | `flat-sidebar` | `false` | `true` or `false` | Whether the sidebar shows the flat window list instead of the session tree. The eye button at the bottom right of the sidebar sets it |
@@ -177,6 +176,12 @@ is picked.
 (`zz_config::RETIRED_AGENT_KEYS`). A line with either is reported with `` `<key>` was removed: run
 Claude Code or Codex in a terminal pane and open its lens from the pane header `` and ignored (see
 [agent lens](/concepts/agent-lens.md)).
+`status-show-session` and `status-agents` are retired status bar keys
+(`zz_config::RETIRED_STATUS_KEYS`). `status-show-session` went with the session menu and is
+reported with `` `status-show-session` was removed: the status bar no longer has a session menu;
+switch sessions from the sidebar ``. `status-agents` went with the agent activity item on
+2026-10-24 and is reported with `` `status-agents` was removed: the status bar no longer shows
+agent activity; the sidebar shows each agent's state ``. Both are otherwise ignored.
 
 The status settings project directly into `zz_client::StatusBarSettings` and apply through the
 normal watched-config refresh. The clock never shows seconds. `AppShell` aligns its first wake to
@@ -500,11 +505,9 @@ under Default, a radius of about 13.6px, concentric with the controls in the pan
 grid reads as one rounded surface. The strip along the window's top (the macOS traffic lights, the
 sidebar's buttons, the status bar) is a pane header tall (34px) plus the margin above and below it
 (`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line; flush panes
-leave it one header tall. The sidebar's footer mirrors it: settings and the view switch are
-centered the margin plus half a header in from the window's bottom and leading edges, like the
-traffic lights from its top, so those sit as far from the window as Rex puts its own (25pt there,
-with an 8pt margin). The toggle and the view switch center on the column the sidebar rows' actions
-(+, …, ×) center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
+leave it one header tall. The sidebar's buttons sit in that strip too: Add host, the view switch
+and Settings before the toggle, which centers on the column the sidebar rows' actions (+, …, ×)
+center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
 no second tier of gapped defaults: the number Settings shows is the number the panes use, which is
 what lets the disabled Frame row stay honest. Gapped panes draw their frame in glass, as above,
 and keep the contact shadow. This treatment is built in; the retired `pane-shadow` key produces the
@@ -740,7 +743,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Page | Groups |
 | --- | --- |
 | Interface | **Theme** (`theme-mode` as Mode, three drawn window previews, `interface-theme` as Themes, a strip of built-in and saved themes with Save and Import, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
-| Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-agents`, `status-host`, `status-update`; `status-show-session` was removed with the session menu and is reported if present) |
+| Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-host`, `status-update`; `status-show-session` and `status-agents` were removed and are reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **PiP** (`pip-background-opacity`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |

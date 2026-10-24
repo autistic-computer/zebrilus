@@ -97,6 +97,65 @@ impl AgentEvents {
     }
 }
 
+/// The lead agent's pane, on whichever host runs it, and the stream zz
+/// follows it with: a cursor and buffer of its own, apart from the attached
+/// session's lenses, so the lead chat keeps up while you work elsewhere.
+#[cfg(feature = "agent-pane")]
+struct LeadFeed {
+    host: HostId,
+    pane: PaneId,
+    cursor: u64,
+    replay_pending: bool,
+    /// The connection the last replay went out on; a new one is a reconnect,
+    /// which the daemon forgets the watch over, so it is asked again.
+    client: Option<usize>,
+    events: AgentEvents,
+}
+
+/// Decode a batch of agent stream items against `cursor`, the highest seq
+/// already handed on. Returns the items past it and whether the batch skipped
+/// ahead of it, a hole only a replay fills.
+#[cfg(feature = "agent-pane")]
+fn accept_agent_items(
+    pane: PaneId,
+    cursor: &mut u64,
+    first_seq: u64,
+    items: Vec<Vec<u8>>,
+) -> (Vec<zz_daemon::AgentStreamItem>, bool) {
+    let mut accepted = Vec::new();
+    for (index, blob) in items.into_iter().enumerate() {
+        let positional = first_seq.saturating_add(index as u64);
+        let item = match serde_json::from_slice::<zz_daemon::AgentStreamItem>(&blob) {
+            Ok(item) => item,
+            Err(error) => {
+                log::warn!(
+                    target: "zz::diagnostics::mux",
+                    "dropping undecodable agent item pane={pane} seq={positional}: {error}"
+                );
+                *cursor = (*cursor).max(positional);
+                continue;
+            }
+        };
+        if item.seq > cursor.saturating_add(1)
+            && matches!(
+                &item.payload,
+                zz_daemon::AgentStreamPayload::SessionReset { restoring: true }
+            )
+        {
+            *cursor = item.seq.saturating_sub(1);
+        }
+        if item.seq <= *cursor {
+            continue;
+        }
+        if item.seq > cursor.saturating_add(1) {
+            return (accepted, true);
+        }
+        *cursor = item.seq;
+        accepted.push(item);
+    }
+    (accepted, false)
+}
+
 const MAX_PENDING_DECODED_MESSAGES: usize = 1;
 const MAX_DECODED_MESSAGES_PER_UPDATE: usize = 64;
 const MAX_DECODED_BATCH_TIME: Duration = Duration::from_millis(4);
@@ -1046,6 +1105,8 @@ pub struct MuxClient {
     agent_events: AgentEvents,
     #[cfg(feature = "agent-pane")]
     agent_lenses: BTreeSet<PaneId>,
+    #[cfg(feature = "agent-pane")]
+    lead: Option<LeadFeed>,
     screenshot_requests: Vec<(PaneId, u64, String)>,
     terminal_commands: BTreeMap<PaneId, Vec<TerminalUiCommand>>,
     pane_images: BTreeMap<PaneId, PaneImageSnapshots>,
@@ -1200,6 +1261,8 @@ impl MuxClient {
             agent_events: AgentEvents::default(),
             #[cfg(feature = "agent-pane")]
             agent_lenses: BTreeSet::new(),
+            #[cfg(feature = "agent-pane")]
+            lead: None,
             screenshot_requests: Vec::new(),
             terminal_commands: BTreeMap::new(),
             pane_images: BTreeMap::new(),
@@ -3790,39 +3853,7 @@ impl MuxClient {
             return;
         }
         let cursor = self.agent_cursors.entry(pane).or_default();
-        let mut accepted = Vec::new();
-        let mut gapped = false;
-        for (index, blob) in items.into_iter().enumerate() {
-            let positional = first_seq.saturating_add(index as u64);
-            let item = match serde_json::from_slice::<zz_daemon::AgentStreamItem>(&blob) {
-                Ok(item) => item,
-                Err(error) => {
-                    log::warn!(
-                        target: "zz::diagnostics::mux",
-                        "dropping undecodable agent item pane={pane} seq={positional}: {error}"
-                    );
-                    *cursor = (*cursor).max(positional);
-                    continue;
-                }
-            };
-            if item.seq > cursor.saturating_add(1)
-                && matches!(
-                    &item.payload,
-                    zz_daemon::AgentStreamPayload::SessionReset { restoring: true }
-                )
-            {
-                *cursor = item.seq.saturating_sub(1);
-            }
-            if item.seq <= *cursor {
-                continue;
-            }
-            if item.seq > cursor.saturating_add(1) {
-                gapped = true;
-                break;
-            }
-            *cursor = item.seq;
-            accepted.push(item);
-        }
+        let (accepted, gapped) = accept_agent_items(pane, cursor, first_seq, items);
         if !accepted.is_empty() {
             self.agent_events.items.push((pane, accepted));
         }
@@ -3919,17 +3950,142 @@ impl MuxClient {
         !self.agent_events.is_empty()
     }
 
+    /// Follow `lead`'s agent stream, or stop following one. Asks its host for
+    /// a replay from the cursor when the lead changes and whenever that
+    /// host's connection is a new one; the daemon keeps sending a pane's
+    /// stream to a client that asked for it.
+    #[cfg(feature = "agent-pane")]
+    pub(crate) fn follow_lead(&mut self, lead: Option<(HostId, PaneId)>) {
+        if self.lead() != lead {
+            self.lead = lead.map(|(host, pane)| LeadFeed {
+                host,
+                pane,
+                cursor: 0,
+                replay_pending: false,
+                client: None,
+                events: AgentEvents::default(),
+            });
+        }
+        let Some(feed) = &self.lead else {
+            return;
+        };
+        let client = self.lead_client(feed.host);
+        if client.is_some() && client != feed.client {
+            self.request_lead_replay();
+        }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn lead_client(&self, host: HostId) -> Option<usize> {
+        self.connections
+            .get(&host)
+            .and_then(|connection| connection.client.as_ref())
+            .map(|client| Arc::as_ptr(client) as usize)
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn request_lead_replay(&mut self) {
+        let Some((host, pane, from_seq)) = self
+            .lead
+            .as_ref()
+            .map(|feed| (feed.host, feed.pane, feed.cursor))
+        else {
+            return;
+        };
+        let sent = self.send_agent_request_to(host, pane, AgentRequest::Replay { from_seq });
+        let client = self.lead_client(host);
+        if let Some(feed) = &mut self.lead
+            && sent
+        {
+            feed.replay_pending = true;
+            feed.client = client;
+        }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    #[must_use]
+    pub(crate) fn lead(&self) -> Option<(HostId, PaneId)> {
+        self.lead.as_ref().map(|feed| (feed.host, feed.pane))
+    }
+
+    /// Everything the lead's stream delivered since the last call.
+    #[cfg(feature = "agent-pane")]
+    pub(crate) fn take_lead_events(&mut self) -> AgentEvents {
+        self.lead
+            .as_mut()
+            .map(|feed| std::mem::take(&mut feed.events))
+            .unwrap_or_default()
+    }
+
+    #[cfg(feature = "agent-pane")]
+    #[must_use]
+    pub(crate) fn has_lead_events(&self) -> bool {
+        self.lead
+            .as_ref()
+            .is_some_and(|feed| !feed.events.is_empty())
+    }
+
+    /// Ship one agent request to the lead's pane on the lead's host.
+    #[cfg(feature = "agent-pane")]
+    pub(crate) fn send_lead_request(&self, request: AgentRequest) -> bool {
+        self.lead
+            .as_ref()
+            .is_some_and(|feed| self.send_agent_request_to(feed.host, feed.pane, request))
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn following(&self, host: HostId, pane: PaneId) -> bool {
+        self.lead
+            .as_ref()
+            .is_some_and(|feed| feed.host == host && feed.pane == pane)
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn apply_lead_updates(&mut self, first_seq: u64, items: Vec<Vec<u8>>) {
+        let Some(feed) = &mut self.lead else {
+            return;
+        };
+        let (accepted, gapped) = accept_agent_items(feed.pane, &mut feed.cursor, first_seq, items);
+        if !accepted.is_empty() {
+            feed.events.items.push((feed.pane, accepted));
+        }
+        if gapped {
+            if !feed.replay_pending {
+                self.request_lead_replay();
+            }
+        } else {
+            feed.replay_pending = false;
+        }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn apply_lead_state(&mut self, state: zz_protocol::AgentPaneWire) {
+        if let Some(feed) = &mut self.lead {
+            feed.events.states.push((feed.pane, state));
+        }
+    }
+
     /// Ship one agent request to the daemon that owns `pane`. Returns whether
     /// it reached the wire, which is what the composer reports as "not
     /// connected".
     #[cfg(feature = "agent-pane")]
     pub(crate) fn send_agent_request(&self, pane: PaneId, request: AgentRequest) -> bool {
+        self.send_agent_request_to(self.attached_host, pane, request)
+    }
+
+    /// [`Self::send_agent_request`] to `host`'s daemon, attached or not.
+    #[cfg(feature = "agent-pane")]
+    fn send_agent_request_to(&self, host: HostId, pane: PaneId, request: AgentRequest) -> bool {
         #[cfg(test)]
         if let Some(sink) = &self.agent_sink {
             sink.borrow_mut().push((pane, request));
             return true;
         }
-        let Some(client) = &self.attached_connection().client else {
+        let Some(client) = self
+            .connections
+            .get(&host)
+            .and_then(|connection| connection.client.as_ref())
+        else {
             log::trace!(target: "zz::diagnostics::mux", "agent request skipped: no client");
             return false;
         };
@@ -4242,6 +4398,25 @@ impl MuxClient {
                         self.record_bell(host, pane);
                         cx.notify();
                     }
+                    #[cfg(feature = "agent-pane")]
+                    EventPayload::AgentUpdates {
+                        pane,
+                        first_seq,
+                        items,
+                    } if self.following(host, pane) => {
+                        self.apply_lead_updates(first_seq, items);
+                        cx.notify();
+                    }
+                    #[cfg(feature = "agent-pane")]
+                    EventPayload::AgentState { pane, state } if self.following(host, pane) => {
+                        self.apply_lead_state(state);
+                        cx.emit(AgentStateChanged);
+                        cx.notify();
+                    }
+                    #[cfg(feature = "agent-pane")]
+                    EventPayload::AgentLagged { pane, .. } if self.following(host, pane) => {
+                        self.request_lead_replay();
+                    }
                     EventPayload::AppearanceChanged {
                         appearance,
                         provenance,
@@ -4531,8 +4706,20 @@ impl MuxClient {
                 pane,
                 first_seq,
                 items,
-            } => self.apply_agent_updates(pane, first_seq, items),
+            } => {
+                #[cfg(feature = "agent-pane")]
+                if self.following(host, pane) {
+                    self.apply_lead_updates(first_seq, items.clone());
+                }
+                self.apply_agent_updates(pane, first_seq, items);
+            }
             CoreEvent::AgentStateChanged { pane, .. } => {
+                #[cfg(feature = "agent-pane")]
+                if self.following(host, pane)
+                    && let Some(state) = self.core.agent_state(pane).cloned()
+                {
+                    self.apply_lead_state(state);
+                }
                 cx.emit(AgentStateChanged);
                 #[cfg(feature = "agent-pane")]
                 if self.agent_lenses.contains(&pane)
@@ -4564,6 +4751,10 @@ impl MuxClient {
                 #[cfg(feature = "agent-pane")]
                 if self.agent_lenses.contains(&pane) {
                     self.request_agent_replay_from_cursor(pane);
+                }
+                #[cfg(feature = "agent-pane")]
+                if self.following(host, pane) {
+                    self.request_lead_replay();
                 }
             }
             CoreEvent::Message(message) => self.handle_unreduced_message(*message, cx),
@@ -8197,6 +8388,63 @@ mod tests {
             .into_iter()
             .flat_map(|(_, items)| items.into_iter().map(|item| item.seq))
             .collect()
+    }
+
+    #[cfg(feature = "agent-pane")]
+    #[zz_gpui::test]
+    fn the_lead_is_followed_on_its_own_host_whatever_is_attached(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(vec![test_host("xps", "ssh://xps")], cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("fixture".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            mux.update(cx, |mux, cx| {
+                let xps = mux.registry.get_by_name("xps").unwrap().0;
+                let pane = PaneId(5);
+                let sink = mux.record_agent_requests_for_test();
+                mux.follow_lead(Some((xps, pane)));
+                assert_eq!(mux.lead(), Some((xps, pane)));
+                let updates = |first_seq, items| {
+                    ProtocolMessage::Event(Event {
+                        sequence: 0,
+                        payload: EventPayload::AgentUpdates {
+                            pane,
+                            first_seq,
+                            items,
+                        },
+                    })
+                };
+                mux.handle_message(HostId::LOCAL, updates(1, vec![agent_blob(1)]), cx);
+                assert!(
+                    !mux.has_lead_events(),
+                    "the same pane id on another host is not the lead"
+                );
+                mux.handle_message(xps, updates(1, vec![agent_blob(1), agent_blob(2)]), cx);
+                let seqs = |events: AgentEvents| {
+                    events
+                        .items
+                        .into_iter()
+                        .flat_map(|(_, items)| items.into_iter().map(|item| item.seq))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(seqs(mux.take_lead_events()), [1, 2]);
+                mux.handle_message(xps, updates(5, vec![agent_blob(5)]), cx);
+                assert!(seqs(mux.take_lead_events()).is_empty());
+                assert_eq!(
+                    sink.borrow().last(),
+                    Some(&(pane, AgentRequest::Replay { from_seq: 2 })),
+                    "a gap asks the lead's host for the rest"
+                );
+                assert!(mux.send_lead_request(AgentRequest::Cancel));
+                mux.follow_lead(None);
+                assert_eq!(mux.lead(), None);
+                assert!(!mux.send_lead_request(AgentRequest::Cancel));
+            });
+        });
     }
 
     #[cfg(feature = "agent-pane")]

@@ -4,6 +4,10 @@ pub(crate) mod attachment;
 
 #[cfg(feature = "agent-pane")]
 pub(crate) mod controller;
+#[cfg(feature = "agent-pane")]
+pub(crate) mod lead;
+#[cfg(feature = "agent-pane")]
+pub(crate) mod lead_palette;
 pub(crate) mod notify;
 /// Unconditional: the workspace chrome renders agent badges in every build,
 /// and without the feature the status map is simply always empty.

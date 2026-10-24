@@ -1,6 +1,7 @@
 use crate::story::{Section, Story};
 
 pub(super) mod cards;
+pub(super) mod chat;
 mod chrome;
 mod composer;
 mod fixtures;
@@ -8,7 +9,7 @@ pub(super) mod lens;
 mod timeline;
 mod transcript;
 
-pub const STORIES: &[Story] = &[STORY];
+pub const STORIES: &[Story] = &[STORY, chat::STORY];
 
 const STORY: Story = Story {
     id: "agent",

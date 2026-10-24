@@ -45,8 +45,8 @@ use zz_ui::{
         buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
     },
     navigation::{
-        workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
-        workspace_sidebar_footer, workspace_sidebar_ground, workspace_sidebar_panel,
+        workspace_layout_button, workspace_settings_button, workspace_sidebar_controls,
+        workspace_sidebar_fade, workspace_sidebar_ground, workspace_sidebar_panel,
         workspace_sidebar_resize_handle, workspace_sidebar_slideover, workspace_sidebar_titlebar,
         workspace_sidebar_view_button,
     },
@@ -1022,21 +1022,9 @@ impl AppShell {
                 cx,
             )
         };
-        let footer = self.settings.is_none().then(|| {
-            workspace_sidebar_footer(
-                "web-sidebar-footer",
-                workspace_settings_button("web-settings")
-                    .on(ground)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.settings = Some(SettingsSection::Appearance);
-                        this.focused_pane = None;
-                        cx.notify();
-                    })),
-                Some(
-                    workspace_sidebar_view_button(
-                        "web-sidebar-view",
-                        self.preferences.flat_sidebar,
-                    )
+        let actions = self.settings.is_none().then(|| {
+            [
+                workspace_sidebar_view_button("web-sidebar-view", self.preferences.flat_sidebar)
                     .on(ground)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.preferences.flat_sidebar = !this.preferences.flat_sidebar;
@@ -1044,21 +1032,35 @@ impl AppShell {
                         cx.notify();
                     }))
                     .into_any_element(),
-                ),
-                cx,
-            )
+                workspace_settings_button("web-settings")
+                    .on(ground)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.settings = Some(SettingsSection::Appearance);
+                        this.focused_pane = None;
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+            ]
         });
         let divider = !(self.preferences.gaps && self.inline_sidebar(window));
         workspace_sidebar_panel(
             "web-sidebar-surface",
             self.sidebar_width(window),
-            workspace_sidebar_titlebar("web-sidebar-titlebar", self.controls(ground, cx), cx),
+            workspace_sidebar_titlebar(
+                "web-sidebar-titlebar",
+                workspace_sidebar_controls(
+                    actions
+                        .into_iter()
+                        .flatten()
+                        .chain([self.controls(ground, cx)]),
+                ),
+                cx,
+            ),
             navigation,
             ground,
             divider,
             cx,
         )
-        .children(footer)
         .track_focus(&self.sidebar_focus)
         .child(
             workspace_sidebar_resize_handle("web-sidebar-resize-handle", divider, cx)

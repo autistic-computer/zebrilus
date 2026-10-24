@@ -63,9 +63,11 @@ strip (Default, macOS, Yaru and a saved theme), the accent swatches with a custo
 rounding with the corner radius) and the tint sliders (which follow the tint knobs), then
 the Advanced heading and its Corner radius and Contrast sliders.
 
-The Theme creator story is every surface of zz in eight regions (Workspace, Flat sidebar, Panes,
-Start, Controls, Floating, Content, Phone), each its own window, so a hover or a spinner redraws only its
-region. The bar links (on windows wider than 1240px) jump between them, and
+The Theme creator story is every surface of zz in eleven regions (Workspace, Flat sidebar, Lens,
+Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers), each its own window, so a hover or a
+spinner redraws only its region. The flat sidebar carries the lead chat under its list, the Lens
+region has the plan-approval card with Show terminal and the welcome before a first prompt, and
+Floating has the palette's Lead mode beside the plain palette. The bar links (on windows wider than 1240px) jump between them, and
 `theme-creator/<region>` in the address opens at one.
 The Phone region is phone-width pages from zz-ui's `compact` builders: a terminal page with the
 HUD, the key row with the prefix menu open (`PopoverKey::open`) and the arrow pad's bubble
