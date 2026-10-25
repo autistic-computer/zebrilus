@@ -20,7 +20,7 @@ const STORY: Story = Story {
         Section {
             id: "lens-toggle",
             name: "Lens toggle",
-            summary: "terminal_pane_header with a PaneLens: the agent's mark before the pane actions, lit while the lens is open. It stays on an inactive pane, where the actions wait for the pointer.",
+            summary: "terminal_pane_header with a PaneLens: an eye before the pane actions, lit while the lens is open. It stays on an inactive pane, where the actions wait for the pointer.",
             build: lens::toggles,
         },
         Section {

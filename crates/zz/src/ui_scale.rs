@@ -81,10 +81,6 @@ pub fn percent(cx: &App) -> u32 {
     percent_for_zoom(UiZoom::get(cx)).round() as u32
 }
 
-pub fn is_default(cx: &App) -> bool {
-    UiZoom::get(cx) == zoom_for_percent(DEFAULT_UI_ZOOM)
-}
-
 /// Whether `percent` resolves to the zoom already in effect, which is not the
 /// same as matching [`percent`]: `150.7` displays as 151 but is exact.
 pub fn is_effective_percent(percent: f32, cx: &App) -> bool {
@@ -192,10 +188,10 @@ mod tests {
             assert_eq!(UiZoom::get(cx), 1.0);
             cx.dispatch_action(&IncreaseUiZoom);
             assert_eq!(percent(cx), 110);
-            assert!(!is_default(cx));
+            assert_ne!(UiZoom::get(cx), zoom_for_percent(DEFAULT_UI_ZOOM));
             cx.dispatch_action(&DecreaseUiZoom);
             assert_eq!(percent(cx), 100);
-            assert!(is_default(cx));
+            assert_eq!(UiZoom::get(cx), zoom_for_percent(DEFAULT_UI_ZOOM));
 
             set_percent(105.0, cx);
             cx.dispatch_action(&IncreaseUiZoom);

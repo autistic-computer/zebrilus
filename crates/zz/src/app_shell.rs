@@ -4,7 +4,7 @@ use zz_gpui::{
     AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent, Render,
     StyleRefinement, Window, div, prelude::*, px,
 };
-use zz_ui::shell::{app_shell_surface, app_titlebar_strip};
+use zz_ui::shell::{app_shell_surface, app_titlebar_strip, titlebar_over_panes};
 use zz_ui::{
     ActiveTheme as _, Root, StyledExt as _, Surface, WindowControls, draws_window_controls,
     navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover},
@@ -364,6 +364,10 @@ impl Render for AppShell {
             });
         }
         let strip_grows = sliding && !draws_window_controls(window);
+        let gap = crate::config::pane_margin(cx);
+        let over_panes = |titlebar: AnyElement, shown: f32| {
+            titlebar_over_panes(titlebar, gap * shown).into_any_element()
+        };
         let (sidebar, titlebar) = match (route, mode) {
             (WorkspaceRoute::Settings, _) => (
                 self.sidebar.clone().into_any_element(),
@@ -373,9 +377,10 @@ impl Render for AppShell {
                 self.docked_sidebar(sidebar_width, slide),
                 if strip_grows {
                     let bar = self.render_status_bar(window, cx);
-                    Some(growing_strip(bar, 1.0 - slide, cx))
+                    Some(over_panes(growing_strip(bar, 1.0 - slide, cx), 1.0 - slide))
                 } else {
                     self.render_control_strip(window, cx)
+                        .map(|strip| over_panes(strip, 1.0))
                 },
             ),
             (WorkspaceRoute::App, ChromeMode::Titlebar) => (
@@ -386,9 +391,9 @@ impl Render for AppShell {
                 },
                 Some(if strip_grows {
                     let bar = self.render_status_bar(window, cx);
-                    growing_strip(bar, slide, cx)
+                    over_panes(growing_strip(bar, slide, cx), slide)
                 } else {
-                    self.render_status_bar(window, cx)
+                    over_panes(self.render_status_bar(window, cx), 1.0)
                 }),
             ),
         };

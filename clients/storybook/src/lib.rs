@@ -106,15 +106,16 @@ pub fn interface_themes_json() -> String {
             .map(|(id, theme)| {
                 let mut values = knobs::theme_knobs(theme);
                 values.insert("name".to_owned(), json!(theme.name));
-                values.insert(
-                    "glass".to_owned(),
-                    json!(theme.materials.glass.map(|material| {
+                let glass = |material: Option<zz_gpui::GlassMaterial>| {
+                    json!(material.map(|material| {
                         knobs::GLASS_KNOBS
                             .iter()
                             .map(|(name, get, _)| ((*name).to_owned(), json!(get(&material))))
                             .collect::<serde_json::Map<_, _>>()
-                    })),
-                );
+                    }))
+                };
+                values.insert("glass".to_owned(), glass(theme.materials.glass));
+                values.insert("light-glass".to_owned(), glass(theme.materials.light_glass));
                 ((*id).to_owned(), serde_json::Value::Object(values))
             })
             .collect::<serde_json::Map<_, _>>()

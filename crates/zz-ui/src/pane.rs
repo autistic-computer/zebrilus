@@ -275,7 +275,7 @@ pub fn pane_lens_button(
     } else {
         "Show agent view"
     };
-    pane_header_icon_button("pane-lens", agent_provider_icon(lens.provider), true, cx)
+    pane_header_icon_button("pane-lens", IconName::Eye, true, cx)
         .surface_role(roles::PANE_LENS)
         .debug_selector(|| "pane-lens".into())
         .selected(lens.open)

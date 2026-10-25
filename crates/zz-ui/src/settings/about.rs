@@ -2,9 +2,7 @@ use zz_gpui::{
     App, ElementId, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
 };
 
-use super::{
-    SettingEntry, SettingsSection, SettingsStack, settings_card_ground, settings_provenance_badge,
-};
+use super::{SettingEntry, SettingsStack, settings_card_ground, settings_provenance_badge};
 use crate::{
     ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _,
     button::{Button, ButtonVariants as _},
@@ -42,7 +40,7 @@ pub fn about_hero(logo: impl IntoElement, cx: &App) -> zz_gpui::Div {
                     div()
                         .text_size(crate::rems_from_px(12.0))
                         .text_color(cx.theme().foreground.muted())
-                        .child(SettingsSection::About.description()),
+                        .child("tmux, ghostty and zz_gpui walked into a mux."),
                 )
                 .child(settings_provenance_badge(concat!(
                     "v",
@@ -97,65 +95,36 @@ pub fn about_build_stack(
     cx: &App,
 ) -> SettingsStack {
     SettingsStack::titled("Build")
-        .description("What to quote in a bug report.")
         .child(
-            SettingEntry::new("Version", "The zz bundle version.")
+            SettingEntry::new("Version")
                 .title_actions(copy)
                 .control(about_value(VERSION, cx)),
         )
-        .child(
-            SettingEntry::new(
-                "Platform",
-                "The operating system and processor architecture this build targets.",
-            )
-            .control(about_value(platform, cx)),
-        )
+        .child(SettingEntry::new("Platform").control(about_value(platform, cx)))
 }
 
 #[must_use]
 pub fn about_project_stack(cx: &App) -> SettingsStack {
     SettingsStack::titled("Project")
+        .child(SettingEntry::new("Source code").control(about_link_button(
+            "settings-about-repository",
+            "GitHub",
+            REPOSITORY_URL,
+            cx,
+        )))
+        .child(SettingEntry::new("Releases").control(about_link_button(
+            "settings-about-releases",
+            "Releases",
+            RELEASES_URL,
+            cx,
+        )))
         .child(
-            SettingEntry::new(
-                "Source code",
-                "zz is open source. Read it, build it, or send a patch.",
-            )
-            .control(about_link_button(
-                "settings-about-repository",
-                "GitHub",
-                REPOSITORY_URL,
-                cx,
-            )),
-        )
-        .child(
-            SettingEntry::new(
-                "Releases",
-                "Every tagged build, with notes on what changed.",
-            )
-            .control(about_link_button(
-                "settings-about-releases",
-                "Releases",
-                RELEASES_URL,
-                cx,
-            )),
-        )
-        .child(
-            SettingEntry::new(
-                "Report an issue",
-                "Something broken or missing? Bring the build details above.",
-            )
-            .control(about_link_button(
+            SettingEntry::new("Report an issue").control(about_link_button(
                 "settings-about-issues",
                 "New issue",
                 ISSUES_URL,
                 cx,
             )),
         )
-        .child(
-            SettingEntry::new(
-                "License",
-                "Dual-licensed, at your option. Contributions land under both.",
-            )
-            .control(about_value("MIT or Apache-2.0", cx)),
-        )
+        .child(SettingEntry::new("License").control(about_value("MIT or Apache-2.0", cx)))
 }

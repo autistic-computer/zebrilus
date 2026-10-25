@@ -18,7 +18,6 @@ use zz_gpui::{
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Sizable as _,
     ThemeMode, WindowExt as _,
-    badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
     h_flex,
@@ -58,8 +57,8 @@ use zz_ui::settings::appearance::{
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
     StackPosition, settings_card_ground, settings_list_disclosure_header,
-    settings_list_group_header, settings_page_content, settings_page_description, settings_preview,
-    settings_provenance_badge, settings_reset_button, settings_scroll_column,
+    settings_list_group_header, settings_page_content, settings_page_title, settings_preview,
+    settings_scroll_column,
 };
 
 zz_gpui::actions!(zz, [OpenSettings]);
@@ -709,24 +708,19 @@ impl SettingsView {
     fn boolean_setting(
         key: ConfigKey,
         title: &'static str,
-        description: &'static str,
         setting: ConfigValue<bool>,
-        cx: &Context<Self>,
     ) -> SettingEntry {
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, setting.provenance, cx))
-            .control(boolean_control(
-                key.as_str(),
-                setting.value,
-                move |enabled, _, cx| {
-                    if let Err(error) = set_config_key(key, if *enabled { "true" } else { "false" })
-                    {
-                        report_write_error("set", key.as_str(), &error, cx);
-                    } else {
-                        refresh_settings_preview(key, cx);
-                    }
-                },
-            ))
+        SettingEntry::new(title).control(boolean_control(
+            key.as_str(),
+            setting.value,
+            move |enabled, _, cx| {
+                if let Err(error) = set_config_key(key, if *enabled { "true" } else { "false" }) {
+                    report_write_error("set", key.as_str(), &error, cx);
+                } else {
+                    refresh_settings_preview(key, cx);
+                }
+            },
+        ))
     }
 
     fn remote_debugging_setting(
@@ -734,61 +728,43 @@ impl SettingsView {
         cx: &Context<Self>,
     ) -> SettingEntry {
         let key = ConfigKey::BrowserRemoteDebuggingPort;
-        SettingEntry::new(
-            "Remote debugging for agents",
-            "Serve the Chrome DevTools Protocol on 127.0.0.1:9222 so browser agents such as \
-             agent-browser or Playwright can read and drive browser panes. Takes effect when \
-             the browser runtime next starts; relaunch zz if a browser pane is already open. \
-             Set browser-remote-debugging-port in the config file for another port.",
-        )
-        .title_actions(key_annotations(key, setting.provenance, cx))
-        .control(
-            Switch::new(format!("settings-{}", key.as_str()))
-                .checked(setting.value.is_some())
-                .on_click(move |enabled, _, cx| {
-                    let result = if *enabled {
-                        set_config_key(key, "9222")
-                    } else {
-                        remove_config_key(key)
-                    };
-                    if let Err(error) = result {
-                        report_write_error("set", key.as_str(), &error, cx);
-                    }
-                }),
-        )
-        .child(
-            div()
-                .flex_none()
-                .text_size(zz_ui::rems_from_px(11.0))
-                .text_color(cx.theme().warning)
-                .child("Any local process that reaches the port can drive the logged-in browser."),
-        )
+        SettingEntry::new("Remote debugging for agents")
+            .control(
+                Switch::new(format!("settings-{}", key.as_str()))
+                    .checked(setting.value.is_some())
+                    .on_click(move |enabled, _, cx| {
+                        let result = if *enabled {
+                            set_config_key(key, "9222")
+                        } else {
+                            remove_config_key(key)
+                        };
+                        if let Err(error) = result {
+                            report_write_error("set", key.as_str(), &error, cx);
+                        }
+                    }),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_size(zz_ui::rems_from_px(11.0))
+                    .text_color(cx.theme().warning)
+                    .child(
+                        "Any local process that reaches the port can drive the logged-in browser.",
+                    ),
+            )
     }
 
-    fn slider_setting(
-        item: AppearancePageItem,
-        key: ConfigKey,
-        provenance: ConfigProvenance,
-        slider: impl IntoElement,
-        cx: &Context<Self>,
-    ) -> SettingEntry {
-        let (title, description) = item.text().unwrap_or_default();
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, provenance, cx))
-            .control(slider)
+    fn slider_setting(item: AppearancePageItem, slider: impl IntoElement) -> SettingEntry {
+        let title = item.title().unwrap_or_default();
+        SettingEntry::new(title).control(slider)
     }
 
     fn numeric_setting(
-        key: ConfigKey,
         title: &'static str,
-        description: &'static str,
-        setting: ConfigValue<f32>,
         input: &Entity<InputState>,
         cx: &Context<Self>,
     ) -> SettingEntry {
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, setting.provenance, cx))
-            .control(numeric_control(input, cx))
+        SettingEntry::new(title).control(numeric_control(input, cx))
     }
 }
 
@@ -820,18 +796,16 @@ impl SettingsView {
         cx: &Context<Self>,
     ) -> AnyElement {
         match item {
-            AppearancePageItem::Description => {
-                return settings_page_description(SettingsSection::Appearance, cx)
-                    .into_any_element();
+            AppearancePageItem::Title => {
+                return settings_page_title(SettingsSection::Appearance, cx).into_any_element();
             }
-            AppearancePageItem::Group { title, description } => {
-                return settings_list_group_header(title, description, cx).into_any_element();
+            AppearancePageItem::Group { title } => {
+                return settings_list_group_header(title).into_any_element();
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
                     zz_ui::settings::appearance::ADVANCED_DISCLOSURE,
                     "Advanced",
-                    Some("Corner radius, contrast, fonts, zoom and the window."),
                     expanded,
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -844,20 +818,18 @@ impl SettingsView {
         }
 
         let entry = match item {
-            AppearancePageItem::Description
+            AppearancePageItem::Title
             | AppearancePageItem::Group { .. }
             | AppearancePageItem::Advanced { .. } => {
                 unreachable!("returned above")
             }
             AppearancePageItem::ThemeMode => Self::theme_mode_setting(resolved, cx),
-            AppearancePageItem::Accent => self.accent_setting(resolved, cx),
+            AppearancePageItem::Accent => self.accent_setting(cx),
             AppearancePageItem::TintHue => Self::tint_hue_setting(resolved, cx),
             AppearancePageItem::Tint => Self::tint_setting(resolved, cx),
-            AppearancePageItem::Themes => Self::themes_setting(resolved, cx),
+            AppearancePageItem::Themes => Self::themes_setting(cx),
             AppearancePageItem::CornerRadius => Self::slider_setting(
                 item,
-                ConfigKey::WidgetCornerRadius,
-                resolved.widget_corner_radius.provenance,
                 corner_radius_slider(
                     resolved.widget_corner_radius.value,
                     |radius, _, cx| {
@@ -866,15 +838,12 @@ impl SettingsView {
                     },
                     cx,
                 ),
-                cx,
             ),
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
             AppearancePageItem::UiZoom => self.ui_zoom_setting(cx),
             AppearancePageItem::AppIcon => Self::app_icon_setting(resolved, cx),
             AppearancePageItem::ChromeContrast => Self::slider_setting(
                 item,
-                ConfigKey::ChromeContrast,
-                resolved.chrome_contrast.provenance,
                 contrast_slider(
                     resolved.chrome_contrast.value,
                     |contrast, _, cx| {
@@ -883,29 +852,16 @@ impl SettingsView {
                     },
                     cx,
                 ),
-                cx,
             ),
             AppearancePageItem::ProgramColors => {
-                let (title, description) = item.text().unwrap_or_default();
-                Self::boolean_setting(
-                    ConfigKey::ProgramColors,
-                    title,
-                    description,
-                    resolved.program_colors,
-                    cx,
-                )
+                let title = item.title().unwrap_or_default();
+                Self::boolean_setting(ConfigKey::ProgramColors, title, resolved.program_colors)
             }
-            AppearancePageItem::Animations => Self::boolean_setting(
-                ConfigKey::Animations,
-                "Animations",
-                "Animate interface transitions, loading indicators, and image frames.",
-                resolved.animations,
-                cx,
-            ),
+            AppearancePageItem::Animations => {
+                Self::boolean_setting(ConfigKey::Animations, "Animations", resolved.animations)
+            }
             AppearancePageItem::AnimationSpeed => Self::slider_setting(
                 item,
-                ConfigKey::AnimationSpeed,
-                resolved.animation_speed.provenance,
                 animation_speed_slider(
                     resolved.animation_speed.value,
                     |speed, _, cx| {
@@ -914,19 +870,14 @@ impl SettingsView {
                     },
                     cx,
                 ),
-                cx,
             ),
             AppearancePageItem::WindowBackgroundBlur => Self::boolean_setting(
                 ConfigKey::WindowBackgroundBlur,
                 "Window blur",
-                "Blur the desktop through the window chrome, if the compositor supports it.",
                 resolved.window_background_blur,
-                cx,
             ),
             AppearancePageItem::WindowBackgroundOpacity => Self::slider_setting(
                 item,
-                ConfigKey::WindowBackgroundOpacity,
-                resolved.window_background_opacity.provenance,
                 window_opacity_slider(
                     resolved.window_background_opacity.value,
                     |opacity, _, cx| {
@@ -935,27 +886,17 @@ impl SettingsView {
                     },
                     cx,
                 ),
-                cx,
             )
             .disabled(!resolved.window_background_blur.value),
             #[cfg(target_os = "linux")]
-            AppearancePageItem::WindowCornerRadius => Self::numeric_setting(
-                ConfigKey::WindowCornerRadius,
-                "Window corner radius",
-                "Rounds the frame zz draws with client-side decorations.\
-                 Match your compositor's rounding, or 0 for square. No effect while the \
-                 system titlebar is on.",
-                resolved.window_corner_radius,
-                &self.window_corner_radius,
-                cx,
-            ),
+            AppearancePageItem::WindowCornerRadius => {
+                Self::numeric_setting("Window corner radius", &self.window_corner_radius, cx)
+            }
             #[cfg(target_os = "linux")]
             AppearancePageItem::UseSystemTitlebar => Self::boolean_setting(
                 ConfigKey::UseSystemTitlebar,
                 "System titlebar",
-                "Ask the desktop to draw the window titlebar and borders when supported.",
                 resolved.use_system_titlebar,
-                cx,
             ),
         };
 
@@ -963,25 +904,7 @@ impl SettingsView {
     }
 
     fn ui_zoom_setting(&self, cx: &Context<Self>) -> SettingEntry {
-        let is_default = crate::ui_scale::is_default(cx);
-        SettingEntry::new(
-            "UI zoom",
-            "Scales application text, icons, and controls, as a percentage of the default.",
-        )
-        .title_actions(
-            settings_reset_button(
-                "settings-ui-zoom-reset",
-                if is_default {
-                    "Already at 100%"
-                } else {
-                    "Reset UI zoom to 100%"
-                },
-                !is_default,
-            )
-            .on(settings_card_ground(cx))
-            .on_click(|_, _, cx| crate::ui_scale::reset(cx)),
-        )
-        .control(
+        SettingEntry::new("UI zoom").control(
             div()
                 .w(px(CONTROL_WIDTH))
                 .flex_none()
@@ -991,32 +914,26 @@ impl SettingsView {
 
     fn theme_mode_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
         let setting = resolved.theme_mode;
-        SettingEntry::new("Mode", "Follow the system light/dark setting, or pin one.")
-            .title_actions(key_annotations(
-                ConfigKey::ThemeMode,
-                setting.provenance,
-                cx,
-            ))
-            .control(div().flex().flex_none().gap(px(10.0)).children(
-                ThemeModeSetting::ALL.into_iter().map(|mode| {
-                    picker_tile(
-                        format!("settings-theme-mode-{}", mode.as_str()).into(),
-                        mode.title(),
-                        theme_preview(mode, &config::shown_theme(cx), cx),
-                        mode == setting.value,
-                        cx,
-                    )
-                    .on_click(move |_, _, cx| {
-                        if let Err(error) = set_config_key(ConfigKey::ThemeMode, mode.as_str()) {
-                            report_write_error("set", ConfigKey::ThemeMode.as_str(), &error, cx);
-                        }
-                    })
-                }),
-            ))
+        SettingEntry::new("Mode").control(div().flex().flex_none().gap(px(10.0)).children(
+            ThemeModeSetting::ALL.into_iter().map(|mode| {
+                picker_tile(
+                    format!("settings-theme-mode-{}", mode.as_str()).into(),
+                    mode.title(),
+                    theme_preview(mode, &config::shown_theme(cx), cx),
+                    mode == setting.value,
+                    cx,
+                )
+                .on_click(move |_, _, cx| {
+                    if let Err(error) = set_config_key(ConfigKey::ThemeMode, mode.as_str()) {
+                        report_write_error("set", ConfigKey::ThemeMode.as_str(), &error, cx);
+                    }
+                })
+            }),
+        ))
     }
 
-    fn accent_setting(&self, resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let (title, description) = AppearancePageItem::Accent.text().unwrap_or_default();
+    fn accent_setting(&self, cx: &Context<Self>) -> SettingEntry {
+        let title = AppearancePageItem::Accent.title().unwrap_or_default();
         let mode = cx.theme().mode;
         let custom = ColorPicker::new(&self.accent_picker, zz_gpui::transparent_black())
             .label("Accent")
@@ -1037,53 +954,35 @@ impl SettingsView {
                 cx,
             )
         });
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(
-                ConfigKey::ChromeAccent,
-                resolved.chrome_accent.provenance,
-                cx,
-            ))
-            .control(swatches)
+        SettingEntry::new(title).control(swatches)
     }
 
     fn tint_hue_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let (title, description) = AppearancePageItem::TintHue.text().unwrap_or_default();
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(
-                ConfigKey::ChromeTintHue,
-                resolved.chrome_tint_hue.provenance,
-                cx,
-            ))
-            .control(tint_hue_slider(
-                resolved.chrome_tint_hue.value,
-                |hue, _, cx| {
-                    let key = ConfigKey::ChromeTintHue;
-                    written(key, set_config_key(key, &format!("{hue:.0}")), cx);
-                },
-                cx,
-            ))
+        let title = AppearancePageItem::TintHue.title().unwrap_or_default();
+        SettingEntry::new(title).control(tint_hue_slider(
+            resolved.chrome_tint_hue.value,
+            |hue, _, cx| {
+                let key = ConfigKey::ChromeTintHue;
+                written(key, set_config_key(key, &format!("{hue:.0}")), cx);
+            },
+            cx,
+        ))
     }
 
     fn tint_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let (title, description) = AppearancePageItem::Tint.text().unwrap_or_default();
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(
-                ConfigKey::ChromeTint,
-                resolved.chrome_tint.provenance,
-                cx,
-            ))
-            .control(tint_slider(
-                resolved.chrome_tint.value,
-                |tint, _, cx| {
-                    let key = ConfigKey::ChromeTint;
-                    written(key, set_config_key(key, &format!("{tint:.2}")), cx);
-                },
-                cx,
-            ))
+        let title = AppearancePageItem::Tint.title().unwrap_or_default();
+        SettingEntry::new(title).control(tint_slider(
+            resolved.chrome_tint.value,
+            |tint, _, cx| {
+                let key = ConfigKey::ChromeTint;
+                written(key, set_config_key(key, &format!("{tint:.2}")), cx);
+            },
+            cx,
+        ))
     }
 
-    fn themes_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let (title, description) = AppearancePageItem::Themes.text().unwrap_or_default();
+    fn themes_setting(cx: &Context<Self>) -> SettingEntry {
+        let title = AppearancePageItem::Themes.title().unwrap_or_default();
         let mode = cx.theme().mode;
         let strip = with_theme_picks(cx, |picks| {
             let ids = picks
@@ -1105,46 +1004,44 @@ impl SettingsView {
                 cx,
             )
         });
-        SettingEntry::new(title, description)
+        SettingEntry::new(title)
             .title_actions(
-                key_annotations(
-                    ConfigKey::InterfaceTheme,
-                    resolved.interface_theme.provenance,
-                    cx,
-                )
-                .child(
-                    Button::new("settings-themes-save")
-                        .ghost()
-                        .small()
-                        .label("Save")
-                        .tooltip("Save the look on screen as a theme and use it")
-                        .on(settings_card_ground(cx))
-                        .on_click(|_, _, cx| {
-                            let mut theme = config::shown_theme(cx);
-                            let font = config::ui_font_family(cx);
-                            if font.provenance == ConfigProvenance::Override {
-                                theme.materials.font = font.value.map(SharedString::from);
-                            }
-                            save_and_select_theme(
-                                theme,
-                                &[
-                                    ConfigKey::ChromeAccent,
-                                    ConfigKey::ChromeTint,
-                                    ConfigKey::ChromeTintHue,
-                                ],
-                                cx,
-                            );
-                        }),
-                )
-                .child(
-                    Button::new("settings-themes-import")
-                        .ghost()
-                        .small()
-                        .label("Import")
-                        .tooltip("Save the theme on the clipboard and use it")
-                        .on(settings_card_ground(cx))
-                        .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
-                ),
+                h_flex()
+                    .flex_none()
+                    .gap(px(8.0))
+                    .child(
+                        Button::new("settings-themes-save")
+                            .ghost()
+                            .small()
+                            .label("Save")
+                            .tooltip("Save the look on screen as a theme and use it")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| {
+                                let mut theme = config::shown_theme(cx);
+                                let font = config::ui_font_family(cx);
+                                if font.provenance == ConfigProvenance::Override {
+                                    theme.materials.font = font.value.map(SharedString::from);
+                                }
+                                save_and_select_theme(
+                                    theme,
+                                    &[
+                                        ConfigKey::ChromeAccent,
+                                        ConfigKey::ChromeTint,
+                                        ConfigKey::ChromeTintHue,
+                                    ],
+                                    cx,
+                                );
+                            }),
+                    )
+                    .child(
+                        Button::new("settings-themes-import")
+                            .ghost()
+                            .small()
+                            .label("Import")
+                            .tooltip("Save the theme on the clipboard and use it")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
+                    ),
             )
             .child(strip)
     }
@@ -1152,40 +1049,29 @@ impl SettingsView {
     fn app_icon_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
         let setting = resolved.app_icon;
         let appearance = cx.window_appearance();
-        SettingEntry::new("App Icon", "Dock and app switcher.")
-            .title_actions(key_annotations(ConfigKey::AppIcon, setting.provenance, cx))
-            .control(div().flex().flex_none().gap(px(10.0)).children(
-                AppIconSetting::ALL.into_iter().map(|choice| {
-                    picker_tile(
-                        format!("settings-app-icon-{}", choice.as_str()).into(),
-                        choice.title(),
-                        img(crate::app_icon::icon_preview(crate::app_icon::variant(
-                            choice, appearance,
-                        )))
-                        .size(px(APP_ICON_PREVIEW_SIZE)),
-                        choice == setting.value,
-                        cx,
-                    )
-                    .on_click(move |_, _, cx| {
-                        if let Err(error) = set_config_key(ConfigKey::AppIcon, choice.as_str()) {
-                            report_write_error("set", ConfigKey::AppIcon.as_str(), &error, cx);
-                        }
-                    })
-                }),
-            ))
+        SettingEntry::new("App Icon").control(div().flex().flex_none().gap(px(10.0)).children(
+            AppIconSetting::ALL.into_iter().map(|choice| {
+                picker_tile(
+                    format!("settings-app-icon-{}", choice.as_str()).into(),
+                    choice.title(),
+                    img(crate::app_icon::icon_preview(crate::app_icon::variant(
+                        choice, appearance,
+                    )))
+                    .size(px(APP_ICON_PREVIEW_SIZE)),
+                    choice == setting.value,
+                    cx,
+                )
+                .on_click(move |_, _, cx| {
+                    if let Err(error) = set_config_key(ConfigKey::AppIcon, choice.as_str()) {
+                        report_write_error("set", ConfigKey::AppIcon.as_str(), &error, cx);
+                    }
+                })
+            }),
+        ))
     }
 
     fn ui_font_setting(&self, cx: &Context<Self>) -> SettingEntry {
-        SettingEntry::new(
-            "UI font",
-            "Choose a font installed on this computer for the interface.",
-        )
-        .title_actions(key_annotations(
-            ConfigKey::UiFontFamily,
-            self.observed_ui_font.provenance,
-            cx,
-        ))
-        .control(
+        SettingEntry::new("UI font").control(
             div().flex_none().child(
                 Select::new(&self.ui_font_family)
                     .placeholder(
@@ -1209,23 +1095,17 @@ impl SettingsView {
                 .child(Self::boolean_setting(
                     ConfigKey::StatusBadges,
                     "Window badges",
-                    "Show bell and activity markers on window items.",
                     resolved.status_badges,
-                    cx,
                 ))
                 .child(Self::boolean_setting(
                     ConfigKey::StatusHost,
                     "Host",
-                    "Show the attached host when it is remote.",
                     resolved.status_host,
-                    cx,
                 ))
                 .child(Self::boolean_setting(
                     ConfigKey::StatusUpdate,
                     "Update",
-                    "Show an available version and install it from the bar.",
                     resolved.status_update,
-                    cx,
                 )),
             cx,
         )
@@ -1234,61 +1114,32 @@ impl SettingsView {
 
     fn browser_section(
         &self,
-        browser: BrowserConfig,
+        browser: &BrowserConfig,
         resolved: &AppConfig,
         cx: &Context<Self>,
     ) -> AnyElement {
-        let setting = browser.0.element_selector_hotkey;
-        let search = browser.0.search_provider;
         let remote_debugging_port = browser.0.remote_debugging_port;
         Self::scroll_column("settings-browser")
-            .child(settings_page_description(SettingsSection::Browser, cx))
+            .child(settings_page_title(SettingsSection::Browser, cx))
             .child(
                 SettingsStack::titled("Network").child(Self::boolean_setting(
                     ConfigKey::BrowserEgress,
                     "Route through the attached host",
-                    "Browser panes opened while attached to a remote host send their traffic \
-                     through it, so localhost and private names resolve there. Panes that are \
-                     already open keep the route they were created with.",
                     resolved.browser_egress,
-                    cx,
                 )),
             )
             .child(
                 SettingsStack::titled("Agents")
                     .child(Self::remote_debugging_setting(remote_debugging_port, cx)),
             )
-            .child(
-                SettingsStack::titled("Search").child(
-                    SettingEntry::new(
-                        "Search engine",
-                        "Default search engine used by free text queries in the URL bar.",
-                    )
-                    .title_actions(key_annotations(
-                        ConfigKey::BrowserSearchProvider,
-                        search.provenance,
-                        cx,
-                    ))
-                    .control(
-                        div().flex_none().child(
-                            Select::new(&self.browser_search_provider)
-                                .on(settings_card_ground(cx)),
-                        ),
-                    ),
-                ),
-            )
+            .child(SettingsStack::titled("Search").child(
+                SettingEntry::new("Search engine").control(div().flex_none().child(
+                    Select::new(&self.browser_search_provider).on(settings_card_ground(cx)),
+                )),
+            ))
             .child(
                 SettingsStack::titled("Shortcuts").child(
-                    SettingEntry::new(
-                        "Element selector",
-                        "Toggle DOM element selector (a.k.a design mode). Use GPUI key syntax such as cmd-shift-c or ctrl-shift-c.",
-                    )
-                    .title_actions(key_annotations(
-                        ConfigKey::BrowserElementSelectorHotkey,
-                        setting.provenance,
-                        cx,
-                    ))
-                    .control(
+                    SettingEntry::new("Element selector").control(
                         div().w(px(CONTROL_WIDTH)).flex_none().child(
                             Input::new(&self.browser_element_selector_hotkey)
                                 .on(settings_card_ground(cx)),
@@ -1312,10 +1163,7 @@ impl SettingsView {
             .collect::<BTreeMap<_, _>>();
         let mut machine_entries = Vec::with_capacity(hosts.len().max(1));
         if hosts.is_empty() {
-            machine_entries.push(SettingEntry::new(
-                "No hosts yet",
-                "Machines you add appear in the sidebar and start connecting immediately.",
-            ));
+            machine_entries.push(SettingEntry::new("No hosts yet"));
         } else {
             for host in hosts {
                 let name = host.name;
@@ -1335,7 +1183,7 @@ impl SettingsView {
                 };
                 let remove_name = name.clone();
                 let remove_mux = self.mux.clone();
-                let entry = SettingEntry::new(name.clone(), host.endpoint.to_string())
+                let entry = SettingEntry::new(name.clone())
                     .title_icon(Icon::new(glyph).text_color(color))
                     .control(
                         Button::new(format!("settings-remove-host-{name}"))
@@ -1380,11 +1228,7 @@ impl SettingsView {
             .as_ref()
             .expect("Hosts state is initialized before rendering");
         let input = state.input.clone();
-        let mut destination = SettingEntry::new(
-            "Destination",
-            "user@host[:port] Authentication is handled by your own ssh machinery.",
-        )
-        .control(
+        let mut destination = SettingEntry::new("Destination").control(
             h_flex()
                 .gap_2()
                 .child(
@@ -1414,7 +1258,7 @@ impl SettingsView {
         }
 
         Self::scroll_column("settings-hosts")
-            .child(settings_page_description(SettingsSection::Hosts, cx))
+            .child(settings_page_title(SettingsSection::Hosts, cx))
             .child(SettingsStack::titled("Machines").children(machine_entries))
             .child(SettingsStack::titled("Add host").child(destination))
             .into_any_element()
@@ -1425,26 +1269,19 @@ impl SettingsView {
             .child(Self::boolean_setting(
                 ConfigKey::DriverAgent,
                 "Driver Agent",
-                "Keep a driver running in a session named driver on this machine. Type > in an \
-                 empty command palette to chat with it; the sidebar shows its last message.",
                 resolved.driver_agent,
-                cx,
             ))
             .child(Self::palette_choice_setting(
                 ConfigKey::DriverModel,
                 "Model",
-                "The CLI and model the driver runs. A change applies when the driver next starts.",
                 resolved.driver_model.value.as_str(),
-                resolved.driver_model.provenance,
                 &DRIVER_MODELS,
                 cx,
             ))
             .child(Self::palette_choice_setting(
                 ConfigKey::DriverEffort,
                 "Effort",
-                "How hard the driver thinks. Codex takes Max as Extra high.",
                 resolved.driver_effort.value.as_str(),
-                resolved.driver_effort.provenance,
                 &DRIVER_EFFORTS,
                 cx,
             ))
@@ -1494,7 +1331,7 @@ impl SettingsView {
             )
         });
         Self::scroll_column("settings-agents")
-            .child(settings_page_description(SettingsSection::Agents, cx))
+            .child(settings_page_title(SettingsSection::Agents, cx))
             .child(Self::driver_stack(resolved, cx))
             .children(stacks)
             .child(
@@ -1513,54 +1350,39 @@ impl SettingsView {
 
     fn advanced_section(resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
         Self::scroll_column("settings-advanced")
-            .child(settings_page_description(SettingsSection::Advanced, cx))
+            .child(settings_page_title(SettingsSection::Advanced, cx))
             .child(
                 SettingsStack::titled("Command palette")
                     .child(Self::palette_choice_setting(
                         ConfigKey::PaletteWindowLayout,
                         "Navigation layout",
-                        "Show sessions, windows, and panes as a tree or a flat list.",
                         resolved.palette_window_layout.value.as_str(),
-                        resolved.palette_window_layout.provenance,
                         &[("grouped", "Tree"), ("flat", "Flat")],
                         cx,
                     ))
                     .child(Self::palette_choice_setting(
                         ConfigKey::PaletteHostPrefix,
                         "Host prefix",
-                        "Type this character in an empty palette to browse hosts.",
                         resolved.palette_host_prefix.value.as_str(),
-                        resolved.palette_host_prefix.provenance,
                         &[("~", "~"), ("#", "#")],
                         cx,
                     ))
                     .child(Self::boolean_setting(
                         ConfigKey::PaletteShowKeys,
                         "Command shortcuts",
-                        "Show keyboard shortcuts beside commands.",
                         resolved.palette_show_keys,
-                        cx,
                     )),
             )
             .when(crate::profile::profile(cx).has_tray, |column| {
                 column.child(SettingsStack::titled("Tray").child(Self::boolean_setting(
                     ConfigKey::Tray,
                     "Tray icon",
-                    "Show an icon in the menu bar. \
-                     Closing the window or quitting while sessions run hides zz there instead of exiting. \
-                     Quit and Stop Sessions in the tray menu stops the daemon.",
                     resolved.tray,
-                    cx,
                 )))
             })
             .child(
                 SettingsStack::titled("Coding agents").child(
-                    SettingEntry::new(
-                        "Claude Code and Codex",
-                        "Add a startup hook and a short skill to their settings in your home \
-                         folder, so the ones you start in a terminal pane know they run in zz.",
-                    )
-                    .control(
+                    SettingEntry::new("Claude Code and Codex").control(
                         Button::new("settings-agent-setup")
                             .label("Set up")
                             .on(settings_card_ground(cx))
@@ -1574,40 +1396,29 @@ impl SettingsView {
                 SettingsStack::titled("Notifications").child(Self::boolean_setting(
                     ConfigKey::Notifications,
                     "Notify when a pane needs you",
-                    "While zz is in the background, post a notification when a pane asks for \
-                     input, fails or finishes. Clicking it opens the pane.",
                     resolved.notifications,
-                    cx,
                 )),
             )
             .when(crate::profile::profile(cx).has_daemon_lifecycle, |column| {
                 column.child(SettingsStack::titled("Daemon").child(Self::boolean_setting(
                     ConfigKey::QuitDaemonOnExit,
                     "Quit daemon on exit",
-                    "Stop the zz daemon when the app quits, even if sessions are still open.",
                     resolved.quit_daemon_on_exit,
-                    cx,
                 )))
             })
             .when(
                 cfg!(any(feature = "agent-pane", feature = "editor-pane")),
                 |column| {
-                    column.child(
-                        SettingsStack::titled("Experimental")
-                            .when(cfg!(feature = "editor-pane"), |group| {
-                                group.child(Self::boolean_setting(
-                                    ConfigKey::ExperimentalEditorPane,
-                                    "Editor pane",
-                                    "Offer the Editor pane in the pane picker. Not ready \
-                                     for prime time; expect rough edges. Turning this off \
-                                     blocks new editor panes everywhere (picker, command \
-                                     palette, CLI); editor panes that are already open keep \
-                                     working.",
-                                    resolved.experimental_editor_pane,
-                                    cx,
-                                ))
-                            }),
-                    )
+                    column.child(SettingsStack::titled("Experimental").when(
+                        cfg!(feature = "editor-pane"),
+                        |group| {
+                            group.child(Self::boolean_setting(
+                                ConfigKey::ExperimentalEditorPane,
+                                "Editor pane",
+                                resolved.experimental_editor_pane,
+                            ))
+                        },
+                    ))
                 },
             )
             .into_any_element()
@@ -1616,9 +1427,7 @@ impl SettingsView {
     fn palette_choice_setting(
         key: ConfigKey,
         title: &'static str,
-        description: &'static str,
         value: &'static str,
-        provenance: ConfigProvenance,
         choices: &'static [(&'static str, &'static str)],
         cx: &Context<Self>,
     ) -> SettingEntry {
@@ -1626,27 +1435,25 @@ impl SettingsView {
             .iter()
             .find(|(choice, _)| *choice == value)
             .map_or(value, |(_, label)| *label);
-        SettingEntry::new(title, description)
-            .title_actions(key_annotations(key, provenance, cx))
-            .control(
-                Button::new(format!("settings-{}", key.as_str()))
-                    .label(label)
-                    .dropdown_caret(true)
-                    .on(settings_card_ground(cx))
-                    .dropdown_menu_with_anchor(zz_gpui::Anchor::TopRight, move |menu, _, _| {
-                        choices.iter().fold(menu, |menu, &(choice, label)| {
-                            menu.item(PopupMenuItem::new(label).checked(choice == value).on_click(
-                                move |_, _, cx| {
-                                    if let Err(error) = set_config_key(key, choice) {
-                                        report_write_error("set", key.as_str(), &error, cx);
-                                    } else {
-                                        refresh_settings_preview(key, cx);
-                                    }
-                                },
-                            ))
-                        })
-                    }),
-            )
+        SettingEntry::new(title).control(
+            Button::new(format!("settings-{}", key.as_str()))
+                .label(label)
+                .dropdown_caret(true)
+                .on(settings_card_ground(cx))
+                .dropdown_menu_with_anchor(zz_gpui::Anchor::TopRight, move |menu, _, _| {
+                    choices.iter().fold(menu, |menu, &(choice, label)| {
+                        menu.item(PopupMenuItem::new(label).checked(choice == value).on_click(
+                            move |_, _, cx| {
+                                if let Err(error) = set_config_key(key, choice) {
+                                    report_write_error("set", key.as_str(), &error, cx);
+                                } else {
+                                    refresh_settings_preview(key, cx);
+                                }
+                            },
+                        ))
+                    })
+                }),
+        )
     }
 
     fn updates_stack(cx: &Context<Self>) -> SettingsStack {
@@ -1662,16 +1469,11 @@ impl SettingsView {
             .disabled(checking)
             .on_click(|_, _, cx| update::check_now(cx))
             .into_any_element();
-        let (description, control): (SharedString, AnyElement) = match (status.as_ref(), check) {
-            (Some(status), Some(CheckState::Available(release))) => {
+        let (title, control): (SharedString, AnyElement) = match (status.as_ref(), check) {
+            (Some(_), Some(CheckState::Available(release))) => {
                 let notes_url = release.url.clone();
                 (
-                    format!(
-                        "zz {} is out; you are running {}. Update opens a terminal window that \
-                         runs the installer.",
-                        release.version, status.current
-                    )
-                    .into(),
+                    format!("zz {} is out", release.version).into(),
                     h_flex()
                         .gap_2()
                         .child(
@@ -1693,35 +1495,25 @@ impl SettingsView {
             }
             (Some(status), Some(CheckState::UpToDate)) => (
                 format!(
-                    "zz {} is the newest {} release.",
+                    "zz {} is the newest {} release",
                     status.current,
                     status.channel.label()
                 )
                 .into(),
                 check_button,
             ),
-            (_, Some(CheckState::Failed(error))) => (
-                format!("The last check failed: {error}").into(),
-                check_button,
-            ),
-            (_, Some(CheckState::Checking)) => {
-                ("Asking GitHub for the newest release.".into(), check_button)
+            (_, Some(CheckState::Failed(error))) => {
+                (format!("Update check failed: {error}").into(), check_button)
             }
-            _ => (
-                "Releases are looked up shortly after launch and once a day after that.".into(),
-                check_button,
-            ),
+            _ => ("Latest release".into(), check_button),
         };
         SettingsStack::titled("Updates")
             .child(Self::boolean_setting(
                 ConfigKey::CheckForUpdates,
                 "Check for updates",
-                "Look up the newest release on GitHub once a day and offer it here. One \
-                 anonymous request; nothing about you or your sessions leaves the machine.",
                 resolved.check_for_updates,
-                cx,
             ))
-            .child(SettingEntry::new("Latest release", description).control(control))
+            .child(SettingEntry::new(title).control(control))
     }
 
     fn about_section(cx: &Context<Self>) -> AnyElement {
@@ -1766,9 +1558,9 @@ impl SettingsView {
             .child(
                 settings_page_content()
                     .gap(px(10.0))
-                    .child(settings_page_description(kind.section(), cx))
+                    .child(settings_page_title(kind.section(), cx))
                     .when(kind == ConfigFileKind::Terminal, |page| {
-                        page.child(settings_list_group_header("Preview", None, cx))
+                        page.child(settings_list_group_header("Preview"))
                             .children(self.terminal_preview.clone())
                     })
                     .when(kind == ConfigFileKind::Mux, |page| {
@@ -1777,16 +1569,10 @@ impl SettingsView {
                                 .child(Self::boolean_setting(
                                     ConfigKey::PickerFocusSidebar,
                                     "Focus sidebar for session and window pickers",
-                                    "Prefix + s and Prefix + w focus the sidebar instead of opening the picker.",
                                     config::resolved_config(cx).picker_focus_sidebar,
-                                    cx,
                                 ))
                                 .child(Self::numeric_setting(
-                                    ConfigKey::WhichKeyDelay,
                                     "Which-key delay",
-                                    "Milliseconds to wait after the prefix or a key table before \
-                                     showing its keys (0–2000). Set to 0 to turn it off.",
-                                    config::resolved_config(cx).which_key_delay,
                                     &self.which_key_delay,
                                     cx,
                                 )),
@@ -1869,99 +1655,58 @@ impl SettingsView {
                 margin: resolved.pane_margin.value,
                 inactive_opacity: resolved.pane_inactive_opacity.value,
             },
-[Self::boolean_setting(
+            [Self::boolean_setting(
                 ConfigKey::PaneGaps,
                 "Pane gaps",
-                "Separate panes with card-like spacing and chrome.",
                 resolved.pane_gaps,
-                cx,
             )],
-[Self::numeric_setting(
-                ConfigKey::PipBackgroundOpacity,
+            [Self::numeric_setting(
                 "Background opacity",
-                "How much of its own color a PiP lays over the panes under it (0–100%). Below 100% they show through, blurred.",
-                resolved.pip_background_opacity,
                 &self.pip_background_opacity,
                 cx,
             )],
-[Self::numeric_setting(
-                ConfigKey::PaneInactiveOpacity,
-                "Inactive pane opacity",
-                "Visible strength of inactive pane content and chrome (0–1). Set to 1 to disable dimming.",
-                resolved.pane_inactive_opacity,
-                &self.pane_inactive_opacity,
-                cx,
-            ),
-Self::numeric_setting(
-                ConfigKey::PaneGlowStrength,
-                "Selected pane contrast",
-                "How far the selected pane stands apart (0–200%): it lightens while the others \
-                 darken and their edges dim. Set to 0 to draw it like the others. Applies only \
-                 while pane gaps are enabled.",
-                resolved.pane_glow_strength,
-                &self.pane_glow_strength,
-                cx,
-            )
-            .disabled(!gaps)],
-[Self::numeric_setting(
-                            ConfigKey::PaneMargin,
-                            "Pane margin",
-                            "Space around each pane on all platforms, in logical pixels (0–32).",
-                            resolved.pane_margin,
-                            &self.pane_margin,
-                            cx,
-                        ).disabled(!gaps)], cx).into_any_element()
+            [
+                Self::numeric_setting("Inactive pane opacity", &self.pane_inactive_opacity, cx),
+                Self::numeric_setting("Selected pane contrast", &self.pane_glow_strength, cx)
+                    .disabled(!gaps),
+            ],
+            [Self::numeric_setting("Pane margin", &self.pane_margin, cx).disabled(!gaps)],
+            cx,
+        )
+        .into_any_element()
     }
 
     fn editor_section(&self, resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
         Self::scroll_column("settings-editor")
-            .child(settings_page_description(SettingsSection::Editor, cx))
+            .child(settings_page_title(SettingsSection::Editor, cx))
             .child(
-                SettingsStack::titled("Typography")
-                    .description(
-                        "The editor inherits the terminal's mono font family; only the size is \
-                         its own.",
-                    )
-                    .child(Self::numeric_setting(
-                        ConfigKey::EditorFontSize,
-                        "Font size",
-                        "Editor pane type size in logical pixels (8–32).",
-                        resolved.editor_font_size,
-                        &self.editor_font_size,
-                        cx,
-                    )),
+                SettingsStack::titled("Typography").child(Self::numeric_setting(
+                    "Font size",
+                    &self.editor_font_size,
+                    cx,
+                )),
             )
             .child(
                 SettingsStack::titled("Display")
                     .child(Self::boolean_setting(
                         ConfigKey::EditorLineNumbers,
                         "Line numbers",
-                        "Show a line-number gutter beside the buffer.",
                         resolved.editor_line_numbers,
-                        cx,
                     ))
                     .child(Self::boolean_setting(
                         ConfigKey::EditorRelativeLineNumbers,
                         "Relative line numbers",
-                        "Number the gutter by distance from the cursor line, which keeps its own \
-                         absolute number.",
                         resolved.editor_relative_line_numbers,
-                        cx,
                     ))
                     .child(Self::boolean_setting(
                         ConfigKey::EditorSoftWrap,
                         "Soft wrap",
-                        "Wrap long lines at the pane edge instead of scrolling horizontally.",
                         resolved.editor_soft_wrap,
-                        cx,
                     ))
                     .child(Self::boolean_setting(
                         ConfigKey::EditorVimMode,
                         "Vim mode",
-                        "Modal editing in the editor pane: normal, insert and visual modes, with \
-                         vim's motions, operators and text objects.",
                         resolved.editor_vim_mode,
-                        cx,
                     )),
             )
             .into_any_element()
@@ -2121,7 +1866,7 @@ impl Render for SettingsView {
         let content = match self.section {
             SettingsSection::Appearance => self.appearance_section(&resolved, cx),
             SettingsSection::StatusBar => self.status_bar_section(&resolved, cx),
-            SettingsSection::Browser => self.browser_section(browser, &resolved, cx),
+            SettingsSection::Browser => self.browser_section(&browser, &resolved, cx),
             SettingsSection::Editor => self.editor_section(&resolved, cx),
             SettingsSection::Panes => self.panes_section(&resolved, cx),
             SettingsSection::Hosts => self.hosts_section(cx),
@@ -2715,43 +2460,6 @@ fn theme_preview(mode: ThemeModeSetting, theme: &InterfaceTheme, cx: &App) -> zz
 
 fn platform() -> String {
     format!("{} · {}", std::env::consts::OS, std::env::consts::ARCH)
-}
-
-fn provenance_badge(provenance: ConfigProvenance) -> Badge {
-    settings_provenance_badge(match provenance {
-        ConfigProvenance::Default => "Default",
-        ConfigProvenance::Override => "Overridden",
-    })
-}
-
-fn key_annotations(key: ConfigKey, provenance: ConfigProvenance, cx: &App) -> zz_gpui::Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(8.0))
-        .child(config_reset_button(key, provenance, cx))
-        .child(provenance_badge(provenance))
-}
-
-fn config_reset_button(key: ConfigKey, provenance: ConfigProvenance, cx: &App) -> Button {
-    let tooltip = match provenance {
-        ConfigProvenance::Default => "Already using the default value",
-        ConfigProvenance::Override => "Reset to the inherited or default value",
-    };
-    settings_reset_button(
-        format!("settings-{}-reset", key.as_str()),
-        tooltip,
-        provenance == ConfigProvenance::Override,
-    )
-    .on(settings_card_ground(cx))
-    .on_click(move |_, _, cx| {
-        if let Err(error) = remove_config_key(key) {
-            report_write_error("reset", key.as_str(), &error, cx);
-        } else {
-            refresh_settings_preview(key, cx);
-        }
-    })
 }
 
 fn import_color_scheme(cx: &App) -> TerminalColorScheme {

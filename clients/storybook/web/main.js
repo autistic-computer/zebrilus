@@ -17,9 +17,11 @@ const GLASS_KNOBS = [
     "glass-fresnel",
     "glass-edge",
     "glass-edge-width",
+    "glass-edge-spread",
     "glass-noise",
     "glass-inactive-flattening",
 ];
+const LIGHT_GLASS_KNOBS = GLASS_KNOBS.map((name) => `light-${name}`);
 const SHADOW_KNOBS = [
     "contact-y",
     "contact-blur",
@@ -79,6 +81,7 @@ const KNOBS = [
     ...COLOR_KNOBS,
     "glass",
     ...GLASS_KNOBS,
+    ...LIGHT_GLASS_KNOBS,
 ];
 const DEFAULTS = {
     theme: "system",
@@ -146,9 +149,21 @@ function glassMaterial(glass = knobValue("glass"), theme = knobValue("interface-
     return (glass === "theme" ? themes[theme]?.glass : glassPresets[glass]) ?? null;
 }
 
+function lightGlassMaterial(glass = knobValue("glass"), theme = knobValue("interface-theme")) {
+    return (glass === "theme" ? themes[theme]?.["light-glass"] : null) ?? null;
+}
+
+function editsLightGlass() {
+    return shownMode() === "light" && glassMaterial() !== null && lightGlassMaterial() !== null;
+}
+
 function knobDefault(name, glass = knobValue("glass"), theme = knobValue("interface-theme")) {
     if (MATERIAL_KNOBS.includes(name) || COLOR_KNOBS.includes(name)) {
         return String(themes[theme]?.[name] ?? "");
+    }
+    if (LIGHT_GLASS_KNOBS.includes(name)) {
+        const value = lightGlassMaterial(glass, theme)?.[name.slice("light-".length)];
+        return value === undefined ? undefined : String(value);
     }
     if (!GLASS_KNOBS.includes(name)) return DEFAULTS[name];
     const value = glassMaterial(glass, theme)?.[name];
@@ -160,6 +175,7 @@ function isDefault(name) {
     const fallback = knobDefault(name);
     if (COLOR_KNOBS.includes(name)) return value.toLowerCase() === fallback.toLowerCase();
     if (GLASS_KNOBS.includes(name) && glassMaterial() === null) return true;
+    if (LIGHT_GLASS_KNOBS.includes(name) && lightGlassMaterial() === null) return true;
     if (!isRange(name)) return value === fallback;
     const step = Number(field(name).step) || 0.01;
     return Math.abs(Number(value) - Number(fallback)) < step / 2;
@@ -245,7 +261,7 @@ function storedRoles(theme) {
 }
 
 function resetGlassSliders() {
-    for (const name of GLASS_KNOBS) {
+    for (const name of [...GLASS_KNOBS, ...LIGHT_GLASS_KNOBS]) {
         const value = knobDefault(name);
         if (value !== undefined) setKnobValue(name, value);
     }
@@ -400,7 +416,8 @@ function paintSliders() {
 }
 
 function applyKnobs() {
-    form.querySelector("#glass-knobs").hidden = glassMaterial() === null;
+    form.querySelector("#glass-knobs").hidden = glassMaterial() === null || editsLightGlass();
+    form.querySelector("#light-glass-knobs").hidden = !editsLightGlass();
     form.querySelector("#outline-note").hidden = glassMaterial() === null;
     form.querySelector("#smoothed-note").hidden = knobValue("smoothed") !== "picked";
     form.querySelector("#outlines-note").hidden = knobValue("outlines") !== "picked";
@@ -725,6 +742,12 @@ function renderThemes() {
             ),
         );
     }
+    const glass = document.getElementById("glass-knobs");
+    const light = glass.cloneNode(true);
+    light.id = "light-glass-knobs";
+    for (const node of light.querySelectorAll("[name]")) node.setAttribute("name", `light-${node.getAttribute("name")}`);
+    light.prepend(element("p", { class: "knob-note", text: "Light mode draws its own glass; these edit it." }));
+    glass.after(light);
     for (const mode of MODES) {
         const fieldset = document.getElementById(`colors-${mode}`);
         for (const [name, label] of COLORS) {

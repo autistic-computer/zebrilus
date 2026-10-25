@@ -353,7 +353,9 @@ most of the window, such as pane frames.
 
 `GlassMaterial::light_directionality` (2026-10-20, 0 by default) moves the glint onto the edge
 facing the light and the contour onto the far edge; at 0 both edges along the axis light alike, as
-before. `Glass::uniform` passes it to the shader in `mask.z`. `GlassMaterial::inactive_flattening`
+before. `Glass::uniform` passes it to the shader in `mask.z`. `GlassMaterial::edge_spread`
+(2026-10-25, 0 by default, `mask.w`) blends the contour's angular falloff toward 1, so at 1 the
+contour is as dark on every side; `check_glass_rendering` pins both ends. `GlassMaterial::inactive_flattening`
 (0 by default) is how much of the rim light, lensing and color boost `Window::paint_glass` drops
 while the window is inactive (`GlassMaterial::for_window`); the tint, blur and contour stay. The
 activation callback refreshes the window, so cached views paint the new material. Wasm windows

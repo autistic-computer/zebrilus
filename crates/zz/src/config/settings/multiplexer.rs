@@ -156,10 +156,7 @@ impl SettingsView {
             return div().into_any_element();
         };
         let disabled_reason = self.mux_split_disabled_reason(cx);
-        let mut stack =
-            SettingsStack::titled("Split panes").description(disabled_reason.unwrap_or(
-                "Choose what a split opens. Edit a shortcut and press Enter to apply it.",
-            ));
+        let mut stack = SettingsStack::titled("Split panes");
         for (index, row) in controls.rows.iter().enumerate() {
             let kind = row
                 .binding
@@ -179,16 +176,9 @@ impl SettingsView {
             } else {
                 "Split right"
             };
-            let description = if custom {
-                "This shortcut uses another command or direction. Edit it in the overrides below."
-            } else if index == 0 {
-                "Open a pane below the current pane."
-            } else {
-                "Open a pane to the right of the current pane."
-            };
             let settings = cx.entity().downgrade();
             stack = stack.child(
-                SettingEntry::new(title, description).control(
+                SettingEntry::new(title).control(
                     h_flex()
                         .gap(px(8.0))
                         .flex_none()
@@ -244,11 +234,7 @@ impl SettingsView {
             .is_some_and(|pending| pending.timed_out)
         {
             stack = stack.child(
-                SettingEntry::new(
-                    "Apply saved shortcuts",
-                    "The saved shortcut did not appear. Review the overrides below, edit a shortcut, or retry loading.",
-                )
-                .control(
+                SettingEntry::new("Apply saved shortcuts").control(
                     Button::new("settings-retry-split-reload")
                         .label("Reload")
                         .on(settings_card_ground(cx))

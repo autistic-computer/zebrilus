@@ -56,20 +56,19 @@ pub fn app_shell_surface(
                         .flex_1()
                         .min_w_0()
                         .min_h_0()
-                        .overflow_hidden()
                         .children(titlebar)
-                        .child(
-                            div()
-                                .flex()
-                                .flex_1()
-                                .min_w_0()
-                                .min_h_0()
-                                .overflow_hidden()
-                                .child(workspace),
-                        ),
+                        .child(div().flex().flex_1().min_w_0().min_h_0().child(workspace)),
                 ),
         )
         .children(overlays)
+}
+
+/// `titlebar` laid `gap` down over the workspace under it. The workspace
+/// keeps that gap above its panes as on every other side, so the panes still
+/// start where the titlebar ends but their rim and shadow are not cut off at
+/// the workspace's top edge.
+pub fn titlebar_over_panes(titlebar: impl IntoElement, gap: Pixels) -> zz_gpui::Div {
+    div().flex_none().w_full().mb(-gap).child(titlebar)
 }
 
 /// Titlebar-height strip above the content column, carrying the client-side
@@ -108,7 +107,6 @@ pub fn app_workspace_surface(
         .relative()
         .flex()
         .size_full()
-        .overflow_hidden()
         .text_color(cx.theme().foreground)
         .child(
             div()
@@ -116,8 +114,7 @@ pub fn app_workspace_surface(
                 .flex_col()
                 .flex_1()
                 .min_w_0()
-                .overflow_hidden()
-                .child(div().flex().flex_1().overflow_hidden().child(content)),
+                .child(div().flex().flex_1().child(content)),
         )
         .children(overlays)
 }

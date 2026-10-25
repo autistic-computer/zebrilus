@@ -151,7 +151,7 @@ pub const PANE_LENS: SurfaceRole = SurfaceRole::under(
     &PANE_HEADER_BUTTON,
     "pane.header.lens",
     "Lens toggles",
-    "The agent's mark in the header of a terminal running Claude Code or Codex, tinted while the lens is open",
+    "The eye in the header of a terminal running Claude Code or Codex, tinted while the lens is open",
 )
 .with(P.hover(Highlight::None).selected(Highlight::Tint));
 pub const PANE_TITLE: SurfaceRole = SurfaceRole::under(

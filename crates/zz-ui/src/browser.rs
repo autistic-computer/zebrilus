@@ -29,6 +29,8 @@ const BROWSER_TAB_MIN_WIDTH: f32 = 36.0;
 /// Below this width a tab drops its label and shows only its favicon.
 const BROWSER_TAB_LABEL_WIDTH: f32 = 84.0;
 const BROWSER_TAB_GAP: f32 = 4.0;
+/// Room around the tabs, inside the row's clip, for the active tab's rim.
+const BROWSER_TAB_RIM_ROOM: f32 = 2.0;
 const SITE_CONTROLS_INSET: Pixels = px(1.5);
 const ADDRESS_EDGE_WIDTH: Pixels = px(1.0);
 
@@ -415,9 +417,8 @@ impl RenderOnce for BrowserTabStrip {
         });
         let measure = canvas(
             move |bounds, window, cx| {
-                let changed = width.update(cx, |width, _| {
-                    width.replace(bounds.size.width) != Some(bounds.size.width)
-                });
+                let tabs = bounds.size.width - px(BROWSER_TAB_RIM_ROOM * 2.0);
+                let changed = width.update(cx, |width, _| width.replace(tabs) != Some(tabs));
                 if changed {
                     window.request_animation_frame();
                 }
@@ -461,6 +462,8 @@ impl RenderOnce for BrowserTabStrip {
                             .flex_initial()
                             .min_w_0()
                             .overflow_hidden()
+                            .p(px(BROWSER_TAB_RIM_ROOM))
+                            .m(px(-BROWSER_TAB_RIM_ROOM))
                             .items_center()
                             .gap(px(BROWSER_TAB_GAP))
                             .child(measure)

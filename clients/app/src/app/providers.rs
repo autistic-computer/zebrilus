@@ -3,7 +3,6 @@ use zz_ui::{
     button::Button,
     h_flex,
     settings::{
-        SettingsSection,
         providers::{ProvidersHost, providers_stack},
         settings_page_heading, settings_scroll_column,
     },
@@ -58,9 +57,7 @@ impl AppShell {
             })
             .collect::<Vec<_>>();
         settings_scroll_column("settings-providers")
-            .children(title.map(|title| {
-                settings_page_heading(title, SettingsSection::Agents.description(), cx)
-            }))
+            .children(title.map(|title| settings_page_heading(title, cx)))
             .children(stacks)
             .child(
                 h_flex().justify_end().child(

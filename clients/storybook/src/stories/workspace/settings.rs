@@ -17,7 +17,7 @@ use zz_ui::{
     },
     select::{Select, SelectState},
     settings::{
-        SettingEntry, SettingsNavigationGroup, SettingsSection, SettingsSelectItem, SettingsStack,
+        SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack,
         about::{
             ABOUT_LOGO_SIZE, about_build_stack, about_copy_button, about_hero, about_project_stack,
         },
@@ -31,8 +31,7 @@ use zz_ui::{
         panes_preview::PanesPreview,
         providers::{ProvidersHost, providers_stack},
         settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
-        settings_navigation_back_row, settings_navigation_button, settings_navigation_group_label,
-        settings_page_description, settings_provenance_badge, settings_reset_button,
+        settings_navigation_back_row, settings_navigation_button, settings_page_title,
         settings_scroll_column, settings_section_index,
         status_bar_preview::status_bar_page,
     },
@@ -52,13 +51,13 @@ pub const STORY: Story = Story {
         Section {
             id: "navigation",
             name: "Navigation",
-            summary: "On a wide window the sidebar swaps the workspace tree for the section list. On a narrow one the sections become a touch-size index.",
+            summary: "On a wide window the sidebar swaps the workspace tree for the section list, with no group labels. On a narrow one the sections become a touch-size index.",
             build: |_, cx| stateless(navigation, cx),
         },
         Section {
             id: "entries",
             name: "Stacks and entries",
-            summary: "SettingsStack glues SettingEntry rows into one surface and rounds only its ends. Controls sit at the right edge; reset and provenance sit beside the title.",
+            summary: "SettingsStack glues SettingEntry rows into one surface and rounds only its ends. A row is its title and its control at the right edge, with no description under it.",
             build: |window, cx| stateful(window, cx, Controls::new, entries),
         },
         Section {
@@ -147,16 +146,8 @@ impl Controls {
 
 fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
     let selected = SettingsSection::Appearance;
-    let mut rows = Vec::new();
-    let mut previous: Option<SettingsNavigationGroup> = None;
-    for section in SettingsSection::ALL {
-        let group = section.navigation_group();
-        if previous != Some(group) {
-            rows.push(settings_navigation_group_label(group, cx).into_any_element());
-            previous = Some(group);
-        }
-        rows.push(settings_navigation_button(section, section == selected, cx).into_any_element());
-    }
+    let rows = SettingsSection::ALL
+        .map(|section| settings_navigation_button(section, section == selected, cx));
     let list = div()
         .id("settings-nav")
         .flex()
@@ -202,43 +193,22 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn reset_actions(id: &'static str, changed: bool, source: &'static str) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(8.0))
-        .child(settings_reset_button(id, "Reset to default", changed))
-        .child(settings_provenance_badge(source))
-}
-
 fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
     states()
-        .state("page heading", settings_page_description(SettingsSection::Panes, cx))
+        .state(
+            "page heading",
+            settings_page_title(SettingsSection::Panes, cx),
+        )
         .state(
             "titled stack: switch, number and select controls",
             SettingsStack::titled("Command palette")
-                .description("Tune the command palette on this client.")
                 .child(
-                    SettingEntry::new(
-                        "Command shortcuts",
-                        "Show keyboard shortcuts beside commands.",
-                    )
-                    .control(Switch::new("shortcuts").checked(true)),
+                    SettingEntry::new("Command shortcuts")
+                        .control(Switch::new("shortcuts").checked(true)),
                 )
+                .child(SettingEntry::new("UI zoom").control(controls.number(6, cx)))
                 .child(
-                    SettingEntry::new(
-                        "UI zoom",
-                        "Scales application text, icons, and controls as a percentage of the default.",
-                    )
-                    .control(controls.number(6, cx)),
-                )
-                .child(
-                    SettingEntry::new(
-                        "Navigation layout",
-                        "Show sessions, windows, and panes as a tree or a flat list.",
-                    )
-                    .control(
+                    SettingEntry::new("Navigation layout").control(
                         Select::new(&controls.choice)
                             .title("Navigation layout")
                             .on(settings_card_ground(cx)),
@@ -246,48 +216,28 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 ),
         )
         .state(
-            "reset and provenance beside the title",
-            SettingsStack::titled("Theme")
-                .child(
-                    SettingEntry::new("Animations", "Animate interface transitions.")
-                        .title_actions(reset_actions("reset-changed", true, "zz/config"))
-                        .control(Switch::new("animations").checked(false)),
-                )
-                .child(
-                    SettingEntry::new("Shadow strength", "Strength of shadows around controls.")
-                        .title_actions(reset_actions("reset-default", false, "default"))
-                        .control(controls.number(7, cx)),
-                ),
-        )
-        .state(
             "a single entry rounds all four corners",
-            SettingsStack::new().child(
-                SettingEntry::new("Sidebar", "Show sessions, windows, and panes beside the workspace.")
-                    .control(Switch::new("sidebar").checked(true)),
-            ),
+            SettingsStack::new()
+                .child(SettingEntry::new("Sidebar").control(Switch::new("sidebar").checked(true))),
         )
         .state(
             "disabled: no effect with the current configuration",
             SettingsStack::titled("Frame")
-                .description("Applies only while pane gaps are enabled.")
                 .child(
-                    SettingEntry::new("Pane margin", "Space around each pane, in logical pixels (0-32).")
+                    SettingEntry::new("Pane margin")
                         .disabled(true)
                         .control(controls.number(3, cx)),
                 )
                 .child(
-                    SettingEntry::new(
-                        "Pane edge width",
-                        "Width of the bright line along each pane's glass edge (0-8).",
-                    )
-                    .disabled(true)
-                    .control(controls.number(5, cx)),
+                    SettingEntry::new("Pane edge width")
+                        .disabled(true)
+                        .control(controls.number(5, cx)),
                 ),
         )
         .state(
             "a state glyph before the title",
             SettingsStack::titled("Hosts").child(
-                SettingEntry::new("devbox", "fabrico@devbox.local · connected")
+                SettingEntry::new("devbox")
                     .title_icon(Icon::new(IconName::CircleCheck).text_color(cx.theme().success))
                     .control(Button::new("open-host").label("Disconnect")),
             ),
@@ -295,11 +245,7 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "full-width content under the copy",
             SettingsStack::new().child(
-                SettingEntry::new(
-                    "Colors, cursor, and spacing",
-                    "Edit the Ghostty-compatible configuration on the daemon host to change these values.",
-                )
-                .child(
+                SettingEntry::new("Colors, cursor, and spacing").child(
                     div()
                         .p(px(10.0))
                         .rounded(cx.theme().radius)
@@ -364,11 +310,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         selected: 0,
         overrides: &overrides,
     };
-    let text = |item: AppearancePageItem| item.text().unwrap_or_default();
-    let entry = |item: AppearancePageItem| {
-        let (title, description) = text(item);
-        SettingEntry::new(title, description)
-    };
+    let entry = |item: AppearancePageItem| SettingEntry::new(item.title().unwrap_or_default());
     let custom = ColorPicker::new(&controls.accent, zz_gpui::transparent_black())
         .label("Accent")
         .swatch(px(SWATCH));
@@ -376,15 +318,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "theme rows",
             SettingsStack::titled("Interface")
-                .child(
-                    SettingEntry::new("Mode", "Follow the system light/dark setting, or pin one.")
-                        .title_actions(settings_reset_button(
-                            "theme-reset",
-                            "Reset to default",
-                            false,
-                        ))
-                        .control(tiles),
-                )
+                .child(SettingEntry::new("Mode").control(tiles))
                 .child(
                     entry(AppearancePageItem::Themes)
                         .title_actions(
@@ -414,15 +348,14 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     cx,
                 )))
                 .child(
-                    SettingEntry::new("UI font", "Choose an available font for the interface.")
-                        .control(
-                            div().w(px(200.0)).flex_none().child(
-                                Select::new(&controls.font)
-                                    .title("UI font")
-                                    .placeholder("System default")
-                                    .on(settings_card_ground(cx)),
-                            ),
+                    SettingEntry::new("UI font").control(
+                        div().w(px(200.0)).flex_none().child(
+                            Select::new(&controls.font)
+                                .title("UI font")
+                                .placeholder("System default")
+                                .on(settings_card_ground(cx)),
                         ),
+                    ),
                 ),
         )
         .state(
@@ -446,7 +379,6 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                             "advanced-collapsed"
                         },
                         "Advanced",
-                        Some("Corner radius, contrast, fonts, zoom and the window."),
                         expanded,
                     )
                 })),
@@ -511,13 +443,8 @@ fn themes(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn pane_entry(title: &'static str, description: &'static str) -> SettingEntry {
-    SettingEntry::new(title, description)
-}
-
 fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
     let page = |gaps: bool, cx: &App| {
-        let reset = |id: &'static str| settings_reset_button(id, "Reset to default", false);
         let pane = crate::pane();
         panes_page(
             PanesPreview {
@@ -525,40 +452,17 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 margin: pane.margin,
                 inactive_opacity: pane.inactive,
             },
+            [SettingEntry::new("Pane gaps").control(Switch::new("gaps").checked(gaps))],
+            [SettingEntry::new("Pane background opacity").control(controls.number(0, cx))],
             [
-                pane_entry("Pane gaps", "Separate panes with spacing and borders.")
-                    .title_actions(settings_reset_button("gaps-reset", "Reset to default", gaps))
-                    .control(Switch::new("gaps").checked(gaps)),
-            ],
-            [
-                pane_entry(
-                    "Pane background opacity",
-                    "Background strength from 0% to 100%. Browser panes apply this to the toolbar only.",
-                )
-                .title_actions(reset("background-reset"))
-                .control(controls.number(0, cx)),
-            ],
-            [
-                pane_entry(
-                    "Inactive pane opacity",
-                    "Visible strength of inactive pane content and chrome (0-1). Set to 1 to disable dimming.",
-                )
-                .title_actions(reset("inactive-reset"))
-                .control(controls.number(1, cx)),
-                pane_entry(
-                    "Selected pane contrast",
-                    "How far the selected pane stands apart, from 0% to 200%: it lightens while the others darken and their edges dim. Set to 0 to draw it like the others.",
-                )
-                .disabled(!gaps)
-                .title_actions(reset("glow-reset"))
-                .control(controls.number(2, cx)),
-            ],
-            [
-                pane_entry("Pane margin", "Space around each pane, in logical pixels (0-32).")
+                SettingEntry::new("Inactive pane opacity").control(controls.number(1, cx)),
+                SettingEntry::new("Selected pane contrast")
                     .disabled(!gaps)
-                    .title_actions(reset("margin-reset"))
-                    .control(controls.number(3, cx)),
+                    .control(controls.number(2, cx)),
             ],
+            [SettingEntry::new("Pane margin")
+                .disabled(!gaps)
+                .control(controls.number(3, cx))],
             cx,
         )
     };
@@ -576,24 +480,10 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
 
 fn status_rows(settings: StatusBarSettings) -> SettingsStack {
     SettingsStack::new()
+        .child(SettingEntry::new("Sidebar").control(Switch::new("sidebar").checked(false)))
         .child(
-            SettingEntry::new(
-                "Sidebar",
-                "Show sessions, windows, and panes beside the workspace.",
-            )
-            .control(Switch::new("sidebar").checked(false)),
-        )
-        .child(
-            SettingEntry::new(
-                "Window badges",
-                "Show bell and activity markers on window items.",
-            )
-            .title_actions(settings_reset_button(
-                "status-badges-reset",
-                "Reset to default",
-                !settings.badges,
-            ))
-            .control(Switch::new("status-badges").checked(settings.badges)),
+            SettingEntry::new("Window badges")
+                .control(Switch::new("status-badges").checked(settings.badges)),
         )
 }
 
@@ -801,7 +691,7 @@ fn agents(_: &mut Window, cx: &mut App) -> AnyElement {
             "page",
             div().id("agents").flex().h(px(1700.0)).child(
                 settings_scroll_column("settings-agents")
-                    .child(settings_page_description(SettingsSection::Agents, cx))
+                    .child(settings_page_title(SettingsSection::Agents, cx))
                     .child(driver_stack(cx))
                     .children(stacks),
             ),
@@ -818,28 +708,9 @@ fn driver_stack(cx: &App) -> SettingsStack {
             .on(settings_card_ground(cx))
     };
     SettingsStack::titled("Driver")
-        .child(
-            SettingEntry::new(
-                "Driver Agent",
-                "Keep a driver running in a session named driver on this machine. Type > in an empty \
-                 command palette to chat with it; the sidebar shows its last message.",
-            )
-            .control(Switch::new("driver-agent").checked(true)),
-        )
-        .child(
-            SettingEntry::new(
-                "Model",
-                "The CLI and model the driver runs. A change applies when the driver next starts.",
-            )
-            .control(choice("driver-model", "Claude Opus")),
-        )
-        .child(
-            SettingEntry::new(
-                "Effort",
-                "How hard the driver thinks. Codex takes Max as Extra high.",
-            )
-            .control(choice("driver-effort", "Extra high")),
-        )
+        .child(SettingEntry::new("Driver Agent").control(Switch::new("driver-agent").checked(true)))
+        .child(SettingEntry::new("Model").control(choice("driver-model", "Claude Opus")))
+        .child(SettingEntry::new("Effort").control(choice("driver-effort", "Extra high")))
 }
 
 fn about(_: &mut Window, cx: &mut App) -> AnyElement {

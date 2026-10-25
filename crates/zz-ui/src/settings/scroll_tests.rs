@@ -61,45 +61,18 @@ impl Render for SettingsPageReplicaTest {
                             .child("Changes are written to zz/config."),
                     )
                     .child(
-                        super::SettingsStack::titled("Theme")
-                            .description(
-                                "Recolors the application chrome. Every panel, hover state, \
-                                 muted label and focus ring is derived from these six, so \
-                                 nothing else needs setting.",
-                            )
-                            .children(self.pickers.iter().enumerate().map(|(ix, picker)| {
-                                super::SettingEntry::new(
-                                    "Background",
-                                    "The chrome root everything else is derived from, \
-                                     wrapping over a couple of lines like the real rows do.",
-                                )
-                                .title_actions(
-                                    div()
-                                        .flex()
-                                        .flex_none()
-                                        .items_center()
-                                        .gap(px(8.0))
-                                        .child(super::settings_reset_button(
-                                            ("replica-reset", ix),
-                                            "Reset",
-                                            false,
-                                        ))
-                                        .child(super::settings_provenance_badge("default")),
-                                )
-                                .control(
+                        super::SettingsStack::titled("Theme").children(self.pickers.iter().map(
+                            |picker| {
+                                super::SettingEntry::new("Background").control(
                                     crate::color_picker::ColorPicker::new(picker, zz_gpui::black()),
                                 )
-                            })),
+                            },
+                        )),
                     )
                     .child(
                         super::SettingsStack::titled("Window")
                             .child(
-                                super::SettingEntry::new(
-                                    "Window background opacity",
-                                    "Set below 1 to reveal the desktop or blurred backdrop \
-                                     through terminal and app chrome.",
-                                )
-                                .control(
+                                super::SettingEntry::new("Window background opacity").control(
                                     div()
                                         .w(px(120.))
                                         .flex_none()
@@ -107,22 +80,14 @@ impl Render for SettingsPageReplicaTest {
                                 ),
                             )
                             .child(
-                                super::SettingEntry::new(
-                                    "Window background blur",
-                                    "Blur content behind translucent window areas when \
-                                     supported by the desktop.",
-                                )
-                                .control(crate::switch::Switch::new("replica-blur").checked(true)),
+                                super::SettingEntry::new("Window background blur").control(
+                                    crate::switch::Switch::new("replica-blur").checked(true),
+                                ),
                             ),
                     )
                     .child(
                         super::SettingsStack::titled("Interface").child(
-                            super::SettingEntry::new(
-                                "Widget corner radius",
-                                "Rounds every widget (buttons, inputs, tags, menus, dialogs) \
-                                 in logical pixels (0-256).",
-                            )
-                            .control(
+                            super::SettingEntry::new("Widget corner radius").control(
                                 div()
                                     .w(px(120.))
                                     .flex_none()

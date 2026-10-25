@@ -1327,13 +1327,22 @@ impl Theme {
         };
         let toned = !(tone == Tone::Neutral
             || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground));
+        let glass_fill = if self.bright_surfaces && !self.mode.is_dark() && !toned {
+            self.raise(base, step)
+        } else {
+            soft.opaque().fill
+        };
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
         } else if kind.is_control() {
             match fill {
                 Fill::None => self.paint_on(ground, tone, Emphasis::Ghost),
                 Fill::Tint => soft,
-                Fill::Solid | Fill::Glass => soft.opaque(),
+                Fill::Solid => soft.opaque(),
+                Fill::Glass => super::Paint {
+                    fill: glass_fill,
+                    ..soft.opaque()
+                },
             }
         } else {
             let rest = match fill {
@@ -1401,7 +1410,7 @@ impl Theme {
                 paint.text,
             ),
             Highlight::Accent => (paint.selected, paint.selected_text),
-            Highlight::Glass if kind.is_control() => (soft.opaque().fill, paint.text),
+            Highlight::Glass if kind.is_control() => (glass_fill, paint.text),
             Highlight::Glass => (self.raise(base, step), paint.text),
             Highlight::None | Highlight::Ring | Highlight::Bar | Highlight::Edge => {
                 (paint.fill, paint.text)
@@ -1615,7 +1624,7 @@ pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ThemeColor, oklab_lightness};
+    use crate::{ThemeColor, ThemeMode, oklab_lightness};
 
     fn theme() -> Theme {
         Theme::from(&*ThemeColor::dark())
@@ -1670,6 +1679,40 @@ mod tests {
             fills(&ThemeColor::dark(), false),
             "dark surfaces rise lighter either way"
         );
+    }
+
+    #[test]
+    fn bright_glass_controls_rise_in_light_mode_only() {
+        let button = Kind::Button
+            .role()
+            .with(StylePatch::EMPTY.fill(Fill::Glass));
+        let tab = SurfaceRole::TAB.with(StylePatch::EMPTY.selected(Highlight::Glass));
+        let mut light = (*ThemeColor::light()).clone();
+        light.background = zz_gpui::hsla(0., 0., 0.97, 1.);
+        for (mode, colors) in [
+            (ThemeMode::Light, &light),
+            (ThemeMode::Dark, &*ThemeColor::dark()),
+        ] {
+            let mut theme = Theme::from(colors);
+            theme.mode = mode;
+            theme.glass = Some(GlassMaterial::regular());
+            for (role, state) in [(button, PaintState::Rest), (tab, PaintState::Selected)] {
+                theme.bright_surfaces = false;
+                let plain = theme.layer(role, state).glass.unwrap().tint;
+                theme.bright_surfaces = true;
+                let bright = theme.layer(role, state).glass.unwrap().tint;
+                if theme.mode.is_dark() {
+                    assert_eq!(bright, plain);
+                } else {
+                    assert!(oklab_lightness(bright) > oklab_lightness(theme.background));
+                    assert_eq!(bright.a, plain.a);
+                }
+                let toned = Surface::new(role).tone(Tone::Danger);
+                let bright = theme.layer(toned, state);
+                theme.bright_surfaces = false;
+                assert_eq!(bright, theme.layer(toned, state));
+            }
+        }
     }
 
     #[test]

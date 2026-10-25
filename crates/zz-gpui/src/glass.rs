@@ -89,6 +89,11 @@ pub struct GlassMaterial {
     /// Color of that contour; its alpha scales it.
     #[serde(default = "black")]
     pub edge_color: Hsla,
+    /// How evenly the contour runs around the edge, from 0 to 1: 0 follows
+    /// the light, darkest along its axis, 1 is as dark all the way around,
+    /// like a hairline.
+    #[serde(default)]
+    pub edge_spread: f32,
     /// Frosted grain over the surface; 0.02 hides banding.
     pub noise: f32,
     /// Light from inside the glass, as a press would cause.
@@ -157,6 +162,7 @@ impl GlassMaterial {
             edge_shadow: 0.25,
             edge_width: px(0.75),
             edge_color: black(),
+            edge_spread: 0.,
             noise: 0.0,
             glow: 0.0,
             glow_radius: px(90.),
@@ -420,6 +426,12 @@ impl GlassMaterial {
         self
     }
 
+    /// Sets [`Self::edge_spread`].
+    pub fn edge_spread(mut self, edge_spread: f32) -> Self {
+        self.edge_spread = edge_spread;
+        self
+    }
+
     /// Sets [`Self::noise`].
     pub fn noise(mut self, noise: f32) -> Self {
         self.noise = noise;
@@ -552,6 +564,7 @@ impl Interpolate for GlassMaterial {
             edge_shadow: lerp(from.edge_shadow, to.edge_shadow),
             edge_width: length(from.edge_width, to.edge_width),
             edge_color: Hsla::interpolate(from.edge_color, to.edge_color, phase),
+            edge_spread: lerp(from.edge_spread, to.edge_spread),
             noise: lerp(from.noise, to.noise),
             glow: lerp(from.glow, to.glow),
             glow_radius: length(from.glow_radius, to.glow_radius),
@@ -691,7 +704,7 @@ pub struct GlassUniform {
     /// Its corner radii.
     pub mask_radii: [f32; 4],
     /// Its corner smoothing, 1 when there is a clip, then how directional
-    /// the light is.
+    /// the light is and how evenly the contour runs around the edge.
     pub mask: [f32; 4],
     /// The glint and fresnel glow's color, scaled by its alpha, then
     /// padding.
@@ -1006,7 +1019,7 @@ impl Glass {
                 mask.map_or(0., |mask| mask.corner_smoothing),
                 if mask.is_some() { 1. } else { 0. },
                 material.light_directionality.clamp(0., 1.),
-                0.,
+                material.edge_spread.clamp(0., 1.),
             ],
             light_color: [
                 light.r * light.a,
@@ -2192,6 +2205,40 @@ pub fn check_glass_rendering(
         ))?,
         "fully inactive glass should flatten its rim without changing its fill",
     )?;
+    let edges = [(7, 32), (32, 7), (56, 32), (32, 56)];
+    let mut darkening = |material: GlassMaterial| -> anyhow::Result<Vec<f32>> {
+        let plain = render(&glass_body_scene(&body, 2., material.edge_shadow(0.), None))?;
+        let edged = render(&glass_body_scene(&body, 2., material, None))?;
+        let sum = |image: &image::RgbaImage, (x, y): (u32, u32)| {
+            image.get_pixel(x, y).0[..3]
+                .iter()
+                .map(|&channel| f32::from(channel))
+                .sum::<f32>()
+        };
+        Ok(edges
+            .iter()
+            .map(|&edge| 1. - sum(&edged, edge) / sum(&plain, edge).max(1.))
+            .collect())
+    };
+    let axial = GlassMaterial {
+        light_directionality: 1.,
+        ..contoured.light_angle(-std::f32::consts::FRAC_PI_2)
+    };
+    let lit_contour = darkening(axial)?;
+    anyhow::ensure!(
+        lit_contour[3] > lit_contour[1] + 0.2,
+        "a contour that follows the light should darken its far edge most: {lit_contour:?}"
+    );
+    let even = darkening(axial.edge_spread(1.))?;
+    let (least, most) = even
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(least, most), &value| {
+            (least.min(value), most.max(value))
+        });
+    anyhow::ensure!(
+        least > 0.2 && most - least < 0.05,
+        "a fully spread contour should darken every edge alike: {even:?}"
+    );
     Ok(())
 }
 
