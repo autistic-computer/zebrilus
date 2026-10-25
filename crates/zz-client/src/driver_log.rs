@@ -2,12 +2,15 @@ use std::path::Path;
 
 use agent_client_protocol_schema::v1::SessionUpdate;
 use serde::{Deserialize, Serialize};
-use zz_protocol::{AgentConnectionPhase, agent_stream::AgentStreamPayload};
+use zz_protocol::agent_stream::AgentStreamPayload;
 
-use crate::agent_transcript::{AgentThreadEntry, AgentTranscript, ToolPayload};
+use crate::agent_transcript::{
+    AgentThreadEntry, AgentToolStatusModel, AgentTranscript, ToolPayload,
+};
 
 pub const AGENT_NOTICE: &str = "[zz] Agent ";
 const LEDGER: &str = "ledger.md";
+const LEDGER_WRITERS: [&str; 5] = [">", "tee ", "sed -i", "mv ", "cp "];
 const TAIL_WITHOUT_LEDGER: usize = 20;
 const LINE_LIMIT: usize = 2000;
 const PACKET_LIMIT: usize = 12 * 1024;
@@ -98,20 +101,13 @@ impl DriverLog {
                 self.transcript.finish_replay();
             }
             AgentStreamPayload::Update { update } => self.update(update),
-            AgentStreamPayload::StateSynced { state } => self.set_phase(&state.phase),
+            AgentStreamPayload::Activity { busy } => self.live = busy,
             AgentStreamPayload::PromptFinished { .. } => {
                 self.transcript.finish_turn();
                 self.transcript.finish_replay();
             }
             _ => {}
         }
-    }
-
-    pub const fn set_phase(&mut self, phase: &AgentConnectionPhase) {
-        self.live = matches!(
-            phase,
-            AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission
-        );
     }
 
     #[must_use]
@@ -163,11 +159,20 @@ pub fn chat_lines<I>(entries: &[AgentThreadEntry<I>], live: bool) -> Vec<(ChatRo
                 ..
             } if !markdown.trim().is_empty() => answer = Some(markdown.trim()),
             AgentThreadEntry::Tool {
-                input: Some(ToolPayload::Json(json)),
+                status,
+                input,
+                output,
                 ..
             } => {
-                if let Some(ledger) = ledger_write(json) {
-                    lines.push((ChatRole::Ledger, ledger));
+                let Some(written) = ledger_write(input.as_ref(), output) else {
+                    continue;
+                };
+                match status {
+                    AgentToolStatusModel::Completed => {
+                        lines.push((ChatRole::Ledger, written));
+                    }
+                    AgentToolStatusModel::Failed | AgentToolStatusModel::Canceled => {}
+                    _ => return lines,
                 }
             }
             _ => {}
@@ -179,13 +184,46 @@ pub fn chat_lines<I>(entries: &[AgentThreadEntry<I>], live: bool) -> Vec<(ChatRo
     lines
 }
 
-fn ledger_write(json: &str) -> Option<String> {
-    let input = serde_json::from_str::<serde_json::Value>(json).ok()?;
-    let path = Path::new(input.get("file_path")?.as_str()?);
-    if path.file_name()? != LEDGER {
-        return None;
+fn ledger_write(input: Option<&ToolPayload>, output: &[ToolPayload]) -> Option<String> {
+    let names_ledger = |path: &str| {
+        Path::new(path)
+            .file_name()
+            .is_some_and(|name| name == LEDGER)
+    };
+    if let Some(ToolPayload::Json(json)) = input
+        && let Ok(input) = serde_json::from_str::<serde_json::Value>(json)
+    {
+        if input["file_path"].as_str().is_some_and(names_ledger) {
+            return Some(input["content"].as_str().unwrap_or_default().to_owned());
+        }
+        let changed = match &input["changes"] {
+            serde_json::Value::Object(changes) => changes.keys().any(|path| names_ledger(path)),
+            serde_json::Value::Array(changes) => changes
+                .iter()
+                .any(|change| change["path"].as_str().is_some_and(names_ledger)),
+            _ => false,
+        };
+        if changed {
+            return Some(String::new());
+        }
+        let command = match &input["command"] {
+            serde_json::Value::String(command) => command.clone(),
+            serde_json::Value::Array(words) => words
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" "),
+            _ => String::new(),
+        };
+        if command.contains(LEDGER) && LEDGER_WRITERS.iter().any(|writer| command.contains(writer))
+        {
+            return Some(String::new());
+        }
     }
-    input.get("content")?.as_str().map(str::to_owned)
+    output
+        .iter()
+        .any(|payload| matches!(payload, ToolPayload::Diff { path, .. } if names_ledger(path)))
+        .then(String::new)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -262,7 +300,7 @@ fn packet_line(line: &ChatLine) -> String {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use zz_protocol::{AgentConnectionPhase, agent_stream::AgentStreamPayload};
+    use zz_protocol::agent_stream::AgentStreamPayload;
 
     use super::{ChatLine, ChatRole, DriverLog, packet};
 
@@ -330,6 +368,81 @@ mod tests {
         );
     }
 
+    fn tool(id: &str, status: &str, raw: &serde_json::Value) -> AgentStreamPayload {
+        AgentStreamPayload::Update {
+            update: json!({
+                "sessionUpdate": "tool_call",
+                "toolCallId": id,
+                "title": "Run",
+                "kind": "execute",
+                "status": status,
+                "rawInput": raw.clone(),
+            }),
+        }
+    }
+
+    #[test]
+    fn any_completed_write_of_the_ledger_marks_a_ledger_line_and_holds_later_lines_until_then() {
+        let mut log = DriverLog::default();
+        log.apply(ready());
+        log.apply(chunk("user_message_chunk", "u1", "go"));
+        log.apply(tool(
+            "t1",
+            "in_progress",
+            &json!({"command": "cat > ledger.md <<EOF\n# Goal\nEOF"}),
+        ));
+        log.apply(chunk("agent_message_chunk", "a1", "done"));
+        assert_eq!(log.lines(), [(ChatRole::User, "go".to_owned())]);
+        log.apply(AgentStreamPayload::Update {
+            update: json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "t1",
+                "status": "completed",
+            }),
+        });
+        assert_eq!(
+            log.lines(),
+            [
+                (ChatRole::User, "go".to_owned()),
+                (ChatRole::Ledger, String::new()),
+                (ChatRole::Driver, "done".to_owned()),
+            ]
+        );
+        log.apply(tool(
+            "t2",
+            "completed",
+            &json!({"command": ["cat", "ledger.md"]}),
+        ));
+        assert_eq!(log.lines().len(), 3, "reading the ledger is not writing it");
+    }
+
+    #[test]
+    fn codex_file_changes_and_activity_shape_the_lines() {
+        let mut log = DriverLog::default();
+        log.apply(ready());
+        log.apply(chunk("user_message_chunk", "u1", "go"));
+        log.apply(AgentStreamPayload::Activity { busy: true });
+        log.apply(chunk("agent_message_chunk", "a1", "reading the ledger"));
+        log.apply(tool(
+            "t1",
+            "completed",
+            &json!({"type": "fileChange", "changes": {"/w/ledger.md": {"type": "update"}}}),
+        ));
+        assert_eq!(
+            log.lines(),
+            [
+                (ChatRole::User, "go".to_owned()),
+                (ChatRole::Ledger, String::new())
+            ]
+        );
+        log.apply(chunk("agent_message_chunk", "a2", "done"));
+        log.apply(AgentStreamPayload::Activity { busy: false });
+        assert_eq!(
+            log.lines().last(),
+            Some(&(ChatRole::Driver, "done".to_owned()))
+        );
+    }
+
     #[test]
     fn a_live_turn_keeps_its_answer_back_and_notices_are_their_own_role() {
         let mut log = DriverLog::default();
@@ -339,13 +452,13 @@ mod tests {
             "u1",
             "[zz] Agent %4 finished: done",
         ));
-        log.set_phase(&AgentConnectionPhase::Running);
+        log.apply(AgentStreamPayload::Activity { busy: true });
         log.apply(chunk("agent_message_chunk", "a1", "checking"));
         assert_eq!(
             log.lines(),
             [(ChatRole::Notice, "[zz] Agent %4 finished: done".to_owned())]
         );
-        log.set_phase(&AgentConnectionPhase::Ready);
+        log.apply(AgentStreamPayload::Activity { busy: false });
         assert_eq!(log.lines().len(), 2);
     }
 

@@ -131,6 +131,7 @@ pub enum ConfigKey {
     DriverAgent,
     DriverModel,
     DriverEffort,
+    DriverHosts,
 }
 
 impl ConfigKey {
@@ -184,6 +185,7 @@ impl ConfigKey {
             Self::DriverAgent => "driver-agent",
             Self::DriverModel => "driver-model",
             Self::DriverEffort => "driver-effort",
+            Self::DriverHosts => "driver-hosts",
         }
     }
 
@@ -237,6 +239,7 @@ impl ConfigKey {
             "driver-agent" => Some(Self::DriverAgent),
             "driver-model" => Some(Self::DriverModel),
             "driver-effort" => Some(Self::DriverEffort),
+            "driver-hosts" => Some(Self::DriverHosts),
             _ => None,
         }
     }
@@ -294,7 +297,8 @@ impl ConfigKey {
             | Self::AppIcon
             | Self::DriverAgent
             | Self::DriverModel
-            | Self::DriverEffort => None,
+            | Self::DriverEffort
+            | Self::DriverHosts => None,
         }
     }
 
@@ -673,7 +677,8 @@ impl AppConfig {
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon
             | ConfigKey::DriverModel
-            | ConfigKey::DriverEffort => None,
+            | ConfigKey::DriverEffort
+            | ConfigKey::DriverHosts => None,
         }
     }
 }
@@ -693,6 +698,7 @@ pub struct ParsedConfig {
     pub theme: Option<String>,
     pub hosts: Vec<HostEntry>,
     pub rejected_hosts: Vec<RejectedHost>,
+    pub driver_hosts: Vec<String>,
     pub daemon_entries: Vec<ConfigOverrideEntry>,
     pub chrome_overrides: Vec<ChromeOverride>,
     pub diagnostics: Vec<ConfigDiagnostic>,
@@ -1149,6 +1155,15 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if key == ConfigKey::DriverHosts {
+            parsed.driver_hosts = value
+                .split(|character: char| character == ',' || character.is_whitespace())
+                .filter(|host| !host.is_empty())
+                .map(str::to_owned)
+                .collect();
+            continue;
+        }
+
         if key == ConfigKey::DriverEffort {
             let target = &mut parsed.config.driver_effort;
             target.provenance = ConfigProvenance::Override;
@@ -1327,7 +1342,8 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::AppIcon
             | ConfigKey::DriverAgent
             | ConfigKey::DriverModel
-            | ConfigKey::DriverEffort => {
+            | ConfigKey::DriverEffort
+            | ConfigKey::DriverHosts => {
                 unreachable!("handled above")
             }
         };
@@ -2119,6 +2135,10 @@ mod tests {
         assert!(parsed.config.driver_agent.value);
         assert_eq!(parsed.config.driver_model.value, DriverModel::Codex);
         assert_eq!(parsed.config.driver_effort.value, DriverEffort::Xhigh);
+
+        assert!(parsed.driver_hosts.is_empty());
+        let hosts = parse_config("driver-hosts = ubuntu, xps local\n", "monospace");
+        assert_eq!(hosts.driver_hosts, ["ubuntu", "xps", "local"]);
 
         let invalid = parse_config("driver-model = gpt\ndriver-effort = huge\n", "monospace");
         assert_eq!(invalid.diagnostics.len(), 2);

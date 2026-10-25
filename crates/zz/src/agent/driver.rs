@@ -350,6 +350,7 @@ pub(crate) struct DriverChat {
     error: Option<Arc<str>>,
     started: Option<Instant>,
     recovering: bool,
+    unreachable: Option<(usize, usize)>,
     kept: HashSet<(HostId, usize)>,
 }
 
@@ -381,6 +382,7 @@ impl DriverChat {
             error: None,
             started: None,
             recovering: false,
+            unreachable: None,
             kept: HashSet::new(),
         };
         chat.synchronize(cx);
@@ -389,6 +391,9 @@ impl DriverChat {
 
     fn synchronize(&mut self, cx: &mut Context<Self>) {
         let config = crate::config::resolved_config(cx);
+        if !config.driver_agent.value {
+            self.unreachable = None;
+        }
         let driver = if config.driver_agent.value {
             self.keep_hosts(cx);
             let driver = find_driver(self.mux.read(cx), &self.local_name);
@@ -470,9 +475,10 @@ impl DriverChat {
         self.started = Some(Instant::now());
         let socket = self.mux.read(cx).local_socket_path().to_path_buf();
         let command = driver_command(model, effort);
+        let hosts = crate::config::driver_hosts(cx);
         let recovery = cx
             .background_executor()
-            .spawn(async move { zz_cli::driver::recover(&socket, force, &command) });
+            .spawn(async move { zz_cli::driver::recover(&socket, force, &command, &hosts) });
         cx.spawn(async move |chat, cx| {
             let recovery = recovery.await;
             let _ = chat.update(cx, |chat, cx| chat.recovered(recovery, cx));
@@ -482,17 +488,39 @@ impl DriverChat {
 
     fn recovered(&mut self, recovery: Result<Recovery, String>, cx: &mut Context<Self>) {
         self.recovering = false;
-        let warning = match recovery {
-            Ok(Recovery::Unreachable { answered, hosts }) => format!(
-                "The Driver Agent is not running and only {answered} of {hosts} hosts answered, \
-                 so zz did not start another. Start it here with `zz driver recover --force`."
-            ),
-            Err(error) => format!("zz could not start the Driver Agent: {error}"),
-            Ok(Recovery::Alive { .. } | Recovery::Started { .. }) => return,
-        };
-        self.mux.update(cx, |_, cx| {
-            MuxClient::emit_notification(ClientMessageKind::Warning, warning, cx);
-        });
+        self.unreachable = None;
+        match recovery {
+            Ok(Recovery::Unreachable { answered, hosts }) => {
+                self.unreachable = Some((answered, hosts));
+            }
+            Ok(Recovery::Alive { .. } | Recovery::Started { .. }) => {}
+            Err(error) => {
+                self.mux.update(cx, |_, cx| {
+                    MuxClient::emit_notification(
+                        ClientMessageKind::Warning,
+                        format!("zz could not start the Driver Agent: {error}"),
+                        cx,
+                    );
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// How many hosts answered when too few did for zz to start a driver.
+    pub(crate) const fn unreachable(&self) -> Option<(usize, usize)> {
+        self.unreachable
+    }
+
+    /// Start a driver on this machine although too few hosts answered.
+    pub(crate) fn start_here(&mut self, cx: &mut Context<Self>) {
+        let config = crate::config::resolved_config(cx);
+        self.start(
+            config.driver_model.value,
+            config.driver_effort.value,
+            true,
+            cx,
+        );
     }
 
     /// Start `zz driver keep` on every connected host once per connection, so
