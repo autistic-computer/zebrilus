@@ -279,24 +279,21 @@ impl Theme {
 
     /// The glass a gapped pane draws as its frame: the look's glass as the
     /// theme defines it, or a plain lit edge the outline's width when the
-    /// look has none, with no frost or lensing. Over an opaque `plane`, the
-    /// window color behind the pane, it is tinted with the plane, so the
-    /// glass paints in place without reading the backdrop. Over a
-    /// translucent plane the tint is clear, since the plane already shows
-    /// through it. No color marks the active pane: it is washed lighter and
-    /// the others are veiled darker, their rims dimmer, all scaled by
+    /// look has none, with no frost or lensing. No color marks the active
+    /// pane: it is washed lighter and the others are veiled darker, their
+    /// rims dimmer, all scaled by
     /// [`Self::pane_glow_strength`].
     pub fn pane_frame(&self, plane: Hsla, active: bool) -> GlassMaterial {
-        let tint = self.pane_focus(
-            if plane.a < 1.0 {
-                plane.alpha(0.0)
-            } else {
-                plane
-            },
-            active,
-        );
-        let frame = self
-            .glass_effect()
+        let glass = self.glass_effect();
+        let tint = match glass {
+            Some(material) if self.bright_surfaces && !self.mode.is_dark() => self
+                .raise(plane.opaque(), 1)
+                .alpha(if plane.a < 1.0 { material.tint.a } else { 1.0 }),
+            _ if plane.a < 1.0 => plane.alpha(0.0),
+            _ => plane,
+        };
+        let tint = self.pane_focus(tint, active);
+        let frame = glass
             .unwrap_or_else(|| {
                 let width = self.pane_outline();
                 let edge = GlassMaterial::edge(tint).glint_width(width);
@@ -648,6 +645,36 @@ mod tests {
         let plane = theme.background.alpha(0.93);
         assert_eq!(theme.pane_frame(plane, false).tint.a, 0.0);
         assert_eq!(theme.pane_frame(plane.opaque(), false).tint.a, 1.0);
+    }
+
+    #[test]
+    fn bright_glass_panes_rise_in_light_mode_only() {
+        let mut light = (*ThemeColor::light()).clone();
+        light.background = zz_gpui::hsla(0., 0., 0.97, 1.);
+        for (mode, colors) in [
+            (ThemeMode::Light, &light),
+            (ThemeMode::Dark, &*ThemeColor::dark()),
+        ] {
+            let mut theme = Theme::from(colors);
+            theme.mode = mode;
+            let glass = GlassMaterial::regular();
+            theme.glass = Some(glass);
+            theme.pane_glow_strength = 0.0;
+            for alpha in [0.7, 1.0] {
+                let plane = theme.background.alpha(alpha);
+                let plain = theme.pane_frame(plane, false);
+                theme.bright_surfaces = true;
+                let bright = theme.pane_frame(plane, false);
+                if theme.mode.is_dark() {
+                    assert_eq!(bright, plain);
+                } else {
+                    assert!(bright.tint.l > plane.l);
+                    assert_eq!(bright.tint.a, if alpha < 1.0 { glass.tint.a } else { 1.0 });
+                    assert_eq!(bright.fallback, Some(bright.tint));
+                }
+                theme.bright_surfaces = false;
+            }
+        }
     }
 
     #[test]

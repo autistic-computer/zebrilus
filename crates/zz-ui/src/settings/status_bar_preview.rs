@@ -13,9 +13,7 @@ use crate::{
     shell::{WorkspaceStatusSlots, workspace_status_bar},
 };
 
-use super::{
-    SettingsSection, settings_group_header, settings_page_description, settings_scroll_column,
-};
+use super::{SettingsSection, settings_group_header, settings_page_title, settings_scroll_column};
 
 pub fn status_bar_page(
     settings: StatusBarSettings,
@@ -37,12 +35,8 @@ pub fn status_bar_page(
                         .flex()
                         .flex_col()
                         .gap(px(12.0))
-                        .child(settings_page_description(SettingsSection::StatusBar, cx))
-                        .child(settings_group_header(
-                            "Preview".into(),
-                            Some("Sample windows, a remote host, and an available update.".into()),
-                            cx,
-                        ))
+                        .child(settings_page_title(SettingsSection::StatusBar, cx))
+                        .child(settings_group_header("Preview".into()))
                         .child(status_bar_preview(settings, gaps, cx)),
                 )
                 .child(controls),

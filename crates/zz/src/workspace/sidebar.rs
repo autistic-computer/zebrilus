@@ -42,7 +42,6 @@ use zz_ui::{
     scroll::ScrollableElement as _,
     settings::{
         settings_navigation_back_button, settings_navigation_back_row, settings_navigation_button,
-        settings_navigation_group_label,
     },
 };
 
@@ -739,13 +738,7 @@ impl WorkspaceSidebar {
                 close_sidebar.update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
             });
         let mut items = vec![settings_navigation_back_row(back).into_any_element()];
-        let mut current_group = None;
         for &section in &crate::profile::profile(cx).settings_sections {
-            let group = section.navigation_group();
-            if current_group != Some(group) {
-                items.push(settings_navigation_group_label(group, cx).into_any_element());
-                current_group = Some(group);
-            }
             let settings = settings.clone();
             let navigation_sidebar = sidebar.clone();
             items.push(

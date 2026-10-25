@@ -37,38 +37,20 @@ pub fn providers_stack(
     let on_update: ProviderAction = Rc::new(on_update);
     let stack = SettingsStack::titled(title);
     match host {
-        ProvidersHost::Offline(state) => {
-            stack.child(SettingEntry::new("Not connected", state.clone()))
+        ProvidersHost::Offline(_) => stack.child(SettingEntry::new("Not connected")),
+        ProvidersHost::Report(report) if report.checking && report.providers.is_empty() => {
+            stack.child(SettingEntry::new("Checking").control(Spinner::new().small()))
         }
-        ProvidersHost::Report(report) if report.checking && report.providers.is_empty() => stack
-            .child(
-                SettingEntry::new(
-                    "Checking",
-                    "Looking for Claude Code and Codex on this machine.",
-                )
-                .control(Spinner::new().small()),
-            ),
-        ProvidersHost::Waiting => stack.child(
-            SettingEntry::new(
-                "Checking",
-                "Looking for Claude Code and Codex on this machine.",
-            )
-            .control(Spinner::new().small()),
-        ),
-        ProvidersHost::Report(report) => {
-            let stack = if report.checking {
-                stack.description("Checking for new versions…")
-            } else {
-                stack
-            };
-            stack.children(PROVIDERS.into_iter().map(|provider| {
-                let status = report
-                    .provider(provider)
-                    .cloned()
-                    .unwrap_or_else(|| ProviderStatus::new(provider));
-                provider_entry(&id, &status, report.checking, &on_update, cx)
-            }))
+        ProvidersHost::Waiting => {
+            stack.child(SettingEntry::new("Checking").control(Spinner::new().small()))
         }
+        ProvidersHost::Report(report) => stack.children(PROVIDERS.into_iter().map(|provider| {
+            let status = report
+                .provider(provider)
+                .cloned()
+                .unwrap_or_else(|| ProviderStatus::new(provider));
+            provider_entry(&id, &status, report.checking, &on_update, cx)
+        })),
     }
 }
 
@@ -80,11 +62,7 @@ fn provider_entry(
     cx: &App,
 ) -> SettingEntry {
     let provider = status.provider;
-    let description = status
-        .path
-        .clone()
-        .unwrap_or_else(|| "Not installed".to_owned());
-    let mut entry = SettingEntry::new(provider.label(), description)
+    let mut entry = SettingEntry::new(provider.label())
         .title_icon(Icon::new(agent_provider_icon(provider)))
         .control(
             h_flex()

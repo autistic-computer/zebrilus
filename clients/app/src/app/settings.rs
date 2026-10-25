@@ -21,7 +21,7 @@ use zz_ui::{
             zoom_slider,
         },
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
-        settings_preview, settings_reset_button, settings_scroll_column,
+        settings_preview, settings_scroll_column,
     },
     switch::Switch,
 };
@@ -603,7 +603,7 @@ impl AppShell {
                     .filter(|item| {
                         matches!(
                             item,
-                            AppearancePageItem::Description
+                            AppearancePageItem::Title
                                 | AppearancePageItem::Group { .. }
                                 | AppearancePageItem::Advanced { .. }
                                 | AppearancePageItem::ThemeMode
@@ -620,7 +620,7 @@ impl AppShell {
                                 | AppearancePageItem::AnimationSpeed
                         )
                     })
-                    .filter(|item| !narrow || !matches!(item, AppearancePageItem::Description))
+                    .filter(|item| !narrow || !matches!(item, AppearancePageItem::Title))
                     .collect::<Vec<_>>();
                 let zoom = &self.settings_controls.zoom;
                 let row_focus = items
@@ -639,24 +639,16 @@ impl AppShell {
             SettingsSection::Panes => {
                 let [background, inactive, glow, margin] =
                     PaneControl::ALL.map(|control| self.pane_setting(control, cx));
-                let gaps =
-                    SettingEntry::new("Pane gaps", "Separate panes with spacing and borders.")
-                        .title_actions(reset_button(
-                            "settings-pane-gaps-reset",
-                            self.preferences.gaps != Preferences::default().gaps,
-                            |this, _, _| this.preferences.gaps = Preferences::default().gaps,
-                            cx,
-                        ))
-                        .control(
-                            Switch::new("settings-pane-gaps")
-                                .checked(self.preferences.gaps)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.preferences.gaps = !this.preferences.gaps;
-                                    this.preferences.save();
-                                    this.preferences.apply(&this.connection, window, cx);
-                                    cx.notify();
-                                })),
-                        );
+                let gaps = SettingEntry::new("Pane gaps").control(
+                    Switch::new("settings-pane-gaps")
+                        .checked(self.preferences.gaps)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.preferences.gaps = !this.preferences.gaps;
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                            cx.notify();
+                        })),
+                );
                 return zz_ui::settings::panes_page(
                     zz_ui::settings::panes_preview::PanesPreview {
                         gaps: self.preferences.gaps,
@@ -672,13 +664,8 @@ impl AppShell {
                 .into_any_element();
             }
             SettingsSection::StatusBar => {
-                let default = Preferences::default().status_badges;
                 let rows = [
-                    SettingEntry::new(
-                        "Sidebar",
-                        "Show sessions, windows, and panes beside the workspace.",
-                    )
-                    .control(
+                    SettingEntry::new("Sidebar").control(
                         Switch::new("settings-sidebar")
                             .checked(self.sidebar)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -688,17 +675,7 @@ impl AppShell {
                                 cx.notify();
                             })),
                     ),
-                    SettingEntry::new(
-                        "Window badges",
-                        "Show bell and activity markers on window items.",
-                    )
-                    .title_actions(reset_button(
-                        "settings-status-badges-reset",
-                        self.preferences.status_badges != default,
-                        move |this, _, _| this.preferences.status_badges = default,
-                        cx,
-                    ))
-                    .control(
+                    SettingEntry::new("Window badges").control(
                         Switch::new("settings-status-badges")
                             .checked(self.preferences.status_badges)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -719,21 +696,7 @@ impl AppShell {
             SettingsSection::Terminal => return self.terminal_settings(narrow, cx),
             SettingsSection::Advanced => {
                 let text_size = shown(Setting::SystemTextSize, phone).then(|| {
-                    SettingEntry::new(
-                        "Match system text size",
-                        "Scale the interface with the iPadOS text size setting.",
-                    )
-                    .title_actions(reset_button(
-                        "settings-system-text-size-reset",
-                        self.preferences.system_text_size
-                            != Preferences::default().system_text_size,
-                        |this, _, _| {
-                            this.preferences.system_text_size =
-                                Preferences::default().system_text_size;
-                        },
-                        cx,
-                    ))
-                    .control(
+                    SettingEntry::new("Match system text size").control(
                         Switch::new("settings-system-text-size")
                             .checked(self.preferences.system_text_size)
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -746,13 +709,7 @@ impl AppShell {
                     )
                 });
                 return settings_scroll_column("settings-page")
-                    .children((!narrow).then(|| {
-                        settings_page_heading(
-                            section.title(),
-                            "Tune the command palette and display on this client.",
-                            cx,
-                        )
-                    }))
+                    .children((!narrow).then(|| settings_page_heading(section.title(), cx)))
                     .when(shown(Setting::CommandPalette, phone), |page| {
                         page.child(
                             SettingsStack::titled("Command palette")
@@ -761,51 +718,33 @@ impl AppShell {
                     })
                     .when(cfg!(target_os = "ios"), |page| {
                         page.child(
-                            SettingsStack::titled("Display").child(SettingEntry::new(
-                                    "Draw under the home indicator",
-                                    "Extend the workspace and settings into the bottom safe area.",
+                            SettingsStack::titled("Display")
+                                .child(
+                                    SettingEntry::new("Draw under the home indicator").control(
+                                        Switch::new("settings-bottom-safe-area")
+                                            .checked(self.preferences.extend_bottom_safe_area)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.preferences.extend_bottom_safe_area =
+                                                    !this.preferences.extend_bottom_safe_area;
+                                                this.preferences.save();
+                                                cx.notify();
+                                            })),
+                                    ),
                                 )
-                                .title_actions(reset_button(
-                                    "settings-bottom-safe-area-reset",
-                                    self.preferences.extend_bottom_safe_area
-                                        != Preferences::default().extend_bottom_safe_area,
-                                    |this, _, _| {
-                                        this.preferences.extend_bottom_safe_area =
-                                            Preferences::default().extend_bottom_safe_area;
-                                    },
-                                    cx,
-                                )).control(Switch::new("settings-bottom-safe-area")
-                                    .checked(self.preferences.extend_bottom_safe_area)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.preferences.extend_bottom_safe_area =
-                                            !this.preferences.extend_bottom_safe_area;
-                                        this.preferences.save();
-                                        cx.notify();
-                                    }))))
-                            .children(text_size)
-                            .child(SettingEntry::new(
-                                    "Keep the screen awake",
-                                    "Stop the display from sleeping while connected to a host.",
-                                )
-                                .title_actions(reset_button(
-                                    "settings-keep-awake-reset",
-                                    self.preferences.keep_screen_awake
-                                        != Preferences::default().keep_screen_awake,
-                                    |this, _, cx| {
-                                        this.preferences.keep_screen_awake =
-                                            Preferences::default().keep_screen_awake;
-                                        this.sync_idle_guard(cx);
-                                    },
-                                    cx,
-                                )).control(Switch::new("settings-keep-awake")
-                                    .checked(self.preferences.keep_screen_awake)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.preferences.keep_screen_awake =
-                                            !this.preferences.keep_screen_awake;
-                                        this.preferences.save();
-                                        this.sync_idle_guard(cx);
-                                        cx.notify();
-                                    })))),
+                                .children(text_size)
+                                .child(
+                                    SettingEntry::new("Keep the screen awake").control(
+                                        Switch::new("settings-keep-awake")
+                                            .checked(self.preferences.keep_screen_awake)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.preferences.keep_screen_awake =
+                                                    !this.preferences.keep_screen_awake;
+                                                this.preferences.save();
+                                                this.sync_idle_guard(cx);
+                                                cx.notify();
+                                            })),
+                                    ),
+                                ),
                         )
                     })
                     .into_any_element();
@@ -859,39 +798,14 @@ impl AppShell {
                         ))
                     }),
                 );
-                with_control(
-                    SettingEntry::new("Mode", "Follow the system light/dark setting, or pin one.")
-                        .title_actions(reset_button(
-                            "settings-theme-reset",
-                            self.preferences.theme_mode() != Preferences::default().theme_mode(),
-                            |this, _, _| this.preferences.mode = Preferences::default().mode,
-                            cx,
-                        )),
-                    tiles,
-                    narrow,
-                )
+                with_control(SettingEntry::new("Mode"), tiles, narrow)
             }
-            AppearancePageItem::UiFontFamily => {
-                SettingEntry::new("UI font", "Choose an available font for the interface.")
-                    .title_actions(reset_button(
-                        "settings-ui-font-reset",
-                        self.preferences.ui_font_family != Preferences::default().ui_font_family,
-                        |this, window, cx| {
-                            this.preferences.ui_font_family = Preferences::default().ui_font_family;
-                            let family = this.preferences.shown_ui_font().to_owned();
-                            this.settings_controls.ui_font.update(cx, |select, cx| {
-                                select.set_selected_value(&family, window, cx);
-                            });
-                        },
-                        cx,
-                    ))
-                    .control(font_select(
-                        &self.settings_controls.ui_font,
-                        "UI font",
-                        "System default",
-                        cx,
-                    ))
-            }
+            AppearancePageItem::UiFontFamily => SettingEntry::new("UI font").control(font_select(
+                &self.settings_controls.ui_font,
+                "UI font",
+                "System default",
+                cx,
+            )),
             AppearancePageItem::UiZoom => {
                 let view = cx.entity().downgrade();
                 let slider = zoom_slider(
@@ -906,25 +820,11 @@ impl AppShell {
                     },
                     cx,
                 );
-                let (title, description) = item.text().unwrap_or_default();
-                with_control(
-                    SettingEntry::new(title, description).title_actions(
-                        settings_reset_button(
-                            "settings-zoom-reset",
-                            "Reset UI zoom to 100%",
-                            self.preferences.zoom != 1.0,
-                        )
-                        .on(settings_card_ground(cx))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.preferences.reset_zoom(&this.connection, window, cx);
-                        })),
-                    ),
-                    slider,
-                    narrow,
-                )
+                let title = item.title().unwrap_or_default();
+                with_control(SettingEntry::new(title), slider, narrow)
             }
             AppearancePageItem::ChromeContrast => {
-                let (title, description) = item.text().unwrap_or_default();
+                let title = item.title().unwrap_or_default();
                 let view = cx.entity().downgrade();
                 let slider = contrast_slider(
                     self.preferences.contrast,
@@ -937,26 +837,10 @@ impl AppShell {
                     },
                     cx,
                 );
-                with_control(
-                    SettingEntry::new(title, description).title_actions(
-                        settings_reset_button(
-                            "settings-contrast-reset",
-                            "Reset contrast to 100%",
-                            self.preferences.contrast != 1.0,
-                        )
-                        .on(settings_card_ground(cx))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.preferences.contrast = 1.0;
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        })),
-                    ),
-                    slider,
-                    narrow,
-                )
+                with_control(SettingEntry::new(title), slider, narrow)
             }
             AppearancePageItem::AnimationSpeed => {
-                let (title, description) = item.text().unwrap_or_default();
+                let title = item.title().unwrap_or_default();
                 let view = cx.entity().downgrade();
                 let slider = zz_ui::settings::appearance::animation_speed_slider(
                     self.preferences.animation_speed,
@@ -969,58 +853,21 @@ impl AppShell {
                     },
                     cx,
                 );
-                let default = Preferences::default().animation_speed;
-                with_control(
-                    SettingEntry::new(title, description).title_actions(
-                        settings_reset_button(
-                            "settings-animation-speed-reset",
-                            "Reset animation speed to 100%",
-                            self.preferences.animation_speed != default,
-                        )
-                        .on(settings_card_ground(cx))
+                with_control(SettingEntry::new(title), slider, narrow)
+            }
+            AppearancePageItem::ProgramColors => {
+                let title = item.title().unwrap_or_default();
+                SettingEntry::new(title).control(
+                    Switch::new("settings-program-colors")
+                        .checked(self.preferences.program_colors)
                         .on_click(cx.listener(|this, _, window, cx| {
-                            this.preferences.animation_speed =
-                                Preferences::default().animation_speed;
+                            this.preferences.program_colors = !this.preferences.program_colors;
                             this.preferences.save();
                             this.preferences.apply(&this.connection, window, cx);
                         })),
-                    ),
-                    slider,
-                    narrow,
                 )
             }
-            AppearancePageItem::ProgramColors => {
-                let (title, description) = item.text().unwrap_or_default();
-                SettingEntry::new(title, description)
-                    .title_actions(reset_button(
-                        "settings-program-colors-reset",
-                        self.preferences.program_colors != Preferences::default().program_colors,
-                        |this, _, _| {
-                            this.preferences.program_colors = Preferences::default().program_colors;
-                        },
-                        cx,
-                    ))
-                    .control(
-                        Switch::new("settings-program-colors")
-                            .checked(self.preferences.program_colors)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.preferences.program_colors = !this.preferences.program_colors;
-                                this.preferences.save();
-                                this.preferences.apply(&this.connection, window, cx);
-                            })),
-                    )
-            }
-            AppearancePageItem::Animations => SettingEntry::new(
-                "Animations",
-                "Animate interface transitions, loading indicators, and image frames.",
-            )
-            .title_actions(reset_button(
-                "settings-animations-reset",
-                self.preferences.animations != Preferences::default().animations,
-                |this, _, _| this.preferences.animations = Preferences::default().animations,
-                cx,
-            ))
-            .control(
+            AppearancePageItem::Animations => SettingEntry::new("Animations").control(
                 Switch::new("settings-animations")
                     .checked(self.preferences.animations)
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -1030,7 +877,7 @@ impl AppShell {
                     })),
             ),
             AppearancePageItem::Accent => {
-                let (title, description) = item.text().unwrap_or_default();
+                let title = item.title().unwrap_or_default();
                 let custom =
                     ColorPicker::new(&self.settings_controls.accent, zz_gpui::transparent_black())
                         .label("Accent")
@@ -1048,23 +895,10 @@ impl AppShell {
                     },
                     cx,
                 );
-                with_control(
-                    SettingEntry::new(title, description).title_actions(reset_button(
-                        "settings-accent-reset",
-                        self.preferences.overrides.accent.is_some(),
-                        |this, window, cx| {
-                            this.preferences.overrides.accent = None;
-                            this.settings_controls
-                                .sync_theme_inputs(&this.preferences, window, cx);
-                        },
-                        cx,
-                    )),
-                    swatches,
-                    narrow,
-                )
+                with_control(SettingEntry::new(title), swatches, narrow)
             }
             AppearancePageItem::TintHue => {
-                let (title, description) = item.text().unwrap_or_default();
+                let title = item.title().unwrap_or_default();
                 let hue = self
                     .preferences
                     .overrides
@@ -1082,19 +916,10 @@ impl AppShell {
                     },
                     cx,
                 );
-                with_control(
-                    SettingEntry::new(title, description).title_actions(reset_button(
-                        "settings-tint-hue-reset",
-                        self.preferences.overrides.tint_hue.is_some(),
-                        |this, _, _| this.preferences.overrides.tint_hue = None,
-                        cx,
-                    )),
-                    slider,
-                    narrow,
-                )
+                with_control(SettingEntry::new(title), slider, narrow)
             }
             AppearancePageItem::Tint => {
-                let (title, description) = item.text().unwrap_or_default();
+                let title = item.title().unwrap_or_default();
                 let tint = self.preferences.overrides.tint.unwrap_or(0.0);
                 let view = cx.entity().downgrade();
                 let slider = tint_slider(
@@ -1108,19 +933,10 @@ impl AppShell {
                     },
                     cx,
                 );
-                with_control(
-                    SettingEntry::new(title, description).title_actions(reset_button(
-                        "settings-tint-reset",
-                        self.preferences.overrides.tint.is_some(),
-                        |this, _, _| this.preferences.overrides.tint = None,
-                        cx,
-                    )),
-                    slider,
-                    narrow,
-                )
+                with_control(SettingEntry::new(title), slider, narrow)
             }
             AppearancePageItem::Themes => {
-                let (title, description) = item.text().unwrap_or_default();
+                let title = item.title().unwrap_or_default();
                 let picks = theme_picks(&self.preferences);
                 let ids = picks
                     .themes
@@ -1188,42 +1004,17 @@ impl AppShell {
                                 })),
                         )
                     });
-                let reset = reset_button(
-                    "settings-themes-reset",
-                    selected != interface_theme::DEFAULT_THEME,
-                    |this, window, cx| {
-                        this.preferences
-                            .set_interface_theme(interface_theme::DEFAULT_THEME);
-                        this.settings_controls
-                            .sync_theme_inputs(&this.preferences, window, cx);
-                    },
-                    cx,
-                );
-                let entry = SettingEntry::new(title, description);
+                let entry = SettingEntry::new(title);
                 if narrow {
-                    entry
-                        .title_actions(reset)
-                        .child(strip)
-                        .when(saved, |entry| entry.child(actions))
+                    entry.child(strip).when(saved, |entry| entry.child(actions))
                 } else {
-                    entry
-                        .title_actions(
-                            div()
-                                .flex()
-                                .flex_none()
-                                .items_center()
-                                .gap(px(8.0))
-                                .child(reset)
-                                .child(actions),
-                        )
-                        .child(strip)
+                    entry.title_actions(actions).child(strip)
                 }
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
                     zz_ui::settings::appearance::ADVANCED_DISCLOSURE,
                     "Advanced",
-                    Some("Corner radius, contrast, fonts and zoom."),
                     expanded,
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -1233,7 +1024,7 @@ impl AppShell {
                 .into_any_element();
             }
             AppearancePageItem::CornerRadius => {
-                let (title, description) = item.text().unwrap_or_default();
+                let title = item.title().unwrap_or_default();
                 let view = cx.entity().downgrade();
                 let slider = corner_radius_slider(
                     self.preferences.widget_corner_radius(),
@@ -1246,16 +1037,7 @@ impl AppShell {
                     },
                     cx,
                 );
-                with_control(
-                    SettingEntry::new(title, description).title_actions(reset_button(
-                        "settings-corner-radius-reset",
-                        self.preferences.overrides.radius.is_some(),
-                        |this, _, _| this.preferences.overrides.radius = None,
-                        cx,
-                    )),
-                    slider,
-                    narrow,
-                )
+                with_control(SettingEntry::new(title), slider, narrow)
             }
             _ => return div().into_any_element(),
         };
@@ -1263,34 +1045,10 @@ impl AppShell {
     }
 
     fn pane_setting(&self, control: PaneControl, cx: &mut Context<Self>) -> SettingEntry {
-        let value = *control.value(&mut self.preferences.clone());
-        let default = *control.value(&mut Preferences::default());
-        let entry = SettingEntry::new(control.title(), control.description())
-            .disabled(
-                !matches!(control, PaneControl::PipOpacity | PaneControl::Opacity)
-                    && !self.preferences.gaps,
-            )
-            .title_actions(
-                settings_reset_button(
-                    format!("settings-pane-reset-{}", control as usize),
-                    "Reset to default",
-                    value != default,
-                )
-                .on(settings_card_ground(cx))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    *control.value(&mut this.preferences) = default;
-                    let scale = if matches!(control, PaneControl::PipOpacity | PaneControl::Glow) {
-                        100.0
-                    } else {
-                        1.0
-                    };
-                    this.settings_controls.panes[control as usize].update(cx, |input, cx| {
-                        input.set_value(number_text(default * scale), window, cx);
-                    });
-                    this.preferences.save();
-                    this.preferences.apply(&this.connection, window, cx);
-                })),
-            );
+        let entry = SettingEntry::new(control.title()).disabled(
+            !matches!(control, PaneControl::PipOpacity | PaneControl::Opacity)
+                && !self.preferences.gaps,
+        );
         entry.control(number_control(
             &self.settings_controls.panes[control as usize],
             cx,
@@ -1301,33 +1059,13 @@ impl AppShell {
         let available = cx.text_system().all_font_names();
         let appearance =
             localized_font_appearance(&self.connection.read(cx).core, &available, "Lilex", cx);
-        let font = SettingEntry::new(
-            "Font",
-            "Use an available font on this client, or follow the host's configured font.",
-        )
-        .control(font_select(
+        let font = SettingEntry::new("Font").control(font_select(
             &self.settings_controls.terminal_font,
             "Terminal font",
             "Follow host",
             cx,
         ));
-        let scale = SettingEntry::new(
-            "Font scale",
-            "Scale terminal text on this client from 50% to 300%.",
-        )
-        .title_actions(
-            settings_reset_button(
-                "settings-terminal-scale-reset",
-                "Reset font scale to 100%",
-                self.preferences.terminal_font_scale != 1.0,
-            )
-            .on(settings_card_ground(cx))
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.preferences.terminal_font_scale = 1.0;
-                this.preferences.save();
-                this.preferences.apply(&this.connection, window, cx);
-            })),
-        );
+        let scale = SettingEntry::new("Font scale");
         let view = cx.entity().downgrade();
         let scale = with_control(
             scale,
@@ -1346,90 +1084,44 @@ impl AppShell {
             ),
             narrow,
         );
-        let (host_title, host_description) = if phone() {
-            (
-                "Cursor shape and spacing",
-                "Edit the Ghostty-compatible configuration on the daemon host to change these values. Colors follow the interface theme.",
-            )
+        let host_title = if phone() {
+            "Cursor shape and spacing"
         } else {
-            (
-                "Colors, cursor, and spacing",
-                "Edit the Ghostty-compatible configuration on the daemon host to change these values.",
-            )
+            "Colors, cursor, and spacing"
         };
         settings_scroll_column("settings-terminal")
-            .children((!narrow).then(|| settings_page_heading("Terminal", "Adjust terminal text on this client. Colors, cursor, and spacing follow the host configuration.", cx)))
-            .child(zz_ui::settings::settings_list_group_header("Preview", None, cx))
+            .children((!narrow).then(|| settings_page_heading("Terminal", cx)))
+            .child(zz_ui::settings::settings_list_group_header("Preview"))
             .child(terminal_preview(appearance, cx))
             .child(SettingsStack::titled("Display").child(font).child(scale))
-            .child(SettingsStack::titled("Host configuration")
-                .child(SettingEntry::new(host_title, host_description).control(div().text_size(zz_ui::rems_from_px(13.0)).text_color(cx.theme().foreground.muted()).child("Shared"))))
+            .child(
+                SettingsStack::titled("Host configuration").child(
+                    SettingEntry::new(host_title).control(
+                        div()
+                            .text_size(zz_ui::rems_from_px(13.0))
+                            .text_color(cx.theme().foreground.muted())
+                            .child("Shared"),
+                    ),
+                ),
+            )
             .into_any_element()
     }
 }
 
 impl AppShell {
     fn palette_settings(&self, cx: &Context<Self>) -> Vec<SettingEntry> {
-        let defaults = Preferences::default();
         vec![
-            SettingEntry::new(
-                "Navigation layout",
-                "Show sessions, windows, and panes as a tree or a flat list.",
-            )
-            .title_actions(reset_button(
-                "settings-palette-layout-reset",
-                self.preferences.palette_grouped != defaults.palette_grouped,
-                |this, window, cx| {
-                    this.preferences.palette_grouped = Preferences::default().palette_grouped;
-                    let value = palette_layout_value(&this.preferences).to_owned();
-                    this.settings_controls
-                        .palette_layout
-                        .update(cx, |select, cx| {
-                            select.set_selected_value(&value, window, cx);
-                        });
-                },
-                cx,
-            ))
-            .control(choice_select(
+            SettingEntry::new("Navigation layout").control(choice_select(
                 &self.settings_controls.palette_layout,
                 "Navigation layout",
                 cx,
             )),
-            SettingEntry::new(
-                "Host prefix",
-                "Type this character in an empty palette to browse hosts.",
-            )
-            .title_actions(reset_button(
-                "settings-palette-host-prefix-reset",
-                self.preferences.palette_host_prefix != defaults.palette_host_prefix,
-                |this, window, cx| {
-                    this.preferences.palette_host_prefix =
-                        Preferences::default().palette_host_prefix;
-                    let value = this.preferences.palette_host_prefix.clone();
-                    this.settings_controls.host_prefix.update(cx, |select, cx| {
-                        select.set_selected_value(&value, window, cx);
-                    });
-                },
-                cx,
-            ))
-            .control(choice_select(
+            SettingEntry::new("Host prefix").control(choice_select(
                 &self.settings_controls.host_prefix,
                 "Host prefix",
                 cx,
             )),
-            SettingEntry::new(
-                "Command shortcuts",
-                "Show keyboard shortcuts beside commands.",
-            )
-            .title_actions(reset_button(
-                "settings-palette-show-keys-reset",
-                self.preferences.palette_show_keys != defaults.palette_show_keys,
-                |this, _, _| {
-                    this.preferences.palette_show_keys = Preferences::default().palette_show_keys;
-                },
-                cx,
-            ))
-            .control(
+            SettingEntry::new("Command shortcuts").control(
                 Switch::new("settings-palette-show-keys")
                     .checked(self.preferences.palette_show_keys)
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -1506,21 +1198,6 @@ pub(super) fn with_control(
     } else {
         entry.control(control)
     }
-}
-
-fn reset_button(
-    id: impl Into<zz_gpui::ElementId>,
-    changed: bool,
-    reset: impl Fn(&mut AppShell, &mut Window, &mut Context<AppShell>) + 'static,
-    cx: &Context<AppShell>,
-) -> Button {
-    settings_reset_button(id, "Reset to default", changed)
-        .on(settings_card_ground(cx))
-        .on_click(cx.listener(move |this, _, window, cx| {
-            reset(this, window, cx);
-            this.preferences.save();
-            this.preferences.apply(&this.connection, window, cx);
-        }))
 }
 
 fn number_field_event(event: &InputEvent, window: &mut Window, cx: &mut App) {
@@ -1844,21 +1521,6 @@ impl PaneControl {
             Self::Opacity => "Inactive pane opacity",
             Self::Glow => "Selected pane contrast",
             Self::Margin => "Pane margin",
-        }
-    }
-
-    fn description(self) -> &'static str {
-        match self {
-            Self::PipOpacity => {
-                "How much of its own color a PiP lays over the panes under it, from 0% to 100%."
-            }
-            Self::Opacity => {
-                "Visible strength of inactive pane content and chrome (0–1). Set to 1 to disable dimming."
-            }
-            Self::Glow => {
-                "How far the selected pane stands apart, from 0% to 200%: it lightens while the others darken and their edges dim. Set to 0 to draw it like the others."
-            }
-            Self::Margin => "Space around each pane, in logical pixels (0–32).",
         }
     }
 }

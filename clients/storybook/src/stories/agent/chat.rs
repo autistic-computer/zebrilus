@@ -27,7 +27,7 @@ use zz_ui::{
     pane::{PaneSplitAxis, pane_split_surface},
     roles,
     scroll::ScrollableElement as _,
-    shell::{app_shell_surface, app_workspace_surface},
+    shell::{app_shell_surface, app_workspace_surface, titlebar_over_panes},
 };
 
 use super::cards::permission;
@@ -671,7 +671,7 @@ impl Render for TitlebarChat {
                 "driver-titlebar-shell",
                 cx.theme().background,
                 div(),
-                Some(bar.into_any_element()),
+                Some(titlebar_over_panes(bar, gap(crate::pane().gaps)).into_any_element()),
                 app_workspace_surface(
                     "driver-titlebar-workspace",
                     panes("driver-titlebar-panes", cx),

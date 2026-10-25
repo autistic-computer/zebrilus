@@ -56,8 +56,8 @@ use zz_ui::{
         pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
         pane_split_surface, pane_surface,
     },
-    settings::{SettingsSection, settings_navigation_button, settings_navigation_group_label},
-    shell::{app_shell_surface, app_workspace_surface},
+    settings::{SettingsSection, settings_navigation_button},
+    shell::{app_shell_surface, app_workspace_surface, titlebar_over_panes},
 };
 
 use crate::{
@@ -965,13 +965,7 @@ impl AppShell {
         let ground = self.sidebar_ground(window, cx);
         let navigation = if let Some(selected) = self.settings {
             let mut rows = Vec::new();
-            let mut previous_group = None;
             for section in settings::sections() {
-                let group = section.navigation_group();
-                if previous_group != Some(group) {
-                    rows.push(settings_navigation_group_label(group, cx).into_any_element());
-                    previous_group = Some(group);
-                }
                 rows.push(
                     settings_navigation_button(section, section == selected, cx)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -2199,7 +2193,6 @@ impl AppShell {
                     } else {
                         0.0
                     }))
-                    .when(!self.inline_sidebar(window), zz_gpui::Styled::pt_0)
                     .child(content),
             )
             .children(overlays)
@@ -2862,7 +2855,10 @@ impl Render for AppShell {
             && !connect_screen
             && self.settings.is_none()
             && !self.inline_sidebar(window))
-        .then(|| self.status_bar(window, cx));
+        .then(|| {
+            titlebar_over_panes(self.status_bar(window, cx), self.preferences.margin())
+                .into_any_element()
+        });
         let workspace = (!compact).then(|| self.workspace(window, cx));
         #[cfg(target_os = "ios")]
         {

@@ -57,6 +57,14 @@ pub struct Materials {
     /// changes.
     #[serde(deserialize_with = "deserialize_glass")]
     pub glass: Option<GlassMaterial>,
+    /// The glass in light mode, where a light glint on a light fill shows
+    /// nothing; `None` keeps `glass`. A theme file writes the fields it
+    /// changes from `glass`.
+    #[serde(
+        deserialize_with = "deserialize_glass",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub light_glass: Option<GlassMaterial>,
     /// Only the roles the theme gives a shadow cast one; every built-in
     /// shadow is off.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -84,6 +92,7 @@ impl Default for Materials {
             highlight_strength: 1.0,
             font: None,
             glass: None,
+            light_glass: None,
             picked_shadows: false,
             contact: ShadowMaterial::CONTACT,
             float: ShadowMaterial::FLOAT,
@@ -106,7 +115,10 @@ impl Materials {
         if let Some(font) = &self.font {
             theme.font_family = font.clone();
         }
-        theme.glass = self.glass;
+        theme.glass = match theme.mode {
+            ThemeMode::Light => self.light_glass.or(self.glass),
+            ThemeMode::Dark => self.glass,
+        };
         theme.picked_shadows = self.picked_shadows;
         theme.contact_shadow = self.contact;
         theme.float_shadow = self.float;
@@ -393,12 +405,35 @@ impl InterfaceTheme {
 /// Reads a theme file. Missing keys keep [`Materials::default`], the
 /// built-in role styles and the built-in palette.
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
-    let value =
+    let mut value =
         serde_json::from_str::<serde_json::Value>(source).map_err(|error| error.to_string())?;
     if !value.is_object() {
         return Err("a theme is a JSON object".to_owned());
     }
+    light_glass_over_glass(&mut value);
     serde_json::from_value(value).map_err(|error| with_spelling_hint(error.to_string()))
+}
+
+/// Lays the fields a theme file's `light-glass` names over its `glass`,
+/// unless it starts from a preset of its own.
+fn light_glass_over_glass(theme: &mut serde_json::Value) {
+    use serde_json::Value;
+    let Some(materials) = theme.get_mut("materials").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let mut glass = match materials.get("glass") {
+        Some(Value::String(name)) => {
+            serde_json::Map::from_iter([("preset".to_owned(), Value::String(name.clone()))])
+        }
+        Some(Value::Object(glass)) => glass.clone(),
+        _ => return,
+    };
+    if let Some(Value::Object(light)) = materials.get_mut("light-glass")
+        && !light.contains_key("preset")
+    {
+        glass.extend(std::mem::take(light));
+        *light = glass;
+    }
 }
 
 fn with_spelling_hint(message: String) -> String {
@@ -690,6 +725,39 @@ mod tests {
         );
         assert!(parse_theme(r#"{"materials":{"glass":"stained"}}"#).is_err());
         assert!(parse_theme("[]").is_err());
+    }
+
+    #[test]
+    fn light_mode_draws_the_light_glass_laid_over_the_glass() {
+        let theme = parse_theme(
+            r#"{"materials":{"glass":{"preset":"clear","blur":3},"light-glass":{"edge_shadow":0.7}}}"#,
+        )
+        .unwrap();
+        let glass = theme.materials.glass.unwrap();
+        let mut kit = Theme {
+            mode: ThemeMode::Light,
+            ..Theme::default()
+        };
+        theme.apply(&mut kit);
+        assert_eq!(
+            kit.glass,
+            Some(GlassMaterial {
+                edge_shadow: 0.7,
+                ..glass
+            })
+        );
+        kit.mode = ThemeMode::Dark;
+        theme.apply(&mut kit);
+        assert_eq!(kit.glass, Some(glass));
+        assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme);
+
+        let preset =
+            parse_theme(r#"{"materials":{"glass":"clear","light-glass":"frosted"}}"#).unwrap();
+        assert_eq!(
+            preset.materials.light_glass,
+            GlassMaterial::preset("frosted")
+        );
+        assert!(!default_theme().to_json().contains("light-glass"));
     }
 
     #[test]

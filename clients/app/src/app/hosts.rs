@@ -20,12 +20,6 @@ use super::{AppShell, settings::with_control};
 #[cfg(not(target_os = "ios"))]
 use crate::connection::Connection;
 
-#[cfg(target_os = "ios")]
-const DESCRIPTION: &str = "Pick a machine running zz. The app signs in over ssh, so the machine needs Remote Login and zz on its PATH.";
-#[cfg(not(target_os = "ios"))]
-const DESCRIPTION: &str =
-    "The browser client reaches the daemon through the zz web gateway on this computer.";
-
 #[cfg(any(target_os = "ios", test))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -192,7 +186,7 @@ impl AppShell {
     ) -> AnyElement {
         let entries = self.host_entries(narrow, cx);
         let page = settings_scroll_column(id)
-            .children(title.map(|title| settings_page_heading(title, DESCRIPTION, cx)))
+            .children(title.map(|title| settings_page_heading(title, cx)))
             .when(!entries.is_empty(), |page| {
                 page.child(SettingsStack::titled("Hosts").children(entries))
             });
@@ -290,7 +284,7 @@ impl AppShell {
                 } else {
                     IconName::HardDrive
                 };
-                let entry = SettingEntry::new(host_title(endpoint), endpoint.clone())
+                let entry = SettingEntry::new(host_title(endpoint))
                     .title_icon(Icon::new(icon).text_color(color))
                     .when_some(state.as_ref(), |entry, (.., status)| {
                         entry.child(status_line(
@@ -357,28 +351,20 @@ impl AppShell {
         let connection = self.connection.read(cx);
         let connected = connection.connected;
         let muted = cx.theme().foreground.muted();
-        let address = gateway_address();
-        let entry = SettingEntry::new(
-            "This computer",
-            if address.is_empty() {
-                "zz web gateway".to_owned()
+        let entry = SettingEntry::new("This computer")
+            .title_icon(Icon::new(IconName::HardDrive).text_color(if connected {
+                cx.theme().success
             } else {
-                format!("zz web gateway at {address}")
-            },
-        )
-        .title_icon(Icon::new(IconName::HardDrive).text_color(if connected {
-            cx.theme().success
-        } else {
-            cx.theme().warning
-        }))
-        .child(status_line(
-            if connected {
-                "Connected".to_owned()
-            } else {
-                connection.status.clone()
-            },
-            if connected { muted } else { cx.theme().warning },
-        ));
+                cx.theme().warning
+            }))
+            .child(status_line(
+                if connected {
+                    "Connected".to_owned()
+                } else {
+                    connection.status.clone()
+                },
+                if connected { muted } else { cx.theme().warning },
+            ));
         vec![with_control(
             entry,
             h_flex().child(
@@ -395,13 +381,10 @@ impl AppShell {
 
     #[cfg(target_os = "ios")]
     fn add_host_stack(&self, narrow: bool, cx: &mut Context<Self>) -> SettingsStack {
-        let destination = SettingEntry::new(
-            "Destination",
-            "Enter user@host, or user@host:port for a custom ssh port.",
-        )
-        .when_some(self.hosts.error.clone(), |entry, error| {
-            entry.child(status_line(error, cx.theme().warning))
-        });
+        let destination = SettingEntry::new("Destination")
+            .when_some(self.hosts.error.clone(), |entry, error| {
+                entry.child(status_line(error, cx.theme().warning))
+            });
         SettingsStack::titled("Add host")
             .child(with_control(
                 destination,
@@ -413,8 +396,7 @@ impl AppShell {
                             .when(narrow, |field| field.flex_1().min_w_0())
                             .when(!narrow, |field| field.w(px(220.0)).flex_none())
                             .child(
-                                Input::new(&self.hosts.destination)
-                                    .on(settings_card_ground(cx)),
+                                Input::new(&self.hosts.destination).on(settings_card_ground(cx)),
                             ),
                     )
                     .child(
@@ -431,10 +413,7 @@ impl AppShell {
                 narrow,
             ))
             .child(with_control(
-                SettingEntry::new(
-                    "SSH key",
-                    "Add this key to ~/.ssh/authorized_keys on the host to sign in without a password.",
-                ),
+                SettingEntry::new("SSH key"),
                 h_flex().child(
                     Button::new("hosts-copy-ssh-key")
                         .label("Copy")
@@ -464,18 +443,6 @@ fn status_line(text: impl Into<zz_gpui::SharedString>, color: zz_gpui::Hsla) -> 
         .text_size(rems_from_px(11.0))
         .text_color(color)
         .child(text.into())
-}
-
-#[cfg(target_family = "wasm")]
-fn gateway_address() -> String {
-    web_sys::window()
-        .and_then(|window| window.location().host().ok())
-        .unwrap_or_default()
-}
-
-#[cfg(not(any(target_family = "wasm", target_os = "ios")))]
-fn gateway_address() -> String {
-    String::new()
 }
 
 #[cfg(test)]

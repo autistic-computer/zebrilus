@@ -143,8 +143,7 @@ materials decide what those look like, and the theme can change any role by id. 
    and multiplexer options. The shared Select API keeps their values and confirmation events;
    it has no separate trigger or row styling.
    Use `Button::flat()` for actions embedded in another control, including tree-row
-   close buttons, browser tab close buttons, input clear buttons, number steppers, and settings
-   reset buttons. These retain the keyboard focus indicator without another raised edge. Tree-row
+   close buttons, browser tab close buttons, input clear buttons, and number steppers. These retain the keyboard focus indicator without another raised edge. Tree-row
    actions and browser tab close buttons also use `Button::text()` so hover only brightens their
    foreground, without a button fill. Other embedded actions keep their wash.
    Gapped panes cast the `pane` role's shadow (the contact shadow in every built-in) and draw their frame
@@ -396,7 +395,7 @@ Terminal grid colors are a separate, renderer-neutral system described by
 entries, selections, and cursor colors come from `TerminalAppearance`,
 `AppearanceColor`, and `Color`; they are not application chrome colors. Exact terminal-color
 conversion code and tests may therefore carry narrowly scoped lint exemptions. The surrounding
-chrome (borders, labels, hover states, badges, and reset controls) still reads its colors from
+chrome (borders, labels, hover states, and badges) still reads its colors from
 `cx.theme()`.
 
 # Chrome chroma is independent of the terminal
@@ -520,11 +519,6 @@ card is the System / Light / Dark picker, three drawn window previews
 (`config/settings.rs`, `theme_preview`). A pinned mode wins in both `refresh_current_theme` and
 `sync_system_appearance`, so the pin survives an OS light/dark switch; returning to System restores
 the last recorded OS mode. The previews paint each half from the active theme's colors for that mode.
-
-Settings maps each `AppearanceSource` tier to one badge: `Default` → “Default,” `ThemeFile` → “From
-theme,” `Ghostty` → “From Ghostty,” `Override` → “Overridden.” Those badges describe *terminal*
-appearance provenance; the interface theme carries the client-local `Default`/`Overridden`
-provenance instead.
 
 `ThemeColor` holds six palette roots, the per-mode scrim, the shadow color and the optional text on
 the accent. Selected menu, list, and picker rows use their row role's `selected` highlight: the

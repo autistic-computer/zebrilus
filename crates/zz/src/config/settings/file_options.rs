@@ -344,47 +344,11 @@ impl SettingsView {
             "Options"
         } else {
             "Appearance"
-        })
-        .description(if disabled {
-            "Save your editor changes and connect locally before editing multiplexer options."
-        } else {
-            "Edit a value and press Enter. These rows use the saved file below."
         });
         for (index, row) in controls.rows.iter().enumerate() {
-            let provenance = if row.value.is_some() {
-                ConfigProvenance::Override
-            } else {
-                ConfigProvenance::Default
-            };
-            let reset = settings_reset_button(
-                format!("reset-file-{}", row.key.name()),
-                if row.value.is_some() {
-                    "Reset to the inherited or default value"
-                } else {
-                    "Already using the default value"
-                },
-                !disabled && row.value.is_some(),
-            )
-            .on(settings_card_ground(cx))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.commit_file_option(kind, index, None, window, cx);
-            }));
-            let annotations = h_flex()
-                .flex_none()
-                .gap(px(8.0))
-                .child(reset)
-                .child(provenance_badge(provenance));
-            let description = match row.key.name() {
-                "theme" => "Choosing a theme replaces custom terminal colors.",
-                "font-thicken" => "Draw terminal text with macOS font smoothing.",
-                "font-thicken-strength" => "Weight of smoothed text, from 0 to 255.",
-                name => name,
-            };
-            let entry = SettingEntry::new(row.title, description)
-                .title_actions(annotations)
-                .disabled(
-                    disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled,
-                );
+            let entry = SettingEntry::new(row.title).disabled(
+                disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled,
+            );
             let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
                 let default = row.key.default_value();
                 let enabled = matches!(
@@ -444,11 +408,7 @@ impl SettingsView {
         let disabled = self.file_controls_disabled(kind, cx);
         SettingsStack::titled("Import")
             .child(
-                SettingEntry::new(
-                    "Source file",
-                    "Choose a configuration file to copy into zz.",
-                )
-                .control(
+                SettingEntry::new("Source file").control(
                     h_flex()
                         .gap_2()
                         .child(

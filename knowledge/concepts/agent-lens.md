@@ -29,7 +29,8 @@ feeds are gone. The [daemon-owned agent runtime](/designs/agent-daemon-runtime.m
 - **Client.** `zz_client::window_summary::pane_agent` maps `pane_program` (the terminal's
   `PaneSummary.process`, wire v112) to `claude` or `codex`. The toggle is per client and not
   synced, so one client can show the lens while another shows the terminal. The header button is
-  `zz_ui::pane::pane_lens_button` (`PaneLens`, sent as `TerminalPaneAction::Lens`), drawn in the
+  `zz_ui::pane::pane_lens_button` (`PaneLens`, sent as `TerminalPaneAction::Lens`), an eye (Solar's
+  `eye`) for either agent, drawn in the
   `pane.header.lens` role, which tints it while the lens is open.
 - **Phone.** In the compact shell (iPhone) the lens opens by default for a terminal running an
   agent, since typing into a TUI with a phone keyboard is slow. Closing it with the toggle keeps that

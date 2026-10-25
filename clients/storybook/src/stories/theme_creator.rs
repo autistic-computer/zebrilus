@@ -654,17 +654,11 @@ impl Controls {
             .child(
                 SettingsStack::titled("Interface")
                     .child(
-                        SettingEntry::new(
-                            "Mode",
-                            "Follow the system light/dark setting, or pin one.",
-                        )
+                        SettingEntry::new("Mode")
                         .child(tiles),
                     )
                     .child(
-                        SettingEntry::new(
-                            "Navigation layout",
-                            "Show sessions, windows, and panes as a tree or a flat list.",
-                        )
+                        SettingEntry::new("Navigation layout")
                         .control(
                             Select::new(&self.layout)
                                 .title("Navigation layout")
@@ -672,7 +666,7 @@ impl Controls {
                         ),
                     )
                     .child(
-                        SettingEntry::new("Pane gaps", "Float panes apart on the window ground.")
+                        SettingEntry::new("Pane gaps")
                             .control(Switch::new("showcase-gaps").checked(crate::pane().gaps)),
                     ),
             )
@@ -838,7 +832,11 @@ impl Render for Floating {
             .gap(px(GAP))
             .child(tiles(
                 window,
-                vec![vec![menus, driver], vec![view, toasts], vec![palette, dialog]],
+                vec![
+                    vec![menus, driver],
+                    vec![view, toasts],
+                    vec![palette, dialog],
+                ],
             ))
             .child(which_key)
     }

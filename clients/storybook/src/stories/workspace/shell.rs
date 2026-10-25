@@ -7,7 +7,10 @@ use zz_ui::{
     ActiveTheme as _,
     input::InputState,
     pane::{PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface},
-    shell::{app_connection_state, app_shell_surface, app_titlebar_strip, app_workspace_surface},
+    shell::{
+        app_connection_state, app_shell_surface, app_titlebar_strip, app_workspace_surface,
+        titlebar_over_panes,
+    },
 };
 
 use super::{
@@ -66,13 +69,7 @@ impl Shell {
     }
 }
 
-fn canvas(
-    gaps: bool,
-    inline_sidebar: bool,
-    address: &Entity<InputState>,
-    window: &Window,
-    cx: &App,
-) -> impl IntoElement {
+fn canvas(gaps: bool, address: &Entity<InputState>, window: &Window, cx: &App) -> impl IntoElement {
     let terminal = TerminalPane::new(1, "cargo test", BUILD)
         .active(true)
         .gaps(gaps)
@@ -115,13 +112,11 @@ fn canvas(
         div().absolute(),
         cx,
     );
-    div().id("shell-canvas").relative().size_full().child(
-        div()
-            .size_full()
-            .p(gap(gaps))
-            .when(!inline_sidebar, zz_gpui::Styled::pt_0)
-            .child(layout),
-    )
+    div()
+        .id("shell-canvas")
+        .relative()
+        .size_full()
+        .child(div().size_full().p(gap(gaps)).child(layout))
 }
 
 fn window_frame(id: &'static str, height: f32, shell: impl IntoElement, cx: &App) -> AnyElement {
@@ -163,7 +158,7 @@ pub(crate) fn with_sidebar(
         None,
         app_workspace_surface(
             "workspace",
-            canvas(gaps, true, &state.addresses[index], window, cx),
+            canvas(gaps, &state.addresses[index], window, cx),
             Vec::new(),
             cx,
         ),
@@ -183,10 +178,13 @@ fn with_status_bar(
         "shell",
         cx.theme().background,
         div(),
-        Some(titlebar(&Bar { gaps, ..Bar::FULL }, cx).into_any_element()),
+        Some(
+            titlebar_over_panes(titlebar(&Bar { gaps, ..Bar::FULL }, cx), gap(gaps))
+                .into_any_element(),
+        ),
         app_workspace_surface(
             "workspace",
-            canvas(gaps, false, &state.addresses[index], window, cx),
+            canvas(gaps, &state.addresses[index], window, cx),
             Vec::new(),
             cx,
         ),

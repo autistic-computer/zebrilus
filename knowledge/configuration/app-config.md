@@ -255,15 +255,18 @@ preference, so macOS, Linux, and Windows follow this key directly.
 
 An interface theme is one JSON object (`zz_ui::interface_theme::InterfaceTheme`): a `name`,
 `materials`, `roles`, and a `light` and a `dark` color set. The mode (`theme-mode`, or the OS
-appearance on System) only picks which color set applies; materials and roles are the same in both.
+appearance on System) only picks which color set applies; materials and roles are the same in both,
+except that light mode draws `light-glass` when the theme sets one.
 
 - `materials` is `zz_ui::interface_theme::Materials` in kebab-case: `radius`; `outline`, the width
   in pixels of every outline a role draws (`0` draws none); `row-inset`; `primary` (`foreground` or
   `accent`); `font`; `glass`; and the shadows `contact` and `float`, each an object of `y`, `blur`,
   `spread` and `strength` (1 is the theme's shadow color as the mode sets it, 0 casts nothing).
   `glass` is `null` for plain surfaces, a preset name (`regular`, `clear`, `frosted`, `bubble`,
-  `smoked`), or an object with a `preset` and the fields it changes. A shadow object names only the
-  fields it changes. Corner smoothing is not a material; every window draws `CORNER_SMOOTHING`.
+  `smoked`), or an object with a `preset` and the fields it changes. `light-glass` is the glass light
+  mode draws instead, because a light glint on a light fill shows nothing: an object of the fields it
+  changes from `glass`, or a preset of its own; left out, light mode draws `glass`. A shadow object
+  names only the fields it changes. Corner smoothing is not a material; every window draws `CORNER_SMOOTHING`.
 - `roles` maps a kit kind (`button`, `chip`, `row`, `popover`, ...) or a zz role id
   (`chrome.button`, `sidebar.row`, `agent.composer`, ...) to the style props it changes: `fill`
   (`none`, `tint`, `solid`, `glass`), `outline` (`true` or `false`), `shadow` (`none`, `contact`,
@@ -297,7 +300,9 @@ Three themes ship from `crates/zz-ui/themes/`: Default (`default.json`), macOS
 `liquid-glass` loads Default, like any theme that is not found. macOS uses the existing material settings
 for macOS-style glass: chrome buttons, selected tabs and sidebar entries, popovers, dialogs and
 other floating surfaces, with directional glass lighting, contact and float shadows, and light and
-dark palettes. Content cards, sidebar rows, code blocks, tooltips, pane chips and ordinary
+dark palettes. Its `light-glass` lightens the contour (`edge_shadow` 0.2) and spreads it evenly
+(`edge_spread` 0.85), so a white tab or pane on the light window reads as a hairline all the way
+around, like Rex's tabs. Content cards, sidebar rows, code blocks, tooltips, pane chips and ordinary
 buttons use plain fills. Yaru draws Ubuntu's GNOME look: libadwaita's tinted buttons and
 fields with no outline, outlined menus and cards with soft shadows, circular corners and Yaru's
 orange. The JSON
@@ -309,14 +314,19 @@ reads `macos.json` again; both previews have a light/dark switch and show their 
 In the native reference, Cmd+Shift+A deactivates the app and Cmd+Shift+R activates it.
 Click a circular toolbar button in the zz-ui preview to activate that window.
 
-Glass materials accept `light_directionality` and `inactive_flattening`, each from 0 to 1.
+Glass materials accept `light_directionality`, `inactive_flattening` and `edge_spread`, each from 0
+to 1. `edge_spread` evens the contour out around the edge: 0 keeps it darkest along the light axis,
+1 makes it a hairline as dark all the way around, which is what a light glass needs to stand off a
+light backdrop.
 Directionality moves the glint toward the light and the contour shadow away from it; 0 keeps
 the original symmetric lighting. Inactive flattening reduces the rim, refraction, and color
 boost when a native window loses focus, keeping the tint, blur, and contour. Neutral glass buttons
 also quiet their labels while inactive; selected tabs retain their labels. Both fields default
 to 0, so existing theme files keep their behavior. The theme creator exposes both controls
 and preserves them on import, export, and reset. Its browser canvases stay visually active
-when focus moves to the editor controls. All glass roles still share one material.
+when focus moves to the editor controls. All glass roles still share one material per mode; in light
+mode, a theme with a `light-glass` shows a second set of glass sliders that edit it, and picking a
+glass preset drops it. Import keeps only `glass`.
 
 A config naming a theme that is no longer built in, such as `tahoe`, `linear`, or `glass`,
 shows Default and logs a warning.
@@ -667,8 +677,7 @@ keys. Changing one reconfigures the runtime without restarting the children alre
 Every client-local knob resolves to `(effective value, provenance)`. Provenance is `Default` when the
 loaded file contains no assignment for that key and `Override` when the key is present. Presence is
 recorded even when its value is invalid; the diagnostic still follows the warn-and-keep rule, so an
-invalid override can display the preceding/default effective value with an `Overridden` badge. This
-definition lets Reset remove a stale invalid line instead of incorrectly presenting it as absent.
+invalid override keeps the preceding/default effective value while still counting as an override.
 `widget-corner-radius` is the exception. Its default is the radius on screen: `load_themes`
 composes the active theme with the file's overrides but not its radius, and
 `AppConfig::follow_theme_radius` shows that radius while nothing overrides the key. Only a line
@@ -734,8 +743,8 @@ lines remain intact. `zz/config` mux overrides still apply above the loaded mux 
 
 `crates/zz/src/config/settings.rs` renders the `WorkspaceRoute::Settings` route in the main window.
 `Cmd+,` on macOS or `Ctrl+,` elsewhere opens it. `SettingsSection::ALL` is **eleven pages**, titled
-Interface, Status bar, Editor, Panes, Multiplexer, Browser, Terminal, Hosts, Providers, System, About. The sidebar labels
-them as Appearance, Tools, and Advanced groups. There is deliberately no "General": the page that name described
+Interface, Status bar, Editor, Panes, Multiplexer, Browser, Terminal, Hosts, Providers, System, About. The sidebar lists
+them in that order with no group labels. There is deliberately no "General": the page that name described
 had accumulated window chrome, a global widget metric, daemon lifecycle and a debug overlay. The
 device/pairing page that sat before Terminal was deleted on 2026-08-01 along with pairing itself;
 fleet hosts live in `zz/config` and can be managed from the sidebar or **Settings › Hosts**.
@@ -758,11 +767,11 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
 | Terminal | **Appearance** (Font family, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
-| About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest-release row that reads the update state: Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
+| About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a release row titled with the update state, such as "zz 0.23.0 is out" or "Update check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
 
-Structured `zz/config` rows show their effective client-local or daemon-resolved appearance provenance and
-a Reset button that removes the corresponding key. Multiplexer uses effective prefix bindings
-without per-key provenance badges or Reset controls. All chrome colors come from `cx.theme()`
+A row is its title and its control: no description line, no provenance badge, no Reset button.
+Group titles are semibold, and page headings carry only the page title. Runtime state that a row
+needs, such as the update check, goes in the title. All chrome colors come from `cx.theme()`
 semantic values.
 
 The Theme group is picker cards rather than rows of buttons, because its choices are about
@@ -803,8 +812,7 @@ picker uses the same selection treatment: a plain foreground border around the s
 unchanged.
 
 Advanced also carries one non-persisted row: **UI zoom**. It is the same bounded `NumberInput`
-the geometry rows use, over the root rem as a percentage of the 16px default, with the reset control
-in the title where every other row keeps it. Because it writes nothing to disk it is also the one
+the geometry rows use, over the root rem as a percentage of the 16px default. Because it writes nothing to disk it is also the one
 field here that applies as it changes . a stepper press zooms on the press, and a typed value zooms
 once it is a complete number in range, so a prefix such as `1` of `150` never drags the whole UI to
 the minimum. Leaving the field clamps and normalizes what it holds. This setting intentionally does

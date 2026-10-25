@@ -8,6 +8,7 @@
     "row-inset": 5.0,
     "primary": "accent",
     "flat-highlights": true,
+    "bright-surfaces": true,
     "highlight-strength": 0.7,
     "font": null,
     "glass": {
@@ -29,6 +30,38 @@
       "edge_shadow": 0.4,
       "edge_width": 0.65,
       "edge_color": "#000000ff",
+      "edge_spread": 0.0,
+      "noise": 0.0,
+      "glow": 0.0,
+      "glow_radius": 90.0,
+      "glow_center": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "merge": 20.0,
+      "opacity": 1.0,
+      "fallback": null
+    },
+    "light-glass": {
+      "blur": 20.0,
+      "bezel": 3.0,
+      "refraction": 4.0,
+      "dispersion": 0.015,
+      "tint": "#ffffff99",
+      "saturation": 1.0,
+      "brightness": 0.0,
+      "contrast": 1.0,
+      "specular": 0.32,
+      "glint_width": 0.65,
+      "light_angle": -1.5707964,
+      "light_directionality": 0.85,
+      "inactive_flattening": 0.85,
+      "light_color": "#ffffffff",
+      "fresnel": 0.025,
+      "edge_shadow": 0.14,
+      "edge_width": 0.5,
+      "edge_color": "#000000ff",
+      "edge_spread": 0.3,
       "noise": 0.0,
       "glow": 0.0,
       "glow_radius": 90.0,
@@ -42,10 +75,10 @@
     },
     "picked-shadows": true,
     "contact": {
-      "y": 1.0,
-      "blur": 4.0,
-      "spread": 0.0,
-      "strength": 0.2
+      "y": 2.0,
+      "blur": 12.0,
+      "spread": -1.0,
+      "strength": 0.4
     },
     "float": {
       "y": 8.0,
@@ -64,9 +97,8 @@
       "shadow": "none"
     },
     "agent.composer": {
-      "fill": "solid",
-      "outline": true,
-      "hover": "none"
+      "hover": "none",
+      "selected": "none"
     },
     "agent.jump": {
       "fill": "solid"
@@ -91,7 +123,7 @@
       "fill": "tint"
     },
     "browser.tab": {
-      "selected": "glass"
+      "selected": "tint"
     },
     "button": {
       "fill": "solid",
@@ -104,7 +136,6 @@
       "shadow": "none"
     },
     "chrome.button": {
-      "fill": "glass",
       "hover": "tint",
       "selected": "none"
     },
@@ -208,7 +239,7 @@
     }
   },
   "light": {
-    "background": "#f5f5f7ff",
+    "background": "#f7f7f7ff",
     "foreground": "#1d1d1fff",
     "accent": "#006fe8ff",
     "success": "#008832ff",

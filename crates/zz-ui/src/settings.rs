@@ -10,8 +10,8 @@ use web_time::Duration;
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable as _, Emphasis, Ground, Layer, PaintState, RULE_WIDTH,
-    Selectable as _, Sizable as _, StyledExt as _,
+    ActiveTheme as _, Emphasis, Ground, Layer, PaintState, RULE_WIDTH, Selectable as _,
+    Sizable as _, StyledExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     icon::{Icon, cap_center_drop},
@@ -29,8 +29,7 @@ use zz_gpui::{
 
 type EntryClick = Rc<dyn Fn(&zz_gpui::ClickEvent, &mut Window, &mut App)>;
 
-/// A page in the settings sidebar, ordered by the labeled groups the sidebar
-/// shows: Appearance, Tools, Advanced.
+/// A page in the settings sidebar, in sidebar order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
     Appearance,
@@ -44,25 +43,6 @@ pub enum SettingsSection {
     Advanced,
     Multiplexer,
     About,
-}
-
-/// A labeled group in the settings sidebar.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SettingsNavigationGroup {
-    Appearance,
-    Tools,
-    Advanced,
-}
-
-impl SettingsNavigationGroup {
-    #[must_use]
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::Appearance => "Appearance",
-            Self::Tools => "Tools",
-            Self::Advanced => "Advanced",
-        }
-    }
 }
 
 impl SettingsSection {
@@ -98,34 +78,6 @@ impl SettingsSection {
     }
 
     #[must_use]
-    pub const fn description(self) -> &'static str {
-        match self {
-            Self::Appearance => "Customize the app theme, chrome colors, icon, and visual details.",
-            Self::StatusBar => {
-                "Choose what appears in the title bar when the sidebar is retracted."
-            }
-            Self::Browser => "Configure browser-specific controls and shortcuts.",
-            Self::Terminal => {
-                "Edit the Ghostty-compatible configuration for terminal fonts, colors, cursor, \
-                 and spacing."
-            }
-            Self::Editor => "Set the typography and editing behavior used by editor panes.",
-            Self::Panes => "Tune pane spacing, borders, corners, and shadows across the workspace.",
-            Self::Multiplexer => {
-                "zz loads only zz/mux.conf. Import a tmux file here, or edit the options and bindings below."
-            }
-            Self::Hosts => "Manage the ssh machines in the fleet.",
-            Self::Agents => {
-                "The Driver Agent you chat with from the command palette, and Claude Code and \
-                 Codex on each connected machine. Update runs the tool's own updater on that \
-                 machine."
-            }
-            Self::Advanced => "Control daemon lifecycle and experimental pane features.",
-            Self::About => "tmux, ghostty and zz_gpui walked into a mux.",
-        }
-    }
-
-    #[must_use]
     pub const fn icon(self) -> crate::IconName {
         match self {
             Self::Appearance => crate::IconName::Palette,
@@ -139,19 +91,6 @@ impl SettingsSection {
             Self::Agents => crate::IconName::Bot,
             Self::Advanced => crate::IconName::Cpu,
             Self::About => crate::IconName::Info,
-        }
-    }
-
-    #[must_use]
-    pub const fn navigation_group(self) -> SettingsNavigationGroup {
-        match self {
-            Self::Appearance | Self::StatusBar | Self::Editor | Self::Panes => {
-                SettingsNavigationGroup::Appearance
-            }
-            Self::Multiplexer | Self::Browser | Self::Terminal => SettingsNavigationGroup::Tools,
-            Self::Hosts | Self::Agents | Self::Advanced | Self::About => {
-                SettingsNavigationGroup::Advanced
-            }
         }
     }
 }
@@ -195,21 +134,8 @@ pub fn settings_navigation_back_row(button: Button) -> zz_gpui::Div {
         .child(button)
 }
 
-/// Label above a settings navigation group, in the sidebar and in the
-/// narrow-screen index.
-pub fn settings_navigation_group_label(group: SettingsNavigationGroup, cx: &App) -> zz_gpui::Div {
-    div()
-        .px(px(8.0))
-        .pt(px(12.0))
-        .pb(px(2.0))
-        .text_sm()
-        .text_color(cx.theme().foreground.muted())
-        .map(crate::StyledExt::font_medium)
-        .child(group.title())
-}
-
-/// The settings root on a narrow screen: the sidebar's labeled groups as
-/// touch rows. `meta` puts a short value at the end of a row, and tapping a
+/// The settings root on a narrow screen: the sidebar's sections as touch
+/// rows. `meta` puts a short value at the end of a row, and tapping a
 /// row hands its section to `on_pick`.
 pub fn settings_section_index(
     sections: &[SettingsSection],
@@ -218,50 +144,38 @@ pub fn settings_section_index(
     cx: &App,
 ) -> SettingsScrollColumn {
     let on_pick = Rc::new(on_pick);
-    let mut groups: Vec<(SettingsNavigationGroup, Vec<SettingsSection>)> = Vec::new();
-    for &section in sections {
-        let group = section.navigation_group();
-        match groups.last_mut() {
-            Some((last, members)) if *last == group => members.push(section),
-            _ => groups.push((group, vec![section])),
-        }
-    }
     let muted = cx.theme().foreground.muted();
     let faint = cx.theme().foreground.faint();
-    let mut column = settings_scroll_column("settings-index");
-    for (group, members) in groups {
-        let entries = members.into_iter().map(|section| {
-            let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
-            let on_pick = Rc::clone(&on_pick);
-            SettingEntry::new(section.title(), "")
-                .title_icon(Icon::new(section.icon()).text_color(muted))
-                .control(
-                    div()
-                        .flex()
-                        .flex_none()
-                        .items_center()
-                        .gap(px(6.0))
-                        .children(meta(section).map(|value| {
-                            div()
-                                .max_w(px(160.0))
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                                .text_size(crate::rems_from_px(12.0))
-                                .text_color(muted)
-                                .child(value)
-                        }))
-                        .child(
-                            Icon::new(crate::IconName::ChevronRight)
-                                .size(px(14.0))
-                                .text_color(faint),
-                        ),
-                )
-                .on_click(id, move |_, window, cx| on_pick(section, window, cx))
-        });
-        column = column.child(SettingsStack::titled(group.title()).children(entries));
-    }
-    column
+    let entries = sections.iter().map(|&section| {
+        let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
+        let on_pick = Rc::clone(&on_pick);
+        SettingEntry::new(section.title())
+            .title_icon(Icon::new(section.icon()).text_color(muted))
+            .control(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(6.0))
+                    .children(meta(section).map(|value| {
+                        div()
+                            .max_w(px(160.0))
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_size(crate::rems_from_px(12.0))
+                            .text_color(muted)
+                            .child(value)
+                    }))
+                    .child(
+                        Icon::new(crate::IconName::ChevronRight)
+                            .size(px(14.0))
+                            .text_color(faint),
+                    ),
+            )
+            .on_click(id, move |_, window, cx| on_pick(section, window, cx))
+    });
+    settings_scroll_column("settings-index").child(SettingsStack::new().children(entries))
 }
 
 #[cfg(test)]
@@ -455,16 +369,6 @@ mod tests {
     }
 
     #[test]
-    fn every_section_has_its_own_description() {
-        for (index, section) in SettingsSection::ALL.into_iter().enumerate() {
-            assert!(!section.description().is_empty());
-            for other in &SettingsSection::ALL[index + 1..] {
-                assert_ne!(section.description(), other.description());
-            }
-        }
-    }
-
-    #[test]
     fn settings_section_titles_match_the_sidebar_labels() {
         assert_eq!(
             SettingsSection::ALL.map(SettingsSection::title),
@@ -485,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn sections_follow_the_labeled_sidebar_groups() {
+    fn sections_follow_the_sidebar_order() {
         assert_eq!(
             SettingsSection::ALL,
             [
@@ -502,22 +406,6 @@ mod tests {
                 SettingsSection::About,
             ]
         );
-        assert_eq!(
-            SettingsSection::ALL.map(SettingsSection::navigation_group),
-            [
-                SettingsNavigationGroup::Appearance,
-                SettingsNavigationGroup::Appearance,
-                SettingsNavigationGroup::Appearance,
-                SettingsNavigationGroup::Appearance,
-                SettingsNavigationGroup::Tools,
-                SettingsNavigationGroup::Tools,
-                SettingsNavigationGroup::Tools,
-                SettingsNavigationGroup::Advanced,
-                SettingsNavigationGroup::Advanced,
-                SettingsNavigationGroup::Advanced,
-                SettingsNavigationGroup::Advanced,
-            ]
-        );
     }
 
     struct PanesPageTest;
@@ -526,7 +414,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let [gaps, background, opacity, glow, margin] =
                 std::array::from_fn::<_, 5, _>(|index| {
-                    SettingEntry::new(format!("Setting {index}"), "Sample pane setting").control(
+                    SettingEntry::new(format!("Setting {index}")).control(
                         div()
                             .w(px(100.0))
                             .h(px(80.0))
@@ -707,37 +595,25 @@ pub fn settings_page_content() -> zz_gpui::Div {
         .mx_auto()
 }
 
-/// The heading of `section`'s page: its title and what it holds.
-pub fn settings_page_description(section: SettingsSection, cx: &App) -> zz_gpui::Div {
-    settings_page_heading(section.title(), section.description(), cx)
+/// The heading of `section`'s page.
+pub fn settings_page_title(section: SettingsSection, cx: &App) -> zz_gpui::Div {
+    settings_page_heading(section.title(), cx)
 }
 
-/// A settings page's heading: its title, then a line saying what it holds.
-/// Under a coarse pointer it leaves the title to the sidebar or the bar above
-/// the page.
-pub fn settings_page_heading(
-    title: impl Into<SharedString>,
-    description: impl Into<SharedString>,
-    cx: &App,
-) -> zz_gpui::Div {
+/// A settings page's title. Under a coarse pointer it leaves the title to the
+/// sidebar or the bar above the page.
+pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
     let title = title.into();
     div()
         .flex()
         .flex_col()
         .flex_none()
-        .gap(px(4.0))
         .when(!crate::touch::CoarsePointer::get(cx), |this| {
             this.child(
                 crate::StyledExt::font_medium(div().text_size(crate::rems_from_px(20.0)))
                     .child(title),
             )
         })
-        .child(
-            div()
-                .text_size(crate::rems_from_px(11.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(description.into()),
-        )
 }
 
 /// Room a host keeps clear below the last row of every settings page, such as
@@ -949,32 +825,14 @@ const SETTINGS_GROUP_TITLE_SIZE: f32 = 12.0;
 const SETTINGS_GROUP_TITLE_LINE: f32 = 18.0;
 const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
 
-fn settings_group_header(
-    title: SharedString,
-    description: Option<SharedString>,
-    cx: &App,
-) -> zz_gpui::Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(2.0))
-        .px(px(2.0))
-        .child(
-            crate::StyledExt::font_medium(
-                div()
-                    .text_size(crate::rems_from_px(SETTINGS_GROUP_TITLE_SIZE))
-                    .line_height(px(SETTINGS_GROUP_TITLE_LINE)),
-            )
-            .child(title),
-        )
-        .when_some(description, |this, description| {
-            this.child(
-                div()
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(description),
-            )
-        })
+fn settings_group_header(title: SharedString) -> zz_gpui::Div {
+    crate::StyledExt::font_semibold(
+        div()
+            .px(px(2.0))
+            .text_size(crate::rems_from_px(SETTINGS_GROUP_TITLE_SIZE))
+            .line_height(px(SETTINGS_GROUP_TITLE_LINE)),
+    )
+    .child(title)
 }
 
 const REVEAL: Duration = Duration::from_millis(280);
@@ -988,13 +846,11 @@ const DISCLOSURE_PRESS_INSET: f32 = 6.0;
 pub fn settings_list_disclosure_header(
     id: &'static str,
     title: &'static str,
-    description: Option<&'static str>,
     expanded: bool,
 ) -> SettingsDisclosure {
     SettingsDisclosure {
         id,
         title,
-        description,
         expanded,
         on_click: None,
     }
@@ -1004,7 +860,6 @@ pub fn settings_list_disclosure_header(
 pub struct SettingsDisclosure {
     id: &'static str,
     title: &'static str,
-    description: Option<&'static str>,
     expanded: bool,
     on_click: Option<EntryClick>,
 }
@@ -1076,11 +931,7 @@ impl RenderOnce for SettingsDisclosure {
                             ),
                     ),
             )
-            .child(settings_group_header(
-                self.title.into(),
-                self.description.map(Into::into),
-                cx,
-            ))
+            .child(settings_group_header(self.title.into()))
             .when_some(self.on_click, |this, on_click| {
                 this.on_click(move |event, window, cx| on_click(event, window, cx))
             })
@@ -1115,16 +966,10 @@ pub fn settings_disclosure_reveal(
 }
 
 /// Group heading used as a standalone row in [`settings_virtual_column`].
-pub fn settings_list_group_header(
-    title: &'static str,
-    description: Option<&'static str>,
-    cx: &App,
-) -> zz_gpui::Div {
-    div().pt(px(10.0)).child(settings_group_header(
-        title.into(),
-        description.map(Into::into),
-        cx,
-    ))
+pub fn settings_list_group_header(title: &'static str) -> zz_gpui::Div {
+    div()
+        .pt(px(10.0))
+        .child(settings_group_header(title.into()))
 }
 
 const SETTINGS_STACK_PADDING: f32 = 12.0;
@@ -1134,7 +979,6 @@ const SETTINGS_STACK_PADDING: f32 = 12.0;
 #[derive(IntoElement)]
 pub struct SettingsStack {
     title: Option<SharedString>,
-    description: Option<SharedString>,
     entries: Vec<SettingEntry>,
 }
 
@@ -1144,7 +988,6 @@ impl SettingsStack {
     pub fn new() -> Self {
         Self {
             title: None,
-            description: None,
             entries: Vec::new(),
         }
     }
@@ -1155,13 +998,6 @@ impl SettingsStack {
             title: Some(title.into()),
             ..Self::new()
         }
-    }
-
-    /// A line of context under the title. No effect on an untitled stack.
-    #[must_use]
-    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
-        self.description = Some(description.into());
-        self
     }
 
     /// Append an entry. The stack assigns its [`StackPosition`] on render.
@@ -1185,7 +1021,7 @@ impl Default for SettingsStack {
 }
 
 impl RenderOnce for SettingsStack {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut zz_gpui::Window, _: &mut App) -> impl IntoElement {
         let last = self.entries.len().saturating_sub(1);
         let rows = self
             .entries
@@ -1199,7 +1035,7 @@ impl RenderOnce for SettingsStack {
             .w_full()
             .gap(px(8.0))
             .when_some(self.title, |this, title| {
-                this.child(settings_group_header(title, self.description, cx))
+                this.child(settings_group_header(title))
             })
             .child(div().flex().flex_col().w_full().children(rows))
     }
@@ -1260,13 +1096,12 @@ impl StackPosition {
     }
 }
 
-/// One setting inside a [`SettingsStack`]: copy on the left, its control
+/// One setting inside a [`SettingsStack`]: its title on the left, its control
 /// centered at the right edge, and room beneath for a full-width control. Each
 /// entry draws its own share of the run's surface. See [`StackPosition`].
 #[derive(IntoElement)]
 pub struct SettingEntry {
     title: SharedString,
-    description: SharedString,
     title_icon: Option<Icon>,
     title_actions: Option<AnyElement>,
     control: Option<AnyElement>,
@@ -1277,10 +1112,9 @@ pub struct SettingEntry {
 }
 
 impl SettingEntry {
-    pub fn new(title: impl Into<SharedString>, description: impl Into<SharedString>) -> Self {
+    pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
             title: title.into(),
-            description: description.into(),
             title_icon: None,
             title_actions: None,
             control: None,
@@ -1317,8 +1151,7 @@ impl SettingEntry {
         self
     }
 
-    /// Reset and provenance widgets, which sit beside the title rather than
-    /// with the control.
+    /// Widgets that sit beside the title rather than with the control.
     #[must_use]
     pub fn title_actions(mut self, actions: impl IntoElement) -> Self {
         self.title_actions = Some(actions.into_any_element());
@@ -1355,38 +1188,25 @@ impl RenderOnce for SettingEntry {
         let position = self.position;
         let coarse = crate::touch::CoarsePointer::get(cx);
         let heading = if coarse {
-            let description = (!self.description.is_empty()).then(|| {
-                div()
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(self.description.clone())
-            });
             div()
                 .flex()
-                .flex_col()
-                .gap(px(3.0))
+                .items_center()
+                .justify_between()
+                .gap(px(16.0))
                 .child(
                     div()
                         .flex()
+                        .flex_1()
+                        .min_w_0()
                         .items_center()
-                        .justify_between()
-                        .gap(px(16.0))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_1()
-                                .min_w_0()
-                                .items_center()
-                                .gap(px(8.0))
-                                .when_some(self.title_icon, |this, icon| {
-                                    this.child(icon.with_size(crate::Size::Medium))
-                                })
-                                .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
-                                .when_some(self.title_actions, zz_gpui::ParentElement::child),
-                        )
-                        .when_some(self.control, zz_gpui::ParentElement::child),
+                        .gap(px(8.0))
+                        .when_some(self.title_icon, |this, icon| {
+                            this.child(icon.with_size(crate::Size::Medium))
+                        })
+                        .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
+                        .when_some(self.title_actions, zz_gpui::ParentElement::child),
                 )
-                .children(description)
+                .when_some(self.control, zz_gpui::ParentElement::child)
         } else {
             div()
                 .flex()
@@ -1394,7 +1214,7 @@ impl RenderOnce for SettingEntry {
                 .justify_between()
                 .gap(px(16.0))
                 .child(
-                    SettingCopy::new(self.title, self.description)
+                    SettingCopy::new(self.title)
                         .when_some(self.title_icon, SettingCopy::title_icon)
                         .when_some(self.title_actions, SettingCopy::title_actions),
                 )
@@ -1523,16 +1343,14 @@ impl RenderOnce for SettingEntry {
 #[derive(IntoElement)]
 pub struct SettingCopy {
     title: SharedString,
-    description: SharedString,
     title_icon: Option<Icon>,
     title_actions: Option<AnyElement>,
 }
 
 impl SettingCopy {
-    pub fn new(title: impl Into<SharedString>, description: impl Into<SharedString>) -> Self {
+    pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
             title: title.into(),
-            description: description.into(),
             title_icon: None,
             title_actions: None,
         }
@@ -1554,33 +1372,19 @@ impl SettingCopy {
 }
 
 impl RenderOnce for SettingCopy {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut zz_gpui::Window, _: &mut App) -> impl IntoElement {
         div()
             .flex()
-            .flex_col()
+            .items_center()
             .w_full()
             .max_w(relative(0.7))
             .min_w_0()
-            .gap(px(3.0))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .when_some(self.title_icon, |this, icon| {
-                        this.child(icon.with_size(crate::Size::Medium))
-                    })
-                    .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
-                    .when_some(self.title_actions, zz_gpui::ParentElement::child),
-            )
-            .when(!self.description.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_size(crate::rems_from_px(11.0))
-                        .text_color(cx.theme().foreground.muted())
-                        .child(self.description),
-                )
+            .gap(px(4.0))
+            .when_some(self.title_icon, |this, icon| {
+                this.child(icon.with_size(crate::Size::Medium))
             })
+            .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
+            .when_some(self.title_actions, zz_gpui::ParentElement::child)
     }
 }
 
@@ -1606,23 +1410,6 @@ pub fn settings_preview(fill: Hsla, cx: &App) -> zz_gpui::Div {
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {
     Badge::new(label).emphasis(Emphasis::Outline)
-}
-
-pub fn settings_reset_button(
-    id: impl Into<zz_gpui::ElementId>,
-    tooltip: impl Into<SharedString>,
-    enabled: bool,
-) -> Button {
-    let slop = crate::touch::control_slop(crate::Size::Small);
-    Button::new(id)
-        .small()
-        .compact()
-        .ghost()
-        .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
-        .hit_slop(slop, slop)
-        .icon(crate::IconName::Undo2)
-        .tooltip(tooltip)
-        .disabled(!enabled)
 }
 
 #[derive(Clone)]
@@ -1687,23 +1474,13 @@ pub fn panes_page(
                         .flex()
                         .flex_col()
                         .gap(px(12.0))
-                        .child(settings_page_description(SettingsSection::Panes, cx))
-                        .child(settings_group_header(
-                            "Preview".into(),
-                            Some("Click a pane to preview focus.".into()),
-                            cx,
-                        ))
+                        .child(settings_page_title(SettingsSection::Panes, cx))
+                        .child(settings_group_header("Preview".into()))
                         .child(preview),
                 )
                 .child(SettingsStack::titled("Layout").children(layout))
                 .child(SettingsStack::titled("PiP").children(pip))
                 .child(SettingsStack::titled("Focus").children(focus))
-                .child(
-                    SettingsStack::titled("Frame")
-                        .description(
-                            "Applies only while pane gaps are enabled. Corners and edges follow the style.",
-                        )
-                        .children(frame),
-                ),
+                .child(SettingsStack::titled("Frame").children(frame)),
         )
 }

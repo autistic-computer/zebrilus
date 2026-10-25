@@ -49,10 +49,9 @@ pub const ADVANCED_DISCLOSURE: &str = "settings-appearance-advanced";
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum AppearancePageItem {
-    Description,
+    Title,
     Group {
         title: &'static str,
-        description: Option<&'static str>,
     },
     ThemeMode,
     Accent,
@@ -82,47 +81,23 @@ impl AppearancePageItem {
     pub const fn is_entry(self) -> bool {
         !matches!(
             self,
-            Self::Description | Self::Group { .. } | Self::Advanced { .. }
+            Self::Title | Self::Group { .. } | Self::Advanced { .. }
         )
     }
 
-    /// The title and description of a row every client draws the same way.
-    pub const fn text(self) -> Option<(&'static str, &'static str)> {
+    /// The title of a row every client draws the same way.
+    pub const fn title(self) -> Option<&'static str> {
         Some(match self {
-            Self::Accent => (
-                "Accent",
-                "The one color that stands out: switches, selection, the active pane.",
-            ),
-            Self::TintHue => ("Tint", "The color every surface leans toward."),
-            Self::Tint => ("Tint strength", "How far surfaces lean toward the tint."),
-            Self::ProgramColors => (
-                "Program colors",
-                "Fill a flat sidebar tile with the colors of the program running in it, like Neovim's blue. Off, every tile keeps the theme's color and draws the program's mark in its ink.",
-            ),
-            Self::Themes => (
-                "Themes",
-                "Corners, outlines, shadows, glass and colors, all at once. Save keeps the look on screen as a theme; Import adds one from the clipboard.",
-            ),
-            Self::CornerRadius => (
-                "Corner radius",
-                "How round corners are, from 0 to 25px. Follows the theme until changed.",
-            ),
-            Self::ChromeContrast => (
-                "Contrast",
-                "Raise surface, text, and edge contrast from 100% to 200%.",
-            ),
-            Self::WindowBackgroundOpacity => (
-                "Window blur opacity",
-                "How much of the blur shows through, from 0% (the most) to 100% (opaque).",
-            ),
-            Self::AnimationSpeed => (
-                "Animation speed",
-                "How fast the interface moves, from 25% (slow and smooth) to 200% (snappy).",
-            ),
-            Self::UiZoom => (
-                "UI zoom",
-                "Scales application text, icons, and controls as a percentage of the default.",
-            ),
+            Self::Accent => "Accent",
+            Self::TintHue => "Tint",
+            Self::Tint => "Tint strength",
+            Self::ProgramColors => "Program colors",
+            Self::Themes => "Themes",
+            Self::CornerRadius => "Corner radius",
+            Self::ChromeContrast => "Contrast",
+            Self::WindowBackgroundOpacity => "Window blur opacity",
+            Self::AnimationSpeed => "Animation speed",
+            Self::UiZoom => "UI zoom",
             _ => return None,
         })
     }
@@ -137,20 +112,14 @@ pub fn appearance_page_items(
     advanced: bool,
 ) -> Vec<AppearancePageItem> {
     let mut items = vec![
-        AppearancePageItem::Description,
-        AppearancePageItem::Group {
-            title: "Theme",
-            description: None,
-        },
+        AppearancePageItem::Title,
+        AppearancePageItem::Group { title: "Theme" },
         AppearancePageItem::ThemeMode,
         AppearancePageItem::Themes,
         AppearancePageItem::Accent,
         AppearancePageItem::TintHue,
         AppearancePageItem::Tint,
-        AppearancePageItem::Group {
-            title: "Sidebar",
-            description: None,
-        },
+        AppearancePageItem::Group { title: "Sidebar" },
         AppearancePageItem::ProgramColors,
         AppearancePageItem::Advanced { expanded: advanced },
     ];
@@ -558,12 +527,12 @@ pub fn appearance_page(
             };
             let position = run_position(&items, index, AppearancePageItem::is_entry);
             let row = match item {
-                AppearancePageItem::Description => {
-                    super::settings_page_description(super::SettingsSection::Appearance, cx)
+                AppearancePageItem::Title => {
+                    super::settings_page_title(super::SettingsSection::Appearance, cx)
                         .into_any_element()
                 }
-                AppearancePageItem::Group { title, description } => {
-                    super::settings_list_group_header(title, description, cx).into_any_element()
+                AppearancePageItem::Group { title } => {
+                    super::settings_list_group_header(title).into_any_element()
                 }
                 _ => render(item, position, window, cx),
             };

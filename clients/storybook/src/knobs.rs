@@ -188,6 +188,11 @@ pub const GLASS_KNOBS: &[Knob<GlassMaterial>] = &[
         |m| m.edge_width.as_f32(),
         |m, v| m.edge_width = px(v),
     ),
+    (
+        "glass-edge-spread",
+        |m| m.edge_spread,
+        |m, v| m.edge_spread = v,
+    ),
     ("glass-noise", |m| m.noise, |m, v| m.noise = v),
     (
         "glass-inactive-flattening",
@@ -255,6 +260,9 @@ impl Knobs {
             None => Self::default(),
         };
         if let Some((_, value)) = pairs.iter().find(|(key, _)| *key == "glass") {
+            if !matches!(*value, "" | "theme") {
+                knobs.materials.light_glass = None;
+            }
             knobs.materials.glass = match *value {
                 "" | "theme" => knobs.materials.glass,
                 "off" => None,
@@ -381,6 +389,14 @@ impl Knobs {
                     {
                         let value = number(key, value)?;
                         if let Some(material) = knobs.materials.glass.as_mut() {
+                            set(material, value);
+                        }
+                    } else if let Some((_, _, set)) = key
+                        .strip_prefix("light-")
+                        .and_then(|name| GLASS_KNOBS.iter().find(|(glass, ..)| *glass == name))
+                    {
+                        let value = number(key, value)?;
+                        if let Some(material) = knobs.materials.light_glass.as_mut() {
                             set(material, value);
                         }
                     } else if let Some((colors, mode, name)) = key
@@ -822,6 +838,20 @@ mod tests {
     }
 
     #[test]
+    fn light_glass_sliders_edit_the_themes_light_glass_until_a_preset_replaces_it() {
+        let knobs = Knobs::parse("interface-theme=macos&light-glass-edge=0.3&glass-edge=0.6")
+            .unwrap()
+            .materials;
+        assert_eq!(knobs.light_glass.unwrap().edge_shadow, 0.3);
+        assert_eq!(knobs.glass.unwrap().edge_shadow, 0.6);
+        let preset = Knobs::parse("interface-theme=macos&glass=frosted&light-glass-edge=0.3")
+            .unwrap()
+            .materials;
+        assert_eq!(preset.light_glass, None);
+        assert_eq!(preset.glass, GlassMaterial::preset("frosted"));
+    }
+
+    #[test]
     fn glass_lighting_and_activity_survive_import_export_and_reset() {
         let imported = crate::import_theme(
             r#"{"materials":{"glass":{"preset":"regular","light_directionality":0.37,"inactive_flattening":0.63}}}"#,
@@ -1086,10 +1116,12 @@ mod tests {
             assert_eq!(
                 Materials {
                     glass: None,
+                    light_glass: None,
                     ..parsed.materials.clone()
                 },
                 Materials {
                     glass: None,
+                    light_glass: None,
                     ..theme.materials.clone()
                 },
                 "{id}"

@@ -38,7 +38,8 @@ struct Glass {
     glow: vec4<f32>,
     // viewport size, then where level 0 of the chain starts in the frame
     viewport: vec4<f32>,
-    // the window's rounded clip: rect, radii, then smoothing and whether set
+    // the window's rounded clip: rect, radii, then smoothing and whether set,
+    // then how directional the light is and how evenly the contour runs
     mask_rect: vec4<f32>,
     mask_radii: vec4<f32>,
     mask: vec4<f32>,
@@ -445,15 +446,16 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let directionality = glass.mask.z;
 
     // A thin contour just outside the edge, dark unless the material colors
-    // it and strongest along the light axis, separates the glass from what
-    // it floats over.
+    // it and strongest along the light axis unless it spreads evenly,
+    // separates the glass from what it floats over.
     let contour_width = glass.rim.z;
     var contour = 0.0;
     if (contour_width > 0.0) {
+        let lit = mix(mix(0.35, 1.0, facing), mix(0.2, 1.0, away), directionality);
         // Only past the edge: inside, the body covers it.
         contour = glass.rim.y * (1.0 - saturate(distance / contour_width))
             * saturate(distance + 0.5)
-            * mix(mix(0.35, 1.0, facing), mix(0.2, 1.0, away), directionality);
+            * mix(lit, 1.0, glass.mask.w);
     }
     var clip = 1.0;
     if (glass.mask.y > 0.5) {

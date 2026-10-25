@@ -4605,10 +4605,10 @@ impl Render for AppView {
         } else {
             config::pane_margin(cx)
         };
-        let canvas_top = if chrome_above_panes {
-            px(0.)
-        } else {
-            pane_margin
+        let canvas_top = match (chrome_above_panes, route) {
+            (true, WorkspaceRoute::App) => config::pane_margin(cx),
+            (true, WorkspaceRoute::Settings) => px(0.),
+            (false, _) => pane_margin,
         };
         let canvas_origin = zz_gpui::point(pane_margin, canvas_top);
         let mut overlays = if route == WorkspaceRoute::Settings {
@@ -4691,6 +4691,7 @@ impl Render for AppView {
         );
         layout_corners.round_div(
             app_workspace_surface("app-root", content, overlays, cx)
+                .debug_selector(|| "app-root".into())
                 .on_action(
                     cx.listener(|view, _: &crate::menus::OpenCommandPalette, window, cx| {
                         view.open_command_palette(None, window, cx);
@@ -5501,6 +5502,45 @@ mod tests {
             workspace.focus_active_pane(window, cx);
         });
         (workspace, cx)
+    }
+
+    #[cfg(unix)]
+    #[zz_gpui::test]
+    fn panes_keep_the_gap_above_them_inside_the_workspace_under_the_titlebar(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+        let Some((client, _server)) = input_test_client() else {
+            return;
+        };
+        let (workspace, cx) = input_test_workspace(cx, client);
+        let gap = px(8.);
+        cx.update(|_, cx| {
+            let mut config = config::AppConfig::default();
+            config.pane_gaps.value = true;
+            config.pane_margin.value = 8.;
+            cx.set_global(config);
+            crate::theme::refresh_current_theme(cx);
+            cx.set_reduce_motion(true);
+        });
+        let sidebar = workspace.read_with(cx, |workspace, _| workspace.sidebar.clone());
+        for titlebar in [false, true] {
+            if titlebar {
+                sidebar.update(cx, WorkspaceSidebar::toggle_mode);
+            }
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+            let root = cx.debug_bounds("app-root").expect("the workspace is drawn");
+            let canvas = workspace.read_with(cx, |workspace, _| workspace.pane_canvas_bounds.get());
+            assert_eq!(canvas.top() - root.top(), gap, "titlebar {titlebar}");
+            assert_eq!(canvas.left() - root.left(), gap, "titlebar {titlebar}");
+            if titlebar {
+                let bar = cx.update(|_, cx| cx.theme().title_bar_height());
+                assert_eq!(canvas.top(), bar, "the panes start where the titlebar ends");
+            }
+        }
     }
 
     #[cfg(unix)]
