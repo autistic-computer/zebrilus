@@ -134,7 +134,17 @@ impl Render for LeadPalette {
         }
         self.shown = depth;
         chat.update(cx, |chat, cx| chat.mark_read(cx));
-        let ask = LeadChat::ask(&chat, "lead-palette-ask", cx);
+        let ask = LeadChat::ask(&chat, "lead-palette-ask", cx).or_else(|| {
+            chat.read(cx).error().map(|error| {
+                div()
+                    .px(px(14.0))
+                    .pb(px(8.0))
+                    .text_size(zz_ui::rems_from_px(12.0))
+                    .text_color(cx.theme().danger)
+                    .child(error.to_string())
+                    .into_any_element()
+            })
+        });
         let surface = CommandPaletteSurface::new(
             unified_command_palette_input(&self.input, pills, cx),
             cx.entity_id().as_u64(),

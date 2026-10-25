@@ -1173,6 +1173,15 @@ impl AppView {
         .detach();
         cx.subscribe(&sidebar, |_, _, _: &SidebarModeChanged, cx| cx.notify())
             .detach();
+        #[cfg(feature = "agent-pane")]
+        cx.subscribe_in(
+            &sidebar,
+            window,
+            |view, _, _: &crate::workspace::sidebar::SidebarOpenLead, window, cx| {
+                view.open_lead_palette(window, cx);
+            },
+        )
+        .detach();
         cx.subscribe(&sidebar, |view, _, _: &SidebarRouteChanged, cx| {
             view.input_router.event(InputEvent::WindowDeactivated);
             cx.notify();

@@ -2,28 +2,26 @@ use std::rc::Rc;
 
 use zz_client::program::Program;
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, Focusable as _, IntoElement,
-    MouseButton, ParentElement as _, Pixels, Render, ScrollHandle, Styled as _, Window, div,
-    prelude::*, px,
+    AnyElement, App, AppContext as _, Context, Entity, Focusable as _, IntoElement, MouseButton,
+    ParentElement as _, Render, ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
 use zz_protocol::AgentProvider;
 use zz_ui::{
     ActiveTheme as _, Ground, PaintState,
     agent::{
         chat::{
-            ChatBubble, ChatComposer, ChatSection, ChatSender, ChatSplitDrag, ChatTyping,
-            LEAD_PALETTE_HINTS, Receipt, chat_button, chat_header, chat_seen, chat_split_height,
-            chat_thread, lead_palette_body,
+            ChatBubble, ChatComposer, ChatSender, ChatTyping, LEAD_PALETTE_HINTS, Receipt,
+            chat_button, chat_header, chat_latest, chat_seen, chat_thread, lead_palette_body,
         },
         controls::{composer_action, composer_action_button},
     },
     command::{CommandPaletteSurface, PalettePill, PaletteStatus, unified_command_palette_input},
     input::InputState,
     navigation::{
-        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER,
+        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
+        WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER,
         flat::{FlatHandler, FlatMenu, FlatState, flat_sidebar},
-        workspace_chat_button, workspace_sidebar_fade, workspace_sidebar_panel,
-        workspace_sidebar_titlebar,
+        workspace_chat_button, workspace_sidebar_fade,
     },
     pane::{PaneSplitAxis, pane_split_surface},
     roles,
@@ -36,7 +34,7 @@ use crate::stories::workspace::{
     fixtures::{CLAUDE, CODEX, TerminalPane, gap, stateful},
     flat_sidebar::sidebar_hosts,
     status_bar::{Bar, titlebar},
-    tree::sidebar_top_controls,
+    tree::flat_view_sidebar,
 };
 use crate::story::{Framed as _, Section, Story, stateless, states};
 
@@ -50,7 +48,7 @@ pub const STORY: Story = Story {
     id: "lead-chat",
     name: "Lead chat",
     group: "Agent",
-    summary: "The chat with the lead agent: at the bottom of the sidebar, and in titlebar mode in the command palette's Lead mode. Your messages sit right in the accent's wash with read ticks; the lead's answers and the agents' messages sit left, an agent's under its sidebar tile and name. Agents at work show as sidebar rows, so the chat carries no tool calls, and the composer is one line: the lead's model is a setting.",
+    summary: "The chat with the lead agent lives in the command palette's Lead mode: type > in an empty palette, click the title bar's chat button, or click the lead's last message at the bottom of the sidebar. Your messages sit right in the accent's wash with read ticks; the lead's answers and the agents' messages sit left, an agent's under its sidebar tile and name. Agents at work show as sidebar rows, so the chat carries no tool calls. The lead's model and effort are settings, under Agents.",
     sections: &[
         Section {
             id: "messages",
@@ -71,10 +69,16 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(headers, cx),
         },
         Section {
+            id: "latest",
+            name: "Last message",
+            summary: "chat_latest: what the sidebar keeps of the chat. The lead's header, then its last answer cut to four lines, or ChatTyping while it works. A dot in the header while an approval waits on you. A click opens the command palette in Lead mode.",
+            build: |_, cx| stateless(latest, cx),
+        },
+        Section {
             id: "sidebar",
             name: "In the sidebar",
-            summary: "ChatSection under the flat list. Drag the rule over the chat to move the split; the list and the chat keep a minimum height. Scroll the thread up and it fades under the header. The panes on the right are the agents' own terminals.",
-            build: |window, cx| cx.new(|cx| SidebarChat::new(window, cx)).into(),
+            summary: "The last message under the flat list, over the footer's buttons. The panes on the right are the agents' own terminals.",
+            build: |_, cx| cx.new(|_| SidebarChat::new()).into(),
         },
         Section {
             id: "titlebar",
@@ -423,100 +427,110 @@ fn window_frame(content: impl IntoElement, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// The lead chat as it sits under a sidebar's list, holding the split you
-/// drag. [`with_lead`] puts it under a list in a column that moves it.
-pub(crate) struct SidebarLead {
-    input: Entity<InputState>,
-    thread: ScrollHandle,
-    height: Option<Pixels>,
-}
+const LATEST_ANSWER: &str = "Three agents are working. zz on alienware needs you: it asks whether to keep the old socket path. agentbound finished the sprite sheet at 32px, and clairvo merges its PR once the last two checks pass.";
+/// How many lines of the lead's last answer the sidebar shows, as the app.
+const LATEST_LINES: usize = 4;
+const ATTENTION_DOT: f32 = 7.0;
 
-impl SidebarLead {
-    pub(crate) fn new(window: &mut Window, cx: &mut App) -> Entity<Self> {
-        let input = lead_input("", window, cx);
-        cx.new(|_| Self {
-            input,
-            thread: bottom_scroll(),
-            height: None,
-        })
-    }
-}
-
-impl Render for SidebarLead {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let ground = cx.theme().ground();
-        ChatSection::new(
-            chat_header(&lead(), "xps", None, cx),
-            chat_thread(conversation("lead-sidebar", ground, cx)),
-            composer("lead-sidebar", &self.input, false, Some(ground), cx),
-            &self.thread,
-            workspace_sidebar_fade(ground, cx),
-        )
-        .height(self.height)
-    }
-}
-
-/// `list` over the lead chat, in a column that moves the split as you drag.
-pub(crate) fn with_lead(
-    id: &'static str,
-    list: impl IntoElement,
-    lead: &Entity<SidebarLead>,
+/// The lead's last word as the sidebar shows it under its list: its last
+/// answer cut to four lines, or the lead at work, with a dot in the header
+/// while something waits on you.
+pub(crate) fn sidebar_latest(
+    scope: &'static str,
+    working: bool,
+    waiting: bool,
+    cx: &App,
 ) -> AnyElement {
-    let split = lead.clone();
+    let ground = cx.theme().ground();
+    let message = if working {
+        ChatTyping::new((scope, 0_usize))
+            .steps(COMMIT_STEPS)
+            .on(ground)
+            .into_any_element()
+    } else {
+        ChatBubble::theirs((scope, 1_usize), LATEST_ANSWER, "")
+            .lines(LATEST_LINES)
+            .on(ground)
+            .into_any_element()
+    };
+    let dot = waiting.then(|| {
+        div()
+            .size(px(ATTENTION_DOT))
+            .rounded_full()
+            .bg(cx.theme().warning)
+            .into_any_element()
+    });
+    chat_latest(
+        (scope, 2_usize),
+        chat_header(&lead(), "xps", dot, cx),
+        message,
+        cx,
+    )
+    .into_any_element()
+}
+
+/// `list` over the lead's last message, as the sidebar holds them.
+pub(crate) fn with_lead(id: &'static str, list: impl IntoElement, cx: &App) -> AnyElement {
     div()
         .id(id)
         .flex()
         .flex_col()
         .size_full()
         .min_h(px(0.0))
-        .on_drag_move::<ChatSplitDrag>(move |event: &DragMoveEvent<ChatSplitDrag>, _, cx| {
-            split.update(cx, |lead, cx| {
-                lead.height = Some(chat_split_height(event.event.position.y, event.bounds));
-                cx.notify();
-            });
-        })
-        .child(list)
-        .child(lead.clone())
+        .child(div().flex().flex_col().flex_1().min_h(px(0.0)).child(list))
+        .child(sidebar_latest(id, false, false, cx))
+        .into_any_element()
+}
+
+fn latest(_: &mut Window, cx: &mut App) -> AnyElement {
+    let frame = |content: AnyElement| {
+        div()
+            .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
+            .pt(px(10.0))
+            .bg(cx.theme().background)
+            .rounded(cx.theme().radius)
+            .framed(cx)
+            .child(content)
+            .into_any_element()
+    };
+    states()
+        .columns(3)
+        .state(
+            "its last answer",
+            frame(sidebar_latest("latest-answer", false, false, cx)),
+        )
+        .state(
+            "at work",
+            frame(sidebar_latest("latest-working", true, false, cx)),
+        )
+        .state(
+            "waiting on you",
+            frame(sidebar_latest("latest-waiting", false, true, cx)),
+        )
         .into_any_element()
 }
 
 pub(crate) struct SidebarChat {
     list: ScrollHandle,
-    lead: Entity<SidebarLead>,
 }
 
 impl SidebarChat {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
+    fn new() -> Self {
         Self {
             list: ScrollHandle::new(),
-            lead: SidebarLead::new(window, cx),
         }
     }
 }
 
 impl Render for SidebarChat {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let ground = cx.theme().ground();
-        let fade = workspace_sidebar_fade(ground, cx);
+        let fade = workspace_sidebar_fade(cx.theme().ground(), cx);
         window_frame(
             app_shell_surface(
                 "lead-sidebar-shell",
                 cx.theme().background,
-                workspace_sidebar_panel(
-                    "lead-sidebar",
-                    CHAT_WIDTH,
-                    workspace_sidebar_titlebar(
-                        "lead-sidebar-titlebar",
-                        sidebar_top_controls(true),
-                        cx,
-                    ),
-                    with_lead(
-                        "lead-sidebar-column",
-                        list(&self.list, fade, cx),
-                        &self.lead,
-                    ),
-                    ground,
-                    true,
+                flat_view_sidebar(
+                    with_lead("lead-sidebar-column", list(&self.list, fade, cx), cx),
                     cx,
                 ),
                 None,

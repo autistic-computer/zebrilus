@@ -147,6 +147,9 @@ The client-local schema includes these scalar settings and chrome colors.
 | `ui-font-family` | System default | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
+| `lead-agent` | `false` | `true` or `false` | Whether zz keeps a lead agent: it follows the first Claude Code or Codex terminal in a session named `lead` on any connected host, and starts one on this machine when there is none. Its chat is the command palette's Lead mode (`>` in an empty palette); the sidebar shows its last message. Off, a lead already running keeps running. Settings › Agents › Lead sets it |
+| `lead-model` | `claude` | `claude`, `opus`, `sonnet`, `fable`, `codex` | What zz starts the lead with: Claude Code on its own default model or with `--model`, or Codex on the model its config names. Applies at the lead's next start |
+| `lead-effort` | `default` | `default`, `low`, `medium`, `high`, `xhigh`, `max` | The lead's `--effort` for Claude Code, or `model_reasoning_effort` for Codex, which takes `max` as `xhigh`; `default` passes nothing. Applies at the lead's next start |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as a slider from 100% to 200% in steps of 5, written with two decimals. |
 
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
@@ -505,9 +508,11 @@ under Default, a radius of about 13.6px, concentric with the controls in the pan
 grid reads as one rounded surface. The strip along the window's top (the macOS traffic lights, the
 sidebar's buttons, the status bar) is a pane header tall (34px) plus the margin above and below it
 (`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line; flush panes
-leave it one header tall. The sidebar's buttons sit in that strip too: Add host, the view switch
-and Settings before the toggle, which centers on the column the sidebar rows' actions (+, …, ×)
-center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
+leave it one header tall. The sidebar's footer mirrors it: settings and the view switch are
+centered the margin plus half a header in from the window's bottom and leading edges, like the
+traffic lights from its top, so those sit as far from the window as Rex puts its own (25pt there,
+with an 8pt margin). The toggle and the view switch center on the column the sidebar rows' actions
+(+, …, ×) center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
 no second tier of gapped defaults: the number Settings shows is the number the panes use, which is
 what lets the disabled Frame row stay honest. Gapped panes draw their frame in glass, as above,
 and keep the contact shadow. This treatment is built in; the retired `pane-shadow` key produces the

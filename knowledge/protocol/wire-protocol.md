@@ -1007,7 +1007,7 @@ its `AgentCommand` enum (`ComposerAppend`, `Prompt`), `ChooseTreePaneKind::Agent
 `GuiResponse` now answers only `BrowserCommand::Screenshot`.
 
 v114 appends `EventPayload::Providers(ProvidersReport)`, the answer to
-the internal `providers [-u provider]` command behind Settings > Providers. The daemon finds
+the internal `providers [-u provider]` command behind Settings > Agents. The daemon finds
 Claude Code and Codex on its own host (login-shell PATH plus `~/.local/bin`), reads their
 `--version`, asks `downloads.claude.ai` and the npm registry through `curl` for the newest release,
 and with `-u` runs the vendor's updater (`claude update`, `codex update`, `brew upgrade --cask` for

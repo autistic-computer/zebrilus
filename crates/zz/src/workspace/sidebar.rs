@@ -30,10 +30,10 @@ use zz_ui::navigation::{
         tree_node_marker, tree_row_menu,
     },
     workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-    workspace_sidebar_controls, workspace_sidebar_fade, workspace_sidebar_ground,
-    workspace_sidebar_panel, workspace_sidebar_resize_handle, workspace_sidebar_titlebar,
-    workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
-    workspace_tree_opened, workspace_tree_row,
+    workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_footer_controls,
+    workspace_sidebar_ground, workspace_sidebar_panel, workspace_sidebar_resize_handle,
+    workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
+    workspace_tree_disclosure, workspace_tree_opened, workspace_tree_row,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _,
@@ -74,8 +74,7 @@ use crate::mux::nav::{
     select_pane_commands, select_window_command,
 };
 
-/// Wide enough for the top strip's four buttons clear of the traffic lights.
-const SIDEBAR_MIN_WIDTH: f32 = 240.0;
+const SIDEBAR_MIN_WIDTH: f32 = 160.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
 const SIDEBAR_SLIDE: Duration = Duration::from_millis(240);
 const TREE_INDENT_GUIDE_OFFSET: f32 = TREE_MARKER_SLOT_WIDTH / 2.0;
@@ -127,6 +126,8 @@ fn workspace_tree_key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
 pub(crate) struct SidebarReleaseFocus;
 pub(crate) struct SidebarModeChanged;
 pub(crate) struct SidebarRouteChanged;
+/// A click on the lead's last message: open the chat.
+pub(crate) struct SidebarOpenLead;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ChromeMode {
@@ -785,26 +786,31 @@ impl WorkspaceSidebar {
         })
     }
 
-    fn render_actions(&self, sidebar: &Entity<Self>, cx: &App) -> [AnyElement; 3] {
+    fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
         let settings = sidebar.clone();
         let view = sidebar.clone();
         let ground = self.content_ground(cx);
-        [
-            workspace_add_host_button("workspace-add-host")
-                .on(ground)
-                .on_click(|_, window, cx| crate::workspace::add_host::open(window, cx))
-                .into_any_element(),
-            workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
-                .on(ground)
-                .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat))
-                .into_any_element(),
+        workspace_sidebar_footer(
+            "workspace-sidebar-footer",
             workspace_settings_button("workspace-settings")
                 .on(ground)
                 .on_click(move |_, window, cx| {
                     settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
-                })
+                }),
+            Some(
+                workspace_sidebar_footer_controls(
+                    workspace_add_host_button("workspace-add-host")
+                        .on(ground)
+                        .on_click(|_, window, cx| crate::workspace::add_host::open(window, cx)),
+                    workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+                        .on(ground)
+                        .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat)),
+                )
                 .into_any_element(),
-        ]
+            ),
+            cx,
+        )
+        .into_any_element()
     }
 }
 
@@ -917,15 +923,14 @@ impl Render for WorkspaceSidebar {
         let navigation = if settings_route {
             navigation
         } else {
-            self.with_lead_chat(navigation, window, cx)
+            self.with_lead_latest(navigation, cx)
         };
-        let controls = (!settings_route).then(|| {
-            workspace_sidebar_controls(
-                self.render_actions(&sidebar, cx)
-                    .into_iter()
-                    .chain(Self::render_controls(&sidebar, self.content_ground(cx), cx)),
-            )
-        });
+        let controls = if settings_route {
+            None
+        } else {
+            Self::render_controls(&sidebar, self.content_ground(cx), cx)
+        };
+        let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
         let titlebar =
             workspace_sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)
                 .window_control_area(WindowControlArea::Drag);
@@ -950,7 +955,8 @@ impl Render for WorkspaceSidebar {
                 self.ground(cx),
                 !divider_hidden,
                 cx,
-            ),
+            )
+            .children(footer),
             frame_content_corner_radius(cx),
         );
         let resize_handle =
@@ -976,6 +982,7 @@ impl Render for WorkspaceSidebar {
 impl EventEmitter<SidebarReleaseFocus> for WorkspaceSidebar {}
 impl EventEmitter<SidebarModeChanged> for WorkspaceSidebar {}
 impl EventEmitter<SidebarRouteChanged> for WorkspaceSidebar {}
+impl EventEmitter<SidebarOpenLead> for WorkspaceSidebar {}
 
 #[derive(Clone, Debug)]
 struct VisibleTreeEntry {

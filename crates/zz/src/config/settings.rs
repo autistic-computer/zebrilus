@@ -32,8 +32,8 @@ use zz_ui::{
 use crate::{
     app_icon::AppIconSetting,
     config::{
-        self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue,
-        remove_config_key, set_config_key, set_interface_theme,
+        self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue, LeadEffort,
+        LeadModel, remove_config_key, set_config_key, set_interface_theme,
     },
     diagnostics,
     mux::{
@@ -78,6 +78,21 @@ const KEY_INPUT_WIDTH: f32 = 65.0;
 const CONFIG_EDITOR_FONT_SIZE: f32 = 12.0;
 const CONFIG_EDITOR_PADDING: f32 = 2.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
+const LEAD_MODELS: [(&str, &str); 5] = [
+    (LeadModel::Claude.as_str(), LeadModel::Claude.title()),
+    (LeadModel::Opus.as_str(), LeadModel::Opus.title()),
+    (LeadModel::Sonnet.as_str(), LeadModel::Sonnet.title()),
+    (LeadModel::Fable.as_str(), LeadModel::Fable.title()),
+    (LeadModel::Codex.as_str(), LeadModel::Codex.title()),
+];
+const LEAD_EFFORTS: [(&str, &str); 6] = [
+    (LeadEffort::Default.as_str(), LeadEffort::Default.title()),
+    (LeadEffort::Low.as_str(), LeadEffort::Low.title()),
+    (LeadEffort::Medium.as_str(), LeadEffort::Medium.title()),
+    (LeadEffort::High.as_str(), LeadEffort::High.title()),
+    (LeadEffort::Xhigh.as_str(), LeadEffort::Xhigh.title()),
+    (LeadEffort::Max.as_str(), LeadEffort::Max.title()),
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ConfigFileKind {
@@ -1402,7 +1417,37 @@ impl SettingsView {
             .into_any_element()
     }
 
-    fn providers_section(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn lead_stack(resolved: &AppConfig, cx: &Context<Self>) -> SettingsStack {
+        SettingsStack::titled("Lead")
+            .child(Self::boolean_setting(
+                ConfigKey::LeadAgent,
+                "Lead agent",
+                "Keep a lead running in a session named lead on this machine. Type > in an \
+                 empty command palette to chat with it; the sidebar shows its last message.",
+                resolved.lead_agent,
+                cx,
+            ))
+            .child(Self::palette_choice_setting(
+                ConfigKey::LeadModel,
+                "Model",
+                "The CLI and model the lead runs. A change applies when the lead next starts.",
+                resolved.lead_model.value.as_str(),
+                resolved.lead_model.provenance,
+                &LEAD_MODELS,
+                cx,
+            ))
+            .child(Self::palette_choice_setting(
+                ConfigKey::LeadEffort,
+                "Effort",
+                "How hard the lead thinks. Codex takes Max as Extra high.",
+                resolved.lead_effort.value.as_str(),
+                resolved.lead_effort.provenance,
+                &LEAD_EFFORTS,
+                cx,
+            ))
+    }
+
+    fn agents_section(&self, resolved: &AppConfig, cx: &mut Context<Self>) -> AnyElement {
         use zz_ui::settings::providers::{ProvidersHost, providers_stack};
 
         let mux = self.mux.read(cx);
@@ -1445,8 +1490,9 @@ impl SettingsView {
                 cx,
             )
         });
-        Self::scroll_column("settings-providers")
-            .child(settings_page_description(SettingsSection::Providers, cx))
+        Self::scroll_column("settings-agents")
+            .child(settings_page_description(SettingsSection::Agents, cx))
+            .child(Self::lead_stack(resolved, cx))
             .children(stacks)
             .child(
                 h_flex().justify_end().child(
@@ -2076,7 +2122,7 @@ impl Render for SettingsView {
             SettingsSection::Editor => self.editor_section(&resolved, cx),
             SettingsSection::Panes => self.panes_section(&resolved, cx),
             SettingsSection::Hosts => self.hosts_section(cx),
-            SettingsSection::Providers => self.providers_section(cx),
+            SettingsSection::Agents => self.agents_section(&resolved, cx),
             SettingsSection::Advanced => Self::advanced_section(&resolved, cx),
             SettingsSection::Terminal => self.config_file_section(ConfigFileKind::Terminal, cx),
             SettingsSection::Multiplexer => self.config_file_section(ConfigFileKind::Mux, cx),
@@ -2506,6 +2552,9 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::StatusHost
                 | ConfigKey::StatusUpdate
                 | ConfigKey::ProgramColors
+                | ConfigKey::LeadAgent
+                | ConfigKey::LeadModel
+                | ConfigKey::LeadEffort
         )
     {
         return;
@@ -2637,7 +2686,10 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
-        | ConfigKey::ChromeAccent => {
+        | ConfigKey::ChromeAccent
+        | ConfigKey::LeadAgent
+        | ConfigKey::LeadModel
+        | ConfigKey::LeadEffort => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }

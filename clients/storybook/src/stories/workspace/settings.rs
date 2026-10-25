@@ -47,7 +47,7 @@ pub const STORY: Story = Story {
     id: "settings",
     name: "Settings",
     group: "Settings",
-    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, the appearance pickers, and the Panes, Status bar, Providers and About pages.",
+    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, the appearance pickers, and the Panes, Status bar, Agents and About pages.",
     sections: &[
         Section {
             id: "navigation",
@@ -86,10 +86,10 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(status_bar, cx),
         },
         Section {
-            id: "providers",
-            name: "Providers",
-            summary: "providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
-            build: |_, cx| stateless(providers, cx),
+            id: "agents",
+            name: "Agents",
+            summary: "The lead's settings (on or off, the model it runs, its effort), then providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
+            build: |_, cx| stateless(agents, cx),
         },
         Section {
             id: "about",
@@ -670,7 +670,7 @@ fn manual(
     }
 }
 
-fn providers(_: &mut Window, cx: &mut App) -> AnyElement {
+fn agents(_: &mut Window, cx: &mut App) -> AnyElement {
     use zz_protocol::{
         AgentProvider::{ClaudeCode, Codex},
         ProviderTask, ProvidersReport,
@@ -799,13 +799,47 @@ fn providers(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "page",
-            div().id("providers").flex().h(px(1500.0)).child(
-                settings_scroll_column("settings-providers")
-                    .child(settings_page_description(SettingsSection::Providers, cx))
+            div().id("agents").flex().h(px(1700.0)).child(
+                settings_scroll_column("settings-agents")
+                    .child(settings_page_description(SettingsSection::Agents, cx))
+                    .child(lead_stack(cx))
                     .children(stacks),
             ),
         )
         .into_any_element()
+}
+
+/// The Lead stack as the app draws it, with the lead on.
+fn lead_stack(cx: &App) -> SettingsStack {
+    let choice = |id: &'static str, label: &'static str| {
+        Button::new(id)
+            .label(label)
+            .dropdown_caret(true)
+            .on(settings_card_ground(cx))
+    };
+    SettingsStack::titled("Lead")
+        .child(
+            SettingEntry::new(
+                "Lead agent",
+                "Keep a lead running in a session named lead on this machine. Type > in an empty \
+                 command palette to chat with it; the sidebar shows its last message.",
+            )
+            .control(Switch::new("lead-agent").checked(true)),
+        )
+        .child(
+            SettingEntry::new(
+                "Model",
+                "The CLI and model the lead runs. A change applies when the lead next starts.",
+            )
+            .control(choice("lead-model", "Claude Opus")),
+        )
+        .child(
+            SettingEntry::new(
+                "Effort",
+                "How hard the lead thinks. Codex takes Max as Extra high.",
+            )
+            .control(choice("lead-effort", "Extra high")),
+        )
 }
 
 fn about(_: &mut Window, cx: &mut App) -> AnyElement {
