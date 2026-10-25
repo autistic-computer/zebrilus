@@ -110,7 +110,8 @@ pub const PANE_STACK: SurfaceRole = SurfaceRole::under(
     "Stacked pane tiles in flat rows and window tabs, and on the plate they fan out on",
 )
 .with(
-    P.shadow(Shadow::None)
+    P.outline(false)
+        .shadow(Shadow::None)
         .hover(Highlight::Tint)
         .selected(Highlight::Tint),
 )

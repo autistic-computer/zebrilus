@@ -18,7 +18,7 @@ timestamp: 2026-10-24T00:00:00-03:00
 
 The flat sidebar shows one row per window on every host: a title, a second line saying what the
 window is doing, an age on the right, and a pane stack (`navigation::pane_stack`, shared with the
-titlebar's pane deck): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each tile outlined on its own (a hairline outside and a rim inside, white in light mode), so the one in front reads against the one behind. Pointing at it opens every pane in a row you can
+titlebar's pane deck): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each tile outlined on its own (dark in both modes and lit like a program icon, with no theme hairline: a gray line outside and a white rim inside in light mode, a dark line and a faint rim in dark mode), so the one in front reads against the one behind. Pointing at it opens every pane in a row you can
 click, drawn on the row itself with the title and description hidden under the tiles and fading
 back in past them. Line 2's lead carries what needs you, so the tiles have
 no status dot; folded host and session headers roll attention up. Every fact it needs now rides

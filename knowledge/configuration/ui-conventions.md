@@ -187,7 +187,7 @@ sits at the top-right corner of the sidebar, and the navigation fades into the f
 `bottom_fade` (40px toward the sidebar's ground, solid for its last 12px) while rows remain below. The agent button shares the active window pill’s background,
 theme border, shadow, and 32px height (a step up from the sidebar's 28px buttons), with widths sized to their contents. The titlebar, a pane header tall (34px) plus the pane margin above and below it, puts each pill on the pane headers' center line. Window pills always align left, and the right edge shows an
 agent status dot and summary with a pane-selection menu. Time/date and alignment controls are absent. Window pills share the
-production pane deck, the flat sidebar's stack drawn at 20px (`navigation::pane_stack`): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each tile outlined on its own (a hairline outside and a rim inside, white in light mode), so the one in front reads against the one behind,
+production pane deck, the flat sidebar's stack drawn at 20px (`navigation::pane_stack`): the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each tile outlined on its own (dark in both modes and lit like a program icon, with no theme hairline: a gray line outside and a white rim inside in light mode, a dark line and a faint rim in dark mode), so the one in front reads against the one behind,
 5px apart inside a vertically centered 32px pill. Pointing at it opens every pane in a row drawn
 on the pill itself, with no plate of its own: the name under the tiles is hidden and fades back in
 past them over `LABEL_FADE` (`PaneStack::beside`); tooltips show pane details and clicking a tile
