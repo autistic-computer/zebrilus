@@ -65,9 +65,9 @@ the Advanced heading and its Corner radius and Contrast sliders.
 
 The Theme creator story is every surface of zz in eleven regions (Workspace, Flat sidebar, Lens,
 Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers), each its own window, so a hover or a
-spinner redraws only its region. The flat sidebar carries the lead chat under its list, the Lens
+spinner redraws only its region. The flat sidebar carries the driver chat under its list, the Lens
 region has the plan-approval card with Show terminal and the welcome before a first prompt, and
-Floating has the palette's Lead mode beside the plain palette. The bar links (on windows wider than 1240px) jump between them, and
+Floating has the palette's Driver mode beside the plain palette. The bar links (on windows wider than 1240px) jump between them, and
 `theme-creator/<region>` in the address opens at one.
 The Phone region is phone-width pages from zz-ui's `compact` builders: a terminal page with the
 HUD, the key row with the prefix menu open (`PopoverKey::open`) and the arrow pad's bubble

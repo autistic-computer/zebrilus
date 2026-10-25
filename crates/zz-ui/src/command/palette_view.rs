@@ -59,13 +59,13 @@ impl Global for RecentPaletteCommands {}
 
 pub enum CommandPaletteEvent {
     ReturnToDefault,
-    /// [`LEAD_PREFIX`] typed into an empty palette while there is a lead:
-    /// the app swaps the palette for its Lead mode.
-    Lead,
+    /// [`DRIVER_PREFIX`] typed into an empty palette while there is a driver:
+    /// the app swaps the palette for its Driver mode.
+    Driver,
 }
 
-/// What switches the palette to its Lead mode, typed into an empty palette.
-pub const LEAD_PREFIX: &str = ">";
+/// What switches the palette to its Driver mode, typed into an empty palette.
+pub const DRIVER_PREFIX: &str = ">";
 
 impl EventEmitter<CommandPaletteEvent> for CommandPaletteView {}
 
@@ -92,7 +92,7 @@ pub struct CommandPaletteView {
     chooser_activation: Option<ChooseTreeTarget>,
     local: bool,
     changing_input: bool,
-    lead: bool,
+    driver: bool,
 }
 
 #[derive(Default)]
@@ -207,7 +207,7 @@ impl CommandPaletteView {
             chooser_search: ChooserSearch::default(),
             chooser_activation: None,
             changing_input: false,
-            lead: false,
+            driver: false,
         };
         palette.recompute_suggestions();
         palette.refresh(window, cx);
@@ -248,10 +248,10 @@ impl CommandPaletteView {
         self.local
     }
 
-    /// Whether [`LEAD_PREFIX`] switches to Lead mode: while there is a lead.
-    pub fn offer_lead(&mut self, offer: bool, cx: &mut Context<Self>) {
-        if self.lead != offer {
-            self.lead = offer;
+    /// Whether [`DRIVER_PREFIX`] switches to Driver mode: while there is a driver.
+    pub fn offer_driver(&mut self, offer: bool, cx: &mut Context<Self>) {
+        if self.driver != offer {
+            self.driver = offer;
             cx.notify();
         }
     }
@@ -593,16 +593,16 @@ impl CommandPaletteView {
                 state.items.get(index as usize).map(|item| item.target)
             });
         }
-        if self.lead
+        if self.driver
             && self.last_input.is_empty()
-            && value == LEAD_PREFIX
+            && value == DRIVER_PREFIX
             && self
                 .unified
                 .as_ref()
                 .is_some_and(|unified| unified.mode.is_none() && unified.command.is_none())
         {
             self.set_query(String::new(), window, cx);
-            cx.emit(CommandPaletteEvent::Lead);
+            cx.emit(CommandPaletteEvent::Driver);
             return;
         }
         if self.last_input.is_empty()
@@ -1064,10 +1064,10 @@ impl CommandPaletteView {
                             label: "clear host",
                         });
                     }
-                    if self.lead && self.last_input.is_empty() {
+                    if self.driver && self.last_input.is_empty() {
                         hints.push(PaletteHint {
-                            key: LEAD_PREFIX,
-                            label: "lead",
+                            key: DRIVER_PREFIX,
+                            label: "driver",
                         });
                     }
                     hints.push(PaletteHint {

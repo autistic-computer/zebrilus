@@ -116,7 +116,7 @@ impl SettingsSection {
             }
             Self::Hosts => "Manage the ssh machines in the fleet.",
             Self::Agents => {
-                "The lead agent you chat with from the command palette, and Claude Code and \
+                "The Driver Agent you chat with from the command palette, and Claude Code and \
                  Codex on each connected machine. Update runs the tool's own updater on that \
                  machine."
             }

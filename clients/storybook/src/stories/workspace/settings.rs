@@ -88,7 +88,7 @@ pub const STORY: Story = Story {
         Section {
             id: "agents",
             name: "Agents",
-            summary: "The lead's settings (on or off, the model it runs, its effort), then providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
+            summary: "The driver's settings (on or off, the model it runs, its effort), then providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
             build: |_, cx| stateless(agents, cx),
         },
         Section {
@@ -802,43 +802,43 @@ fn agents(_: &mut Window, cx: &mut App) -> AnyElement {
             div().id("agents").flex().h(px(1700.0)).child(
                 settings_scroll_column("settings-agents")
                     .child(settings_page_description(SettingsSection::Agents, cx))
-                    .child(lead_stack(cx))
+                    .child(driver_stack(cx))
                     .children(stacks),
             ),
         )
         .into_any_element()
 }
 
-/// The Lead stack as the app draws it, with the lead on.
-fn lead_stack(cx: &App) -> SettingsStack {
+/// The Driver stack as the app draws it, with the driver on.
+fn driver_stack(cx: &App) -> SettingsStack {
     let choice = |id: &'static str, label: &'static str| {
         Button::new(id)
             .label(label)
             .dropdown_caret(true)
             .on(settings_card_ground(cx))
     };
-    SettingsStack::titled("Lead")
+    SettingsStack::titled("Driver")
         .child(
             SettingEntry::new(
-                "Lead agent",
-                "Keep a lead running in a session named lead on this machine. Type > in an empty \
+                "Driver Agent",
+                "Keep a driver running in a session named driver on this machine. Type > in an empty \
                  command palette to chat with it; the sidebar shows its last message.",
             )
-            .control(Switch::new("lead-agent").checked(true)),
+            .control(Switch::new("driver-agent").checked(true)),
         )
         .child(
             SettingEntry::new(
                 "Model",
-                "The CLI and model the lead runs. A change applies when the lead next starts.",
+                "The CLI and model the driver runs. A change applies when the driver next starts.",
             )
-            .control(choice("lead-model", "Claude Opus")),
+            .control(choice("driver-model", "Claude Opus")),
         )
         .child(
             SettingEntry::new(
                 "Effort",
-                "How hard the lead thinks. Codex takes Max as Extra high.",
+                "How hard the driver thinks. Codex takes Max as Extra high.",
             )
-            .control(choice("lead-effort", "Extra high")),
+            .control(choice("driver-effort", "Extra high")),
         )
 }
 

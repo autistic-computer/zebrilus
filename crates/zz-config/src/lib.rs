@@ -128,9 +128,9 @@ pub enum ConfigKey {
     InterfaceTheme,
     UiFontFamily,
     AppIcon,
-    LeadAgent,
-    LeadModel,
-    LeadEffort,
+    DriverAgent,
+    DriverModel,
+    DriverEffort,
 }
 
 impl ConfigKey {
@@ -181,9 +181,9 @@ impl ConfigKey {
             Self::InterfaceTheme => "interface-theme",
             Self::UiFontFamily => "ui-font-family",
             Self::AppIcon => "app-icon",
-            Self::LeadAgent => "lead-agent",
-            Self::LeadModel => "lead-model",
-            Self::LeadEffort => "lead-effort",
+            Self::DriverAgent => "driver-agent",
+            Self::DriverModel => "driver-model",
+            Self::DriverEffort => "driver-effort",
         }
     }
 
@@ -234,9 +234,9 @@ impl ConfigKey {
             "interface-theme" => Some(Self::InterfaceTheme),
             "ui-font-family" => Some(Self::UiFontFamily),
             "app-icon" => Some(Self::AppIcon),
-            "lead-agent" => Some(Self::LeadAgent),
-            "lead-model" => Some(Self::LeadModel),
-            "lead-effort" => Some(Self::LeadEffort),
+            "driver-agent" => Some(Self::DriverAgent),
+            "driver-model" => Some(Self::DriverModel),
+            "driver-effort" => Some(Self::DriverEffort),
             _ => None,
         }
     }
@@ -292,9 +292,9 @@ impl ConfigKey {
             | Self::ChromeAccent
             | Self::UiFontFamily
             | Self::AppIcon
-            | Self::LeadAgent
-            | Self::LeadModel
-            | Self::LeadEffort => None,
+            | Self::DriverAgent
+            | Self::DriverModel
+            | Self::DriverEffort => None,
         }
     }
 
@@ -412,10 +412,10 @@ impl PaletteHostPrefix {
     }
 }
 
-/// What zz starts the lead agent with: a Claude Code model, or Codex on the
+/// What zz starts the Driver Agent with: a Claude Code model, or Codex on the
 /// model its own config names.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum LeadModel {
+pub enum DriverModel {
     /// Claude Code on the model its own settings pick.
     #[default]
     Claude,
@@ -425,7 +425,7 @@ pub enum LeadModel {
     Codex,
 }
 
-impl LeadModel {
+impl DriverModel {
     pub const ALL: [Self; 5] = [
         Self::Claude,
         Self::Opus,
@@ -459,10 +459,10 @@ impl LeadModel {
     }
 }
 
-/// How hard the lead thinks: the CLI's own setting, or one of the levels
+/// How hard the driver thinks: the CLI's own setting, or one of the levels
 /// Claude Code's `--effort` takes. Codex has no `max` and gets `xhigh`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum LeadEffort {
+pub enum DriverEffort {
     #[default]
     Default,
     Low,
@@ -472,7 +472,7 @@ pub enum LeadEffort {
     Max,
 }
 
-impl LeadEffort {
+impl DriverEffort {
     pub const ALL: [Self; 6] = [
         Self::Default,
         Self::Low,
@@ -556,9 +556,9 @@ pub struct AppConfig {
     /// names a saved one; see [`ParsedConfig::theme`].
     pub interface_theme: ConfigValue<&'static str>,
     pub app_icon: ConfigValue<AppIconSetting>,
-    pub lead_agent: ConfigValue<bool>,
-    pub lead_model: ConfigValue<LeadModel>,
-    pub lead_effort: ConfigValue<LeadEffort>,
+    pub driver_agent: ConfigValue<bool>,
+    pub driver_model: ConfigValue<DriverModel>,
+    pub driver_effort: ConfigValue<DriverEffort>,
 }
 
 impl Default for AppConfig {
@@ -608,9 +608,9 @@ impl Default for AppConfig {
             theme_mode: ConfigValue::from_default(ThemeModeSetting::System),
             interface_theme: ConfigValue::from_default(DEFAULT_THEME),
             app_icon: ConfigValue::from_default(AppIconSetting::Automatic),
-            lead_agent: ConfigValue::from_default(false),
-            lead_model: ConfigValue::from_default(LeadModel::Claude),
-            lead_effort: ConfigValue::from_default(LeadEffort::Default),
+            driver_agent: ConfigValue::from_default(false),
+            driver_model: ConfigValue::from_default(DriverModel::Claude),
+            driver_effort: ConfigValue::from_default(DriverEffort::Default),
         }
     }
 }
@@ -648,7 +648,7 @@ impl AppConfig {
             ConfigKey::EditorSoftWrap => Some(&mut self.editor_soft_wrap),
             ConfigKey::EditorVimMode => Some(&mut self.editor_vim_mode),
             ConfigKey::BrowserEgress => Some(&mut self.browser_egress),
-            ConfigKey::LeadAgent => Some(&mut self.lead_agent),
+            ConfigKey::DriverAgent => Some(&mut self.driver_agent),
             ConfigKey::WindowCornerRadius
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
@@ -672,8 +672,8 @@ impl AppConfig {
             | ConfigKey::InterfaceTheme
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon
-            | ConfigKey::LeadModel
-            | ConfigKey::LeadEffort => None,
+            | ConfigKey::DriverModel
+            | ConfigKey::DriverEffort => None,
         }
     }
 }
@@ -1133,32 +1133,32 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == ConfigKey::LeadModel {
-            let target = &mut parsed.config.lead_model;
+        if key == ConfigKey::DriverModel {
+            let target = &mut parsed.config.driver_model;
             target.provenance = ConfigProvenance::Override;
-            match LeadModel::parse(value) {
+            match DriverModel::parse(value) {
                 Some(model) => target.value = model,
                 None => parsed.diagnostics.push(ConfigDiagnostic {
                     line: line_number,
                     message: format!(
-                        "invalid `lead-model`: expected one of {}",
-                        LeadModel::ALL.map(LeadModel::as_str).join(", "),
+                        "invalid `driver-model`: expected one of {}",
+                        DriverModel::ALL.map(DriverModel::as_str).join(", "),
                     ),
                 }),
             }
             continue;
         }
 
-        if key == ConfigKey::LeadEffort {
-            let target = &mut parsed.config.lead_effort;
+        if key == ConfigKey::DriverEffort {
+            let target = &mut parsed.config.driver_effort;
             target.provenance = ConfigProvenance::Override;
-            match LeadEffort::parse(value) {
+            match DriverEffort::parse(value) {
                 Some(effort) => target.value = effort,
                 None => parsed.diagnostics.push(ConfigDiagnostic {
                     line: line_number,
                     message: format!(
-                        "invalid `lead-effort`: expected one of {}",
-                        LeadEffort::ALL.map(LeadEffort::as_str).join(", "),
+                        "invalid `driver-effort`: expected one of {}",
+                        DriverEffort::ALL.map(DriverEffort::as_str).join(", "),
                     ),
                 }),
             }
@@ -1325,9 +1325,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ChromeAccent
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon
-            | ConfigKey::LeadAgent
-            | ConfigKey::LeadModel
-            | ConfigKey::LeadEffort => {
+            | ConfigKey::DriverAgent
+            | ConfigKey::DriverModel
+            | ConfigKey::DriverEffort => {
                 unreachable!("handled above")
             }
         };
@@ -2105,25 +2105,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_lead_is_off_until_turned_on_and_takes_a_model_and_effort() {
+    fn the_driver_is_off_until_turned_on_and_takes_a_model_and_effort() {
         let defaults = parse_config("", "monospace").config;
-        assert!(!defaults.lead_agent.value);
-        assert_eq!(defaults.lead_model.value, LeadModel::Claude);
-        assert_eq!(defaults.lead_effort.value, LeadEffort::Default);
+        assert!(!defaults.driver_agent.value);
+        assert_eq!(defaults.driver_model.value, DriverModel::Claude);
+        assert_eq!(defaults.driver_effort.value, DriverEffort::Default);
 
         let parsed = parse_config(
-            "lead-agent = on\nlead-model = codex\nlead-effort = xhigh\n",
+            "driver-agent = on\ndriver-model = codex\ndriver-effort = xhigh\n",
             "monospace",
         );
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert!(parsed.config.lead_agent.value);
-        assert_eq!(parsed.config.lead_model.value, LeadModel::Codex);
-        assert_eq!(parsed.config.lead_effort.value, LeadEffort::Xhigh);
+        assert!(parsed.config.driver_agent.value);
+        assert_eq!(parsed.config.driver_model.value, DriverModel::Codex);
+        assert_eq!(parsed.config.driver_effort.value, DriverEffort::Xhigh);
 
-        let invalid = parse_config("lead-model = gpt\nlead-effort = huge\n", "monospace");
+        let invalid = parse_config("driver-model = gpt\ndriver-effort = huge\n", "monospace");
         assert_eq!(invalid.diagnostics.len(), 2);
-        assert_eq!(invalid.config.lead_model.value, LeadModel::Claude);
-        assert_eq!(invalid.config.lead_effort.value, LeadEffort::Default);
+        assert_eq!(invalid.config.driver_model.value, DriverModel::Claude);
+        assert_eq!(invalid.config.driver_effort.value, DriverEffort::Default);
     }
 
     #[test]

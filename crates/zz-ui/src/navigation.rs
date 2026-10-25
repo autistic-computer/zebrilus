@@ -110,7 +110,7 @@ pub fn workspace_palette_button(id: impl Into<ElementId>) -> Button {
 
 #[must_use]
 pub fn workspace_chat_button(id: impl Into<ElementId>) -> Button {
-    workspace_chrome_button(id, IconName::Chat, "Lead chat")
+    workspace_chrome_button(id, IconName::Chat, "Driver chat")
 }
 
 #[must_use]

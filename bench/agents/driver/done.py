@@ -9,6 +9,6 @@ for line in open(sys.argv[1]):
     if entry.get("type") != "assistant":
         continue
     for block in entry.get("message", {}).get("content", []):
-        if block.get("type") == "text" and any(l.strip() == "LEAD-DONE" for l in block.get("text", "").splitlines()):
+        if block.get("type") == "text" and any(l.strip() == "DRIVER-DONE" for l in block.get("text", "").splitlines()):
             sys.exit(0)
 sys.exit(1)

@@ -77,7 +77,7 @@ tabs do not increase the pane count. The web client shares the deck, tooltips, a
 Chrome comes from the active zz-ui theme. There is no time/date item or alignment preference.
 Until 2026-10-24 the bar also had an agent activity item: a status dot with a summary such as
 "1 needs input" and a menu of the live terminals running Claude Code or Codex that selected each
-one's pane. It and its `status-agents` setting were removed; the lead chat replaces it, and the
+one's pane. It and its `status-agents` setting were removed; the driver chat replaces it, and the
 sidebar still shows each agent's state. An old `status-agents` line is reported and otherwise
 ignored.
 

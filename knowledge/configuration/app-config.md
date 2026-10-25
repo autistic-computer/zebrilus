@@ -147,9 +147,9 @@ The client-local schema includes these scalar settings and chrome colors.
 | `ui-font-family` | System default | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
-| `lead-agent` | `false` | `true` or `false` | Whether zz keeps a lead agent: it follows the first Claude Code or Codex terminal in a session named `lead` on any connected host, and starts one on this machine when there is none. Its chat is the command palette's Lead mode (`>` in an empty palette); the sidebar shows its last message. Off, a lead already running keeps running. Settings › Agents › Lead sets it |
-| `lead-model` | `claude` | `claude`, `opus`, `sonnet`, `fable`, `codex` | What zz starts the lead with: Claude Code on its own default model or with `--model`, or Codex on the model its config names. Applies at the lead's next start |
-| `lead-effort` | `default` | `default`, `low`, `medium`, `high`, `xhigh`, `max` | The lead's `--effort` for Claude Code, or `model_reasoning_effort` for Codex, which takes `max` as `xhigh`; `default` passes nothing. Applies at the lead's next start |
+| `driver-agent` | `false` | `true` or `false` | Whether zz keeps a Driver Agent: it follows the first Claude Code or Codex terminal in a session named `driver` on any connected host, and starts one on this machine when there is none. Its chat is the command palette's Driver mode (`>` in an empty palette); the sidebar shows its last message. Off, a driver already running keeps running. Settings › Agents › Driver sets it |
+| `driver-model` | `claude` | `claude`, `opus`, `sonnet`, `fable`, `codex` | What zz starts the driver with: Claude Code on its own default model or with `--model`, or Codex on the model its config names. Applies at the driver's next start |
+| `driver-effort` | `default` | `default`, `low`, `medium`, `high`, `xhigh`, `max` | The driver's `--effort` for Claude Code, or `model_reasoning_effort` for Codex, which takes `max` as `xhigh`; `default` passes nothing. Applies at the driver's next start |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as a slider from 100% to 200% in steps of 5, written with two decimals. |
 
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
@@ -544,7 +544,7 @@ square top corners and only follow the pane curve at the bottom.
 No agent key is app-owned any more: `agent-working-directory` went with the Agent pane (see the
 retired keys above). The three driver keys are [mux options](#daemon-owned-mux-option-keys). They
 configure the daemon's native Claude Code and Codex drivers and its ACP runtime. Since the Agent
-pane was removed on 2026-10-23 nothing opens those outside tests; they stay for the planned lead
+pane was removed on 2026-10-23 nothing opens those outside tests; they stay for the planned driver
 chat. The [agent lens](/concepts/agent-lens.md) reads the files the CLI writes and ignores them.
 
 The command values may be unquoted, wrapped in matching single/double quotes, or supplied as

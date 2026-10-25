@@ -1,4 +1,4 @@
-//! The command palette's Lead mode: the lead chat in the palette's surface,
+//! The command palette's Driver mode: the driver chat in the palette's surface,
 //! opened by the title bar's chat button while the sidebar is hidden.
 
 use zz_gpui::{
@@ -8,34 +8,38 @@ use zz_gpui::{
 };
 use zz_ui::{
     ActiveTheme as _, PaintState,
-    agent::chat::{LEAD_PALETTE_HINTS, chat_thread, lead_palette_body},
+    agent::chat::{DRIVER_PALETTE_HINTS, chat_thread, driver_palette_body},
     command::{CommandPaletteSurface, PalettePill, PaletteStatus, unified_command_palette_input},
     input::{InputEvent, InputState},
     roles,
 };
 
-use super::lead::LeadChat;
+use super::driver::DriverChat;
 
-const PLACEHOLDER: &str = "Message the lead…";
+const PLACEHOLDER: &str = "Message the driver…";
 
-pub(crate) enum LeadPaletteEvent {
+pub(crate) enum DriverPaletteEvent {
     /// Esc or a click outside: close the palette.
     Close,
     /// Backspace in an empty field: back to the palette's other modes.
     LeaveMode,
 }
 
-pub(crate) struct LeadPalette {
-    chat: Entity<LeadChat>,
+pub(crate) struct DriverPalette {
+    chat: Entity<DriverChat>,
     input: Entity<InputState>,
     scroll: ScrollHandle,
     shown: usize,
 }
 
-impl EventEmitter<LeadPaletteEvent> for LeadPalette {}
+impl EventEmitter<DriverPaletteEvent> for DriverPalette {}
 
-impl LeadPalette {
-    pub(crate) fn new(chat: Entity<LeadChat>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+impl DriverPalette {
+    pub(crate) fn new(
+        chat: Entity<DriverChat>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(PLACEHOLDER));
         cx.subscribe_in(
             &input,
@@ -79,11 +83,11 @@ impl LeadPalette {
         let empty = self.input.read(cx).value().is_empty();
         match event.keystroke.key.as_str() {
             "escape" => {
-                cx.emit(LeadPaletteEvent::Close);
+                cx.emit(DriverPaletteEvent::Close);
                 cx.stop_propagation();
             }
             "backspace" if empty => {
-                cx.emit(LeadPaletteEvent::LeaveMode);
+                cx.emit(DriverPaletteEvent::LeaveMode);
                 cx.stop_propagation();
             }
             digit if empty && event.keystroke.modifiers.number_of_modifiers() == 0 => {
@@ -106,26 +110,26 @@ impl LeadPalette {
     }
 }
 
-impl Render for LeadPalette {
+impl Render for DriverPalette {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let chat = self.chat.clone();
         let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
         let (pills, bubbles) = {
             let chat = chat.read(cx);
-            let host = chat.lead().map(|lead| PalettePill::Host {
-                label: lead.host_name.clone(),
+            let host = chat.driver().map(|driver| PalettePill::Host {
+                label: driver.host_name.clone(),
                 status: PaletteStatus::Online,
             });
-            let lead =
-                chat.lead()
-                    .and_then(|lead| lead.program)
-                    .map(|program| PalettePill::Program {
-                        label: "Lead".into(),
-                        program,
-                    });
+            let driver = chat
+                .driver()
+                .and_then(|driver| driver.program)
+                .map(|program| PalettePill::Program {
+                    label: "Driver".into(),
+                    program,
+                });
             (
-                host.into_iter().chain(lead).collect::<Vec<_>>(),
-                chat.thread("lead-palette", layer.ground, cx),
+                host.into_iter().chain(driver).collect::<Vec<_>>(),
+                chat.thread("driver-palette", layer.ground, cx),
             )
         };
         let (bubbles, depth) = bubbles;
@@ -134,7 +138,7 @@ impl Render for LeadPalette {
         }
         self.shown = depth;
         chat.update(cx, |chat, cx| chat.mark_read(cx));
-        let ask = LeadChat::ask(&chat, "lead-palette-ask", cx).or_else(|| {
+        let ask = DriverChat::ask(&chat, "driver-palette-ask", cx).or_else(|| {
             chat.read(cx).error().map(|error| {
                 div()
                     .px(px(14.0))
@@ -149,17 +153,17 @@ impl Render for LeadPalette {
             unified_command_palette_input(&self.input, pills, cx),
             cx.entity_id().as_u64(),
         )
-        .rows(lead_palette_body(
+        .rows(driver_palette_body(
             chat_thread(bubbles),
             ask,
             &self.scroll,
             layer.ground.fill,
         ))
-        .hints(LEAD_PALETTE_HINTS);
+        .hints(DRIVER_PALETTE_HINTS);
         let palette = cx.entity();
         div()
-            .id("lead-palette-overlay")
-            .debug_selector(|| "lead-palette-overlay".to_owned())
+            .id("driver-palette-overlay")
+            .debug_selector(|| "driver-palette-overlay".to_owned())
             .absolute()
             .inset_0()
             .size_full()
@@ -172,7 +176,7 @@ impl Render for LeadPalette {
             .capture_key_down(cx.listener(Self::on_key_down))
             .on_key_up(|_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                palette.update(cx, |_, cx| cx.emit(LeadPaletteEvent::Close));
+                palette.update(cx, |_, cx| cx.emit(DriverPaletteEvent::Close));
                 cx.stop_propagation();
             })
             .child(surface)

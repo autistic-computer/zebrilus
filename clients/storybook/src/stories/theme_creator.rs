@@ -61,7 +61,7 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
-        chat::{bottom_scroll, lead_input, lead_palette},
+        chat::{bottom_scroll, driver_input, driver_palette},
         lens,
     },
     console::{
@@ -95,13 +95,13 @@ pub const STORY: Story = Story {
         Section {
             id: "workspace",
             name: "Workspace",
-            summary: "The window with the tree sidebar, and the title bar as it reads with the sidebar hidden, its chat button dotted while the lead chat waits on you.",
+            summary: "The window with the tree sidebar, and the title bar as it reads with the sidebar hidden, its chat button dotted while the driver chat waits on you.",
             build: Workspace::view,
         },
         Section {
             id: "flat",
             name: "Flat sidebar",
-            summary: "The flat sidebar with the lead chat under it, beside Claude Code with its lens open and two terminals. Drag the line over the chat to move the split.",
+            summary: "The flat sidebar with the driver chat under it, beside Claude Code with its lens open and two terminals. Drag the line over the chat to move the split.",
             build: Flat::view,
         },
         Section {
@@ -137,7 +137,7 @@ pub const STORY: Story = Story {
         Section {
             id: "floating",
             name: "Floating",
-            summary: "Menus, the palette and its Lead mode, a dialog, toasts and which-key over the backdrop.",
+            summary: "Menus, the palette and its Driver mode, a dialog, toasts and which-key over the backdrop.",
             build: Floating::view,
         },
         Section {
@@ -286,7 +286,7 @@ struct Flat {
 
 impl Flat {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let flat = cx.new(|_| Live::new(None).lead());
+        let flat = cx.new(|_| Live::new(None).driver());
         let agent = lens::tiled(window, cx);
         cx.new(|_| Self { flat, agent }).into()
     }
@@ -697,8 +697,8 @@ struct Floating {
     pane_menu: Entity<PopupMenu>,
     view_menu: Entity<PopupMenu>,
     search: Entity<InputState>,
-    lead: Entity<InputState>,
-    lead_thread: zz_gpui::ScrollHandle,
+    driver: Entity<InputState>,
+    driver_thread: zz_gpui::ScrollHandle,
     toasts: [Entity<Notification>; 2],
     tooltip: Entity<Tooltip>,
 }
@@ -723,13 +723,13 @@ impl Floating {
             ),
         ];
         let tooltip = cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None));
-        let lead = lead_input("", window, cx);
+        let driver = driver_input("", window, cx);
         cx.new(|_| Self {
             pane_menu,
             view_menu,
             search,
-            lead,
-            lead_thread: bottom_scroll(),
+            driver,
+            driver_thread: bottom_scroll(),
             toasts,
             tooltip,
         })
@@ -810,9 +810,9 @@ impl Render for Floating {
         let menus = plate("showcase-menus", self.pane_menu.clone(), cx);
         let view = plate("showcase-view-menu", self.view_menu.clone(), cx);
         let palette = plate("showcase-palette", self.palette(cx), cx);
-        let lead = plate(
-            "showcase-lead-palette",
-            lead_palette(&self.lead, &self.lead_thread, cx),
+        let driver = plate(
+            "showcase-driver-palette",
+            driver_palette(&self.driver, &self.driver_thread, cx),
             cx,
         );
         let dialog = plate("showcase-dialog", dialog(cx), cx);
@@ -838,7 +838,7 @@ impl Render for Floating {
             .gap(px(GAP))
             .child(tiles(
                 window,
-                vec![vec![menus, lead], vec![view, toasts], vec![palette, dialog]],
+                vec![vec![menus, driver], vec![view, toasts], vec![palette, dialog]],
             ))
             .child(which_key)
     }

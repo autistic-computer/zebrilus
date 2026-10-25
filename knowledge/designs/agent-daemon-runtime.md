@@ -19,7 +19,7 @@ timestamp: 2026-10-24T00:00:00-03:00
 > production daemon opens on it is the lens runtime (`agent/lens.rs`), keyed by a terminal pane
 > running Claude Code or Codex and opened by `AgentReplay` or `agent-send --wait`
 > ([agent lens](/concepts/agent-lens.md)). The ACP runtime and the native drivers stay in the source
-> for the lead chat, but no pane opens them. Removed with the pane: `AgentDescriptor`, the
+> for the driver chat, but no pane opens them. Removed with the pane: `AgentDescriptor`, the
 > `experimental-agent-pane` option, `set-agent-provider`, `restart-agent-pane` and the
 > `AgentPaneRestart` effect, `EventPayload::AgentCommand` (`ComposerAppend`), the
 > `agent-working-directory` key, daemon pane titling and status records, and
