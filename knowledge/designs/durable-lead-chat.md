@@ -191,13 +191,15 @@ Unchanged in shape from the first version, smaller in payload:
 
 ## Chat UI
 
-The chat sits at the bottom of the flat sidebar, under a rule you drag to move the split. In
-titlebar mode, a chat button in the title bar (`workspace_chat_button`, dotted with `chat_button` in
-the color of what waits) opens the command palette in Lead mode instead: a `PalettePill::Program`
-for the lead in the input, `lead_palette_body` under it (the thread, at most 360px and scrolling,
-then the approval waiting on you) and `LEAD_PALETTE_HINTS` in the footer. The parts are in
-`crates/zz-ui/src/agent/chat.rs` and the storybook's Agent › Lead chat story shows each one and both
-layouts:
+The chat lives in the command palette's Lead mode: a `PalettePill::Program` for the lead in the
+input, `lead_palette_body` under it (the thread, at most 360px and scrolling, then the approval
+waiting on you, or the error of a message that did not go through) and `LEAD_PALETTE_HINTS` in the
+footer. The sidebar keeps only the lead's last word under its list (`chat_latest`): the lead's
+header, then its last answer cut to four lines (`ChatBubble::lines`) or `ChatTyping` while it
+works, with a dot in the header while an approval waits. A click on it opens Lead mode, as `>` in an
+empty palette does, and in titlebar mode the title bar's chat button (`workspace_chat_button`,
+dotted with `chat_button` in the color of what waits). The parts are in
+`crates/zz-ui/src/agent/chat.rs` and the storybook's Agent › Lead chat story shows each one:
 
 | Chat log line | Drawn as |
 |---|---|
@@ -234,18 +236,22 @@ Code's own spinner shows the todo item in progress. `lead_steps` reads them from
 The same step twice in a row shows once. Nothing new is asked of the lead and nothing goes on the
 wire.
 
-`ChatSection` scrolls the thread, keeps a short one at the bottom and fades it under the header
-while there is more above (the kit's `top_fade`, the mirror of the list's `bottom_fade`); whoever
-owns the `ScrollHandle` calls `scroll_to_bottom` when a message arrives. Its rule starts a
-`ChatSplitDrag`; the column holding it turns the pointer into a height with `chat_split_height`,
-which leaves the chat 180px and the list 96px.
+The palette's thread scrolls and fades under the input while there is more above (the kit's
+`top_fade`, the mirror of the list's `bottom_fade`); Lead mode calls `scroll_to_bottom` when a
+message arrives. A full chat at the bottom of the sidebar, with a split you dragged, came first and
+went on 2026-10-24: it crowded the list and the composer fought the panes for focus.
 
 The desktop app feeds it from the lead's pane today, through the lens stream rather than the chat
 log above (`crates/zz/src/agent/lead.rs`):
 
-- **Which pane.** The lead is the first terminal running Claude Code or Codex in a session named
-  `lead`, on the first host in fleet order that has one. Nothing else marks it yet; `zz lead
-  start` would make that session.
+- **Which pane.** While `lead-agent` is on, the lead is the first terminal running Claude Code or
+  Codex in a session named `lead`, on the first host in fleet order that has one. With no `lead`
+  session on any connected host, zz starts one on this machine, in the home folder, running
+  `lead_command`: `claude` with `--model` and `--effort`, or `codex` with
+  `-c model_reasoning_effort=` (Codex has no `max`, so it gets `xhigh`). It waits until this
+  machine's daemon has sent its sessions, and 30 s between starts, so a CLI that exits at once does
+  not loop. A `lead` session without an agent in it is left alone. Off, zz neither starts nor
+  follows a lead and the chat's surfaces hide; a lead already running keeps running.
 - **The feed.** `MuxClient::follow_lead` asks the lead's host for an `AgentReplay` and keeps a
   cursor of its own, apart from the attached session's lenses, taking `AgentUpdates`,
   `AgentState` and lag notices from the attached connection or a background one. The daemon
@@ -258,14 +264,14 @@ log above (`crates/zz/src/agent/lead.rs`):
   program tile. Your turn reads two ticks once it is in the transcript and two in the accent once
   the lead did anything after it. Messages that arrive live get the local time; the history
   replayed when zz starts following gets none, since the stream carries no timestamps.
-- **Talking back.** The composer types into the lead's pane like the lens composer, and queues
-  behind a running turn. The oldest approval waiting in the lead shows as the lens's permission
-  card above it; in the palette, a digit in an empty field picks an option.
-- **Where.** The sidebar draws it under the list in both views (the split is not saved). Lead mode,
-  a view of its own over the panes (`agent/lead_palette.rs`), opens in either layout: `>` typed
-  into an empty command palette switches to it while there is a lead (the palette's footer then
-  shows the key), and in titlebar mode the title bar's chat button opens it too. Esc closes it and
-  Backspace in an empty field goes back to the command palette.
+- **Talking back.** Lead mode's input types into the lead's pane like the lens composer, and
+  queues behind a running turn. The oldest approval waiting in the lead shows as the lens's
+  permission card under the thread; a digit in an empty field picks an option.
+- **Where.** Lead mode, a view of its own over the panes (`agent/lead_palette.rs`), opens in either
+  layout: `>` typed into an empty command palette switches to it while there is a lead (the
+  palette's footer then shows the key), a click on the lead's last message in the sidebar opens it
+  (`SidebarOpenLead`), and in titlebar mode the title bar's chat button opens it too. Esc closes it
+  and Backspace in an empty field goes back to the command palette.
 
 Not yet: the web and iPad clients, the zz-owned chat log, peer-bus messages (they arrive as plain
 user turns and show as yours), and an unwatch message, so a client keeps getting the stream of
@@ -273,10 +279,14 @@ every pane it ever asked to replay until it disconnects.
 
 ## Settings and verbs
 
-- `lead-agent` (`claude` or `codex`), `lead-hosts` (owner first, then standbys), `lead-lease`
-  (how long a standby waits on a silent owner before an automatic handoff; off until manual moves
-  have been used for a while), `lead-reset-tokens` (restart from the packet after a finished
-  request once the context passes this, default 80k).
+- Shipped 2026-10-24 under Settings › Agents › Lead: `lead-agent` (on or off), `lead-model`
+  (`claude` for Claude Code's own default, `opus`, `sonnet`, `fable`, or `codex` for Codex's own
+  default) and `lead-effort` (`default`, `low`, `medium`, `high`, `xhigh`, `max`). The lead starts on
+  this machine only; a change of model or effort applies at its next start.
+- Still proposed: `lead-hosts` (owner first, then standbys), `lead-lease` (how long a standby waits
+  on a silent owner before an automatic handoff; off until manual moves have been used for a
+  while), `lead-reset-tokens` (restart from the packet after a finished request once the context
+  passes this, default 80k).
 - `zz lead start|move HOST|reset|status`. `status` prints owner, epoch, session, context size and
   each peer's lag.
 

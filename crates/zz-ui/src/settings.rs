@@ -40,7 +40,7 @@ pub enum SettingsSection {
     Editor,
     Panes,
     Hosts,
-    Providers,
+    Agents,
     Advanced,
     Multiplexer,
     About,
@@ -75,7 +75,7 @@ impl SettingsSection {
         Self::Browser,
         Self::Terminal,
         Self::Hosts,
-        Self::Providers,
+        Self::Agents,
         Self::Advanced,
         Self::About,
     ];
@@ -91,7 +91,7 @@ impl SettingsSection {
             Self::Panes => "Panes",
             Self::Multiplexer => "Multiplexer",
             Self::Hosts => "Hosts",
-            Self::Providers => "Providers",
+            Self::Agents => "Agents",
             Self::Advanced => "System",
             Self::About => "About",
         }
@@ -115,9 +115,10 @@ impl SettingsSection {
                 "zz loads only zz/mux.conf. Import a tmux file here, or edit the options and bindings below."
             }
             Self::Hosts => "Manage the ssh machines in the fleet.",
-            Self::Providers => {
-                "Claude Code and Codex on each connected machine. Update runs the tool's own \
-                 updater on that machine."
+            Self::Agents => {
+                "The lead agent you chat with from the command palette, and Claude Code and \
+                 Codex on each connected machine. Update runs the tool's own updater on that \
+                 machine."
             }
             Self::Advanced => "Control daemon lifecycle and experimental pane features.",
             Self::About => "tmux, ghostty and zz_gpui walked into a mux.",
@@ -135,7 +136,7 @@ impl SettingsSection {
             Self::Panes => crate::IconName::LayoutDashboard,
             Self::Multiplexer => crate::IconName::GalleryVerticalEnd,
             Self::Hosts => crate::IconName::HardDrive,
-            Self::Providers => crate::IconName::Bot,
+            Self::Agents => crate::IconName::Bot,
             Self::Advanced => crate::IconName::Cpu,
             Self::About => crate::IconName::Info,
         }
@@ -148,7 +149,7 @@ impl SettingsSection {
                 SettingsNavigationGroup::Appearance
             }
             Self::Multiplexer | Self::Browser | Self::Terminal => SettingsNavigationGroup::Tools,
-            Self::Hosts | Self::Providers | Self::Advanced | Self::About => {
+            Self::Hosts | Self::Agents | Self::Advanced | Self::About => {
                 SettingsNavigationGroup::Advanced
             }
         }
@@ -476,7 +477,7 @@ mod tests {
                 "Browser",
                 "Terminal",
                 "Hosts",
-                "Providers",
+                "Agents",
                 "System",
                 "About",
             ]
@@ -496,7 +497,7 @@ mod tests {
                 SettingsSection::Browser,
                 SettingsSection::Terminal,
                 SettingsSection::Hosts,
-                SettingsSection::Providers,
+                SettingsSection::Agents,
                 SettingsSection::Advanced,
                 SettingsSection::About,
             ]

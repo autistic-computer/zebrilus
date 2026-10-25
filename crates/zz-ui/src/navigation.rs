@@ -40,6 +40,7 @@ pub const WORKSPACE_ROW_ACTION_CENTER: Pixels = px(19.0);
 /// inset, so the scrollbar's thumb (8px at its widest, 2px in) runs beside
 /// them instead of over them.
 pub const WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER: Pixels = px(8.0);
+const WORKSPACE_SIDEBAR_FOOTER_TOP: f32 = 4.0;
 const WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 /// The titlebar's window tabs and status chips: the largest controls in the
@@ -133,18 +134,18 @@ pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Bu
     }
 }
 
-/// The buttons along the sidebar's top strip, in order: Add host, the view
-/// switch, Settings, then the sidebar toggle, which the title bar keeps when
-/// the sidebar hides. The chat takes the sidebar's bottom edge.
+/// The footer's trailing controls: Add host, then the view toggle.
 #[must_use]
-pub fn workspace_sidebar_controls(
-    controls: impl IntoIterator<Item = zz_gpui::AnyElement>,
+pub fn workspace_sidebar_footer_controls(
+    add_host: impl IntoElement,
+    view: impl IntoElement,
 ) -> zz_gpui::Div {
     div()
         .flex()
         .items_center()
         .gap(rems_from_px(WORKSPACE_CHROME_CONTROL_GAP))
-        .children(controls)
+        .child(add_host)
+        .child(view)
 }
 
 fn workspace_chrome_button(
@@ -294,6 +295,13 @@ pub fn workspace_sidebar_titlebar(
         .child(controls)
 }
 
+/// How far the sidebar's leading buttons sit in from its edges, so their
+/// centers fall on a pane header's center line: half a header in from the
+/// window's edges past the pane margin.
+fn workspace_chrome_inset(cx: &App) -> Pixels {
+    (cx.theme().pane_header_height() - WORKSPACE_CHROME_BUTTON_SIZE) / 2.0
+}
+
 /// How far the sidebar's trailing buttons sit in from its trailing edge, so
 /// they center on the column its rows' actions do.
 fn workspace_sidebar_trailing_inset(cx: &App) -> Pixels {
@@ -308,6 +316,33 @@ fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
 
 fn workspace_row_action_gap() -> Pixels {
     px(WORKSPACE_ROW_ACTION_GAP)
+}
+
+/// The strip under the sidebar's navigation: settings on the leading edge,
+/// the view switch on the trailing edge under the sidebar toggle, both
+/// centered as far from the window's bottom as the traffic lights are from
+/// its top.
+pub fn workspace_sidebar_footer(
+    id: impl Into<ElementId>,
+    leading: impl IntoElement,
+    trailing: Option<zz_gpui::AnyElement>,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    let inset = workspace_chrome_inset(cx);
+    let window_inset = cx.theme().pane_margin + inset;
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .pt(px(WORKSPACE_SIDEBAR_FOOTER_TOP))
+        .pl(window_inset)
+        .pr(workspace_sidebar_trailing_inset(cx))
+        .pb(window_inset)
+        .child(leading)
+        .children(trailing)
 }
 
 /// Full-height sidebar interior on the window, with its edge rule. Native

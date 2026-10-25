@@ -61,7 +61,7 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
-        chat::{SidebarLead, bottom_scroll, lead_input, lead_palette},
+        chat::{bottom_scroll, lead_input, lead_palette},
         lens,
     },
     console::{
@@ -286,8 +286,7 @@ struct Flat {
 
 impl Flat {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let lead = SidebarLead::new(window, cx);
-        let flat = cx.new(|_| Live::new(None).lead(lead));
+        let flat = cx.new(|_| Live::new(None).lead());
         let agent = lens::tiled(window, cx);
         cx.new(|_| Self { flat, agent }).into()
     }

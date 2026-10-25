@@ -1,33 +1,20 @@
 use zz_gpui::{
-    AnyElement, AppContext as _, Context, DragMoveEvent, Entity, InteractiveElement as _,
-    IntoElement as _, ParentElement as _, Pixels, ScrollHandle, SharedString, Styled as _, Window,
-    div, px,
+    AnyElement, AppContext as _, Context, Entity, IntoElement as _, ParentElement as _,
+    SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use zz_ui::{
-    ActiveTheme as _,
-    agent::{
-        chat::{
-            ChatComposer, ChatSection, ChatSplitDrag, chat_header, chat_split_height, chat_thread,
-        },
-        controls::{ComposerAction, composer_action_button},
-    },
-    input::{InputEvent, InputState},
-    navigation::workspace_sidebar_fade,
-    v_flex,
-};
+use zz_ui::agent::chat::{ChatBubble, ChatTyping, chat_header, chat_latest};
 
-use super::WorkspaceSidebar;
+use super::{SidebarOpenLead, WorkspaceSidebar};
 use crate::{agent::lead::LeadChat, mux::client::MuxClient};
 
-const PLACEHOLDER: &str = "Message the lead…";
+/// How many lines of the lead's last answer the sidebar shows.
+const LATEST_LINES: usize = 4;
+const ATTENTION_DOT: f32 = 7.0;
 
-/// The lead chat at the bottom of the sidebar, under a split you drag.
+/// The lead's last message at the bottom of the sidebar. The chat itself is
+/// the command palette's Lead mode, which a click on it opens.
 pub(super) struct LeadSection {
     chat: Entity<LeadChat>,
-    input: Option<Entity<InputState>>,
-    scroll: ScrollHandle,
-    height: Option<Pixels>,
-    shown: usize,
 }
 
 impl LeadSection {
@@ -38,13 +25,7 @@ impl LeadSection {
     ) -> Self {
         let chat = cx.new(|cx| LeadChat::new(mux, local_name, cx));
         cx.observe(&chat, |_, _, cx| cx.notify()).detach();
-        Self {
-            chat,
-            input: None,
-            scroll: ScrollHandle::new(),
-            height: None,
-            shown: 0,
-        }
+        Self { chat }
     }
 }
 
@@ -53,124 +34,48 @@ impl WorkspaceSidebar {
         self.lead.chat.clone()
     }
 
-    fn lead_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
-        if let Some(input) = &self.lead.input {
-            return input.clone();
-        }
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(PLACEHOLDER));
-        cx.subscribe_in(
-            &input,
-            window,
-            |sidebar, _, event: &InputEvent, window, cx| match event {
-                InputEvent::PressEnter { shift: false } => sidebar.send_to_lead(window, cx),
-                InputEvent::Change => cx.notify(),
-                _ => {}
-            },
-        )
-        .detach();
-        self.lead.input = Some(input.clone());
-        input
-    }
-
-    fn send_to_lead(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(input) = self.lead.input.clone() else {
-            return;
-        };
-        let text = input.read(cx).value().to_string();
-        if text.trim().is_empty() {
-            return;
-        }
-        if self.lead.chat.update(cx, |chat, cx| chat.send(&text, cx)) {
-            input.update(cx, |input, cx| input.set_value("", window, cx));
-            self.lead.scroll.scroll_to_bottom();
-        }
-        cx.notify();
-    }
-
-    /// `navigation` over the lead chat while there is a lead; `navigation`
-    /// alone otherwise.
-    pub(super) fn with_lead_chat(
-        &mut self,
+    /// `navigation` over the lead's last message while there is a lead and it
+    /// has said something or is at work; `navigation` alone otherwise.
+    pub(super) fn with_lead_latest(
+        &self,
         navigation: AnyElement,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let chat = self.lead.chat.clone();
-        let Some((lead, host_name)) = chat
-            .read(cx)
-            .lead_sender()
-            .zip(chat.read(cx).lead().map(|lead| lead.host_name.clone()))
-        else {
+        let chat = self.lead.chat.read(cx);
+        let (Some(sender), Some(lead)) = (chat.lead_sender(), chat.lead()) else {
             return navigation;
         };
-        let input = self.lead_input(window, cx);
         let ground = self.content_ground(cx);
-        let fade = workspace_sidebar_fade(self.ground(cx), cx);
-        let ((bubbles, depth), running, error) = {
-            let chat = chat.read(cx);
-            (
-                chat.thread("workspace-lead", ground, cx),
-                chat.running(cx),
-                chat.error().cloned(),
-            )
-        };
-        if depth > self.lead.shown {
-            self.lead.scroll.scroll_to_bottom();
-        }
-        self.lead.shown = depth;
-        chat.update(cx, |chat, cx| chat.mark_read(cx));
-        let has_content = !input.read(cx).value().trim().is_empty();
-        let action = if running && has_content {
-            ComposerAction::Queue
+        let message = if let Some(steps) = chat.steps(cx) {
+            ChatTyping::new("workspace-lead-typing")
+                .steps(steps)
+                .on(ground)
+                .into_any_element()
+        } else if let Some(text) = chat.last_answer(cx) {
+            ChatBubble::theirs("workspace-lead-latest-message", text, "")
+                .lines(LATEST_LINES)
+                .on(ground)
+                .into_any_element()
         } else {
-            ComposerAction::Send
+            return navigation;
         };
-        let sidebar = cx.entity();
-        let send = composer_action_button("workspace-lead-send", action, has_content).on_click(
-            move |_, window, cx| sidebar.update(cx, |sidebar, cx| sidebar.send_to_lead(window, cx)),
-        );
-        let composer = v_flex()
-            .w_full()
-            .children(
-                LeadChat::ask(&chat, "workspace-lead-ask", cx)
-                    .map(|ask| div().px(px(10.0)).child(ask)),
-            )
-            .children(error.map(|error| {
-                div()
-                    .px(px(18.0))
-                    .pb(px(6.0))
-                    .text_size(zz_ui::rems_from_px(12.0))
-                    .text_color(cx.theme().danger)
-                    .child(error.to_string())
-            }))
-            .child(ChatComposer {
-                input,
-                action: send.into_any_element(),
-                ground: Some(ground),
-            });
+        let attention = chat.attention(cx).map(|color| {
+            div()
+                .size(px(ATTENTION_DOT))
+                .rounded_full()
+                .bg(color)
+                .into_any_element()
+        });
+        let header = chat_header(&sender, lead.host_name.clone(), attention, cx);
         div()
-            .id("workspace-sidebar-column")
             .flex()
             .flex_col()
             .size_full()
             .min_h_0()
-            .on_drag_move::<ChatSplitDrag>(cx.listener(
-                |sidebar, event: &DragMoveEvent<ChatSplitDrag>, _, cx| {
-                    sidebar.lead.height =
-                        Some(chat_split_height(event.event.position.y, event.bounds));
-                    cx.notify();
-                },
-            ))
             .child(div().flex().flex_col().flex_1().min_h_0().child(navigation))
             .child(
-                ChatSection::new(
-                    chat_header(&lead, host_name, None, cx),
-                    chat_thread(bubbles),
-                    composer,
-                    &self.lead.scroll,
-                    fade,
-                )
-                .height(self.lead.height),
+                chat_latest("workspace-lead-latest", header, message, cx)
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarOpenLead))),
             )
             .into_any_element()
     }

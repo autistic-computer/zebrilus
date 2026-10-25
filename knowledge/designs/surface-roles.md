@@ -404,7 +404,7 @@ corners of the sender tiles.
 | `chat.bubble` | card | the lead's replies and agents' messages, with their tails | `ui/agent/chat.rs` (`ChatBubble`) | new 2026-10-24 |
 | `chat.bubble.mine` | chat.bubble | your messages, in the accent's wash | `ui/agent/chat.rs` (`ChatBubble::mine`) | new 2026-10-24 |
 | `chat.composer` | field | the one-line box you message the lead in, a pill in every theme | `ui/agent/chat.rs` (`ChatComposer`) | new 2026-10-24 |
-| `rule.chat` | rule | the line over the chat in the sidebar, dragged to resize it | `ui/agent/chat.rs` (`ChatSection`) | drew as `rule.list` until 2026-10-24, so styling list dividers restyled it |
+| `rule.chat` | rule | the line over the lead's last message in the sidebar | `ui/agent/chat.rs` (`chat_latest`) | drew as `rule.list` until 2026-10-24, so styling list dividers restyled it |
 
 ### Reading content (markdown in agent replies)
 
@@ -481,7 +481,7 @@ they fill with `theme.scrim`.
 | `rule.split` | split divider and the accent half on the active pane's side | `ui/pane.rs:636` |
 | `rule.list` | menu separators, setting row lines, prompt card lines | `ui/settings.rs:1357`, `kit/menu/popup_menu.rs:922` |
 | `rule.tree` | tree indent guides | `ui/navigation/tree.rs:157` |
-| `rule.chat` | the line over the lead chat in the sidebar | `ui/agent/chat.rs` (`ChatSection`) |
+| `rule.chat` | the line over the lead's last message in the sidebar | `ui/agent/chat.rs` (`chat_latest`) |
 
 ### Not roles
 

@@ -1,7 +1,9 @@
 //! The lead chat: the conversation with the lead agent, read from its pane's
 //! lens stream on whichever host runs it. The lead is the first terminal
 //! running Claude Code or Codex in a session named `lead`; zz follows it from
-//! every window, attached to that session or not.
+//! every window, attached to that session or not. While `lead-agent` is on
+//! and no host has a `lead` session, zz starts one on this machine with the
+//! model and effort the Agents settings pick.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -19,7 +21,7 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, Hsla, IntoElement as _, ParentElement as _,
     SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use zz_protocol::{AgentProvider, PaneId, PaneKindSnapshot};
+use zz_protocol::{AgentProvider, CommandInvocation, PaneId, PaneKindSnapshot};
 use zz_ui::{
     ActiveTheme as _, Ground,
     agent::{
@@ -32,7 +34,13 @@ use zz_ui::{
 use super::controller::{
     AgentController, AgentPaneState, AgentPermissionKind, AgentPermissionRequest, AgentThreadEntry,
 };
-use crate::mux::{client::MuxClient, hosts::HostId};
+use crate::{
+    config::{LeadEffort, LeadModel},
+    mux::{
+        client::MuxClient,
+        hosts::{HostId, HostState},
+    },
+};
 
 /// The session zz looks in for the lead.
 pub(crate) const LEAD_SESSION: &str = "lead";
@@ -40,6 +48,9 @@ pub(crate) const LEAD_SESSION: &str = "lead";
 /// history being replayed, not messages arriving, so they get no time.
 const REPLAY_SETTLE: Duration = Duration::from_secs(3);
 const AGENT_NOTICE: &str = "[zz] Agent ";
+/// How long zz waits after starting a lead before it starts another, so a
+/// CLI that exits at once does not restart in a loop.
+const START_BACKOFF: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Lead {
@@ -81,6 +92,58 @@ pub(crate) fn find_lead(mux: &MuxClient, local_name: &SharedString) -> Option<Le
                 })
             })
     })
+}
+
+/// The command zz starts the lead with: the CLI `model` names, with the
+/// model and effort as its flags. Codex has no `max` effort and gets `xhigh`.
+pub(crate) fn lead_command(model: LeadModel, effort: LeadEffort) -> String {
+    let effort = (effort != LeadEffort::Default).then_some(effort);
+    if model == LeadModel::Codex {
+        return effort.map_or_else(
+            || "codex".to_owned(),
+            |effort| {
+                let effort = if effort == LeadEffort::Max {
+                    LeadEffort::Xhigh
+                } else {
+                    effort
+                };
+                format!("codex -c model_reasoning_effort={}", effort.as_str())
+            },
+        );
+    }
+    let mut command = "claude".to_owned();
+    if model != LeadModel::Claude {
+        command.push_str(" --model ");
+        command.push_str(model.as_str());
+    }
+    if let Some(effort) = effort {
+        command.push_str(" --effort ");
+        command.push_str(effort.as_str());
+    }
+    command
+}
+
+/// Whether zz may start a lead on this machine now: this machine's daemon is
+/// connected and has sent its sessions, and no host zz reaches has a `lead`
+/// session, with or without an agent in it.
+fn may_start_lead(mux: &MuxClient) -> bool {
+    let mut local_ready = false;
+    for (host, _, state, snapshot) in mux.fleet_hosts() {
+        let Some(snapshot) = snapshot else {
+            continue;
+        };
+        if snapshot
+            .sessions
+            .iter()
+            .any(|session| session.name == LEAD_SESSION)
+        {
+            return false;
+        }
+        if host == HostId::LOCAL {
+            local_ready = matches!(state, HostState::Connected) && !snapshot.sessions.is_empty();
+        }
+    }
+    local_ready
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -292,6 +355,7 @@ pub(crate) struct LeadChat {
     times: HashMap<u64, Option<SharedString>>,
     read: usize,
     error: Option<Arc<str>>,
+    started: Option<Instant>,
 }
 
 impl LeadChat {
@@ -303,6 +367,8 @@ impl LeadChat {
         let controller = cx.new(|_| AgentController::for_lead());
         controller.update(cx, |controller, _| controller.attach_mux(mux.clone()));
         cx.observe(&mux, |chat, _, cx| chat.synchronize(cx))
+            .detach();
+        cx.observe_global::<crate::config::AppConfig>(Self::synchronize)
             .detach();
         cx.observe(&controller, |chat, _, cx| {
             chat.stamp(cx);
@@ -318,13 +384,23 @@ impl LeadChat {
             times: HashMap::new(),
             read: 0,
             error: None,
+            started: None,
         };
         chat.synchronize(cx);
         chat
     }
 
     fn synchronize(&mut self, cx: &mut Context<Self>) {
-        let lead = find_lead(self.mux.read(cx), &self.local_name);
+        let config = crate::config::resolved_config(cx);
+        let lead = if config.lead_agent.value {
+            let lead = find_lead(self.mux.read(cx), &self.local_name);
+            if lead.is_none() {
+                self.start(config.lead_model.value, config.lead_effort.value, cx);
+            }
+            lead
+        } else {
+            None
+        };
         if lead != self.lead {
             let pane = lead.as_ref().map(|lead| lead.pane);
             let same_pane = pane.is_some()
@@ -360,6 +436,29 @@ impl LeadChat {
                 }
             });
         }
+    }
+
+    /// Start a lead in a new `lead` session on this machine, in the home
+    /// folder, unless one may be on its way.
+    fn start(&mut self, model: LeadModel, effort: LeadEffort, cx: &App) {
+        if self
+            .started
+            .is_some_and(|started| started.elapsed() < START_BACKOFF)
+            || !may_start_lead(self.mux.read(cx))
+        {
+            return;
+        }
+        let mut arguments = vec!["-d".to_owned(), "-s".to_owned(), LEAD_SESSION.to_owned()];
+        if let Some(home) = std::env::var_os("HOME") {
+            arguments.push("-c".to_owned());
+            arguments.push(home.to_string_lossy().into_owned());
+        }
+        arguments.push(lead_command(model, effort));
+        self.mux.read(cx).execute_on_host(
+            HostId::LOCAL,
+            CommandInvocation::new("new-session", arguments),
+        );
+        self.started = Some(Instant::now());
     }
 
     fn stamp(&mut self, cx: &App) {
@@ -403,6 +502,15 @@ impl LeadChat {
             .pane_entries(lead.pane)
             .map(|(entries, _, _)| lead_messages(entries, self.running(cx)))
             .unwrap_or_default()
+    }
+
+    /// The lead's last answer, which the sidebar shows.
+    pub(crate) fn last_answer(&self, cx: &App) -> Option<String> {
+        self.messages(cx)
+            .into_iter()
+            .rev()
+            .find(|message| message.kind == LeadMessageKind::Lead)
+            .map(|message| message.text)
     }
 
     /// The lead's steps in its live turn, or `None` while it is not working.
@@ -624,6 +732,24 @@ impl LeadChat {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_lead_starts_with_its_model_and_effort_as_flags() {
+        assert_eq!(
+            lead_command(LeadModel::Claude, LeadEffort::Default),
+            "claude"
+        );
+        assert_eq!(
+            lead_command(LeadModel::Opus, LeadEffort::Xhigh),
+            "claude --model opus --effort xhigh"
+        );
+        assert_eq!(lead_command(LeadModel::Codex, LeadEffort::Default), "codex");
+        assert_eq!(
+            lead_command(LeadModel::Codex, LeadEffort::Max),
+            "codex -c model_reasoning_effort=xhigh",
+            "Codex has no max effort"
+        );
+    }
 
     fn user(id: u64, text: &str) -> AgentThreadEntry {
         AgentThreadEntry::User {

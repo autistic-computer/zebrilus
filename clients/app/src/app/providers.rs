@@ -59,7 +59,7 @@ impl AppShell {
             .collect::<Vec<_>>();
         settings_scroll_column("settings-providers")
             .children(title.map(|title| {
-                settings_page_heading(title, SettingsSection::Providers.description(), cx)
+                settings_page_heading(title, SettingsSection::Agents.description(), cx)
             }))
             .children(stacks)
             .child(

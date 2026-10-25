@@ -51,7 +51,7 @@ pub(super) const SECTIONS: [SettingsSection; 8] = [
     SettingsSection::Panes,
     SettingsSection::Terminal,
     SettingsSection::Hosts,
-    SettingsSection::Providers,
+    SettingsSection::Agents,
     SettingsSection::Advanced,
     SettingsSection::About,
 ];
@@ -811,7 +811,7 @@ impl AppShell {
                     .into_any_element();
             }
             SettingsSection::About => return about_page(cx),
-            SettingsSection::Providers => {
+            SettingsSection::Agents => {
                 return self.providers_page((!narrow).then_some(section.title()), cx);
             }
             _ => {}
@@ -1887,7 +1887,7 @@ mod tests {
                 SettingsSection::Appearance,
                 SettingsSection::Terminal,
                 SettingsSection::Hosts,
-                SettingsSection::Providers,
+                SettingsSection::Agents,
                 SettingsSection::Advanced,
                 SettingsSection::About,
             ]

@@ -1039,7 +1039,7 @@ mod tests {
     use super::*;
     use crate::navigation::{
         WORKSPACE_CHROME_BUTTON_SIZE, WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
-        WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER, workspace_sidebar_controls, workspace_sidebar_titlebar,
+        WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER, workspace_sidebar_footer, workspace_sidebar_titlebar,
     };
 
     struct Sidebar;
@@ -1077,14 +1077,7 @@ mod tests {
             let menu: FlatMenu = Rc::new(|_, _, menu, _, _| menu);
             v_flex()
                 .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
-                .child(workspace_sidebar_titlebar(
-                    "titlebar",
-                    workspace_sidebar_controls([
-                        chrome("view").into_any_element(),
-                        chrome("toggle").into_any_element(),
-                    ]),
-                    cx,
-                ))
+                .child(workspace_sidebar_titlebar("titlebar", chrome("toggle"), cx))
                 .child(
                     div()
                         .debug_selector(|| "rows".to_owned())
@@ -1097,11 +1090,17 @@ mod tests {
                             cx,
                         )),
                 )
+                .child(workspace_sidebar_footer(
+                    "footer",
+                    div(),
+                    Some(chrome("eye").into_any_element()),
+                    cx,
+                ))
         }
     }
 
     #[zz_gpui::test]
-    fn the_sidebar_toggle_shares_the_row_actions_column_and_the_rest_sit_before_it(
+    fn trailing_buttons_share_the_row_actions_column_beside_the_scrollbar(
         cx: &mut zz_gpui::TestAppContext,
     ) {
         cx.update(crate::init);
@@ -1111,10 +1110,9 @@ mod tests {
         });
         let new_window = cx.debug_bounds("flat-new-window").unwrap();
         let toggle = cx.debug_bounds("toggle").unwrap();
-        let view = cx.debug_bounds("view").unwrap();
+        let eye = cx.debug_bounds("eye").unwrap();
         assert_eq!(toggle.center().x, new_window.center().x);
-        assert_eq!(view.center().y, toggle.center().y);
-        assert!(view.right() < toggle.left());
+        assert_eq!(eye.center().x, new_window.center().x);
         let rows = cx.debug_bounds("rows").unwrap();
         let inset = cx.update(|_, cx| header_inset(cx));
         assert_eq!(

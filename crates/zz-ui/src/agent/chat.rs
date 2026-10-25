@@ -5,10 +5,9 @@
 
 use zz_client::program::Program;
 use zz_gpui::{
-    Animation, AnimationExt as _, AnyElement, App, AppContext as _, Bounds, Context, CursorStyle,
-    ElementId, Entity, Focusable as _, HighlightStyle, Hsla, IntoElement, PathBuilder, Pixels,
-    Render, RenderOnce, ScrollHandle, SharedString, StyledText, Window, canvas, div, point,
-    prelude::*, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, ElementId, Entity, Focusable as _,
+    HighlightStyle, Hsla, IntoElement, PathBuilder, Pixels, RenderOnce, ScrollHandle, SharedString,
+    StyledText, Window, canvas, div, point, prelude::*, px, relative,
 };
 
 use crate::{
@@ -57,9 +56,6 @@ const SEEN_TILE: f32 = 14.0;
 const HEADER_TILE: f32 = 16.0;
 const COMPOSER_PADDING_LEFT: f32 = 14.0;
 const COMPOSER_PADDING_RIGHT: f32 = 5.0;
-pub const CHAT_MIN_HEIGHT: f32 = 180.0;
-pub const CHAT_LIST_MIN_HEIGHT: f32 = 96.0;
-const SPLIT_HANDLE: f32 = 9.0;
 const THREAD_FADE: f32 = 28.0;
 const LEAD_THREAD_MAX: f32 = 360.0;
 /// How many of the lead's steps a [`ChatTyping`] shows.
@@ -132,6 +128,7 @@ pub struct ChatBubble {
     receipt: Option<Receipt>,
     sender: Option<ChatSender>,
     ground: Option<Ground>,
+    lines: Option<usize>,
 }
 
 impl ChatBubble {
@@ -165,6 +162,7 @@ impl ChatBubble {
             receipt: None,
             sender: None,
             ground: None,
+            lines: None,
         }
     }
 
@@ -184,6 +182,13 @@ impl ChatBubble {
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.ground = Some(ground);
+        self
+    }
+
+    /// Cut the message to its first `lines` lines.
+    #[must_use]
+    pub fn lines(mut self, lines: usize) -> Self {
+        self.lines = Some(lines);
         self
     }
 }
@@ -265,7 +270,13 @@ impl RenderOnce for ChatBubble {
             .when_some(self.sender, |bubble, sender| {
                 bubble.child(sender_line(&sender, cx))
             })
-            .child(div().child(body))
+            .child(
+                div()
+                    .when_some(self.lines, |body, lines| {
+                        body.line_clamp(lines).text_ellipsis()
+                    })
+                    .child(body),
+            )
             .child(stamp);
 
         h_flex()
@@ -579,129 +590,29 @@ pub fn chat_header(
         .children(trailing)
 }
 
-/// What dragging the rule over the chat carries: the split between the
-/// sidebar's list and the chat.
-pub struct ChatSplitDrag;
-
-struct ChatSplitPreview;
-
-impl Render for ChatSplitPreview {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-    }
-}
-
-/// The chat's height with the split dragged to `y` in a column at `bounds`:
-/// from there to the bottom, leaving the list and the chat their minimums.
-pub fn chat_split_height(y: Pixels, bounds: Bounds<Pixels>) -> Pixels {
-    let most = (bounds.size.height - px(CHAT_LIST_MIN_HEIGHT)).max(px(CHAT_MIN_HEIGHT));
-    (bounds.bottom() - y).clamp(px(CHAT_MIN_HEIGHT), most)
-}
-
-fn thread_scroll(
-    id: &'static str,
-    thread: AnyElement,
-    scroll: &ScrollHandle,
-    fade: Hsla,
-) -> zz_gpui::Div {
-    div()
-        .relative()
-        .flex_1()
-        .min_h_0()
+/// The lead's last word at the bottom of the sidebar, under the chat's rule:
+/// `header`, then `message`, its last answer or [`ChatTyping`] while it
+/// works. The caller makes a click open the chat.
+pub fn chat_latest(
+    id: impl Into<ElementId>,
+    header: impl IntoElement,
+    message: impl IntoElement,
+    cx: &App,
+) -> zz_gpui::Stateful<zz_gpui::Div> {
+    v_flex()
+        .id(id)
+        .debug_selector(|| "chat-latest".to_owned())
+        .flex_none()
+        .w_full()
+        .cursor_pointer()
+        .child(div().mx(px(16.0)).rule_on(roles::CHAT_RULE, Edge::Top, cx))
+        .child(header)
         .child(
-            v_flex()
-                .id(id)
-                .size_full()
-                .overflow_y_scroll()
-                .track_scroll(scroll)
-                .child(div().flex_1())
-                .child(div().flex_none().child(thread)),
+            div()
+                .px(px(CHAT_PADDING_X))
+                .pb(px(CHAT_PADDING_BOTTOM))
+                .child(message),
         )
-        .top_fade(scroll, fade, px(THREAD_FADE))
-}
-
-/// The chat as it sits under the sidebar's list: a rule you drag to resize
-/// it, the header, the thread scrolling in what is left with a fade under
-/// the header while there is more above, and the composer. A short thread
-/// sits at the bottom; call `scroll_to_bottom` on the scroll handle when a
-/// message arrives. The column holding it handles [`ChatSplitDrag`] moves,
-/// with [`chat_split_height`].
-#[derive(IntoElement)]
-pub struct ChatSection {
-    header: AnyElement,
-    thread: AnyElement,
-    composer: AnyElement,
-    scroll: ScrollHandle,
-    fade: Hsla,
-    height: Option<Pixels>,
-}
-
-impl ChatSection {
-    /// `fade` is the color the thread fades into under the header: the
-    /// sidebar's own fill.
-    pub fn new(
-        header: impl IntoElement,
-        thread: impl IntoElement,
-        composer: impl IntoElement,
-        scroll: &ScrollHandle,
-        fade: Hsla,
-    ) -> Self {
-        Self {
-            header: header.into_any_element(),
-            thread: thread.into_any_element(),
-            composer: composer.into_any_element(),
-            scroll: scroll.clone(),
-            fade,
-            height: None,
-        }
-    }
-
-    /// Hold the chat at `height`; without one it takes what the list leaves.
-    #[must_use]
-    pub fn height(mut self, height: Option<Pixels>) -> Self {
-        self.height = height;
-        self
-    }
-}
-
-impl RenderOnce for ChatSection {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        v_flex()
-            .debug_selector(|| "chat-section".to_owned())
-            .w_full()
-            .min_h_0()
-            .map(|section| match self.height {
-                Some(height) => section.flex_none().h(height),
-                None => section.flex_1(),
-            })
-            .child(
-                div()
-                    .relative()
-                    .flex_none()
-                    .mx(px(16.0))
-                    .rule_on(roles::CHAT_RULE, Edge::Top, cx)
-                    .child(
-                        div()
-                            .id("chat-split")
-                            .debug_selector(|| "chat-split".to_owned())
-                            .absolute()
-                            .left(px(-16.0))
-                            .right(px(-16.0))
-                            .top(px(-SPLIT_HANDLE / 2.0))
-                            .h(px(SPLIT_HANDLE))
-                            .cursor(CursorStyle::ResizeUpDown)
-                            .on_drag(ChatSplitDrag, |_, _, _, cx| cx.new(|_| ChatSplitPreview)),
-                    ),
-            )
-            .child(self.header)
-            .child(thread_scroll(
-                "chat-thread",
-                self.thread,
-                &self.scroll,
-                self.fade,
-            ))
-            .child(self.composer)
-    }
 }
 
 /// The palette's footer keys in Lead mode.
@@ -865,17 +776,32 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_split_leaves_the_list_and_the_chat_their_minimums() {
-        let bounds = Bounds::new(
-            point(px(0.0), px(100.0)),
-            zz_gpui::size(px(340.0), px(600.0)),
-        );
-        assert_eq!(chat_split_height(px(400.0), bounds), px(300.0));
-        assert_eq!(chat_split_height(px(650.0), bounds), px(CHAT_MIN_HEIGHT));
+    #[zz_gpui::test]
+    fn a_bubble_cut_to_lines_stops_growing_there(cx: &mut zz_gpui::TestAppContext) {
+        struct Latest;
+
+        impl zz_gpui::Render for Latest {
+            fn render(
+                &mut self,
+                _: &mut Window,
+                _: &mut zz_gpui::Context<Self>,
+            ) -> impl IntoElement {
+                div().w(px(200.0)).child(
+                    ChatBubble::theirs("latest", "Three agents are working. ".repeat(12), "")
+                        .lines(2),
+                )
+            }
+        }
+
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Latest);
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let bubble = cx.debug_bounds("chat-theirs").unwrap();
         assert_eq!(
-            chat_split_height(px(120.0), bounds),
-            px(600.0 - CHAT_LIST_MIN_HEIGHT)
+            bubble.size.height,
+            px(2.0 * TEXT_LINE + BUBBLE_PADDING_TOP + BUBBLE_PADDING_BOTTOM)
         );
     }
 

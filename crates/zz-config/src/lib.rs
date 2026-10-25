@@ -128,6 +128,9 @@ pub enum ConfigKey {
     InterfaceTheme,
     UiFontFamily,
     AppIcon,
+    LeadAgent,
+    LeadModel,
+    LeadEffort,
 }
 
 impl ConfigKey {
@@ -178,6 +181,9 @@ impl ConfigKey {
             Self::InterfaceTheme => "interface-theme",
             Self::UiFontFamily => "ui-font-family",
             Self::AppIcon => "app-icon",
+            Self::LeadAgent => "lead-agent",
+            Self::LeadModel => "lead-model",
+            Self::LeadEffort => "lead-effort",
         }
     }
 
@@ -228,6 +234,9 @@ impl ConfigKey {
             "interface-theme" => Some(Self::InterfaceTheme),
             "ui-font-family" => Some(Self::UiFontFamily),
             "app-icon" => Some(Self::AppIcon),
+            "lead-agent" => Some(Self::LeadAgent),
+            "lead-model" => Some(Self::LeadModel),
+            "lead-effort" => Some(Self::LeadEffort),
             _ => None,
         }
     }
@@ -282,7 +291,10 @@ impl ConfigKey {
             | Self::InterfaceTheme
             | Self::ChromeAccent
             | Self::UiFontFamily
-            | Self::AppIcon => None,
+            | Self::AppIcon
+            | Self::LeadAgent
+            | Self::LeadModel
+            | Self::LeadEffort => None,
         }
     }
 
@@ -400,6 +412,105 @@ impl PaletteHostPrefix {
     }
 }
 
+/// What zz starts the lead agent with: a Claude Code model, or Codex on the
+/// model its own config names.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LeadModel {
+    /// Claude Code on the model its own settings pick.
+    #[default]
+    Claude,
+    Opus,
+    Sonnet,
+    Fable,
+    Codex,
+}
+
+impl LeadModel {
+    pub const ALL: [Self; 5] = [
+        Self::Claude,
+        Self::Opus,
+        Self::Sonnet,
+        Self::Fable,
+        Self::Codex,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Opus => "opus",
+            Self::Sonnet => "sonnet",
+            Self::Fable => "fable",
+            Self::Codex => "codex",
+        }
+    }
+
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Claude => "Claude Code's default",
+            Self::Opus => "Claude Opus",
+            Self::Sonnet => "Claude Sonnet",
+            Self::Fable => "Claude Fable",
+            Self::Codex => "Codex's default",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|model| model.as_str() == value)
+    }
+}
+
+/// How hard the lead thinks: the CLI's own setting, or one of the levels
+/// Claude Code's `--effort` takes. Codex has no `max` and gets `xhigh`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LeadEffort {
+    #[default]
+    Default,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+impl LeadEffort {
+    pub const ALL: [Self; 6] = [
+        Self::Default,
+        Self::Low,
+        Self::Medium,
+        Self::High,
+        Self::Xhigh,
+        Self::Max,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Default => "The CLI's default",
+            Self::Low => "Low",
+            Self::Medium => "Medium",
+            Self::High => "High",
+            Self::Xhigh => "Extra high",
+            Self::Max => "Max",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|effort| effort.as_str() == value)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AppConfig {
     pub palette_window_layout: ConfigValue<PaletteWindowLayout>,
@@ -445,6 +556,9 @@ pub struct AppConfig {
     /// names a saved one; see [`ParsedConfig::theme`].
     pub interface_theme: ConfigValue<&'static str>,
     pub app_icon: ConfigValue<AppIconSetting>,
+    pub lead_agent: ConfigValue<bool>,
+    pub lead_model: ConfigValue<LeadModel>,
+    pub lead_effort: ConfigValue<LeadEffort>,
 }
 
 impl Default for AppConfig {
@@ -494,6 +608,9 @@ impl Default for AppConfig {
             theme_mode: ConfigValue::from_default(ThemeModeSetting::System),
             interface_theme: ConfigValue::from_default(DEFAULT_THEME),
             app_icon: ConfigValue::from_default(AppIconSetting::Automatic),
+            lead_agent: ConfigValue::from_default(false),
+            lead_model: ConfigValue::from_default(LeadModel::Claude),
+            lead_effort: ConfigValue::from_default(LeadEffort::Default),
         }
     }
 }
@@ -531,6 +648,7 @@ impl AppConfig {
             ConfigKey::EditorSoftWrap => Some(&mut self.editor_soft_wrap),
             ConfigKey::EditorVimMode => Some(&mut self.editor_vim_mode),
             ConfigKey::BrowserEgress => Some(&mut self.browser_egress),
+            ConfigKey::LeadAgent => Some(&mut self.lead_agent),
             ConfigKey::WindowCornerRadius
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
@@ -553,7 +671,9 @@ impl AppConfig {
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
             | ConfigKey::UiFontFamily
-            | ConfigKey::AppIcon => None,
+            | ConfigKey::AppIcon
+            | ConfigKey::LeadModel
+            | ConfigKey::LeadEffort => None,
         }
     }
 }
@@ -1013,6 +1133,38 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if key == ConfigKey::LeadModel {
+            let target = &mut parsed.config.lead_model;
+            target.provenance = ConfigProvenance::Override;
+            match LeadModel::parse(value) {
+                Some(model) => target.value = model,
+                None => parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!(
+                        "invalid `lead-model`: expected one of {}",
+                        LeadModel::ALL.map(LeadModel::as_str).join(", "),
+                    ),
+                }),
+            }
+            continue;
+        }
+
+        if key == ConfigKey::LeadEffort {
+            let target = &mut parsed.config.lead_effort;
+            target.provenance = ConfigProvenance::Override;
+            match LeadEffort::parse(value) {
+                Some(effort) => target.value = effort,
+                None => parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!(
+                        "invalid `lead-effort`: expected one of {}",
+                        LeadEffort::ALL.map(LeadEffort::as_str).join(", "),
+                    ),
+                }),
+            }
+            continue;
+        }
+
         if key == ConfigKey::UiFontFamily {
             let target = &mut parsed.ui_font.family;
             target.provenance = ConfigProvenance::Override;
@@ -1172,7 +1324,10 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::InterfaceTheme
             | ConfigKey::ChromeAccent
             | ConfigKey::UiFontFamily
-            | ConfigKey::AppIcon => {
+            | ConfigKey::AppIcon
+            | ConfigKey::LeadAgent
+            | ConfigKey::LeadModel
+            | ConfigKey::LeadEffort => {
                 unreachable!("handled above")
             }
         };
@@ -1948,6 +2103,28 @@ pub fn config_overrides_for_host(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_lead_is_off_until_turned_on_and_takes_a_model_and_effort() {
+        let defaults = parse_config("", "monospace").config;
+        assert!(!defaults.lead_agent.value);
+        assert_eq!(defaults.lead_model.value, LeadModel::Claude);
+        assert_eq!(defaults.lead_effort.value, LeadEffort::Default);
+
+        let parsed = parse_config(
+            "lead-agent = on\nlead-model = codex\nlead-effort = xhigh\n",
+            "monospace",
+        );
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(parsed.config.lead_agent.value);
+        assert_eq!(parsed.config.lead_model.value, LeadModel::Codex);
+        assert_eq!(parsed.config.lead_effort.value, LeadEffort::Xhigh);
+
+        let invalid = parse_config("lead-model = gpt\nlead-effort = huge\n", "monospace");
+        assert_eq!(invalid.diagnostics.len(), 2);
+        assert_eq!(invalid.config.lead_model.value, LeadModel::Claude);
+        assert_eq!(invalid.config.lead_effort.value, LeadEffort::Default);
+    }
 
     #[test]
     fn palette_preferences_validate_and_preserve_hash_prefix() {
