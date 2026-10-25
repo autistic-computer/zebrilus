@@ -11,7 +11,7 @@ use zz_client::program::Program;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Layer, PaintState,
-    StyledExt as _, Surface, Tone,
+    StyledExt as _, Surface, Tone, oklab_lightness,
     program::{Face, Lit, program_colors, program_mark},
     roles,
     tooltip::Tooltip,
@@ -223,6 +223,19 @@ impl PaneStack {
         }
     }
 
+    fn tile_ground(&self, cx: &App) -> Ground {
+        let theme = cx.theme();
+        if oklab_lightness(self.ground.ink) < oklab_lightness(self.ground.fill) {
+            Ground {
+                fill: theme.foreground,
+                ink: theme.background,
+                ..self.ground
+            }
+        } else {
+            self.ground
+        }
+    }
+
     fn face(&self, program: &'static Program, smoothing: f32, dark: bool, dimmed: f32) -> Face {
         Face {
             program,
@@ -263,7 +276,7 @@ impl PaneStack {
         let size = self.size;
         let colors = program_colors(cx);
         let theme = cx.theme();
-        let tile = Surface::new(roles::PANE_STACK).on(self.ground);
+        let tile = Surface::new(roles::PANE_STACK).on(self.tile_ground(cx));
         let pad = size.gap();
         let travel = size.tile() + size.gap();
         let animate = !cx.reduce_motion();
@@ -401,7 +414,7 @@ impl RenderOnce for PaneStack {
         let open = openable && pointer.read(cx).open();
         let shown = self.tiles.len().clamp(1, RESTING);
         let resting = cx.theme().layer(
-            Surface::new(roles::PANE_STACK).on(self.ground),
+            Surface::new(roles::PANE_STACK).on(self.tile_ground(cx)),
             PaintState::Rest,
         );
         let size = self.size;

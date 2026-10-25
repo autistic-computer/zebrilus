@@ -142,7 +142,6 @@
       "shadow": "contact"
     },
     "pane-stack": {
-      "outline": true,
       "shadow": "contact",
       "smoothing": 3.0
     },

@@ -89,7 +89,6 @@
       "shadow": "contact"
     },
     "pane-stack": {
-      "outline": true,
       "shadow": "contact"
     },
     "pane.header.button": {

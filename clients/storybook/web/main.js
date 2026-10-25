@@ -56,7 +56,7 @@ const PROPS = [
     ["ink", "Ink"],
 ];
 const HASH_LIMIT = 2000;
-const STORED_ROLES = "zz-storybook-roles";
+const STORED_ROLES = "zz-storybook-role-edits";
 const STORED_KNOBS_WIDTH = "zz-storybook-knobs-width";
 const KNOBS_MIN_WIDTH = 280;
 const KNOBS = [
@@ -215,7 +215,13 @@ function hashQuery() {
 
 function storeRoles() {
     try {
-        localStorage.setItem(STORED_ROLES, JSON.stringify({ theme: knobValue("interface-theme"), roles }));
+        const preset = presetRoles();
+        const edits = {};
+        for (const id of new Set([...Object.keys(preset), ...Object.keys(roles)])) {
+            const patch = roles[id] ?? {};
+            if (JSON.stringify(patch) !== JSON.stringify(preset[id] ?? {})) edits[id] = patch;
+        }
+        localStorage.setItem(STORED_ROLES, JSON.stringify({ theme: knobValue("interface-theme"), edits }));
     } catch {}
 }
 
@@ -232,7 +238,7 @@ function validRoles(map) {
 function storedRoles(theme) {
     try {
         const stored = JSON.parse(localStorage.getItem(STORED_ROLES) ?? "null");
-        return stored?.theme === theme ? validRoles(stored.roles) : null;
+        return stored?.theme === theme ? validRoles({ ...presetRoles(theme), ...stored.edits }) : null;
     } catch {
         return null;
     }

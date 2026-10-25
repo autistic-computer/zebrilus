@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-10-25
+* **Update**: Pane stack tiles are dark in light mode too ([UI conventions](/configuration/ui-conventions.md)): a tile on a light row takes the theme's foreground as its ground, so it paints the dark fill and light glyph dark mode has, while brand tiles and the accent-selected row keep theirs. The tiles draw no theme hairline in any theme (the `pane-stack` role, and the macOS and Yaru theme files that turned it back on): at rest the hairline was mixed into the fill and painted over the white rim, so only open stacks showed it. The storybook now stores only your own role edits on top of the theme file, so a change to a theme's roles reaches a browser that has opened it before.
 * **Update**: The lead is now the Driver Agent ([durable driver chat](/designs/durable-driver-chat.md)). Every name moved with it: the `driver` session zz looks for and starts, the `driver-agent`, `driver-model` and `driver-effort` keys (renamed before any release, so there is no migration), Driver mode in the command palette, the `zz-driver` skill, `scripts/driver-checkpoint.py` and `scripts/driver-sync.sh`, and the bench under `bench/agents/driver` (its results files keep their old names). The design now recovers by asking: every host keeps zz's copy of the driver's stream and a record of where it ran, `zz driver state` prints them, and a new driver starts from the newest copy only when no driver is alive and a majority of fleet hosts answered. This replaces the owner file, epoch and mirror of 2026-10-24; nothing of it is built yet.
 
 ## 2026-10-24
