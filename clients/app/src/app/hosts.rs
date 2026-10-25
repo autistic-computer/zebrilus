@@ -285,6 +285,7 @@ impl AppShell {
                     IconName::HardDrive
                 };
                 let entry = SettingEntry::new(host_title(endpoint))
+                    .description(endpoint.clone())
                     .title_icon(Icon::new(icon).text_color(color))
                     .when_some(state.as_ref(), |entry, (.., status)| {
                         entry.child(status_line(
@@ -351,7 +352,13 @@ impl AppShell {
         let connection = self.connection.read(cx);
         let connected = connection.connected;
         let muted = cx.theme().foreground.muted();
+        let address = gateway_address();
         let entry = SettingEntry::new("This computer")
+            .description(if address.is_empty() {
+                "zz web gateway".to_owned()
+            } else {
+                format!("zz web gateway at {address}")
+            })
             .title_icon(Icon::new(IconName::HardDrive).text_color(if connected {
                 cx.theme().success
             } else {
@@ -382,6 +389,7 @@ impl AppShell {
     #[cfg(target_os = "ios")]
     fn add_host_stack(&self, narrow: bool, cx: &mut Context<Self>) -> SettingsStack {
         let destination = SettingEntry::new("Destination")
+            .description("user@host, or user@host:port")
             .when_some(self.hosts.error.clone(), |entry, error| {
                 entry.child(status_line(error, cx.theme().warning))
             });
@@ -413,7 +421,8 @@ impl AppShell {
                 narrow,
             ))
             .child(with_control(
-                SettingEntry::new("SSH key"),
+                SettingEntry::new("SSH key")
+                    .description("Add it to ~/.ssh/authorized_keys on the host"),
                 h_flex().child(
                     Button::new("hosts-copy-ssh-key")
                         .label("Copy")
@@ -443,6 +452,18 @@ fn status_line(text: impl Into<zz_gpui::SharedString>, color: zz_gpui::Hsla) -> 
         .text_size(rems_from_px(11.0))
         .text_color(color)
         .child(text.into())
+}
+
+#[cfg(target_family = "wasm")]
+fn gateway_address() -> String {
+    web_sys::window()
+        .and_then(|window| window.location().host().ok())
+        .unwrap_or_default()
+}
+
+#[cfg(not(any(target_family = "wasm", target_os = "ios")))]
+fn gateway_address() -> String {
+    String::new()
 }
 
 #[cfg(test)]

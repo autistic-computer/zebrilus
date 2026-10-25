@@ -344,11 +344,22 @@ impl SettingsView {
             "Options"
         } else {
             "Appearance"
+        })
+        .when(disabled, |stack| {
+            stack.note("Save your editor changes and connect locally to edit these")
         });
         for (index, row) in controls.rows.iter().enumerate() {
-            let entry = SettingEntry::new(row.title).disabled(
-                disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled,
-            );
+            let description = match row.key.name() {
+                "theme" => Some("Replaces custom terminal colors"),
+                "font-thicken-strength" if !smoothing_enabled => Some("Needs font smoothing"),
+                "font-thicken-strength" => Some("0 to 255"),
+                _ => None,
+            };
+            let entry = SettingEntry::new(row.title)
+                .when_some(description, SettingEntry::description)
+                .disabled(
+                    disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled,
+                );
             let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
                 let default = row.key.default_value();
                 let enabled = matches!(

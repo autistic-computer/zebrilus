@@ -37,7 +37,9 @@ pub fn providers_stack(
     let on_update: ProviderAction = Rc::new(on_update);
     let stack = SettingsStack::titled(title);
     match host {
-        ProvidersHost::Offline(_) => stack.child(SettingEntry::new("Not connected")),
+        ProvidersHost::Offline(state) => {
+            stack.child(SettingEntry::new("Not connected").description(state.clone()))
+        }
         ProvidersHost::Report(report) if report.checking && report.providers.is_empty() => {
             stack.child(SettingEntry::new("Checking").control(Spinner::new().small()))
         }
@@ -63,6 +65,12 @@ fn provider_entry(
 ) -> SettingEntry {
     let provider = status.provider;
     let mut entry = SettingEntry::new(provider.label())
+        .description(
+            status
+                .path
+                .clone()
+                .unwrap_or_else(|| "Not installed".to_owned()),
+        )
         .title_icon(Icon::new(agent_provider_icon(provider)))
         .control(
             h_flex()

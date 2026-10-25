@@ -744,7 +744,7 @@ lines remain intact. `zz/config` mux overrides still apply above the loaded mux 
 `crates/zz/src/config/settings.rs` renders the `WorkspaceRoute::Settings` route in the main window.
 `Cmd+,` on macOS or `Ctrl+,` elsewhere opens it. `SettingsSection::ALL` is **eleven pages**, titled
 Interface, Status bar, Editor, Panes, Multiplexer, Browser, Terminal, Hosts, Providers, System, About. The sidebar lists
-them in that order with no group labels. There is deliberately no "General": the page that name described
+them in that order, in three unlabeled groups (Appearance, Tools, Advanced) set apart by a gap. There is deliberately no "General": the page that name described
 had accumulated window chrome, a global widget metric, daemon lifecycle and a debug overlay. The
 device/pairing page that sat before Terminal was deleted on 2026-08-01 along with pairing itself;
 fleet hosts live in `zz/config` and can be managed from the sidebar or **Settings › Hosts**.
@@ -767,11 +767,14 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
 | Terminal | **Appearance** (Font family, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
-| About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a release row titled with the update state, such as "zz 0.23.0 is out" or "Update check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
+| About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest release row whose description is the update state, such as "zz 0.23.0 is out, you have 0.22.0" or "The check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
 
-A row is its title and its control: no description line, no provenance badge, no Reset button.
-Group titles are semibold, and page headings carry only the page title. Runtime state that a row
-needs, such as the update check, goes in the title. All chrome colors come from `cx.theme()`
+A row is its title and its control, with no provenance badge and no Reset button. A short
+description sits under the title only where it says something the title and control do not: live
+state (a host's address, an agent's install path, the update check), a unit or range, why the row is
+off ("Needs pane gaps"), or what a terse title means. A stack's note says why all its rows are off.
+Group titles are muted and semibold, and page headings carry only the page title. Pages are at most
+760px wide. All chrome colors come from `cx.theme()`
 semantic values.
 
 The Theme group is picker cards rather than rows of buttons, because its choices are about

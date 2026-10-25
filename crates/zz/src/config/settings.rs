@@ -63,6 +63,8 @@ use zz_ui::settings::{
 
 zz_gpui::actions!(zz, [OpenSettings]);
 
+const NEEDS_PANE_GAPS: &str = "Needs pane gaps";
+
 pub(crate) struct PendingMuxImport(pub bool);
 impl zz_gpui::Global for PendingMuxImport {}
 
@@ -729,6 +731,7 @@ impl SettingsView {
     ) -> SettingEntry {
         let key = ConfigKey::BrowserRemoteDebuggingPort;
         SettingEntry::new("Remote debugging for agents")
+            .description("DevTools Protocol on 127.0.0.1:9222, for agent-browser or Playwright")
             .control(
                 Switch::new(format!("settings-{}", key.as_str()))
                     .checked(setting.value.is_some())
@@ -800,7 +803,7 @@ impl SettingsView {
                 return settings_page_title(SettingsSection::Appearance, cx).into_any_element();
             }
             AppearancePageItem::Group { title } => {
-                return settings_list_group_header(title).into_any_element();
+                return settings_list_group_header(title, cx).into_any_element();
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
@@ -856,6 +859,7 @@ impl SettingsView {
             AppearancePageItem::ProgramColors => {
                 let title = item.title().unwrap_or_default();
                 Self::boolean_setting(ConfigKey::ProgramColors, title, resolved.program_colors)
+                    .description("Fill sidebar tiles with the running program's colors")
             }
             AppearancePageItem::Animations => {
                 Self::boolean_setting(ConfigKey::Animations, "Animations", resolved.animations)
@@ -891,6 +895,7 @@ impl SettingsView {
             #[cfg(target_os = "linux")]
             AppearancePageItem::WindowCornerRadius => {
                 Self::numeric_setting("Window corner radius", &self.window_corner_radius, cx)
+                    .description("No effect with the system titlebar")
             }
             #[cfg(target_os = "linux")]
             AppearancePageItem::UseSystemTitlebar => Self::boolean_setting(
@@ -1049,25 +1054,27 @@ impl SettingsView {
     fn app_icon_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
         let setting = resolved.app_icon;
         let appearance = cx.window_appearance();
-        SettingEntry::new("App Icon").control(div().flex().flex_none().gap(px(10.0)).children(
-            AppIconSetting::ALL.into_iter().map(|choice| {
-                picker_tile(
-                    format!("settings-app-icon-{}", choice.as_str()).into(),
-                    choice.title(),
-                    img(crate::app_icon::icon_preview(crate::app_icon::variant(
-                        choice, appearance,
-                    )))
-                    .size(px(APP_ICON_PREVIEW_SIZE)),
-                    choice == setting.value,
-                    cx,
-                )
-                .on_click(move |_, _, cx| {
-                    if let Err(error) = set_config_key(ConfigKey::AppIcon, choice.as_str()) {
-                        report_write_error("set", ConfigKey::AppIcon.as_str(), &error, cx);
-                    }
-                })
-            }),
-        ))
+        SettingEntry::new("App Icon")
+            .description("Dock and app switcher")
+            .control(div().flex().flex_none().gap(px(10.0)).children(
+                AppIconSetting::ALL.into_iter().map(|choice| {
+                    picker_tile(
+                        format!("settings-app-icon-{}", choice.as_str()).into(),
+                        choice.title(),
+                        img(crate::app_icon::icon_preview(crate::app_icon::variant(
+                            choice, appearance,
+                        )))
+                        .size(px(APP_ICON_PREVIEW_SIZE)),
+                        choice == setting.value,
+                        cx,
+                    )
+                    .on_click(move |_, _, cx| {
+                        if let Err(error) = set_config_key(ConfigKey::AppIcon, choice.as_str()) {
+                            report_write_error("set", ConfigKey::AppIcon.as_str(), &error, cx);
+                        }
+                    })
+                }),
+            ))
     }
 
     fn ui_font_setting(&self, cx: &Context<Self>) -> SettingEntry {
@@ -1092,21 +1099,26 @@ impl SettingsView {
             config::status_bar_settings(cx),
             resolved.pane_gaps.value,
             SettingsStack::new()
-                .child(Self::boolean_setting(
-                    ConfigKey::StatusBadges,
-                    "Window badges",
-                    resolved.status_badges,
-                ))
-                .child(Self::boolean_setting(
-                    ConfigKey::StatusHost,
-                    "Host",
-                    resolved.status_host,
-                ))
-                .child(Self::boolean_setting(
-                    ConfigKey::StatusUpdate,
-                    "Update",
-                    resolved.status_update,
-                )),
+                .child(
+                    Self::boolean_setting(
+                        ConfigKey::StatusBadges,
+                        "Window badges",
+                        resolved.status_badges,
+                    )
+                    .description("Bell and activity markers on window items"),
+                )
+                .child(
+                    Self::boolean_setting(ConfigKey::StatusHost, "Host", resolved.status_host)
+                        .description("Shown when the attached host is remote"),
+                )
+                .child(
+                    Self::boolean_setting(
+                        ConfigKey::StatusUpdate,
+                        "Update",
+                        resolved.status_update,
+                    )
+                    .description("Shown when a newer zz is out"),
+                ),
             cx,
         )
         .into_any_element()
@@ -1122,11 +1134,14 @@ impl SettingsView {
         Self::scroll_column("settings-browser")
             .child(settings_page_title(SettingsSection::Browser, cx))
             .child(
-                SettingsStack::titled("Network").child(Self::boolean_setting(
-                    ConfigKey::BrowserEgress,
-                    "Route through the attached host",
-                    resolved.browser_egress,
-                )),
+                SettingsStack::titled("Network").child(
+                    Self::boolean_setting(
+                        ConfigKey::BrowserEgress,
+                        "Route through the attached host",
+                        resolved.browser_egress,
+                    )
+                    .description("localhost and private names resolve on the remote host"),
+                ),
             )
             .child(
                 SettingsStack::titled("Agents")
@@ -1139,12 +1154,14 @@ impl SettingsView {
             ))
             .child(
                 SettingsStack::titled("Shortcuts").child(
-                    SettingEntry::new("Element selector").control(
-                        div().w(px(CONTROL_WIDTH)).flex_none().child(
-                            Input::new(&self.browser_element_selector_hotkey)
-                                .on(settings_card_ground(cx)),
+                    SettingEntry::new("Element selector")
+                        .description("Shortcut for the DOM element picker, such as cmd-shift-c")
+                        .control(
+                            div().w(px(CONTROL_WIDTH)).flex_none().child(
+                                Input::new(&self.browser_element_selector_hotkey)
+                                    .on(settings_card_ground(cx)),
+                            ),
                         ),
-                    ),
                 ),
             )
             .into_any_element()
@@ -1163,7 +1180,10 @@ impl SettingsView {
             .collect::<BTreeMap<_, _>>();
         let mut machine_entries = Vec::with_capacity(hosts.len().max(1));
         if hosts.is_empty() {
-            machine_entries.push(SettingEntry::new("No hosts yet"));
+            machine_entries.push(
+                SettingEntry::new("No hosts yet")
+                    .description("Hosts you add show up in the sidebar"),
+            );
         } else {
             for host in hosts {
                 let name = host.name;
@@ -1184,6 +1204,7 @@ impl SettingsView {
                 let remove_name = name.clone();
                 let remove_mux = self.mux.clone();
                 let entry = SettingEntry::new(name.clone())
+                    .description(host.endpoint.to_string())
                     .title_icon(Icon::new(glyph).text_color(color))
                     .control(
                         Button::new(format!("settings-remove-host-{name}"))
@@ -1228,25 +1249,27 @@ impl SettingsView {
             .as_ref()
             .expect("Hosts state is initialized before rendering");
         let input = state.input.clone();
-        let mut destination = SettingEntry::new("Destination").control(
-            h_flex()
-                .gap_2()
-                .child(
-                    div()
-                        .w(px(INPUT_WIDTH))
-                        .flex_none()
-                        .child(Input::new(&input).on(settings_card_ground(cx))),
-                )
-                .child(
-                    Button::new("settings-add-host")
-                        .primary()
-                        .label("Add")
-                        .on(settings_card_ground(cx))
-                        .on_click(cx.listener(|settings, _, window, cx| {
-                            settings.submit_add_host(window, cx);
-                        })),
-                ),
-        );
+        let mut destination = SettingEntry::new("Destination")
+            .description("user@host[:port], signed in by your own ssh")
+            .control(
+                h_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .w(px(INPUT_WIDTH))
+                            .flex_none()
+                            .child(Input::new(&input).on(settings_card_ground(cx))),
+                    )
+                    .child(
+                        Button::new("settings-add-host")
+                            .primary()
+                            .label("Add")
+                            .on(settings_card_ground(cx))
+                            .on_click(cx.listener(|settings, _, window, cx| {
+                                settings.submit_add_host(window, cx);
+                            })),
+                    ),
+            );
         if let Some(error) = state.error.clone() {
             destination = destination.child(
                 div()
@@ -1266,18 +1289,24 @@ impl SettingsView {
 
     fn driver_stack(resolved: &AppConfig, cx: &Context<Self>) -> SettingsStack {
         SettingsStack::titled("Driver")
-            .child(Self::boolean_setting(
-                ConfigKey::DriverAgent,
-                "Driver Agent",
-                resolved.driver_agent,
-            ))
-            .child(Self::palette_choice_setting(
-                ConfigKey::DriverModel,
-                "Model",
-                resolved.driver_model.value.as_str(),
-                &DRIVER_MODELS,
-                cx,
-            ))
+            .child(
+                Self::boolean_setting(
+                    ConfigKey::DriverAgent,
+                    "Driver Agent",
+                    resolved.driver_agent,
+                )
+                .description("Type > in an empty command palette to chat with it"),
+            )
+            .child(
+                Self::palette_choice_setting(
+                    ConfigKey::DriverModel,
+                    "Model",
+                    resolved.driver_model.value.as_str(),
+                    &DRIVER_MODELS,
+                    cx,
+                )
+                .description("Applies when the driver next starts"),
+            )
             .child(Self::palette_choice_setting(
                 ConfigKey::DriverEffort,
                 "Effort",
@@ -1374,37 +1403,50 @@ impl SettingsView {
                     )),
             )
             .when(crate::profile::profile(cx).has_tray, |column| {
-                column.child(SettingsStack::titled("Tray").child(Self::boolean_setting(
-                    ConfigKey::Tray,
-                    "Tray icon",
-                    resolved.tray,
-                )))
+                column.child(
+                    SettingsStack::titled("Tray").child(
+                        Self::boolean_setting(ConfigKey::Tray, "Tray icon", resolved.tray)
+                            .description("Closing the window keeps zz running there"),
+                    ),
+                )
             })
             .child(
                 SettingsStack::titled("Coding agents").child(
-                    SettingEntry::new("Claude Code and Codex").control(
-                        Button::new("settings-agent-setup")
-                            .label("Set up")
-                            .on(settings_card_ground(cx))
-                            .on_click(|_, window, cx| {
-                                crate::config::agent_setup::set_up_agents(window, cx);
-                            }),
-                    ),
+                    SettingEntry::new("Claude Code and Codex")
+                        .description(
+                            "A startup hook so the ones in terminal panes know they run in zz",
+                        )
+                        .control(
+                            Button::new("settings-agent-setup")
+                                .label("Set up")
+                                .on(settings_card_ground(cx))
+                                .on_click(|_, window, cx| {
+                                    crate::config::agent_setup::set_up_agents(window, cx);
+                                }),
+                        ),
                 ),
             )
             .child(
-                SettingsStack::titled("Notifications").child(Self::boolean_setting(
-                    ConfigKey::Notifications,
-                    "Notify when a pane needs you",
-                    resolved.notifications,
-                )),
+                SettingsStack::titled("Notifications").child(
+                    Self::boolean_setting(
+                        ConfigKey::Notifications,
+                        "Notify when a pane needs you",
+                        resolved.notifications,
+                    )
+                    .description("While zz is in the background"),
+                ),
             )
             .when(crate::profile::profile(cx).has_daemon_lifecycle, |column| {
-                column.child(SettingsStack::titled("Daemon").child(Self::boolean_setting(
-                    ConfigKey::QuitDaemonOnExit,
-                    "Quit daemon on exit",
-                    resolved.quit_daemon_on_exit,
-                )))
+                column.child(
+                    SettingsStack::titled("Daemon").child(
+                        Self::boolean_setting(
+                            ConfigKey::QuitDaemonOnExit,
+                            "Quit daemon on exit",
+                            resolved.quit_daemon_on_exit,
+                        )
+                        .description("Ends sessions that are still open"),
+                    ),
+                )
             })
             .when(
                 cfg!(any(feature = "agent-pane", feature = "editor-pane")),
@@ -1469,11 +1511,11 @@ impl SettingsView {
             .disabled(checking)
             .on_click(|_, _, cx| update::check_now(cx))
             .into_any_element();
-        let (title, control): (SharedString, AnyElement) = match (status.as_ref(), check) {
-            (Some(_), Some(CheckState::Available(release))) => {
+        let (state, control): (SharedString, AnyElement) = match (status.as_ref(), check) {
+            (Some(status), Some(CheckState::Available(release))) => {
                 let notes_url = release.url.clone();
                 (
-                    format!("zz {} is out", release.version).into(),
+                    format!("zz {} is out, you have {}", release.version, status.current).into(),
                     h_flex()
                         .gap_2()
                         .child(
@@ -1503,17 +1545,25 @@ impl SettingsView {
                 check_button,
             ),
             (_, Some(CheckState::Failed(error))) => {
-                (format!("Update check failed: {error}").into(), check_button)
+                (format!("The check failed: {error}").into(), check_button)
             }
-            _ => ("Latest release".into(), check_button),
+            (_, Some(CheckState::Checking)) => ("Asking GitHub".into(), check_button),
+            _ => ("Not checked yet".into(), check_button),
         };
         SettingsStack::titled("Updates")
-            .child(Self::boolean_setting(
-                ConfigKey::CheckForUpdates,
-                "Check for updates",
-                resolved.check_for_updates,
-            ))
-            .child(SettingEntry::new(title).control(control))
+            .child(
+                Self::boolean_setting(
+                    ConfigKey::CheckForUpdates,
+                    "Check for updates",
+                    resolved.check_for_updates,
+                )
+                .description("Once a day, one anonymous request to GitHub"),
+            )
+            .child(
+                SettingEntry::new("Latest release")
+                    .description(state)
+                    .control(control),
+            )
     }
 
     fn about_section(cx: &Context<Self>) -> AnyElement {
@@ -1560,22 +1610,28 @@ impl SettingsView {
                     .gap(px(10.0))
                     .child(settings_page_title(kind.section(), cx))
                     .when(kind == ConfigFileKind::Terminal, |page| {
-                        page.child(settings_list_group_header("Preview"))
+                        page.child(settings_list_group_header("Preview", cx))
                             .children(self.terminal_preview.clone())
                     })
                     .when(kind == ConfigFileKind::Mux, |page| {
                         page.child(
                             SettingsStack::titled("Navigation")
-                                .child(Self::boolean_setting(
-                                    ConfigKey::PickerFocusSidebar,
-                                    "Focus sidebar for session and window pickers",
-                                    config::resolved_config(cx).picker_focus_sidebar,
-                                ))
-                                .child(Self::numeric_setting(
-                                    "Which-key delay",
-                                    &self.which_key_delay,
-                                    cx,
-                                )),
+                                .child(
+                                    Self::boolean_setting(
+                                        ConfigKey::PickerFocusSidebar,
+                                        "Focus sidebar for session and window pickers",
+                                        config::resolved_config(cx).picker_focus_sidebar,
+                                    )
+                                    .description("Prefix + s and Prefix + w"),
+                                )
+                                .child(
+                                    Self::numeric_setting(
+                                        "Which-key delay",
+                                        &self.which_key_delay,
+                                        cx,
+                                    )
+                                    .description("Milliseconds after the prefix, 0 turns it off"),
+                                ),
                         )
                         .child(self.mux_splits_section(cx))
                     })
@@ -1666,11 +1722,15 @@ impl SettingsView {
                 cx,
             )],
             [
-                Self::numeric_setting("Inactive pane opacity", &self.pane_inactive_opacity, cx),
+                Self::numeric_setting("Inactive pane opacity", &self.pane_inactive_opacity, cx)
+                    .description("1 turns dimming off"),
                 Self::numeric_setting("Selected pane contrast", &self.pane_glow_strength, cx)
+                    .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
                     .disabled(!gaps),
             ],
-            [Self::numeric_setting("Pane margin", &self.pane_margin, cx).disabled(!gaps)],
+            [Self::numeric_setting("Pane margin", &self.pane_margin, cx)
+                .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
+                .disabled(!gaps)],
             cx,
         )
         .into_any_element()
