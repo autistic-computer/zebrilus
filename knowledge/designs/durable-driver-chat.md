@@ -2,7 +2,7 @@
 type: Design Plan
 title: Durable driver chat . one Driver Agent, any machine
 description: "How the Driver Agent (the lead until 2026-10-25) survives restarts and the loss of its host without replaying its history: every host keeps zz's copy of the driver's stream and a record of where it ran, a new driver asks every reachable host with zz driver state and starts from the newest copy as a fresh Claude Code or Codex session given a 2-4 KB packet, and two rules (follow a live driver, start only when a majority of hosts answered) keep it to one. The vendor transcript stays where it was written. Measured against full transcript resume with mid-task kills on the fleet; prototypes in scripts/driver-checkpoint.py and scripts/driver-sync.sh."
-status: Proposed (2026-10-25; recovery by asking every host replaces the owner file and mirror of 2026-10-24; checkpoint resume measured, skill v6 shipped, prototypes verified on the fleet; nothing in the daemon yet)
+status: Partly built (2026-10-25; zz driver state, keep, start, recover and stop-hook, keepers on every host and the desktop app's recovery built and verified with zz-dev on xps, alienware and the Mac; two live drivers after a split, generation fencing, driver-hosts, a Start anyway button and Codex's Stop hook not built)
 resource: scripts/driver-checkpoint.py
 tags:
 - agent
@@ -136,20 +136,26 @@ through). Codex has Stop hooks too; untested.
 {"gen": 3, "seq": 830, "ts": "2026-10-25T14:05:02Z", "role": "notice", "text": "completed: worker j3 on ubuntu ended its turn"}
 ```
 
-The lines come from the stream the daemon already sends for the driver's pane (`AgentReplay`, then
-`AgentUpdates`), reduced the way `driver_messages` reduces it for the chat, so nothing new is asked
-of the CLI. `seq` is the stream's own position and `gen` the driver's generation (see recovery
-below); `ts` is when the follower received the line and is only for reading, since the stream
-carries no times and clocks are never compared. A `ledger` line is the whole file: the skill
-rewrites `ledger.md` whole, so every rewrite passes through the stream as a Write, and the last one
-is the checkpoint the packet starts from.
+`zz driver keep` writes them (`crates/zz-cli/src/driver.rs`). On the host running the driver it
+attaches to its own daemon as a control client, asks for the driver pane's agent stream
+(`AgentReplay` from 0, then `AgentUpdates`, the same stream the desktop app follows) and reduces it
+with `DriverLog` (`crates/zz-client/src/driver_log.rs`), which runs the stream through the lens's
+`AgentTranscript` and keeps your turns, zz's `[zz] Agent` notices, each whole-file Write of
+`ledger.md`, and the driver's last answer of each finished turn. Nothing new is asked of the CLI or
+the daemon. The daemon's own sequence numbers restart when a lens reopens and are not stable per
+line, so `seq` is the keeper's own count within the generation, and a session switch inside one
+generation (`/clear`) moves `session_base` in the record so the new session's lines follow the old
+ones; `gen` is the driver's generation (see recovery below). `ts` is when the keeper wrote the line
+and is only for reading; clocks are never compared. The last `ledger` line is the checkpoint the
+packet starts from, and the packet itself, the first prompt of a restarted driver, is never a line.
 
-Every always-on host keeps a copy by following the driver the way the desktop app does
-(`MuxClient::follow_driver`: replay from its own cursor, then updates), and the desktop app writes
-its copy too while it runs. A follower that loses the link asks again from its cursor. The
-prototype derives the same lines from a Claude transcript (`driver-checkpoint.py chat`): Claude
-stores a peer message as an `isMeta` user entry with `origin.kind: "peer"`, a background-task
-notice as a user entry starting `<task-notification>`, and the driver's text in assistant entries.
+Every other host runs a keeper too, and there it follows: it asks every host which one runs a live
+driver, runs `zz --host THAT driver state --follow --since GEN:SEQ` and appends what arrives. The
+host it follows sends an `{"alive": …}` line every 10 s; a keeper that hears `false`, or nothing
+for 45 s, or finds a driver on its own host, stops following and asks again. The prototype derives
+the same lines from a Claude transcript (`driver-checkpoint.py chat`): Claude stores a peer message
+as an `isMeta` user entry with `origin.kind: "peer"`, a background-task notice as a user entry
+starting `<task-notification>`, and the driver's text in assistant entries.
 
 fabrico's turns must reach the driver as user input in its pane, never through the peer bus. In the
 handoff test a request sent with `agent-send` was filed by the driver as "a preference relayed by
@@ -159,38 +165,61 @@ no user authority doing its job.
 ## The record
 
 ```json
-{"generation": 3, "host": "ubuntu", "pane": "%4", "provider": "claude", "model": "opus",
- "effort": "xhigh", "session": "4f2c…", "transcript": "/home/f/.claude/projects/…/4f2c….jsonl",
+{"generation": 2, "host": "alienware", "pane": "%0", "provider": "claude",
+ "command": "claude --model sonnet", "session": "f1e89bf7-…", "session_base": 0,
  "cwd": "/home/f/.local/share/zz/driver/work"}
 ```
 
-While the driver runs, its host's daemon already knows its CLI and session: the provider from the
-pane's process (`AgentProvider`), Claude's session id and transcript from Claude's own registry of
-running sessions (`Claude::locate` in `zz-daemon/src/agent/lens.rs`), and Codex's from the rollout
-its process holds open or the newest one (`Codex::locate`). Once the process is dead there is
-nothing left to look up, so the host writes the record when it first finds the session, and every
-follower copies it with the stream. The provider is a string (`AgentProvider::as_str`): a new
-provider is a new lens reader in the daemon, not a new format. The packet is built from zz's copy,
-not from the vendor transcript, so a Claude driver can come back as a Codex driver.
+`zz driver start` writes it with the generation, the command it started and the working directory;
+the keeper adds the pane, the provider (the pane's foreground program, `claude` or `codex`) and the
+session id the lens reports, which it can only learn while the process lives. Followers copy it
+with the stream. `command` keeps the model and effort as the CLI's own flags. The provider is a
+plain string: a new provider is a new lens reader in the daemon, not a new format. The packet is
+built from zz's copy, not from the vendor transcript, so a Claude driver can come back as a Codex
+driver. A keeper that finds a driver this host did not start through `zz driver start` (another
+pane, or a record from another host) gives it the next generation.
 
 ## The packet
 
 ```text
-You are fabrico's driver and you were restarted: your previous process died, and with it every
+You are the Driver Agent and you were restarted: your previous process died, and with it every
 wait you had running. Follow the Restarted section of your instructions.
 
 Your ledger.md as you last wrote it:
+
 <ledger>
 
-The conversation since then (fabrico's last request first):
+The conversation since then, the user's last request first:
+
 [user ts] ...
 [driver ts] ...
 ```
 
-`driver-checkpoint.py packet CHAT_OR_TRANSCRIPT LEDGER` builds it. Measured sizes: 1.6 KB after a
-short exchange, 2.9 to 3.5 KB in the middle of the green task. The skill goes in as the system
-prompt, as for any driver start. In the design zz builds it from the stream copy: the last `ledger`
-line, then every line after it.
+`driver_log::packet` builds it from the stream copy: the last `ledger` line, then every line after
+it, with your last request on top only when it came before that ledger; it stays under 12 KB by
+dropping the oldest lines after the ledger. `zz driver start` also writes the ledger back to
+`work/ledger.md`, where the skill's Restarted section reads it. The prototype's
+`driver-checkpoint.py packet` measured 1.6 KB after a short exchange and 2.9 to 3.5 KB in the
+middle of the green task.
+
+## Starting a driver
+
+`zz driver start` (and `recover`, which calls it) runs on the host the driver will run on:
+
+- writes the skill without its frontmatter as `work/DRIVER.md`, passed to Claude with
+  `--append-system-prompt-file`, and as `work/AGENTS.md`, which Codex reads from its working
+  directory;
+- for Claude, writes `work/.driver-settings.json` with a Stop hook that runs `zz driver stop-hook`
+  (the prototype's check, in the CLI: a turn that used a tool and wrote no `ledger.md` is sent back
+  once), passed with `--settings`, so nothing in `~/.claude` changes for it;
+- marks the driver folder trusted in `~/.claude.json` (`projects[…].hasTrustDialogAccepted`, the
+  documented way; trust on a folder outside a git repository covers its subfolders), since an
+  interactive Claude in an untrusted folder stops at the trust dialog and runs no hooks; Codex asks
+  only inside a git repository, and the folder is in none;
+- takes `PATH` from the login shell before it starts the CLI, because a daemon started from the
+  desktop app or a non-login ssh has no `~/.local/bin` on its `PATH`;
+- kills a `driver` session on this host that has no agent in it, starts the CLI in a new `driver`
+  session in `work/` with the packet as its first prompt, and starts this host's keeper.
 
 ## Recovery: ask every host
 
@@ -202,16 +231,19 @@ entry. With `--brief` it prints one line:
 ```
 
 It is read-only, so `zz --host all driver state --brief` asks every configured host at once
-through the fan-out the CLI already has. When zz finds no driver (no `driver` session with an agent
-in it on any connected host), it:
+through the fan-out the CLI already has (`--follow` is refused there, since the fan-out waits for
+every host to finish). `driver state` is a CLI command, like `list-hosts`: `--host H` runs H's own
+zz over ssh, which reads H's files and asks H's daemon whether its driver runs. `zz driver
+recover` (`driver::recover`, which the desktop app calls too):
 
-1. asks every host with `zz --host all driver state --brief`;
-2. follows a driver any host reports alive, and starts nothing;
-3. with none alive and a majority of fleet hosts answering, takes the copy with the highest
-   `(generation, seq)`, fetches it whole from that host, builds the packet and starts a fresh
-   driver at generation + 1;
-4. with fewer answers, starts nothing and says the driver is unreachable, with a button that
-   starts one anyway.
+1. asks this machine and every configured host, with `zz --host all driver state --brief`;
+2. follows a driver any host reports alive, and starts nothing: `{"outcome":"alive",…}`;
+3. with none alive and more than half of the hosts answering (the configured ones plus this
+   machine), takes the copy with the highest `(generation, seq)`, fetches it whole from that host
+   when it is not this one, and starts a driver here at the highest generation any host reported,
+   plus one: `{"outcome":"started",…}`;
+4. with fewer answers, starts nothing: `{"outcome":"unreachable","answered":1,"hosts":2}`, unless
+   `--force`.
 
 Generation is chosen at each start as the highest any host reported, plus one; `seq` orders the
 lines within one generation. The majority is what keeps one driver: the two sides of a network
@@ -219,11 +251,12 @@ split each see no live driver, and only one side can hear from most hosts. With 
 xps and alienware that is 3 of 4, and a sleeping laptop counts as not answering, which the button
 covers when you know better.
 
-A driver that was cut off rather than dead can come back after a newer generation started. A host
-that sees two live drivers keeps the higher generation: the lower one's host stops it and keeps
-its copy, and the new driver hears about it in one line. Nothing is merged. Until it reconnects,
-the old driver can still type into workers it reaches; refusing `agent-send` from an older
-generation in the daemon would close that window and is not designed yet.
+A driver that was cut off rather than dead can come back after a newer generation started. The
+plan: a host that sees two live drivers keeps the higher generation, the lower one's host stops it
+and keeps its copy, and the new driver hears about it in one line; nothing is merged. Not built:
+today both keep running, recover follows whichever it finds first, and the old driver can still
+type into workers it reaches. Refusing `agent-send` from an older generation in the daemon would
+close that window and is not designed yet.
 
 This replaces the owner file, epoch and 2 s mirror of the 2026-10-24 version, which
 `driver-sync.sh` still implements.
@@ -240,10 +273,15 @@ already holds zz's ssh key, `window-state.json` and the browser's data; settings
 <data dir>/zz/driver/
   record.json     the newest driver this host knows
   stream.jsonl    this host's copy of the driver's stream
-  work/           the driver's working directory on the host running it: ledger.md, briefs, reports
+  keep.lock       held by this host's keeper, so a second one exits
+  work/           the driver's working directory on the host running it: ledger.md, briefs,
+                  reports, DRIVER.md, AGENTS.md, .driver-settings.json, .packet
 ```
 
-The driver starts in `work/`. Today it starts in the home folder, so its `ledger.md` lands in `~`.
+The driver starts in `work/`. `zz driver keep` starts the keeper as a process of its own (its own
+session, no terminal) and returns, so it does not depend on a daemon job or an ssh session staying
+open; `zz driver start` starts it, and the desktop app runs `run-shell -b "zz driver keep"` on each
+host once per connection while `driver-agent` is on.
 
 ## What a restart loses
 
@@ -313,18 +351,18 @@ The desktop app feeds it from the driver's pane today, through the lens stream, 
 disk yet (`crates/zz/src/agent/driver.rs`):
 
 - **Which pane.** While `driver-agent` is on, the driver is the first terminal running Claude Code or
-  Codex in a session named `driver`, on the first host in fleet order that has one. With no `driver`
-  session on any connected host, zz starts one on this machine, in the home folder, running
+  Codex in a session named `driver`, on the first host in fleet order that has one. With none on
+  any connected host, zz runs the recovery above (`driver::recover` on a background thread) with
   `driver_command`: `claude` with `--model` and `--effort`, or `codex` with
   `-c model_reasoning_effort=` (Codex has no `max`, so it gets `xhigh`). It waits until this
-  machine's daemon has sent its sessions, and 30 s between starts, so a CLI that exits at once does
-  not loop. A `driver` session without an agent in it is left alone. Off, zz neither starts nor
-  follows a driver and the chat's surfaces hide; a driver already running keeps running. Known
-  gap: zz drops a remote host's session list while it reconnects to it
-  (`MuxClient::ensure_connected`), and `may_start_driver` skips hosts it has no list for, so a
-  driver on a host whose link just dropped looks missing and zz starts a second one here; the same
-  happens at launch before the ssh connections are up. The recovery rules above replace this start
-  rule.
+  machine's daemon has sent its sessions, and 30 s between attempts, so a CLI that exits at once
+  does not loop. Recovery asks every host over ssh itself, so a host zz is still reconnecting to
+  (whose session list `MuxClient::ensure_connected` drops) no longer looks driverless: before
+  2026-10-25 zz started a second, blank driver here whenever the driver's host was reconnecting,
+  and at every launch before the ssh connections were up. When too few hosts answer, zz says so in
+  a warning that names `zz driver recover --force`; a button for it is not built. Off, zz neither
+  starts nor follows a driver and the chat's surfaces hide; a driver already running keeps
+  running. While it is on, zz starts `zz driver keep` on every connected host once per connection.
 - **The feed.** `MuxClient::follow_driver` asks the driver's host for an `AgentReplay` and keeps a
   cursor of its own, apart from the attached session's lenses, taking `AgentUpdates`,
   `AgentState` and lag notices from the attached connection or a background one. The daemon
@@ -346,8 +384,8 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   (`SidebarOpenDriver`), and in titlebar mode the title bar's chat button opens it too. Esc closes it
   and Backspace in an empty field goes back to the command palette.
 
-Not yet: the web and iPad clients, the stream copies, the record and `zz driver state`, peer-bus messages (they arrive as plain
-user turns and show as yours), and an unwatch message, so a client keeps getting the stream of
+Not yet: the web and iPad clients, peer-bus messages (they arrive as plain user turns and show as
+yours), and an unwatch message, so a client keeps getting the stream of
 every pane it ever asked to replay until it disconnects.
 
 ## Settings and verbs
@@ -355,13 +393,15 @@ every pane it ever asked to replay until it disconnects.
 - Shipped 2026-10-24 under Settings › Agents (as `lead-*`, renamed before any release on
   2026-10-25): `driver-agent` (on or off), `driver-model` (`claude` for Claude Code's own default,
   `opus`, `sonnet`, `fable`, or `codex` for Codex's own default) and `driver-effort` (`default`,
-  `low`, `medium`, `high`, `xhigh`, `max`). The driver starts on this machine only; a change of
-  model or effort applies at its next start.
+  `low`, `medium`, `high`, `xhigh`, `max`). The desktop app starts the driver on this machine only;
+  `zz --host H driver recover` starts it on H. A change of model or effort applies at its next
+  start.
+- Built 2026-10-25: `zz driver state [--brief] [--json] [--since GEN:SEQ] [--follow]`, `keep`,
+  `start [--generation N] [--from HOST] [--command CMD]`, `recover [--force]` and `stop-hook`
+  ([commands](/tmux/commands.md)).
 - Still proposed: `driver-hosts` (where a new driver starts: the first of these that answers,
-  this machine by default) and `driver-reset-tokens` (restart from the packet after a finished
-  request once the context passes this, default 80k).
-- `zz driver state [--brief]` as above, and `zz driver start|move HOST|reset|status`. `status`
-  prints the record, the context size and how far each host's copy trails.
+  this machine by default), `driver-reset-tokens` (restart from the packet after a finished
+  request once the context passes this, default 80k), and `zz driver move HOST|reset|status`.
 
 # How pi-durable does it
 
@@ -433,6 +473,29 @@ and never needs replicating.
 - `zz --host H load-buffer -b x - < file` then `zz --host H run-shell "zz save-buffer [-a] -b x
   PATH"` moved 289 KB in 34 ms; `save-buffer PATH` sent through `--host` writes on the caller.
 - `zz --host H run-shell CMD` runs there with no pane and mirrors the exit status; no stdin.
+- `#{...}` formats print a tab as `_`, so `zz driver` parses `list-panes -F` with spaces.
+- Recovery, 2026-10-25, with zz-dev builds of this tree on xps and alienware (each listing the
+  other) and a Claude Sonnet driver:
+  1. `zz driver recover` on xps, with no copy anywhere, started generation 1 there with no packet;
+     the skill loaded (its first ledger used the skill's shape) and no trust dialog showed.
+  2. Two requests ("my favorite color is teal", "the deploy window is Friday 18:00") reached both
+     hosts' copies line for line: each request, each ledger rewrite and each answer.
+  3. xps lost (daemon and keeper killed, its zz hidden so it could not answer): `recover` on
+     alienware printed `unreachable` (1 of 2 hosts); `--force` started generation 2 from
+     alienware's own copy with a 0.9 KB packet, and the new driver answered "Teal, and the deploy
+     window is Friday 18:00". The packet never became a chat line.
+  4. With xps back, its keeper followed alienware and caught up to generation 2; `recover` from
+     the Mac printed `alive` on alienware and started nothing.
+  5. alienware's driver killed with its host up: `recover` on xps started generation 4 from
+     alienware's copy (a generation 3 start had died at once, before the fix that takes `PATH` from
+     the login shell), and that driver answered from its packet too.
+  6. A zz Dev app built from this tree, run on the Mac in a scratch home listing xps and alienware
+     with `driver-agent` on: at launch it started no driver of its own while xps ran one, started a
+     keeper on the Mac whose copy caught up to generation 4, and when xps's driver was killed it
+     started generation 5 on the Mac from the newest copy. With both hosts unable to answer it
+     started nothing (1 of 3); its warning was not looked at.
+- Keepers with no driver anywhere ask every host once a minute; one that follows or records checks
+  every 10 s.
 
 # Prototypes
 
@@ -458,10 +521,12 @@ exit 3) carried over to this version unchanged.
 - `driver-reset-tokens`: 80k is twice the fresh floor; the runs did not test deliberate resets.
 - Codex drivers: the stream copy needs the lens's Codex reader (`item_completed` agent and user
   messages), and the Stop hook needs Codex's hook format; neither was run.
-- Who follows: each host's daemon (a daemon-to-daemon stream, which zz does not have yet) or a
-  `zz driver follow` process per host riding `zz --host`, which needs nothing new.
+- Two live drivers after a split heal: not handled yet (see recovery).
+- A keeper restarted over an ssh session nested in another one did not stay up once; started
+  again it did. The app re-sends `zz driver keep` on every connection, which covers it, but the
+  cause is not known.
 - Fencing by generation: a daemon refusing `agent-send` from an older generation would stop a
   cut-off driver from typing into workers before it reconnects.
-- Folder trust: a driver started on a new host asks to trust `<data dir>/zz/driver/work` there,
-  once per host and CLI. `zz driver start` could create the folder everywhere and ask up front.
+- Folder trust: `zz driver start` writes the trust entry into `~/.claude.json` while Claude may
+  be rewriting the same file; a lost write would show the trust dialog once.
 - Never copy `~/.claude` or `~/.codex` wholesale: they hold credentials.

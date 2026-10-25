@@ -14,6 +14,7 @@ mod agent_hooks;
 mod control_mode;
 pub use agent_hooks::install_agent_hooks;
 pub mod diagnostics;
+pub mod driver;
 mod events;
 mod fleet;
 mod list_hosts;
@@ -784,7 +785,7 @@ fn run_command_mode(
         && host != ALL_HOSTS
         && matches!(
             canonical_command(&command),
-            "fleet" | "list-hosts" | "tools" | "protocol-version" | "--version"
+            "fleet" | "list-hosts" | "driver" | "tools" | "protocol-version" | "--version"
         )
     {
         return Some(run_host_cli(host, arguments));
@@ -961,6 +962,17 @@ fn run_command_mode(
                 }
             },
         );
+    }
+
+    if command == "driver" && host.is_none() {
+        return Some(driver::run(
+            socket_path,
+            &invocation
+                .args
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+        ));
     }
 
     if command == "list-hosts" && host.is_none() {
@@ -2409,7 +2421,7 @@ fn detach_daemon_session(command: &mut Command, ready_fd: std::os::fd::RawFd) {
     unsafe_code,
     reason = "Command::pre_exec is the only way to take a child off the caller's terminal"
 )]
-fn without_controlling_terminal(command: &mut Command) {
+pub(crate) fn without_controlling_terminal(command: &mut Command) {
     use std::os::unix::process::CommandExt as _;
 
     unsafe {
